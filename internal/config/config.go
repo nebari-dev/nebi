@@ -1,0 +1,88 @@
+package config
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/spf13/viper"
+)
+
+// Config holds all application configuration
+type Config struct {
+	Server   ServerConfig   `mapstructure:"server"`
+	Database DatabaseConfig `mapstructure:"database"`
+	Auth     AuthConfig     `mapstructure:"auth"`
+	Queue    QueueConfig    `mapstructure:"queue"`
+	Log      LogConfig      `mapstructure:"log"`
+}
+
+// ServerConfig holds HTTP server configuration
+type ServerConfig struct {
+	Port int    `mapstructure:"port"`
+	Mode string `mapstructure:"mode"` // "development" or "production"
+}
+
+// DatabaseConfig holds database configuration
+type DatabaseConfig struct {
+	Driver string `mapstructure:"driver"` // "sqlite" or "postgres"
+	DSN    string `mapstructure:"dsn"`    // Connection string
+}
+
+// AuthConfig holds authentication configuration
+type AuthConfig struct {
+	Type      string `mapstructure:"type"`       // "basic" or "oidc"
+	JWTSecret string `mapstructure:"jwt_secret"` // Secret for JWT signing
+}
+
+// QueueConfig holds job queue configuration
+type QueueConfig struct {
+	Type      string `mapstructure:"type"`       // "memory" or "redis"
+	RedisAddr string `mapstructure:"redis_addr"` // Redis address (if type=redis)
+}
+
+// LogConfig holds logging configuration
+type LogConfig struct {
+	Format string `mapstructure:"format"` // "json" or "text"
+	Level  string `mapstructure:"level"`  // "debug", "info", "warn", "error"
+}
+
+// Load reads configuration from file and environment variables
+func Load() (*Config, error) {
+	v := viper.New()
+
+	// Set defaults for local development
+	v.SetDefault("server.port", 8080)
+	v.SetDefault("server.mode", "development")
+	v.SetDefault("database.driver", "sqlite")
+	v.SetDefault("database.dsn", "./darb.db")
+	v.SetDefault("auth.type", "basic")
+	v.SetDefault("auth.jwt_secret", "change-me-in-production")
+	v.SetDefault("queue.type", "memory")
+	v.SetDefault("log.format", "text")
+	v.SetDefault("log.level", "info")
+
+	// Read from config file if exists
+	v.SetConfigName("config")
+	v.SetConfigType("yaml")
+	v.AddConfigPath(".")
+	v.AddConfigPath("/etc/darb/")
+
+	if err := v.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("error reading config file: %w", err)
+		}
+		// Config file not found, using defaults
+	}
+
+	// Environment variables override
+	v.SetEnvPrefix("DARB")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+
+	var cfg Config
+	if err := v.Unmarshal(&cfg); err != nil {
+		return nil, fmt.Errorf("error unmarshaling config: %w", err)
+	}
+
+	return &cfg, nil
+}

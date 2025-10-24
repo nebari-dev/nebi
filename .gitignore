@@ -1,0 +1,38 @@
+# Binaries
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Air
+tmp/
+build-errors.log
+
+# Config (keep example)
+# config.yaml is checked in as example
+
+# Logs
+*.log

@@ -1,0 +1,23 @@
+# Darb Configuration File
+# This is an example configuration for local development
+
+server:
+  port: 8080
+  mode: development  # "development" or "production"
+
+database:
+  driver: sqlite  # "sqlite" or "postgres"
+  dsn: ./darb.db  # For SQLite: file path, For Postgres: connection string
+  # Example Postgres DSN: "host=localhost user=darb password=secret dbname=darb port=5432 sslmode=disable"
+
+auth:
+  type: basic  # "basic" or "oidc" (oidc not yet implemented)
+  jwt_secret: change-me-in-production  # IMPORTANT: Change this in production!
+
+queue:
+  type: memory  # "memory" or "redis" (redis not yet implemented)
+  # redis_addr: localhost:6379  # Uncomment for Redis
+
+log:
+  format: text  # "text" or "json"
+  level: info   # "debug", "info", "warn", "error"

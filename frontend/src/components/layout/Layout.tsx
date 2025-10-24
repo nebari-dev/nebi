@@ -1,11 +1,13 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
+import { useIsAdmin } from '@/hooks/useAdmin';
 import { Button } from '@/components/ui/button';
-import { LogOut, Boxes, ListTodo } from 'lucide-react';
+import { LogOut, Boxes, ListTodo, Shield } from 'lucide-react';
 
 export const Layout = () => {
   const { user, clearAuth } = useAuthStore();
   const navigate = useNavigate();
+  const { data: isAdmin } = useIsAdmin();
 
   const handleLogout = () => {
     clearAuth();
@@ -42,6 +44,19 @@ export const Layout = () => {
                     </Button>
                   )}
                 </NavLink>
+                {isAdmin && (
+                  <NavLink to="/admin">
+                    {({ isActive }) => (
+                      <Button
+                        variant={isActive ? 'secondary' : 'ghost'}
+                        className="gap-2"
+                      >
+                        <Shield className="h-4 w-4" />
+                        Admin
+                      </Button>
+                    )}
+                  </NavLink>
+                )}
               </nav>
             </div>
             <div className="flex items-center gap-4">

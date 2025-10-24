@@ -1,13 +1,16 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 
+	"github.com/aktech/darb/internal/audit"
 	"github.com/aktech/darb/internal/executor"
 	"github.com/aktech/darb/internal/models"
 	"github.com/aktech/darb/internal/queue"
+	"github.com/aktech/darb/internal/rbac"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -36,7 +39,24 @@ func (h *EnvironmentHandler) ListEnvironments(c *gin.Context) {
 	userID := getUserID(c)
 
 	var environments []models.Environment
-	if err := h.db.Where("owner_id = ?", userID).Order("created_at DESC").Find(&environments).Error; err != nil {
+
+	// Get environments where user is owner
+	query := h.db.Where("owner_id = ?", userID)
+
+	// OR where user has permissions
+	var permissions []models.Permission
+	h.db.Where("user_id = ?", userID).Find(&permissions)
+
+	envIDs := []uuid.UUID{}
+	for _, p := range permissions {
+		envIDs = append(envIDs, p.EnvironmentID)
+	}
+
+	if len(envIDs) > 0 {
+		query = query.Or("id IN ?", envIDs)
+	}
+
+	if err := query.Order("created_at DESC").Find(&environments).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch environments"})
 		return
 	}
@@ -107,6 +127,19 @@ func (h *EnvironmentHandler) CreateEnvironment(c *gin.Context) {
 		return
 	}
 
+	// Grant owner access automatically
+	if err := rbac.GrantEnvironmentAccess(userID, env.ID, "owner"); err != nil {
+		// Log error but don't fail
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to grant owner access"})
+		return
+	}
+
+	// Audit log
+	audit.LogAction(h.db, userID, audit.ActionCreateEnvironment, fmt.Sprintf("env:%s", env.ID.String()), map[string]interface{}{
+		"name":            env.Name,
+		"package_manager": env.PackageManager,
+	})
+
 	c.JSON(http.StatusCreated, env)
 }
 
@@ -122,11 +155,11 @@ func (h *EnvironmentHandler) CreateEnvironment(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /environments/{id} [get]
 func (h *EnvironmentHandler) GetEnvironment(c *gin.Context) {
-	userID := getUserID(c)
 	envID := c.Param("id")
 
 	var env models.Environment
-	if err := h.db.Where("id = ? AND owner_id = ?", envID, userID).First(&env).Error; err != nil {
+	// Note: RBAC middleware already checked access, so just fetch by ID
+	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
 			return
@@ -153,7 +186,8 @@ func (h *EnvironmentHandler) DeleteEnvironment(c *gin.Context) {
 	envID := c.Param("id")
 
 	var env models.Environment
-	if err := h.db.Where("id = ? AND owner_id = ?", envID, userID).First(&env).Error; err != nil {
+	// Note: RBAC middleware already checked write access
+	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
 			return
@@ -178,6 +212,11 @@ func (h *EnvironmentHandler) DeleteEnvironment(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to queue job"})
 		return
 	}
+
+	// Audit log
+	audit.LogAction(h.db, userID, audit.ActionDeleteEnvironment, fmt.Sprintf("env:%s", env.ID.String()), map[string]interface{}{
+		"name": env.Name,
+	})
 
 	c.Status(http.StatusNoContent)
 }
@@ -207,7 +246,8 @@ func (h *EnvironmentHandler) InstallPackages(c *gin.Context) {
 	}
 
 	var env models.Environment
-	if err := h.db.Where("id = ? AND owner_id = ?", envID, userID).First(&env).Error; err != nil {
+	// Note: RBAC middleware already checked write access
+	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
 		return
 	}
@@ -236,6 +276,11 @@ func (h *EnvironmentHandler) InstallPackages(c *gin.Context) {
 		return
 	}
 
+	// Audit log
+	audit.LogAction(h.db, userID, audit.ActionInstallPackage, fmt.Sprintf("env:%s", env.ID.String()), map[string]interface{}{
+		"packages": req.Packages,
+	})
+
 	c.JSON(http.StatusAccepted, job)
 }
 
@@ -259,7 +304,8 @@ func (h *EnvironmentHandler) RemovePackages(c *gin.Context) {
 	packageName := c.Param("package")
 
 	var env models.Environment
-	if err := h.db.Where("id = ? AND owner_id = ?", envID, userID).First(&env).Error; err != nil {
+	// Note: RBAC middleware already checked write access
+	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
 		return
 	}
@@ -288,6 +334,11 @@ func (h *EnvironmentHandler) RemovePackages(c *gin.Context) {
 		return
 	}
 
+	// Audit log
+	audit.LogAction(h.db, userID, audit.ActionRemovePackage, fmt.Sprintf("env:%s", env.ID.String()), map[string]interface{}{
+		"package": packageName,
+	})
+
 	c.JSON(http.StatusAccepted, job)
 }
 
@@ -303,11 +354,11 @@ func (h *EnvironmentHandler) RemovePackages(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /environments/{id}/packages [get]
 func (h *EnvironmentHandler) ListPackages(c *gin.Context) {
-	userID := getUserID(c)
 	envID := c.Param("id")
 
 	var env models.Environment
-	if err := h.db.Where("id = ? AND owner_id = ?", envID, userID).First(&env).Error; err != nil {
+	// Note: RBAC middleware already checked read access
+	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
 		return
 	}
@@ -333,11 +384,11 @@ func (h *EnvironmentHandler) ListPackages(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /environments/{id}/pixi-toml [get]
 func (h *EnvironmentHandler) GetPixiToml(c *gin.Context) {
-	userID := getUserID(c)
 	envID := c.Param("id")
 
 	var env models.Environment
-	if err := h.db.Where("id = ? AND owner_id = ?", envID, userID).First(&env).Error; err != nil {
+	// Note: RBAC middleware already checked read access
+	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
 		return
 	}
@@ -371,6 +422,241 @@ type PixiTomlResponse struct {
 
 type InstallPackagesRequest struct {
 	Packages []string `json:"packages" binding:"required"`
+}
+
+// ShareEnvironment godoc
+// @Summary Share environment with another user (owner only)
+// @Tags environments
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path string true "Environment ID"
+// @Param share body ShareEnvironmentRequest true "Share details"
+// @Success 201 {object} models.Permission
+// @Router /environments/{id}/share [post]
+func (h *EnvironmentHandler) ShareEnvironment(c *gin.Context) {
+	ownerID := getUserID(c)
+	envID := c.Param("id")
+
+	var req ShareEnvironmentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// Parse environment ID
+	envUUID, err := uuid.Parse(envID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid environment ID"})
+		return
+	}
+
+	// Get environment and check ownership
+	var env models.Environment
+	if err := h.db.Where("id = ?", envUUID).First(&env).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+		return
+	}
+
+	// Check if user is the owner
+	if env.OwnerID != ownerID {
+		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Only the owner can share this environment"})
+		return
+	}
+
+	// Verify target user exists
+	var targetUser models.User
+	if err := h.db.First(&targetUser, "id = ?", req.UserID).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "User not found"})
+		return
+	}
+
+	// Validate role
+	if req.Role != "viewer" && req.Role != "editor" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Role must be 'viewer' or 'editor'"})
+		return
+	}
+
+	// Get role ID
+	var role models.Role
+	if err := h.db.Where("name = ?", req.Role).First(&role).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Role not found"})
+		return
+	}
+
+	// Create permission record
+	permission := models.Permission{
+		UserID:        req.UserID,
+		EnvironmentID: envUUID,
+		RoleID:        role.ID,
+	}
+
+	if err := h.db.Create(&permission).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create permission"})
+		return
+	}
+
+	// Grant in RBAC
+	if err := rbac.GrantEnvironmentAccess(req.UserID, envUUID, req.Role); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to grant RBAC permission"})
+		return
+	}
+
+	// Audit log
+	audit.LogAction(h.db, ownerID, audit.ActionGrantPermission, fmt.Sprintf("env:%s", envUUID.String()), map[string]interface{}{
+		"target_user_id": req.UserID,
+		"role":           req.Role,
+	})
+
+	c.JSON(http.StatusCreated, permission)
+}
+
+// UnshareEnvironment godoc
+// @Summary Revoke user access to environment (owner only)
+// @Tags environments
+// @Security BearerAuth
+// @Param id path string true "Environment ID"
+// @Param user_id path string true "User ID to revoke"
+// @Success 204
+// @Router /environments/{id}/share/{user_id} [delete]
+func (h *EnvironmentHandler) UnshareEnvironment(c *gin.Context) {
+	ownerID := getUserID(c)
+	envID := c.Param("id")
+	targetUserID := c.Param("user_id")
+
+	// Parse UUIDs
+	envUUID, err := uuid.Parse(envID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid environment ID"})
+		return
+	}
+
+	targetUUID, err := uuid.Parse(targetUserID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid user ID"})
+		return
+	}
+
+	// Get environment and check ownership
+	var env models.Environment
+	if err := h.db.Where("id = ?", envUUID).First(&env).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+		return
+	}
+
+	// Check if user is the owner
+	if env.OwnerID != ownerID {
+		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Only the owner can unshare this environment"})
+		return
+	}
+
+	// Cannot remove owner's own access
+	if targetUUID == ownerID {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Cannot remove owner's access"})
+		return
+	}
+
+	// Find and delete permission
+	var permission models.Permission
+	if err := h.db.Where("user_id = ? AND environment_id = ?", targetUUID, envUUID).First(&permission).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Permission not found"})
+		return
+	}
+
+	// Revoke from RBAC
+	if err := rbac.RevokeEnvironmentAccess(targetUUID, envUUID); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to revoke RBAC permission"})
+		return
+	}
+
+	// Delete permission record
+	if err := h.db.Delete(&permission).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to delete permission"})
+		return
+	}
+
+	// Audit log
+	audit.LogAction(h.db, ownerID, audit.ActionRevokePermission, fmt.Sprintf("env:%s", envUUID.String()), map[string]interface{}{
+		"target_user_id": targetUUID,
+	})
+
+	c.Status(http.StatusNoContent)
+}
+
+// ListCollaborators godoc
+// @Summary List all users with access to environment
+// @Tags environments
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "Environment ID"
+// @Success 200 {array} CollaboratorResponse
+// @Router /environments/{id}/collaborators [get]
+func (h *EnvironmentHandler) ListCollaborators(c *gin.Context) {
+	envID := c.Param("id")
+
+	// Parse environment ID
+	envUUID, err := uuid.Parse(envID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid environment ID"})
+		return
+	}
+
+	// Note: RBAC middleware already checked read access
+	var env models.Environment
+	if err := h.db.Where("id = ?", envUUID).First(&env).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+		return
+	}
+
+	// Get all permissions for this environment
+	var permissions []models.Permission
+	if err := h.db.Preload("User").Preload("Role").Where("environment_id = ?", envUUID).Find(&permissions).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch collaborators"})
+		return
+	}
+
+	// Start with owner
+	var owner models.User
+	collaborators := []CollaboratorResponse{}
+
+	if err := h.db.First(&owner, "id = ?", env.OwnerID).Error; err == nil {
+		collaborators = append(collaborators, CollaboratorResponse{
+			UserID:   env.OwnerID,
+			Username: owner.Username,
+			Email:    owner.Email,
+			Role:     "owner",
+			IsOwner:  true,
+		})
+	}
+
+	// Add other collaborators (excluding owner if they have a permission record)
+	for _, perm := range permissions {
+		if perm.UserID != env.OwnerID {
+			collaborators = append(collaborators, CollaboratorResponse{
+				UserID:   perm.UserID,
+				Username: perm.User.Username,
+				Email:    perm.User.Email,
+				Role:     perm.Role.Name,
+				IsOwner:  false,
+			})
+		}
+	}
+
+	c.JSON(http.StatusOK, collaborators)
+}
+
+// Request/Response types
+type ShareEnvironmentRequest struct {
+	UserID uuid.UUID `json:"user_id" binding:"required"`
+	Role   string    `json:"role" binding:"required"` // "viewer" or "editor"
+}
+
+type CollaboratorResponse struct {
+	UserID   uuid.UUID `json:"user_id"`
+	Username string    `json:"username"`
+	Email    string    `json:"email,omitempty"`
+	Role     string    `json:"role"` // "owner", "editor", "viewer"
+	IsOwner  bool      `json:"is_owner"`
 }
 
 // Helper function to get user ID from context

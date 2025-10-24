@@ -2,10 +2,16 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEnvironment } from '@/hooks/useEnvironments';
 import { usePackages, useInstallPackages, useRemovePackage } from '@/hooks/usePackages';
+import { useCollaborators } from '@/hooks/useAdmin';
+import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ShareButton } from '@/components/sharing/ShareButton';
+import { RoleBadge } from '@/components/sharing/RoleBadge';
 import { ArrowLeft, Loader2, Package, Plus, Trash2 } from 'lucide-react';
 
 const statusColors = {
@@ -23,11 +29,17 @@ export const EnvironmentDetail = () => {
 
   const { data: environment, isLoading: envLoading } = useEnvironment(envId);
   const { data: packages, isLoading: packagesLoading } = usePackages(envId);
+  const { data: collaborators } = useCollaborators(envId);
   const installMutation = useInstallPackages(envId);
   const removeMutation = useRemovePackage(envId);
+  const currentUser = useAuthStore((state) => state.user);
 
+  const [activeTab, setActiveTab] = useState('packages');
   const [showInstall, setShowInstall] = useState(false);
   const [packageInput, setPackageInput] = useState('');
+  const [confirmRemovePackage, setConfirmRemovePackage] = useState<string | null>(null);
+
+  const isOwner = environment?.owner_id === currentUser?.id;
 
   const handleInstall = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,9 +51,11 @@ export const EnvironmentDetail = () => {
     setShowInstall(false);
   };
 
-  const handleRemove = async (packageName: string) => {
-    if (!confirm(`Remove ${packageName}?`)) return;
-    await removeMutation.mutateAsync(packageName);
+  const handleRemove = async () => {
+    if (confirmRemovePackage) {
+      await removeMutation.mutateAsync(confirmRemovePackage);
+      setConfirmRemovePackage(null);
+    }
   };
 
   if (envLoading) {
@@ -66,43 +80,58 @@ export const EnvironmentDetail = () => {
           <h1 className="text-3xl font-bold">{environment.name}</h1>
           <p className="text-muted-foreground">Environment details and packages</p>
         </div>
-        <Badge className={statusColors[environment.status]}>
-          {environment.status}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge className={statusColors[environment.status]}>
+            {environment.status}
+          </Badge>
+          {isOwner && <ShareButton environmentId={envId} />}
+        </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Environment Info</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-2">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">ID:</span>
-            <span className="font-medium">{environment.id}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Package Manager:</span>
-            <span className="font-medium">{environment.package_manager}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Created:</span>
-            <span>{new Date(environment.created_at).toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Updated:</span>
-            <span>{new Date(environment.updated_at).toLocaleString()}</span>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="packages">Packages</TabsTrigger>
+          <TabsTrigger value="collaborators">
+            Collaborators ({collaborators?.length || 0})
+          </TabsTrigger>
+        </TabsList>
 
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold">Packages</h2>
-          <Button onClick={() => setShowInstall(!showInstall)} disabled={environment.status !== 'ready'}>
-            <Plus className="h-4 w-4 mr-2" />
-            Install Package
-          </Button>
-        </div>
+        <TabsContent value="overview">
+          <Card>
+            <CardHeader>
+              <CardTitle>Environment Info</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ID:</span>
+                <span className="font-medium">{environment.id}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Package Manager:</span>
+                <span className="font-medium">{environment.package_manager}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Created:</span>
+                <span>{new Date(environment.created_at).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Updated:</span>
+                <span>{new Date(environment.updated_at).toLocaleString()}</span>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="packages">
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-bold">Packages</h2>
+              <Button onClick={() => setShowInstall(!showInstall)} disabled={environment.status !== 'ready'}>
+                <Plus className="h-4 w-4 mr-2" />
+                Install Package
+              </Button>
+            </div>
 
         {showInstall && (
           <Card>
@@ -170,7 +199,7 @@ export const EnvironmentDetail = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleRemove(pkg.name)}
+                            onClick={() => setConfirmRemovePackage(pkg.name)}
                             disabled={removeMutation.isPending || environment.status !== 'ready'}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -185,12 +214,54 @@ export const EnvironmentDetail = () => {
           </Card>
         )}
 
-        {packages?.length === 0 && !showInstall && (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">No packages installed yet</p>
+            {packages?.length === 0 && !showInstall && (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">No packages installed yet</p>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </TabsContent>
+
+        <TabsContent value="collaborators">
+          <Card>
+            <CardHeader>
+              <CardTitle>Collaborators</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {collaborators?.map((collab) => (
+                  <div
+                    key={collab.user_id}
+                    className="flex justify-between items-center p-3 rounded-lg border"
+                  >
+                    <div className="flex-1">
+                      <div className="font-medium">{collab.username}</div>
+                      <div className="text-sm text-muted-foreground">{collab.email}</div>
+                    </div>
+                    <RoleBadge role={collab.role} />
+                  </div>
+                ))}
+              </div>
+              {(!collaborators || collaborators.length === 0) && (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  No collaborators yet
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      <ConfirmDialog
+        open={!!confirmRemovePackage}
+        onOpenChange={(open) => !open && setConfirmRemovePackage(null)}
+        onConfirm={handleRemove}
+        title="Remove Package"
+        description={`Are you sure you want to remove the package "${confirmRemovePackage}"? This will uninstall it from the environment.`}
+        confirmText="Remove"
+        cancelText="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 };

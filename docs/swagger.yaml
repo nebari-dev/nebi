@@ -17,6 +17,20 @@ definitions:
       user:
         $ref: '#/definitions/models.User'
     type: object
+  handlers.CollaboratorResponse:
+    properties:
+      email:
+        type: string
+      is_owner:
+        type: boolean
+      role:
+        description: '"owner", "editor", "viewer"'
+        type: string
+      user_id:
+        type: string
+      username:
+        type: string
+    type: object
   handlers.CreateEnvironmentRequest:
     properties:
       name:
@@ -28,10 +42,39 @@ definitions:
     required:
     - name
     type: object
+  handlers.CreateUserRequest:
+    properties:
+      email:
+        type: string
+      is_admin:
+        type: boolean
+      password:
+        minLength: 8
+        type: string
+      username:
+        type: string
+    required:
+    - email
+    - password
+    - username
+    type: object
   handlers.ErrorResponse:
     properties:
       error:
         type: string
+    type: object
+  handlers.GrantPermissionRequest:
+    properties:
+      environment_id:
+        type: string
+      role_id:
+        type: integer
+      user_id:
+        type: string
+    required:
+    - environment_id
+    - role_id
+    - user_id
     type: object
   handlers.HealthResponse:
     properties:
@@ -54,6 +97,52 @@ definitions:
   handlers.PixiTomlResponse:
     properties:
       content:
+        type: string
+    type: object
+  handlers.ShareEnvironmentRequest:
+    properties:
+      role:
+        description: '"viewer" or "editor"'
+        type: string
+      user_id:
+        type: string
+    required:
+    - role
+    - user_id
+    type: object
+  handlers.UserWithAdminStatus:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      is_admin:
+        type: boolean
+      updated_at:
+        type: string
+      username:
+        type: string
+    type: object
+  models.AuditLog:
+    properties:
+      action:
+        description: e.g., "create_environment", "grant_permission"
+        type: string
+      details_json:
+        description: Additional context in JSON
+        type: string
+      id:
+        type: integer
+      resource:
+        description: e.g., "environment:123", "user:456"
+        type: string
+      timestamp:
+        type: string
+      user:
+        $ref: '#/definitions/models.User'
+      user_id:
         type: string
     type: object
   models.Environment:
@@ -159,6 +248,40 @@ definitions:
       version:
         type: string
     type: object
+  models.Permission:
+    properties:
+      created_at:
+        type: string
+      environment:
+        $ref: '#/definitions/models.Environment'
+      environment_id:
+        type: string
+      id:
+        type: integer
+      role:
+        $ref: '#/definitions/models.Role'
+      role_id:
+        type: integer
+      updated_at:
+        type: string
+      user:
+        $ref: '#/definitions/models.User'
+      user_id:
+        type: string
+    type: object
+  models.Role:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      updated_at:
+        type: string
+    type: object
   models.User:
     properties:
       created_at:
@@ -179,6 +302,190 @@ info:
   title: Darb API
   version: "1.0"
 paths:
+  /admin/audit-logs:
+    get:
+      parameters:
+      - description: Filter by user ID
+        in: query
+        name: user_id
+        type: string
+      - description: Filter by action
+        in: query
+        name: action
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.AuditLog'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List audit logs
+      tags:
+      - admin
+  /admin/permissions:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Permission'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List all permissions
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Permission details
+        in: body
+        name: permission
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.GrantPermissionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Permission'
+      security:
+      - BearerAuth: []
+      summary: Grant environment access to a user
+      tags:
+      - admin
+  /admin/permissions/{id}:
+    delete:
+      parameters:
+      - description: Permission ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Revoke a permission
+      tags:
+      - admin
+  /admin/roles:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Role'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List all roles
+      tags:
+      - admin
+  /admin/users:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.User'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List all users (admin only)
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: User details
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.User'
+      security:
+      - BearerAuth: []
+      summary: Create a new user (admin only)
+      tags:
+      - admin
+  /admin/users/{id}:
+    delete:
+      parameters:
+      - description: User UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Delete a user (admin only)
+      tags:
+      - admin
+    get:
+      parameters:
+      - description: User UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.UserWithAdminStatus'
+      security:
+      - BearerAuth: []
+      summary: Get user by ID (admin only)
+      tags:
+      - admin
+  /admin/users/{id}/toggle-admin:
+    post:
+      parameters:
+      - description: User UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.UserWithAdminStatus'
+      security:
+      - BearerAuth: []
+      summary: Toggle admin status for a user
+      tags:
+      - admin
   /auth/login:
     post:
       consumes:
@@ -328,6 +635,28 @@ paths:
       security:
       - BearerAuth: []
       summary: Get an environment by ID
+      tags:
+      - environments
+  /environments/{id}/collaborators:
+    get:
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.CollaboratorResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List all users with access to environment
       tags:
       - environments
   /environments/{id}/packages:
@@ -480,6 +809,55 @@ paths:
       security:
       - BearerAuth: []
       summary: Get pixi.toml content for an environment
+      tags:
+      - environments
+  /environments/{id}/share:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Share details
+        in: body
+        name: share
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.ShareEnvironmentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Permission'
+      security:
+      - BearerAuth: []
+      summary: Share environment with another user (owner only)
+      tags:
+      - environments
+  /environments/{id}/share/{user_id}:
+    delete:
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: User ID to revoke
+        in: path
+        name: user_id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Revoke user access to environment (owner only)
       tags:
       - environments
   /health:

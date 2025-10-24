@@ -2,6 +2,7 @@ export interface User {
   id: string; // UUID
   username: string;
   email: string;
+  is_admin?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -60,4 +61,35 @@ export interface LoginRequest {
 export interface LoginResponse {
   token: string;
   user: User;
+}
+
+export interface CreateUserRequest {
+  username: string;
+  email: string;
+  password: string;
+  is_admin?: boolean;
+}
+
+export interface AuditLog {
+  id: string;
+  user_id: string;
+  action: string;
+  resource: string;
+  resource_id?: string;
+  details_json?: Record<string, any>;
+  timestamp: string;
+  user?: User;
+}
+
+export interface Collaborator {
+  user_id: string;
+  username: string;
+  email: string;
+  role: 'owner' | 'editor' | 'viewer';
+  is_owner: boolean;
+}
+
+export interface ShareEnvironmentRequest {
+  user_id: string;
+  role: 'editor' | 'viewer';
 }

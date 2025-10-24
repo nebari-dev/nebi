@@ -81,7 +81,7 @@ func main() {
 	slog.Info("Worker started")
 
 	// Initialize API router
-	router := api.NewRouter(cfg, database, jobQueue, exec)
+	router := api.NewRouter(cfg, database, jobQueue, exec, slog.Default())
 
 	// Create HTTP server
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

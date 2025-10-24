@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Loader2, Plus, Trash2, X, Edit } from 'lucide-react';
 
 const statusColors = {
@@ -41,6 +42,7 @@ export const Environments = () => {
   const [editEnvName, setEditEnvName] = useState('');
   const [editPixiToml, setEditPixiToml] = useState('');
   const [loadingEdit, setLoadingEdit] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,9 +63,11 @@ export const Environments = () => {
     navigate('/jobs');
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this environment?')) return;
-    await deleteMutation.mutateAsync(id);
+  const handleDelete = async () => {
+    if (confirmDelete) {
+      await deleteMutation.mutateAsync(confirmDelete.id);
+      setConfirmDelete(null);
+    }
   };
 
   const handleEdit = async (id: string, name: string) => {
@@ -300,7 +304,7 @@ export const Environments = () => {
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDelete(env.id);
+                            setConfirmDelete({ id: env.id, name: env.name });
                           }}
                           disabled={deleteMutation.isPending}
                         >
@@ -321,6 +325,17 @@ export const Environments = () => {
           <p className="text-muted-foreground">No environments yet. Create your first one!</p>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onOpenChange={(open) => !open && setConfirmDelete(null)}
+        onConfirm={handleDelete}
+        title="Delete Environment"
+        description={`Are you sure you want to delete "${confirmDelete?.name}"? This action cannot be undone. All data associated with this environment will be permanently removed.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 };

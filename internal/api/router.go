@@ -6,10 +6,12 @@ import (
 	"time"
 
 	"github.com/aktech/darb/internal/api/handlers"
+	"github.com/aktech/darb/internal/api/middleware"
 	"github.com/aktech/darb/internal/auth"
 	"github.com/aktech/darb/internal/config"
 	"github.com/aktech/darb/internal/executor"
 	"github.com/aktech/darb/internal/queue"
+	"github.com/aktech/darb/internal/rbac"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -17,7 +19,13 @@ import (
 )
 
 // NewRouter creates and configures the Gin router
-func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Executor) *gin.Engine {
+func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Executor, logger *slog.Logger) *gin.Engine {
+	// Initialize RBAC enforcer
+	if err := rbac.InitEnforcer(db, logger); err != nil {
+		logger.Error("Failed to initialize RBAC", "error", err)
+		panic(err)
+	}
+
 	// Set Gin mode
 	if cfg.Server.Mode == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -55,16 +63,25 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		// Environment endpoints
 		protected.GET("/environments", envHandler.ListEnvironments)
 		protected.POST("/environments", envHandler.CreateEnvironment)
-		protected.GET("/environments/:id", envHandler.GetEnvironment)
-		protected.DELETE("/environments/:id", envHandler.DeleteEnvironment)
 
-		// Package endpoints
-		protected.GET("/environments/:id/packages", envHandler.ListPackages)
-		protected.POST("/environments/:id/packages", envHandler.InstallPackages)
-		protected.DELETE("/environments/:id/packages/:package", envHandler.RemovePackages)
+		// Per-environment operations with RBAC permission checks
+		env := protected.Group("/environments/:id")
+		{
+			// Read operations (require read permission)
+			env.GET("", middleware.RequireEnvironmentAccess("read"), envHandler.GetEnvironment)
+			env.GET("/packages", middleware.RequireEnvironmentAccess("read"), envHandler.ListPackages)
+			env.GET("/pixi-toml", middleware.RequireEnvironmentAccess("read"), envHandler.GetPixiToml)
+			env.GET("/collaborators", middleware.RequireEnvironmentAccess("read"), envHandler.ListCollaborators)
 
-		// Environment configuration endpoints
-		protected.GET("/environments/:id/pixi-toml", envHandler.GetPixiToml)
+			// Write operations (require write permission)
+			env.DELETE("", middleware.RequireEnvironmentAccess("write"), envHandler.DeleteEnvironment)
+			env.POST("/packages", middleware.RequireEnvironmentAccess("write"), envHandler.InstallPackages)
+			env.DELETE("/packages/:package", middleware.RequireEnvironmentAccess("write"), envHandler.RemovePackages)
+
+			// Sharing operations (owner only - checked in handler)
+			env.POST("/share", envHandler.ShareEnvironment)
+			env.DELETE("/share/:user_id", envHandler.UnshareEnvironment)
+		}
 
 		// Job endpoints
 		protected.GET("/jobs", jobHandler.ListJobs)
@@ -74,14 +91,28 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		protected.GET("/templates", handlers.NotImplemented)
 		protected.POST("/templates", handlers.NotImplemented)
 
-		// Admin endpoints (placeholder)
+		// Admin endpoints (require admin role)
+		adminHandler := handlers.NewAdminHandler(db)
 		admin := protected.Group("/admin")
+		admin.Use(middleware.RequireAdmin())
 		{
-			admin.GET("/users", handlers.NotImplemented)
-			admin.POST("/users", handlers.NotImplemented)
-			admin.GET("/roles", handlers.NotImplemented)
-			admin.POST("/permissions", handlers.NotImplemented)
-			admin.GET("/audit-logs", handlers.NotImplemented)
+			// User management
+			admin.GET("/users", adminHandler.ListUsers)
+			admin.POST("/users", adminHandler.CreateUser)
+			admin.GET("/users/:id", adminHandler.GetUser)
+			admin.POST("/users/:id/toggle-admin", adminHandler.ToggleAdmin)
+			admin.DELETE("/users/:id", adminHandler.DeleteUser)
+
+			// Role management
+			admin.GET("/roles", adminHandler.ListRoles)
+
+			// Permission management
+			admin.GET("/permissions", adminHandler.ListPermissions)
+			admin.POST("/permissions", adminHandler.GrantPermission)
+			admin.DELETE("/permissions/:id", adminHandler.RevokePermission)
+
+			// Audit logs
+			admin.GET("/audit-logs", adminHandler.ListAuditLogs)
 		}
 	}
 

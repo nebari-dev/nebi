@@ -1,0 +1,89 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/aktech/darb/internal/api"
+	"github.com/aktech/darb/internal/config"
+	"github.com/aktech/darb/internal/db"
+	"github.com/aktech/darb/internal/logger"
+)
+
+// @title Darb API
+// @version 1.0
+// @description Multi-User Environment Management System API
+// @host localhost:8080
+// @BasePath /api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+func main() {
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("Failed to load configuration", "error", err)
+		os.Exit(1)
+	}
+
+	// Initialize logger
+	logger.Init(cfg.Log.Format, cfg.Log.Level)
+	slog.Info("Starting Darb server", "version", "1.0.0", "mode", cfg.Server.Mode)
+
+	// Initialize database
+	database, err := db.New(cfg.Database)
+	if err != nil {
+		slog.Error("Failed to initialize database", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("Database initialized", "driver", cfg.Database.Driver)
+
+	// Run migrations
+	if err := db.Migrate(database); err != nil {
+		slog.Error("Failed to run migrations", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("Database migrations completed")
+
+	// Initialize API router
+	router := api.NewRouter(cfg, database)
+
+	// Create HTTP server
+	addr := fmt.Sprintf(":%d", cfg.Server.Port)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: router,
+	}
+
+	// Start server in goroutine
+	go func() {
+		slog.Info("Server listening", "address", addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("Server failed", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	// Wait for interrupt signal for graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	slog.Info("Shutting down server...")
+
+	// Graceful shutdown with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		slog.Error("Server forced to shutdown", "error", err)
+		os.Exit(1)
+	}
+
+	slog.Info("Server exited")
+}

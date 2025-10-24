@@ -21,3 +21,8 @@ queue:
 log:
   format: text  # "text" or "json"
   level: info   # "debug", "info", "warn", "error"
+
+package_manager:
+  default_type: pixi  # "pixi" or "uv"
+  # pixi_path: /custom/path/to/pixi  # Optional: Custom pixi binary path
+  # uv_path: /custom/path/to/uv      # Optional: Custom uv binary path

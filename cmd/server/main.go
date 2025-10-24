@@ -13,7 +13,12 @@ import (
 	"github.com/aktech/darb/internal/api"
 	"github.com/aktech/darb/internal/config"
 	"github.com/aktech/darb/internal/db"
+	"github.com/aktech/darb/internal/executor"
 	"github.com/aktech/darb/internal/logger"
+	"github.com/aktech/darb/internal/queue"
+	"github.com/aktech/darb/internal/worker"
+
+	_ "github.com/aktech/darb/docs" // Load swagger docs
 )
 
 // @title Darb API
@@ -51,8 +56,32 @@ func main() {
 	}
 	slog.Info("Database migrations completed")
 
+	// Initialize job queue
+	jobQueue := queue.NewMemoryQueue(100)
+	slog.Info("Job queue initialized", "type", cfg.Queue.Type)
+
+	// Initialize executor
+	exec, err := executor.NewLocalExecutor(cfg)
+	if err != nil {
+		slog.Error("Failed to initialize executor", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("Local executor initialized")
+
+	// Initialize and start worker
+	w := worker.New(database, jobQueue, exec, slog.Default())
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	defer workerCancel()
+
+	go func() {
+		if err := w.Start(workerCtx); err != nil && err != context.Canceled {
+			slog.Error("Worker failed", "error", err)
+		}
+	}()
+	slog.Info("Worker started")
+
 	// Initialize API router
-	router := api.NewRouter(cfg, database)
+	router := api.NewRouter(cfg, database, jobQueue, exec)
 
 	// Create HTTP server
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
@@ -75,6 +104,10 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	slog.Info("Shutting down server...")
+
+	// Stop worker
+	workerCancel()
+	slog.Info("Worker stopped")
 
 	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

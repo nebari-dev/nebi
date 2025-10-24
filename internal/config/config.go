@@ -9,11 +9,12 @@ import (
 
 // Config holds all application configuration
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Auth     AuthConfig     `mapstructure:"auth"`
-	Queue    QueueConfig    `mapstructure:"queue"`
-	Log      LogConfig      `mapstructure:"log"`
+	Server         ServerConfig         `mapstructure:"server"`
+	Database       DatabaseConfig       `mapstructure:"database"`
+	Auth           AuthConfig           `mapstructure:"auth"`
+	Queue          QueueConfig          `mapstructure:"queue"`
+	Log            LogConfig            `mapstructure:"log"`
+	PackageManager PackageManagerConfig `mapstructure:"package_manager"`
 }
 
 // ServerConfig holds HTTP server configuration
@@ -46,6 +47,13 @@ type LogConfig struct {
 	Level  string `mapstructure:"level"`  // "debug", "info", "warn", "error"
 }
 
+// PackageManagerConfig holds package manager configuration
+type PackageManagerConfig struct {
+	DefaultType string `mapstructure:"default_type"` // "pixi" or "uv"
+	PixiPath    string `mapstructure:"pixi_path"`    // Custom pixi binary path (optional)
+	UvPath      string `mapstructure:"uv_path"`      // Custom uv binary path (optional)
+}
+
 // Load reads configuration from file and environment variables
 func Load() (*Config, error) {
 	v := viper.New()
@@ -60,6 +68,7 @@ func Load() (*Config, error) {
 	v.SetDefault("queue.type", "memory")
 	v.SetDefault("log.format", "text")
 	v.SetDefault("log.level", "info")
+	v.SetDefault("package_manager.default_type", "pixi")
 
 	// Read from config file if exists
 	v.SetConfigName("config")

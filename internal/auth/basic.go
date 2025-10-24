@@ -11,6 +11,7 @@ import (
 	"github.com/aktech/darb/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -53,7 +54,7 @@ func VerifyPassword(hash, password string) bool {
 
 // Claims represents JWT claims
 type Claims struct {
-	UserID   uint   `json:"user_id"`
+	UserID   string `json:"user_id"` // UUID stored as string
 	Username string `json:"username"`
 	jwt.RegisteredClaims
 }
@@ -92,7 +93,7 @@ func (a *BasicAuthenticator) Login(username, password string) (*LoginResponse, e
 // generateToken creates a JWT token for a user
 func (a *BasicAuthenticator) generateToken(user *models.User) (string, error) {
 	claims := Claims{
-		UserID:   user.ID,
+		UserID:   user.ID.String(),
 		Username: user.Username,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenDuration)),
@@ -160,11 +161,20 @@ func (a *BasicAuthenticator) Middleware() gin.HandlerFunc {
 			return
 		}
 
+		// Parse user ID from claims
+		userID, err := uuid.Parse(claims.UserID)
+		if err != nil {
+			slog.Error("Invalid user ID in token", "user_id", claims.UserID, "error", err)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user ID"})
+			c.Abort()
+			return
+		}
+
 		// Load user from database
 		var user models.User
-		result := a.db.First(&user, claims.UserID)
+		result := a.db.First(&user, userID)
 		if result.Error != nil {
-			slog.Error("Failed to load user from token", "user_id", claims.UserID, "error", result.Error)
+			slog.Error("Failed to load user from token", "user_id", userID, "error", result.Error)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
 			c.Abort()
 			return

@@ -1,4 +1,4 @@
-.PHONY: help build run swagger migrate test clean install-tools dev
+.PHONY: help build run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -60,3 +60,20 @@ vet: ## Run go vet
 
 lint: fmt vet ## Run formatters and linters
 	@echo "Lint complete"
+
+build-docker-pixi: ## Build pixi Docker image
+	@echo "Building pixi Docker image..."
+	@docker build -f docker/pixi.Dockerfile -t darb-pixi:latest .
+	@echo "Docker image built: darb-pixi:latest"
+
+build-docker-uv: ## Build uv Docker image
+	@echo "Building uv Docker image..."
+	@docker build -f docker/uv.Dockerfile -t darb-uv:latest .
+	@echo "Docker image built: darb-uv:latest"
+
+build-docker: build-docker-pixi build-docker-uv ## Build all Docker images
+	@echo "All Docker images built successfully"
+
+test-pkgmgr: ## Test package manager operations
+	@echo "Running package manager tests..."
+	@go test -v ./internal/pkgmgr/...

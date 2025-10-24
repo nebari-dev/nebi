@@ -1,5 +1,6 @@
 # Binaries
 bin/
+darb
 *.exe
 *.dll
 *.so
@@ -15,6 +16,10 @@ bin/
 *.db
 *.db-shm
 *.db-wal
+
+# Environment data
+data/environments/
+data/
 
 # IDE
 .idea/
@@ -36,3 +41,10 @@ build-errors.log
 
 # Logs
 *.log
+
+# Test scripts output
+*.sh.log
+
+# User creation scripts
+create_user.go
+create_test_user.go

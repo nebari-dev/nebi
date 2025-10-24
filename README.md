@@ -17,6 +17,25 @@ Darb is a REST API with web UI for managing pixi (and future uv) environments in
 - **Swagger Docs**: Auto-generated API documentation at `/docs`
 - **Hot Reload**: Development mode with live reload using Air
 
+### Phase 2: Package Manager Abstraction ✅
+
+- **Package Manager Interface**: Clean abstraction for pixi and uv operations
+- **Pixi Support**: Full implementation with init, install, remove, list, update operations
+- **Manifest Parsing**: Parse and read pixi.toml files
+- **UV Stub**: Placeholder for future UV support
+- **Docker Images**: Base images with pixi and uv pre-installed
+- **Configurable**: Select default package manager via config
+
+### Phase 3: Local Executor & Backend Operations ✅
+
+- **Local Executor**: Run package manager operations directly on host
+- **Job Worker**: Background worker processing queued jobs
+- **Environment API**: Full CRUD operations for environments
+- **Package Operations**: Install and remove packages via API
+- **Job Tracking**: View job status, logs, and errors
+- **Async Processing**: All operations run asynchronously with queue
+- **Tested**: End-to-end tested with pixi environments
+
 ## Quick Start
 
 ### Prerequisites
@@ -299,43 +318,73 @@ log:
 ### Phase 1: Core Infrastructure ✅ COMPLETE
 - Project structure, logging, database, queue, auth, Swagger
 
-### Phase 2: Package Manager Abstraction (Next)
+### Phase 2: Package Manager Abstraction ✅ COMPLETE
 - Abstract interface for pixi/uv operations
-- Pixi implementation
-- Container base images
+- Pixi implementation with full CRUD operations
+- UV stub for future implementation
+- Container base images (Dockerfiles)
+- Configuration support for package manager selection
 - 📋 **[See PHASE2.md for detailed implementation guide](./PHASE2.md)**
 
-### Phase 3: Backend Execution Layer
-- Docker and Kubernetes runtime support
-- Volume management
+### Phase 3: Local Executor & Backend Operations ✅ COMPLETE
+- Local executor for running package manager operations
+- Job worker for async background processing
+- Full CRUD API for environments
+- Package install/remove operations
+- Real-time job tracking with logs
+- End-to-end tested and working
+- 📋 **[See PHASE3.md for detailed implementation guide](./PHASE3.md)**
 
-### Phase 4: Environment Operations
-- Queued jobs for create, install, remove, delete
-- Real-time log streaming
+### Phase 4: User Interface (Next) 🚧
+- React frontend with TypeScript and Vite
+- Tailwind CSS for styling
+- Environment management UI
+- Package installation interface
+- Real-time job log viewing
+- Authentication and login UI
+- 📋 **[See PHASE4.md for detailed implementation guide](./PHASE4.md)**
 
-### Phase 5: RBAC & Access Control
-- Casbin-based RBAC
+### Phase 5: Docker & Kubernetes Runtime
+- Docker executor implementation
+- Kubernetes executor implementation
+- Volume management for persistent environments
+
+### Phase 6: WebSocket & Real-time Features
+- WebSocket support for live log streaming
+- Real-time environment status updates
+- Progress indicators for long-running jobs
+
+### Phase 7: RBAC & Access Control
+- Role-based access control
+- Multi-user permissions
+- Environment sharing
 - Admin APIs for user/permission management
-
-### Phase 6: API & Real-time Features
-- Complete REST API implementation
-- WebSocket log streaming
-
-### Phase 7: User Interface
-- React frontend with TypeScript and Tailwind
-- IBM Plex Sans + Fira Code typography
 
 ### Phase 8: Admin Interface
 - Admin dashboard
-- User and permission management UI
+- User management UI
+- Role and permission management
+- System monitoring and audit logs
 
-### Phase 9: Single Binary Deployment
-- Embedded frontend
-- Multi-platform releases
+### Phase 9: Production Features
+- Embedded frontend in Go binary
+- Multi-platform releases (Linux, macOS, Windows)
+- Docker image for easy deployment
+- Helm chart for Kubernetes
+
+## Current Status
+
+**Completed: Phases 1-3** ✅
+- Full backend API with environment and package management
+- Local executor with pixi support
+- Async job processing with real-time tracking
+
+**Next: Phase 4 - User Interface** 🚧
+- Building React frontend for environment management
 
 ## Contributing
 
-Contributions are welcome! This is currently in early development (Phase 1).
+Contributions are welcome! Currently in Phase 4 development (User Interface).
 
 ## License
 

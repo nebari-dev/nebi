@@ -8,6 +8,8 @@ import (
 	"github.com/aktech/darb/internal/api/handlers"
 	"github.com/aktech/darb/internal/auth"
 	"github.com/aktech/darb/internal/config"
+	"github.com/aktech/darb/internal/executor"
+	"github.com/aktech/darb/internal/queue"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -15,7 +17,7 @@ import (
 )
 
 // NewRouter creates and configures the Gin router
-func NewRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
+func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Executor) *gin.Engine {
 	// Set Gin mode
 	if cfg.Server.Mode == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -42,23 +44,31 @@ func NewRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		public.POST("/auth/login", handlers.Login(authenticator))
 	}
 
+	// Initialize handlers
+	envHandler := handlers.NewEnvironmentHandler(db, q, exec)
+	jobHandler := handlers.NewJobHandler(db)
+
 	// Protected routes (require authentication)
 	protected := router.Group("/api/v1")
 	protected.Use(authenticator.Middleware())
 	{
-		// Environment endpoints (placeholder)
-		protected.GET("/environments", handlers.NotImplemented)
-		protected.POST("/environments", handlers.NotImplemented)
-		protected.GET("/environments/:id", handlers.NotImplemented)
-		protected.DELETE("/environments/:id", handlers.NotImplemented)
+		// Environment endpoints
+		protected.GET("/environments", envHandler.ListEnvironments)
+		protected.POST("/environments", envHandler.CreateEnvironment)
+		protected.GET("/environments/:id", envHandler.GetEnvironment)
+		protected.DELETE("/environments/:id", envHandler.DeleteEnvironment)
 
-		// Package endpoints (placeholder)
-		protected.POST("/environments/:id/packages", handlers.NotImplemented)
-		protected.DELETE("/environments/:id/packages/:package", handlers.NotImplemented)
+		// Package endpoints
+		protected.GET("/environments/:id/packages", envHandler.ListPackages)
+		protected.POST("/environments/:id/packages", envHandler.InstallPackages)
+		protected.DELETE("/environments/:id/packages/:package", envHandler.RemovePackages)
 
-		// Job endpoints (placeholder)
-		protected.GET("/jobs", handlers.NotImplemented)
-		protected.GET("/jobs/:id", handlers.NotImplemented)
+		// Environment configuration endpoints
+		protected.GET("/environments/:id/pixi-toml", envHandler.GetPixiToml)
+
+		// Job endpoints
+		protected.GET("/jobs", jobHandler.ListJobs)
+		protected.GET("/jobs/:id", jobHandler.GetJob)
 
 		// Template endpoints (placeholder)
 		protected.GET("/templates", handlers.NotImplemented)

@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"github.com/aktech/darb/internal/models"
+	"github.com/google/uuid"
 )
 
 // MemoryQueue implements an in-memory job queue
 type MemoryQueue struct {
-	jobs    map[uint]*models.Job
+	jobs    map[uuid.UUID]*models.Job
 	jobChan chan *models.Job
 	mu      sync.RWMutex
 }
@@ -24,7 +25,7 @@ func NewMemoryQueue(bufferSize int) *MemoryQueue {
 	}
 
 	q := &MemoryQueue{
-		jobs:    make(map[uint]*models.Job),
+		jobs:    make(map[uuid.UUID]*models.Job),
 		jobChan: make(chan *models.Job, bufferSize),
 	}
 
@@ -37,7 +38,7 @@ func (q *MemoryQueue) Enqueue(ctx context.Context, job *models.Job) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	if job.ID == 0 {
+	if job.ID == uuid.Nil {
 		return fmt.Errorf("job must have an ID")
 	}
 
@@ -68,7 +69,7 @@ func (q *MemoryQueue) Dequeue(ctx context.Context) (*models.Job, error) {
 }
 
 // GetStatus retrieves the current status of a job
-func (q *MemoryQueue) GetStatus(ctx context.Context, jobID uint) (*models.Job, error) {
+func (q *MemoryQueue) GetStatus(ctx context.Context, jobID uuid.UUID) (*models.Job, error) {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
@@ -81,7 +82,7 @@ func (q *MemoryQueue) GetStatus(ctx context.Context, jobID uint) (*models.Job, e
 }
 
 // UpdateStatus updates the status of a job
-func (q *MemoryQueue) UpdateStatus(ctx context.Context, jobID uint, status models.JobStatus, logs string) error {
+func (q *MemoryQueue) UpdateStatus(ctx context.Context, jobID uuid.UUID, status models.JobStatus, logs string) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -104,7 +105,7 @@ func (q *MemoryQueue) UpdateStatus(ctx context.Context, jobID uint, status model
 }
 
 // Complete marks a job as completed
-func (q *MemoryQueue) Complete(ctx context.Context, jobID uint, logs string) error {
+func (q *MemoryQueue) Complete(ctx context.Context, jobID uuid.UUID, logs string) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -129,7 +130,7 @@ func (q *MemoryQueue) Complete(ctx context.Context, jobID uint, logs string) err
 }
 
 // Fail marks a job as failed
-func (q *MemoryQueue) Fail(ctx context.Context, jobID uint, errorMsg string, logs string) error {
+func (q *MemoryQueue) Fail(ctx context.Context, jobID uuid.UUID, errorMsg string, logs string) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

@@ -6,6 +6,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ErrorResponse is a standard error response
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
 // NotImplemented is a placeholder handler for unimplemented endpoints
 func NotImplemented(c *gin.Context) {
 	c.JSON(http.StatusNotImplemented, gin.H{

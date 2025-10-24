@@ -17,11 +17,144 @@ definitions:
       user:
         $ref: '#/definitions/models.User'
     type: object
+  handlers.CreateEnvironmentRequest:
+    properties:
+      name:
+        type: string
+      package_manager:
+        type: string
+      pixi_toml:
+        type: string
+    required:
+    - name
+    type: object
+  handlers.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
   handlers.HealthResponse:
     properties:
       status:
         type: string
       timestamp:
+        type: string
+      version:
+        type: string
+    type: object
+  handlers.InstallPackagesRequest:
+    properties:
+      packages:
+        items:
+          type: string
+        type: array
+    required:
+    - packages
+    type: object
+  handlers.PixiTomlResponse:
+    properties:
+      content:
+        type: string
+    type: object
+  models.Environment:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      owner:
+        $ref: '#/definitions/models.User'
+      owner_id:
+        type: string
+      package_manager:
+        description: '"pixi" or "uv"'
+        type: string
+      status:
+        $ref: '#/definitions/models.EnvironmentStatus'
+      updated_at:
+        type: string
+    type: object
+  models.EnvironmentStatus:
+    enum:
+    - pending
+    - creating
+    - ready
+    - failed
+    - deleting
+    type: string
+    x-enum-varnames:
+    - EnvStatusPending
+    - EnvStatusCreating
+    - EnvStatusReady
+    - EnvStatusFailed
+    - EnvStatusDeleting
+  models.Job:
+    properties:
+      completed_at:
+        type: string
+      created_at:
+        type: string
+      environment:
+        $ref: '#/definitions/models.Environment'
+      environment_id:
+        type: string
+      error:
+        type: string
+      id:
+        type: string
+      logs:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      started_at:
+        type: string
+      status:
+        $ref: '#/definitions/models.JobStatus'
+      type:
+        $ref: '#/definitions/models.JobType'
+    type: object
+  models.JobStatus:
+    enum:
+    - pending
+    - running
+    - completed
+    - failed
+    - cancelled
+    type: string
+    x-enum-varnames:
+    - JobStatusPending
+    - JobStatusRunning
+    - JobStatusCompleted
+    - JobStatusFailed
+    - JobStatusCancelled
+  models.JobType:
+    enum:
+    - create
+    - delete
+    - install
+    - remove
+    - update
+    type: string
+    x-enum-varnames:
+    - JobTypeCreate
+    - JobTypeDelete
+    - JobTypeInstall
+    - JobTypeRemove
+    - JobTypeUpdate
+  models.Package:
+    properties:
+      environment:
+        $ref: '#/definitions/models.Environment'
+      environment_id:
+        type: string
+      id:
+        type: string
+      installed_at:
+        type: string
+      name:
         type: string
       version:
         type: string
@@ -33,7 +166,7 @@ definitions:
       email:
         type: string
       id:
-        type: integer
+        type: string
       updated_at:
         type: string
       username:
@@ -80,6 +213,275 @@ paths:
       summary: User login
       tags:
       - auth
+  /environments:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Environment'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List all environments for the current user
+      tags:
+      - environments
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Environment details
+        in: body
+        name: environment
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateEnvironmentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Environment'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a new environment
+      tags:
+      - environments
+  /environments/{id}:
+    delete:
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete an environment
+      tags:
+      - environments
+    get:
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Environment'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get an environment by ID
+      tags:
+      - environments
+  /environments/{id}/packages:
+    get:
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Package'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List packages in an environment
+      tags:
+      - environments
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Packages to install
+        in: body
+        name: packages
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.InstallPackagesRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/models.Job'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Install packages in an environment
+      tags:
+      - environments
+  /environments/{id}/packages/{package}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Package name
+        in: path
+        name: package
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/models.Job'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove packages from an environment
+      tags:
+      - environments
+  /environments/{id}/pixi-toml:
+    get:
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.PixiTomlResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get pixi.toml content for an environment
+      tags:
+      - environments
   /health:
     get:
       description: Returns the health status of the service
@@ -93,6 +495,62 @@ paths:
       summary: Health check endpoint
       tags:
       - health
+  /jobs:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Job'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List all jobs for user's environments
+      tags:
+      - jobs
+  /jobs/{id}:
+    get:
+      parameters:
+      - description: Job ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Job'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a job by ID
+      tags:
+      - jobs
 securityDefinitions:
   BearerAuth:
     in: header

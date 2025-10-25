@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -35,6 +36,10 @@ var Version = "dev"
 // @in header
 // @name Authorization
 func main() {
+	// Define CLI flags
+	port := flag.Int("port", 0, "Port to run the server on (overrides config)")
+	flag.Parse()
+
 	// Set version in handlers
 	handlers.Version = Version
 	// Load configuration
@@ -42,6 +47,11 @@ func main() {
 	if err != nil {
 		slog.Error("Failed to load configuration", "error", err)
 		os.Exit(1)
+	}
+
+	// Override port from CLI flag if provided
+	if *port != 0 {
+		cfg.Server.Port = *port
 	}
 
 	// Initialize logger

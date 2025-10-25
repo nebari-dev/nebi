@@ -1,8 +1,10 @@
 package api
 
 import (
+	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/aktech/darb/internal/api/handlers"
@@ -12,6 +14,7 @@ import (
 	"github.com/aktech/darb/internal/executor"
 	"github.com/aktech/darb/internal/queue"
 	"github.com/aktech/darb/internal/rbac"
+	"github.com/aktech/darb/internal/web"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -49,6 +52,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	public := router.Group("/api/v1")
 	{
 		public.GET("/health", handlers.HealthCheck)
+		public.GET("/version", handlers.GetVersion)
 		public.POST("/auth/login", handlers.Login(authenticator))
 	}
 
@@ -118,6 +122,75 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 
 	// Swagger documentation
 	router.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	// Serve embedded frontend
+	embedFS, err := web.GetFileSystem()
+	if err != nil {
+		logger.Warn("Failed to load embedded frontend, frontend will not be served", "error", err)
+	} else {
+		// SPA fallback - serve files from embedded filesystem for all non-API, non-docs routes
+		router.NoRoute(func(c *gin.Context) {
+			path := c.Request.URL.Path
+
+			// Don't serve HTML for API calls or docs
+			if strings.HasPrefix(path, "/api") {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
+				return
+			}
+			if strings.HasPrefix(path, "/docs") {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
+				return
+			}
+
+			// Remove leading slash for embedded FS
+			fsPath := strings.TrimPrefix(path, "/")
+			if fsPath == "" {
+				fsPath = "index.html"
+			}
+
+			// Try to open the file in the embedded FS
+			file, err := embedFS.Open(fsPath)
+			if err != nil {
+				// File doesn't exist, serve index.html for SPA routing
+				fsPath = "index.html"
+				file, err = embedFS.Open(fsPath)
+				if err != nil {
+					c.String(http.StatusInternalServerError, "Error loading frontend")
+					return
+				}
+			}
+			defer file.Close()
+
+			// Read file content
+			content, err := io.ReadAll(file)
+			if err != nil {
+				c.String(http.StatusInternalServerError, "Error reading file")
+				return
+			}
+
+			// Set content type based on file extension
+			contentType := "text/plain"
+			if strings.HasSuffix(fsPath, ".html") {
+				contentType = "text/html; charset=utf-8"
+			} else if strings.HasSuffix(fsPath, ".js") {
+				contentType = "application/javascript"
+			} else if strings.HasSuffix(fsPath, ".css") {
+				contentType = "text/css"
+			} else if strings.HasSuffix(fsPath, ".json") {
+				contentType = "application/json"
+			} else if strings.HasSuffix(fsPath, ".svg") {
+				contentType = "image/svg+xml"
+			} else if strings.HasSuffix(fsPath, ".png") {
+				contentType = "image/png"
+			} else if strings.HasSuffix(fsPath, ".jpg") || strings.HasSuffix(fsPath, ".jpeg") {
+				contentType = "image/jpeg"
+			}
+
+			c.Data(http.StatusOK, contentType, content)
+		})
+
+		logger.Info("Embedded frontend loaded and will be served")
+	}
 
 	slog.Info("API router initialized", "mode", cfg.Server.Mode)
 	return router

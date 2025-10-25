@@ -1,0 +1,54 @@
+# Development overrides for local k3d environment
+# These values override the defaults in values.yaml
+
+## Image configuration for local development
+image:
+  pullPolicy: Never  # Use locally built images, don't pull from registry
+  tag: "latest"
+
+## Service configuration for local access
+service:
+  type: NodePort
+  nodePort: 30080  # Fixed port for consistent local access
+
+## Resource limits - relaxed for local dev
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "250m"
+
+## Persistence - use k3s local-path for dev
+persistence:
+  data:
+    storageClass: "local-path"
+    accessMode: ReadWriteOnce
+    size: 2Gi
+
+  environments:
+    storageClass: "local-path"
+    accessMode: ReadWriteOnce  # local-path doesn't support ReadWriteMany
+    size: 10Gi
+
+## Application configuration for development
+config:
+  ginMode: debug
+  logLevel: debug
+  logFormat: text
+
+## Default admin user (created on first startup if no users exist)
+admin:
+  username: "admin"
+  password: "admin123"
+  email: "admin@darb.local"
+
+## Health probes - faster for development
+livenessProbe:
+  initialDelaySeconds: 5
+  periodSeconds: 15
+
+readinessProbe:
+  initialDelaySeconds: 3
+  periodSeconds: 5

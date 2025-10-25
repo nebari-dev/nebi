@@ -929,6 +929,21 @@ paths:
       summary: Get a job by ID
       tags:
       - jobs
+  /version:
+    get:
+      description: Returns version information about the Darb server
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get version information
+      tags:
+      - system
 securityDefinitions:
   BearerAuth:
     in: header

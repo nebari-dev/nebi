@@ -1,0 +1,57 @@
+{{- if .Values.persistence.enabled }}
+---
+# PersistentVolumeClaim for database storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "darb.fullname" . }}-data
+  namespace: {{ include "darb.namespace" . }}
+  labels:
+    {{- include "darb.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+  {{- with .Values.persistence.data.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.data.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.data.size }}
+  {{- if .Values.persistence.data.storageClass }}
+  {{- if (eq "-" .Values.persistence.data.storageClass) }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: {{ .Values.persistence.data.storageClass }}
+  {{- end }}
+  {{- end }}
+
+---
+# PersistentVolumeClaim for pixi environments (shared filesystem)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "darb.fullname" . }}-environments
+  namespace: {{ include "darb.namespace" . }}
+  labels:
+    {{- include "darb.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+  {{- with .Values.persistence.environments.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.environments.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.environments.size }}
+  {{- if .Values.persistence.environments.storageClass }}
+  {{- if (eq "-" .Values.persistence.environments.storageClass) }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: {{ .Values.persistence.environments.storageClass }}
+  {{- end }}
+  {{- end }}
+{{- end }}

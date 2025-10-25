@@ -1,0 +1,14 @@
+apiVersion: v2
+name: darb
+description: Dynamic Arbitrary Runtime Bundle - Pixi environment orchestration and code execution platform
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords:
+  - pixi
+  - environment
+  - code-execution
+  - jupyter
+maintainers:
+  - name: Darb Team
+home: https://github.com/yourusername/darb

@@ -19,7 +19,12 @@ import (
 	"github.com/aktech/darb/internal/worker"
 
 	_ "github.com/aktech/darb/docs" // Load swagger docs
+
+	"github.com/aktech/darb/internal/api/handlers"
 )
+
+// Version is set via ldflags at build time
+var Version = "dev"
 
 // @title Darb API
 // @version 1.0
@@ -30,6 +35,8 @@ import (
 // @in header
 // @name Authorization
 func main() {
+	// Set version in handlers
+	handlers.Version = Version
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
@@ -39,7 +46,7 @@ func main() {
 
 	// Initialize logger
 	logger.Init(cfg.Log.Format, cfg.Log.Level)
-	slog.Info("Starting Darb server", "version", "1.0.0", "mode", cfg.Server.Mode)
+	slog.Info("Starting Darb server", "version", Version, "mode", cfg.Server.Mode)
 
 	// Initialize database
 	database, err := db.New(cfg.Database)
@@ -55,6 +62,12 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("Database migrations completed")
+
+	// Create default admin user if configured
+	if err := db.CreateDefaultAdmin(database); err != nil {
+		slog.Error("Failed to create default admin user", "error", err)
+		os.Exit(1)
+	}
 
 	// Initialize job queue
 	jobQueue := queue.NewMemoryQueue(100)

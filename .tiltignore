@@ -1,0 +1,53 @@
+# Tiltignore - Files to exclude from Tilt watches
+# Similar to .dockerignore but for Tilt's file watching
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+PHASE*.md
+docs/
+
+# Build artifacts
+bin/
+tmp/
+internal/web/dist/
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+data/
+
+# Logs
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+*_test.go
+test*.sh
+
+# CI/CD
+.github/
+
+# Helm chart dependencies
+chart/charts/
+chart/Chart.lock
+
+# Docker
+.dockerignore
+docker-compose.yml
+
+# K8s manifests (we use Helm now)
+k8s/

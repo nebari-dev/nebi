@@ -1,4 +1,11 @@
-.PHONY: help build run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr
+.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all
+
+# Variables
+BINARY_NAME=darb
+FRONTEND_DIR=frontend
+BUILD_DIR=bin
+VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS=-ldflags "-X main.Version=$(VERSION)"
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -18,10 +25,22 @@ swagger: ## Generate Swagger documentation
 	@swag init -g cmd/server/main.go -o docs
 	@echo "Swagger docs generated at /docs"
 
-build: swagger ## Build the binary
-	@echo "Building darb..."
-	@go build -o bin/darb cmd/server/main.go
-	@echo "Build complete: bin/darb"
+build-frontend: ## Build frontend and copy to internal/web/dist
+	@echo "Building frontend..."
+	@cd $(FRONTEND_DIR) && npm install && npm run build
+	@echo "Copying frontend build to internal/web/dist..."
+	@rm -rf internal/web/dist
+	@cp -r $(FRONTEND_DIR)/dist internal/web/dist
+	@echo "Frontend build complete"
+
+build-backend: swagger ## Build backend with embedded frontend
+	@echo "Building backend with embedded frontend..."
+	@mkdir -p $(BUILD_DIR)
+	@go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/server
+	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)"
+
+build: build-frontend build-backend ## Build complete single binary (frontend + backend)
+	@echo "Single binary build complete: $(BUILD_DIR)/$(BINARY_NAME)"
 
 run: swagger ## Run the server (without hot reload)
 	@echo "Starting darb server..."
@@ -43,6 +62,8 @@ clean: ## Clean build artifacts
 	@echo "Cleaning..."
 	@rm -rf bin/
 	@rm -rf docs/
+	@rm -rf internal/web/dist
+	@rm -rf $(FRONTEND_DIR)/dist
 	@rm -f darb.db
 	@echo "Clean complete"
 
@@ -77,3 +98,18 @@ build-docker: build-docker-pixi build-docker-uv ## Build all Docker images
 test-pkgmgr: ## Test package manager operations
 	@echo "Running package manager tests..."
 	@go test -v ./internal/pkgmgr/...
+
+build-all: build-frontend ## Build binaries for all platforms
+	@echo "Building for all platforms..."
+	@mkdir -p $(BUILD_DIR)
+	@echo "Building linux/amd64..."
+	@GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/server
+	@echo "Building linux/arm64..."
+	@GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/server
+	@echo "Building darwin/amd64..."
+	@GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/server
+	@echo "Building darwin/arm64..."
+	@GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/server
+	@echo "Building windows/amd64..."
+	@GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/server
+	@echo "All platform builds complete"

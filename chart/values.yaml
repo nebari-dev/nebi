@@ -1,0 +1,127 @@
+# Default values for Darb
+# This is a YAML-formatted file with production-ready defaults
+# Override these values using values-dev.yaml for local development
+
+## Global settings
+nameOverride: ""
+fullnameOverride: ""
+
+## Image configuration
+image:
+  repository: darb
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+
+## Service account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+## Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  fsGroupChangePolicy: "OnRootMismatch"
+
+## Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+
+## Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+  annotations: {}
+
+## Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: darb.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+## Resource limits
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+## Replica count
+replicaCount: 1
+
+## Persistence configuration
+persistence:
+  enabled: true
+
+  # Database storage
+  data:
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 5Gi
+    annotations: {}
+
+  # Pixi environments storage
+  environments:
+    storageClass: ""
+    accessMode: ReadWriteMany
+    size: 20Gi
+    annotations: {}
+
+## Application configuration
+config:
+  ginMode: release
+  databasePath: /app/data/darb.db
+  logLevel: info
+  logFormat: json
+
+## Health probes
+livenessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+## Node selector
+nodeSelector: {}
+
+## Tolerations
+tolerations: []
+
+## Affinity
+affinity: {}
+
+## Pod annotations
+podAnnotations: {}
+
+## Pod labels
+podLabels: {}

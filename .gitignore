@@ -48,3 +48,10 @@ build-errors.log
 # User creation scripts
 create_user.go
 create_test_user.go
+
+# Embedded frontend (generated during build)
+internal/web/dist/
+
+# Frontend build output
+frontend/dist/
+frontend/node_modules/

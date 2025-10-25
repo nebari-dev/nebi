@@ -13,8 +13,8 @@ import (
 	"github.com/aktech/darb/internal/config"
 	"github.com/aktech/darb/internal/models"
 	"github.com/aktech/darb/internal/pkgmgr"
-	_ "github.com/aktech/darb/internal/pkgmgr/pixi" // Register pixi
-	_ "github.com/aktech/darb/internal/pkgmgr/uv"   // Register uv
+	"github.com/aktech/darb/internal/pkgmgr/pixi"
+	_ "github.com/aktech/darb/internal/pkgmgr/uv" // Register uv
 )
 
 // LocalExecutor runs operations on the local machine
@@ -113,7 +113,14 @@ func (e *LocalExecutor) CreateEnvironment(ctx context.Context, env *models.Envir
 		// Run pixi install to create the actual environment
 		// This will read the pixi.toml and create the .pixi directory with the conda environment
 		fmt.Fprintf(logWriter, "Installing environment from pixi.toml\n")
-		installCmd := exec.CommandContext(ctx, "pixi", "install")
+
+		// Get pixi binary path from package manager
+		pixiBinary := "pixi" // Default fallback
+		if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
+			pixiBinary = pixiMgr.BinaryPath()
+		}
+
+		installCmd := exec.CommandContext(ctx, pixiBinary, "install")
 		installCmd.Dir = envPath
 		installCmd.Stdout = logWriter
 		installCmd.Stderr = logWriter

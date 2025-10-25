@@ -36,9 +36,16 @@ func NewWithPath(customPath string) (*PixiManager, error) {
 		// Find pixi binary in PATH
 		path, err := exec.LookPath("pixi")
 		if err != nil {
-			return nil, fmt.Errorf("pixi not found in PATH: %w", err)
+			// Pixi not found, attempt automatic installation
+			ctx := context.Background()
+			installedPath, installErr := InstallPixi(ctx)
+			if installErr != nil {
+				return nil, fmt.Errorf("pixi not found in PATH and auto-installation failed: %w", installErr)
+			}
+			pixiPath = installedPath
+		} else {
+			pixiPath = path
 		}
-		pixiPath = path
 	}
 
 	// Verify pixi is executable
@@ -52,6 +59,11 @@ func NewWithPath(customPath string) (*PixiManager, error) {
 // Name returns the package manager name
 func (p *PixiManager) Name() string {
 	return "pixi"
+}
+
+// BinaryPath returns the path to the pixi binary
+func (p *PixiManager) BinaryPath() string {
+	return p.pixiPath
 }
 
 // Init creates a new pixi environment

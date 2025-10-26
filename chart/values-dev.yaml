@@ -12,13 +12,14 @@ service:
   nodePort: 30080  # Fixed port for consistent local access
 
 ## Resource limits - relaxed for local dev
+## Increased memory to support pixi installing real packages (numpy, pandas, etc.)
 resources:
   requests:
-    memory: "64Mi"
+    memory: "128Mi"
     cpu: "50m"
   limits:
-    memory: "256Mi"
-    cpu: "250m"
+    memory: "1Gi"
+    cpu: "500m"
 
 ## Persistence - use k3s local-path for dev
 persistence:
@@ -52,3 +53,28 @@ livenessProbe:
 readinessProbe:
   initialDelaySeconds: 3
   periodSeconds: 5
+
+## Database configuration - SQLite for development
+database:
+  driver: sqlite
+  dsn: "/app/data/darb.db"
+  maxIdleConns: 5
+  maxOpenConns: 10
+  connMaxLifetime: 30
+
+## Queue configuration - Memory queue for development
+queue:
+  type: memory
+  valkeyAddr: ""
+
+## PostgreSQL - disabled for development
+postgres:
+  enabled: false
+
+## Valkey - disabled for development
+valkey:
+  enabled: false
+
+## Worker - single pod in development (API + Worker together)
+worker:
+  separateDeployment: false

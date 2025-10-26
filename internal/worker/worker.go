@@ -63,8 +63,14 @@ func (w *Worker) Start(ctx context.Context) error {
 		default:
 			job, err := w.queue.Dequeue(ctx)
 			if err != nil {
+				// DeadlineExceeded means no jobs available (normal timeout), not an error
+				if err == context.DeadlineExceeded {
+					// No jobs available, just continue polling
+					continue
+				}
+				// Actual errors (connection issues, etc.)
 				w.logger.Error("Failed to dequeue job", "error", err)
-				time.Sleep(time.Second) // Backoff
+				time.Sleep(time.Second) // Backoff on real errors
 				continue
 			}
 
@@ -93,6 +99,19 @@ func (w *Worker) Start(ctx context.Context) error {
 }
 
 func (w *Worker) processJob(ctx context.Context, job *models.Job) {
+	// Add panic recovery to prevent pod crashes from panics in job processing
+	defer func() {
+		if r := recover(); r != nil {
+			w.logger.Error("Panic recovered in processJob", "job_id", job.ID, "panic", r)
+			// Update job as failed
+			completedAt := time.Now()
+			job.CompletedAt = &completedAt
+			job.Status = models.JobStatusFailed
+			job.Error = fmt.Sprintf("Job panicked: %v", r)
+			w.db.Save(job)
+		}
+	}()
+
 	w.logger.Info("Processing job", "job_id", job.ID, "type", job.Type)
 
 	// Update job status to running

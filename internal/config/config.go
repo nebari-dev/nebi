@@ -25,8 +25,11 @@ type ServerConfig struct {
 
 // DatabaseConfig holds database configuration
 type DatabaseConfig struct {
-	Driver string `mapstructure:"driver"` // "sqlite" or "postgres"
-	DSN    string `mapstructure:"dsn"`    // Connection string
+	Driver         string `mapstructure:"driver"`           // "sqlite" or "postgres"
+	DSN            string `mapstructure:"dsn"`              // Connection string
+	MaxIdleConns   int    `mapstructure:"max_idle_conns"`   // Maximum idle connections (Postgres)
+	MaxOpenConns   int    `mapstructure:"max_open_conns"`   // Maximum open connections (Postgres)
+	ConnMaxLifetime int   `mapstructure:"conn_max_lifetime"` // Connection max lifetime in minutes (Postgres)
 }
 
 // AuthConfig holds authentication configuration
@@ -37,8 +40,8 @@ type AuthConfig struct {
 
 // QueueConfig holds job queue configuration
 type QueueConfig struct {
-	Type      string `mapstructure:"type"`       // "memory" or "redis"
-	RedisAddr string `mapstructure:"redis_addr"` // Redis address (if type=redis)
+	Type       string `mapstructure:"type"`        // "memory" or "valkey"
+	ValkeyAddr string `mapstructure:"valkey_addr"` // Valkey address (if type=valkey), e.g., "localhost:6379"
 }
 
 // LogConfig holds logging configuration
@@ -63,9 +66,13 @@ func Load() (*Config, error) {
 	v.SetDefault("server.mode", "development")
 	v.SetDefault("database.driver", "sqlite")
 	v.SetDefault("database.dsn", "./darb.db")
+	v.SetDefault("database.max_idle_conns", 10)
+	v.SetDefault("database.max_open_conns", 100)
+	v.SetDefault("database.conn_max_lifetime", 60) // 60 minutes
 	v.SetDefault("auth.type", "basic")
 	v.SetDefault("auth.jwt_secret", "change-me-in-production")
 	v.SetDefault("queue.type", "memory")
+	v.SetDefault("queue.valkey_addr", "localhost:6379")
 	v.SetDefault("log.format", "text")
 	v.SetDefault("log.level", "info")
 	v.SetDefault("package_manager.default_type", "pixi")

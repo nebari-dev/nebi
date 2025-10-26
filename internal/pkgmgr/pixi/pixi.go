@@ -6,10 +6,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/aktech/darb/internal/pkgmgr"
 	"github.com/pelletier/go-toml/v2"
@@ -82,10 +84,26 @@ func (p *PixiManager) BinaryPath() string {
 
 // streamOutput reads from a pipe and writes to the writer line by line for real-time streaming
 func (p *PixiManager) streamOutput(reader io.Reader, writer io.Writer) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("streamOutput panic recovered", "panic", r)
+		}
+	}()
+
 	scanner := bufio.NewScanner(reader)
+	// Increase buffer size to handle long lines from pixi output (up to 1MB per line)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+
 	for scanner.Scan() {
 		line := scanner.Text()
-		fmt.Fprintf(writer, "%s\n", line)
+		if _, err := fmt.Fprintf(writer, "%s\n", line); err != nil {
+			slog.Error("Failed to write log line", "error", err)
+			return
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		slog.Error("Scanner error in streamOutput", "error", err)
 	}
 }
 
@@ -136,12 +154,25 @@ func (p *PixiManager) Init(ctx context.Context, opts pkgmgr.InitOptions) error {
 			return fmt.Errorf("failed to start command: %w", err)
 		}
 
-		// Stream output in real-time
-		go p.streamOutput(stdout, opts.LogWriter)
-		go p.streamOutput(stderr, opts.LogWriter)
+		// Stream output in real-time with WaitGroup to ensure goroutines complete
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			p.streamOutput(stdout, opts.LogWriter)
+		}()
+		go func() {
+			defer wg.Done()
+			p.streamOutput(stderr, opts.LogWriter)
+		}()
 
 		// Wait for command to complete
-		if err := cmd.Wait(); err != nil {
+		err = cmd.Wait()
+
+		// Wait for all output to be streamed
+		wg.Wait()
+
+		if err != nil {
 			return fmt.Errorf("pixi init failed: %w", err)
 		}
 	} else {
@@ -191,12 +222,25 @@ func (p *PixiManager) Install(ctx context.Context, opts pkgmgr.InstallOptions) e
 			return fmt.Errorf("failed to start command: %w", err)
 		}
 
-		// Stream output in real-time
-		go p.streamOutput(stdout, opts.LogWriter)
-		go p.streamOutput(stderr, opts.LogWriter)
+		// Stream output in real-time with WaitGroup to ensure goroutines complete
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			p.streamOutput(stdout, opts.LogWriter)
+		}()
+		go func() {
+			defer wg.Done()
+			p.streamOutput(stderr, opts.LogWriter)
+		}()
 
 		// Wait for command to complete
-		if err := cmd.Wait(); err != nil {
+		err = cmd.Wait()
+
+		// Wait for all output to be streamed
+		wg.Wait()
+
+		if err != nil {
 			return fmt.Errorf("pixi add failed: %w", err)
 		}
 	} else {
@@ -246,12 +290,25 @@ func (p *PixiManager) Remove(ctx context.Context, opts pkgmgr.RemoveOptions) err
 			return fmt.Errorf("failed to start command: %w", err)
 		}
 
-		// Stream output in real-time
-		go p.streamOutput(stdout, opts.LogWriter)
-		go p.streamOutput(stderr, opts.LogWriter)
+		// Stream output in real-time with WaitGroup to ensure goroutines complete
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			p.streamOutput(stdout, opts.LogWriter)
+		}()
+		go func() {
+			defer wg.Done()
+			p.streamOutput(stderr, opts.LogWriter)
+		}()
 
 		// Wait for command to complete
-		if err := cmd.Wait(); err != nil {
+		err = cmd.Wait()
+
+		// Wait for all output to be streamed
+		wg.Wait()
+
+		if err != nil {
 			return fmt.Errorf("pixi remove failed: %w", err)
 		}
 	} else {

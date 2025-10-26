@@ -23,6 +23,7 @@ import (
 	_ "github.com/aktech/darb/docs" // Load swagger docs
 
 	"github.com/aktech/darb/internal/api/handlers"
+	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"
 )
 
@@ -91,6 +92,13 @@ func main() {
 	defer jobQueue.Close()
 	slog.Info("Job queue initialized", "type", cfg.Queue.Type)
 
+	// Get Valkey client for log streaming (if using Valkey queue)
+	var valkeyClient valkey.Client
+	if vq, ok := jobQueue.(*queue.ValkeyQueue); ok {
+		valkeyClient = vq.GetClient()
+		slog.Info("Valkey client available for log streaming")
+	}
+
 	// Initialize executor
 	exec, err := executor.NewLocalExecutor(cfg)
 	if err != nil {
@@ -116,7 +124,8 @@ func main() {
 
 	// Initialize and start worker if needed
 	if runWorker {
-		w = worker.New(database, jobQueue, exec, slog.Default())
+		// Create worker with optional Valkey client (nil for local mode, non-nil for distributed mode)
+		w = worker.New(database, jobQueue, exec, slog.Default(), valkeyClient)
 		workerCtx, cancel := context.WithCancel(context.Background())
 		workerCancel = cancel
 
@@ -136,8 +145,9 @@ func main() {
 			broker = w.GetBroker()
 		}
 
-		// Initialize API router
-		router := api.NewRouter(cfg, database, jobQueue, exec, broker, slog.Default())
+		// Initialize API router (pass valkeyClient as interface{} for compatibility)
+		var valkeyClientInterface interface{} = valkeyClient
+		router := api.NewRouter(cfg, database, jobQueue, exec, broker, valkeyClientInterface, slog.Default())
 
 		// Create HTTP server
 		addr := fmt.Sprintf(":%d", cfg.Server.Port)

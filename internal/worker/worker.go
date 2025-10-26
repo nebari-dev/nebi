@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"sync"
 	"time"
@@ -15,32 +16,35 @@ import (
 	_ "github.com/aktech/darb/internal/pkgmgr/pixi" // Register pixi
 	_ "github.com/aktech/darb/internal/pkgmgr/uv"   // Register uv
 	"github.com/aktech/darb/internal/queue"
+	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"
 )
 
 // Worker processes jobs from the queue
 type Worker struct {
-	db          *gorm.DB
-	queue       queue.Queue
-	executor    executor.Executor
-	logger      *slog.Logger
-	broker      *logstream.LogBroker
-	maxWorkers  int
-	semaphore   chan struct{}
-	wg          sync.WaitGroup
+	db           *gorm.DB
+	queue        queue.Queue
+	executor     executor.Executor
+	logger       *slog.Logger
+	broker       *logstream.LogBroker
+	valkeyClient valkey.Client // For distributed log streaming (optional, can be nil for local mode)
+	maxWorkers   int
+	semaphore    chan struct{}
+	wg           sync.WaitGroup
 }
 
 // New creates a new worker instance
-func New(db *gorm.DB, q queue.Queue, exec executor.Executor, logger *slog.Logger) *Worker {
+func New(db *gorm.DB, q queue.Queue, exec executor.Executor, logger *slog.Logger, valkeyClient valkey.Client) *Worker {
 	maxWorkers := 10 // Allow up to 10 concurrent jobs
 	return &Worker{
-		db:         db,
-		queue:      q,
-		executor:   exec,
-		logger:     logger,
-		broker:     logstream.NewBroker(),
-		maxWorkers: maxWorkers,
-		semaphore:  make(chan struct{}, maxWorkers),
+		db:           db,
+		queue:        q,
+		executor:     exec,
+		logger:       logger,
+		broker:       logstream.NewBroker(),
+		valkeyClient: valkeyClient,
+		maxWorkers:   maxWorkers,
+		semaphore:    make(chan struct{}, maxWorkers),
 	}
 }
 
@@ -123,11 +127,22 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 	// Create log buffer
 	var logBuf bytes.Buffer
 
-	// Create streaming writer that writes to both buffer and broker
-	streamWriter := logstream.NewStreamWriter(job.ID, w.broker, &logBuf)
+	// Create broker writer for in-memory streaming
+	brokerWriter := logstream.NewStreamWriter(job.ID, w.broker, &logBuf)
+
+	// Create multi-writer: buffer + broker (in-memory) + Valkey (distributed, if available)
+	var logWriter io.Writer
+	if w.valkeyClient != nil {
+		// Create Valkey log writer for distributed streaming
+		valkeyWriter := logstream.NewValkeyLogWriter(w.valkeyClient, job.ID.String())
+		logWriter = io.MultiWriter(brokerWriter, valkeyWriter)
+	} else {
+		// Use only in-memory broker for local mode
+		logWriter = brokerWriter
+	}
 
 	// Execute the job with streaming logs
-	err := w.executeJob(ctx, job, streamWriter)
+	err := w.executeJob(ctx, job, logWriter)
 
 	// Close broker subscriptions for this job
 	defer w.broker.Close(job.ID)
@@ -142,18 +157,32 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 		job.Status = models.JobStatusFailed
 		job.Error = err.Error()
 		// Publish error to subscribers
-		w.broker.Publish(job.ID, fmt.Sprintf("\n[ERROR] Job failed: %v\n", err))
+		errorMsg := fmt.Sprintf("\n[ERROR] Job failed: %v\n", err)
+		w.broker.Publish(job.ID, errorMsg)
+		// Also publish to Valkey if available
+		if w.valkeyClient != nil {
+			valkeyWriter := logstream.NewValkeyLogWriter(w.valkeyClient, job.ID.String())
+			valkeyWriter.Publish(errorMsg)
+		}
 	} else {
 		w.logger.Info("Job completed", "job_id", job.ID)
 		job.Status = models.JobStatusCompleted
 		// Publish completion to subscribers
-		w.broker.Publish(job.ID, "\n[COMPLETED] Job finished successfully\n")
+		completionMsg := "\n[COMPLETED] Job finished successfully\n"
+		w.broker.Publish(job.ID, completionMsg)
+		// Also publish to Valkey if available
+		if w.valkeyClient != nil {
+			valkeyWriter := logstream.NewValkeyLogWriter(w.valkeyClient, job.ID.String())
+			valkeyWriter.Publish(completionMsg)
+			// Set TTL on Valkey log channel for cleanup (1 hour)
+			valkeyWriter.SetTTL(3600)
+		}
 	}
 
 	w.db.Save(job)
 }
 
-func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter *logstream.StreamWriter) error {
+func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.Writer) error {
 	// Load environment
 	var env models.Environment
 	if err := w.db.First(&env, job.EnvironmentID).Error; err != nil {

@@ -23,7 +23,7 @@ import (
 )
 
 // NewRouter creates and configures the Gin router
-func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Executor, logBroker *logstream.LogBroker, logger *slog.Logger) *gin.Engine {
+func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Executor, logBroker *logstream.LogBroker, valkeyClient interface{}, logger *slog.Logger) *gin.Engine {
 	// Initialize RBAC enforcer
 	if err := rbac.InitEnforcer(db, logger); err != nil {
 		logger.Error("Failed to initialize RBAC", "error", err)
@@ -59,7 +59,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 
 	// Initialize handlers
 	envHandler := handlers.NewEnvironmentHandler(db, q, exec)
-	jobHandler := handlers.NewJobHandler(db, logBroker)
+	jobHandler := handlers.NewJobHandler(db, logBroker, valkeyClient)
 
 	// Protected routes (require authentication)
 	protected := router.Group("/api/v1")

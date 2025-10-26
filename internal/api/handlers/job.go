@@ -8,16 +8,26 @@ import (
 	"github.com/aktech/darb/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"
 )
 
 type JobHandler struct {
-	db     *gorm.DB
-	broker *logstream.LogBroker
+	db           *gorm.DB
+	broker       *logstream.LogBroker
+	valkeyClient valkey.Client
 }
 
-func NewJobHandler(db *gorm.DB, broker *logstream.LogBroker) *JobHandler {
-	return &JobHandler{db: db, broker: broker}
+func NewJobHandler(db *gorm.DB, broker *logstream.LogBroker, valkeyClient interface{}) *JobHandler {
+	var client valkey.Client
+	if valkeyClient != nil {
+		client, _ = valkeyClient.(valkey.Client)
+	}
+	return &JobHandler{
+		db:           db,
+		broker:       broker,
+		valkeyClient: client,
+	}
 }
 
 // ListJobs godoc
@@ -141,9 +151,60 @@ func (h *JobHandler) StreamJobLogs(c *gin.Context) {
 		c.Writer.Flush()
 	}
 
+	// Use Valkey pub/sub for distributed log streaming if available
+	if h.valkeyClient != nil {
+		h.streamLogsFromValkey(c, jobUUID)
+	} else if h.broker != nil {
+		// Fallback to in-memory broker
+		h.streamLogsFromBroker(c, jobUUID)
+	} else {
+		// No streaming available, poll database
+		fmt.Fprintf(c.Writer, "event: error\ndata: Log streaming not available\n\n")
+		c.Writer.Flush()
+	}
+}
+
+// streamLogsFromValkey streams logs from Valkey pub/sub channel
+func (h *JobHandler) streamLogsFromValkey(c *gin.Context, jobID uuid.UUID) {
+	channel := fmt.Sprintf("logs:%s", jobID.String())
+	ctx := c.Request.Context()
+
+	// Subscribe to Valkey pub/sub channel and receive messages
+	subscribeCmd := h.valkeyClient.B().Subscribe().Channel(channel).Build()
+
+	err := h.valkeyClient.Receive(ctx, subscribeCmd, func(msg valkey.PubSubMessage) {
+		// Get log line from message
+		logLine := msg.Message
+
+		// Send log line to client via SSE
+		fmt.Fprintf(c.Writer, "data: %s\n\n", logLine)
+		if flusher, ok := c.Writer.(http.Flusher); ok {
+			flusher.Flush()
+		}
+
+		// Check if this is a completion message
+		if logLine == "\n[COMPLETED] Job finished successfully\n" ||
+		   (len(logLine) > 7 && logLine[:7] == "\n[ERROR]") {
+			fmt.Fprintf(c.Writer, "event: done\ndata: Job completed\n\n")
+			c.Writer.Flush()
+		}
+	})
+
+	if err != nil {
+		// Error subscribing or streaming (includes context cancellation)
+		// This is normal when client disconnects
+		if err.Error() != "context canceled" {
+			fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", err.Error())
+			c.Writer.Flush()
+		}
+	}
+}
+
+// streamLogsFromBroker streams logs from in-memory broker (fallback)
+func (h *JobHandler) streamLogsFromBroker(c *gin.Context, jobID uuid.UUID) {
 	// Subscribe to real-time log stream
-	logChan := h.broker.Subscribe(jobUUID)
-	defer h.broker.Unsubscribe(jobUUID, logChan)
+	logChan := h.broker.Subscribe(jobID)
+	defer h.broker.Unsubscribe(jobID, logChan)
 
 	// Stream logs as they arrive
 	clientGone := c.Request.Context().Done()

@@ -250,6 +250,12 @@ func (q *ValkeyQueue) Fail(ctx context.Context, jobID uuid.UUID, errorMsg string
 	return nil
 }
 
+// GetClient returns the underlying Valkey client
+// Used for distributed log streaming via pub/sub
+func (q *ValkeyQueue) GetClient() valkey.Client {
+	return q.client
+}
+
 // Close closes the Valkey connection
 func (q *ValkeyQueue) Close() error {
 	q.client.Close()

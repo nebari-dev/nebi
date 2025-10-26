@@ -1,0 +1,99 @@
+{{- if .Values.valkey.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "darb.fullname" . }}-valkey
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "darb.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+    protocol: TCP
+    name: valkey
+  selector:
+    {{- include "darb.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "darb.fullname" . }}-valkey
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "darb.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "darb.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: cache
+  template:
+    metadata:
+      labels:
+        {{- include "darb.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: cache
+    spec:
+      containers:
+      - name: valkey
+        image: {{ .Values.valkey.image.repository }}:{{ .Values.valkey.image.tag }}
+        imagePullPolicy: {{ .Values.valkey.image.pullPolicy }}
+        ports:
+        - containerPort: 6379
+          name: valkey
+          protocol: TCP
+        {{- if .Values.valkey.persistence.enabled }}
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        {{- end }}
+        resources:
+          {{- toYaml .Values.valkey.resources | nindent 10 }}
+        livenessProbe:
+          exec:
+            command:
+            - valkey-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 5
+        readinessProbe:
+          exec:
+            command:
+            - valkey-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      {{- if .Values.valkey.persistence.enabled }}
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ include "darb.fullname" . }}-valkey
+      {{- end }}
+---
+{{- if .Values.valkey.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "darb.fullname" . }}-valkey
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "darb.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+spec:
+  accessModes:
+  - ReadWriteOnce
+  {{- if .Values.valkey.persistence.storageClassName }}
+  storageClassName: {{ .Values.valkey.persistence.storageClassName }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.valkey.persistence.size }}
+{{- end }}
+{{- end }}

@@ -16,12 +16,14 @@ import (
 	"github.com/aktech/darb/internal/db"
 	"github.com/aktech/darb/internal/executor"
 	"github.com/aktech/darb/internal/logger"
+	"github.com/aktech/darb/internal/logstream"
 	"github.com/aktech/darb/internal/queue"
 	"github.com/aktech/darb/internal/worker"
 
 	_ "github.com/aktech/darb/docs" // Load swagger docs
 
 	"github.com/aktech/darb/internal/api/handlers"
+	"gorm.io/gorm"
 )
 
 // Version is set via ldflags at build time
@@ -38,6 +40,7 @@ var Version = "dev"
 func main() {
 	// Define CLI flags
 	port := flag.Int("port", 0, "Port to run the server on (overrides config)")
+	mode := flag.String("mode", "both", "Run mode: server (API only), worker (worker only), or both")
 	flag.Parse()
 
 	// Set version in handlers
@@ -79,8 +82,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize job queue
-	jobQueue := queue.NewMemoryQueue(100)
+	// Initialize job queue based on configuration
+	jobQueue, err := createQueue(cfg, database)
+	if err != nil {
+		slog.Error("Failed to initialize job queue", "error", err)
+		os.Exit(1)
+	}
+	defer jobQueue.Close()
 	slog.Info("Job queue initialized", "type", cfg.Queue.Type)
 
 	// Initialize executor
@@ -91,55 +99,101 @@ func main() {
 	}
 	slog.Info("Local executor initialized")
 
-	// Initialize and start worker
-	w := worker.New(database, jobQueue, exec, slog.Default())
-	workerCtx, workerCancel := context.WithCancel(context.Background())
-	defer workerCancel()
+	// Initialize components based on run mode
+	var w *worker.Worker
+	var srv *http.Server
+	var workerCancel context.CancelFunc
 
-	go func() {
-		if err := w.Start(workerCtx); err != nil && err != context.Canceled {
-			slog.Error("Worker failed", "error", err)
-		}
-	}()
-	slog.Info("Worker started")
+	runServer := *mode == "server" || *mode == "both"
+	runWorker := *mode == "worker" || *mode == "both"
 
-	// Initialize API router (pass worker's broker for log streaming)
-	router := api.NewRouter(cfg, database, jobQueue, exec, w.GetBroker(), slog.Default())
-
-	// Create HTTP server
-	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	srv := &http.Server{
-		Addr:    addr,
-		Handler: router,
+	if !runServer && !runWorker {
+		slog.Error("Invalid mode", "mode", *mode, "valid_modes", "server, worker, both")
+		os.Exit(1)
 	}
 
-	// Start server in goroutine
-	go func() {
-		slog.Info("Server listening", "address", addr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("Server failed", "error", err)
-			os.Exit(1)
+	slog.Info("Starting Darb", "mode", *mode)
+
+	// Initialize and start worker if needed
+	if runWorker {
+		w = worker.New(database, jobQueue, exec, slog.Default())
+		workerCtx, cancel := context.WithCancel(context.Background())
+		workerCancel = cancel
+
+		go func() {
+			if err := w.Start(workerCtx); err != nil && err != context.Canceled {
+				slog.Error("Worker failed", "error", err)
+			}
+		}()
+		slog.Info("Worker started")
+	}
+
+	// Initialize and start API server if needed
+	if runServer {
+		// Get broker for log streaming (nil if worker not running)
+		var broker *logstream.LogBroker
+		if w != nil {
+			broker = w.GetBroker()
 		}
-	}()
+
+		// Initialize API router
+		router := api.NewRouter(cfg, database, jobQueue, exec, broker, slog.Default())
+
+		// Create HTTP server
+		addr := fmt.Sprintf(":%d", cfg.Server.Port)
+		srv = &http.Server{
+			Addr:    addr,
+			Handler: router,
+		}
+
+		// Start server in goroutine
+		go func() {
+			slog.Info("Server listening", "address", addr)
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				slog.Error("Server failed", "error", err)
+				os.Exit(1)
+			}
+		}()
+	}
 
 	// Wait for interrupt signal for graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	slog.Info("Shutting down server...")
+	slog.Info("Shutting down...")
 
-	// Stop worker
-	workerCancel()
-	slog.Info("Worker stopped")
-
-	// Graceful shutdown with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		slog.Error("Server forced to shutdown", "error", err)
-		os.Exit(1)
+	// Stop worker if running
+	if workerCancel != nil {
+		workerCancel()
+		slog.Info("Worker stopped")
 	}
 
-	slog.Info("Server exited")
+	// Shutdown server if running
+	if srv != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := srv.Shutdown(ctx); err != nil {
+			slog.Error("Server forced to shutdown", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("Server stopped")
+	}
+
+	slog.Info("Darb exited")
+}
+
+// createQueue creates a queue based on configuration
+func createQueue(cfg *config.Config, database *gorm.DB) (queue.Queue, error) {
+	switch cfg.Queue.Type {
+	case "memory":
+		return queue.NewMemoryQueue(100), nil
+	case "valkey":
+		if cfg.Queue.ValkeyAddr == "" {
+			return nil, fmt.Errorf("valkey address is required when queue type is valkey")
+		}
+		return queue.NewValkeyQueue(cfg.Queue.ValkeyAddr, database)
+	default:
+		return nil, fmt.Errorf("unsupported queue type: %s (supported: memory, valkey)", cfg.Queue.Type)
+	}
 }

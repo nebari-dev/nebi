@@ -125,3 +125,75 @@ podAnnotations: {}
 
 ## Pod labels
 podLabels: {}
+
+## Database configuration
+database:
+  # Driver: "sqlite" or "postgres"
+  driver: postgres
+  # DSN will be constructed automatically if using embedded postgres
+  # For external postgres, set dsn explicitly
+  dsn: ""
+  # Connection pool settings (Postgres only)
+  maxIdleConns: 10
+  maxOpenConns: 100
+  connMaxLifetime: 60  # minutes
+
+## Queue configuration
+queue:
+  # Type: "memory" or "valkey"
+  type: valkey
+  # Valkey address will be constructed automatically if using embedded valkey
+  # For external valkey, set address explicitly
+  valkeyAddr: ""
+
+## PostgreSQL (optional embedded database)
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "18"  # Latest PostgreSQL 18
+    pullPolicy: IfNotPresent
+  database: darb
+  user: darb
+  password: "changeme-in-production"
+  storage: 10Gi
+  storageClassName: ""
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+## Valkey (optional embedded cache/queue)
+valkey:
+  enabled: true
+  image:
+    repository: valkey/valkey
+    tag: "9.0.0"  # Latest Valkey 9.0
+    pullPolicy: IfNotPresent
+  persistence:
+    enabled: false
+    size: 5Gi
+    storageClassName: ""
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+## Worker configuration
+worker:
+  # Enable separate worker deployment (scaled independently)
+  separateDeployment: false
+  replicas: 3
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"

@@ -37,7 +37,14 @@ RUN CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH:-amd64} \
     -o /darb ./cmd/server
 
 # Stage 3: Final minimal image
-FROM gcr.io/distroless/static-debian12:nonroot
+# Using debian:12-slim instead of distroless to provide system dependencies for pixi
+FROM debian:12-slim
+
+# Install CA certificates and create nonroot user
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && \
+    useradd -u 65532 -m -s /bin/bash nonroot
 
 # Copy the static binary
 COPY --from=backend-builder --chown=nonroot:nonroot /darb /app/darb

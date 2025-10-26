@@ -43,11 +43,49 @@ spec:
         env:
         - name: GIN_MODE
           value: {{ .Values.config.ginMode | quote }}
+        # Database configuration
+        - name: DARB_DATABASE_DRIVER
+          value: {{ .Values.database.driver | quote }}
+        - name: DARB_DATABASE_DSN
+          {{- if .Values.database.dsn }}
+          value: {{ .Values.database.dsn | quote }}
+          {{- else if eq .Values.database.driver "postgres" }}
+          {{- if .Values.postgres.enabled }}
+          value: "postgres://{{ .Values.postgres.user }}:{{ .Values.postgres.password }}@{{ include "darb.fullname" . }}-postgres:5432/{{ .Values.postgres.database }}?sslmode=disable"
+          {{- end }}
+          {{- else }}
+          value: {{ .Values.config.databasePath | quote }}
+          {{- end }}
+        - name: DARB_DATABASE_MAX_IDLE_CONNS
+          value: {{ .Values.database.maxIdleConns | quote }}
+        - name: DARB_DATABASE_MAX_OPEN_CONNS
+          value: {{ .Values.database.maxOpenConns | quote }}
+        - name: DARB_DATABASE_CONN_MAX_LIFETIME
+          value: {{ .Values.database.connMaxLifetime | quote }}
+        # Queue configuration
+        - name: DARB_QUEUE_TYPE
+          value: {{ .Values.queue.type | quote }}
+        - name: DARB_QUEUE_VALKEY_ADDR
+          {{- if .Values.queue.valkeyAddr }}
+          value: {{ .Values.queue.valkeyAddr | quote }}
+          {{- else if eq .Values.queue.type "valkey" }}
+          {{- if .Values.valkey.enabled }}
+          value: "{{ include "darb.fullname" . }}-valkey:6379"
+          {{- end }}
+          {{- else }}
+          value: "localhost:6379"
+          {{- end }}
+        # Legacy env vars for backward compatibility
         - name: DATABASE_PATH
           value: {{ .Values.config.databasePath | quote }}
         - name: LOG_LEVEL
           value: {{ .Values.config.logLevel | quote }}
         - name: LOG_FORMAT
+          value: {{ .Values.config.logFormat | quote }}
+        # Logging configuration
+        - name: DARB_LOG_LEVEL
+          value: {{ .Values.config.logLevel | quote }}
+        - name: DARB_LOG_FORMAT
           value: {{ .Values.config.logFormat | quote }}
         {{- if .Values.admin }}
         - name: ADMIN_USERNAME

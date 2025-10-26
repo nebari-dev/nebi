@@ -45,9 +45,29 @@ func New(cfg config.DatabaseConfig) (*gorm.DB, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to get database instance: %w", err)
 		}
-		sqlDB.SetMaxIdleConns(10)
-		sqlDB.SetMaxOpenConns(100)
-		sqlDB.SetConnMaxLifetime(time.Hour)
+
+		// Set connection pool settings from config
+		maxIdleConns := cfg.MaxIdleConns
+		if maxIdleConns <= 0 {
+			maxIdleConns = 10
+		}
+		maxOpenConns := cfg.MaxOpenConns
+		if maxOpenConns <= 0 {
+			maxOpenConns = 100
+		}
+		connMaxLifetime := cfg.ConnMaxLifetime
+		if connMaxLifetime <= 0 {
+			connMaxLifetime = 60 // Default 60 minutes
+		}
+
+		sqlDB.SetMaxIdleConns(maxIdleConns)
+		sqlDB.SetMaxOpenConns(maxOpenConns)
+		sqlDB.SetConnMaxLifetime(time.Duration(connMaxLifetime) * time.Minute)
+
+		slog.Info("Configured PostgreSQL connection pool",
+			"max_idle_conns", maxIdleConns,
+			"max_open_conns", maxOpenConns,
+			"conn_max_lifetime_min", connMaxLifetime)
 	}
 
 	return db, nil

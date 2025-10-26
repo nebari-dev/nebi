@@ -1,0 +1,189 @@
+# Production overrides for Darb deployment
+# These values override the defaults in values.yaml
+
+## Image configuration for production
+image:
+  pullPolicy: IfNotPresent
+  tag: "latest"  # Override with specific version tag in production
+
+## Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  annotations:
+    # Add any cloud-specific annotations here
+    # e.g., for AWS ALB, Azure Application Gateway, etc.
+
+## Ingress configuration (recommended for production)
+ingress:
+  enabled: true
+  className: "nginx"  # or your ingress controller
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: darb.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: darb-tls
+      hosts:
+        - darb.example.com
+
+## Resource limits for production
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "200m"
+  limits:
+    memory: "1Gi"
+    cpu: "1000m"
+
+## Replica count - scale API pods
+replicaCount: 3
+
+## Persistence configuration
+persistence:
+  enabled: true
+  data:
+    storageClass: "gp3"  # AWS EBS gp3, change for your cloud provider
+    accessMode: ReadWriteOnce
+    size: 20Gi
+
+  environments:
+    storageClass: "efs"  # AWS EFS or similar RWX storage
+    accessMode: ReadWriteMany
+    size: 100Gi
+
+## Application configuration
+config:
+  ginMode: release
+  databasePath: /app/data/darb.db  # Only used if SQLite is enabled
+  logLevel: info
+  logFormat: json
+
+## Database configuration - PostgreSQL for production
+database:
+  driver: postgres
+  # Option 1: Use embedded PostgreSQL (postgres.enabled: true)
+  # DSN will be auto-constructed from postgres values
+  dsn: ""
+
+  # Option 2: Use external managed database (postgres.enabled: false)
+  # Uncomment and set your external database DSN:
+  # dsn: "postgres://darb:PASSWORD@my-rds-instance.region.rds.amazonaws.com:5432/darb?sslmode=require"
+
+  # Connection pool settings
+  maxIdleConns: 25
+  maxOpenConns: 200
+  connMaxLifetime: 120  # minutes
+
+## Queue configuration - Valkey for production
+queue:
+  type: valkey
+  # Option 1: Use embedded Valkey (valkey.enabled: true)
+  # Address will be auto-constructed from valkey values
+  valkeyAddr: ""
+
+  # Option 2: Use external managed Valkey/Redis (valkey.enabled: false)
+  # Uncomment and set your external Valkey/Redis address:
+  # valkeyAddr: "my-elasticache.region.cache.amazonaws.com:6379"
+
+## PostgreSQL (embedded) - Enable for non-managed deployments
+postgres:
+  enabled: true  # Set to false if using external managed database
+  image:
+    repository: postgres
+    tag: "18"  # Latest PostgreSQL 18
+    pullPolicy: IfNotPresent
+  database: darb
+  user: darb
+  password: "CHANGE-ME-IN-PRODUCTION"  # Use Kubernetes secrets in production
+  storage: 50Gi
+  storageClassName: "gp3"  # AWS EBS gp3, change for your cloud provider
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "2000m"
+
+## Valkey (embedded) - Enable for non-managed deployments
+valkey:
+  enabled: true  # Set to false if using external managed Valkey/Redis
+  image:
+    repository: valkey/valkey
+    tag: "9.0.0"  # Latest Valkey 9.0
+    pullPolicy: IfNotPresent
+  persistence:
+    enabled: true  # Enable persistence for production
+    size: 10Gi
+    storageClassName: "gp3"  # AWS EBS gp3, change for your cloud provider
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+## Worker configuration - Separate worker deployment for scaling
+worker:
+  # Enable separate worker deployment for independent scaling
+  separateDeployment: true
+  replicas: 5  # Scale workers based on job load
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "2000m"
+
+## Admin user (created on first startup if no users exist)
+admin:
+  username: "admin"
+  password: "CHANGE-ME-IN-PRODUCTION"  # Use strong password or disable
+  email: "admin@example.com"
+
+## Health probes
+livenessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+## Node selector (optional - schedule on specific node pools)
+nodeSelector: {}
+  # workload-type: compute-intensive
+
+## Tolerations (optional - for tainted nodes)
+tolerations: []
+
+## Affinity (optional - for pod anti-affinity, zone distribution)
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - darb
+          topologyKey: kubernetes.io/hostname

@@ -1,0 +1,159 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 18 - Latest version
+  postgres:
+    image: postgres:18
+    container_name: darb-postgres
+    environment:
+      POSTGRES_DB: darb
+      POSTGRES_USER: darb
+      POSTGRES_PASSWORD: password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U darb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - darb-network
+
+  # Valkey 9.0 - Latest version (Redis replacement)
+  valkey:
+    image: valkey/valkey:9.0.0
+    container_name: darb-valkey
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - darb-network
+
+  # Darb API + Worker (both mode)
+  darb-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: darb-api
+    ports:
+      - "8080:8080"
+    environment:
+      # Database configuration
+      DARB_DATABASE_DRIVER: postgres
+      DARB_DATABASE_DSN: "postgres://darb:password@postgres:5432/darb?sslmode=disable"
+      DARB_DATABASE_MAX_IDLE_CONNS: 10
+      DARB_DATABASE_MAX_OPEN_CONNS: 100
+      DARB_DATABASE_CONN_MAX_LIFETIME: 60
+
+      # Queue configuration
+      DARB_QUEUE_TYPE: valkey
+      DARB_QUEUE_VALKEY_ADDR: "valkey:6379"
+
+      # Logging
+      DARB_LOG_LEVEL: debug
+      DARB_LOG_FORMAT: text
+
+      # Server configuration
+      DARB_SERVER_PORT: 8080
+      DARB_SERVER_MODE: development
+
+      # Admin user (created on first startup)
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin123
+      ADMIN_EMAIL: admin@darb.local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    command: ["/app/darb", "--mode=both"]
+    volumes:
+      - ./data/environments:/app/data/environments
+    networks:
+      - darb-network
+
+  # Darb Worker (worker-only mode) - Additional workers
+  darb-worker-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: darb-worker-1
+    environment:
+      # Database configuration
+      DARB_DATABASE_DRIVER: postgres
+      DARB_DATABASE_DSN: "postgres://darb:password@postgres:5432/darb?sslmode=disable"
+      DARB_DATABASE_MAX_IDLE_CONNS: 10
+      DARB_DATABASE_MAX_OPEN_CONNS: 100
+      DARB_DATABASE_CONN_MAX_LIFETIME: 60
+
+      # Queue configuration
+      DARB_QUEUE_TYPE: valkey
+      DARB_QUEUE_VALKEY_ADDR: "valkey:6379"
+
+      # Logging
+      DARB_LOG_LEVEL: debug
+      DARB_LOG_FORMAT: text
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      darb-api:
+        condition: service_started
+    command: ["/app/darb", "--mode=worker"]
+    volumes:
+      - ./data/environments:/app/data/environments
+    networks:
+      - darb-network
+
+  darb-worker-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: darb-worker-2
+    environment:
+      # Database configuration
+      DARB_DATABASE_DRIVER: postgres
+      DARB_DATABASE_DSN: "postgres://darb:password@postgres:5432/darb?sslmode=disable"
+      DARB_DATABASE_MAX_IDLE_CONNS: 10
+      DARB_DATABASE_MAX_OPEN_CONNS: 100
+      DARB_DATABASE_CONN_MAX_LIFETIME: 60
+
+      # Queue configuration
+      DARB_QUEUE_TYPE: valkey
+      DARB_QUEUE_VALKEY_ADDR: "valkey:6379"
+
+      # Logging
+      DARB_LOG_LEVEL: debug
+      DARB_LOG_FORMAT: text
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      darb-api:
+        condition: service_started
+    command: ["/app/darb", "--mode=worker"]
+    volumes:
+      - ./data/environments:/app/data/environments
+    networks:
+      - darb-network
+
+volumes:
+  postgres_data:
+    driver: local
+  valkey_data:
+    driver: local
+
+networks:
+  darb-network:
+    driver: bridge

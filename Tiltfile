@@ -29,32 +29,49 @@ custom_build(
     # ],
 )
 
-# Deploy using Helm chart with dev values
+# Deploy using Helm chart with k8s test values (Postgres + Valkey)
 k8s_yaml(helm(
     './chart',
     name='darb',
     namespace='darb',
-    values=['./chart/values-dev.yaml'],
+    values=['./chart/values-k8s-test.yaml'],
 ))
 
-# Group setup resources (namespace, ServiceAccount, PVCs, etc.)
+# Group setup resources (namespace, ServiceAccount, PVCs, Secrets, etc.)
 k8s_resource(
     objects=[
         'darb:namespace',
         'darb:serviceaccount',
         'darb-data:persistentvolumeclaim',
         'darb-environments:persistentvolumeclaim',
+        'darb-postgres:secret',
     ],
     new_name='setup',
     labels=['setup'],
     pod_readiness='ignore',
 )
 
+# Configure PostgreSQL StatefulSet
+k8s_resource(
+    'darb-postgres',
+    labels=['database'],
+    resource_deps=['setup'],
+    port_forwards='5432:5432',  # Forward to localhost:5432
+)
+
+# Configure Valkey Deployment
+k8s_resource(
+    'darb-valkey',
+    labels=['cache'],
+    resource_deps=['setup'],
+    port_forwards='6379:6379',  # Forward to localhost:6379
+)
+
 # Configure main Darb deployment
 k8s_resource(
     'darb',
     labels=['app'],
-    resource_deps=['setup'],
+    resource_deps=['setup', 'darb-postgres', 'darb-valkey'],
     port_forwards='8080:8080',  # Forward to localhost:8080
 )
 
@@ -71,10 +88,12 @@ else:
 🚀 Starting up...
 
 Once ready:
-  • Darb UI:    http://localhost:8080
-  • Tilt UI:    http://localhost:10350
-  • API:        http://localhost:8080/api/v1/health
-  • Swagger:    http://localhost:8080/docs
+  • Darb UI:      http://localhost:8080
+  • Tilt UI:      http://localhost:10350
+  • API:          http://localhost:8080/api/v1/health
+  • Swagger:      http://localhost:8080/docs
+  • PostgreSQL:   localhost:5432 (darb/testpassword123)
+  • Valkey:       localhost:6379
 
 💡 Tips:
   • Edit code → Save → Tilt auto-rebuilds & redeploys
@@ -82,6 +101,7 @@ Once ready:
   • Press 'space' to open Tilt UI in browser
   • Press 'Ctrl+C' to stop
 
+🗄️  Using PostgreSQL 18 + Valkey 9.0 (latest versions!)
 📚 Data persisted in PVCs (k3s local-path)
 📦 Chart location: ./chart/
 """)

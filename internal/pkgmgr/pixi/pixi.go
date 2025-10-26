@@ -1,9 +1,11 @@
 package pixi
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -78,6 +80,15 @@ func (p *PixiManager) BinaryPath() string {
 	return p.pixiPath
 }
 
+// streamOutput reads from a pipe and writes to the writer line by line for real-time streaming
+func (p *PixiManager) streamOutput(reader io.Reader, writer io.Writer) {
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		line := scanner.Text()
+		fmt.Fprintf(writer, "%s\n", line)
+	}
+}
+
 // Init creates a new pixi environment
 func (p *PixiManager) Init(ctx context.Context, opts pkgmgr.InitOptions) error {
 	if opts.EnvPath == "" {
@@ -106,12 +117,40 @@ func (p *PixiManager) Init(ctx context.Context, opts pkgmgr.InitOptions) error {
 	cmd := exec.CommandContext(ctx, p.pixiPath, args...)
 	cmd.Dir = opts.EnvPath
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	// Use LogWriter if provided, otherwise buffer
+	if opts.LogWriter != nil {
+		fmt.Fprintf(opts.LogWriter, "Running: pixi %s\n", strings.Join(args, " "))
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("pixi init failed: %w, stderr: %s", err, stderr.String())
+		// Use pipes for real-time streaming
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stdout pipe: %w", err)
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stderr pipe: %w", err)
+		}
+
+		// Start the command
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("failed to start command: %w", err)
+		}
+
+		// Stream output in real-time
+		go p.streamOutput(stdout, opts.LogWriter)
+		go p.streamOutput(stderr, opts.LogWriter)
+
+		// Wait for command to complete
+		if err := cmd.Wait(); err != nil {
+			return fmt.Errorf("pixi init failed: %w", err)
+		}
+	} else {
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("pixi init failed: %w, stderr: %s", err, stderr.String())
+		}
 	}
 
 	return nil
@@ -126,19 +165,47 @@ func (p *PixiManager) Install(ctx context.Context, opts pkgmgr.InstallOptions) e
 		return fmt.Errorf("at least one package is required")
 	}
 
-	// Build pixi add command
-	args := append([]string{"add"}, opts.Packages...)
+	// Build pixi add command with verbose flag for better logging
+	args := append([]string{"add", "-v"}, opts.Packages...)
 
 	// Execute pixi add
 	cmd := exec.CommandContext(ctx, p.pixiPath, args...)
 	cmd.Dir = opts.EnvPath
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	// Use LogWriter if provided, otherwise buffer
+	if opts.LogWriter != nil {
+		fmt.Fprintf(opts.LogWriter, "Running: pixi %s\n", strings.Join(args, " "))
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("pixi add failed: %w, stderr: %s", err, stderr.String())
+		// Use pipes for real-time streaming
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stdout pipe: %w", err)
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stderr pipe: %w", err)
+		}
+
+		// Start the command
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("failed to start command: %w", err)
+		}
+
+		// Stream output in real-time
+		go p.streamOutput(stdout, opts.LogWriter)
+		go p.streamOutput(stderr, opts.LogWriter)
+
+		// Wait for command to complete
+		if err := cmd.Wait(); err != nil {
+			return fmt.Errorf("pixi add failed: %w", err)
+		}
+	} else {
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("pixi add failed: %w, stderr: %s", err, stderr.String())
+		}
 	}
 
 	return nil
@@ -154,18 +221,46 @@ func (p *PixiManager) Remove(ctx context.Context, opts pkgmgr.RemoveOptions) err
 	}
 
 	// Build pixi remove command
-	args := append([]string{"remove"}, opts.Packages...)
+	args := append([]string{"remove", "-v"}, opts.Packages...)
 
 	// Execute pixi remove
 	cmd := exec.CommandContext(ctx, p.pixiPath, args...)
 	cmd.Dir = opts.EnvPath
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	// Use LogWriter if provided, otherwise buffer
+	if opts.LogWriter != nil {
+		fmt.Fprintf(opts.LogWriter, "Running: pixi %s\n", strings.Join(args, " "))
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("pixi remove failed: %w, stderr: %s", err, stderr.String())
+		// Use pipes for real-time streaming
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stdout pipe: %w", err)
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stderr pipe: %w", err)
+		}
+
+		// Start the command
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("failed to start command: %w", err)
+		}
+
+		// Stream output in real-time
+		go p.streamOutput(stdout, opts.LogWriter)
+		go p.streamOutput(stderr, opts.LogWriter)
+
+		// Wait for command to complete
+		if err := cmd.Wait(); err != nil {
+			return fmt.Errorf("pixi remove failed: %w", err)
+		}
+	} else {
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("pixi remove failed: %w, stderr: %s", err, stderr.String())
+		}
 	}
 
 	return nil

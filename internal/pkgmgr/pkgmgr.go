@@ -1,6 +1,9 @@
 package pkgmgr
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 // PackageManager is the interface that all package managers must implement
 type PackageManager interface {
@@ -28,22 +31,25 @@ type PackageManager interface {
 
 // InitOptions contains parameters for initializing a new environment
 type InitOptions struct {
-	EnvPath  string   // Path where environment will be created
-	Name     string   // Environment name
-	Python   string   // Python version (if applicable)
-	Channels []string // Conda channels (pixi only)
+	EnvPath   string   // Path where environment will be created
+	Name      string   // Environment name
+	Python    string   // Python version (if applicable)
+	Channels  []string // Conda channels (pixi only)
+	LogWriter io.Writer // Optional writer for streaming command output
 }
 
 // InstallOptions contains parameters for installing packages
 type InstallOptions struct {
-	EnvPath  string   // Path to environment
-	Packages []string // Package names (e.g., "numpy==1.24.0")
+	EnvPath   string    // Path to environment
+	Packages  []string  // Package names (e.g., "numpy==1.24.0")
+	LogWriter io.Writer // Optional writer for streaming command output
 }
 
 // RemoveOptions contains parameters for removing packages
 type RemoveOptions struct {
-	EnvPath  string   // Path to environment
-	Packages []string // Package names to remove
+	EnvPath   string    // Path to environment
+	Packages  []string  // Package names to remove
+	LogWriter io.Writer // Optional writer for streaming command output
 }
 
 // ListOptions contains parameters for listing packages

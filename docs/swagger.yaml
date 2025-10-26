@@ -929,6 +929,38 @@ paths:
       summary: Get a job by ID
       tags:
       - jobs
+  /jobs/{id}/logs/stream:
+    get:
+      parameters:
+      - description: Job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Auth token (alternative to Bearer header for EventSource compatibility)
+        in: query
+        name: token
+        type: string
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: event stream
+          schema:
+            type: string
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Stream job logs in real-time via Server-Sent Events
+      tags:
+      - jobs
   /version:
     get:
       description: Returns version information about the Darb server

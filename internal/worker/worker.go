@@ -5,9 +5,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/aktech/darb/internal/executor"
+	"github.com/aktech/darb/internal/logstream"
 	"github.com/aktech/darb/internal/models"
 	"github.com/aktech/darb/internal/pkgmgr"
 	_ "github.com/aktech/darb/internal/pkgmgr/pixi" // Register pixi
@@ -18,30 +20,45 @@ import (
 
 // Worker processes jobs from the queue
 type Worker struct {
-	db       *gorm.DB
-	queue    queue.Queue
-	executor executor.Executor
-	logger   *slog.Logger
+	db          *gorm.DB
+	queue       queue.Queue
+	executor    executor.Executor
+	logger      *slog.Logger
+	broker      *logstream.LogBroker
+	maxWorkers  int
+	semaphore   chan struct{}
+	wg          sync.WaitGroup
 }
 
 // New creates a new worker instance
 func New(db *gorm.DB, q queue.Queue, exec executor.Executor, logger *slog.Logger) *Worker {
+	maxWorkers := 10 // Allow up to 10 concurrent jobs
 	return &Worker{
-		db:       db,
-		queue:    q,
-		executor: exec,
-		logger:   logger,
+		db:         db,
+		queue:      q,
+		executor:   exec,
+		logger:     logger,
+		broker:     logstream.NewBroker(),
+		maxWorkers: maxWorkers,
+		semaphore:  make(chan struct{}, maxWorkers),
 	}
+}
+
+// GetBroker returns the log broker for external access (SSE endpoints)
+func (w *Worker) GetBroker() *logstream.LogBroker {
+	return w.broker
 }
 
 // Start begins processing jobs from the queue
 func (w *Worker) Start(ctx context.Context) error {
-	w.logger.Info("Worker started")
+	w.logger.Info("Worker started", "max_concurrent_jobs", w.maxWorkers)
 
 	for {
 		select {
 		case <-ctx.Done():
-			w.logger.Info("Worker shutting down")
+			w.logger.Info("Worker shutting down, waiting for jobs to complete")
+			w.wg.Wait() // Wait for all jobs to complete
+			w.logger.Info("All jobs completed, worker stopped")
 			return ctx.Err()
 		default:
 			job, err := w.queue.Dequeue(ctx)
@@ -56,8 +73,21 @@ func (w *Worker) Start(ctx context.Context) error {
 				continue
 			}
 
-			// Process the job
-			w.processJob(ctx, job)
+			// Acquire semaphore slot (blocks if max workers reached)
+			select {
+			case w.semaphore <- struct{}{}:
+				// Got a slot, process job asynchronously
+				w.wg.Add(1)
+				go func(j *models.Job) {
+					defer w.wg.Done()
+					defer func() { <-w.semaphore }() // Release slot when done
+
+					w.processJob(ctx, j)
+				}(job)
+			case <-ctx.Done():
+				w.logger.Info("Context cancelled while waiting for worker slot")
+				return ctx.Err()
+			}
 		}
 	}
 }
@@ -74,8 +104,14 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 	// Create log buffer
 	var logBuf bytes.Buffer
 
-	// Execute the job
-	err := w.executeJob(ctx, job, &logBuf)
+	// Create streaming writer that writes to both buffer and broker
+	streamWriter := logstream.NewStreamWriter(job.ID, w.broker, &logBuf)
+
+	// Execute the job with streaming logs
+	err := w.executeJob(ctx, job, streamWriter)
+
+	// Close broker subscriptions for this job
+	defer w.broker.Close(job.ID)
 
 	// Update job status
 	completedAt := time.Now()
@@ -86,15 +122,19 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 		w.logger.Error("Job failed", "job_id", job.ID, "error", err)
 		job.Status = models.JobStatusFailed
 		job.Error = err.Error()
+		// Publish error to subscribers
+		w.broker.Publish(job.ID, fmt.Sprintf("\n[ERROR] Job failed: %v\n", err))
 	} else {
 		w.logger.Info("Job completed", "job_id", job.ID)
 		job.Status = models.JobStatusCompleted
+		// Publish completion to subscribers
+		w.broker.Publish(job.ID, "\n[COMPLETED] Job finished successfully\n")
 	}
 
 	w.db.Save(job)
 }
 
-func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter *bytes.Buffer) error {
+func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter *logstream.StreamWriter) error {
 	// Load environment
 	var env models.Environment
 	if err := w.db.First(&env, job.EnvironmentID).Error; err != nil {

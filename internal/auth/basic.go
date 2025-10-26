@@ -134,23 +134,28 @@ func (a *BasicAuthenticator) validateToken(tokenString string) (*Claims, error) 
 // Middleware returns a Gin middleware for authentication
 func (a *BasicAuthenticator) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		var tokenString string
+
 		// Extract token from Authorization header
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing authorization header"})
-			c.Abort()
-			return
+		if authHeader != "" {
+			// Check for Bearer token
+			parts := strings.Split(authHeader, " ")
+			if len(parts) != 2 || parts[0] != "Bearer" {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header format"})
+				c.Abort()
+				return
+			}
+			tokenString = parts[1]
+		} else {
+			// Fallback to query parameter (for EventSource/SSE compatibility)
+			tokenString = c.Query("token")
+			if tokenString == "" {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "missing authorization"})
+				c.Abort()
+				return
+			}
 		}
-
-		// Check for Bearer token
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header format"})
-			c.Abort()
-			return
-		}
-
-		tokenString := parts[1]
 
 		// Validate token
 		claims, err := a.validateToken(tokenString)

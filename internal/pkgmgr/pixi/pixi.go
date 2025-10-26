@@ -33,18 +33,30 @@ func New() (*PixiManager, error) {
 func NewWithPath(customPath string) (*PixiManager, error) {
 	pixiPath := customPath
 	if pixiPath == "" {
-		// Find pixi binary in PATH
-		path, err := exec.LookPath("pixi")
-		if err != nil {
-			// Pixi not found, attempt automatic installation
-			ctx := context.Background()
-			installedPath, installErr := InstallPixi(ctx)
-			if installErr != nil {
-				return nil, fmt.Errorf("pixi not found in PATH and auto-installation failed: %w", installErr)
+		// First check if pixi is already installed at the default location
+		installDir, err := getInstallDir()
+		if err == nil {
+			defaultPixiPath := filepath.Join(installDir, "pixi")
+			if _, err := os.Stat(defaultPixiPath); err == nil {
+				// Pixi already installed, use it
+				pixiPath = defaultPixiPath
 			}
-			pixiPath = installedPath
-		} else {
-			pixiPath = path
+		}
+
+		// If not found at default location, try PATH
+		if pixiPath == "" {
+			path, err := exec.LookPath("pixi")
+			if err != nil {
+				// Pixi not found, attempt automatic installation
+				ctx := context.Background()
+				installedPath, installErr := InstallPixi(ctx)
+				if installErr != nil {
+					return nil, fmt.Errorf("pixi not found in PATH and auto-installation failed: %w", installErr)
+				}
+				pixiPath = installedPath
+			} else {
+				pixiPath = path
+			}
 		}
 	}
 

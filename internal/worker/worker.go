@@ -3,14 +3,15 @@ package worker
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os/exec"
 	"time"
 
 	"github.com/aktech/darb/internal/executor"
 	"github.com/aktech/darb/internal/models"
+	"github.com/aktech/darb/internal/pkgmgr"
+	_ "github.com/aktech/darb/internal/pkgmgr/pixi" // Register pixi
+	_ "github.com/aktech/darb/internal/pkgmgr/uv"   // Register uv
 	"github.com/aktech/darb/internal/queue"
 	"gorm.io/gorm"
 )
@@ -214,30 +215,25 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter *byt
 func (w *Worker) syncPackagesFromEnvironment(ctx context.Context, env *models.Environment) error {
 	envPath := w.executor.GetEnvironmentPath(env)
 
-	// Run pixi list to get installed packages
-	cmd := exec.CommandContext(ctx, "pixi", "list", "--json")
-	cmd.Dir = envPath
-
-	output, err := cmd.Output()
+	// Create package manager for this environment
+	pm, err := pkgmgr.New(env.PackageManager)
 	if err != nil {
-		return fmt.Errorf("failed to run pixi list: %w", err)
+		return fmt.Errorf("failed to create package manager: %w", err)
 	}
 
-	// Parse JSON output
-	var packages []struct {
-		Name    string `json:"name"`
-		Version string `json:"version"`
-	}
-
-	if err := json.Unmarshal(output, &packages); err != nil {
-		return fmt.Errorf("failed to parse pixi list output: %w", err)
+	// List packages using the package manager
+	pkgs, err := pm.List(ctx, pkgmgr.ListOptions{
+		EnvPath: envPath,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list packages: %w", err)
 	}
 
 	// Clear existing packages for this environment
 	w.db.Where("environment_id = ?", env.ID).Delete(&models.Package{})
 
 	// Insert new packages
-	for _, pkg := range packages {
+	for _, pkg := range pkgs {
 		dbPkg := models.Package{
 			EnvironmentID: env.ID,
 			Name:          pkg.Name,
@@ -248,6 +244,6 @@ func (w *Worker) syncPackagesFromEnvironment(ctx context.Context, env *models.En
 		}
 	}
 
-	w.logger.Info("Synced packages from environment", "environment_id", env.ID, "count", len(packages))
+	w.logger.Info("Synced packages from environment", "environment_id", env.ID, "count", len(pkgs))
 	return nil
 }

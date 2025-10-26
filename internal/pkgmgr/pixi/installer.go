@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -46,38 +47,54 @@ func getPlatform() (string, error) {
 	}
 
 	// Map Go OS to pixi OS naming
-	osMap := map[string]string{
-		"linux":  "linux",
-		"darwin": "apple-darwin",
-		"windows": "pc-windows-msvc",
-	}
-
-	pixiOS, ok := osMap[os]
-	if !ok {
+	// Based on actual release asset names from https://github.com/prefix-dev/pixi/releases
+	var platform string
+	switch os {
+	case "linux":
+		platform = fmt.Sprintf("%s-unknown-linux-musl", pixiArch)
+	case "darwin":
+		platform = fmt.Sprintf("%s-apple-darwin", pixiArch)
+	case "windows":
+		platform = fmt.Sprintf("%s-pc-windows-msvc", pixiArch)
+	default:
 		return "", fmt.Errorf("unsupported operating system: %s", os)
 	}
 
-	return fmt.Sprintf("%s-%s", pixiArch, pixiOS), nil
+	return platform, nil
 }
 
 // downloadPixi downloads the pixi binary for the current platform
 func downloadPixi(ctx context.Context, platform, destDir string) error {
 	url := fmt.Sprintf(pixiDownloadURL, pixiVersion, platform)
 
+	slog.Info("Downloading pixi",
+		"version", pixiVersion,
+		"platform", platform,
+		"url", url,
+		"dest", destDir)
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
+		slog.Error("Failed to create HTTP request", "error", err, "url", url)
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		slog.Error("Failed to download pixi", "error", err, "url", url)
 		return fmt.Errorf("failed to download pixi: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download pixi: HTTP %d", resp.StatusCode)
+		slog.Error("Pixi download failed with HTTP error",
+			"status_code", resp.StatusCode,
+			"status", resp.Status,
+			"url", url)
+		return fmt.Errorf("failed to download pixi from %s: HTTP %d (%s)", url, resp.StatusCode, resp.Status)
 	}
+
+	slog.Info("Pixi download started", "content_length", resp.ContentLength)
 
 	// Create a temporary file to store the download
 	tmpFile, err := os.CreateTemp("", "pixi-*.tar.gz")
@@ -88,14 +105,22 @@ func downloadPixi(ctx context.Context, platform, destDir string) error {
 	defer tmpFile.Close()
 
 	// Download to temp file
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+	bytesWritten, err := io.Copy(tmpFile, resp.Body)
+	if err != nil {
+		slog.Error("Failed to write downloaded file", "error", err, "temp_file", tmpFile.Name())
 		return fmt.Errorf("failed to write download: %w", err)
 	}
 
+	slog.Info("Download completed", "bytes", bytesWritten, "temp_file", tmpFile.Name())
+
 	// Extract the binary
+	slog.Info("Extracting pixi binary", "archive", tmpFile.Name(), "dest", destDir)
 	if err := extractPixi(tmpFile.Name(), destDir); err != nil {
+		slog.Error("Failed to extract pixi", "error", err)
 		return fmt.Errorf("failed to extract pixi: %w", err)
 	}
+
+	slog.Info("Pixi extraction completed successfully")
 
 	return nil
 }
@@ -130,53 +155,81 @@ func extractPixi(tarPath, destDir string) error {
 		if strings.HasSuffix(header.Name, "pixi") || header.Name == "pixi" {
 			destPath := filepath.Join(destDir, "pixi")
 
+			slog.Info("Found pixi binary in archive", "name", header.Name, "size", header.Size)
+
 			outFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0755)
 			if err != nil {
+				slog.Error("Failed to create output file", "error", err, "path", destPath)
 				return fmt.Errorf("failed to create pixi binary: %w", err)
 			}
 			defer outFile.Close()
 
-			if _, err := io.Copy(outFile, tr); err != nil {
+			bytesWritten, err := io.Copy(outFile, tr)
+			if err != nil {
+				slog.Error("Failed to write pixi binary", "error", err, "path", destPath)
 				return fmt.Errorf("failed to write pixi binary: %w", err)
 			}
+
+			slog.Info("Pixi binary extracted successfully", "path", destPath, "bytes", bytesWritten)
 
 			return nil
 		}
 	}
 
+	slog.Error("Pixi binary not found in archive")
 	return fmt.Errorf("pixi binary not found in archive")
 }
 
 // InstallPixi automatically downloads and installs pixi to ~/.local/bin
 func InstallPixi(ctx context.Context) (string, error) {
+	slog.Info("Starting pixi auto-installation",
+		"os", runtime.GOOS,
+		"arch", runtime.GOARCH,
+		"version", pixiVersion)
+
 	// Get platform
 	platform, err := getPlatform()
 	if err != nil {
+		slog.Error("Failed to determine platform", "error", err)
 		return "", err
 	}
+
+	slog.Info("Platform determined", "platform", platform)
 
 	// Get install directory
 	installDir, err := getInstallDir()
 	if err != nil {
+		slog.Error("Failed to get install directory", "error", err)
 		return "", err
 	}
 
+	slog.Info("Install directory determined", "dir", installDir)
+
 	// Create install directory if it doesn't exist
 	if err := os.MkdirAll(installDir, 0755); err != nil {
+		slog.Error("Failed to create install directory", "error", err, "dir", installDir)
 		return "", fmt.Errorf("failed to create install directory: %w", err)
 	}
 
 	// Download and install pixi
 	if err := downloadPixi(ctx, platform, installDir); err != nil {
+		slog.Error("Pixi installation failed", "error", err)
 		return "", err
 	}
 
 	pixiPath := filepath.Join(installDir, "pixi")
 
+	slog.Info("Verifying pixi installation", "path", pixiPath)
+
 	// Verify installation
-	if err := exec.CommandContext(ctx, pixiPath, "--version").Run(); err != nil {
+	cmd := exec.CommandContext(ctx, pixiPath, "--version")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		slog.Error("Pixi verification failed", "error", err, "output", string(output))
 		return "", fmt.Errorf("pixi installation verification failed: %w", err)
 	}
+
+	slog.Info("Pixi installed successfully", "path", pixiPath, "version_output", string(output))
 
 	return pixiPath, nil
 }

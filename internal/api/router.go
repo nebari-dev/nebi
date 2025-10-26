@@ -12,6 +12,7 @@ import (
 	"github.com/aktech/darb/internal/auth"
 	"github.com/aktech/darb/internal/config"
 	"github.com/aktech/darb/internal/executor"
+	"github.com/aktech/darb/internal/logstream"
 	"github.com/aktech/darb/internal/queue"
 	"github.com/aktech/darb/internal/rbac"
 	"github.com/aktech/darb/internal/web"
@@ -22,7 +23,7 @@ import (
 )
 
 // NewRouter creates and configures the Gin router
-func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Executor, logger *slog.Logger) *gin.Engine {
+func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Executor, logBroker *logstream.LogBroker, logger *slog.Logger) *gin.Engine {
 	// Initialize RBAC enforcer
 	if err := rbac.InitEnforcer(db, logger); err != nil {
 		logger.Error("Failed to initialize RBAC", "error", err)
@@ -58,7 +59,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 
 	// Initialize handlers
 	envHandler := handlers.NewEnvironmentHandler(db, q, exec)
-	jobHandler := handlers.NewJobHandler(db)
+	jobHandler := handlers.NewJobHandler(db, logBroker)
 
 	// Protected routes (require authentication)
 	protected := router.Group("/api/v1")
@@ -90,6 +91,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		// Job endpoints
 		protected.GET("/jobs", jobHandler.ListJobs)
 		protected.GET("/jobs/:id", jobHandler.GetJob)
+		protected.GET("/jobs/:id/logs/stream", jobHandler.StreamJobLogs)
 
 		// Template endpoints (placeholder)
 		protected.GET("/templates", handlers.NotImplemented)

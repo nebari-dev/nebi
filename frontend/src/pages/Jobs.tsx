@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useJobs } from '@/hooks/useJobs';
+import { useJobLogStream } from '@/hooks/useJobLogStream';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Loader2, ChevronDown, ChevronRight, Radio } from 'lucide-react';
 import type { Job } from '@/types';
 
 const statusColors = {
@@ -22,6 +23,10 @@ const typeColors = {
 
 const JobCard = ({ job, isFirst }: { job: Job; isFirst: boolean }) => {
   const [expanded, setExpanded] = useState(isFirst);
+  const { logs: streamedLogs, isStreaming } = useJobLogStream(job.id, job.status);
+
+  // Use streamed logs if job is running, otherwise use static logs from job
+  const displayLogs = isStreaming ? streamedLogs : job.logs;
 
   return (
     <Card>
@@ -35,6 +40,7 @@ const JobCard = ({ job, isFirst }: { job: Job; isFirst: boolean }) => {
             </Badge>
             <Badge className={statusColors[job.status]}>
               {job.status}
+              {isStreaming && <Radio className="h-3 w-3 ml-1 inline animate-pulse" />}
             </Badge>
           </div>
           <span className="text-sm text-muted-foreground">
@@ -67,11 +73,19 @@ const JobCard = ({ job, isFirst }: { job: Job; isFirst: boolean }) => {
             )}
           </div>
 
-          {job.logs && (
+          {displayLogs && (
             <div>
-              <h4 className="font-semibold mb-2">Logs</h4>
-              <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto max-h-64 overflow-y-auto font-mono whitespace-pre-wrap">
-                {job.logs}
+              <div className="flex items-center gap-2 mb-2">
+                <h4 className="font-semibold">Logs</h4>
+                {isStreaming && (
+                  <Badge variant="outline" className="text-xs">
+                    <Radio className="h-2 w-2 mr-1 animate-pulse" />
+                    Live
+                  </Badge>
+                )}
+              </div>
+              <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto max-h-96 overflow-y-auto font-mono whitespace-pre-wrap text-sm">
+                {displayLogs}
               </pre>
             </div>
           )}

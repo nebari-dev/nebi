@@ -120,11 +120,12 @@ func (e *LocalExecutor) CreateEnvironment(ctx context.Context, env *models.Envir
 			pixiBinary = pixiMgr.BinaryPath()
 		}
 
-		installCmd := exec.CommandContext(ctx, pixiBinary, "install")
+		installCmd := exec.CommandContext(ctx, pixiBinary, "install", "-v")
 		installCmd.Dir = envPath
 		installCmd.Stdout = logWriter
 		installCmd.Stderr = logWriter
 
+		fmt.Fprintf(logWriter, "Running: pixi install -v\n")
 		if err := installCmd.Run(); err != nil {
 			return fmt.Errorf("failed to install pixi environment: %w", err)
 		}
@@ -134,9 +135,10 @@ func (e *LocalExecutor) CreateEnvironment(ctx context.Context, env *models.Envir
 		// Note: For pixi, the Name parameter is used as the project name in pixi.toml
 		// The environment is created in EnvPath directory itself
 		opts := pkgmgr.InitOptions{
-			EnvPath:  envPath,
-			Name:     env.Name,
-			Channels: []string{"conda-forge"}, // Default channel for pixi
+			EnvPath:   envPath,
+			Name:      env.Name,
+			Channels:  []string{"conda-forge"}, // Default channel for pixi
+			LogWriter: logWriter,
 		}
 
 		if err := pm.Init(ctx, opts); err != nil {
@@ -166,8 +168,9 @@ func (e *LocalExecutor) InstallPackages(ctx context.Context, env *models.Environ
 	}
 
 	opts := pkgmgr.InstallOptions{
-		EnvPath:  envPath,
-		Packages: packages,
+		EnvPath:   envPath,
+		Packages:  packages,
+		LogWriter: logWriter,
 	}
 
 	if err := pm.Install(ctx, opts); err != nil {
@@ -196,8 +199,9 @@ func (e *LocalExecutor) RemovePackages(ctx context.Context, env *models.Environm
 	}
 
 	opts := pkgmgr.RemoveOptions{
-		EnvPath:  envPath,
-		Packages: packages,
+		EnvPath:   envPath,
+		Packages:  packages,
+		LogWriter: logWriter,
 	}
 
 	if err := pm.Remove(ctx, opts); err != nil {

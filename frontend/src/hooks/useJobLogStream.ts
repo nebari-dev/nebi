@@ -36,7 +36,13 @@ export const useJobLogStream = (jobId: string, jobStatus: string) => {
 
     eventSource.onmessage = (event) => {
       console.log('Received log data:', event.data);
-      setLogs((prev) => prev + event.data);
+      // SSE strips newlines from data field, so we need to add them back
+      // The data already contains the text, we just ensure proper line breaks
+      setLogs((prev) => {
+        // If the data already has a newline at the end, don't add another
+        const hasNewline = event.data.endsWith('\n');
+        return prev + event.data + (hasNewline ? '' : '\n');
+      });
     };
 
     eventSource.addEventListener('done', (event) => {

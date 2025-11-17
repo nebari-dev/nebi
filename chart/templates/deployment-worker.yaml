@@ -1,45 +1,29 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "darb.fullname" . }}
-  namespace: {{ include "darb.namespace" . }}
+  name: {{ include "darb.fullname" . }}-worker
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "darb.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.deployment.worker.replicas }}
   selector:
     matchLabels:
       {{- include "darb.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
   template:
     metadata:
-      annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/pvc.yaml") . | sha256sum }}
-        {{- with .Values.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
       labels:
         {{- include "darb.selectorLabels" . | nindent 8 }}
-        {{- with .Values.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
+        app.kubernetes.io/component: worker
     spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
       serviceAccountName: {{ include "darb.serviceAccountName" . }}
-      securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-      - name: {{ .Chart.Name }}
-        securityContext:
-          {{- toYaml .Values.securityContext | nindent 10 }}
+      - name: darb
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        ports:
-        - name: http
-          containerPort: {{ .Values.service.targetPort }}
-          protocol: TCP
+        args: ["--mode=worker"]  # Worker only, no API
         env:
         - name: GIN_MODE
           value: {{ .Values.config.ginMode | quote }}
@@ -75,61 +59,17 @@ spec:
           {{- else }}
           value: "localhost:6379"
           {{- end }}
-        # Legacy env vars for backward compatibility
-        - name: DATABASE_PATH
-          value: {{ .Values.config.databasePath | quote }}
-        - name: LOG_LEVEL
-          value: {{ .Values.config.logLevel | quote }}
-        - name: LOG_FORMAT
-          value: {{ .Values.config.logFormat | quote }}
         # Logging configuration
         - name: DARB_LOG_LEVEL
           value: {{ .Values.config.logLevel | quote }}
         - name: DARB_LOG_FORMAT
           value: {{ .Values.config.logFormat | quote }}
-        {{- if .Values.admin }}
-        - name: ADMIN_USERNAME
-          value: {{ .Values.admin.username | quote }}
-        - name: ADMIN_PASSWORD
-          value: {{ .Values.admin.password | quote }}
-        - name: ADMIN_EMAIL
-          value: {{ .Values.admin.email | quote }}
-        {{- end }}
-        {{- if .Values.persistence.enabled }}
+        resources:
+          {{- toYaml .Values.deployment.worker.resources | nindent 10 }}
         volumeMounts:
-        - name: data
-          mountPath: /app/data
         - name: environments
           mountPath: /app/data/environments
-        {{- end }}
-        resources:
-          {{- toYaml .Values.resources | nindent 10 }}
-        {{- with .Values.livenessProbe }}
-        livenessProbe:
-          {{- toYaml . | nindent 10 }}
-        {{- end }}
-        {{- with .Values.readinessProbe }}
-        readinessProbe:
-          {{- toYaml . | nindent 10 }}
-        {{- end }}
-      {{- if .Values.persistence.enabled }}
       volumes:
-      - name: data
-        persistentVolumeClaim:
-          claimName: {{ include "darb.fullname" . }}-data
       - name: environments
         persistentVolumeClaim:
           claimName: {{ include "darb.fullname" . }}-environments
-      {{- end }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}

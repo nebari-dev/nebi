@@ -1,6 +1,27 @@
 # Development overrides for local k3d environment
 # These values override the defaults in values.yaml
 
+## Deployment configuration for development
+deployment:
+  api:
+    replicas: 1  # Just 1 API pod for dev
+    resources:
+      requests:
+        memory: 128Mi
+        cpu: 50m
+      limits:
+        memory: 512Mi
+        cpu: 500m
+  worker:
+    replicas: 1  # Just 1 worker pod for dev
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 1Gi
+        cpu: 500m
+
 ## Image configuration for local development
 image:
   pullPolicy: Never  # Use locally built images, don't pull from registry
@@ -30,7 +51,7 @@ persistence:
 
   environments:
     storageClass: "local-path"
-    accessMode: ReadWriteOnce  # local-path doesn't support ReadWriteMany
+    accessMode: ReadWriteOnce  # local-path only supports RWO; works in k3d single-node cluster
     size: 10Gi
 
 ## Application configuration for development
@@ -54,27 +75,38 @@ readinessProbe:
   initialDelaySeconds: 3
   periodSeconds: 5
 
-## Database configuration - SQLite for development
+## Database configuration - PostgreSQL for development (required for separate workers)
 database:
-  driver: sqlite
-  dsn: "/app/data/darb.db"
+  driver: postgres
+  dsn: ""  # Will be auto-constructed from postgres settings
   maxIdleConns: 5
   maxOpenConns: 10
   connMaxLifetime: 30
 
-## Queue configuration - Memory queue for development
+## Queue configuration - Valkey for development (required for separate workers)
 queue:
-  type: memory
-  valkeyAddr: ""
+  type: valkey
+  valkeyAddr: ""  # Will be auto-constructed from valkey settings
 
-## PostgreSQL - disabled for development
+## PostgreSQL - enabled for development (required for separate workers)
 postgres:
-  enabled: false
+  enabled: true
+  password: "dev-password-123"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
 
-## Valkey - disabled for development
+## Valkey - enabled for development (required for separate workers)
 valkey:
-  enabled: false
-
-## Worker - single pod in development (API + Worker together)
-worker:
-  separateDeployment: false
+  enabled: true
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "250m"

@@ -37,7 +37,7 @@ k8s_yaml(helm(
     values=['./chart/values-k8s-test.yaml'],
 ))
 
-# Group setup resources (namespace, ServiceAccount, PVCs, Secrets, etc.)
+# Group setup resources (Namespace, ServiceAccount, PVCs, Secrets, etc.)
 k8s_resource(
     objects=[
         'darb:namespace',
@@ -67,12 +67,19 @@ k8s_resource(
     port_forwards='6379:6379',  # Forward to localhost:6379
 )
 
-# Configure main Darb deployment
+# Configure Darb API deployment
 k8s_resource(
-    'darb',
+    'darb-api',
     labels=['app'],
     resource_deps=['setup', 'darb-postgres', 'darb-valkey'],
     port_forwards='8080:8080',  # Forward to localhost:8080
+)
+
+# Configure Darb Worker deployment
+k8s_resource(
+    'darb-worker',
+    labels=['app'],
+    resource_deps=['setup', 'darb-postgres', 'darb-valkey'],
 )
 
 # In CI mode, wait for deployment to be ready then exit

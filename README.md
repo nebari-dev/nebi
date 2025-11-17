@@ -1,7 +1,7 @@
 # Darb
 
 <p align="center">
-  <img src="assets/darb-high-resolution-logo.png" alt="Darb" width="300"/>
+  <img src="assets/darb-high-resolution-logo.png" alt="Darb" width="500"/>
 </p>
 
 <p align="center">

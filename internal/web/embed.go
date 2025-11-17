@@ -7,6 +7,7 @@ import (
 )
 
 // Embed the frontend build output
+//
 //go:embed dist/*
 var frontendFS embed.FS
 

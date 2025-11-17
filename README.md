@@ -5,14 +5,36 @@
 </p>
 
 <p align="center">
-  Multi-user environment management for Pixi and UV
+  Multi-user environment management for Pixi (UV support coming soon)
+</p>
+
+<p align="center">
+  <a href="https://github.com/aktech/darb/actions/workflows/ci.yml">
+    <img src="https://github.com/aktech/darb/actions/workflows/ci.yml/badge.svg" alt="CI">
+  </a>
+  <a href="https://github.com/aktech/darb/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/aktech/darb" alt="License">
+  </a>
+  <a href="https://github.com/aktech/darb/releases">
+    <img src="https://img.shields.io/github/v/release/aktech/darb?include_prereleases" alt="Release">
+  </a>
+  <a href="https://github.com/aktech/darb/issues">
+    <img src="https://img.shields.io/github/issues/aktech/darb" alt="Issues">
+  </a>
+  <a href="https://github.com/aktech/darb/pulls">
+    <img src="https://img.shields.io/github/issues-pr/aktech/darb" alt="Pull Requests">
+  </a>
 </p>
 
 ---
 
+> **⚠️ Alpha Software**: Darb is currently in alpha. APIs and features may change without notice. Not recommended for production use.
+
 ## What is Darb?
 
-Darb is a REST API and web UI for managing [Pixi](https://prefix.dev/) and [UV](https://github.com/astral-sh/uv) environments in multi-user environments. It handles environment creation, package installation, and job execution with proper isolation and access control.
+Darb is a REST API and web UI for managing [Pixi](https://prefix.dev/) environments in multi-user settings. It handles environment creation, package installation, and job execution with proper isolation and access control.
+
+> **Note**: [UV](https://github.com/astral-sh/uv) support is planned for a future release and is currently in the roadmap.
 
 **Key features:**
 - Async job queue for package operations

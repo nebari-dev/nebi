@@ -184,7 +184,7 @@ func (h *JobHandler) streamLogsFromValkey(c *gin.Context, jobID uuid.UUID) {
 
 		// Check if this is a completion message
 		if logLine == "\n[COMPLETED] Job finished successfully\n" ||
-		   (len(logLine) > 7 && logLine[:7] == "\n[ERROR]") {
+			(len(logLine) > 7 && logLine[:7] == "\n[ERROR]") {
 			fmt.Fprintf(c.Writer, "event: done\ndata: Job completed\n\n")
 			c.Writer.Flush()
 		}
@@ -229,4 +229,3 @@ func (h *JobHandler) streamLogsFromBroker(c *gin.Context, jobID uuid.UUID) {
 		}
 	}
 }
-

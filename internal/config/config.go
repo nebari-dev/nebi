@@ -25,11 +25,11 @@ type ServerConfig struct {
 
 // DatabaseConfig holds database configuration
 type DatabaseConfig struct {
-	Driver         string `mapstructure:"driver"`           // "sqlite" or "postgres"
-	DSN            string `mapstructure:"dsn"`              // Connection string
-	MaxIdleConns   int    `mapstructure:"max_idle_conns"`   // Maximum idle connections (Postgres)
-	MaxOpenConns   int    `mapstructure:"max_open_conns"`   // Maximum open connections (Postgres)
-	ConnMaxLifetime int   `mapstructure:"conn_max_lifetime"` // Connection max lifetime in minutes (Postgres)
+	Driver          string `mapstructure:"driver"`            // "sqlite" or "postgres"
+	DSN             string `mapstructure:"dsn"`               // Connection string
+	MaxIdleConns    int    `mapstructure:"max_idle_conns"`    // Maximum idle connections (Postgres)
+	MaxOpenConns    int    `mapstructure:"max_open_conns"`    // Maximum open connections (Postgres)
+	ConnMaxLifetime int    `mapstructure:"conn_max_lifetime"` // Connection max lifetime in minutes (Postgres)
 }
 
 // AuthConfig holds authentication configuration

@@ -31,10 +31,10 @@ type PackageManager interface {
 
 // InitOptions contains parameters for initializing a new environment
 type InitOptions struct {
-	EnvPath   string   // Path where environment will be created
-	Name      string   // Environment name
-	Python    string   // Python version (if applicable)
-	Channels  []string // Conda channels (pixi only)
+	EnvPath   string    // Path where environment will be created
+	Name      string    // Environment name
+	Python    string    // Python version (if applicable)
+	Channels  []string  // Conda channels (pixi only)
 	LogWriter io.Writer // Optional writer for streaming command output
 }
 

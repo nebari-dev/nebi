@@ -26,7 +26,7 @@ func Init(format, level string) {
 	}
 
 	opts := &slog.HandlerOptions{
-		Level: logLevel,
+		Level:     logLevel,
 		AddSource: true,
 	}
 

@@ -6,6 +6,30 @@
 nameOverride: ""
 fullnameOverride: ""
 
+## Deployment configuration
+deployment:
+  # API deployment configuration
+  api:
+    replicas: 2
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 512Mi  # Lower memory - no job execution
+        cpu: 500m
+
+  # Worker deployment configuration
+  worker:
+    replicas: 2  # Base replica count (can be scaled manually or via KEDA)
+    resources:
+      requests:
+        memory: 1Gi
+        cpu: 500m
+      limits:
+        memory: 2Gi  # Higher memory - runs pixi jobs
+        cpu: 2000m
+
 ## Image configuration
 image:
   repository: darb
@@ -184,16 +208,3 @@ valkey:
     limits:
       memory: "512Mi"
       cpu: "500m"
-
-## Worker configuration
-worker:
-  # Enable separate worker deployment (scaled independently)
-  separateDeployment: false
-  replicas: 3
-  resources:
-    requests:
-      memory: "256Mi"
-      cpu: "200m"
-    limits:
-      memory: "1Gi"
-      cpu: "1000m"

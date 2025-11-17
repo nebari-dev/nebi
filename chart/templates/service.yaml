@@ -21,3 +21,4 @@ spec:
     {{- end }}
   selector:
     {{- include "darb.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: api

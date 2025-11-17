@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: {{ include "darb.namespace" . }}
-  labels:
-    {{- include "darb.labels" . | nindent 4 }}

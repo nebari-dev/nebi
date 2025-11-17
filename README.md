@@ -1,391 +1,192 @@
 # Darb
 
-**Multi-User Environment Management System**
+<p align="center">
+  <img src="assets/darb-high-resolution-logo.png" alt="Darb" width="300"/>
+</p>
 
-Darb is a REST API with web UI for managing pixi (and future uv) environments in multi-user systems. It supports local, Docker, and Kubernetes deployments with a container-first execution model.
+<p align="center">
+  Multi-user environment management for Pixi and UV
+</p>
 
-## Features
+---
 
-### Phase 1: Core Infrastructure ✅
+## What is Darb?
 
-- **Single Binary Deployment**: Complete application ships as one Go binary
-- **Structured Logging**: Using Go's standard library `log/slog` (JSON for production, text for development)
-- **Flexible Database**: SQLite for local development, PostgreSQL for production
-- **Authentication**: Basic Auth with bcrypt password hashing and JWT tokens
-- **Job Queue**: In-memory queue system (extensible to Redis)
-- **REST API**: Clean API built with Gin framework
-- **Swagger Docs**: Auto-generated API documentation at `/docs`
-- **Hot Reload**: Development mode with live reload using Air
+Darb is a REST API and web UI for managing [Pixi](https://prefix.dev/) and [UV](https://github.com/astral-sh/uv) environments in multi-user environments. It handles environment creation, package installation, and job execution with proper isolation and access control.
 
-### Phase 2: Package Manager Abstraction ✅
-
-- **Package Manager Interface**: Clean abstraction for pixi and uv operations
-- **Pixi Support**: Full implementation with init, install, remove, list, update operations
-- **Manifest Parsing**: Parse and read pixi.toml files
-- **UV Stub**: Placeholder for future UV support
-- **Docker Images**: Base images with pixi and uv pre-installed
-- **Configurable**: Select default package manager via config
-
-### Phase 3: Local Executor & Backend Operations ✅
-
-- **Local Executor**: Run package manager operations directly on host
-- **Job Worker**: Background worker processing queued jobs
-- **Environment API**: Full CRUD operations for environments
-- **Package Operations**: Install and remove packages via API
-- **Job Tracking**: View job status, logs, and errors
-- **Async Processing**: All operations run asynchronously with queue
-- **Tested**: End-to-end tested with pixi environments
+**Key features:**
+- Async job queue for package operations
+- Role-based access control (RBAC)
+- PostgreSQL + Valkey backend
+- Kubernetes-native with separate API/worker deployments
+- Real-time log streaming
 
 ## Quick Start
 
-### Prerequisites
+### Local Development
 
-- Go 1.21 or higher
-- Make (optional, for convenience)
-
-### Installation
-
-1. Clone the repository:
 ```bash
-git clone https://github.com/aktech/darb.git
-cd darb
-```
-
-2. Install development tools:
-```bash
+# Install dependencies
 make install-tools
-```
 
-This installs:
-- `swag` - Swagger documentation generator
-- `air` - Live reload for Go apps
-
-### Running Locally
-
-#### Option 1: Using Make (with hot reload)
-
-```bash
+# Run with hot reload
 make dev
+
+# API available at http://localhost:8080
+# Docs at http://localhost:8080/docs
 ```
 
-This will:
-- Generate Swagger documentation
-- Start the server with hot reload on port 8080
-- Use SQLite database (`darb.db`)
-- Enable text-based logging
-
-#### Option 2: Standard Go run
+### Kubernetes Deployment
 
 ```bash
-make run
-```
+# Build and import to k3d
+docker build -t darb:latest .
+k3d image import darb:latest -c darb-dev
 
-Or without Make:
-```bash
-swag init -g cmd/server/main.go -o docs
-go run cmd/server/main.go
-```
+# Deploy
+helm install darb ./chart -n darb --create-namespace \
+  -f chart/values-dev.yaml
 
-#### Option 3: Build binary
-
-```bash
-make build
-./bin/darb
-```
-
-### Configuration
-
-Darb uses a `config.yaml` file or environment variables. Example configuration:
-
-```yaml
-server:
-  port: 8080
-  mode: development
-
-database:
-  driver: sqlite
-  dsn: ./darb.db
-
-auth:
-  type: basic
-  jwt_secret: change-me-in-production
-
-queue:
-  type: memory
-
-log:
-  format: text
-  level: info
-```
-
-#### Environment Variables
-
-Override config with environment variables (prefix: `DARB_`):
-
-```bash
-export DARB_SERVER_PORT=9090
-export DARB_DATABASE_DRIVER=postgres
-export DARB_DATABASE_DSN="host=localhost user=darb password=secret dbname=darb"
-export DARB_LOG_FORMAT=json
-export DARB_LOG_LEVEL=debug
-```
-
-### First Steps
-
-1. **Start the server**:
-```bash
-make dev
-```
-
-2. **Check health**:
-```bash
+# Access
 curl http://localhost:8080/api/v1/health
 ```
 
-3. **View API documentation**:
-Open your browser to http://localhost:8080/docs
+## Architecture
 
-4. **Create a test user** (requires direct database access for now):
-```bash
-# Using SQLite CLI
-sqlite3 darb.db
+```
+┌─────────────┐      ┌──────────────┐
+│  API Pod    │      │ Worker Pod   │
+│             │      │              │
+│ HTTP :8080  │      │ Processes    │
+│ Enqueues ───┼──┐   │ pixi/uv jobs │
+└─────────────┘  │   └──────────────┘
+                 │
+          ┌──────▼──────┐
+          │   Valkey    │
+          │   (Queue)   │
+          └──────┬──────┘
+                 │
+          ┌──────▼──────┐
+          │ PostgreSQL  │
+          └─────────────┘
 ```
 
-```sql
--- Create a user (password: "password123" hashed with bcrypt)
-INSERT INTO users (username, password_hash, email, created_at, updated_at)
-VALUES (
-  'admin',
-  '$2a$10$rMN8pGH8z7kI5KqYhJxF1.WQBqvXqL0W6XHlZ8xhF7KqYhJxF1.WQ',
-  'admin@example.com',
-  datetime('now'),
-  datetime('now')
-);
-```
+- **API**: Handles HTTP requests, enqueues jobs
+- **Worker**: Processes jobs asynchronously
+- **Valkey**: Job queue
+- **PostgreSQL**: Persistent storage
 
-5. **Login**:
+## API Usage
+
+### Authentication
+
 ```bash
+# Login
 curl -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "password123"}'
+  -d '{"username":"admin","password":"admin123"}'
+
+# Returns JWT token
+export TOKEN="<your-token>"
 ```
 
-This returns a JWT token:
-```json
-{
-  "token": "eyJhbGc...",
-  "user": {
-    "id": 1,
-    "username": "admin",
-    "email": "admin@example.com"
-  }
-}
-```
+### Environments
 
-6. **Use the token for authenticated requests**:
 ```bash
-export TOKEN="<your-jwt-token>"
+# Create environment
+curl -X POST http://localhost:8080/api/v1/environments \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"myenv","package_manager":"pixi"}'
 
+# List environments
 curl http://localhost:8080/api/v1/environments \
   -H "Authorization: Bearer $TOKEN"
+
+# Install packages
+curl -X POST http://localhost:8080/api/v1/environments/{id}/packages \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"packages":["numpy","pandas"]}'
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+DARB_SERVER_PORT=8080
+DARB_DATABASE_DRIVER=postgres
+DARB_DATABASE_DSN="postgres://user:pass@host:5432/darb"
+DARB_QUEUE_TYPE=valkey
+DARB_QUEUE_VALKEY_ADDR=valkey:6379
+DARB_AUTH_JWT_SECRET=<secret>
+DARB_LOG_LEVEL=info
+DARB_LOG_FORMAT=json
+```
+
+### Helm Values
+
+See `chart/values.yaml` for production and `chart/values-dev.yaml` for development.
+
+**Key settings:**
+```yaml
+deployment:
+  api:
+    replicas: 2
+    resources:
+      limits:
+        memory: 512Mi
+  worker:
+    replicas: 2
+    resources:
+      limits:
+        memory: 2Gi
+
+database:
+  driver: postgres
+
+queue:
+  type: valkey
+```
+
+## Scaling
+
+```bash
+# Scale workers based on job queue depth
+kubectl scale deployment darb-worker -n darb --replicas=5
+
+# Scale API for HTTP traffic
+kubectl scale deployment darb-api -n darb --replicas=3
+```
+
+## Development
+
+```bash
+make help           # Show all targets
+make dev            # Run with hot reload
+make build          # Build binary
+make test           # Run tests
+make swagger        # Generate API docs
 ```
 
 ## Project Structure
 
 ```
 darb/
-├── cmd/
-│   └── server/
-│       └── main.go              # Application entry point
+├── cmd/server/           # Application entry point
 ├── internal/
-│   ├── api/
-│   │   ├── router.go            # Gin router setup
-│   │   └── handlers/            # HTTP handlers
-│   ├── auth/
-│   │   ├── auth.go              # Auth interface
-│   │   └── basic.go             # Basic auth implementation
-│   ├── config/
-│   │   └── config.go            # Configuration management
-│   ├── db/
-│   │   └── db.go                # Database setup and migrations
-│   ├── logger/
-│   │   └── logger.go            # Structured logging setup
-│   ├── models/                  # Database models
-│   │   ├── user.go
-│   │   ├── role.go
-│   │   ├── environment.go
-│   │   ├── job.go
-│   │   ├── permission.go
-│   │   ├── template.go
-│   │   ├── package.go
-│   │   └── audit_log.go
-│   └── queue/
-│       ├── queue.go             # Queue interface
-│       └── memory.go            # In-memory queue
-├── docs/                        # Generated Swagger docs
-├── config.yaml                  # Configuration file
-├── .air.toml                    # Air config for hot reload
-├── Makefile                     # Build commands
-└── README.md
+│   ├── api/              # HTTP handlers and routing
+│   ├── auth/             # Authentication (JWT, basic auth)
+│   ├── db/               # Database models and migrations
+│   ├── executor/         # Job execution (local/docker/k8s)
+│   ├── queue/            # Job queue (memory/valkey)
+│   ├── worker/           # Background job processor
+│   └── packagemanager/   # Pixi/UV abstractions
+├── chart/                # Helm chart for Kubernetes
+└── frontend/             # React web UI
 ```
-
-## API Endpoints
-
-### Public Endpoints
-
-- `GET /api/v1/health` - Health check
-- `POST /api/v1/auth/login` - User login
-
-### Protected Endpoints (require JWT)
-
-- `GET /api/v1/environments` - List environments (placeholder)
-- `POST /api/v1/environments` - Create environment (placeholder)
-- `GET /api/v1/environments/:id` - Get environment (placeholder)
-- `DELETE /api/v1/environments/:id` - Delete environment (placeholder)
-- `POST /api/v1/environments/:id/packages` - Install package (placeholder)
-- `DELETE /api/v1/environments/:id/packages/:package` - Remove package (placeholder)
-- `GET /api/v1/jobs` - List jobs (placeholder)
-- `GET /api/v1/jobs/:id` - Get job status (placeholder)
-- `GET /api/v1/templates` - List templates (placeholder)
-
-### Admin Endpoints
-
-- `GET /api/v1/admin/users` - List users (placeholder)
-- `POST /api/v1/admin/users` - Create user (placeholder)
-- `GET /api/v1/admin/roles` - List roles (placeholder)
-- `POST /api/v1/admin/permissions` - Grant permissions (placeholder)
-- `GET /api/v1/admin/audit-logs` - View audit logs (placeholder)
-
-## Development
-
-### Available Make Targets
-
-```bash
-make help          # Show all available targets
-make install-tools # Install swag and air
-make build         # Build the binary
-make run           # Run without hot reload
-make dev           # Run with hot reload (recommended)
-make swagger       # Generate Swagger docs
-make test          # Run tests
-make clean         # Clean build artifacts
-make tidy          # Tidy go.mod
-make fmt           # Format code
-make vet           # Run go vet
-make lint          # Run formatters and linters
-```
-
-### Database Schema
-
-The database includes the following tables:
-
-- **users**: System users with authentication
-- **roles**: User roles (admin, owner, editor, viewer)
-- **environments**: Package manager environments
-- **jobs**: Background tasks (create env, install package, etc.)
-- **permissions**: User access to environments
-- **templates**: Pre-configured environment templates
-- **packages**: Installed packages in environments
-- **audit_logs**: Compliance and security audit trail
-
-### Production Deployment
-
-For production, use PostgreSQL and configure appropriately:
-
-```yaml
-server:
-  port: 8080
-  mode: production
-
-database:
-  driver: postgres
-  dsn: "host=db.example.com user=darb password=secret dbname=darb sslmode=require"
-
-auth:
-  type: basic
-  jwt_secret: <strong-random-secret>
-
-queue:
-  type: memory  # or redis for distributed deployments
-
-log:
-  format: json
-  level: info
-```
-
-## Roadmap
-
-### Phase 1: Core Infrastructure ✅ COMPLETE
-- Project structure, logging, database, queue, auth, Swagger
-
-### Phase 2: Package Manager Abstraction ✅ COMPLETE
-- Abstract interface for pixi/uv operations
-- Pixi implementation with full CRUD operations
-- UV stub for future implementation
-- Container base images (Dockerfiles)
-- Configuration support for package manager selection
-- 📋 **[See PHASE2.md for detailed implementation guide](./PHASE2.md)**
-
-### Phase 3: Local Executor & Backend Operations ✅ COMPLETE
-- Local executor for running package manager operations
-- Job worker for async background processing
-- Full CRUD API for environments
-- Package install/remove operations
-- Real-time job tracking with logs
-- End-to-end tested and working
-- 📋 **[See PHASE3.md for detailed implementation guide](./PHASE3.md)**
-
-### Phase 4: User Interface (Next) 🚧
-- React frontend with TypeScript and Vite
-- Tailwind CSS for styling
-- Environment management UI
-- Package installation interface
-- Real-time job log viewing
-- Authentication and login UI
-- 📋 **[See PHASE4.md for detailed implementation guide](./PHASE4.md)**
-
-### Phase 5: Docker & Kubernetes Runtime
-- Docker executor implementation
-- Kubernetes executor implementation
-- Volume management for persistent environments
-
-### Phase 6: WebSocket & Real-time Features
-- WebSocket support for live log streaming
-- Real-time environment status updates
-- Progress indicators for long-running jobs
-
-### Phase 7: RBAC & Access Control
-- Role-based access control
-- Multi-user permissions
-- Environment sharing
-- Admin APIs for user/permission management
-
-### Phase 8: Admin Interface
-- Admin dashboard
-- User management UI
-- Role and permission management
-- System monitoring and audit logs
-
-### Phase 9: Production Features
-- Embedded frontend in Go binary
-- Multi-platform releases (Linux, macOS, Windows)
-- Docker image for easy deployment
-- Helm chart for Kubernetes
-
-## Current Status
-
-**Completed: Phases 1-3** ✅
-- Full backend API with environment and package management
-- Local executor with pixi support
-- Async job processing with real-time tracking
-
-**Next: Phase 4 - User Interface** 🚧
-- Building React frontend for environment management
-
-## Contributing
-
-Contributions are welcome! Currently in Phase 4 development (User Interface).
 
 ## License
 
-MIT License
+MIT

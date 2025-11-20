@@ -12,7 +12,7 @@ ports:
   - port: 6551:6443  # API server port
     nodeFilters:
       - server:0
-  - port: 8080:30080 # Darb web UI (maps to NodePort 30080)
+  - port: 8460:30080 # Darb web UI (maps to NodePort 30080)
     nodeFilters:
       - server:0
 

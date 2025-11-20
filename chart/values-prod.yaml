@@ -152,7 +152,7 @@ admin:
 livenessProbe:
   httpGet:
     path: /api/v1/health
-    port: 8080
+    port: 8460
   initialDelaySeconds: 30
   periodSeconds: 30
   timeoutSeconds: 5
@@ -161,7 +161,7 @@ livenessProbe:
 readinessProbe:
   httpGet:
     path: /api/v1/health
-    port: 8080
+    port: 8460
   initialDelaySeconds: 10
   periodSeconds: 10
   timeoutSeconds: 3

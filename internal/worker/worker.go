@@ -245,6 +245,7 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 				EnvironmentID: env.ID,
 				Name:          pkgName,
 				Version:       "", // TODO: Extract version from pixi
+				InstalledAt:   time.Now(),
 			}
 			w.db.Create(&pkg)
 		}

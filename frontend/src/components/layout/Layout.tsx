@@ -20,7 +20,11 @@ export const Layout = () => {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-8">
-              <h1 className="text-2xl font-bold">Darb</h1>
+              <img
+                src="/darb-logo.png"
+                alt="Darb"
+                className="h-10 w-auto"
+              />
               <nav className="flex gap-1">
                 <NavLink to="/environments">
                   {({ isActive }) => (

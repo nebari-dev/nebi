@@ -56,7 +56,7 @@ COPY --from=backend-builder --chown=nonroot:nonroot /app/internal/rbac/model.con
 WORKDIR /app
 
 # Expose port
-EXPOSE 8080
+EXPOSE 8460
 
 # Environment variables
 ENV GIN_MODE=release \

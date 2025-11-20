@@ -64,7 +64,7 @@ securityContext:
 service:
   type: ClusterIP
   port: 80
-  targetPort: 8080
+  targetPort: 8460
   annotations: {}
 
 ## Ingress configuration
@@ -120,7 +120,7 @@ config:
 livenessProbe:
   httpGet:
     path: /api/v1/health
-    port: 8080
+    port: 8460
   initialDelaySeconds: 10
   periodSeconds: 30
   timeoutSeconds: 5
@@ -129,7 +129,7 @@ livenessProbe:
 readinessProbe:
   httpGet:
     path: /api/v1/health
-    port: 8080
+    port: 8460
   initialDelaySeconds: 5
   periodSeconds: 10
   timeoutSeconds: 3

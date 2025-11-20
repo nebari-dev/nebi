@@ -62,7 +62,7 @@ func Load() (*Config, error) {
 	v := viper.New()
 
 	// Set defaults for local development
-	v.SetDefault("server.port", 8080)
+	v.SetDefault("server.port", 8460)
 	v.SetDefault("server.mode", "development")
 	v.SetDefault("database.driver", "sqlite")
 	v.SetDefault("database.dsn", "./darb.db")

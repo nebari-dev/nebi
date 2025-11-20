@@ -2,7 +2,7 @@
 # This is an example configuration for local development
 
 server:
-  port: 8080
+  port: 8460
   mode: development  # "development" or "production"
 
 database:

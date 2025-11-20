@@ -72,7 +72,7 @@ k8s_resource(
     'darb-api',
     labels=['app'],
     resource_deps=['setup', 'darb-postgres', 'darb-valkey'],
-    port_forwards='8080:8080',  # Forward to localhost:8080
+    port_forwards='8460:8460',  # Forward to localhost:8460
 )
 
 # Configure Darb Worker deployment
@@ -95,10 +95,10 @@ else:
 🚀 Starting up...
 
 Once ready:
-  • Darb UI:      http://localhost:8080
+  • Darb UI:      http://localhost:8460
   • Tilt UI:      http://localhost:10350
-  • API:          http://localhost:8080/api/v1/health
-  • Swagger:      http://localhost:8080/docs
+  • API:          http://localhost:8460/api/v1/health
+  • Swagger:      http://localhost:8460/docs
   • PostgreSQL:   localhost:5432 (darb/testpassword123)
   • Valkey:       localhost:6379
 

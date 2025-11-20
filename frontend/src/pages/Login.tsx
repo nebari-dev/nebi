@@ -4,7 +4,7 @@ import { useAuthStore } from '@/store/authStore';
 import { authApi } from '@/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 
 export const Login = () => {
   const [username, setUsername] = useState('');
@@ -32,24 +32,30 @@ export const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-3xl font-bold text-center">Darb</CardTitle>
-          <p className="text-center text-muted-foreground">
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <Card className="w-full max-w-lg shadow-lg">
+        <CardHeader className="space-y-6 pb-8">
+          <div className="flex justify-center">
+            <img
+              src="/darb-logo.png"
+              alt="Darb Logo"
+              className="h-24 w-auto"
+            />
+          </div>
+          <p className="text-center text-muted-foreground text-base">
             Environment Management System
           </p>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+        <CardContent className="px-8 pb-8">
+          <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
-              <div className="bg-destructive/10 text-destructive p-3 rounded-md text-sm">
+              <div className="bg-destructive/10 text-destructive p-4 rounded-md text-sm">
                 {error}
               </div>
             )}
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
+            <div className="space-y-3">
+              <label className="text-base font-medium text-foreground">
                 Username
               </label>
               <Input
@@ -58,11 +64,12 @@ export const Login = () => {
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Enter your username"
                 required
+                className="h-12 text-base"
               />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
+            <div className="space-y-3">
+              <label className="text-base font-medium text-foreground">
                 Password
               </label>
               <Input
@@ -71,13 +78,14 @@ export const Login = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 required
+                className="h-12 text-base"
               />
             </div>
 
             <Button
               type="submit"
               disabled={loading}
-              className="w-full"
+              className="w-full h-12 text-base font-medium"
             >
               {loading ? 'Signing in...' : 'Sign in'}
             </Button>

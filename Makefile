@@ -46,9 +46,23 @@ run: swagger ## Run the server (without hot reload)
 	@echo "Starting darb server..."
 	@go run cmd/server/main.go
 
-dev: swagger ## Run with hot reload using Air
+dev: swagger ## Run with hot reload (frontend + backend)
 	@echo "Starting darb in development mode with hot reload..."
-	@air
+	@if [ ! -d "frontend/node_modules" ]; then \
+		echo "Frontend dependencies not found. Installing..."; \
+		cd frontend && npm install; \
+	fi
+	@echo ""
+	@echo "🚀 Starting services..."
+	@echo "  Frontend: http://localhost:8461"
+	@echo "  Backend:  http://localhost:8460"
+	@echo "  API Docs: http://localhost:8460/docs"
+	@echo ""
+	@echo "Press Ctrl+C to stop all services"
+	@echo ""
+	@trap 'kill 0' EXIT; \
+	(cd frontend && npm run dev) & \
+	air
 
 migrate: ## Run database migrations
 	@echo "Running migrations..."

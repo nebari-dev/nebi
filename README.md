@@ -48,15 +48,26 @@ Darb is a REST API and web UI for managing [Pixi](https://prefix.dev/) environme
 ### Local Development
 
 ```bash
-# Install dependencies
+# Install development tools
 make install-tools
 
-# Run with hot reload
-make dev
-
-# API available at http://localhost:8080
-# Docs at http://localhost:8080/docs
+# Run with hot reload (frontend + backend)
+# Frontend dependencies will be automatically installed if needed
+ADMIN_USERNAME=admin ADMIN_PASSWORD=admin123 make dev
 ```
+
+This will start:
+- **Frontend dev server** at http://localhost:8461 (with hot reload)
+- **Backend API** at http://localhost:8460 (with hot reload)
+- **API docs** at http://localhost:8460/docs
+
+**Default Admin Credentials:**
+- Username: `admin`
+- Password: `admin123`
+
+> **Note**: The admin user is automatically created on first startup when `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables are set. If you start the server without these variables, no admin user will be created and you won't be able to log in.
+
+> **Tip**: Access the app at http://localhost:8461 for the best development experience with instant hot reload of frontend changes!
 
 ### Kubernetes Deployment
 
@@ -70,7 +81,7 @@ helm install darb ./chart -n darb --create-namespace \
   -f chart/values-dev.yaml
 
 # Access
-curl http://localhost:8080/api/v1/health
+curl http://localhost:8460/api/v1/health
 ```
 
 ## Architecture
@@ -79,7 +90,7 @@ curl http://localhost:8080/api/v1/health
 ┌─────────────┐      ┌──────────────┐
 │  API Pod    │      │ Worker Pod   │
 │             │      │              │
-│ HTTP :8080  │      │ Processes    │
+│ HTTP :8460  │      │ Processes    │
 │ Enqueues ───┼──┐   │ pixi/uv jobs │
 └─────────────┘  │   └──────────────┘
                  │
@@ -104,7 +115,7 @@ curl http://localhost:8080/api/v1/health
 
 ```bash
 # Login
-curl -X POST http://localhost:8080/api/v1/auth/login \
+curl -X POST http://localhost:8460/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}'
 
@@ -116,17 +127,17 @@ export TOKEN="<your-token>"
 
 ```bash
 # Create environment
-curl -X POST http://localhost:8080/api/v1/environments \
+curl -X POST http://localhost:8460/api/v1/environments \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name":"myenv","package_manager":"pixi"}'
 
 # List environments
-curl http://localhost:8080/api/v1/environments \
+curl http://localhost:8460/api/v1/environments \
   -H "Authorization: Bearer $TOKEN"
 
 # Install packages
-curl -X POST http://localhost:8080/api/v1/environments/{id}/packages \
+curl -X POST http://localhost:8460/api/v1/environments/{id}/packages \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"packages":["numpy","pandas"]}'
@@ -137,14 +148,29 @@ curl -X POST http://localhost:8080/api/v1/environments/{id}/packages \
 ### Environment Variables
 
 ```bash
-DARB_SERVER_PORT=8080
+# Server configuration
+DARB_SERVER_PORT=8460
+DARB_SERVER_MODE=development
+
+# Database configuration
 DARB_DATABASE_DRIVER=postgres
 DARB_DATABASE_DSN="postgres://user:pass@host:5432/darb"
+
+# Queue configuration
 DARB_QUEUE_TYPE=valkey
 DARB_QUEUE_VALKEY_ADDR=valkey:6379
+
+# Authentication
 DARB_AUTH_JWT_SECRET=<secret>
+
+# Logging
 DARB_LOG_LEVEL=info
 DARB_LOG_FORMAT=json
+
+# Admin user bootstrap (creates admin user on first startup if no users exist)
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=admin123
+ADMIN_EMAIL=admin@darb.local  # Optional, defaults to <username>@darb.local
 ```
 
 ### Helm Values

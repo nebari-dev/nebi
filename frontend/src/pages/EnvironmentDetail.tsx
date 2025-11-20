@@ -193,7 +193,9 @@ export const EnvironmentDetail = () => {
                           {pkg.version || '-'}
                         </td>
                         <td className="p-4 text-muted-foreground">
-                          {new Date(pkg.installed_at).toLocaleDateString()}
+                          {pkg.installed_at && new Date(pkg.installed_at).getFullYear() > 1900
+                            ? new Date(pkg.installed_at).toLocaleString()
+                            : '-'}
                         </td>
                         <td className="p-4 text-right">
                           <Button

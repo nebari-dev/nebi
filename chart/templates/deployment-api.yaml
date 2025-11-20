@@ -26,7 +26,7 @@ spec:
         args: ["--mode=server"]  # API only, no workers
         ports:
         - name: http
-          containerPort: 8080
+          containerPort: 8460
           protocol: TCP
         livenessProbe:
           httpGet:

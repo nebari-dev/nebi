@@ -33,7 +33,7 @@ var Version = "dev"
 // @title Darb API
 // @version 1.0
 // @description Multi-User Environment Management System API
-// @host localhost:8080
+// @host localhost:8460
 // @BasePath /api/v1
 // @securityDefinitions.apikey BearerAuth
 // @in header

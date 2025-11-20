@@ -66,7 +66,7 @@ frontend/
 
 - Node.js 18+ (or compatible version)
 - npm or yarn
-- Darb backend running on `http://localhost:8080`
+- Darb backend running on `http://localhost:8460`
 
 ### Installation
 
@@ -82,11 +82,11 @@ npm install
 npm run dev
 ```
 
-The app will be available at http://localhost:3000
+The app will be available at http://localhost:8461
 
 The dev server includes:
 - Hot Module Replacement (HMR)
-- Proxy to backend API at `/api` → `http://localhost:8080`
+- Proxy to backend API at `/api` → `http://localhost:8460`
 
 ### Build for Production
 
@@ -226,7 +226,7 @@ Visual indicators for:
 - Check Tailwind v4 compatibility
 
 **API Connection Issues:**
-- Verify backend is running on port 8080
+- Verify backend is running on port 8460
 - Check proxy configuration in `vite.config.ts`
 - Inspect browser console for CORS errors
 

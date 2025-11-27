@@ -1,0 +1,107 @@
+# GoReleaser configuration for darb
+version: 2
+
+before:
+  hooks:
+    # Build frontend before creating release
+    - sh -c "cd frontend && npm install && npm run build"
+    # Copy frontend dist to internal/web/dist for embedding
+    - sh -c "rm -rf internal/web/dist && cp -r frontend/dist internal/web/dist"
+
+builds:
+  - id: darb
+    main: ./cmd/server
+    binary: darb
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    # Include frontend dist files in the binary directory
+    hooks:
+      post:
+        - sh -c "mkdir -p dist/{{.ProjectName}}_{{.Os}}_{{.Arch}}_{{.Arm}}/frontend && cp -r frontend/dist dist/{{.ProjectName}}_{{.Os}}_{{.Arch}}_{{.Arm}}/frontend/"
+
+archives:
+  - id: darb
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- if eq .Os "darwin" }}macOS
+      {{- else }}{{ .Os }}{{ end }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - LICENSE*
+      - README*
+      - CHANGELOG*
+      - frontend/dist/**/*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - typo
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: 'New Features'
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: 'Bug Fixes'
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: 'Enhancements'
+      regexp: "^.*enhancement[(\\w)]*:+.*$"
+      order: 2
+    - title: 'Others'
+      order: 999
+
+release:
+  github:
+    owner: aktech
+    name: darb
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## darb {{ .Tag }} ({{ .Date }})
+
+    Welcome to this new release of darb!
+  footer: |
+    ## Installation
+
+    ### Binary Installation
+
+    Download the appropriate binary for your platform from the assets below.
+
+    ### Docker
+
+    ```bash
+    docker pull ghcr.io/aktech/darb:{{ .Tag }}
+    ```
+
+    ---
+
+    **Full Changelog**: https://github.com/aktech/darb/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+announce:
+  skip: true

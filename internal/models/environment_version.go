@@ -9,28 +9,28 @@ import (
 
 // EnvironmentVersion represents a snapshot of environment files at a point in time
 type EnvironmentVersion struct {
-	ID              uuid.UUID      `gorm:"type:text;primary_key" json:"id"`
-	EnvironmentID   uuid.UUID      `gorm:"type:text;not null;index:idx_env_version" json:"environment_id"`
-	Environment     Environment    `gorm:"foreignKey:EnvironmentID" json:"environment,omitempty"`
+	ID            uuid.UUID   `gorm:"type:text;primary_key" json:"id"`
+	EnvironmentID uuid.UUID   `gorm:"type:text;not null;index:idx_env_version" json:"environment_id"`
+	Environment   Environment `gorm:"foreignKey:EnvironmentID" json:"environment,omitempty"`
 
 	// Version tracking
-	VersionNumber   int            `gorm:"not null;index:idx_env_version" json:"version_number"` // Auto-incrementing per environment
+	VersionNumber int `gorm:"not null;index:idx_env_version" json:"version_number"` // Auto-incrementing per environment
 
 	// File contents (stored as TEXT in database)
-	LockFileContent string         `gorm:"type:text;not null" json:"lock_file_content"`      // pixi.lock content
-	ManifestContent string         `gorm:"type:text;not null" json:"manifest_content"`       // pixi.toml content
-	PackageMetadata string         `gorm:"type:text;not null" json:"package_metadata"`       // JSON of package list
+	LockFileContent string `gorm:"type:text;not null" json:"lock_file_content"` // pixi.lock content
+	ManifestContent string `gorm:"type:text;not null" json:"manifest_content"`  // pixi.toml content
+	PackageMetadata string `gorm:"type:text;not null" json:"package_metadata"`  // JSON of package list
 
 	// Context
-	JobID           *uuid.UUID     `gorm:"type:text;index" json:"job_id,omitempty"`          // Job that triggered this version
-	Job             *Job           `gorm:"foreignKey:JobID" json:"job,omitempty"`
-	CreatedBy       uuid.UUID      `gorm:"type:text;not null" json:"created_by"`             // User who triggered the change
-	CreatedByUser   User           `gorm:"foreignKey:CreatedBy" json:"created_by_user,omitempty"`
-	Description     string         `gorm:"type:text" json:"description,omitempty"`           // Optional description of changes
+	JobID         *uuid.UUID `gorm:"type:text;index" json:"job_id,omitempty"` // Job that triggered this version
+	Job           *Job       `gorm:"foreignKey:JobID" json:"job,omitempty"`
+	CreatedBy     uuid.UUID  `gorm:"type:text;not null" json:"created_by"` // User who triggered the change
+	CreatedByUser User       `gorm:"foreignKey:CreatedBy" json:"created_by_user,omitempty"`
+	Description   string     `gorm:"type:text" json:"description,omitempty"` // Optional description of changes
 
 	// Timestamps
-	CreatedAt       time.Time      `json:"created_at"`
-	DeletedAt       gorm.DeletedAt `gorm:"index" json:"-"`
+	CreatedAt time.Time      `json:"created_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 // BeforeCreate hook to generate UUID and version number

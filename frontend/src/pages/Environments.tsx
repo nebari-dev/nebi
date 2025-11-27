@@ -258,6 +258,7 @@ export const Environments = () => {
                   <th className="text-left p-4 font-medium">Name</th>
                   <th className="text-left p-4 font-medium">Status</th>
                   <th className="text-left p-4 font-medium">Package Manager</th>
+                  <th className="text-left p-4 font-medium">Size</th>
                   <th className="text-left p-4 font-medium">Created</th>
                   <th className="text-right p-4 font-medium">Actions</th>
                 </tr>
@@ -277,6 +278,9 @@ export const Environments = () => {
                     </td>
                     <td className="p-4">
                       <span className="font-mono text-sm">{env.package_manager}</span>
+                    </td>
+                    <td className="p-4 text-sm text-muted-foreground">
+                      {env.size_formatted || '-'}
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">
                       {new Date(env.created_at).toLocaleDateString()}

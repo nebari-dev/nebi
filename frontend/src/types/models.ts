@@ -17,6 +17,8 @@ export interface Environment {
   package_manager: string;
   created_at: string;
   updated_at: string;
+  size_bytes: number;
+  size_formatted: string;
 }
 
 export interface CreateEnvironmentRequest {

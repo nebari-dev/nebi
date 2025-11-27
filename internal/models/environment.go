@@ -26,6 +26,7 @@ type Environment struct {
 	Owner          User              `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
 	Status         EnvironmentStatus `gorm:"not null;default:'pending'" json:"status"`
 	PackageManager string            `gorm:"not null" json:"package_manager"` // "pixi" or "uv"
+	SizeBytes      int64             `gorm:"default:0" json:"size_bytes"`
 	CreatedAt      time.Time         `json:"created_at"`
 	UpdatedAt      time.Time         `json:"updated_at"`
 	DeletedAt      gorm.DeletedAt    `gorm:"index" json:"-"`

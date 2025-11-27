@@ -20,6 +20,7 @@ import (
 	_ "github.com/aktech/darb/internal/pkgmgr/pixi" // Register pixi
 	_ "github.com/aktech/darb/internal/pkgmgr/uv"   // Register uv
 	"github.com/aktech/darb/internal/queue"
+	"github.com/aktech/darb/internal/utils"
 	"github.com/google/uuid"
 	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"
@@ -216,6 +217,9 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			w.logger.Error("Failed to sync packages", "error", err)
 		}
 
+		// Update environment size
+		w.updateEnvironmentSize(&env)
+
 		env.Status = models.EnvStatusReady
 		w.db.Save(&env)
 
@@ -260,6 +264,10 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			w.db.Create(&pkg)
 		}
 
+		// Update environment size
+		w.updateEnvironmentSize(&env)
+		w.db.Save(&env)
+
 		// Create version snapshot
 		description := fmt.Sprintf("Installed packages: %v", packages)
 		if err := w.createVersionSnapshot(ctx, &env, job, description); err != nil {
@@ -294,6 +302,10 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 		for _, pkgName := range packages {
 			w.db.Where("environment_id = ? AND name = ?", env.ID, pkgName).Delete(&models.Package{})
 		}
+
+		// Update environment size
+		w.updateEnvironmentSize(&env)
+		w.db.Save(&env)
 
 		// Create version snapshot
 		description := fmt.Sprintf("Removed packages: %v", packages)
@@ -349,6 +361,10 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 		if err := w.syncPackagesFromEnvironment(ctx, &env); err != nil {
 			w.logger.Error("Failed to sync packages after rollback", "error", err)
 		}
+
+		// Update environment size
+		w.updateEnvironmentSize(&env)
+		w.db.Save(&env)
 
 		// Create new version snapshot for the rollback
 		description := fmt.Sprintf("Rolled back to version %d", version.VersionNumber)
@@ -438,6 +454,19 @@ func (w *Worker) syncPackagesFromEnvironment(ctx context.Context, env *models.En
 
 	w.logger.Info("Synced packages from environment", "environment_id", env.ID, "count", len(pkgs))
 	return nil
+}
+
+// updateEnvironmentSize calculates and updates the environment size in the database
+func (w *Worker) updateEnvironmentSize(env *models.Environment) {
+	envPath := w.executor.GetEnvironmentPath(env)
+	sizeBytes, err := utils.GetDirectorySize(envPath)
+	if err != nil {
+		w.logger.Warn("Failed to calculate environment size", "env_id", env.ID, "error", err)
+		return
+	}
+
+	env.SizeBytes = sizeBytes
+	w.logger.Info("Updated environment size", "env_id", env.ID, "size", utils.FormatBytes(sizeBytes))
 }
 
 // createVersionSnapshot creates a version snapshot after a successful operation

@@ -25,11 +25,7 @@ type LocalExecutor struct {
 
 // NewLocalExecutor creates a new local executor
 func NewLocalExecutor(cfg *config.Config) (*LocalExecutor, error) {
-	baseDir := "/var/lib/darb/environments"
-	if cfg.Server.Mode == "development" {
-		// Use local directory for development
-		baseDir = "./data/environments"
-	}
+	baseDir := cfg.Storage.EnvironmentsDir
 
 	// Create base directory if it doesn't exist
 	if err := os.MkdirAll(baseDir, 0755); err != nil {

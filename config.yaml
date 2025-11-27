@@ -26,3 +26,7 @@ package_manager:
   default_type: pixi  # "pixi" or "uv"
   # pixi_path: /custom/path/to/pixi  # Optional: Custom pixi binary path
   # uv_path: /custom/path/to/uv      # Optional: Custom uv binary path
+
+storage:
+  environments_dir: ./data/environments  # Directory where environments are stored
+  # For production, consider: /var/lib/darb/environments

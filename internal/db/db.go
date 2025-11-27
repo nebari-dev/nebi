@@ -7,8 +7,8 @@ import (
 
 	"github.com/aktech/darb/internal/config"
 	"github.com/aktech/darb/internal/models"
+	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )

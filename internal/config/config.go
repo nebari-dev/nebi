@@ -15,6 +15,7 @@ type Config struct {
 	Queue          QueueConfig          `mapstructure:"queue"`
 	Log            LogConfig            `mapstructure:"log"`
 	PackageManager PackageManagerConfig `mapstructure:"package_manager"`
+	Storage        StorageConfig        `mapstructure:"storage"`
 }
 
 // ServerConfig holds HTTP server configuration
@@ -57,6 +58,11 @@ type PackageManagerConfig struct {
 	UvPath      string `mapstructure:"uv_path"`      // Custom uv binary path (optional)
 }
 
+// StorageConfig holds storage configuration
+type StorageConfig struct {
+	EnvironmentsDir string `mapstructure:"environments_dir"` // Directory where environments are stored
+}
+
 // Load reads configuration from file and environment variables
 func Load() (*Config, error) {
 	v := viper.New()
@@ -76,6 +82,7 @@ func Load() (*Config, error) {
 	v.SetDefault("log.format", "text")
 	v.SetDefault("log.level", "info")
 	v.SetDefault("package_manager.default_type", "pixi")
+	v.SetDefault("storage.environments_dir", "./data/environments")
 
 	// Read from config file if exists
 	v.SetConfigName("config")

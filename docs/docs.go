@@ -835,6 +835,51 @@ const docTemplate = `{
                 }
             }
         },
+        "/environments/{id}/rollback": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "environments"
+                ],
+                "summary": "Rollback environment to a previous version",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Environment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Rollback request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.RollbackRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/models.Job"
+                        }
+                    }
+                }
+            }
+        },
         "/environments/{id}/share": {
             "post": {
                 "security": [
@@ -910,6 +955,162 @@ const docTemplate = `{
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/environments/{id}/versions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "environments"
+                ],
+                "summary": "List all versions for an environment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Environment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.EnvironmentVersion"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/environments/{id}/versions/{version}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "environments"
+                ],
+                "summary": "Get a specific version with full details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Environment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Version number",
+                        "name": "version",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.EnvironmentVersion"
+                        }
+                    }
+                }
+            }
+        },
+        "/environments/{id}/versions/{version}/pixi-lock": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "environments"
+                ],
+                "summary": "Download pixi.lock for a specific version",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Environment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Version number",
+                        "name": "version",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "pixi.lock content",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/environments/{id}/versions/{version}/pixi-toml": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "environments"
+                ],
+                "summary": "Download pixi.toml for a specific version",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Environment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Version number",
+                        "name": "version",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "pixi.toml content",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }
@@ -1250,6 +1451,17 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.RollbackRequest": {
+            "type": "object",
+            "required": [
+                "version_number"
+            ],
+            "properties": {
+                "version_number": {
+                    "type": "integer"
+                }
+            }
+        },
         "handlers.ShareEnvironmentRequest": {
             "type": "object",
             "required": [
@@ -1365,6 +1577,58 @@ const docTemplate = `{
                 "EnvStatusDeleting"
             ]
         },
+        "models.EnvironmentVersion": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "Timestamps",
+                    "type": "string"
+                },
+                "created_by": {
+                    "description": "User who triggered the change",
+                    "type": "string"
+                },
+                "created_by_user": {
+                    "$ref": "#/definitions/models.User"
+                },
+                "description": {
+                    "description": "Optional description of changes",
+                    "type": "string"
+                },
+                "environment": {
+                    "$ref": "#/definitions/models.Environment"
+                },
+                "environment_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "job": {
+                    "$ref": "#/definitions/models.Job"
+                },
+                "job_id": {
+                    "description": "Context",
+                    "type": "string"
+                },
+                "lock_file_content": {
+                    "description": "File contents (stored as TEXT in database)",
+                    "type": "string"
+                },
+                "manifest_content": {
+                    "description": "pixi.toml content",
+                    "type": "string"
+                },
+                "package_metadata": {
+                    "description": "JSON of package list",
+                    "type": "string"
+                },
+                "version_number": {
+                    "description": "Version tracking",
+                    "type": "integer"
+                }
+            }
+        },
         "models.Job": {
             "type": "object",
             "properties": {
@@ -1428,14 +1692,16 @@ const docTemplate = `{
                 "delete",
                 "install",
                 "remove",
-                "update"
+                "update",
+                "rollback"
             ],
             "x-enum-varnames": [
                 "JobTypeCreate",
                 "JobTypeDelete",
                 "JobTypeInstall",
                 "JobTypeRemove",
-                "JobTypeUpdate"
+                "JobTypeUpdate",
+                "JobTypeRollback"
             ]
         },
         "models.Package": {

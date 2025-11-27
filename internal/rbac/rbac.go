@@ -1,14 +1,19 @@
 package rbac
 
 import (
+	_ "embed"
 	"fmt"
 	"log/slog"
 
 	"github.com/casbin/casbin/v2"
+	"github.com/casbin/casbin/v2/model"
 	gormadapter "github.com/casbin/gorm-adapter/v3"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
+
+//go:embed model.conf
+var modelConf string
 
 var enforcer *casbin.Enforcer
 
@@ -19,7 +24,13 @@ func InitEnforcer(db *gorm.DB, logger *slog.Logger) error {
 		return fmt.Errorf("failed to create casbin adapter: %w", err)
 	}
 
-	e, err := casbin.NewEnforcer("internal/rbac/model.conf", adapter)
+	// Load model from embedded string
+	m, err := model.NewModelFromString(modelConf)
+	if err != nil {
+		return fmt.Errorf("failed to parse casbin model: %w", err)
+	}
+
+	e, err := casbin.NewEnforcer(m, adapter)
 	if err != nil {
 		return fmt.Errorf("failed to create casbin enforcer: %w", err)
 	}

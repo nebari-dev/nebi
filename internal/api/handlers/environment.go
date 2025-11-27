@@ -11,6 +11,7 @@ import (
 	"github.com/aktech/darb/internal/models"
 	"github.com/aktech/darb/internal/queue"
 	"github.com/aktech/darb/internal/rbac"
+	"github.com/aktech/darb/internal/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -61,7 +62,10 @@ func (h *EnvironmentHandler) ListEnvironments(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, environments)
+	// Enrich with size information
+	enriched := h.enrichEnvironmentsWithSize(environments)
+
+	c.JSON(http.StatusOK, enriched)
 }
 
 // CreateEnvironment godoc
@@ -168,7 +172,10 @@ func (h *EnvironmentHandler) GetEnvironment(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, env)
+	// Enrich with size information
+	enriched := h.enrichEnvironmentWithSize(&env)
+
+	c.JSON(http.StatusOK, enriched)
 }
 
 // DeleteEnvironment godoc
@@ -422,6 +429,29 @@ type PixiTomlResponse struct {
 
 type InstallPackagesRequest struct {
 	Packages []string `json:"packages" binding:"required"`
+}
+
+// EnvironmentResponse includes environment data with formatted size
+type EnvironmentResponse struct {
+	models.Environment
+	SizeFormatted string `json:"size_formatted"`
+}
+
+// enrichEnvironmentWithSize adds formatted size to an environment
+func (h *EnvironmentHandler) enrichEnvironmentWithSize(env *models.Environment) EnvironmentResponse {
+	return EnvironmentResponse{
+		Environment:   *env,
+		SizeFormatted: utils.FormatBytes(env.SizeBytes),
+	}
+}
+
+// enrichEnvironmentsWithSize adds formatted size to multiple environments
+func (h *EnvironmentHandler) enrichEnvironmentsWithSize(envs []models.Environment) []EnvironmentResponse {
+	result := make([]EnvironmentResponse, len(envs))
+	for i, env := range envs {
+		result[i] = h.enrichEnvironmentWithSize(&env)
+	}
+	return result
 }
 
 // ShareEnvironment godoc

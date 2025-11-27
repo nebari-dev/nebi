@@ -1552,6 +1552,9 @@ const docTemplate = `{
                     "description": "\"pixi\" or \"uv\"",
                     "type": "string"
                 },
+                "size_bytes": {
+                    "type": "integer"
+                },
                 "status": {
                     "$ref": "#/definitions/models.EnvironmentStatus"
                 },

@@ -3,9 +3,13 @@ package worker
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -16,6 +20,7 @@ import (
 	_ "github.com/aktech/darb/internal/pkgmgr/pixi" // Register pixi
 	_ "github.com/aktech/darb/internal/pkgmgr/uv"   // Register uv
 	"github.com/aktech/darb/internal/queue"
+	"github.com/google/uuid"
 	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"
 )
@@ -214,6 +219,11 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 		env.Status = models.EnvStatusReady
 		w.db.Save(&env)
 
+		// Create version snapshot
+		if err := w.createVersionSnapshot(ctx, &env, job, "Initial environment creation"); err != nil {
+			w.logger.Error("Failed to create version snapshot", "error", err)
+		}
+
 	case models.JobTypeInstall:
 		// Parse packages from job metadata
 		packagesInterface, ok := job.Metadata["packages"]
@@ -250,6 +260,12 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			w.db.Create(&pkg)
 		}
 
+		// Create version snapshot
+		description := fmt.Sprintf("Installed packages: %v", packages)
+		if err := w.createVersionSnapshot(ctx, &env, job, description); err != nil {
+			w.logger.Error("Failed to create version snapshot", "error", err)
+		}
+
 	case models.JobTypeRemove:
 		// Parse packages from job metadata
 		packagesInterface, ok := job.Metadata["packages"]
@@ -279,6 +295,12 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			w.db.Where("environment_id = ? AND name = ?", env.ID, pkgName).Delete(&models.Package{})
 		}
 
+		// Create version snapshot
+		description := fmt.Sprintf("Removed packages: %v", packages)
+		if err := w.createVersionSnapshot(ctx, &env, job, description); err != nil {
+			w.logger.Error("Failed to create version snapshot", "error", err)
+		}
+
 	case models.JobTypeDelete:
 		env.Status = models.EnvStatusDeleting
 		w.db.Save(&env)
@@ -293,10 +315,91 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 		// Soft delete the environment
 		w.db.Delete(&env)
 
+	case models.JobTypeRollback:
+		// Parse version ID from metadata
+		versionIDStr, ok := job.Metadata["version_id"].(string)
+		if !ok {
+			return fmt.Errorf("version_id not found in job metadata")
+		}
+
+		versionID, err := uuid.Parse(versionIDStr)
+		if err != nil {
+			return fmt.Errorf("invalid version_id: %w", err)
+		}
+
+		// Fetch version
+		var version models.EnvironmentVersion
+		if err := w.db.First(&version, versionID).Error; err != nil {
+			return fmt.Errorf("failed to load version: %w", err)
+		}
+
+		// Verify version belongs to this environment
+		if version.EnvironmentID != env.ID {
+			return fmt.Errorf("version does not belong to this environment")
+		}
+
+		fmt.Fprintf(logWriter, "Rolling back to version %d\n", version.VersionNumber)
+
+		// Execute rollback
+		if err := w.executeRollback(ctx, &env, &version, logWriter); err != nil {
+			return err
+		}
+
+		// Sync packages from environment
+		if err := w.syncPackagesFromEnvironment(ctx, &env); err != nil {
+			w.logger.Error("Failed to sync packages after rollback", "error", err)
+		}
+
+		// Create new version snapshot for the rollback
+		description := fmt.Sprintf("Rolled back to version %d", version.VersionNumber)
+		if err := w.createVersionSnapshot(ctx, &env, job, description); err != nil {
+			w.logger.Error("Failed to create version snapshot after rollback", "error", err)
+		}
+
+		fmt.Fprintf(logWriter, "Rollback completed successfully\n")
+
 	default:
 		return fmt.Errorf("unknown job type: %s", job.Type)
 	}
 
+	return nil
+}
+
+// executeRollback restores environment to a previous version
+func (w *Worker) executeRollback(ctx context.Context, env *models.Environment, version *models.EnvironmentVersion, logWriter io.Writer) error {
+	envPath := w.executor.GetEnvironmentPath(env)
+
+	// 1. Write pixi.toml
+	manifestPath := filepath.Join(envPath, "pixi.toml")
+	fmt.Fprintf(logWriter, "Restoring pixi.toml...\n")
+	if err := os.WriteFile(manifestPath, []byte(version.ManifestContent), 0644); err != nil {
+		return fmt.Errorf("failed to write pixi.toml: %w", err)
+	}
+
+	// 2. Write pixi.lock
+	lockPath := filepath.Join(envPath, "pixi.lock")
+	fmt.Fprintf(logWriter, "Restoring pixi.lock...\n")
+	if err := os.WriteFile(lockPath, []byte(version.LockFileContent), 0644); err != nil {
+		return fmt.Errorf("failed to write pixi.lock: %w", err)
+	}
+
+	// 3. Run pixi install to recreate environment
+	fmt.Fprintf(logWriter, "Running pixi install to apply changes...\n")
+
+	// Use pixi binary from PATH
+	pixiBinary := "pixi"
+
+	// Run pixi install
+	cmd := exec.CommandContext(ctx, pixiBinary, "install", "-v")
+	cmd.Dir = envPath
+	cmd.Stdout = logWriter
+	cmd.Stderr = logWriter
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("pixi install failed: %w", err)
+	}
+
+	fmt.Fprintf(logWriter, "Environment restored successfully\n")
 	return nil
 }
 
@@ -334,5 +437,74 @@ func (w *Worker) syncPackagesFromEnvironment(ctx context.Context, env *models.En
 	}
 
 	w.logger.Info("Synced packages from environment", "environment_id", env.ID, "count", len(pkgs))
+	return nil
+}
+
+// createVersionSnapshot creates a version snapshot after a successful operation
+func (w *Worker) createVersionSnapshot(ctx context.Context, env *models.Environment, job *models.Job, description string) error {
+	envPath := w.executor.GetEnvironmentPath(env)
+
+	// Read pixi.toml
+	manifestPath := filepath.Join(envPath, "pixi.toml")
+	manifestContent, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return fmt.Errorf("failed to read pixi.toml: %w", err)
+	}
+
+	// Read pixi.lock
+	lockPath := filepath.Join(envPath, "pixi.lock")
+	lockContent, err := os.ReadFile(lockPath)
+	if err != nil {
+		return fmt.Errorf("failed to read pixi.lock: %w", err)
+	}
+
+	// Get package list from package manager
+	pm, err := pkgmgr.New(env.PackageManager)
+	if err != nil {
+		return fmt.Errorf("failed to create package manager: %w", err)
+	}
+
+	pkgs, err := pm.List(ctx, pkgmgr.ListOptions{EnvPath: envPath})
+	if err != nil {
+		return fmt.Errorf("failed to list packages: %w", err)
+	}
+
+	// Serialize package list to JSON
+	packageMetadata, err := json.Marshal(pkgs)
+	if err != nil {
+		return fmt.Errorf("failed to serialize package metadata: %w", err)
+	}
+
+	// Get user ID from job metadata or environment owner
+	var createdBy uuid.UUID
+	if userIDInterface, ok := job.Metadata["user_id"]; ok {
+		if userIDStr, ok := userIDInterface.(string); ok {
+			createdBy, _ = uuid.Parse(userIDStr)
+		}
+	}
+	if createdBy == uuid.Nil {
+		createdBy = env.OwnerID
+	}
+
+	// Create version record
+	version := models.EnvironmentVersion{
+		EnvironmentID:   env.ID,
+		LockFileContent: string(lockContent),
+		ManifestContent: string(manifestContent),
+		PackageMetadata: string(packageMetadata),
+		JobID:           &job.ID,
+		CreatedBy:       createdBy,
+		Description:     description,
+	}
+
+	if err := w.db.Create(&version).Error; err != nil {
+		return fmt.Errorf("failed to create version snapshot: %w", err)
+	}
+
+	w.logger.Info("Created version snapshot",
+		"environment_id", env.ID,
+		"version_number", version.VersionNumber,
+		"job_id", job.ID)
+
 	return nil
 }

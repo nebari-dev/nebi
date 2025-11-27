@@ -78,10 +78,17 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			env.GET("/pixi-toml", middleware.RequireEnvironmentAccess("read"), envHandler.GetPixiToml)
 			env.GET("/collaborators", middleware.RequireEnvironmentAccess("read"), envHandler.ListCollaborators)
 
+			// Version operations (read permission)
+			env.GET("/versions", middleware.RequireEnvironmentAccess("read"), envHandler.ListVersions)
+			env.GET("/versions/:version", middleware.RequireEnvironmentAccess("read"), envHandler.GetVersion)
+			env.GET("/versions/:version/pixi-lock", middleware.RequireEnvironmentAccess("read"), envHandler.DownloadLockFile)
+			env.GET("/versions/:version/pixi-toml", middleware.RequireEnvironmentAccess("read"), envHandler.DownloadManifestFile)
+
 			// Write operations (require write permission)
 			env.DELETE("", middleware.RequireEnvironmentAccess("write"), envHandler.DeleteEnvironment)
 			env.POST("/packages", middleware.RequireEnvironmentAccess("write"), envHandler.InstallPackages)
 			env.DELETE("/packages/:package", middleware.RequireEnvironmentAccess("write"), envHandler.RemovePackages)
+			env.POST("/rollback", middleware.RequireEnvironmentAccess("write"), envHandler.RollbackToVersion)
 
 			// Sharing operations (owner only - checked in handler)
 			env.POST("/share", envHandler.ShareEnvironment)

@@ -93,3 +93,20 @@ export interface ShareEnvironmentRequest {
   user_id: string;
   role: 'editor' | 'viewer';
 }
+
+export interface EnvironmentVersion {
+  id: string; // UUID
+  environment_id: string; // UUID
+  version_number: number;
+  lock_file_content?: string; // Not included in list view
+  manifest_content?: string; // Not included in list view
+  package_metadata?: string; // Not included in list view
+  job_id?: string; // UUID
+  created_by: string; // UUID
+  description?: string;
+  created_at: string;
+}
+
+export interface RollbackRequest {
+  version_number: number;
+}

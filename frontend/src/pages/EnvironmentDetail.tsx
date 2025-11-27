@@ -12,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ShareButton } from '@/components/sharing/ShareButton';
 import { RoleBadge } from '@/components/sharing/RoleBadge';
+import { VersionHistory } from '@/components/versions/VersionHistory';
 import { ArrowLeft, Loader2, Package, Plus, Trash2 } from 'lucide-react';
 
 const statusColors = {
@@ -92,6 +93,7 @@ export const EnvironmentDetail = () => {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="packages">Packages</TabsTrigger>
+          <TabsTrigger value="versions">Version History</TabsTrigger>
           <TabsTrigger value="collaborators">
             Collaborators ({collaborators?.length || 0})
           </TabsTrigger>
@@ -222,6 +224,10 @@ export const EnvironmentDetail = () => {
               </div>
             )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="versions">
+          <VersionHistory environmentId={envId} environmentStatus={environment.status} />
         </TabsContent>
 
         <TabsContent value="collaborators">

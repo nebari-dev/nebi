@@ -659,6 +659,212 @@ type CollaboratorResponse struct {
 	IsOwner  bool      `json:"is_owner"`
 }
 
+// ListVersions godoc
+// @Summary List all versions for an environment
+// @Tags environments
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "Environment ID"
+// @Success 200 {array} models.EnvironmentVersion
+// @Router /environments/{id}/versions [get]
+func (h *EnvironmentHandler) ListVersions(c *gin.Context) {
+	envID := c.Param("id")
+
+	var versions []models.EnvironmentVersion
+	// Exclude large file contents from list view for performance
+	err := h.db.
+		Select("id", "environment_id", "version_number", "job_id", "created_by", "description", "created_at").
+		Where("environment_id = ?", envID).
+		Order("version_number DESC").
+		Find(&versions).Error
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch versions"})
+		return
+	}
+
+	c.JSON(http.StatusOK, versions)
+}
+
+// GetVersion godoc
+// @Summary Get a specific version with full details
+// @Tags environments
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "Environment ID"
+// @Param version path int true "Version number"
+// @Success 200 {object} models.EnvironmentVersion
+// @Router /environments/{id}/versions/{version} [get]
+func (h *EnvironmentHandler) GetVersion(c *gin.Context) {
+	envID := c.Param("id")
+	versionNum := c.Param("version")
+
+	var version models.EnvironmentVersion
+	err := h.db.
+		Where("environment_id = ? AND version_number = ?", envID, versionNum).
+		First(&version).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Version not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch version"})
+		return
+	}
+
+	c.JSON(http.StatusOK, version)
+}
+
+// DownloadLockFile godoc
+// @Summary Download pixi.lock for a specific version
+// @Tags environments
+// @Security BearerAuth
+// @Produce text/plain
+// @Param id path string true "Environment ID"
+// @Param version path int true "Version number"
+// @Success 200 {string} string "pixi.lock content"
+// @Router /environments/{id}/versions/{version}/pixi-lock [get]
+func (h *EnvironmentHandler) DownloadLockFile(c *gin.Context) {
+	envID := c.Param("id")
+	versionNum := c.Param("version")
+
+	var version models.EnvironmentVersion
+	err := h.db.
+		Select("lock_file_content").
+		Where("environment_id = ? AND version_number = ?", envID, versionNum).
+		First(&version).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Version not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch version"})
+		return
+	}
+
+	// Set headers for file download
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=pixi-lock-v%s.lock", versionNum))
+	c.Header("Content-Type", "text/plain")
+	c.String(http.StatusOK, version.LockFileContent)
+}
+
+// DownloadManifestFile godoc
+// @Summary Download pixi.toml for a specific version
+// @Tags environments
+// @Security BearerAuth
+// @Produce text/plain
+// @Param id path string true "Environment ID"
+// @Param version path int true "Version number"
+// @Success 200 {string} string "pixi.toml content"
+// @Router /environments/{id}/versions/{version}/pixi-toml [get]
+func (h *EnvironmentHandler) DownloadManifestFile(c *gin.Context) {
+	envID := c.Param("id")
+	versionNum := c.Param("version")
+
+	var version models.EnvironmentVersion
+	err := h.db.
+		Select("manifest_content").
+		Where("environment_id = ? AND version_number = ?", envID, versionNum).
+		First(&version).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Version not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch version"})
+		return
+	}
+
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=pixi-toml-v%s.toml", versionNum))
+	c.Header("Content-Type", "text/plain")
+	c.String(http.StatusOK, version.ManifestContent)
+}
+
+// RollbackToVersion godoc
+// @Summary Rollback environment to a previous version
+// @Tags environments
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path string true "Environment ID"
+// @Param request body RollbackRequest true "Rollback request"
+// @Success 202 {object} models.Job
+// @Router /environments/{id}/rollback [post]
+func (h *EnvironmentHandler) RollbackToVersion(c *gin.Context) {
+	userID := getUserID(c)
+	envID := c.Param("id")
+
+	var req RollbackRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// Verify environment exists
+	var env models.Environment
+	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+		return
+	}
+
+	// Check environment is ready
+	if env.Status != models.EnvStatusReady {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Environment is not ready"})
+		return
+	}
+
+	// Verify version exists
+	var version models.EnvironmentVersion
+	err := h.db.
+		Where("environment_id = ? AND version_number = ?", envID, req.VersionNumber).
+		First(&version).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Version not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch version"})
+		return
+	}
+
+	// Create rollback job
+	job := &models.Job{
+		Type:          models.JobTypeRollback,
+		EnvironmentID: env.ID,
+		Status:        models.JobStatusPending,
+		Metadata: map[string]interface{}{
+			"version_id":     version.ID.String(),
+			"version_number": version.VersionNumber,
+			"user_id":        userID.String(),
+		},
+	}
+
+	if err := h.db.Create(job).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create job"})
+		return
+	}
+
+	if err := h.queue.Enqueue(c.Request.Context(), job); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to queue job"})
+		return
+	}
+
+	// Audit log
+	audit.LogAction(h.db, userID, "rollback_environment", fmt.Sprintf("env:%s", env.ID.String()), map[string]interface{}{
+		"version_number": req.VersionNumber,
+	})
+
+	c.JSON(http.StatusAccepted, job)
+}
+
+type RollbackRequest struct {
+	VersionNumber int `json:"version_number" binding:"required"`
+}
+
 // Helper function to get user ID from context
 func getUserID(c *gin.Context) uuid.UUID {
 	user, exists := c.Get("user")

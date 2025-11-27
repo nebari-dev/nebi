@@ -99,6 +99,13 @@ definitions:
       content:
         type: string
     type: object
+  handlers.RollbackRequest:
+    properties:
+      version_number:
+        type: integer
+    required:
+    - version_number
+    type: object
   handlers.ShareEnvironmentRequest:
     properties:
       role:
@@ -179,6 +186,43 @@ definitions:
     - EnvStatusReady
     - EnvStatusFailed
     - EnvStatusDeleting
+  models.EnvironmentVersion:
+    properties:
+      created_at:
+        description: Timestamps
+        type: string
+      created_by:
+        description: User who triggered the change
+        type: string
+      created_by_user:
+        $ref: '#/definitions/models.User'
+      description:
+        description: Optional description of changes
+        type: string
+      environment:
+        $ref: '#/definitions/models.Environment'
+      environment_id:
+        type: string
+      id:
+        type: string
+      job:
+        $ref: '#/definitions/models.Job'
+      job_id:
+        description: Context
+        type: string
+      lock_file_content:
+        description: File contents (stored as TEXT in database)
+        type: string
+      manifest_content:
+        description: pixi.toml content
+        type: string
+      package_metadata:
+        description: JSON of package list
+        type: string
+      version_number:
+        description: Version tracking
+        type: integer
+    type: object
   models.Job:
     properties:
       completed_at:
@@ -226,6 +270,7 @@ definitions:
     - install
     - remove
     - update
+    - rollback
     type: string
     x-enum-varnames:
     - JobTypeCreate
@@ -233,6 +278,7 @@ definitions:
     - JobTypeInstall
     - JobTypeRemove
     - JobTypeUpdate
+    - JobTypeRollback
   models.Package:
     properties:
       environment:
@@ -811,6 +857,34 @@ paths:
       summary: Get pixi.toml content for an environment
       tags:
       - environments
+  /environments/{id}/rollback:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Rollback request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.RollbackRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/models.Job'
+      security:
+      - BearerAuth: []
+      summary: Rollback environment to a previous version
+      tags:
+      - environments
   /environments/{id}/share:
     post:
       consumes:
@@ -858,6 +932,103 @@ paths:
       security:
       - BearerAuth: []
       summary: Revoke user access to environment (owner only)
+      tags:
+      - environments
+  /environments/{id}/versions:
+    get:
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.EnvironmentVersion'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List all versions for an environment
+      tags:
+      - environments
+  /environments/{id}/versions/{version}:
+    get:
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Version number
+        in: path
+        name: version
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.EnvironmentVersion'
+      security:
+      - BearerAuth: []
+      summary: Get a specific version with full details
+      tags:
+      - environments
+  /environments/{id}/versions/{version}/pixi-lock:
+    get:
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Version number
+        in: path
+        name: version
+        required: true
+        type: integer
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: pixi.lock content
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Download pixi.lock for a specific version
+      tags:
+      - environments
+  /environments/{id}/versions/{version}/pixi-toml:
+    get:
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Version number
+        in: path
+        name: version
+        required: true
+        type: integer
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: pixi.toml content
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Download pixi.toml for a specific version
       tags:
       - environments
   /health:

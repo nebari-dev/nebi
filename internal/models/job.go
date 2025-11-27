@@ -11,11 +11,12 @@ import (
 type JobType string
 
 const (
-	JobTypeCreate  JobType = "create"
-	JobTypeDelete  JobType = "delete"
-	JobTypeInstall JobType = "install"
-	JobTypeRemove  JobType = "remove"
-	JobTypeUpdate  JobType = "update"
+	JobTypeCreate   JobType = "create"
+	JobTypeDelete   JobType = "delete"
+	JobTypeInstall  JobType = "install"
+	JobTypeRemove   JobType = "remove"
+	JobTypeUpdate   JobType = "update"
+	JobTypeRollback JobType = "rollback"
 )
 
 // JobStatus represents the state of a job

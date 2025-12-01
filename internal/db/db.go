@@ -19,7 +19,8 @@ func New(cfg config.DatabaseConfig) (*gorm.DB, error) {
 
 	switch cfg.Driver {
 	case "sqlite":
-		dialector = sqlite.Open(cfg.DSN)
+		// Configure SQLite with WAL mode and busy timeout for better concurrency
+		dialector = sqlite.Open(cfg.DSN + "?_journal_mode=WAL&_busy_timeout=5000")
 	case "postgres", "postgresql":
 		dialector = postgres.Open(cfg.DSN)
 	default:
@@ -39,14 +40,20 @@ func New(cfg config.DatabaseConfig) (*gorm.DB, error) {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	// Configure connection pool for PostgreSQL
-	if cfg.Driver == "postgres" || cfg.Driver == "postgresql" {
-		sqlDB, err := db.DB()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get database instance: %w", err)
-		}
+	// Configure connection pool
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database instance: %w", err)
+	}
 
-		// Set connection pool settings from config
+	if cfg.Driver == "sqlite" {
+		// SQLite: Use single connection to avoid locking issues
+		// WAL mode allows concurrent reads but only one writer
+		sqlDB.SetMaxOpenConns(1)
+		sqlDB.SetMaxIdleConns(1)
+		slog.Info("Configured SQLite with WAL mode and single connection")
+	} else if cfg.Driver == "postgres" || cfg.Driver == "postgresql" {
+		// PostgreSQL: Use connection pool
 		maxIdleConns := cfg.MaxIdleConns
 		if maxIdleConns <= 0 {
 			maxIdleConns = 10

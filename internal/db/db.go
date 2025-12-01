@@ -19,8 +19,16 @@ func New(cfg config.DatabaseConfig) (*gorm.DB, error) {
 
 	switch cfg.Driver {
 	case "sqlite":
-		// Configure SQLite with WAL mode and busy timeout for better concurrency
-		dialector = sqlite.Open(cfg.DSN + "?_journal_mode=WAL&_busy_timeout=5000")
+		// Configure SQLite with PocketBase-inspired settings for production
+		// Note: busy_timeout MUST be first before WAL mode is set
+		pragmas := "?_pragma=busy_timeout(10000)" + // 10 seconds - wait for locks
+			"&_pragma=journal_mode(WAL)" + // Write-Ahead Logging for concurrency
+			"&_pragma=journal_size_limit(200000000)" + // 200MB WAL limit
+			"&_pragma=synchronous(NORMAL)" + // Safe with WAL, faster than FULL
+			"&_pragma=foreign_keys(ON)" + // Enforce referential integrity
+			"&_pragma=temp_store(MEMORY)" + // Temp tables in RAM
+			"&_pragma=cache_size(-32000)" // ~32MB cache
+		dialector = sqlite.Open(cfg.DSN + pragmas)
 	case "postgres", "postgresql":
 		dialector = postgres.Open(cfg.DSN)
 	default:
@@ -47,11 +55,15 @@ func New(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	}
 
 	if cfg.Driver == "sqlite" {
-		// SQLite: Use single connection to avoid locking issues
-		// WAL mode allows concurrent reads but only one writer
-		sqlDB.SetMaxOpenConns(1)
-		sqlDB.SetMaxIdleConns(1)
-		slog.Info("Configured SQLite with WAL mode and single connection")
+		// SQLite with WAL mode can handle multiple concurrent connections
+		// WAL allows many readers + one writer simultaneously
+		// Using PocketBase-inspired settings: moderate pool for good concurrency
+		sqlDB.SetMaxOpenConns(30)
+		sqlDB.SetMaxIdleConns(5)
+		sqlDB.SetConnMaxIdleTime(3 * time.Minute)
+		slog.Info("Configured SQLite with WAL mode and connection pool",
+			"max_open_conns", 30,
+			"max_idle_conns", 5)
 	} else if cfg.Driver == "postgres" || cfg.Driver == "postgresql" {
 		// PostgreSQL: Use connection pool
 		maxIdleConns := cfg.MaxIdleConns

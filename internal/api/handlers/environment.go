@@ -57,7 +57,7 @@ func (h *EnvironmentHandler) ListEnvironments(c *gin.Context) {
 		query = query.Or("id IN ?", envIDs)
 	}
 
-	if err := query.Order("created_at DESC").Find(&environments).Error; err != nil {
+	if err := query.Preload("Owner").Order("created_at DESC").Find(&environments).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch environments"})
 		return
 	}
@@ -163,7 +163,7 @@ func (h *EnvironmentHandler) GetEnvironment(c *gin.Context) {
 
 	var env models.Environment
 	// Note: RBAC middleware already checked access, so just fetch by ID
-	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
+	if err := h.db.Preload("Owner").Where("id = ?", envID).First(&env).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
 			return

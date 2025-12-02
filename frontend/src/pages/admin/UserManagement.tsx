@@ -20,17 +20,24 @@ export const UserManagement = () => {
     username?: string;
     currentIsAdmin?: boolean;
   } | null>(null);
+  const [error, setError] = useState('');
 
   const handleConfirmAction = async () => {
     if (!confirmAction) return;
 
-    if (confirmAction.type === 'toggle') {
-      await toggleAdminMutation.mutateAsync(confirmAction.userId);
-    } else if (confirmAction.type === 'delete') {
-      await deleteUserMutation.mutateAsync(confirmAction.userId);
+    setError('');
+    try {
+      if (confirmAction.type === 'toggle') {
+        await toggleAdminMutation.mutateAsync(confirmAction.userId);
+      } else if (confirmAction.type === 'delete') {
+        await deleteUserMutation.mutateAsync(confirmAction.userId);
+      }
+      setConfirmAction(null);
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.error || 'Operation failed. Please try again.';
+      setError(errorMessage);
+      setConfirmAction(null);
     }
-
-    setConfirmAction(null);
   };
 
   if (isLoading) {
@@ -50,6 +57,12 @@ export const UserManagement = () => {
         </div>
         <CreateUserDialog />
       </div>
+
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded">
+          {error}
+        </div>
+      )}
 
       <Card>
         <CardContent className="p-0">

@@ -10,12 +10,21 @@ export const CreateUserDialog = () => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [error, setError] = useState('');
 
   const createMutation = useCreateUser();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
     try {
       await createMutation.mutateAsync({
         username,
@@ -27,9 +36,13 @@ export const CreateUserDialog = () => {
       setUsername('');
       setEmail('');
       setPassword('');
+      setConfirmPassword('');
       setIsAdmin(false);
-    } catch (error) {
-      console.error('Failed to create user:', error);
+      setError('');
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.error || 'Failed to create user. Please try again.';
+      setError(errorMessage);
+      console.error('Failed to create user:', err);
     }
   };
 
@@ -76,6 +89,25 @@ export const CreateUserDialog = () => {
               required
             />
           </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Confirm Password</label>
+            <Input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+            />
+            {confirmPassword && password !== confirmPassword && (
+              <p className="text-xs text-red-500">Passwords do not match</p>
+            )}
+          </div>
+
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-3 py-2 rounded text-sm">
+              {error}
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <input

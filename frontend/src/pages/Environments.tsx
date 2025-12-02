@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useEnvironments, useCreateEnvironment, useDeleteEnvironment } from '@/hooks/useEnvironments';
 import { environmentsApi } from '@/api/environments';
+import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Loader2, Plus, Trash2, X, Edit } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Edit, Users } from 'lucide-react';
 
 const statusColors = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -32,6 +33,7 @@ export const Environments = () => {
   const { data: environments, isLoading } = useEnvironments();
   const createMutation = useCreateEnvironment();
   const deleteMutation = useDeleteEnvironment();
+  const currentUser = useAuthStore((state) => state.user);
 
   const [showCreate, setShowCreate] = useState(false);
   const [newEnvName, setNewEnvName] = useState('');
@@ -43,43 +45,59 @@ export const Environments = () => {
   const [editPixiToml, setEditPixiToml] = useState('');
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
+  const [error, setError] = useState('');
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEnvName.trim()) return;
 
-    // Create environment with custom pixi.toml content
-    await createMutation.mutateAsync({
-      name: newEnvName,
-      package_manager: 'pixi',
-      pixi_toml: pixiToml
-    });
+    setError('');
+    try {
+      // Create environment with custom pixi.toml content
+      await createMutation.mutateAsync({
+        name: newEnvName,
+        package_manager: 'pixi',
+        pixi_toml: pixiToml
+      });
 
-    setNewEnvName('');
-    setPixiToml(DEFAULT_PIXI_TOML);
-    setShowCreate(false);
+      setNewEnvName('');
+      setPixiToml(DEFAULT_PIXI_TOML);
+      setShowCreate(false);
 
-    // Redirect to jobs page to see the creation progress
-    navigate('/jobs');
+      // Redirect to jobs page to see the creation progress
+      navigate('/jobs');
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.error || 'Failed to create environment. Please try again.';
+      setError(errorMessage);
+    }
   };
 
   const handleDelete = async () => {
-    if (confirmDelete) {
+    if (!confirmDelete) return;
+
+    setError('');
+    try {
       await deleteMutation.mutateAsync(confirmDelete.id);
+      setConfirmDelete(null);
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.error || 'Failed to delete environment. Please try again.';
+      setError(errorMessage);
       setConfirmDelete(null);
     }
   };
 
   const handleEdit = async (id: string, name: string) => {
     setLoadingEdit(true);
+    setError('');
     try {
       const { content } = await environmentsApi.getPixiToml(id);
       setEditEnvId(id);
       setEditEnvName(name);
       setEditPixiToml(content);
       setShowEdit(true);
-    } catch (error) {
-      alert('Failed to load pixi.toml content');
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.error || 'Failed to load pixi.toml content. Please try again.';
+      setError(errorMessage);
     } finally {
       setLoadingEdit(false);
     }
@@ -89,22 +107,28 @@ export const Environments = () => {
     e.preventDefault();
     if (!editEnvId || !editEnvName.trim()) return;
 
-    // Delete the old environment and create a new one with updated content
-    await deleteMutation.mutateAsync(editEnvId);
+    setError('');
+    try {
+      // Delete the old environment and create a new one with updated content
+      await deleteMutation.mutateAsync(editEnvId);
 
-    await createMutation.mutateAsync({
-      name: editEnvName,
-      package_manager: 'pixi',
-      pixi_toml: editPixiToml
-    });
+      await createMutation.mutateAsync({
+        name: editEnvName,
+        package_manager: 'pixi',
+        pixi_toml: editPixiToml
+      });
 
-    setShowEdit(false);
-    setEditEnvId(null);
-    setEditEnvName('');
-    setEditPixiToml('');
+      setShowEdit(false);
+      setEditEnvId(null);
+      setEditEnvName('');
+      setEditPixiToml('');
 
-    // Redirect to jobs page to see the progress
-    navigate('/jobs');
+      // Redirect to jobs page to see the progress
+      navigate('/jobs');
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.error || 'Failed to update environment. Please try again.';
+      setError(errorMessage);
+    }
   };
 
   if (isLoading) {
@@ -122,11 +146,20 @@ export const Environments = () => {
           <h1 className="text-3xl font-bold">Environments</h1>
           <p className="text-muted-foreground">Manage your development environments</p>
         </div>
-        <Button onClick={() => setShowCreate(!showCreate)}>
+        <Button onClick={() => {
+          setShowCreate(!showCreate);
+          setError('');
+        }}>
           <Plus className="h-4 w-4 mr-2" />
           New Environment
         </Button>
       </div>
+
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded">
+          {error}
+        </div>
+      )}
 
       {showCreate && (
         <Card>
@@ -270,7 +303,17 @@ export const Environments = () => {
                     className="border-b last:border-0 hover:bg-muted/50 cursor-pointer transition-colors"
                     onClick={() => navigate(`/environments/${env.id}`)}
                   >
-                    <td className="p-4 font-medium">{env.name}</td>
+                    <td className="p-4 font-medium">
+                      <div className="flex items-center gap-2">
+                        {env.name}
+                        {env.owner_id !== currentUser?.id && env.owner && (
+                          <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20">
+                            <Users className="h-3 w-3 mr-1" />
+                            {env.owner.username}
+                          </Badge>
+                        )}
+                      </div>
+                    </td>
                     <td className="p-4">
                       <Badge className={statusColors[env.status]}>
                         {env.status}

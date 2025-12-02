@@ -31,7 +31,7 @@ jobs:
         run: |
           if ! flyctl volumes list --app darb 2>/dev/null | grep -q darb_data; then
             echo "Creating volume..."
-            flyctl volumes create darb_data --region sjc --size 1 --app darb
+            flyctl volumes create darb_data --region sjc --size 1 --yes --app darb
           else
             echo "Volume already exists"
           fi
@@ -43,7 +43,8 @@ jobs:
           flyctl secrets set \
             DARB_AUTH_JWT_SECRET="${{ secrets.JWT_SECRET }}" \
             ADMIN_USERNAME="${{ secrets.ADMIN_USERNAME }}" \
-            ADMIN_PASSWORD="${{ secrets.ADMIN_PASSWORD }}"
+            ADMIN_PASSWORD="${{ secrets.ADMIN_PASSWORD }}" \
+            --app darb
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 

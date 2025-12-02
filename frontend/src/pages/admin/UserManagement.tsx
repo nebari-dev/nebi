@@ -33,8 +33,9 @@ export const UserManagement = () => {
         await deleteUserMutation.mutateAsync(confirmAction.userId);
       }
       setConfirmAction(null);
-    } catch (err: any) {
-      const errorMessage = err?.response?.data?.error || 'Operation failed. Please try again.';
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } };
+      const errorMessage = error?.response?.data?.error || 'Operation failed. Please try again.';
       setError(errorMessage);
       setConfirmAction(null);
     }

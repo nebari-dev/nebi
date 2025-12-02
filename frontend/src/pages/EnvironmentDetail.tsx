@@ -54,8 +54,9 @@ export const EnvironmentDetail = () => {
       await installMutation.mutateAsync({ packages: packageNames });
       setPackageInput('');
       setShowInstall(false);
-    } catch (err: any) {
-      const errorMessage = err?.response?.data?.error || 'Failed to install package. Please try again.';
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } };
+      const errorMessage = error?.response?.data?.error || 'Failed to install package. Please try again.';
       setError(errorMessage);
     }
   };
@@ -67,8 +68,9 @@ export const EnvironmentDetail = () => {
     try {
       await removeMutation.mutateAsync(confirmRemovePackage);
       setConfirmRemovePackage(null);
-    } catch (err: any) {
-      const errorMessage = err?.response?.data?.error || 'Failed to remove package. Please try again.';
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } };
+      const errorMessage = error?.response?.data?.error || 'Failed to remove package. Please try again.';
       setError(errorMessage);
     }
   };

@@ -39,8 +39,9 @@ export const CreateUserDialog = () => {
       setConfirmPassword('');
       setIsAdmin(false);
       setError('');
-    } catch (err: any) {
-      const errorMessage = err?.response?.data?.error || 'Failed to create user. Please try again.';
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } };
+      const errorMessage = error?.response?.data?.error || 'Failed to create user. Please try again.';
       setError(errorMessage);
       console.error('Failed to create user:', err);
     }

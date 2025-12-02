@@ -66,8 +66,9 @@ export const Environments = () => {
 
       // Redirect to jobs page to see the creation progress
       navigate('/jobs');
-    } catch (err: any) {
-      const errorMessage = err?.response?.data?.error || 'Failed to create environment. Please try again.';
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } };
+      const errorMessage = error?.response?.data?.error || 'Failed to create environment. Please try again.';
       setError(errorMessage);
     }
   };
@@ -79,8 +80,9 @@ export const Environments = () => {
     try {
       await deleteMutation.mutateAsync(confirmDelete.id);
       setConfirmDelete(null);
-    } catch (err: any) {
-      const errorMessage = err?.response?.data?.error || 'Failed to delete environment. Please try again.';
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } };
+      const errorMessage = error?.response?.data?.error || 'Failed to delete environment. Please try again.';
       setError(errorMessage);
       setConfirmDelete(null);
     }
@@ -95,8 +97,9 @@ export const Environments = () => {
       setEditEnvName(name);
       setEditPixiToml(content);
       setShowEdit(true);
-    } catch (err: any) {
-      const errorMessage = err?.response?.data?.error || 'Failed to load pixi.toml content. Please try again.';
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } };
+      const errorMessage = error?.response?.data?.error || 'Failed to load pixi.toml content. Please try again.';
       setError(errorMessage);
     } finally {
       setLoadingEdit(false);
@@ -125,8 +128,9 @@ export const Environments = () => {
 
       // Redirect to jobs page to see the progress
       navigate('/jobs');
-    } catch (err: any) {
-      const errorMessage = err?.response?.data?.error || 'Failed to update environment. Please try again.';
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } };
+      const errorMessage = error?.response?.data?.error || 'Failed to update environment. Please try again.';
       setError(errorMessage);
     }
   };

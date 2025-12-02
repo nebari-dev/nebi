@@ -17,7 +17,7 @@ primary_region = 'sjc'
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "256mb"
+  memory = "1024mb"
 
 [mounts]
   source = "darb_data"

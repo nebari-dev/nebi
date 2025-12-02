@@ -25,8 +25,9 @@ const JobCard = ({ job, isFirst }: { job: Job; isFirst: boolean }) => {
   const [expanded, setExpanded] = useState(isFirst);
   const { logs: streamedLogs, isStreaming } = useJobLogStream(job.id, job.status);
 
-  // Use streamed logs if job is running, otherwise use static logs from job
-  const displayLogs = isStreaming ? streamedLogs : job.logs;
+  // Use streamed logs if available (either actively streaming or accumulated from past stream),
+  // otherwise fall back to job.logs from API
+  const displayLogs = streamedLogs || job.logs;
 
   return (
     <Card>
@@ -73,7 +74,7 @@ const JobCard = ({ job, isFirst }: { job: Job; isFirst: boolean }) => {
             )}
           </div>
 
-          {displayLogs && (
+          {(isStreaming || displayLogs) && (
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <h4 className="font-semibold">Logs</h4>
@@ -85,7 +86,7 @@ const JobCard = ({ job, isFirst }: { job: Job; isFirst: boolean }) => {
                 )}
               </div>
               <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto max-h-96 overflow-y-auto font-mono whitespace-pre-wrap text-sm">
-                {displayLogs}
+                {displayLogs || 'Waiting for logs...'}
               </pre>
             </div>
           )}

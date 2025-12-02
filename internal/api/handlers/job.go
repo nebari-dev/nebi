@@ -44,6 +44,7 @@ func (h *JobHandler) ListJobs(c *gin.Context) {
 
 	var jobs []models.Job
 	err := h.db.
+		Select("jobs.*").
 		Joins("JOIN environments ON environments.id = jobs.environment_id").
 		Where("environments.owner_id = ?", userID).
 		Order("jobs.created_at DESC").
@@ -74,6 +75,7 @@ func (h *JobHandler) GetJob(c *gin.Context) {
 
 	var job models.Job
 	err := h.db.
+		Select("jobs.*").
 		Joins("JOIN environments ON environments.id = jobs.environment_id").
 		Where("jobs.id = ? AND environments.owner_id = ?", jobID, userID).
 		First(&job).Error

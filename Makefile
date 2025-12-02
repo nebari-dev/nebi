@@ -42,9 +42,9 @@ build-backend: swagger ## Build backend with embedded frontend
 build: build-frontend build-backend ## Build complete single binary (frontend + backend)
 	@echo "Single binary build complete: $(BUILD_DIR)/$(BINARY_NAME)"
 
-run: swagger ## Run the server (without hot reload)
+run: build ## Run the server (without hot reload)
 	@echo "Starting darb server..."
-	@go run cmd/server/main.go
+	@$(BUILD_DIR)/$(BINARY_NAME)
 
 dev: swagger ## Run with hot reload (frontend + backend)
 	@echo "Starting darb in development mode with hot reload..."

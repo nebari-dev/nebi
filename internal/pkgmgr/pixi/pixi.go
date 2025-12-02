@@ -329,20 +329,49 @@ func (p *PixiManager) List(ctx context.Context, opts pkgmgr.ListOptions) ([]pkgm
 		return nil, fmt.Errorf("environment path is required")
 	}
 
-	// Get packages from manifest file instead of running pixi list
-	// This is more reliable and doesn't require the environment to be activated
-	manifest, err := p.GetManifest(ctx, opts.EnvPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get manifest: %w", err)
+	// Run pixi list to get all installed packages with actual versions
+	cmd := exec.CommandContext(ctx, p.pixiPath, "list")
+	cmd.Dir = opts.EnvPath
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("pixi list failed: %w, stderr: %s", err, stderr.String())
 	}
 
-	packages := make([]pkgmgr.Package, 0, len(manifest.Packages))
-	for name, version := range manifest.Packages {
-		packages = append(packages, pkgmgr.Package{
-			Name:    name,
-			Version: version,
-			Channel: "", // Channel info not directly available in simple list
-		})
+	// Parse pixi list output
+	// Format: Package  Version  Build  Size  Kind  Source
+	// Example: polars  1.35.2   pyh6a1acc5_0  501.9 KiB  conda  https://...
+	var packages []pkgmgr.Package
+	scanner := bufio.NewScanner(&stdout)
+
+	// Skip header line
+	if scanner.Scan() {
+		// First line is header: "Package  Version  Build ..."
+	}
+
+	// Parse each package line
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		// Split by whitespace and extract package name (field 0) and version (field 1)
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			packages = append(packages, pkgmgr.Package{
+				Name:    fields[0],
+				Version: fields[1],
+				Channel: "", // Could parse from Source field if needed
+			})
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("failed to parse pixi list output: %w", err)
 	}
 
 	return packages, nil

@@ -126,6 +126,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 
 			// Audit logs
 			admin.GET("/audit-logs", adminHandler.ListAuditLogs)
+
+			// Dashboard stats
+			admin.GET("/dashboard/stats", adminHandler.GetDashboardStats)
 		}
 	}
 

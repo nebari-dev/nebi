@@ -113,3 +113,8 @@ export interface EnvironmentVersion {
 export interface RollbackRequest {
   version_number: number;
 }
+
+export interface DashboardStats {
+  total_disk_usage_bytes: number;
+  total_disk_usage_formatted: string;
+}

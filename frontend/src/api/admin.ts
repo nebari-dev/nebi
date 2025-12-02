@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { User, CreateUserRequest, AuditLog, Collaborator, ShareEnvironmentRequest } from '@/types/models';
+import type { User, CreateUserRequest, AuditLog, Collaborator, ShareEnvironmentRequest, DashboardStats } from '@/types/models';
 
 export const adminApi = {
   // User Management
@@ -39,5 +39,11 @@ export const adminApi = {
 
   unshareEnvironment: async (environmentId: string, userId: string): Promise<void> => {
     await apiClient.delete(`/environments/${environmentId}/share/${userId}`);
+  },
+
+  // Dashboard Stats
+  getDashboardStats: async (): Promise<DashboardStats> => {
+    const response = await apiClient.get('/admin/dashboard/stats');
+    return response.data;
   },
 };

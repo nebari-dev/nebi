@@ -94,3 +94,11 @@ export const useUnshareEnvironment = (environmentId: string) => {
     },
   });
 };
+
+// Dashboard Stats Hooks
+export const useDashboardStats = () => {
+  return useQuery({
+    queryKey: ['admin', 'dashboard', 'stats'],
+    queryFn: adminApi.getDashboardStats,
+  });
+};

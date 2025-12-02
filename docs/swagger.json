@@ -50,6 +50,30 @@
                 }
             }
         },
+        "/admin/dashboard/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get admin dashboard statistics",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.DashboardStatsResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/permissions": {
             "get": {
                 "security": [
@@ -1377,6 +1401,17 @@
                     "type": "string"
                 },
                 "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.DashboardStatsResponse": {
+            "type": "object",
+            "properties": {
+                "total_disk_usage_bytes": {
+                    "type": "integer"
+                },
+                "total_disk_usage_formatted": {
                     "type": "string"
                 }
             }

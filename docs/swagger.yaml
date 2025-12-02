@@ -49,7 +49,6 @@ definitions:
       is_admin:
         type: boolean
       password:
-        minLength: 8
         type: string
       username:
         type: string
@@ -454,7 +453,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/models.User'
+              $ref: '#/definitions/handlers.UserWithAdminStatus'
             type: array
       security:
       - BearerAuth: []

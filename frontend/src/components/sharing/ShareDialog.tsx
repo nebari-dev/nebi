@@ -24,6 +24,7 @@ export const ShareDialog = ({ open, onOpenChange, environmentId }: ShareDialogPr
   const [selectedUser, setSelectedUser] = useState('');
   const [selectedRole, setSelectedRole] = useState<'editor' | 'viewer'>('viewer');
   const [confirmRemove, setConfirmRemove] = useState<{ userId: string; username: string } | null>(null);
+  const [error, setError] = useState('');
 
   const { data: collaborators, isLoading: collaboratorsLoading } = useCollaborators(environmentId, open);
   const { data: allUsers } = useUsers();
@@ -38,18 +39,31 @@ export const ShareDialog = ({ open, onOpenChange, environmentId }: ShareDialogPr
     e.preventDefault();
     if (!selectedUser) return;
 
-    await shareMutation.mutateAsync({
-      user_id: selectedUser,
-      role: selectedRole,
-    });
+    setError('');
+    try {
+      await shareMutation.mutateAsync({
+        user_id: selectedUser,
+        role: selectedRole,
+      });
 
-    setSelectedUser('');
-    setSelectedRole('viewer');
+      setSelectedUser('');
+      setSelectedRole('viewer');
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.error || 'Failed to share environment. Please try again.';
+      setError(errorMessage);
+    }
   };
 
   const handleUnshare = async () => {
-    if (confirmRemove) {
+    if (!confirmRemove) return;
+
+    setError('');
+    try {
       await unshareMutation.mutateAsync(confirmRemove.userId);
+      setConfirmRemove(null);
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.error || 'Failed to remove access. Please try again.';
+      setError(errorMessage);
       setConfirmRemove(null);
     }
   };
@@ -63,6 +77,12 @@ export const ShareDialog = ({ open, onOpenChange, environmentId }: ShareDialogPr
             Manage who has access to this environment
           </DialogDescription>
         </DialogHeader>
+
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-3 py-2 rounded text-sm mt-4">
+            {error}
+          </div>
+        )}
 
         {collaboratorsLoading ? (
           <div className="flex items-center justify-center py-8">

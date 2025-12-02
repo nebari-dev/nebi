@@ -193,7 +193,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/models.User"
+                                "$ref": "#/definitions/handlers.UserWithAdminStatus"
                             }
                         }
                     }
@@ -1380,8 +1380,7 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "password": {
-                    "type": "string",
-                    "minLength": 8
+                    "type": "string"
                 },
                 "username": {
                     "type": "string"

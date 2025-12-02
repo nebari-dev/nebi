@@ -13,6 +13,7 @@ export interface Environment {
   id: string; // UUID
   name: string;
   owner_id: string; // UUID
+  owner?: User; // Optional owner details
   status: EnvironmentStatus;
   package_manager: string;
   created_at: string;

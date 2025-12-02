@@ -25,7 +25,7 @@ func NewAdminHandler(db *gorm.DB) *AdminHandler {
 // @Tags admin
 // @Security BearerAuth
 // @Produce json
-// @Success 200 {array} models.User
+// @Success 200 {array} UserWithAdminStatus
 // @Router /admin/users [get]
 func (h *AdminHandler) ListUsers(c *gin.Context) {
 	var users []models.User
@@ -34,7 +34,23 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, users)
+	// Get all admin user IDs in ONE Casbin call
+	adminUserIDs, err := rbac.GetAllAdminUserIDs()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to check admin status"})
+		return
+	}
+
+	// Build response with admin status using O(1) map lookup
+	usersWithStatus := make([]UserWithAdminStatus, len(users))
+	for i, user := range users {
+		usersWithStatus[i] = UserWithAdminStatus{
+			User:    user,
+			IsAdmin: adminUserIDs[user.ID],
+		}
+	}
+
+	c.JSON(http.StatusOK, usersWithStatus)
 }
 
 // CreateUser godoc
@@ -382,7 +398,7 @@ func (h *AdminHandler) ListAuditLogs(c *gin.Context) {
 type CreateUserRequest struct {
 	Username string `json:"username" binding:"required"`
 	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8"`
+	Password string `json:"password" binding:"required"`
 	IsAdmin  bool   `json:"is_admin"`
 }
 

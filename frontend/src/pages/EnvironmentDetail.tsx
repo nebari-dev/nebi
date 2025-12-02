@@ -39,6 +39,7 @@ export const EnvironmentDetail = () => {
   const [showInstall, setShowInstall] = useState(false);
   const [packageInput, setPackageInput] = useState('');
   const [confirmRemovePackage, setConfirmRemovePackage] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
   const isOwner = environment?.owner_id === currentUser?.id;
 
@@ -46,16 +47,29 @@ export const EnvironmentDetail = () => {
     e.preventDefault();
     if (!packageInput.trim()) return;
 
+    setError('');
     const packageNames = packageInput.split(',').map(p => p.trim()).filter(Boolean);
-    await installMutation.mutateAsync({ packages: packageNames });
-    setPackageInput('');
-    setShowInstall(false);
+
+    try {
+      await installMutation.mutateAsync({ packages: packageNames });
+      setPackageInput('');
+      setShowInstall(false);
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.error || 'Failed to install package. Please try again.';
+      setError(errorMessage);
+    }
   };
 
   const handleRemove = async () => {
-    if (confirmRemovePackage) {
+    if (!confirmRemovePackage) return;
+
+    setError('');
+    try {
       await removeMutation.mutateAsync(confirmRemovePackage);
       setConfirmRemovePackage(null);
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.error || 'Failed to remove package. Please try again.';
+      setError(errorMessage);
     }
   };
 
@@ -89,7 +103,10 @@ export const EnvironmentDetail = () => {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={(tab) => {
+        setActiveTab(tab);
+        setError('');
+      }}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="packages">Packages</TabsTrigger>
@@ -104,22 +121,51 @@ export const EnvironmentDetail = () => {
             <CardHeader>
               <CardTitle>Environment Info</CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-2">
+            <CardContent className="grid gap-3">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">ID:</span>
-                <span className="font-medium">{environment.id}</span>
+                <span className="text-muted-foreground">Name:</span>
+                <span className="font-medium">{environment.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Owner:</span>
+                <span className="font-medium">
+                  {environment.owner?.username || (isOwner ? 'You' : 'Unknown')}
+                  {isOwner && <span className="ml-2 text-xs text-muted-foreground">(you)</span>}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Status:</span>
+                <Badge className={statusColors[environment.status]}>
+                  {environment.status}
+                </Badge>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Package Manager:</span>
-                <span className="font-medium">{environment.package_manager}</span>
+                <span className="font-medium font-mono text-sm">{environment.package_manager}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Size:</span>
+                <span className="font-medium">{environment.size_formatted || 'Calculating...'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Packages:</span>
+                <span className="font-medium">{packages?.length || 0} installed</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Collaborators:</span>
+                <span className="font-medium">{collaborators?.length || 0}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Created:</span>
                 <span>{new Date(environment.created_at).toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Updated:</span>
+                <span className="text-muted-foreground">Last Updated:</span>
                 <span>{new Date(environment.updated_at).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ID:</span>
+                <span className="font-mono text-xs text-muted-foreground">{environment.id}</span>
               </div>
             </CardContent>
           </Card>
@@ -129,7 +175,13 @@ export const EnvironmentDetail = () => {
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold">Packages</h2>
-              <Button onClick={() => setShowInstall(!showInstall)} disabled={environment.status !== 'ready'}>
+              <Button
+                onClick={() => {
+                  setShowInstall(!showInstall);
+                  setError('');
+                }}
+                disabled={environment.status !== 'ready'}
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Install Package
               </Button>
@@ -148,7 +200,10 @@ export const EnvironmentDetail = () => {
                 <Button type="submit" disabled={installMutation.isPending}>
                   {installMutation.isPending ? 'Installing...' : 'Install'}
                 </Button>
-                <Button type="button" variant="outline" onClick={() => setShowInstall(false)}>
+                <Button type="button" variant="outline" onClick={() => {
+                  setShowInstall(false);
+                  setError('');
+                }}>
                   Cancel
                 </Button>
               </form>
@@ -157,6 +212,12 @@ export const EnvironmentDetail = () => {
               </p>
             </CardContent>
           </Card>
+        )}
+
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded">
+            {error}
+          </div>
         )}
 
         {packagesLoading ? (

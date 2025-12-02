@@ -114,6 +114,26 @@ func RevokeAdmin(userID uuid.UUID) error {
 	return enforcer.SavePolicy()
 }
 
+// GetAllAdminUserIDs returns a set of all user IDs that have admin privileges
+func GetAllAdminUserIDs() (map[uuid.UUID]bool, error) {
+	// Get all policies where object="admin" and action="admin" in ONE call
+	policies, err := enforcer.GetFilteredPolicy(1, "admin", "admin")
+	if err != nil {
+		return nil, err
+	}
+
+	adminUserIDs := make(map[uuid.UUID]bool, len(policies))
+	for _, policy := range policies {
+		if len(policy) >= 1 {
+			if userID, err := uuid.Parse(policy[0]); err == nil {
+				adminUserIDs[userID] = true
+			}
+		}
+	}
+
+	return adminUserIDs, nil
+}
+
 // GetUserEnvironments returns all environment IDs that a user has access to
 func GetUserEnvironments(userID uuid.UUID) ([]uuid.UUID, error) {
 	policies, err := enforcer.GetFilteredPolicy(0, userID.String())

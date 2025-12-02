@@ -4,7 +4,6 @@ import { useAuthStore } from '@/store/authStore';
 import { authApi } from '@/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
 
 export const Login = () => {
   const [username, setUsername] = useState('');
@@ -33,8 +32,8 @@ export const Login = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white">
-      <Card className="w-full max-w-lg shadow-lg">
-        <CardHeader className="space-y-6 pb-8">
+      <div className="w-full max-w-lg">
+        <div className="space-y-6 pb-8">
           <div className="flex justify-center">
             <img
               src="/darb-logo.png"
@@ -45,42 +44,32 @@ export const Login = () => {
           <p className="text-center text-muted-foreground text-base">
             Environment Management System
           </p>
-        </CardHeader>
-        <CardContent className="px-8 pb-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
+        </div>
+        <div className="px-8 pb-8">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
               <div className="bg-destructive/10 text-destructive p-4 rounded-md text-sm">
                 {error}
               </div>
             )}
 
-            <div className="space-y-3">
-              <label className="text-base font-medium text-foreground">
-                Username
-              </label>
-              <Input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your username"
-                required
-                className="h-12 text-base"
-              />
-            </div>
+            <Input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Username"
+              required
+              className="h-12 text-base"
+            />
 
-            <div className="space-y-3">
-              <label className="text-base font-medium text-foreground">
-                Password
-              </label>
-              <Input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                required
-                className="h-12 text-base"
-              />
-            </div>
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              required
+              className="h-12 text-base"
+            />
 
             <Button
               type="submit"
@@ -90,8 +79,8 @@ export const Login = () => {
               {loading ? 'Signing in...' : 'Sign in'}
             </Button>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 };

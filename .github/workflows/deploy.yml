@@ -1,0 +1,53 @@
+name: Deploy to Fly.io
+
+on:
+  workflow_dispatch:
+
+env:
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+jobs:
+  deploy:
+    name: Deploy to Fly.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Create app if it doesn't exist
+        run: |
+          if ! flyctl status --app darb 2>/dev/null; then
+            echo "Creating app..."
+            flyctl apps create darb
+          else
+            echo "App already exists"
+          fi
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Create volume if it doesn't exist
+        run: |
+          if ! flyctl volumes list --app darb 2>/dev/null | grep -q darb_data; then
+            echo "Creating volume..."
+            flyctl volumes create darb_data --region sjc --size 1 --app darb
+          else
+            echo "Volume already exists"
+          fi
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Set Fly.io secrets
+        run: |
+          flyctl secrets set \
+            DARB_AUTH_JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+            ADMIN_USERNAME="${{ secrets.ADMIN_USERNAME }}" \
+            ADMIN_PASSWORD="${{ secrets.ADMIN_PASSWORD }}"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Deploy to Fly.io
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

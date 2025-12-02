@@ -1,0 +1,24 @@
+# fly.toml app configuration file
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'darb'
+primary_region = 'sjc'
+
+[build]
+
+[http_service]
+  internal_port = 8460
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[mounts]
+  source = "darb_data"
+  destination = "/app/data"

@@ -18,7 +18,7 @@ const statusColors = {
   deleting: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
 };
 
-const DEFAULT_PIXI_TOML = `[project]
+const DEFAULT_PIXI_TOML = `[workspace]
 name = "my-project"
 channels = ["conda-forge"]
 platforms = ["osx-arm64", "linux-64"]

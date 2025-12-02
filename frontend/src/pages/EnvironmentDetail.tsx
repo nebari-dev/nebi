@@ -233,15 +233,14 @@ export const EnvironmentDetail = () => {
                 <thead className="border-b bg-muted/50">
                   <tr>
                     <th className="text-left p-4 font-medium">Package</th>
-                    <th className="text-left p-4 font-medium">Version</th>
-                    <th className="text-left p-4 font-medium">Installed</th>
+                    <th className="text-left p-4 font-medium">Installed Version</th>
                     <th className="text-right p-4 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {packages?.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="p-8 text-center text-muted-foreground">
+                      <td colSpan={3} className="p-8 text-center text-muted-foreground">
                         No packages installed
                       </td>
                     </tr>
@@ -254,13 +253,8 @@ export const EnvironmentDetail = () => {
                             <span className="font-medium">{pkg.name}</span>
                           </div>
                         </td>
-                        <td className="p-4 text-muted-foreground">
+                        <td className="p-4 text-muted-foreground font-mono text-sm">
                           {pkg.version || '-'}
-                        </td>
-                        <td className="p-4 text-muted-foreground">
-                          {pkg.installed_at && new Date(pkg.installed_at).getFullYear() > 1900
-                            ? new Date(pkg.installed_at).toLocaleString()
-                            : '-'}
                         </td>
                         <td className="p-4 text-right">
                           <Button

@@ -130,11 +130,26 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 	job.StartedAt = &now
 	w.db.Save(job)
 
-	// Create log buffer
+	// Create thread-safe log buffer
 	var logBuf bytes.Buffer
+	var logMutex sync.Mutex
+
+	// Start periodic log persistence (flush to DB every 2 seconds)
+	stopFlushing := make(chan struct{})
+	defer func() {
+		close(stopFlushing)
+	}()
+
+	go w.flushLogsToDatabase(job.ID, &logBuf, &logMutex, stopFlushing)
+
+	// Close broker subscriptions when job finishes
+	defer w.broker.Close(job.ID)
+
+	// Thread-safe writer wrapper
+	safeWriter := &threadSafeWriter{writer: &logBuf, mu: &logMutex}
 
 	// Create broker writer for in-memory streaming
-	brokerWriter := logstream.NewStreamWriter(job.ID, w.broker, &logBuf)
+	brokerWriter := logstream.NewStreamWriter(job.ID, w.broker, safeWriter)
 
 	// Create multi-writer: buffer + broker (in-memory) + Valkey (distributed, if available)
 	var logWriter io.Writer
@@ -150,13 +165,15 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 	// Execute the job with streaming logs
 	err := w.executeJob(ctx, job, logWriter)
 
-	// Close broker subscriptions for this job
-	defer w.broker.Close(job.ID)
+	// Get final logs (thread-safe)
+	logMutex.Lock()
+	finalLogs := logBuf.String()
+	logMutex.Unlock()
 
 	// Update job status
 	completedAt := time.Now()
 	job.CompletedAt = &completedAt
-	job.Logs = logBuf.String()
+	job.Logs = finalLogs
 
 	if err != nil {
 		w.logger.Error("Job failed", "job_id", job.ID, "error", err)
@@ -186,6 +203,50 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 	}
 
 	w.db.Save(job)
+}
+
+// flushLogsToDatabase periodically saves accumulated logs to the database
+func (w *Worker) flushLogsToDatabase(jobID uuid.UUID, logBuf *bytes.Buffer, logMutex *sync.Mutex, stop chan struct{}) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			// Read current logs (thread-safe)
+			logMutex.Lock()
+			currentLogs := logBuf.String()
+			logMutex.Unlock()
+
+			// Save to database
+			if err := w.db.Model(&models.Job{}).Where("id = ?", jobID).Update("logs", currentLogs).Error; err != nil {
+				w.logger.Error("Failed to flush logs to database", "job_id", jobID, "error", err)
+			}
+
+		case <-stop:
+			// Final flush before stopping
+			logMutex.Lock()
+			finalLogs := logBuf.String()
+			logMutex.Unlock()
+
+			if err := w.db.Model(&models.Job{}).Where("id = ?", jobID).Update("logs", finalLogs).Error; err != nil {
+				w.logger.Error("Failed final log flush", "job_id", jobID, "error", err)
+			}
+			return
+		}
+	}
+}
+
+// threadSafeWriter wraps an io.Writer with a mutex for concurrent access
+type threadSafeWriter struct {
+	writer io.Writer
+	mu     *sync.Mutex
+}
+
+func (w *threadSafeWriter) Write(p []byte) (n int, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.writer.Write(p)
 }
 
 func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.Writer) error {

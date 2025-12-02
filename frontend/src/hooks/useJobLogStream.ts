@@ -3,8 +3,8 @@ import { useAuthStore } from '@/store/authStore';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
-export const useJobLogStream = (jobId: string, jobStatus: string) => {
-  const [logs, setLogs] = useState<string>('');
+export const useJobLogStream = (jobId: string, jobStatus: string, initialLogs: string = '') => {
+  const [logs, setLogs] = useState<string>(initialLogs);
   const [isStreaming, setIsStreaming] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const token = useAuthStore((state) => state.token);

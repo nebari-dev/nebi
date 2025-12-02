@@ -23,11 +23,11 @@ const typeColors = {
 
 const JobCard = ({ job, isFirst }: { job: Job; isFirst: boolean }) => {
   const [expanded, setExpanded] = useState(isFirst);
-  const { logs: streamedLogs, isStreaming } = useJobLogStream(job.id, job.status);
+  // Initialize hook with existing logs from database so SSE appends instead of replacing
+  const { logs: streamedLogs, isStreaming } = useJobLogStream(job.id, job.status, job.logs || '');
 
-  // Use streamed logs if available (either actively streaming or accumulated from past stream),
-  // otherwise fall back to job.logs from API
-  const displayLogs = streamedLogs || job.logs;
+  // Always use streamed logs (which includes initial DB logs + new SSE logs)
+  const displayLogs = streamedLogs;
 
   return (
     <Card>

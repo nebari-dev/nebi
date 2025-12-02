@@ -118,6 +118,7 @@ func (h *JobHandler) StreamJobLogs(c *gin.Context) {
 	// Verify job exists and user has access
 	var job models.Job
 	err = h.db.
+		Select("jobs.*").
 		Joins("JOIN environments ON environments.id = jobs.environment_id").
 		Where("jobs.id = ? AND environments.owner_id = ?", jobUUID, userID).
 		First(&job).Error

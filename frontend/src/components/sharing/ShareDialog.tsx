@@ -48,8 +48,9 @@ export const ShareDialog = ({ open, onOpenChange, environmentId }: ShareDialogPr
 
       setSelectedUser('');
       setSelectedRole('viewer');
-    } catch (err: any) {
-      const errorMessage = err?.response?.data?.error || 'Failed to share environment. Please try again.';
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } };
+      const errorMessage = error?.response?.data?.error || 'Failed to share environment. Please try again.';
       setError(errorMessage);
     }
   };
@@ -61,8 +62,9 @@ export const ShareDialog = ({ open, onOpenChange, environmentId }: ShareDialogPr
     try {
       await unshareMutation.mutateAsync(confirmRemove.userId);
       setConfirmRemove(null);
-    } catch (err: any) {
-      const errorMessage = err?.response?.data?.error || 'Failed to remove access. Please try again.';
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } };
+      const errorMessage = error?.response?.data?.error || 'Failed to remove access. Please try again.';
       setError(errorMessage);
       setConfirmRemove(null);
     }

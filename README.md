@@ -84,6 +84,30 @@ helm install darb ./chart -n darb --create-namespace \
 curl http://localhost:8460/api/v1/health
 ```
 
+### Fly.io Deployment
+
+Deploy to fly.io using GitHub Actions:
+
+```bash
+# Generate a deploy token for CI/CD
+flyctl tokens create deploy --name github-actions-darb
+
+# Set GitHub secrets
+gh secret set FLY_API_TOKEN --body "<token-from-above>"
+gh secret set JWT_SECRET --body "$(openssl rand -base64 32)"
+gh secret set ADMIN_USERNAME --body "admin"
+gh secret set ADMIN_PASSWORD --body "$(openssl rand -base64 24)"
+
+# Deploy via GitHub Actions
+gh workflow run deploy.yml
+```
+
+The deployment workflow will:
+- Create the fly.io app (if it doesn't exist)
+- Create a 1GB volume for SQLite database
+- Set required secrets
+- Build and deploy the Docker image
+
 ## Architecture
 
 ```

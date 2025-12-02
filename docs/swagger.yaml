@@ -57,6 +57,13 @@ definitions:
     - password
     - username
     type: object
+  handlers.DashboardStatsResponse:
+    properties:
+      total_disk_usage_bytes:
+        type: integer
+      total_disk_usage_formatted:
+        type: string
+    type: object
   handlers.ErrorResponse:
     properties:
       error:
@@ -372,6 +379,20 @@ paths:
       security:
       - BearerAuth: []
       summary: List audit logs
+      tags:
+      - admin
+  /admin/dashboard/stats:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.DashboardStatsResponse'
+      security:
+      - BearerAuth: []
+      summary: Get admin dashboard statistics
       tags:
       - admin
   /admin/permissions:

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/aktech/darb/internal/audit"
@@ -394,6 +395,33 @@ func (h *AdminHandler) ListAuditLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, logs)
 }
 
+// GetDashboardStats godoc
+// @Summary Get admin dashboard statistics
+// @Tags admin
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} DashboardStatsResponse
+// @Router /admin/dashboard/stats [get]
+func (h *AdminHandler) GetDashboardStats(c *gin.Context) {
+	// Get total disk usage
+	var totalDiskUsage struct {
+		TotalBytes int64
+	}
+	h.db.Model(&models.Environment{}).
+		Select("COALESCE(SUM(size_bytes), 0) as total_bytes").
+		Scan(&totalDiskUsage)
+
+	// Format size
+	totalSizeFormatted := formatBytes(totalDiskUsage.TotalBytes)
+
+	stats := DashboardStatsResponse{
+		TotalDiskUsageBytes:     totalDiskUsage.TotalBytes,
+		TotalDiskUsageFormatted: totalSizeFormatted,
+	}
+
+	c.JSON(http.StatusOK, stats)
+}
+
 // Request types
 type CreateUserRequest struct {
 	Username string `json:"username" binding:"required"`
@@ -411,4 +439,23 @@ type GrantPermissionRequest struct {
 type UserWithAdminStatus struct {
 	models.User
 	IsAdmin bool `json:"is_admin"`
+}
+
+type DashboardStatsResponse struct {
+	TotalDiskUsageBytes     int64  `json:"total_disk_usage_bytes"`
+	TotalDiskUsageFormatted string `json:"total_disk_usage_formatted"`
+}
+
+// formatBytes converts bytes to human-readable format
+func formatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }

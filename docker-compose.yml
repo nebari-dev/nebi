@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL 18 - Latest version
   postgres:

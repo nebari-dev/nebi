@@ -37,6 +37,9 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 FROM ghcr.io/prefix-dev/pixi:latest
 WORKDIR /app
 
+# Install CA certificates (required for OIDC/HTTPS connections)
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
 # Copy the static binary
 COPY --from=backend-builder /darb /app/darb
 

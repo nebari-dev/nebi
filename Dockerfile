@@ -1,9 +1,9 @@
-# Multi-stage Dockerfile for ultra-lightweight final image
+# Multi-stage Dockerfile
 # Stage 1: Build frontend
 FROM node:20-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
-RUN npm ci
+RUN npm ci --prefer-offline --no-audit
 COPY frontend/ ./
 RUN npm run build
 
@@ -11,12 +11,12 @@ RUN npm run build
 FROM golang:1.24-alpine AS backend-builder
 WORKDIR /app
 
-# Install build dependencies
-RUN apk add --no-cache gcc musl-dev sqlite-dev
-
-# Copy go mod files
+# Copy go mod files and download dependencies (cached layer)
 COPY go.mod go.sum ./
 RUN go mod download
+
+# Install swag for API docs generation
+RUN go install github.com/swaggo/swag/cmd/swag@latest
 
 # Copy source code
 COPY . .
@@ -25,26 +25,21 @@ COPY . .
 COPY --from=frontend-builder /app/frontend/dist ./internal/web/dist
 
 # Generate swagger docs
-RUN go install github.com/swaggo/swag/cmd/swag@latest && \
-    swag init -g cmd/server/main.go -o ./docs
+RUN swag init -g cmd/server/main.go -o ./docs
 
-# Build statically linked binary
-# TARGETARCH is automatically set by Docker buildx based on --platform
-ARG TARGETARCH
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH:-amd64} \
-    go build -a \
-    -ldflags '-linkmode external -extldflags "-static" -s -w -X main.Version=latest' \
+# Build pure Go binary with CGO disabled
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -trimpath \
+    -ldflags '-s -w -X main.Version=latest' \
     -o /darb ./cmd/server
 
 # Stage 3: Final minimal image
-# Using debian:12-slim instead of distroless to provide system dependencies for pixi
-FROM debian:12-slim
+FROM alpine:3.19
+WORKDIR /app
 
 # Install CA certificates and create nonroot user
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates && \
-    rm -rf /var/lib/apt/lists/* && \
-    useradd -u 65532 -m -s /bin/bash nonroot
+RUN apk --no-cache add ca-certificates tzdata && \
+    adduser -D -u 65532 nonroot
 
 # Copy the static binary
 COPY --from=backend-builder --chown=nonroot:nonroot /darb /app/darb
@@ -52,18 +47,13 @@ COPY --from=backend-builder --chown=nonroot:nonroot /darb /app/darb
 # Copy RBAC configuration
 COPY --from=backend-builder --chown=nonroot:nonroot /app/internal/rbac/model.conf /app/internal/rbac/model.conf
 
-# Set working directory
-WORKDIR /app
-
 # Expose port
 EXPOSE 8460
 
 # Environment variables
-ENV GIN_MODE=release \
-    DATABASE_PATH=/app/data/darb.db \
-    LOG_LEVEL=info
+ENV GIN_MODE=release
 
-# Run as non-root user (uid:gid 65532:65532)
+# Run as non-root user
 USER nonroot:nonroot
 
 # Run the binary

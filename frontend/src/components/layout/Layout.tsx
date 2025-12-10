@@ -3,11 +3,13 @@ import { useAuthStore } from '@/store/authStore';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import { Button } from '@/components/ui/button';
 import { LogOut, Boxes, ListTodo, Shield } from 'lucide-react';
+import { useState } from 'react';
 
 export const Layout = () => {
   const { user, clearAuth } = useAuthStore();
   const navigate = useNavigate();
   const { data: isAdmin } = useIsAdmin();
+  const [avatarError, setAvatarError] = useState(false);
 
   const handleLogout = () => {
     clearAuth();
@@ -64,7 +66,23 @@ export const Layout = () => {
               </nav>
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-sm text-muted-foreground">
+              {user?.avatar_url && !avatarError ? (
+                <img
+                  src={user.avatar_url}
+                  alt={user.username}
+                  className="h-8 w-8 rounded-full"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  crossOrigin="anonymous"
+                  onError={() => setAvatarError(true)}
+                />
+              ) : (
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                  <span className="text-sm font-medium text-primary">
+                    {user?.username?.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+              )}
+              <span className="text-sm font-medium text-foreground">
                 {user?.username}
               </span>
               <Button variant="ghost" size="icon" onClick={handleLogout}>

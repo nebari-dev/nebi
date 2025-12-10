@@ -1,0 +1,48 @@
+# Example Darb Configuration
+# Copy this file to config.yaml and update with your values
+
+server:
+  port: 8460
+  mode: development  # or "production"
+
+database:
+  driver: sqlite  # or "postgres"
+  dsn: ./darb.db
+  # For PostgreSQL:
+  # driver: postgres
+  # dsn: "host=localhost user=darb password=secret dbname=darb port=5432 sslmode=disable"
+  # max_idle_conns: 10
+  # max_open_conns: 100
+  # conn_max_lifetime: 60
+
+auth:
+  type: basic
+  jwt_secret: change-me-in-production
+
+  # Optional: Enable OIDC/OAuth authentication
+  # Uncomment and configure to enable OAuth login button
+  # Works with any OIDC provider (Google, GitHub, Keycloak, Auth0, Okta, etc.)
+  # oidc_issuer_url: https://accounts.google.com
+  # oidc_client_id: your-client-id.apps.googleusercontent.com
+  # oidc_client_secret: your-client-secret
+  # oidc_redirect_url: http://localhost:8460/api/v1/auth/oidc/callback
+
+queue:
+  type: memory  # or "valkey"
+  # valkey_addr: localhost:6379
+
+log:
+  format: text  # or "json"
+  level: info   # debug, info, warn, error
+
+package_manager:
+  default_type: pixi
+  # pixi_path: /custom/path/to/pixi  # Optional: custom binary path
+  # uv_path: /custom/path/to/uv      # Optional: custom binary path
+
+storage:
+  environments_dir: ./data/environments
+
+# Environment variables can override any setting above
+# Example: DARB_AUTH_OIDC_CLIENT_ID=your-id
+# Format: DARB_<SECTION>_<KEY> (dots become underscores)

@@ -44,7 +44,10 @@ build: build-frontend build-backend ## Build complete single binary (frontend + 
 
 run: build ## Run the server (without hot reload)
 	@echo "Starting darb server..."
-	@$(BUILD_DIR)/$(BINARY_NAME)
+	@if [ -f .env ]; then \
+		echo "✓ Loading environment variables from .env..."; \
+	fi
+	@bash -c 'set -a; [ -f .env ] && source .env; set +a; $(BUILD_DIR)/$(BINARY_NAME)'
 
 dev: swagger ## Run with hot reload (frontend + backend)
 	@echo "Starting darb in development mode with hot reload..."
@@ -53,6 +56,11 @@ dev: swagger ## Run with hot reload (frontend + backend)
 		cd frontend && npm install; \
 	fi
 	@echo ""
+	@if [ -f .env ]; then \
+		echo "✓ Loading environment variables from .env..."; \
+	else \
+		echo "⚠️  Warning: .env file not found. Using defaults."; \
+	fi
 	@echo "🚀 Starting services..."
 	@echo "  Frontend: http://localhost:8461"
 	@echo "  Backend:  http://localhost:8460"
@@ -60,9 +68,7 @@ dev: swagger ## Run with hot reload (frontend + backend)
 	@echo ""
 	@echo "Press Ctrl+C to stop all services"
 	@echo ""
-	@trap 'kill 0' EXIT; \
-	(cd frontend && npm run dev) & \
-	air
+	@bash -c 'set -a; [ -f .env ] && source .env; set +a; trap "kill 0" EXIT; (cd frontend && npm run dev) & air'
 
 migrate: ## Run database migrations
 	@echo "Running migrations..."

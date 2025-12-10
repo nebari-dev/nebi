@@ -44,10 +44,28 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 
 	// Initialize authenticator
 	var authenticator auth.Authenticator
+	var oidcAuth *auth.OIDCAuthenticator
 	if cfg.Auth.Type == "basic" {
 		authenticator = auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
 	}
-	// TODO: Add OIDC support in future
+
+	// Initialize OIDC if configured
+	if cfg.Auth.OIDCIssuerURL != "" && cfg.Auth.OIDCClientID != "" {
+		oidcCfg := auth.OIDCConfig{
+			IssuerURL:    cfg.Auth.OIDCIssuerURL,
+			ClientID:     cfg.Auth.OIDCClientID,
+			ClientSecret: cfg.Auth.OIDCClientSecret,
+			RedirectURL:  cfg.Auth.OIDCRedirectURL,
+		}
+		var err error
+		// Use context.Background() for initialization
+		oidcAuth, err = auth.NewOIDCAuthenticator(nil, oidcCfg, db, cfg.Auth.JWTSecret)
+		if err != nil {
+			logger.Error("Failed to initialize OIDC authenticator", "error", err)
+		} else {
+			logger.Info("OIDC authentication enabled", "issuer", cfg.Auth.OIDCIssuerURL)
+		}
+	}
 
 	// Public routes
 	public := router.Group("/api/v1")
@@ -55,6 +73,12 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		public.GET("/health", handlers.HealthCheck)
 		public.GET("/version", handlers.GetVersion)
 		public.POST("/auth/login", handlers.Login(authenticator))
+
+		// OIDC routes (if enabled)
+		if oidcAuth != nil {
+			public.GET("/auth/oidc/login", handlers.OIDCLogin(oidcAuth))
+			public.GET("/auth/oidc/callback", handlers.OIDCCallback(oidcAuth))
+		}
 	}
 
 	// Initialize handlers
@@ -65,6 +89,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	protected := router.Group("/api/v1")
 	protected.Use(authenticator.Middleware())
 	{
+		// User info
+		protected.GET("/auth/me", handlers.GetCurrentUser(authenticator))
+
 		// Environment endpoints
 		protected.GET("/environments", envHandler.ListEnvironments)
 		protected.POST("/environments", envHandler.CreateEnvironment)

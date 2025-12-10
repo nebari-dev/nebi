@@ -125,6 +125,8 @@ definitions:
     type: object
   handlers.UserWithAdminStatus:
     properties:
+      avatar_url:
+        type: string
       created_at:
         type: string
       email:
@@ -338,6 +340,8 @@ definitions:
     type: object
   models.User:
     properties:
+      avatar_url:
+        type: string
       created_at:
         type: string
       email:
@@ -586,6 +590,76 @@ paths:
               type: string
             type: object
       summary: User login
+      tags:
+      - auth
+  /auth/me:
+    get:
+      description: Get the currently authenticated user's information
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get current user
+      tags:
+      - auth
+  /auth/oidc/callback:
+    get:
+      consumes:
+      - application/json
+      description: Process OIDC callback and authenticate user
+      parameters:
+      - description: Authorization code
+        in: query
+        name: code
+        required: true
+        type: string
+      - description: State parameter
+        in: query
+        name: state
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.LoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Handle OIDC callback
+      tags:
+      - auth
+  /auth/oidc/login:
+    get:
+      description: Redirects user to OIDC provider for authentication
+      produces:
+      - application/json
+      responses:
+        "302":
+          description: Redirect to OIDC provider
+          schema:
+            type: string
+      summary: Initiate OIDC login
       tags:
       - auth
   /environments:

@@ -1,18 +1,52 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { authApi } from '@/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { apiClient } from '@/api/client';
 
 export const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [searchParams] = useSearchParams();
 
   const setAuth = useAuthStore((state) => state.setAuth);
   const navigate = useNavigate();
+
+  // Handle OAuth callback
+  useEffect(() => {
+    const token = searchParams.get('token');
+    const oauthError = searchParams.get('error');
+
+    if (oauthError) {
+      setError('OAuth authentication failed');
+      return;
+    }
+
+    if (token) {
+      // Fetch user info with the token
+      const fetchUser = async () => {
+        try {
+          setLoading(true);
+          // Fetch current user info
+          const response = await apiClient.get('/auth/me', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          setAuth(token, response.data);
+          navigate('/');
+        } catch {
+          setError('Failed to complete OAuth login');
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchUser();
+    }
+  }, [searchParams, setAuth, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,8 +57,9 @@ export const Login = () => {
       const response = await authApi.login({ username, password });
       setAuth(response.token, response.user);
       navigate('/');
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Login failed');
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } } };
+      setError(error.response?.data?.error || 'Login failed');
     } finally {
       setLoading(false);
     }
@@ -79,6 +114,23 @@ export const Login = () => {
               {loading ? 'Signing in...' : 'Sign in'}
             </Button>
           </form>
+
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white text-gray-500">Or continue with</span>
+            </div>
+          </div>
+
+          <Button
+            onClick={() => window.location.href = '/api/v1/auth/oidc/login'}
+            variant="outline"
+            className="w-full h-12 text-base font-medium"
+          >
+            Sign in with OAuth
+          </Button>
         </div>
       </div>
     </div>

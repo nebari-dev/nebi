@@ -1,4 +1,44 @@
 services:
+  # Traefik - Reverse Proxy with automatic HTTPS
+  traefik:
+    image: traefik:v3.2
+    container_name: darb-traefik
+    command:
+      # API and dashboard
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+
+      # Docker provider
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+
+      # Entrypoints
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+
+      # HTTP to HTTPS redirect
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+
+      # Let's Encrypt
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@example.com}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+
+      # Logging
+      - "--log.level=INFO"
+      - "--accesslog=true"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_certs:/letsencrypt
+    networks:
+      - darb-network
+    restart: unless-stopped
+
   # PostgreSQL 18 - Latest version
   postgres:
     image: postgres:18
@@ -42,8 +82,14 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: darb-api
-    ports:
-      - "8460:8460"
+    labels:
+      - "traefik.enable=true"
+      # HTTP router
+      - "traefik.http.routers.darb.rule=Host(`${DARB_DOMAIN:-darb.localhost}`)"
+      - "traefik.http.routers.darb.entrypoints=websecure"
+      - "traefik.http.routers.darb.tls.certresolver=letsencrypt"
+      # Service
+      - "traefik.http.services.darb.loadbalancer.server.port=8460"
     environment:
       # Database configuration
       DARB_DATABASE_DRIVER: postgres
@@ -73,6 +119,8 @@ services:
         condition: service_healthy
       valkey:
         condition: service_healthy
+      traefik:
+        condition: service_started
     command: ["/app/darb", "--mode=both"]
     volumes:
       - ./data/environments:/app/data/environments
@@ -150,6 +198,8 @@ volumes:
   postgres_data:
     driver: local
   valkey_data:
+    driver: local
+  traefik_certs:
     driver: local
 
 networks:

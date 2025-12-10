@@ -9,7 +9,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Loader2, Plus, Trash2, X, Edit, Users } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Edit, Users, FileCode } from 'lucide-react';
+
+interface Package {
+  name: string;
+  version: string;
+}
 
 const statusColors = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -28,6 +33,28 @@ platforms = ["osx-arm64", "linux-64"]
 python = ">=3.11"
 `;
 
+const buildPixiToml = (packages: Package[], envName: string): string => {
+  const dependenciesLines = packages
+    .filter(pkg => pkg.name.trim())
+    .map(pkg => {
+      if (pkg.version.trim()) {
+        return `${pkg.name} = "${pkg.version}"`;
+      }
+      // If no version specified, use "*" (any version)
+      return `${pkg.name} = "*"`;
+    })
+    .join('\n');
+
+  return `[project]
+name = "${envName}"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64", "win-64"]
+
+[dependencies]
+${dependenciesLines || 'python = ">=3.11"'}
+`;
+};
+
 export const Environments = () => {
   const navigate = useNavigate();
   const { data: environments, isLoading } = useEnvironments();
@@ -38,6 +65,10 @@ export const Environments = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [newEnvName, setNewEnvName] = useState('');
   const [pixiToml, setPixiToml] = useState(DEFAULT_PIXI_TOML);
+  const [createMode, setCreateMode] = useState<'ui' | 'toml'>('ui');
+  const [packages, setPackages] = useState<Package[]>([{ name: 'python', version: '>=3.11' }]);
+  const [newPackageName, setNewPackageName] = useState('');
+  const [newPackageVersion, setNewPackageVersion] = useState('');
 
   const [showEdit, setShowEdit] = useState(false);
   const [editEnvId, setEditEnvId] = useState<string | null>(null);
@@ -53,15 +84,22 @@ export const Environments = () => {
 
     setError('');
     try {
+      // Build pixi.toml based on mode
+      const tomlContent = createMode === 'ui'
+        ? buildPixiToml(packages, newEnvName)
+        : pixiToml;
+
       // Create environment with custom pixi.toml content
       await createMutation.mutateAsync({
         name: newEnvName,
         package_manager: 'pixi',
-        pixi_toml: pixiToml
+        pixi_toml: tomlContent
       });
 
+      // Reset form
       setNewEnvName('');
       setPixiToml(DEFAULT_PIXI_TOML);
+      setPackages([{ name: 'python', version: '>=3.11' }]);
       setShowCreate(false);
 
       // Redirect to jobs page to see the creation progress
@@ -71,6 +109,25 @@ export const Environments = () => {
       const errorMessage = error?.response?.data?.error || 'Failed to create environment. Please try again.';
       setError(errorMessage);
     }
+  };
+
+  const handleAddPackage = () => {
+    if (!newPackageName.trim()) return;
+    setPackages([...packages, { name: newPackageName, version: newPackageVersion }]);
+    setNewPackageName('');
+    setNewPackageVersion('');
+  };
+
+  const handleRemovePackageFromList = (index: number) => {
+    setPackages(packages.filter((_, i) => i !== index));
+  };
+
+  const handleModeSwitch = (mode: 'ui' | 'toml') => {
+    // When switching to TOML mode, populate with current packages
+    if (mode === 'toml' && createMode === 'ui') {
+      setPixiToml(buildPixiToml(packages, newEnvName || 'my-project'));
+    }
+    setCreateMode(mode);
   };
 
   const handleDelete = async () => {
@@ -192,19 +249,125 @@ export const Environments = () => {
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">pixi.toml Configuration</label>
-                <Textarea
-                  placeholder="Enter your pixi.toml content"
-                  value={pixiToml}
-                  onChange={(e) => setPixiToml(e.target.value)}
-                  rows={12}
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  Define your project dependencies and configuration in TOML format
-                </p>
+              {/* Mode Toggle */}
+              <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
+                <Button
+                  type="button"
+                  variant={createMode === 'ui' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => handleModeSwitch('ui')}
+                  className="gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  UI Mode
+                </Button>
+                <Button
+                  type="button"
+                  variant={createMode === 'toml' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => handleModeSwitch('toml')}
+                  className="gap-2"
+                >
+                  <FileCode className="h-4 w-4" />
+                  TOML Mode
+                </Button>
               </div>
+
+              {createMode === 'ui' ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Packages</label>
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full">
+                        <thead className="bg-muted/50 border-b">
+                          <tr>
+                            <th className="text-left p-3 text-sm font-medium">Name</th>
+                            <th className="text-left p-3 text-sm font-medium">Version Constraint</th>
+                            <th className="w-16"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {packages.map((pkg, index) => (
+                            <tr key={index} className="hover:bg-muted/30">
+                              <td className="p-3">
+                                <span className="font-mono text-sm">{pkg.name}</span>
+                              </td>
+                              <td className="p-3">
+                                <span className="font-mono text-sm text-muted-foreground">
+                                  {pkg.version || '-'}
+                                </span>
+                              </td>
+                              <td className="p-3">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRemovePackageFromList(index)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Add Package Form */}
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Package name (e.g., numpy)"
+                      value={newPackageName}
+                      onChange={(e) => setNewPackageName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddPackage();
+                        }
+                      }}
+                    />
+                    <Input
+                      placeholder="Version (e.g., >=1.24.0)"
+                      value={newPackageVersion}
+                      onChange={(e) => setNewPackageVersion(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddPackage();
+                        }
+                      }}
+                      className="w-64"
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleAddPackage}
+                      disabled={!newPackageName.trim()}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Package
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Add packages with optional version constraints (e.g., {'>'}=1.24.0, ~=2.0.0, 3.11.*)
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">pixi.toml Configuration</label>
+                  <Textarea
+                    placeholder="Enter your pixi.toml content"
+                    value={pixiToml}
+                    onChange={(e) => setPixiToml(e.target.value)}
+                    rows={12}
+                    required
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Define your project dependencies and configuration in TOML format
+                  </p>
+                </div>
+              )}
 
               <div className="flex gap-2 justify-end">
                 <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>

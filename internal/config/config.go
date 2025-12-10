@@ -35,8 +35,12 @@ type DatabaseConfig struct {
 
 // AuthConfig holds authentication configuration
 type AuthConfig struct {
-	Type      string `mapstructure:"type"`       // "basic" or "oidc"
-	JWTSecret string `mapstructure:"jwt_secret"` // Secret for JWT signing
+	Type             string `mapstructure:"type"`               // "basic" or "oidc"
+	JWTSecret        string `mapstructure:"jwt_secret"`         // Secret for JWT signing
+	OIDCIssuerURL    string `mapstructure:"oidc_issuer_url"`    // OIDC provider issuer URL (e.g., https://accounts.google.com)
+	OIDCClientID     string `mapstructure:"oidc_client_id"`     // OIDC client ID
+	OIDCClientSecret string `mapstructure:"oidc_client_secret"` // OIDC client secret
+	OIDCRedirectURL  string `mapstructure:"oidc_redirect_url"`  // OIDC redirect URL (e.g., http://localhost:8460/auth/oidc/callback)
 }
 
 // QueueConfig holds job queue configuration
@@ -77,6 +81,10 @@ func Load() (*Config, error) {
 	v.SetDefault("database.conn_max_lifetime", 60) // 60 minutes
 	v.SetDefault("auth.type", "basic")
 	v.SetDefault("auth.jwt_secret", "change-me-in-production")
+	v.SetDefault("auth.oidc_issuer_url", "")
+	v.SetDefault("auth.oidc_client_id", "")
+	v.SetDefault("auth.oidc_client_secret", "")
+	v.SetDefault("auth.oidc_redirect_url", "http://localhost:8460/api/v1/auth/oidc/callback")
 	v.SetDefault("queue.type", "memory")
 	v.SetDefault("queue.valkey_addr", "localhost:6379")
 	v.SetDefault("log.format", "text")

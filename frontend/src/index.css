@@ -60,3 +60,20 @@ pre, code, .font-mono {
 pre {
   font-size: 0.9375rem; /* 15px for better readability in logs */
 }
+
+/* Cursor pointer for all interactive elements */
+button,
+a,
+[role="button"],
+[role="link"],
+label,
+select,
+summary,
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+input[type="checkbox"],
+input[type="radio"],
+.cursor-pointer {
+  cursor: pointer;
+}

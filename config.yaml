@@ -11,8 +11,9 @@ database:
   # Example Postgres DSN: "host=localhost user=darb password=secret dbname=darb port=5432 sslmode=disable"
 
 auth:
-  type: basic  # "basic" or "oidc" (oidc not yet implemented)
-  jwt_secret: change-me-in-production  # IMPORTANT: Change this in production!
+  type: basic
+  # All auth settings can be overridden via environment variables
+  # See .env file for OIDC/OAuth configuration
 
 queue:
   type: memory  # "memory" or "redis" (redis not yet implemented)

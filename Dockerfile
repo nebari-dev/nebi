@@ -33,13 +33,9 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     -ldflags '-s -w -X main.Version=latest' \
     -o /darb ./cmd/server
 
-# Stage 3: Final minimal image
-FROM alpine:3.19
+# Stage 3: Final minimal image with distroless
+FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
-
-# Install CA certificates and create nonroot user
-RUN apk --no-cache add ca-certificates tzdata && \
-    adduser -D -u 65532 nonroot
 
 # Copy the static binary
 COPY --from=backend-builder --chown=nonroot:nonroot /darb /app/darb
@@ -52,9 +48,6 @@ EXPOSE 8460
 
 # Environment variables
 ENV GIN_MODE=release
-
-# Run as non-root user
-USER nonroot:nonroot
 
 # Run the binary
 ENTRYPOINT ["/app/darb"]

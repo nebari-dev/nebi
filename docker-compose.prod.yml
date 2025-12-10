@@ -1,0 +1,199 @@
+services:
+  # Traefik - Reverse Proxy with automatic HTTPS via Let's Encrypt
+  traefik:
+    image: traefik:v3.6.4
+    container_name: darb-traefik
+    command:
+      # API and dashboard (disable in production)
+      - --api.insecure=false
+      # Docker provider
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      # Entrypoints
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # HTTP to HTTPS redirect
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.permanent=true
+      # Let's Encrypt configuration
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.caserver=https://acme-v02.api.letsencrypt.org/directory
+      # Logging
+      - --log.level=DEBUG
+      - --accesslog=true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt-data:/letsencrypt
+    networks:
+      - darb-network
+    restart: unless-stopped
+
+  # PostgreSQL 18 - Database
+  postgres:
+    image: postgres:18
+    container_name: darb-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-darb}
+      POSTGRES_USER: ${POSTGRES_USER:-darb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - darb-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-darb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Valkey 9.0 - Queue backend (Redis replacement)
+  valkey:
+    image: valkey/valkey:9.0.0
+    container_name: darb-valkey
+    volumes:
+      - valkey_data:/data
+    networks:
+      - darb-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Darb API + Worker (both mode)
+  # NOTE: Before first deployment, set permissions:
+  #   mkdir -p ./data/environments
+  #   chown -R 65532:65532 ./data/environments
+  darb-api:
+    image: ${DARB_IMAGE:-quay.io/aktech/darb:latest}
+    container_name: darb-api
+    command: ["/app/darb", "--mode=both"]
+    env_file:
+      - .env.prod
+    environment:
+      # Database configuration
+      DARB_DATABASE_DRIVER: postgres
+      DARB_DATABASE_DSN: postgres://${POSTGRES_USER:-darb}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-darb}?sslmode=disable
+      DARB_DATABASE_MAX_IDLE_CONNS: 10
+      DARB_DATABASE_MAX_OPEN_CONNS: 100
+      DARB_DATABASE_CONN_MAX_LIFETIME: 60
+      # Queue configuration
+      DARB_QUEUE_TYPE: valkey
+      DARB_QUEUE_VALKEY_ADDR: valkey:6379
+      # Server configuration
+      DARB_SERVER_PORT: 8460
+      DARB_SERVER_MODE: production
+      # Logging
+      DARB_LOG_LEVEL: info
+      DARB_LOG_FORMAT: json
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.darb.rule=Host(`${DARB_DOMAIN}`)"
+      - "traefik.http.routers.darb.entrypoints=websecure"
+      - "traefik.http.routers.darb.tls=true"
+      - "traefik.http.routers.darb.tls.certresolver=letsencrypt"
+      - "traefik.http.services.darb.loadbalancer.server.port=8460"
+    expose:
+      - "8460"
+    volumes:
+      - ./data/environments:/app/data/environments
+    networks:
+      - darb-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      traefik:
+        condition: service_started
+    restart: unless-stopped
+    # Health check removed - distroless image has no wget/curl
+    # Traefik monitors service health directly
+
+  # Darb Worker 1 - Additional worker for job processing
+  darb-worker-1:
+    image: ${DARB_IMAGE:-quay.io/aktech/darb:latest}
+    container_name: darb-worker-1
+    command: ["/app/darb", "--mode=worker"]
+    env_file:
+      - .env.prod
+    environment:
+      # Database configuration
+      DARB_DATABASE_DRIVER: postgres
+      DARB_DATABASE_DSN: postgres://${POSTGRES_USER:-darb}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-darb}?sslmode=disable
+      DARB_DATABASE_MAX_IDLE_CONNS: 10
+      DARB_DATABASE_MAX_OPEN_CONNS: 100
+      DARB_DATABASE_CONN_MAX_LIFETIME: 60
+      # Queue configuration
+      DARB_QUEUE_TYPE: valkey
+      DARB_QUEUE_VALKEY_ADDR: valkey:6379
+      # Logging
+      DARB_LOG_LEVEL: info
+      DARB_LOG_FORMAT: json
+    volumes:
+      - ./data/environments:/app/data/environments
+    networks:
+      - darb-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      darb-api:
+        condition: service_started
+    restart: unless-stopped
+
+  # Darb Worker 2 - Additional worker for job processing
+  darb-worker-2:
+    image: ${DARB_IMAGE:-quay.io/aktech/darb:latest}
+    container_name: darb-worker-2
+    command: ["/app/darb", "--mode=worker"]
+    env_file:
+      - .env.prod
+    environment:
+      # Database configuration
+      DARB_DATABASE_DRIVER: postgres
+      DARB_DATABASE_DSN: postgres://${POSTGRES_USER:-darb}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-darb}?sslmode=disable
+      DARB_DATABASE_MAX_IDLE_CONNS: 10
+      DARB_DATABASE_MAX_OPEN_CONNS: 100
+      DARB_DATABASE_CONN_MAX_LIFETIME: 60
+      # Queue configuration
+      DARB_QUEUE_TYPE: valkey
+      DARB_QUEUE_VALKEY_ADDR: valkey:6379
+      # Logging
+      DARB_LOG_LEVEL: info
+      DARB_LOG_FORMAT: json
+    volumes:
+      - ./data/environments:/app/data/environments
+    networks:
+      - darb-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      darb-api:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  letsencrypt-data:
+    driver: local
+  postgres_data:
+    driver: local
+  valkey_data:
+    driver: local
+
+networks:
+  darb-network:
+    name: darb-network
+    driver: bridge

@@ -43,11 +43,15 @@ COPY --from=backend-builder --chown=nonroot:nonroot /darb /app/darb
 # Copy RBAC configuration
 COPY --from=backend-builder --chown=nonroot:nonroot /app/internal/rbac/model.conf /app/internal/rbac/model.conf
 
+# Copy pixi binary from official image
+COPY --from=ghcr.io/prefix-dev/pixi:latest --chown=nonroot:nonroot /usr/local/bin/pixi /usr/local/bin/pixi
+
 # Expose port
 EXPOSE 8460
 
 # Environment variables
 ENV GIN_MODE=release
+ENV PATH=/usr/local/bin:$PATH
 
 # Run the binary
 ENTRYPOINT ["/app/darb"]

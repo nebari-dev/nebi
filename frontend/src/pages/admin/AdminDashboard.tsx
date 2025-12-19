@@ -4,7 +4,7 @@ import { useEnvironments } from '@/hooks/useEnvironments';
 import { useJobs } from '@/hooks/useJobs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, Users, Boxes, Activity, ListTodo, HardDrive } from 'lucide-react';
+import { Loader2, Users, Boxes, Activity, ListTodo, HardDrive, Package } from 'lucide-react';
 
 const StatCard = ({ title, value, icon: Icon }: { title: string; value: number | string; icon: any }) => {
   return (
@@ -92,6 +92,12 @@ export const AdminDashboard = () => {
           <Button>
             <Users className="h-4 w-4 mr-2" />
             Manage Users
+          </Button>
+        </Link>
+        <Link to="/admin/registries">
+          <Button variant="outline">
+            <Package className="h-4 w-4 mr-2" />
+            Manage Registries
           </Button>
         </Link>
         <Link to="/admin/audit-logs">

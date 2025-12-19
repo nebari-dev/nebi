@@ -120,6 +120,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			// Sharing operations (owner only - checked in handler)
 			env.POST("/share", envHandler.ShareEnvironment)
 			env.DELETE("/share/:user_id", envHandler.UnshareEnvironment)
+
+			// Publishing operations (require write permission)
+			env.POST("/publish", middleware.RequireEnvironmentAccess("write"), envHandler.PublishEnvironment)
+			env.GET("/publications", middleware.RequireEnvironmentAccess("read"), envHandler.ListPublications)
 		}
 
 		// Job endpoints
@@ -130,6 +134,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		// Template endpoints (placeholder)
 		protected.GET("/templates", handlers.NotImplemented)
 		protected.POST("/templates", handlers.NotImplemented)
+
+		// OCI Registry endpoints (for users to view available registries)
+		registryHandler := handlers.NewRegistryHandler(db)
+		protected.GET("/registries", registryHandler.ListPublicRegistries)
 
 		// Admin endpoints (require admin role)
 		adminHandler := handlers.NewAdminHandler(db)
@@ -156,6 +164,13 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 
 			// Dashboard stats
 			admin.GET("/dashboard/stats", adminHandler.GetDashboardStats)
+
+			// OCI Registry management
+			admin.GET("/registries", registryHandler.ListRegistries)
+			admin.POST("/registries", registryHandler.CreateRegistry)
+			admin.GET("/registries/:id", registryHandler.GetRegistry)
+			admin.PUT("/registries/:id", registryHandler.UpdateRegistry)
+			admin.DELETE("/registries/:id", registryHandler.DeleteRegistry)
 		}
 	}
 

@@ -107,6 +107,8 @@ func Migrate(db *gorm.DB) error {
 		&models.Package{},
 		&models.AuditLog{},
 		&models.EnvironmentVersion{},
+		&models.OCIRegistry{},
+		&models.Publication{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)

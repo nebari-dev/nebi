@@ -119,3 +119,47 @@ export interface DashboardStats {
   total_disk_usage_bytes: number;
   total_disk_usage_formatted: string;
 }
+
+// OCI Registry types
+export interface OCIRegistry {
+  id: string; // UUID
+  name: string;
+  url: string;
+  username: string;
+  is_default: boolean;
+  created_at: string;
+}
+
+export interface CreateRegistryRequest {
+  name: string;
+  url: string;
+  username?: string;
+  password?: string;
+  is_default?: boolean;
+}
+
+export interface UpdateRegistryRequest {
+  name?: string;
+  url?: string;
+  username?: string;
+  password?: string;
+  is_default?: boolean;
+}
+
+// Publication types
+export interface Publication {
+  id: string; // UUID
+  registry_name: string;
+  registry_url: string;
+  repository: string;
+  tag: string;
+  digest: string;
+  published_by: string;
+  published_at: string;
+}
+
+export interface PublishRequest {
+  registry_id: string; // UUID
+  repository: string;
+  tag: string;
+}

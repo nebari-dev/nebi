@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { queryClient } from './lib/queryClient';
 import { useAuthStore } from './store/authStore';
 import { Login } from './pages/Login';
 import { Environments } from './pages/Environments';
@@ -8,18 +9,10 @@ import { Jobs } from './pages/Jobs';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { UserManagement } from './pages/admin/UserManagement';
 import { AuditLogs } from './pages/admin/AuditLogs';
+import { RegistryManagement } from './pages/admin/RegistryManagement';
 import { Layout } from './components/layout/Layout';
 import { adminApi } from './api/admin';
 import { Loader2 } from 'lucide-react';
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      retry: 1,
-    },
-  },
-});
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
@@ -78,6 +71,7 @@ function App() {
               <Route path="admin" element={<AdminDashboard />} />
               <Route path="admin/users" element={<UserManagement />} />
               <Route path="admin/audit-logs" element={<AuditLogs />} />
+              <Route path="admin/registries" element={<RegistryManagement />} />
             </Route>
           </Route>
         </Routes>

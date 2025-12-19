@@ -9,6 +9,7 @@ import (
 	"github.com/aktech/darb/internal/audit"
 	"github.com/aktech/darb/internal/executor"
 	"github.com/aktech/darb/internal/models"
+	"github.com/aktech/darb/internal/oci"
 	"github.com/aktech/darb/internal/queue"
 	"github.com/aktech/darb/internal/rbac"
 	"github.com/aktech/darb/internal/utils"
@@ -893,6 +894,175 @@ func (h *EnvironmentHandler) RollbackToVersion(c *gin.Context) {
 
 type RollbackRequest struct {
 	VersionNumber int `json:"version_number" binding:"required"`
+}
+
+// Publishing to OCI Registry
+
+type PublishRequest struct {
+	RegistryID uuid.UUID `json:"registry_id" binding:"required"`
+	Repository string    `json:"repository" binding:"required"` // e.g., "myorg/myenv"
+	Tag        string    `json:"tag" binding:"required"`        // e.g., "v1.0.0"
+}
+
+type PublicationResponse struct {
+	ID           uuid.UUID `json:"id"`
+	RegistryName string    `json:"registry_name"`
+	RegistryURL  string    `json:"registry_url"`
+	Repository   string    `json:"repository"`
+	Tag          string    `json:"tag"`
+	Digest       string    `json:"digest"`
+	PublishedBy  string    `json:"published_by"`
+	PublishedAt  string    `json:"published_at"`
+}
+
+// PublishEnvironment godoc
+// @Summary Publish environment to OCI registry
+// @Description Publish pixi.toml and pixi.lock to an OCI registry
+// @Tags environments
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path string true "Environment ID"
+// @Param request body PublishRequest true "Publish request"
+// @Success 201 {object} PublicationResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /environments/{id}/publish [post]
+func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
+	envID := c.Param("id")
+	userID := getUserID(c)
+
+	var req PublishRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// Get environment
+	var env models.Environment
+	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+		return
+	}
+
+	// Check if environment is ready
+	if env.Status != models.EnvStatusReady {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Environment must be in ready state to publish"})
+		return
+	}
+
+	// Get registry
+	var registry models.OCIRegistry
+	if err := h.db.Where("id = ?", req.RegistryID).First(&registry).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Registry not found"})
+		return
+	}
+
+	// Build full repository path
+	fullRepo := fmt.Sprintf("%s/%s", registry.URL, req.Repository)
+
+	// Publish using OCI package
+	envPath := h.executor.GetEnvironmentPath(&env)
+
+	digest, err := oci.PublishEnvironment(c.Request.Context(), envPath, oci.PublishOptions{
+		Repository:   fullRepo,
+		Tag:          req.Tag,
+		Username:     registry.Username,
+		Password:     registry.Password,
+		RegistryHost: registry.URL,
+	})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("Failed to publish: %v", err)})
+		return
+	}
+
+	// Create publication record
+	publication := models.Publication{
+		EnvironmentID: env.ID,
+		RegistryID:    registry.ID,
+		Repository:    req.Repository,
+		Tag:           req.Tag,
+		Digest:        digest,
+		PublishedBy:   userID,
+	}
+
+	if err := h.db.Create(&publication).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to save publication record"})
+		return
+	}
+
+	// Load relations for response
+	h.db.Preload("Registry").Preload("PublishedByUser").First(&publication, publication.ID)
+
+	response := PublicationResponse{
+		ID:           publication.ID,
+		RegistryName: publication.Registry.Name,
+		RegistryURL:  publication.Registry.URL,
+		Repository:   publication.Repository,
+		Tag:          publication.Tag,
+		Digest:       publication.Digest,
+		PublishedBy:  publication.PublishedByUser.Username,
+		PublishedAt:  publication.CreatedAt.Format("2006-01-02 15:04:05"),
+	}
+
+	// Audit log
+	audit.Log(h.db, userID, audit.ActionPublishEnvironment, audit.ResourceEnvironment, env.ID, map[string]interface{}{
+		"registry":   registry.Name,
+		"repository": req.Repository,
+		"tag":        req.Tag,
+	})
+
+	c.JSON(http.StatusCreated, response)
+}
+
+// ListPublications godoc
+// @Summary List publications for an environment
+// @Description Get all publications (registry pushes) for an environment
+// @Tags environments
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "Environment ID"
+// @Success 200 {array} PublicationResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /environments/{id}/publications [get]
+func (h *EnvironmentHandler) ListPublications(c *gin.Context) {
+	envID := c.Param("id")
+
+	// Check environment exists
+	var env models.Environment
+	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+		return
+	}
+
+	// Get publications
+	var publications []models.Publication
+	if err := h.db.Where("environment_id = ?", envID).
+		Preload("Registry").
+		Preload("PublishedByUser").
+		Order("created_at DESC").
+		Find(&publications).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch publications"})
+		return
+	}
+
+	response := make([]PublicationResponse, len(publications))
+	for i, pub := range publications {
+		response[i] = PublicationResponse{
+			ID:           pub.ID,
+			RegistryName: pub.Registry.Name,
+			RegistryURL:  pub.Registry.URL,
+			Repository:   pub.Repository,
+			Tag:          pub.Tag,
+			Digest:       pub.Digest,
+			PublishedBy:  pub.PublishedByUser.Username,
+			PublishedAt:  pub.CreatedAt.Format("2006-01-02 15:04:05"),
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // Helper function to get user ID from context

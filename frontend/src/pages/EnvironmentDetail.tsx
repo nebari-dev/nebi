@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useEnvironment } from '@/hooks/useEnvironments';
 import { usePackages, useInstallPackages, useRemovePackage } from '@/hooks/usePackages';
 import { useCollaborators } from '@/hooks/useAdmin';
+import { usePublications } from '@/hooks/useRegistries';
 import { environmentsApi } from '@/api/environments';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ShareButton } from '@/components/sharing/ShareButton';
+import { PublishButton } from '@/components/publishing/PublishButton';
 import { RoleBadge } from '@/components/sharing/RoleBadge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
 import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check } from 'lucide-react';
@@ -32,6 +34,7 @@ export const EnvironmentDetail = () => {
   const { data: environment, isLoading: envLoading } = useEnvironment(envId);
   const { data: packages, isLoading: packagesLoading } = usePackages(envId);
   const { data: collaborators } = useCollaborators(envId);
+  const { data: publications, isLoading: publicationsLoading } = usePublications(envId);
   const installMutation = useInstallPackages(envId);
   const removeMutation = useRemovePackage(envId);
   const currentUser = useAuthStore((state) => state.user);
@@ -59,7 +62,7 @@ export const EnvironmentDetail = () => {
     try {
       const { content } = await environmentsApi.getPixiToml(envId);
       setPixiToml(content);
-    } catch (err) {
+    } catch {
       setError('Failed to load pixi.toml');
     } finally {
       setLoadingToml(false);
@@ -130,6 +133,7 @@ export const EnvironmentDetail = () => {
           <Badge className={statusColors[environment.status]}>
             {environment.status}
           </Badge>
+          <PublishButton environmentId={envId} environmentStatus={environment.status} />
           {isOwner && <ShareButton environmentId={envId} />}
         </div>
       </div>
@@ -143,6 +147,9 @@ export const EnvironmentDetail = () => {
           <TabsTrigger value="packages">Packages</TabsTrigger>
           <TabsTrigger value="toml">pixi.toml</TabsTrigger>
           <TabsTrigger value="versions">Version History</TabsTrigger>
+          <TabsTrigger value="publications">
+            Publications ({publications?.length || 0})
+          </TabsTrigger>
           <TabsTrigger value="collaborators">
             Collaborators ({collaborators?.length || 0})
           </TabsTrigger>
@@ -364,6 +371,68 @@ export const EnvironmentDetail = () => {
 
         <TabsContent value="versions">
           <VersionHistory environmentId={envId} environmentStatus={environment.status} />
+        </TabsContent>
+
+        <TabsContent value="publications">
+          <Card>
+            <CardHeader>
+              <CardTitle>Publications</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {publicationsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : publications && publications.length > 0 ? (
+                <div className="space-y-3">
+                  {publications.map((pub) => (
+                    <div
+                      key={pub.id}
+                      className="p-4 rounded-lg border"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-lg">
+                              {pub.repository}:{pub.tag}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">Registry:</span>
+                              <span className="ml-2 font-medium">{pub.registry_name}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">URL:</span>
+                              <span className="ml-2 font-mono text-xs">{pub.registry_url}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Published by:</span>
+                              <span className="ml-2 font-medium">{pub.published_by}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Published:</span>
+                              <span className="ml-2">{new Date(pub.published_at).toLocaleString()}</span>
+                            </div>
+                          </div>
+                          <div className="pt-2">
+                            <span className="text-muted-foreground text-sm">Digest:</span>
+                            <code className="ml-2 text-xs font-mono bg-muted px-2 py-1 rounded">
+                              {pub.digest}
+                            </code>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  No publications yet. Click the "Publish" button to publish this environment to an OCI registry.
+                </p>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="collaborators">

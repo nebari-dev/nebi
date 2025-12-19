@@ -42,6 +42,22 @@ definitions:
     required:
     - name
     type: object
+  handlers.CreateRegistryRequest:
+    properties:
+      is_default:
+        type: boolean
+      name:
+        type: string
+      password:
+        type: string
+      url:
+        type: string
+      username:
+        type: string
+    required:
+    - name
+    - url
+    type: object
   handlers.CreateUserRequest:
     properties:
       email:
@@ -105,6 +121,55 @@ definitions:
       content:
         type: string
     type: object
+  handlers.PublicationResponse:
+    properties:
+      digest:
+        type: string
+      id:
+        type: string
+      published_at:
+        type: string
+      published_by:
+        type: string
+      registry_name:
+        type: string
+      registry_url:
+        type: string
+      repository:
+        type: string
+      tag:
+        type: string
+    type: object
+  handlers.PublishRequest:
+    properties:
+      registry_id:
+        type: string
+      repository:
+        description: e.g., "myorg/myenv"
+        type: string
+      tag:
+        description: e.g., "v1.0.0"
+        type: string
+    required:
+    - registry_id
+    - repository
+    - tag
+    type: object
+  handlers.RegistryResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      is_default:
+        type: boolean
+      name:
+        type: string
+      url:
+        type: string
+      username:
+        type: string
+    type: object
   handlers.RollbackRequest:
     properties:
       version_number:
@@ -122,6 +187,19 @@ definitions:
     required:
     - role
     - user_id
+    type: object
+  handlers.UpdateRegistryRequest:
+    properties:
+      is_default:
+        type: boolean
+      name:
+        type: string
+      password:
+        type: string
+      url:
+        type: string
+      username:
+        type: string
     type: object
   handlers.UserWithAdminStatus:
     properties:
@@ -451,6 +529,137 @@ paths:
       security:
       - BearerAuth: []
       summary: Revoke a permission
+      tags:
+      - admin
+  /admin/registries:
+    get:
+      consumes:
+      - application/json
+      description: Get list of all configured OCI registries (admin only)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.RegistryResponse'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: List all OCI registries
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: Add a new OCI registry configuration (admin only)
+      parameters:
+      - description: Registry details
+        in: body
+        name: registry
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateRegistryRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/handlers.RegistryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Create a new OCI registry
+      tags:
+      - admin
+  /admin/registries/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete an OCI registry configuration (admin only)
+      parameters:
+      - description: Registry ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Delete a registry
+      tags:
+      - admin
+    get:
+      consumes:
+      - application/json
+      description: Get details of a specific OCI registry (admin only)
+      parameters:
+      - description: Registry ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.RegistryResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Get a registry by ID
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      description: Update OCI registry details (admin only)
+      parameters:
+      - description: Registry ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Registry updates
+        in: body
+        name: registry
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateRegistryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.RegistryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Update a registry
       tags:
       - admin
   /admin/roles:
@@ -953,6 +1162,74 @@ paths:
       summary: Get pixi.toml content for an environment
       tags:
       - environments
+  /environments/{id}/publications:
+    get:
+      description: Get all publications (registry pushes) for an environment
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.PublicationResponse'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List publications for an environment
+      tags:
+      - environments
+  /environments/{id}/publish:
+    post:
+      consumes:
+      - application/json
+      description: Publish pixi.toml and pixi.lock to an OCI registry
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Publish request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.PublishRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/handlers.PublicationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Publish environment to OCI registry
+      tags:
+      - environments
   /environments/{id}/rollback:
     post:
       consumes:
@@ -1228,6 +1505,24 @@ paths:
       summary: Stream job logs in real-time via Server-Sent Events
       tags:
       - jobs
+  /registries:
+    get:
+      consumes:
+      - application/json
+      description: Get list of registries for users to select from (no credentials
+        exposed)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.RegistryResponse'
+            type: array
+      summary: List available registries (public info only)
+      tags:
+      - registries
   /version:
     get:
       description: Returns version information about the Darb server

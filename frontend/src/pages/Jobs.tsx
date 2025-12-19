@@ -3,7 +3,8 @@ import { useJobs } from '@/hooks/useJobs';
 import { useJobLogStream } from '@/hooks/useJobLogStream';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ChevronDown, ChevronRight, Radio } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Loader2, ChevronDown, ChevronRight, Radio, Copy, Check } from 'lucide-react';
 import type { Job } from '@/types';
 
 const statusColors = {
@@ -19,6 +20,37 @@ const typeColors = {
   install: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
   remove: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
   update: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
+};
+
+const CopyButton = ({ text }: { text: string }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleCopy}
+      className="h-7 gap-1"
+    >
+      {copied ? (
+        <>
+          <Check className="h-3 w-3" />
+          Copied
+        </>
+      ) : (
+        <>
+          <Copy className="h-3 w-3" />
+          Copy
+        </>
+      )}
+    </Button>
+  );
 };
 
 const JobCard = ({ job, isFirst }: { job: Job; isFirst: boolean }) => {
@@ -76,14 +108,17 @@ const JobCard = ({ job, isFirst }: { job: Job; isFirst: boolean }) => {
 
           {(isStreaming || displayLogs) && (
             <div>
-              <div className="flex items-center gap-2 mb-2">
-                <h4 className="font-semibold">Logs</h4>
-                {isStreaming && (
-                  <Badge variant="outline" className="text-xs">
-                    <Radio className="h-2 w-2 mr-1 animate-pulse" />
-                    Live
-                  </Badge>
-                )}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-semibold">Logs</h4>
+                  {isStreaming && (
+                    <Badge variant="outline" className="text-xs">
+                      <Radio className="h-2 w-2 mr-1 animate-pulse" />
+                      Live
+                    </Badge>
+                  )}
+                </div>
+                {displayLogs && <CopyButton text={displayLogs} />}
               </div>
               <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto max-h-96 overflow-y-auto font-mono whitespace-pre-wrap text-sm">
                 {displayLogs || 'Waiting for logs...'}
@@ -93,7 +128,10 @@ const JobCard = ({ job, isFirst }: { job: Job; isFirst: boolean }) => {
 
           {job.error && (
             <div>
-              <h4 className="font-semibold text-destructive mb-2">Error</h4>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-semibold text-destructive">Error</h4>
+                <CopyButton text={job.error} />
+              </div>
               <pre className="bg-red-950 text-red-100 p-4 rounded-md overflow-x-auto font-mono whitespace-pre-wrap">
                 {job.error}
               </pre>
@@ -108,8 +146,11 @@ const JobCard = ({ job, isFirst }: { job: Job; isFirst: boolean }) => {
 
                 return (
                   <div key={key}>
-                    <div className="text-sm font-medium text-muted-foreground mb-1 capitalize">
-                      {key.replace(/_/g, ' ')}
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-sm font-medium text-muted-foreground capitalize">
+                        {key.replace(/_/g, ' ')}
+                      </div>
+                      <CopyButton text={content} />
                     </div>
                     <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto font-mono whitespace-pre">
                       {content}

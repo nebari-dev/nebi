@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEnvironment } from '@/hooks/useEnvironments';
 import { usePackages, useInstallPackages, useRemovePackage } from '@/hooks/usePackages';
 import { useCollaborators } from '@/hooks/useAdmin';
+import { environmentsApi } from '@/api/environments';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +14,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ShareButton } from '@/components/sharing/ShareButton';
 import { RoleBadge } from '@/components/sharing/RoleBadge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
-import { ArrowLeft, Loader2, Package, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check } from 'lucide-react';
 
 const statusColors = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -40,8 +41,36 @@ export const EnvironmentDetail = () => {
   const [packageInput, setPackageInput] = useState('');
   const [confirmRemovePackage, setConfirmRemovePackage] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [pixiToml, setPixiToml] = useState<string>('');
+  const [loadingToml, setLoadingToml] = useState(false);
+  const [copiedToml, setCopiedToml] = useState(false);
 
   const isOwner = environment?.owner_id === currentUser?.id;
+
+  // Load pixi.toml when switching to that tab
+  useEffect(() => {
+    if (activeTab === 'toml' && !pixiToml && environment?.status === 'ready') {
+      loadPixiToml();
+    }
+  }, [activeTab, environment?.status]);
+
+  const loadPixiToml = async () => {
+    setLoadingToml(true);
+    try {
+      const { content } = await environmentsApi.getPixiToml(envId);
+      setPixiToml(content);
+    } catch (err) {
+      setError('Failed to load pixi.toml');
+    } finally {
+      setLoadingToml(false);
+    }
+  };
+
+  const handleCopyToml = async () => {
+    await navigator.clipboard.writeText(pixiToml);
+    setCopiedToml(true);
+    setTimeout(() => setCopiedToml(false), 2000);
+  };
 
   const handleInstall = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,6 +141,7 @@ export const EnvironmentDetail = () => {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="packages">Packages</TabsTrigger>
+          <TabsTrigger value="toml">pixi.toml</TabsTrigger>
           <TabsTrigger value="versions">Version History</TabsTrigger>
           <TabsTrigger value="collaborators">
             Collaborators ({collaborators?.length || 0})
@@ -281,6 +311,55 @@ export const EnvironmentDetail = () => {
               </div>
             )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="toml">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>pixi.toml Configuration</CardTitle>
+                {pixiToml && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyToml}
+                    className="gap-2"
+                  >
+                    {copiedToml ? (
+                      <>
+                        <Check className="h-4 w-4" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4" />
+                        Copy
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {environment.status !== 'ready' ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Environment must be ready to view pixi.toml
+                </div>
+              ) : loadingToml ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : pixiToml ? (
+                <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto font-mono text-sm whitespace-pre">
+                  {pixiToml}
+                </pre>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  Failed to load pixi.toml
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="versions">

@@ -23,19 +23,19 @@ type OCIRegistry struct {
 
 // Publication tracks when and where an environment was published
 type Publication struct {
-	ID            uuid.UUID   `gorm:"type:uuid;primary_key" json:"id"`
-	EnvironmentID uuid.UUID   `gorm:"type:uuid;index;not null" json:"environment_id"`
-	Environment   Environment `gorm:"foreignKey:EnvironmentID" json:"environment,omitempty"`
-	RegistryID    uuid.UUID   `gorm:"type:uuid;index;not null" json:"registry_id"`
-	Registry      OCIRegistry `gorm:"foreignKey:RegistryID" json:"registry,omitempty"`
-	Repository    string      `gorm:"not null" json:"repository"` // e.g., "myorg/myenv"
-	Tag           string      `gorm:"not null" json:"tag"`        // e.g., "v1.0.0"
-	Digest        string      `json:"digest"`                     // OCI manifest digest
-	PublishedBy   uuid.UUID   `gorm:"type:uuid;not null" json:"published_by"`
-	PublishedByUser User      `gorm:"foreignKey:PublishedBy" json:"published_by_user,omitempty"`
-	CreatedAt     time.Time   `json:"created_at"`
-	UpdatedAt     time.Time   `json:"updated_at"`
-	DeletedAt     *time.Time  `gorm:"index" json:"-"`
+	ID              uuid.UUID   `gorm:"type:uuid;primary_key" json:"id"`
+	EnvironmentID   uuid.UUID   `gorm:"type:uuid;index;not null" json:"environment_id"`
+	Environment     Environment `gorm:"foreignKey:EnvironmentID" json:"environment,omitempty"`
+	RegistryID      uuid.UUID   `gorm:"type:uuid;index;not null" json:"registry_id"`
+	Registry        OCIRegistry `gorm:"foreignKey:RegistryID" json:"registry,omitempty"`
+	Repository      string      `gorm:"not null" json:"repository"` // e.g., "myorg/myenv"
+	Tag             string      `gorm:"not null" json:"tag"`        // e.g., "v1.0.0"
+	Digest          string      `json:"digest"`                     // OCI manifest digest
+	PublishedBy     uuid.UUID   `gorm:"type:uuid;not null" json:"published_by"`
+	PublishedByUser User        `gorm:"foreignKey:PublishedBy" json:"published_by_user,omitempty"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
+	DeletedAt       *time.Time  `gorm:"index" json:"-"`
 }
 
 // TableName specifies the table name for OCIRegistry

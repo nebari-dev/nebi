@@ -29,20 +29,20 @@ func LogAction(db *gorm.DB, userID uuid.UUID, action, resource string, details i
 
 // Audit actions constants
 const (
-	ActionCreateUser          = "create_user"
-	ActionUpdateUser          = "update_user"
-	ActionDeleteUser          = "delete_user"
-	ActionMakeAdmin           = "make_admin"
-	ActionRevokeAdmin         = "revoke_admin"
-	ActionGrantPermission     = "grant_permission"
-	ActionRevokePermission    = "revoke_permission"
-	ActionCreateEnvironment   = "create_environment"
-	ActionDeleteEnvironment   = "delete_environment"
-	ActionInstallPackage      = "install_package"
-	ActionRemovePackage       = "remove_package"
-	ActionPublishEnvironment  = "publish_environment"
-	ActionLogin               = "login"
-	ActionLoginFailed         = "login_failed"
+	ActionCreateUser         = "create_user"
+	ActionUpdateUser         = "update_user"
+	ActionDeleteUser         = "delete_user"
+	ActionMakeAdmin          = "make_admin"
+	ActionRevokeAdmin        = "revoke_admin"
+	ActionGrantPermission    = "grant_permission"
+	ActionRevokePermission   = "revoke_permission"
+	ActionCreateEnvironment  = "create_environment"
+	ActionDeleteEnvironment  = "delete_environment"
+	ActionInstallPackage     = "install_package"
+	ActionRemovePackage      = "remove_package"
+	ActionPublishEnvironment = "publish_environment"
+	ActionLogin              = "login"
+	ActionLoginFailed        = "login_failed"
 )
 
 // Resource types

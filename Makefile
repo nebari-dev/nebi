@@ -22,7 +22,8 @@ install-tools: ## Install development tools (swag, air)
 
 swagger: ## Generate Swagger documentation
 	@echo "Generating Swagger docs..."
-	@swag init -g cmd/server/main.go -o docs
+	@command -v swag >/dev/null 2>&1 || { echo "swag not found, installing..."; go install github.com/swaggo/swag/cmd/swag@latest; }
+	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g cmd/server/main.go -o docs
 	@echo "Swagger docs generated at /docs"
 
 build-frontend: ## Build frontend and copy to internal/web/dist
@@ -68,7 +69,8 @@ dev: swagger ## Run with hot reload (frontend + backend)
 	@echo ""
 	@echo "Press Ctrl+C to stop all services"
 	@echo ""
-	@bash -c 'set -a; [ -f .env ] && source .env; set +a; trap "kill 0" EXIT; (cd frontend && npm run dev) & air'
+	@command -v air >/dev/null 2>&1 || { echo "air not found, installing..."; go install github.com/air-verse/air@latest; }
+	@bash -c 'export PATH="$$PATH:$$(go env GOPATH)/bin"; set -a; [ -f .env ] && source .env; set +a; trap "kill 0" EXIT; (cd frontend && npm run dev) & air'
 
 migrate: ## Run database migrations
 	@echo "Running migrations..."

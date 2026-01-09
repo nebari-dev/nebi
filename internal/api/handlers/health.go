@@ -18,7 +18,6 @@ type HealthResponse struct {
 // @Summary Health check endpoint
 // @Description Returns the health status of the service
 // @Tags health
-// @x-cli true
 // @Produce json
 // @Success 200 {object} HealthResponse
 // @Router /health [get]

@@ -1,4 +1,4 @@
-.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all up down swagger-cli generate-cli-client build-cli build-cli-all
+.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all up down generate-cli-client build-cli build-cli-all
 
 # Variables
 BINARY_NAME=darb-server
@@ -29,26 +29,16 @@ swagger: ## Generate Swagger documentation
 	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g cmd/server/main.go -o docs
 	@echo "Swagger docs generated at /docs"
 
-swagger-cli: swagger ## Generate CLI-filtered OpenAPI spec
-	@echo "Generating CLI-filtered OpenAPI spec..."
-	@mkdir -p cli
-	@go run ./cli/filter-openapi -input docs/swagger.json -output cli/swagger-cli.json
-	@echo "CLI OpenAPI spec generated at cli/swagger-cli.json"
-
-generate-cli-client: swagger-cli ## Generate Go client for CLI from filtered OpenAPI spec
+generate-cli-client: swagger ## Generate Go client from OpenAPI spec
 	@echo "Generating CLI client (OpenAPI Generator v$(OPENAPI_GENERATOR_VERSION) via Docker)..."
 	@mkdir -p cli/client
 	@docker run --rm -u $(shell id -u):$(shell id -g) -v $(PWD):/local openapitools/openapi-generator-cli:v$(OPENAPI_GENERATOR_VERSION) generate \
-		-i /local/cli/swagger-cli.json \
+		-i /local/docs/swagger.json \
 		-g go \
 		-o /local/cli/client \
 		--additional-properties=packageName=client,isGoSubmodule=true,withGoMod=false \
 		--global-property=apiTests=false,modelTests=false
-	@echo "Fixing client imports..."
 	@echo "CLI client generated at cli/client/"
-	@echo ""
-	@echo "Endpoints included (with x-cli extension):"
-	@jq -r '.paths | keys[]' cli/swagger-cli.json 2>/dev/null || true
 
 build-cli: generate-cli-client ## Build the CLI binary
 	@echo "Building CLI..."

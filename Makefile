@@ -1,11 +1,14 @@
-.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all up down
+.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all up down swagger-cli generate-cli-client build-cli build-cli-all
 
 # Variables
-BINARY_NAME=darb
+BINARY_NAME=darb-server
+CLI_BINARY_NAME=darb
 FRONTEND_DIR=frontend
 BUILD_DIR=bin
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS=-ldflags "-X main.Version=$(VERSION)"
+CLI_LDFLAGS=-ldflags "-X github.com/aktech/darb/cmd/darb-cli/cmd.Version=$(VERSION)"
+OPENAPI_GENERATOR_VERSION=7.10.0
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -25,6 +28,48 @@ swagger: ## Generate Swagger documentation
 	@command -v swag >/dev/null 2>&1 || { echo "swag not found, installing..."; go install github.com/swaggo/swag/cmd/swag@latest; }
 	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g cmd/server/main.go -o docs
 	@echo "Swagger docs generated at /docs"
+
+swagger-cli: swagger ## Generate CLI-filtered OpenAPI spec
+	@echo "Generating CLI-filtered OpenAPI spec..."
+	@mkdir -p cli
+	@go run ./cli/filter-openapi -input docs/swagger.json -output cli/swagger-cli.json
+	@echo "CLI OpenAPI spec generated at cli/swagger-cli.json"
+
+generate-cli-client: swagger-cli ## Generate Go client for CLI from filtered OpenAPI spec
+	@echo "Generating CLI client (OpenAPI Generator v$(OPENAPI_GENERATOR_VERSION) via Docker)..."
+	@mkdir -p cli/client
+	@docker run --rm -u $(shell id -u):$(shell id -g) -v $(PWD):/local openapitools/openapi-generator-cli:v$(OPENAPI_GENERATOR_VERSION) generate \
+		-i /local/cli/swagger-cli.json \
+		-g go \
+		-o /local/cli/client \
+		--additional-properties=packageName=client,isGoSubmodule=true,withGoMod=false \
+		--global-property=apiTests=false,modelTests=false
+	@echo "Fixing client imports..."
+	@echo "CLI client generated at cli/client/"
+	@echo ""
+	@echo "Endpoints included (with x-cli extension):"
+	@jq -r '.paths | keys[]' cli/swagger-cli.json 2>/dev/null || true
+
+build-cli: generate-cli-client ## Build the CLI binary
+	@echo "Building CLI..."
+	@mkdir -p $(BUILD_DIR)
+	@go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME) ./cmd/darb-cli
+	@echo "CLI build complete: $(BUILD_DIR)/$(CLI_BINARY_NAME)"
+
+build-cli-all: generate-cli-client ## Build CLI for all platforms
+	@echo "Building CLI for all platforms..."
+	@mkdir -p $(BUILD_DIR)
+	@echo "Building linux/amd64..."
+	@GOOS=linux GOARCH=amd64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-linux-amd64 ./cmd/darb-cli
+	@echo "Building linux/arm64..."
+	@GOOS=linux GOARCH=arm64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-linux-arm64 ./cmd/darb-cli
+	@echo "Building darwin/amd64..."
+	@GOOS=darwin GOARCH=amd64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-darwin-amd64 ./cmd/darb-cli
+	@echo "Building darwin/arm64..."
+	@GOOS=darwin GOARCH=arm64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-darwin-arm64 ./cmd/darb-cli
+	@echo "Building windows/amd64..."
+	@GOOS=windows GOARCH=amd64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-windows-amd64.exe ./cmd/darb-cli
+	@echo "All CLI platform builds complete"
 
 build-frontend: ## Build frontend and copy to internal/web/dist
 	@echo "Building frontend..."

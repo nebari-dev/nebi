@@ -12,6 +12,7 @@ import (
 // @Summary User login
 // @Description Authenticate user and return JWT token
 // @Tags auth
+// @x-cli true
 // @Accept json
 // @Produce json
 // @Param credentials body auth.LoginRequest true "Login credentials"

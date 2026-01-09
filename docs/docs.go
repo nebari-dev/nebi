@@ -592,8 +592,7 @@ const docTemplate = `{
                             }
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/auth/me": {
@@ -622,8 +621,7 @@ const docTemplate = `{
                             }
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/auth/oidc/callback": {
@@ -739,8 +737,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             },
             "post": {
                 "security": [
@@ -794,8 +791,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}": {
@@ -846,8 +842,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             },
             "delete": {
                 "security": [
@@ -890,8 +885,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/collaborators": {
@@ -927,8 +921,7 @@ const docTemplate = `{
                             }
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/packages": {
@@ -982,8 +975,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             },
             "post": {
                 "security": [
@@ -1050,8 +1042,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/packages/{package}": {
@@ -1118,8 +1109,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/pixi-toml": {
@@ -1170,8 +1160,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/publications": {
@@ -1214,8 +1203,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/publish": {
@@ -1279,8 +1267,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/rollback": {
@@ -1325,8 +1312,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/models.Job"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/share": {
@@ -1371,8 +1357,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/models.Permission"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/share/{user_id}": {
@@ -1406,8 +1391,7 @@ const docTemplate = `{
                     "204": {
                         "description": "No Content"
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/versions": {
@@ -1443,8 +1427,7 @@ const docTemplate = `{
                             }
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/versions/{version}": {
@@ -1484,8 +1467,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/models.EnvironmentVersion"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/versions/{version}/pixi-lock": {
@@ -1525,8 +1507,7 @@ const docTemplate = `{
                             "type": "string"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/versions/{version}/pixi-toml": {
@@ -1566,8 +1547,7 @@ const docTemplate = `{
                             "type": "string"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/health": {
@@ -1587,8 +1567,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.HealthResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/jobs": {
@@ -1627,8 +1606,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/jobs/{id}": {
@@ -1679,8 +1657,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/jobs/{id}/logs/stream": {
@@ -1731,8 +1708,7 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/registries": {
@@ -1758,8 +1734,7 @@ const docTemplate = `{
                             }
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/version": {
@@ -1782,8 +1757,7 @@ const docTemplate = `{
                             }
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         }
     },

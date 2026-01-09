@@ -586,8 +586,7 @@
                             }
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/auth/me": {
@@ -616,8 +615,7 @@
                             }
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/auth/oidc/callback": {
@@ -733,8 +731,7 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             },
             "post": {
                 "security": [
@@ -788,8 +785,7 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}": {
@@ -840,8 +836,7 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             },
             "delete": {
                 "security": [
@@ -884,8 +879,7 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/collaborators": {
@@ -921,8 +915,7 @@
                             }
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/packages": {
@@ -976,8 +969,7 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             },
             "post": {
                 "security": [
@@ -1044,8 +1036,7 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/packages/{package}": {
@@ -1112,8 +1103,7 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/pixi-toml": {
@@ -1164,8 +1154,7 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/publications": {
@@ -1208,8 +1197,7 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/publish": {
@@ -1273,8 +1261,7 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/rollback": {
@@ -1319,8 +1306,7 @@
                             "$ref": "#/definitions/models.Job"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/share": {
@@ -1365,8 +1351,7 @@
                             "$ref": "#/definitions/models.Permission"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/share/{user_id}": {
@@ -1400,8 +1385,7 @@
                     "204": {
                         "description": "No Content"
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/versions": {
@@ -1437,8 +1421,7 @@
                             }
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/versions/{version}": {
@@ -1478,8 +1461,7 @@
                             "$ref": "#/definitions/models.EnvironmentVersion"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/versions/{version}/pixi-lock": {
@@ -1519,8 +1501,7 @@
                             "type": "string"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/environments/{id}/versions/{version}/pixi-toml": {
@@ -1560,8 +1541,7 @@
                             "type": "string"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/health": {
@@ -1581,8 +1561,7 @@
                             "$ref": "#/definitions/handlers.HealthResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/jobs": {
@@ -1621,8 +1600,7 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/jobs/{id}": {
@@ -1673,8 +1651,7 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/jobs/{id}/logs/stream": {
@@ -1725,8 +1702,7 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/registries": {
@@ -1752,8 +1728,7 @@
                             }
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         },
         "/version": {
@@ -1776,8 +1751,7 @@
                             }
                         }
                     }
-                },
-                "x-cli": true
+                }
             }
         }
     },

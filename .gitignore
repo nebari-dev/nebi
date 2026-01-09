@@ -62,4 +62,3 @@ dist/
 
 # CLI generated client (regenerated from OpenAPI spec)
 cli/client/
-cli/swagger-cli.json

@@ -14,6 +14,7 @@ var Version = "dev"
 // @Summary Get version information
 // @Description Returns version information about the Darb server
 // @Tags system
+// @x-cli true
 // @Produce json
 // @Success 200 {object} map[string]string
 // @Router /version [get]

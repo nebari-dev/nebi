@@ -11,7 +11,6 @@ import (
 // @Summary Get current user
 // @Description Get the currently authenticated user's information
 // @Tags auth
-// @x-cli true
 // @Produce json
 // @Success 200 {object} models.User
 // @Failure 401 {object} map[string]string

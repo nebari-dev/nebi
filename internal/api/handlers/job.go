@@ -33,7 +33,6 @@ func NewJobHandler(db *gorm.DB, broker *logstream.LogBroker, valkeyClient interf
 // ListJobs godoc
 // @Summary List all jobs for user's environments
 // @Tags jobs
-// @x-cli true
 // @Security BearerAuth
 // @Produce json
 // @Success 200 {array} models.Job
@@ -62,7 +61,6 @@ func (h *JobHandler) ListJobs(c *gin.Context) {
 // GetJob godoc
 // @Summary Get a job by ID
 // @Tags jobs
-// @x-cli true
 // @Security BearerAuth
 // @Produce json
 // @Param id path string true "Job ID"
@@ -97,7 +95,6 @@ func (h *JobHandler) GetJob(c *gin.Context) {
 // StreamJobLogs godoc
 // @Summary Stream job logs in real-time via Server-Sent Events
 // @Tags jobs
-// @x-cli true
 // @Security BearerAuth
 // @Produce text/event-stream
 // @Param id path string true "Job ID"

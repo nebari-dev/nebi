@@ -37,6 +37,8 @@ func main() {
 	}
 
 	filteredPaths := make(map[string]interface{})
+	usedTags := make(map[string]bool)
+
 	for path, methods := range paths {
 		methodsMap, ok := methods.(map[string]interface{})
 		if !ok {
@@ -60,6 +62,15 @@ func main() {
 
 			if hasCli {
 				filteredMethods[method] = operation
+
+				// Collect tags from this operation
+				if tags, ok := opMap["tags"].([]interface{}); ok {
+					for _, t := range tags {
+						if tagStr, ok := t.(string); ok {
+							usedTags[tagStr] = true
+						}
+					}
+				}
 			}
 		}
 
@@ -70,7 +81,7 @@ func main() {
 
 	spec["paths"] = filteredPaths
 
-	// Filter tags array to remove "admin" tag from docs
+	// Filter top-level tags array to only include tags used by filtered operations
 	if tagsArr, ok := spec["tags"].([]interface{}); ok {
 		var filteredTags []interface{}
 		for _, t := range tagsArr {
@@ -79,8 +90,7 @@ func main() {
 				continue
 			}
 			name, _ := tagMap["name"].(string)
-			// Exclude admin tag from documentation
-			if name != "admin" {
+			if usedTags[name] {
 				filteredTags = append(filteredTags, t)
 			}
 		}

@@ -522,7 +522,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       responses:
         "204":
           description: No Content
@@ -801,6 +801,7 @@ paths:
       summary: User login
       tags:
       - auth
+      x-cli: true
   /auth/me:
     get:
       description: Get the currently authenticated user's information
@@ -820,6 +821,7 @@ paths:
       summary: Get current user
       tags:
       - auth
+      x-cli: true
   /auth/oidc/callback:
     get:
       consumes:
@@ -895,6 +897,7 @@ paths:
       summary: List all environments for the current user
       tags:
       - environments
+      x-cli: true
     post:
       consumes:
       - application/json
@@ -929,6 +932,7 @@ paths:
       summary: Create a new environment
       tags:
       - environments
+      x-cli: true
   /environments/{id}:
     delete:
       parameters:
@@ -936,7 +940,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       responses:
         "204":
           description: No Content
@@ -957,13 +961,14 @@ paths:
       summary: Delete an environment
       tags:
       - environments
+      x-cli: true
     get:
       parameters:
       - description: Environment ID
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -988,6 +993,7 @@ paths:
       summary: Get an environment by ID
       tags:
       - environments
+      x-cli: true
   /environments/{id}/collaborators:
     get:
       parameters:
@@ -1010,6 +1016,7 @@ paths:
       summary: List all users with access to environment
       tags:
       - environments
+      x-cli: true
   /environments/{id}/packages:
     get:
       parameters:
@@ -1017,7 +1024,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -1044,6 +1051,7 @@ paths:
       summary: List packages in an environment
       tags:
       - environments
+      x-cli: true
     post:
       consumes:
       - application/json
@@ -1052,7 +1060,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       - description: Packages to install
         in: body
         name: packages
@@ -1087,6 +1095,7 @@ paths:
       summary: Install packages in an environment
       tags:
       - environments
+      x-cli: true
   /environments/{id}/packages/{package}:
     delete:
       consumes:
@@ -1096,7 +1105,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       - description: Package name
         in: path
         name: package
@@ -1130,6 +1139,7 @@ paths:
       summary: Remove packages from an environment
       tags:
       - environments
+      x-cli: true
   /environments/{id}/pixi-toml:
     get:
       parameters:
@@ -1137,7 +1147,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -1162,6 +1172,7 @@ paths:
       summary: Get pixi.toml content for an environment
       tags:
       - environments
+      x-cli: true
   /environments/{id}/publications:
     get:
       description: Get all publications (registry pushes) for an environment
@@ -1189,6 +1200,7 @@ paths:
       summary: List publications for an environment
       tags:
       - environments
+      x-cli: true
   /environments/{id}/publish:
     post:
       consumes:
@@ -1230,6 +1242,7 @@ paths:
       summary: Publish environment to OCI registry
       tags:
       - environments
+      x-cli: true
   /environments/{id}/rollback:
     post:
       consumes:
@@ -1258,6 +1271,7 @@ paths:
       summary: Rollback environment to a previous version
       tags:
       - environments
+      x-cli: true
   /environments/{id}/share:
     post:
       consumes:
@@ -1286,6 +1300,7 @@ paths:
       summary: Share environment with another user (owner only)
       tags:
       - environments
+      x-cli: true
   /environments/{id}/share/{user_id}:
     delete:
       parameters:
@@ -1307,6 +1322,7 @@ paths:
       summary: Revoke user access to environment (owner only)
       tags:
       - environments
+      x-cli: true
   /environments/{id}/versions:
     get:
       parameters:
@@ -1329,6 +1345,7 @@ paths:
       summary: List all versions for an environment
       tags:
       - environments
+      x-cli: true
   /environments/{id}/versions/{version}:
     get:
       parameters:
@@ -1354,6 +1371,7 @@ paths:
       summary: Get a specific version with full details
       tags:
       - environments
+      x-cli: true
   /environments/{id}/versions/{version}/pixi-lock:
     get:
       parameters:
@@ -1379,6 +1397,7 @@ paths:
       summary: Download pixi.lock for a specific version
       tags:
       - environments
+      x-cli: true
   /environments/{id}/versions/{version}/pixi-toml:
     get:
       parameters:
@@ -1404,6 +1423,7 @@ paths:
       summary: Download pixi.toml for a specific version
       tags:
       - environments
+      x-cli: true
   /health:
     get:
       description: Returns the health status of the service
@@ -1417,6 +1437,7 @@ paths:
       summary: Health check endpoint
       tags:
       - health
+      x-cli: true
   /jobs:
     get:
       produces:
@@ -1441,6 +1462,7 @@ paths:
       summary: List all jobs for user's environments
       tags:
       - jobs
+      x-cli: true
   /jobs/{id}:
     get:
       parameters:
@@ -1448,7 +1470,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -1473,6 +1495,7 @@ paths:
       summary: Get a job by ID
       tags:
       - jobs
+      x-cli: true
   /jobs/{id}/logs/stream:
     get:
       parameters:
@@ -1505,6 +1528,7 @@ paths:
       summary: Stream job logs in real-time via Server-Sent Events
       tags:
       - jobs
+      x-cli: true
   /registries:
     get:
       consumes:
@@ -1523,6 +1547,7 @@ paths:
       summary: List available registries (public info only)
       tags:
       - registries
+      x-cli: true
   /version:
     get:
       description: Returns version information about the Darb server
@@ -1538,6 +1563,7 @@ paths:
       summary: Get version information
       tags:
       - system
+      x-cli: true
 securityDefinitions:
   BearerAuth:
     in: header

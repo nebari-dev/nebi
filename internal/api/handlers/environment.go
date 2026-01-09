@@ -31,6 +31,7 @@ func NewEnvironmentHandler(db *gorm.DB, q queue.Queue, exec executor.Executor) *
 // ListEnvironments godoc
 // @Summary List all environments for the current user
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Produce json
 // @Success 200 {array} models.Environment
@@ -72,6 +73,7 @@ func (h *EnvironmentHandler) ListEnvironments(c *gin.Context) {
 // CreateEnvironment godoc
 // @Summary Create a new environment
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Accept json
 // @Produce json
@@ -151,9 +153,10 @@ func (h *EnvironmentHandler) CreateEnvironment(c *gin.Context) {
 // GetEnvironment godoc
 // @Summary Get an environment by ID
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Produce json
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Success 200 {object} models.Environment
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -182,8 +185,9 @@ func (h *EnvironmentHandler) GetEnvironment(c *gin.Context) {
 // DeleteEnvironment godoc
 // @Summary Delete an environment
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Success 204
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -232,10 +236,11 @@ func (h *EnvironmentHandler) DeleteEnvironment(c *gin.Context) {
 // InstallPackages godoc
 // @Summary Install packages in an environment
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Param packages body InstallPackagesRequest true "Packages to install"
 // @Success 202 {object} models.Job
 // @Failure 400 {object} ErrorResponse
@@ -295,10 +300,11 @@ func (h *EnvironmentHandler) InstallPackages(c *gin.Context) {
 // RemovePackages godoc
 // @Summary Remove packages from an environment
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Param package path string true "Package name"
 // @Success 202 {object} models.Job
 // @Failure 400 {object} ErrorResponse
@@ -353,9 +359,10 @@ func (h *EnvironmentHandler) RemovePackages(c *gin.Context) {
 // ListPackages godoc
 // @Summary List packages in an environment
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Produce json
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Success 200 {array} models.Package
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -383,9 +390,10 @@ func (h *EnvironmentHandler) ListPackages(c *gin.Context) {
 // GetPixiToml godoc
 // @Summary Get pixi.toml content for an environment
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Produce json
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Success 200 {object} PixiTomlResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -458,6 +466,7 @@ func (h *EnvironmentHandler) enrichEnvironmentsWithSize(envs []models.Environmen
 // ShareEnvironment godoc
 // @Summary Share environment with another user (owner only)
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Accept json
 // @Produce json
@@ -545,6 +554,7 @@ func (h *EnvironmentHandler) ShareEnvironment(c *gin.Context) {
 // UnshareEnvironment godoc
 // @Summary Revoke user access to environment (owner only)
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Param id path string true "Environment ID"
 // @Param user_id path string true "User ID to revoke"
@@ -617,6 +627,7 @@ func (h *EnvironmentHandler) UnshareEnvironment(c *gin.Context) {
 // ListCollaborators godoc
 // @Summary List all users with access to environment
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Produce json
 // @Param id path string true "Environment ID"
@@ -693,6 +704,7 @@ type CollaboratorResponse struct {
 // ListVersions godoc
 // @Summary List all versions for an environment
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Produce json
 // @Param id path string true "Environment ID"
@@ -720,6 +732,7 @@ func (h *EnvironmentHandler) ListVersions(c *gin.Context) {
 // GetVersion godoc
 // @Summary Get a specific version with full details
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Produce json
 // @Param id path string true "Environment ID"
@@ -750,6 +763,7 @@ func (h *EnvironmentHandler) GetVersion(c *gin.Context) {
 // DownloadLockFile godoc
 // @Summary Download pixi.lock for a specific version
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Produce text/plain
 // @Param id path string true "Environment ID"
@@ -784,6 +798,7 @@ func (h *EnvironmentHandler) DownloadLockFile(c *gin.Context) {
 // DownloadManifestFile godoc
 // @Summary Download pixi.toml for a specific version
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Produce text/plain
 // @Param id path string true "Environment ID"
@@ -817,6 +832,7 @@ func (h *EnvironmentHandler) DownloadManifestFile(c *gin.Context) {
 // RollbackToVersion godoc
 // @Summary Rollback environment to a previous version
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Accept json
 // @Produce json
@@ -919,6 +935,7 @@ type PublicationResponse struct {
 // @Summary Publish environment to OCI registry
 // @Description Publish pixi.toml and pixi.lock to an OCI registry
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Accept json
 // @Produce json
@@ -1021,6 +1038,7 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 // @Summary List publications for an environment
 // @Description Get all publications (registry pushes) for an environment
 // @Tags environments
+// @x-cli true
 // @Security BearerAuth
 // @Produce json
 // @Param id path string true "Environment ID"

@@ -150,7 +150,7 @@
                 "summary": "Revoke a permission",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Permission ID",
                         "name": "id",
                         "in": "path",
@@ -586,7 +586,8 @@
                             }
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/auth/me": {
@@ -615,7 +616,8 @@
                             }
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/auth/oidc/callback": {
@@ -731,7 +733,8 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                }
+                },
+                "x-cli": true
             },
             "post": {
                 "security": [
@@ -785,7 +788,8 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/environments/{id}": {
@@ -804,7 +808,7 @@
                 "summary": "Get an environment by ID",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -836,7 +840,8 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                }
+                },
+                "x-cli": true
             },
             "delete": {
                 "security": [
@@ -850,7 +855,7 @@
                 "summary": "Delete an environment",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -879,7 +884,8 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/environments/{id}/collaborators": {
@@ -915,7 +921,8 @@
                             }
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/environments/{id}/packages": {
@@ -934,7 +941,7 @@
                 "summary": "List packages in an environment",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -969,7 +976,8 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                }
+                },
+                "x-cli": true
             },
             "post": {
                 "security": [
@@ -989,7 +997,7 @@
                 "summary": "Install packages in an environment",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -1036,7 +1044,8 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/environments/{id}/packages/{package}": {
@@ -1058,7 +1067,7 @@
                 "summary": "Remove packages from an environment",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -1103,7 +1112,8 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/environments/{id}/pixi-toml": {
@@ -1122,7 +1132,7 @@
                 "summary": "Get pixi.toml content for an environment",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -1154,7 +1164,8 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/environments/{id}/publications": {
@@ -1197,7 +1208,8 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/environments/{id}/publish": {
@@ -1261,7 +1273,8 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/environments/{id}/rollback": {
@@ -1306,7 +1319,8 @@
                             "$ref": "#/definitions/models.Job"
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/environments/{id}/share": {
@@ -1351,7 +1365,8 @@
                             "$ref": "#/definitions/models.Permission"
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/environments/{id}/share/{user_id}": {
@@ -1385,7 +1400,8 @@
                     "204": {
                         "description": "No Content"
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/environments/{id}/versions": {
@@ -1421,7 +1437,8 @@
                             }
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/environments/{id}/versions/{version}": {
@@ -1461,7 +1478,8 @@
                             "$ref": "#/definitions/models.EnvironmentVersion"
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/environments/{id}/versions/{version}/pixi-lock": {
@@ -1501,7 +1519,8 @@
                             "type": "string"
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/environments/{id}/versions/{version}/pixi-toml": {
@@ -1541,7 +1560,8 @@
                             "type": "string"
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/health": {
@@ -1561,7 +1581,8 @@
                             "$ref": "#/definitions/handlers.HealthResponse"
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/jobs": {
@@ -1600,7 +1621,8 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/jobs/{id}": {
@@ -1619,7 +1641,7 @@
                 "summary": "Get a job by ID",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Job ID",
                         "name": "id",
                         "in": "path",
@@ -1651,7 +1673,8 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/jobs/{id}/logs/stream": {
@@ -1702,7 +1725,8 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/registries": {
@@ -1728,7 +1752,8 @@
                             }
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         },
         "/version": {
@@ -1751,7 +1776,8 @@
                             }
                         }
                     }
-                }
+                },
+                "x-cli": true
             }
         }
     },

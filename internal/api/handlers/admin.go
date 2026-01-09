@@ -332,7 +332,7 @@ func (h *AdminHandler) ListPermissions(c *gin.Context) {
 // @Summary Revoke a permission
 // @Tags admin
 // @Security BearerAuth
-// @Param id path int true "Permission ID"
+// @Param id path string true "Permission ID"
 // @Success 204
 // @Router /admin/permissions/{id} [delete]
 func (h *AdminHandler) RevokePermission(c *gin.Context) {

@@ -255,6 +255,7 @@ func (h *RegistryHandler) DeleteRegistry(c *gin.Context) {
 // @Summary List available registries (public info only)
 // @Description Get list of registries for users to select from (no credentials exposed)
 // @Tags registries
+// @x-cli true
 // @Accept json
 // @Produce json
 // @Success 200 {array} RegistryResponse

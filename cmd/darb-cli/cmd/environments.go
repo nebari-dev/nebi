@@ -10,8 +10,8 @@ import (
 )
 
 var environmentsCmd = &cobra.Command{
-	Use:     "environments",
-	Aliases: []string{"env", "envs"},
+	Use:     "env",
+	Aliases: []string{"envs"},
 	Short:   "Manage environments",
 	Long:    `Create, list, and manage Pixi environments.`,
 }

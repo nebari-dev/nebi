@@ -10,89 +10,89 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var envListRegistry string
-var envInfoRegistry string
-var envListTagsRegistry string
+var repoListRegistry string
+var repoInfoRegistry string
+var repoListTagsRegistry string
 
-var envCmd = &cobra.Command{
-	Use:   "env",
-	Short: "Manage environments",
-	Long:  `List, delete, and inspect environments.`,
+var repoCmd = &cobra.Command{
+	Use:   "repo",
+	Short: "Manage repos",
+	Long:  `List, delete, and inspect repos.`,
 }
 
-var envListCmd = &cobra.Command{
+var repoListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List environments",
-	Long: `List environments from the server.
+	Short: "List repos",
+	Long: `List repos from the server.
 
 Examples:
-  # List all environments
-  darb env list`,
+  # List all repos
+  darb repo list`,
 	Args: cobra.NoArgs,
-	Run:  runEnvList,
+	Run:  runRepoList,
 }
 
-var envListTagsCmd = &cobra.Command{
-	Use:   "tags <env>",
-	Short: "List tags for an environment",
-	Long: `List all published tags for an environment.
+var repoListTagsCmd = &cobra.Command{
+	Use:   "tags <repo>",
+	Short: "List tags for a repo",
+	Long: `List all published tags for a repo.
 
 Example:
-  darb env list tags myenv`,
+  darb repo list tags myrepo`,
 	Args: cobra.ExactArgs(1),
-	Run:  runEnvListTags,
+	Run:  runRepoListTags,
 }
 
-var envDeleteCmd = &cobra.Command{
-	Use:   "delete <env>",
-	Short: "Delete an environment",
-	Long: `Delete an environment from the server.
+var repoDeleteCmd = &cobra.Command{
+	Use:   "delete <repo>",
+	Short: "Delete a repo",
+	Long: `Delete a repo from the server.
 
 Example:
-  darb env delete myenv`,
+  darb repo delete myrepo`,
 	Args: cobra.ExactArgs(1),
-	Run:  runEnvDelete,
+	Run:  runRepoDelete,
 }
 
-var envInfoCmd = &cobra.Command{
-	Use:   "info <env>",
-	Short: "Show environment details",
-	Long: `Show detailed information about an environment.
+var repoInfoCmd = &cobra.Command{
+	Use:   "info <repo>",
+	Short: "Show repo details",
+	Long: `Show detailed information about a repo.
 
 Example:
-  darb env info myenv`,
+  darb repo info myrepo`,
 	Args: cobra.ExactArgs(1),
-	Run:  runEnvInfo,
+	Run:  runRepoInfo,
 }
 
 func init() {
-	rootCmd.AddCommand(envCmd)
+	rootCmd.AddCommand(repoCmd)
 
-	// env list
-	envCmd.AddCommand(envListCmd)
+	// repo list
+	repoCmd.AddCommand(repoListCmd)
 
-	// env list tags (subcommand of list)
-	envListCmd.AddCommand(envListTagsCmd)
+	// repo list tags (subcommand of list)
+	repoListCmd.AddCommand(repoListTagsCmd)
 
-	// env delete
-	envCmd.AddCommand(envDeleteCmd)
+	// repo delete
+	repoCmd.AddCommand(repoDeleteCmd)
 
-	// env info
-	envCmd.AddCommand(envInfoCmd)
+	// repo info
+	repoCmd.AddCommand(repoInfoCmd)
 }
 
-func runEnvList(cmd *cobra.Command, args []string) {
+func runRepoList(cmd *cobra.Command, args []string) {
 	apiClient := mustGetClient()
 	ctx := mustGetAuthContext()
 
 	envs, _, err := apiClient.EnvironmentsAPI.EnvironmentsGet(ctx).Execute()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to list environments: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to list repos: %v\n", err)
 		os.Exit(1)
 	}
 
 	if len(envs) == 0 {
-		fmt.Println("No environments found")
+		fmt.Println("No repos found")
 		return
 	}
 
@@ -113,14 +113,14 @@ func runEnvList(cmd *cobra.Command, args []string) {
 	w.Flush()
 }
 
-func runEnvListTags(cmd *cobra.Command, args []string) {
-	envName := args[0]
+func runRepoListTags(cmd *cobra.Command, args []string) {
+	repoName := args[0]
 
 	apiClient := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find environment by name
-	env, err := findEnvByName(apiClient, ctx, envName)
+	// Find repo by name
+	env, err := findRepoByName(apiClient, ctx, repoName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -134,7 +134,7 @@ func runEnvListTags(cmd *cobra.Command, args []string) {
 	}
 
 	if len(pubs) == 0 {
-		fmt.Printf("No published tags for %q\n", envName)
+		fmt.Printf("No published tags for %q\n", repoName)
 		return
 	}
 
@@ -156,14 +156,14 @@ func runEnvListTags(cmd *cobra.Command, args []string) {
 	w.Flush()
 }
 
-func runEnvDelete(cmd *cobra.Command, args []string) {
-	envName := args[0]
+func runRepoDelete(cmd *cobra.Command, args []string) {
+	repoName := args[0]
 
 	apiClient := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find environment by name
-	env, err := findEnvByName(apiClient, ctx, envName)
+	// Find repo by name
+	env, err := findRepoByName(apiClient, ctx, repoName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -172,21 +172,21 @@ func runEnvDelete(cmd *cobra.Command, args []string) {
 	// Delete
 	_, err = apiClient.EnvironmentsAPI.EnvironmentsIdDelete(ctx, env.GetId()).Execute()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to delete environment: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to delete repo: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Deleted environment %q\n", envName)
+	fmt.Printf("Deleted repo %q\n", repoName)
 }
 
-func runEnvInfo(cmd *cobra.Command, args []string) {
-	envName := args[0]
+func runRepoInfo(cmd *cobra.Command, args []string) {
+	repoName := args[0]
 
 	apiClient := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find environment by name
-	env, err := findEnvByName(apiClient, ctx, envName)
+	// Find repo by name
+	env, err := findRepoByName(apiClient, ctx, repoName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -195,7 +195,7 @@ func runEnvInfo(cmd *cobra.Command, args []string) {
 	// Get full details
 	envDetail, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdGet(ctx, env.GetId()).Execute()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to get environment details: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to get repo details: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -224,11 +224,11 @@ func runEnvInfo(cmd *cobra.Command, args []string) {
 	}
 }
 
-// findEnvByName looks up an environment by name and returns it
-func findEnvByName(apiClient *client.APIClient, ctx context.Context, name string) (*client.ModelsEnvironment, error) {
+// findRepoByName looks up a repo by name and returns it
+func findRepoByName(apiClient *client.APIClient, ctx context.Context, name string) (*client.ModelsEnvironment, error) {
 	envs, _, err := apiClient.EnvironmentsAPI.EnvironmentsGet(ctx).Execute()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list environments: %v", err)
+		return nil, fmt.Errorf("failed to list repos: %v", err)
 	}
 
 	for _, env := range envs {
@@ -237,5 +237,5 @@ func findEnvByName(apiClient *client.APIClient, ctx context.Context, name string
 		}
 	}
 
-	return nil, fmt.Errorf("environment %q not found", name)
+	return nil, fmt.Errorf("repo %q not found", name)
 }

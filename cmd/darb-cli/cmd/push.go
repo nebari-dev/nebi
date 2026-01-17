@@ -4,47 +4,54 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/aktech/darb/cli/client"
 	"github.com/spf13/cobra"
 )
 
-var pushTags []string
 var pushRegistry string
 
 var pushCmd = &cobra.Command{
-	Use:   "push <env>",
-	Short: "Push environment to registry",
-	Long: `Push an environment to an OCI registry with one or more tags.
+	Use:   "push <repo>:<tag>",
+	Short: "Push repo to registry",
+	Long: `Push a repo to an OCI registry with a tag.
 
 Examples:
-  # Push with single tag
-  darb push myenv -t v1.0.0 -r ds-team
-
-  # Push with multiple tags
-  darb push myenv -t v1.0.0 -t latest -t stable -r ds-team
+  # Push with tag
+  darb push myrepo:v1.0.0 -r ds-team
 
   # Push using default registry
-  darb push myenv -t v1.0.0`,
+  darb push myrepo:v1.0.0`,
 	Args: cobra.ExactArgs(1),
 	Run:  runPush,
 }
 
 func init() {
 	rootCmd.AddCommand(pushCmd)
-	pushCmd.Flags().StringArrayVarP(&pushTags, "tag", "t", nil, "Tag(s) for the environment (repeatable)")
 	pushCmd.Flags().StringVarP(&pushRegistry, "registry", "r", "", "Named registry (optional if default set)")
-	pushCmd.MarkFlagRequired("tag")
 }
 
 func runPush(cmd *cobra.Command, args []string) {
-	envName := args[0]
+	// Parse repo:tag format
+	repoName, tag, err := parseRepoRef(args[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintln(os.Stderr, "Usage: darb push <repo>:<tag>")
+		os.Exit(1)
+	}
+
+	if tag == "" {
+		fmt.Fprintf(os.Stderr, "Error: tag is required\n")
+		fmt.Fprintln(os.Stderr, "Usage: darb push <repo>:<tag>")
+		os.Exit(1)
+	}
 
 	apiClient := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find environment by name
-	env, err := findEnvByName(apiClient, ctx, envName)
+	// Find repo by name
+	env, err := findRepoByName(apiClient, ctx, repoName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -68,30 +75,44 @@ func runPush(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// Use env name as repository
-	repository := envName
+	// Use repo name as repository
+	repository := repoName
 
-	// Push each tag
-	for _, tag := range pushTags {
-		req := client.HandlersPublishRequest{
-			RegistryId: registry.GetId(),
-			Repository: repository,
-			Tag:        tag,
-		}
-
-		resp, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdPublishPost(ctx, env.GetId()).Request(req).Execute()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Failed to push tag %q: %v\n", tag, err)
-			os.Exit(1)
-		}
-
-		fmt.Printf("Pushed %s:%s\n", repository, tag)
-		if digest := resp.GetDigest(); digest != "" {
-			fmt.Printf("  Digest: %s\n", digest)
-		}
+	req := client.HandlersPublishRequest{
+		RegistryId: registry.GetId(),
+		Repository: repository,
+		Tag:        tag,
 	}
 
-	fmt.Printf("\nSuccessfully pushed %d tag(s) to %s\n", len(pushTags), registry.GetName())
+	resp, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdPublishPost(ctx, env.GetId()).Request(req).Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to push %s:%s: %v\n", repository, tag, err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Pushed %s:%s\n", repository, tag)
+	if digest := resp.GetDigest(); digest != "" {
+		fmt.Printf("  Digest: %s\n", digest)
+	}
+	fmt.Printf("\nSuccessfully pushed to %s\n", registry.GetName())
+}
+
+// parseRepoRef parses a reference in the format repo:tag or repo@digest
+// Returns (repo, tag, error) for tag references
+// Returns (repo, "", error) for digest references (digest is in tag field with @ prefix)
+func parseRepoRef(ref string) (repo string, tag string, err error) {
+	// Check for digest reference first (repo@sha256:...)
+	if idx := strings.Index(ref, "@"); idx != -1 {
+		return ref[:idx], ref[idx:], nil // Return @sha256:... as the "tag"
+	}
+
+	// Check for tag reference (repo:tag)
+	if idx := strings.LastIndex(ref, ":"); idx != -1 {
+		return ref[:idx], ref[idx+1:], nil
+	}
+
+	// No tag or digest specified
+	return ref, "", nil
 }
 
 // findDefaultRegistry finds the default registry

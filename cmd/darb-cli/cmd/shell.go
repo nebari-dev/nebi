@@ -9,38 +9,57 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var shellCmd = &cobra.Command{
-	Use:   "shell <env>",
-	Short: "Activate environment shell",
-	Long: `Activate an environment shell using pixi shell.
+var shellPixiEnv string
 
-The environment is pulled from the server and cached locally.
+var shellCmd = &cobra.Command{
+	Use:   "shell <repo>[:<tag>]",
+	Short: "Activate repo shell",
+	Long: `Activate a repo shell using pixi shell.
+
+The repo is pulled from the server and cached locally.
 
 Examples:
-  darb shell myenv`,
+  # Shell into latest version
+  darb shell myrepo
+
+  # Shell into specific tag
+  darb shell myrepo:v1.0.0
+
+  # Shell into specific pixi environment
+  darb shell myrepo:v1.0.0 -e dev`,
 	Args: cobra.ExactArgs(1),
 	Run:  runShell,
 }
 
 func init() {
 	rootCmd.AddCommand(shellCmd)
+	shellCmd.Flags().StringVarP(&shellPixiEnv, "env", "e", "", "Pixi environment name")
 }
 
 func runShell(cmd *cobra.Command, args []string) {
-	envName := args[0]
-
-	apiClient := mustGetClient()
-	ctx := mustGetAuthContext()
-
-	// Find environment by name
-	env, err := findEnvByName(apiClient, ctx, envName)
+	// Parse repo:tag format
+	repoName, tag, err := parseRepoRef(args[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Create cache directory for this environment
-	cacheDir, err := getEnvCacheDir(envName)
+	apiClient := mustGetClient()
+	ctx := mustGetAuthContext()
+
+	// Find repo by name
+	env, err := findRepoByName(apiClient, ctx, repoName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Create cache directory for this repo (include tag in path if specified)
+	cacheName := repoName
+	if tag != "" {
+		cacheName = repoName + "-" + tag
+	}
+	cacheDir, err := getRepoCacheDir(cacheName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to create cache directory: %v\n", err)
 		os.Exit(1)
@@ -54,7 +73,7 @@ func runShell(cmd *cobra.Command, args []string) {
 	}
 
 	if len(versions) == 0 {
-		fmt.Fprintf(os.Stderr, "Error: Environment %q has no versions\n", envName)
+		fmt.Fprintf(os.Stderr, "Error: Repo %q has no versions\n", repoName)
 		os.Exit(1)
 	}
 
@@ -77,8 +96,13 @@ func runShell(cmd *cobra.Command, args []string) {
 		needsUpdate = false
 	}
 
+	refStr := repoName
+	if tag != "" {
+		refStr = repoName + ":" + tag
+	}
+
 	if needsUpdate {
-		fmt.Printf("Pulling %s (version %d)...\n", envName, versionNumber)
+		fmt.Printf("Pulling %s (version %d)...\n", refStr, versionNumber)
 
 		// Get pixi.toml
 		pixiToml, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdVersionsVersionPixiTomlGet(ctx, env.GetId(), versionNumber).Execute()
@@ -107,9 +131,14 @@ func runShell(cmd *cobra.Command, args []string) {
 	}
 
 	// Run pixi shell
-	fmt.Printf("Starting shell for %s...\n", envName)
+	fmt.Printf("Starting shell for %s...\n", refStr)
 
-	pixiCmd := exec.Command("pixi", "shell")
+	pixiArgs := []string{"shell"}
+	if shellPixiEnv != "" {
+		pixiArgs = append(pixiArgs, "-e", shellPixiEnv)
+	}
+
+	pixiCmd := exec.Command("pixi", pixiArgs...)
 	pixiCmd.Dir = cacheDir
 	pixiCmd.Stdin = os.Stdin
 	pixiCmd.Stdout = os.Stdout
@@ -124,17 +153,17 @@ func runShell(cmd *cobra.Command, args []string) {
 	}
 }
 
-// getEnvCacheDir returns the cache directory for an environment
-func getEnvCacheDir(envName string) (string, error) {
+// getRepoCacheDir returns the cache directory for a repo
+func getRepoCacheDir(repoName string) (string, error) {
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
 	}
 
-	envDir := filepath.Join(cacheDir, "darb", "envs", envName)
-	if err := os.MkdirAll(envDir, 0755); err != nil {
+	repoDir := filepath.Join(cacheDir, "darb", "repos", repoName)
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
 		return "", err
 	}
 
-	return envDir, nil
+	return repoDir, nil
 }

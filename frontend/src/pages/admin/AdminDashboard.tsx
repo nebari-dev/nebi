@@ -89,7 +89,7 @@ export const AdminDashboard = () => {
 
       <div className="flex gap-4">
         <Link to="/admin/users">
-          <Button>
+          <Button variant="outline">
             <Users className="h-4 w-4 mr-2" />
             Manage Users
           </Button>

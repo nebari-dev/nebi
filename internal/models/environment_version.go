@@ -9,9 +9,9 @@ import (
 
 // EnvironmentVersion represents a snapshot of environment files at a point in time
 type EnvironmentVersion struct {
-	ID            uuid.UUID   `gorm:"type:text;primary_key" json:"id"`
-	EnvironmentID uuid.UUID   `gorm:"type:text;not null;index:idx_env_version" json:"environment_id"`
-	Environment   Environment `gorm:"foreignKey:EnvironmentID" json:"environment,omitempty"`
+	ID            uuid.UUID    `gorm:"type:text;primary_key" json:"id"`
+	EnvironmentID uuid.UUID    `gorm:"type:text;not null;index:idx_env_version" json:"environment_id"`
+	Environment   *Environment `gorm:"foreignKey:EnvironmentID" json:"environment,omitempty"`
 
 	// Version tracking
 	VersionNumber int `gorm:"not null;index:idx_env_version" json:"version_number"` // Auto-incrementing per environment
@@ -24,8 +24,8 @@ type EnvironmentVersion struct {
 	// Context
 	JobID         *uuid.UUID `gorm:"type:text;index" json:"job_id,omitempty"` // Job that triggered this version
 	Job           *Job       `gorm:"foreignKey:JobID" json:"job,omitempty"`
-	CreatedBy     uuid.UUID  `gorm:"type:text;not null" json:"created_by"` // User who triggered the change
-	CreatedByUser User       `gorm:"foreignKey:CreatedBy" json:"created_by_user,omitempty"`
+	CreatedBy     uuid.UUID `gorm:"type:text;not null" json:"created_by"` // User who triggered the change
+	CreatedByUser *User     `gorm:"foreignKey:CreatedBy" json:"created_by_user,omitempty"`
 	Description   string     `gorm:"type:text" json:"description,omitempty"` // Optional description of changes
 
 	// Timestamps

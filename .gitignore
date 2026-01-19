@@ -1,6 +1,7 @@
 # Binaries
 bin/
 darb
+darb-server
 *.exe
 *.dll
 *.so

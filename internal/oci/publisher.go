@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -102,9 +103,18 @@ func PublishEnvironment(ctx context.Context, envPath string, opts PublishOptions
 		return "", fmt.Errorf("failed to create repository: %w", err)
 	}
 
+	// Extract hostname from repository for credential matching
+	// Repository format: "docker.io/user/repo" -> hostname is "docker.io"
+	registryHost := opts.RegistryHost
+	if registryHost == "" || strings.Contains(registryHost, "/") {
+		// Extract just the hostname from the repository
+		parts := strings.SplitN(opts.Repository, "/", 2)
+		registryHost = parts[0]
+	}
+
 	// Configure authentication
 	repo.Client = &auth.Client{
-		Credential: auth.StaticCredential(opts.RegistryHost, auth.Credential{
+		Credential: auth.StaticCredential(registryHost, auth.Credential{
 			Username: opts.Username,
 			Password: opts.Password,
 		}),

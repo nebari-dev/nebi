@@ -23,8 +23,8 @@ export const Layout = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-8">
               <img
-                src="/darb-logo.png"
-                alt="Darb"
+                src="/nebi-logo.png"
+                alt="Nebi"
                 className="h-10 w-auto"
               />
               <nav className="flex gap-1">

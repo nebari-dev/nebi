@@ -71,8 +71,8 @@ export const Login = () => {
         <div className="space-y-6 pb-8">
           <div className="flex justify-center">
             <img
-              src="/darb-logo.png"
-              alt="Darb Logo"
+              src="/nebi-logo.png"
+              alt="Nebi Logo"
               className="h-24 w-auto"
             />
           </div>

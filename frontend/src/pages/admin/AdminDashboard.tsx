@@ -12,10 +12,10 @@ const StatCard = ({ title, value, icon: Icon }: { title: string; value: number |
       <CardContent className="p-6">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-muted-foreground">{title}</p>
+            <p className="text-sm font-medium text-[#682888]">{title}</p>
             <p className="text-2xl font-bold mt-2">{value}</p>
           </div>
-          <Icon className="h-8 w-8 text-primary" />
+          <Icon className="h-8 w-8 text-[#682888]" />
         </div>
       </CardContent>
     </Card>

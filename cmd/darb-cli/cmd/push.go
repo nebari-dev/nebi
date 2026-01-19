@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/aktech/darb/cli/client"
 	"github.com/spf13/cobra"
@@ -16,6 +17,9 @@ var pushCmd = &cobra.Command{
 	Use:   "push <repo>:<tag>",
 	Short: "Push repo to registry",
 	Long: `Push a repo to an OCI registry with a tag.
+
+Looks for pixi.toml and pixi.lock in the current directory.
+If the repo doesn't exist on the server, it will be created automatically.
 
 Examples:
   # Push with tag
@@ -47,14 +51,48 @@ func runPush(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	// Check for local pixi.toml
+	pixiTomlContent, err := os.ReadFile("pixi.toml")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: pixi.toml not found in current directory\n")
+		fmt.Fprintln(os.Stderr, "Run 'pixi init' to create a pixi project first")
+		os.Exit(1)
+	}
+
+	// Check for local pixi.lock (optional but recommended)
+	if _, err := os.Stat("pixi.lock"); os.IsNotExist(err) {
+		fmt.Fprintln(os.Stderr, "Warning: pixi.lock not found. Run 'pixi install' to generate it.")
+	}
+
 	apiClient := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find repo by name
+	// Try to find repo by name, create if not found
 	env, err := findRepoByName(apiClient, ctx, repoName)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		// Repo doesn't exist, create it
+		fmt.Printf("Creating repo %q...\n", repoName)
+		pixiTomlStr := string(pixiTomlContent)
+		pkgMgr := "pixi"
+		createReq := client.HandlersCreateEnvironmentRequest{
+			Name:           repoName,
+			PackageManager: &pkgMgr,
+			PixiToml:       &pixiTomlStr,
+		}
+
+		newEnv, _, createErr := apiClient.EnvironmentsAPI.EnvironmentsPost(ctx).Environment(createReq).Execute()
+		if createErr != nil {
+			fmt.Fprintf(os.Stderr, "Error: Failed to create repo %q: %v\n", repoName, createErr)
+			os.Exit(1)
+		}
+		fmt.Printf("Created repo %q\n", repoName)
+
+		// Wait for environment to be ready
+		env, err = waitForEnvReady(apiClient, ctx, newEnv.GetId(), 60*time.Second)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	// Find registry
@@ -84,6 +122,7 @@ func runPush(cmd *cobra.Command, args []string) {
 		Tag:        tag,
 	}
 
+	fmt.Printf("Pushing %s:%s to %s...\n", repository, tag, registry.GetName())
 	resp, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdPublishPost(ctx, env.GetId()).Request(req).Execute()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to push %s:%s: %v\n", repository, tag, err)
@@ -133,4 +172,33 @@ func findDefaultRegistry(apiClient *client.APIClient, ctx context.Context) (*cli
 	}
 
 	return nil, fmt.Errorf("no default registry set")
+}
+
+// waitForEnvReady polls until the environment is ready or timeout
+func waitForEnvReady(apiClient *client.APIClient, ctx context.Context, envID string, timeout time.Duration) (*client.ModelsEnvironment, error) {
+	deadline := time.Now().Add(timeout)
+	fmt.Print("Waiting for environment to be ready")
+
+	for time.Now().Before(deadline) {
+		env, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdGet(ctx, envID).Execute()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get environment status: %v", err)
+		}
+
+		status := env.GetStatus()
+		switch status {
+		case "ready":
+			fmt.Println(" done")
+			return env, nil
+		case "failed", "error":
+			fmt.Println(" failed")
+			return nil, fmt.Errorf("environment setup failed")
+		default:
+			fmt.Print(".")
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+
+	fmt.Println(" timeout")
+	return nil, fmt.Errorf("timeout waiting for environment to be ready")
 }

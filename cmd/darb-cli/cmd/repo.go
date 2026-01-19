@@ -21,8 +21,9 @@ var repoCmd = &cobra.Command{
 }
 
 var repoListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List repos",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List repos",
 	Long: `List repos from the server.
 
 Examples:
@@ -44,8 +45,9 @@ Example:
 }
 
 var repoDeleteCmd = &cobra.Command{
-	Use:   "delete <repo>",
-	Short: "Delete a repo",
+	Use:     "delete <repo>",
+	Aliases: []string{"rm"},
+	Short:   "Delete a repo",
 	Long: `Delete a repo from the server.
 
 Example:

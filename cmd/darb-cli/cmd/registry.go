@@ -10,10 +10,17 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	registryAddUsername string
+	registryAddPassword string
+	registryAddDefault  bool
+)
+
 var registryCmd = &cobra.Command{
-	Use:   "registry",
-	Short: "Manage OCI registries",
-	Long:  `Add, remove, list, and configure OCI registries for pushing and pulling environments.`,
+	Use:     "registry",
+	Aliases: []string{"reg"},
+	Short:   "Manage OCI registries",
+	Long:    `Add, remove, list, and configure OCI registries for pushing and pulling environments.`,
 }
 
 var registryAddCmd = &cobra.Command{
@@ -22,23 +29,31 @@ var registryAddCmd = &cobra.Command{
 	Long: `Add a named OCI registry for storing environments.
 
 Examples:
-  darb registry add ds-team ghcr.io/myorg/data-science
-  darb registry add infra-team ghcr.io/myorg/infra`,
+  # Add Docker Hub with credentials
+  darb registry add my-dhub docker.io -u myuser -p <token>
+
+  # Add GitHub Container Registry
+  darb registry add ghcr ghcr.io/myorg -u myuser -p <token>
+
+  # Add and set as default
+  darb registry add ds-team ghcr.io/myorg/data-science --default`,
 	Args: cobra.ExactArgs(2),
 	Run:  runRegistryAdd,
 }
 
 var registryListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List all registries",
-	Long:  `List all configured OCI registries.`,
-	Args:  cobra.NoArgs,
-	Run:   runRegistryList,
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List all registries",
+	Long:    `List all configured OCI registries.`,
+	Args:    cobra.NoArgs,
+	Run:     runRegistryList,
 }
 
 var registryRemoveCmd = &cobra.Command{
-	Use:   "remove <name>",
-	Short: "Remove a registry",
+	Use:     "remove <name>",
+	Aliases: []string{"rm"},
+	Short:   "Remove a registry",
 	Long: `Remove a named registry from the configuration.
 
 Example:
@@ -64,6 +79,10 @@ func init() {
 	registryCmd.AddCommand(registryListCmd)
 	registryCmd.AddCommand(registryRemoveCmd)
 	registryCmd.AddCommand(registrySetDefaultCmd)
+
+	registryAddCmd.Flags().StringVarP(&registryAddUsername, "username", "u", "", "Registry username")
+	registryAddCmd.Flags().StringVarP(&registryAddPassword, "password", "p", "", "Registry password or token")
+	registryAddCmd.Flags().BoolVar(&registryAddDefault, "default", false, "Set as default registry")
 }
 
 func runRegistryAdd(cmd *cobra.Command, args []string) {
@@ -74,8 +93,11 @@ func runRegistryAdd(cmd *cobra.Command, args []string) {
 	ctx := mustGetAuthContext()
 
 	req := client.HandlersCreateRegistryRequest{
-		Name: name,
-		Url:  url,
+		Name:      name,
+		Url:       url,
+		Username:  &registryAddUsername,
+		Password:  &registryAddPassword,
+		IsDefault: &registryAddDefault,
 	}
 
 	resp, httpResp, err := apiClient.AdminAPI.AdminRegistriesPost(ctx).Registry(req).Execute()
@@ -88,7 +110,11 @@ func runRegistryAdd(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Added registry %q (%s)\n", resp.GetName(), resp.GetUrl())
+	defaultMsg := ""
+	if resp.GetIsDefault() {
+		defaultMsg = " (default)"
+	}
+	fmt.Printf("Added registry %q (%s)%s\n", resp.GetName(), resp.GetUrl(), defaultMsg)
 }
 
 func runRegistryList(cmd *cobra.Command, args []string) {

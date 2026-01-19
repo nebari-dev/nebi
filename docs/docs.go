@@ -172,6 +172,11 @@ const docTemplate = `{
         },
         "/admin/registries": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Get list of all configured OCI registries (admin only)",
                 "consumes": [
                     "application/json"
@@ -202,6 +207,11 @@ const docTemplate = `{
                 }
             },
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Add a new OCI registry configuration (admin only)",
                 "consumes": [
                     "application/json"
@@ -248,6 +258,11 @@ const docTemplate = `{
         },
         "/admin/registries/{id}": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Get details of a specific OCI registry (admin only)",
                 "consumes": [
                     "application/json"
@@ -284,6 +299,11 @@ const docTemplate = `{
                 }
             },
             "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Update OCI registry details (admin only)",
                 "consumes": [
                     "application/json"
@@ -335,6 +355,11 @@ const docTemplate = `{
                 }
             },
             "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Delete an OCI registry configuration (admin only)",
                 "consumes": [
                     "application/json"
@@ -1713,6 +1738,11 @@ const docTemplate = `{
         },
         "/registries": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Get list of registries for users to select from (no credentials exposed)",
                 "consumes": [
                     "application/json"

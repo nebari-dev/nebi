@@ -117,7 +117,7 @@ func getAPIClient() (*client.APIClient, error) {
 
 	clientCfg := client.NewConfiguration()
 	clientCfg.Servers = client.ServerConfigurations{
-		{URL: cfg.ServerURL + "/api/v1"},
+		client.ServerConfiguration{URL: cfg.ServerURL + "/api/v1"},
 	}
 
 	apiClient = client.NewAPIClient(clientCfg)

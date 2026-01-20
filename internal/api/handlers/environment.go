@@ -153,7 +153,7 @@ func (h *EnvironmentHandler) CreateEnvironment(c *gin.Context) {
 // @Tags environments
 // @Security BearerAuth
 // @Produce json
-// @Param id path string true "Environment ID"
+// @Param id path int true "Environment ID"
 // @Success 200 {object} models.Environment
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -183,7 +183,7 @@ func (h *EnvironmentHandler) GetEnvironment(c *gin.Context) {
 // @Summary Delete an environment
 // @Tags environments
 // @Security BearerAuth
-// @Param id path string true "Environment ID"
+// @Param id path int true "Environment ID"
 // @Success 204
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -235,7 +235,7 @@ func (h *EnvironmentHandler) DeleteEnvironment(c *gin.Context) {
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param id path string true "Environment ID"
+// @Param id path int true "Environment ID"
 // @Param packages body InstallPackagesRequest true "Packages to install"
 // @Success 202 {object} models.Job
 // @Failure 400 {object} ErrorResponse
@@ -298,7 +298,7 @@ func (h *EnvironmentHandler) InstallPackages(c *gin.Context) {
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param id path string true "Environment ID"
+// @Param id path int true "Environment ID"
 // @Param package path string true "Package name"
 // @Success 202 {object} models.Job
 // @Failure 400 {object} ErrorResponse
@@ -355,7 +355,7 @@ func (h *EnvironmentHandler) RemovePackages(c *gin.Context) {
 // @Tags environments
 // @Security BearerAuth
 // @Produce json
-// @Param id path string true "Environment ID"
+// @Param id path int true "Environment ID"
 // @Success 200 {array} models.Package
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -385,7 +385,7 @@ func (h *EnvironmentHandler) ListPackages(c *gin.Context) {
 // @Tags environments
 // @Security BearerAuth
 // @Produce json
-// @Param id path string true "Environment ID"
+// @Param id path int true "Environment ID"
 // @Success 200 {object} PixiTomlResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse

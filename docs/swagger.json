@@ -150,7 +150,7 @@
                 "summary": "Revoke a permission",
                 "parameters": [
                     {
-                        "type": "string",
+                        "type": "integer",
                         "description": "Permission ID",
                         "name": "id",
                         "in": "path",
@@ -166,11 +166,6 @@
         },
         "/admin/registries": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "description": "Get list of all configured OCI registries (admin only)",
                 "consumes": [
                     "application/json"
@@ -201,11 +196,6 @@
                 }
             },
             "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "description": "Add a new OCI registry configuration (admin only)",
                 "consumes": [
                     "application/json"
@@ -252,11 +242,6 @@
         },
         "/admin/registries/{id}": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "description": "Get details of a specific OCI registry (admin only)",
                 "consumes": [
                     "application/json"
@@ -293,11 +278,6 @@
                 }
             },
             "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "description": "Update OCI registry details (admin only)",
                 "consumes": [
                     "application/json"
@@ -349,11 +329,6 @@
                 }
             },
             "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "description": "Delete an OCI registry configuration (admin only)",
                 "consumes": [
                     "application/json"
@@ -829,7 +804,7 @@
                 "summary": "Get an environment by ID",
                 "parameters": [
                     {
-                        "type": "string",
+                        "type": "integer",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -875,7 +850,7 @@
                 "summary": "Delete an environment",
                 "parameters": [
                     {
-                        "type": "string",
+                        "type": "integer",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -959,7 +934,7 @@
                 "summary": "List packages in an environment",
                 "parameters": [
                     {
-                        "type": "string",
+                        "type": "integer",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -1014,7 +989,7 @@
                 "summary": "Install packages in an environment",
                 "parameters": [
                     {
-                        "type": "string",
+                        "type": "integer",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -1083,7 +1058,7 @@
                 "summary": "Remove packages from an environment",
                 "parameters": [
                     {
-                        "type": "string",
+                        "type": "integer",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -1147,7 +1122,7 @@
                 "summary": "Get pixi.toml content for an environment",
                 "parameters": [
                     {
-                        "type": "string",
+                        "type": "integer",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -1644,7 +1619,7 @@
                 "summary": "Get a job by ID",
                 "parameters": [
                     {
-                        "type": "string",
+                        "type": "integer",
                         "description": "Job ID",
                         "name": "id",
                         "in": "path",
@@ -1732,11 +1707,6 @@
         },
         "/registries": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "description": "Get list of registries for users to select from (no credentials exposed)",
                 "consumes": [
                     "application/json"

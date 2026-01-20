@@ -7,7 +7,7 @@ FRONTEND_DIR=frontend
 BUILD_DIR=bin
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS=-ldflags "-X main.Version=$(VERSION)"
-CLI_LDFLAGS=-ldflags "-X github.com/aktech/darb/cmd/darb-cli/cmd.Version=$(VERSION)"
+CLI_LDFLAGS=-ldflags "-X github.com/aktech/darb/cmd/nebi-cli/cmd.Version=$(VERSION)"
 OPENAPI_GENERATOR_VERSION=7.10.0
 
 help: ## Show this help message
@@ -43,22 +43,22 @@ generate-cli-client: swagger ## Generate Go client from OpenAPI spec
 build-cli: generate-cli-client ## Build the CLI binary
 	@echo "Building CLI..."
 	@mkdir -p $(BUILD_DIR)
-	@go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME) ./cmd/darb-cli
+	@go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME) ./cmd/nebi-cli
 	@echo "CLI build complete: $(BUILD_DIR)/$(CLI_BINARY_NAME)"
 
 build-cli-all: generate-cli-client ## Build CLI for all platforms
 	@echo "Building CLI for all platforms..."
 	@mkdir -p $(BUILD_DIR)
 	@echo "Building linux/amd64..."
-	@GOOS=linux GOARCH=amd64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-linux-amd64 ./cmd/darb-cli
+	@GOOS=linux GOARCH=amd64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-linux-amd64 ./cmd/nebi-cli
 	@echo "Building linux/arm64..."
-	@GOOS=linux GOARCH=arm64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-linux-arm64 ./cmd/darb-cli
+	@GOOS=linux GOARCH=arm64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-linux-arm64 ./cmd/nebi-cli
 	@echo "Building darwin/amd64..."
-	@GOOS=darwin GOARCH=amd64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-darwin-amd64 ./cmd/darb-cli
+	@GOOS=darwin GOARCH=amd64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-darwin-amd64 ./cmd/nebi-cli
 	@echo "Building darwin/arm64..."
-	@GOOS=darwin GOARCH=arm64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-darwin-arm64 ./cmd/darb-cli
+	@GOOS=darwin GOARCH=arm64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-darwin-arm64 ./cmd/nebi-cli
 	@echo "Building windows/amd64..."
-	@GOOS=windows GOARCH=amd64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-windows-amd64.exe ./cmd/darb-cli
+	@GOOS=windows GOARCH=amd64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-windows-amd64.exe ./cmd/nebi-cli
 	@echo "All CLI platform builds complete"
 
 build-frontend: ## Build frontend and copy to internal/web/dist

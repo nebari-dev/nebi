@@ -1,0 +1,22 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Darb",
+  "outputfilename": "darb-desktop",
+  "frontend:dir": "../../frontend",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "wailsjsdir": "../../frontend/src/wailsjs",
+  "author": {
+    "name": "Darb Team",
+    "email": "team@darb.dev"
+  },
+  "info": {
+    "companyName": "Darb",
+    "productName": "Darb Desktop",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright 2024 Darb Team",
+    "comments": "Multi-User Environment Management System"
+  }
+}

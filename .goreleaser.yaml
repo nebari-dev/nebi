@@ -77,7 +77,7 @@ changelog:
 
 release:
   github:
-    owner: aktech
+    owner: openteams-ai
     name: darb
   draft: false
   prerelease: auto
@@ -96,12 +96,12 @@ release:
     ### Docker
 
     ```bash
-    docker pull ghcr.io/aktech/darb:{{ .Tag }}
+    docker pull ghcr.io/openteams-ai/darb:{{ .Tag }}
     ```
 
     ---
 
-    **Full Changelog**: https://github.com/aktech/darb/compare/{{ .PreviousTag }}...{{ .Tag }}
+    **Full Changelog**: https://github.com/openteams-ai/darb/compare/{{ .PreviousTag }}...{{ .Tag }}
 
 announce:
   skip: true

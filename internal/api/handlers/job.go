@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/aktech/darb/internal/logstream"
-	"github.com/aktech/darb/internal/models"
+	"github.com/openteams-ai/darb/internal/logstream"
+	"github.com/openteams-ai/darb/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/valkey-io/valkey-go"

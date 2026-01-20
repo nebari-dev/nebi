@@ -10,11 +10,11 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/aktech/darb/internal/config"
-	"github.com/aktech/darb/internal/models"
-	"github.com/aktech/darb/internal/pkgmgr"
-	"github.com/aktech/darb/internal/pkgmgr/pixi"
-	_ "github.com/aktech/darb/internal/pkgmgr/uv" // Register uv
+	"github.com/openteams-ai/darb/internal/config"
+	"github.com/openteams-ai/darb/internal/models"
+	"github.com/openteams-ai/darb/internal/pkgmgr"
+	"github.com/openteams-ai/darb/internal/pkgmgr/pixi"
+	_ "github.com/openteams-ai/darb/internal/pkgmgr/uv" // Register uv
 )
 
 // LocalExecutor runs operations on the local machine

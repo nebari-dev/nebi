@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/aktech/darb/internal/audit"
-	"github.com/aktech/darb/internal/models"
-	"github.com/aktech/darb/internal/rbac"
+	"github.com/openteams-ai/darb/internal/audit"
+	"github.com/openteams-ai/darb/internal/models"
+	"github.com/openteams-ai/darb/internal/rbac"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"

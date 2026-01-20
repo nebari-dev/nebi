@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/aktech/darb/internal/models"
-	"github.com/aktech/darb/internal/rbac"
+	"github.com/openteams-ai/darb/internal/models"
+	"github.com/openteams-ai/darb/internal/rbac"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )

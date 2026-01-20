@@ -13,14 +13,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aktech/darb/internal/executor"
-	"github.com/aktech/darb/internal/logstream"
-	"github.com/aktech/darb/internal/models"
-	"github.com/aktech/darb/internal/pkgmgr"
-	_ "github.com/aktech/darb/internal/pkgmgr/pixi" // Register pixi
-	_ "github.com/aktech/darb/internal/pkgmgr/uv"   // Register uv
-	"github.com/aktech/darb/internal/queue"
-	"github.com/aktech/darb/internal/utils"
+	"github.com/openteams-ai/darb/internal/executor"
+	"github.com/openteams-ai/darb/internal/logstream"
+	"github.com/openteams-ai/darb/internal/models"
+	"github.com/openteams-ai/darb/internal/pkgmgr"
+	_ "github.com/openteams-ai/darb/internal/pkgmgr/pixi" // Register pixi
+	_ "github.com/openteams-ai/darb/internal/pkgmgr/uv"   // Register uv
+	"github.com/openteams-ai/darb/internal/queue"
+	"github.com/openteams-ai/darb/internal/utils"
 	"github.com/google/uuid"
 	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"

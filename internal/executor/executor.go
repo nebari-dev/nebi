@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/aktech/darb/internal/models"
+	"github.com/openteams-ai/darb/internal/models"
 )
 
 // Executor interface for running environment operations

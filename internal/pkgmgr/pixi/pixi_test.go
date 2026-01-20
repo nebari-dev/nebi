@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/aktech/darb/internal/pkgmgr"
+	"github.com/openteams-ai/darb/internal/pkgmgr"
 )
 
 // TestPixiAvailable checks if pixi is available in PATH

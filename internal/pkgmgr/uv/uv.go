@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/aktech/darb/internal/pkgmgr"
+	"github.com/openteams-ai/darb/internal/pkgmgr"
 )
 
 func init() {

@@ -74,7 +74,7 @@ services:
   #   mkdir -p ./data/environments
   #   chown -R 65532:65532 ./data/environments
   darb-api:
-    image: ${DARB_IMAGE:-quay.io/aktech/darb:latest}
+    image: ${DARB_IMAGE:-quay.io/openteams-ai/darb:latest}
     container_name: darb-api
     command: ["/app/darb", "--mode=both"]
     env_file:
@@ -121,7 +121,7 @@ services:
 
   # Darb Worker 1 - Additional worker for job processing
   darb-worker-1:
-    image: ${DARB_IMAGE:-quay.io/aktech/darb:latest}
+    image: ${DARB_IMAGE:-quay.io/openteams-ai/darb:latest}
     container_name: darb-worker-1
     command: ["/app/darb", "--mode=worker"]
     env_file:
@@ -154,7 +154,7 @@ services:
 
   # Darb Worker 2 - Additional worker for job processing
   darb-worker-2:
-    image: ${DARB_IMAGE:-quay.io/aktech/darb:latest}
+    image: ${DARB_IMAGE:-quay.io/openteams-ai/darb:latest}
     container_name: darb-worker-2
     command: ["/app/darb", "--mode=worker"]
     env_file:

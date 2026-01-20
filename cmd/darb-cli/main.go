@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/aktech/darb/cmd/darb-cli/cmd"
+	"github.com/openteams-ai/darb/cmd/darb-cli/cmd"
 )
 
 func main() {

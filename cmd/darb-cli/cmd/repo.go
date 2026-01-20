@@ -6,7 +6,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/aktech/darb/cli/client"
+	"github.com/openteams-ai/darb/cli/client"
 	"github.com/spf13/cobra"
 )
 

@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/aktech/darb/cli/client"
+	"github.com/openteams-ai/darb/cli/client"
 	"gopkg.in/yaml.v3"
 )
 

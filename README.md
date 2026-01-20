@@ -9,20 +9,20 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/aktech/darb/actions/workflows/ci.yml">
-    <img src="https://github.com/aktech/darb/actions/workflows/ci.yml/badge.svg" alt="CI">
+  <a href="https://github.com/openteams-ai/darb/actions/workflows/ci.yml">
+    <img src="https://github.com/openteams-ai/darb/actions/workflows/ci.yml/badge.svg" alt="CI">
   </a>
-  <a href="https://github.com/aktech/darb/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/aktech/darb" alt="License">
+  <a href="https://github.com/openteams-ai/darb/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/openteams-ai/darb" alt="License">
   </a>
-  <a href="https://github.com/aktech/darb/releases">
-    <img src="https://img.shields.io/github/v/release/aktech/darb?include_prereleases" alt="Release">
+  <a href="https://github.com/openteams-ai/darb/releases">
+    <img src="https://img.shields.io/github/v/release/openteams-ai/darb?include_prereleases" alt="Release">
   </a>
-  <a href="https://github.com/aktech/darb/issues">
-    <img src="https://img.shields.io/github/issues/aktech/darb" alt="Issues">
+  <a href="https://github.com/openteams-ai/darb/issues">
+    <img src="https://img.shields.io/github/issues/openteams-ai/darb" alt="Issues">
   </a>
-  <a href="https://github.com/aktech/darb/pulls">
-    <img src="https://img.shields.io/github/issues-pr/aktech/darb" alt="Pull Requests">
+  <a href="https://github.com/openteams-ai/darb/pulls">
+    <img src="https://img.shields.io/github/issues-pr/openteams-ai/darb" alt="Pull Requests">
   </a>
 </p>
 
@@ -68,6 +68,56 @@ This will start:
 > **Note**: The admin user is automatically created on first startup when `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables are set. If you start the server without these variables, no admin user will be created and you won't be able to log in.
 
 > **Tip**: Access the app at http://localhost:8461 for the best development experience with instant hot reload of frontend changes!
+
+### Desktop App
+
+Run Darb as a native desktop application with an embedded server.
+
+#### Recommended: Docker-based Builds
+
+For consistent builds across different machines, use the Docker builder:
+
+```bash
+# Build the builder image (first time only)
+make build-wails-builder
+
+# Build Linux desktop app using Docker
+make build-desktop-docker
+```
+
+This avoids needing to install GTK, WebKit, and other system dependencies locally.
+
+#### Native Development (requires system dependencies)
+
+For native development on Linux, you'll need:
+```bash
+# Ubuntu 24.04+
+sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev
+
+# Install Wails CLI
+make install-wails
+
+# Run in development mode
+make dev-desktop
+
+# Build for current platform
+make build-desktop
+```
+
+> **Note**: For daily development, `make dev` (web UI) is recommended. The desktop app wraps the same UI.
+
+The desktop app:
+- Runs an embedded HTTP server on `127.0.0.1:8460`
+- Stores data in platform-specific directories:
+  - **macOS**: `~/Library/Application Support/Darb/`
+  - **Windows**: `%APPDATA%\Darb\`
+  - **Linux**: `~/.local/share/darb/`
+- Creates a default admin user (`admin`/`admin`) on first run
+- Works with the CLI - just point to `http://localhost:8460`
+
+#### CI/CD
+
+Desktop builds for all platforms (Linux, macOS, Windows) run automatically in GitHub Actions on push to main and on releases. Binaries are attached to GitHub releases.
 
 ### Kubernetes Deployment
 
@@ -235,18 +285,35 @@ kubectl scale deployment darb-api -n darb --replicas=3
 ## Development
 
 ```bash
-make help           # Show all targets
-make dev            # Run with hot reload
-make build          # Build binary
-make test           # Run tests
-make swagger        # Generate API docs
+make help                 # Show all targets
+make dev                  # Run server with hot reload
+make build                # Build server binary
+make test                 # Run tests
+make swagger              # Generate API docs
+
+# Desktop app (Docker - recommended)
+make build-wails-builder  # Build the Docker builder image
+make build-desktop-docker # Build Linux desktop via Docker
+
+# Desktop app (native - requires system deps)
+make dev-desktop          # Run desktop app with hot reload
+make build-desktop        # Build desktop app for current platform
 ```
 
 ## Project Structure
 
 ```
 darb/
-├── cmd/server/           # Application entry point
+├── cmd/
+│   ├── server/           # Server entry point
+│   ├── darb-cli/         # CLI client
+│   └── desktop/          # Desktop app (Wails main + config)
+├── desktop/              # Desktop app package
+│   ├── app.go            # App lifecycle, embedded server
+│   ├── config.go         # Platform-specific paths
+│   └── proxy.go          # HTTP proxy for WebView
+├── docker/
+│   └── wails-builder.Dockerfile  # Docker image for desktop builds
 ├── internal/
 │   ├── api/              # HTTP handlers and routing
 │   ├── auth/             # Authentication (JWT, basic auth)
@@ -254,7 +321,7 @@ darb/
 │   ├── executor/         # Job execution (local/docker/k8s)
 │   ├── queue/            # Job queue (memory/valkey)
 │   ├── worker/           # Background job processor
-│   └── packagemanager/   # Pixi/UV abstractions
+│   └── pkgmgr/           # Pixi/UV abstractions
 ├── chart/                # Helm chart for Kubernetes
 └── frontend/             # React web UI
 ```

@@ -3,8 +3,8 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/aktech/darb/internal/models"
-	"github.com/aktech/darb/internal/rbac"
+	"github.com/openteams-ai/darb/internal/models"
+	"github.com/openteams-ai/darb/internal/rbac"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )

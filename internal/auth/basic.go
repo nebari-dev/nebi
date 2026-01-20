@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aktech/darb/internal/models"
+	"github.com/openteams-ai/darb/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"

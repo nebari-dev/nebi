@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/aktech/darb/internal/models"
+	"github.com/openteams-ai/darb/internal/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )

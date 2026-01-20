@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/aktech/darb/internal/auth"
+	"github.com/openteams-ai/darb/internal/auth"
 	"github.com/gin-gonic/gin"
 )
 

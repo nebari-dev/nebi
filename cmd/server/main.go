@@ -11,18 +11,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aktech/darb/internal/api"
-	"github.com/aktech/darb/internal/config"
-	"github.com/aktech/darb/internal/db"
-	"github.com/aktech/darb/internal/executor"
-	"github.com/aktech/darb/internal/logger"
-	"github.com/aktech/darb/internal/logstream"
-	"github.com/aktech/darb/internal/queue"
-	"github.com/aktech/darb/internal/worker"
+	"github.com/openteams-ai/darb/internal/api"
+	"github.com/openteams-ai/darb/internal/config"
+	"github.com/openteams-ai/darb/internal/db"
+	"github.com/openteams-ai/darb/internal/executor"
+	"github.com/openteams-ai/darb/internal/logger"
+	"github.com/openteams-ai/darb/internal/logstream"
+	"github.com/openteams-ai/darb/internal/queue"
+	"github.com/openteams-ai/darb/internal/worker"
 
-	_ "github.com/aktech/darb/docs" // Load swagger docs
+	_ "github.com/openteams-ai/darb/docs" // Load swagger docs
 
-	"github.com/aktech/darb/internal/api/handlers"
+	"github.com/openteams-ai/darb/internal/api/handlers"
 	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"
 )

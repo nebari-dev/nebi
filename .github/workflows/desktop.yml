@@ -1,0 +1,193 @@
+name: Build Desktop App
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'cmd/desktop/**'
+      - 'desktop/**'
+      - 'frontend/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/desktop.yml'
+  pull_request:
+    paths:
+      - 'cmd/desktop/**'
+      - 'desktop/**'
+      - 'frontend/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/desktop.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  BUILDER_IMAGE: ghcr.io/${{ github.repository }}-wails-builder:latest
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Linux Desktop (Docker)
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            -w /app \
+            ${{ env.BUILDER_IMAGE }} \
+            bash -c "
+              cd /app && \
+              swag init -g cmd/server/main.go -o docs && \
+              cd cmd/desktop && \
+              wails build -tags webkit2_41 -platform linux/amd64 \
+                -o ../../bin/darb-desktop-linux-amd64 \
+                -ldflags '-X main.Version=${{ github.ref_name }}'
+            "
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: darb-desktop-linux-amd64
+          path: bin/darb-desktop-linux-amd64
+
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install swag
+        run: go install github.com/swaggo/swag/cmd/swag@latest
+
+      - name: Generate Swagger docs
+        run: swag init -g cmd/server/main.go -o docs
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Build macOS (amd64)
+        run: |
+          cd cmd/desktop
+          wails build -platform darwin/amd64 \
+            -o ../../bin/darb-desktop-darwin-amd64 \
+            -ldflags "-X main.Version=${{ github.ref_name }}"
+
+      - name: Build macOS (arm64)
+        run: |
+          cd cmd/desktop
+          wails build -platform darwin/arm64 \
+            -o ../../bin/darb-desktop-darwin-arm64 \
+            -ldflags "-X main.Version=${{ github.ref_name }}"
+
+      - name: Upload macOS amd64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: darb-desktop-darwin-amd64
+          path: bin/darb-desktop-darwin-amd64
+
+      - name: Upload macOS arm64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: darb-desktop-darwin-arm64
+          path: bin/darb-desktop-darwin-arm64
+
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install swag
+        run: go install github.com/swaggo/swag/cmd/swag@latest
+
+      - name: Generate Swagger docs
+        run: swag init -g cmd/server/main.go -o docs
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Build Windows
+        run: |
+          cd cmd/desktop
+          wails build -platform windows/amd64 `
+            -o ../../bin/darb-desktop-windows-amd64.exe `
+            -ldflags "-X main.Version=${{ github.ref_name }}"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: darb-desktop-windows-amd64
+          path: bin/darb-desktop-windows-amd64.exe
+
+  release:
+    if: github.event_name == 'release'
+    needs: [build-linux, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/darb-desktop-linux-amd64/darb-desktop-linux-amd64
+            artifacts/darb-desktop-darwin-amd64/darb-desktop-darwin-amd64
+            artifacts/darb-desktop-darwin-arm64/darb-desktop-darwin-arm64
+            artifacts/darb-desktop-windows-amd64/darb-desktop-windows-amd64.exe

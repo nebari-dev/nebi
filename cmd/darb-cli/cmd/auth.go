@@ -8,7 +8,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/aktech/darb/cli/client"
+	"github.com/openteams-ai/darb/cli/client"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )

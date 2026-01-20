@@ -63,3 +63,12 @@ dist/
 
 # CLI generated client (regenerated from OpenAPI spec)
 cli/client/
+.cache/
+
+# Wails generated files
+frontend/src/wailsjs/
+frontend/package.json.md5
+cmd/desktop/build/bin/
+
+# Claude Code
+.claude/

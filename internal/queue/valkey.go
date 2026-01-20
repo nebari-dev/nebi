@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/aktech/darb/internal/models"
+	"github.com/openteams-ai/darb/internal/models"
 	"github.com/google/uuid"
 	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"

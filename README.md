@@ -1,7 +1,7 @@
-# Darb
+# Nebi (formerly Darb)
 
 <p align="center">
-  <img src="assets/darb-high-resolution-logo.png" alt="Darb" width="500"/>
+  <img src="assets/nebi-high-resolution-logo.png" alt="Nebi" width="500"/>
 </p>
 
 <p align="center">
@@ -9,30 +9,30 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/aktech/darb/actions/workflows/ci.yml">
-    <img src="https://github.com/aktech/darb/actions/workflows/ci.yml/badge.svg" alt="CI">
+  <a href="https://github.com/openteams-ai/nebi/actions/workflows/ci.yml">
+    <img src="https://github.com/openteams-ai/nebi/actions/workflows/ci.yml/badge.svg" alt="CI">
   </a>
-  <a href="https://github.com/aktech/darb/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/aktech/darb" alt="License">
+  <a href="https://github.com/openteams-ai/nebi/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/openteams-ai/nebi" alt="License">
   </a>
-  <a href="https://github.com/aktech/darb/releases">
-    <img src="https://img.shields.io/github/v/release/aktech/darb?include_prereleases" alt="Release">
+  <a href="https://github.com/openteams-ai/nebi/releases">
+    <img src="https://img.shields.io/github/v/release/openteams-ai/nebi?include_prereleases" alt="Release">
   </a>
-  <a href="https://github.com/aktech/darb/issues">
-    <img src="https://img.shields.io/github/issues/aktech/darb" alt="Issues">
+  <a href="https://github.com/openteams-ai/nebi/issues">
+    <img src="https://img.shields.io/github/issues/openteams-ai/nebi" alt="Issues">
   </a>
-  <a href="https://github.com/aktech/darb/pulls">
-    <img src="https://img.shields.io/github/issues-pr/aktech/darb" alt="Pull Requests">
+  <a href="https://github.com/openteams-ai/nebi/pulls">
+    <img src="https://img.shields.io/github/issues-pr/openteams-ai/nebi" alt="Pull Requests">
   </a>
 </p>
 
 ---
 
-> **⚠️ Alpha Software**: Darb is currently in alpha. APIs and features may change without notice. Not recommended for production use.
+> **⚠️ Alpha Software**: Nebi is currently in alpha. APIs and features may change without notice. Not recommended for production use.
 
-## What is Darb?
+## What is Nebi?
 
-Darb is a REST API and web UI for managing [Pixi](https://prefix.dev/) environments in multi-user settings. It handles environment creation, package installation, and job execution with proper isolation and access control.
+Nebi is a REST API and web UI for managing [Pixi](https://prefix.dev/) environments in multi-user settings. It handles environment creation, package installation, and job execution with proper isolation and access control.
 
 > **Note**: [UV](https://github.com/astral-sh/uv) support is planned for a future release and is currently in the roadmap.
 
@@ -73,11 +73,11 @@ This will start:
 
 ```bash
 # Build and import to k3d
-docker build -t darb:latest .
-k3d image import darb:latest -c darb-dev
+docker build -t nebi:latest .
+k3d image import nebi:latest -c nebi-dev
 
 # Deploy
-helm install darb ./chart -n darb --create-namespace \
+helm install nebi ./chart -n nebi --create-namespace \
   -f chart/values-dev.yaml
 
 # Access
@@ -90,7 +90,7 @@ Deploy to fly.io using GitHub Actions:
 
 ```bash
 # Generate a deploy token for CI/CD
-flyctl tokens create deploy --name github-actions-darb
+flyctl tokens create deploy --name github-actions-nebi
 
 # Set GitHub secrets
 gh secret set FLY_API_TOKEN --body "<token-from-above>"
@@ -178,7 +178,7 @@ DARB_SERVER_MODE=development
 
 # Database configuration
 DARB_DATABASE_DRIVER=postgres
-DARB_DATABASE_DSN="postgres://user:pass@host:5432/darb"
+DARB_DATABASE_DSN="postgres://user:pass@host:5432/nebi"
 
 # Queue configuration
 DARB_QUEUE_TYPE=valkey
@@ -194,7 +194,7 @@ DARB_LOG_FORMAT=json
 # Admin user bootstrap (creates admin user on first startup if no users exist)
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin123
-ADMIN_EMAIL=admin@darb.local  # Optional, defaults to <username>@darb.local
+ADMIN_EMAIL=admin@nebi.local  # Optional, defaults to <username>@nebi.local
 ```
 
 ### Helm Values
@@ -226,10 +226,10 @@ queue:
 
 ```bash
 # Scale workers based on job queue depth
-kubectl scale deployment darb-worker -n darb --replicas=5
+kubectl scale deployment nebi-worker -n nebi --replicas=5
 
 # Scale API for HTTP traffic
-kubectl scale deployment darb-api -n darb --replicas=3
+kubectl scale deployment nebi-api -n nebi --replicas=3
 ```
 
 ## Development
@@ -245,7 +245,7 @@ make swagger        # Generate API docs
 ## Project Structure
 
 ```
-darb/
+nebi/
 ├── cmd/server/           # Application entry point
 ├── internal/
 │   ├── api/              # HTTP handlers and routing

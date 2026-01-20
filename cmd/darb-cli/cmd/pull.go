@@ -13,27 +13,27 @@ var pullRegistry string
 var pullOutput string
 
 var pullCmd = &cobra.Command{
-	Use:   "pull <repo>[:<tag>]",
-	Short: "Pull repo from server",
-	Long: `Pull a repo's pixi.toml and pixi.lock from the server.
+	Use:   "pull <workspace>[:<tag>]",
+	Short: "Pull workspace from server",
+	Long: `Pull a workspace's pixi.toml and pixi.lock from the server.
 
 Supports Docker-style references:
-  - repo:tag    - Pull specific tag
-  - repo        - Pull latest version
-  - repo@digest - Pull by digest (immutable)
+  - workspace:tag    - Pull specific tag
+  - workspace        - Pull latest version
+  - workspace@digest - Pull by digest (immutable)
 
 Examples:
   # Pull latest version
-  darb pull myrepo
+  nebi pull myworkspace
 
   # Pull specific tag
-  darb pull myrepo:v1.0.0
+  nebi pull myworkspace:v1.0.0
 
   # Pull by digest
-  darb pull myrepo@sha256:abc123def
+  nebi pull myworkspace@sha256:abc123def
 
   # Pull to specific directory
-  darb pull myrepo:v1.0.0 -o ./my-project`,
+  nebi pull myworkspace:v1.0.0 -o ./my-project`,
 	Args: cobra.ExactArgs(1),
 	Run:  runPull,
 }
@@ -44,8 +44,8 @@ func init() {
 }
 
 func runPull(cmd *cobra.Command, args []string) {
-	// Parse repo:tag or repo@digest format
-	repoName, tagOrDigest, err := parseRepoRef(args[0])
+	// Parse workspace:tag or workspace@digest format
+	workspaceName, tagOrDigest, err := parseWorkspaceRef(args[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -64,8 +64,8 @@ func runPull(cmd *cobra.Command, args []string) {
 	apiClient := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find repo by name
-	env, err := findRepoByName(apiClient, ctx, repoName)
+	// Find workspace by name
+	env, err := findWorkspaceByName(apiClient, ctx, workspaceName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -79,7 +79,7 @@ func runPull(cmd *cobra.Command, args []string) {
 	}
 
 	if len(versions) == 0 {
-		fmt.Fprintf(os.Stderr, "Error: Repo %q has no versions\n", repoName)
+		fmt.Fprintf(os.Stderr, "Error: Workspace %q has no versions\n", workspaceName)
 		os.Exit(1)
 	}
 
@@ -104,11 +104,11 @@ func runPull(cmd *cobra.Command, args []string) {
 		}
 
 		if !found && tag != "" {
-			fmt.Fprintf(os.Stderr, "Error: Tag %q not found for repo %q\n", tag, repoName)
+			fmt.Fprintf(os.Stderr, "Error: Tag %q not found for workspace %q\n", tag, workspaceName)
 			os.Exit(1)
 		}
 		if !found && digest != "" {
-			fmt.Fprintf(os.Stderr, "Error: Digest %q not found for repo %q\n", digest, repoName)
+			fmt.Fprintf(os.Stderr, "Error: Digest %q not found for workspace %q\n", digest, workspaceName)
 			os.Exit(1)
 		}
 	}
@@ -158,11 +158,11 @@ func runPull(cmd *cobra.Command, args []string) {
 	}
 	fmt.Printf("Wrote %s\n", pixiLockPath)
 
-	refStr := repoName
+	refStr := workspaceName
 	if tag != "" {
-		refStr = repoName + ":" + tag
+		refStr = workspaceName + ":" + tag
 	} else if digest != "" {
-		refStr = repoName + "@" + digest
+		refStr = workspaceName + "@" + digest
 	}
 	fmt.Printf("\nPulled %s (version %d)\n", refStr, versionNumber)
 	fmt.Println("\nTo install the environment, run:")

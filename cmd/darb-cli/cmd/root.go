@@ -5,26 +5,26 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "darb",
-	Short: "Darb CLI - Environment management with OCI registry support",
-	Long: `Darb is a CLI for managing Pixi environments and pushing/pulling them to OCI registries.
+	Use:   "nebi",
+	Short: "Nebi CLI - Workspace management with OCI registry support",
+	Long: `Nebi is a CLI for managing Pixi workspaces and pushing/pulling them to OCI registries.
 
 Examples:
   # Login to server
-  darb login https://darb.company.com
+  nebi login https://nebi.company.com
 
   # Add and configure registries
-  darb registry add ds-team ghcr.io/myorg/data-science
-  darb registry set-default ds-team
+  nebi registry add ds-team ghcr.io/myorg/data-science
+  nebi registry set-default ds-team
 
-  # Push/pull environments
-  darb push myenv -t v1.0.0
-  darb pull myenv
+  # Push/pull workspaces
+  nebi push myworkspace:v1.0.0
+  nebi pull myworkspace
 
-  # Manage environments
-  darb env list
-  darb env info myenv
-  darb shell myenv`,
+  # Manage workspaces
+  nebi workspace list
+  nebi workspace info myworkspace
+  nebi shell myworkspace`,
 }
 
 func Execute() error {

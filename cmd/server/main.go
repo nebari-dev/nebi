@@ -2,16 +2,21 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/aktech/darb/internal/api"
+	"github.com/aktech/darb/internal/auth"
 	"github.com/aktech/darb/internal/config"
 	"github.com/aktech/darb/internal/db"
 	"github.com/aktech/darb/internal/executor"
@@ -26,6 +31,14 @@ import (
 	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"
 )
+
+// serverState represents the state file for local server mode
+type serverState struct {
+	PID       int       `json:"pid"`
+	Port      int       `json:"port"`
+	Token     string    `json:"token"`
+	StartedAt time.Time `json:"started_at"`
+}
 
 // Version is set via ldflags at build time
 var Version = "dev"
@@ -42,7 +55,11 @@ func main() {
 	// Define CLI flags
 	port := flag.Int("port", 0, "Port to run the server on (overrides config)")
 	mode := flag.String("mode", "both", "Run mode: server (API only), worker (worker only), or both")
+	localMode := flag.Bool("local", false, "Run in local mode (auto-generates token, writes state file)")
 	flag.Parse()
+
+	// Track state file path for cleanup
+	var stateFilePath string
 
 	// Set version in handlers
 	handlers.Version = Version
@@ -145,12 +162,51 @@ func main() {
 			broker = w.GetBroker()
 		}
 
+		// Handle local mode setup
+		if *localMode {
+			// Generate local token
+			localToken, err := generateLocalToken()
+			if err != nil {
+				slog.Error("Failed to generate local token", "error", err)
+				os.Exit(1)
+			}
+
+			// Set the local token in auth package for validation
+			auth.SetLocalToken(localToken)
+			slog.Info("Local mode enabled", "token_prefix", localToken[:16]+"...")
+
+			// Determine state file path
+			stateFilePath = os.Getenv("DARB_LOCAL_STATE_FILE")
+			if stateFilePath == "" {
+				homeDir, _ := os.UserHomeDir()
+				stateFilePath = filepath.Join(homeDir, ".local", "share", "nebi", "server.state")
+			}
+
+			// Write state file
+			state := serverState{
+				PID:       os.Getpid(),
+				Port:      cfg.Server.Port,
+				Token:     localToken,
+				StartedAt: time.Now().UTC(),
+			}
+			if err := writeStateFile(stateFilePath, &state); err != nil {
+				slog.Error("Failed to write state file", "error", err)
+				os.Exit(1)
+			}
+			slog.Info("State file written", "path", stateFilePath)
+		}
+
 		// Initialize API router (pass valkeyClient as interface{} for compatibility)
 		var valkeyClientInterface interface{} = valkeyClient
 		router := api.NewRouter(cfg, database, jobQueue, exec, broker, valkeyClientInterface, slog.Default())
 
-		// Create HTTP server
-		addr := fmt.Sprintf(":%d", cfg.Server.Port)
+		// Create HTTP server - bind to localhost only in local mode
+		var addr string
+		if *localMode {
+			addr = fmt.Sprintf("127.0.0.1:%d", cfg.Server.Port)
+		} else {
+			addr = fmt.Sprintf(":%d", cfg.Server.Port)
+		}
 		srv = &http.Server{
 			Addr:    addr,
 			Handler: router,
@@ -158,7 +214,7 @@ func main() {
 
 		// Start server in goroutine
 		go func() {
-			slog.Info("Server listening", "address", addr)
+			slog.Info("Server listening", "address", addr, "local_mode", *localMode)
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				slog.Error("Server failed", "error", err)
 				os.Exit(1)
@@ -171,6 +227,15 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	slog.Info("Shutting down...")
+
+	// Clean up state file if in local mode
+	if stateFilePath != "" {
+		if err := os.Remove(stateFilePath); err != nil && !os.IsNotExist(err) {
+			slog.Warn("Failed to remove state file", "path", stateFilePath, "error", err)
+		} else {
+			slog.Info("State file removed", "path", stateFilePath)
+		}
+	}
 
 	// Stop worker if running
 	if workerCancel != nil {
@@ -191,6 +256,35 @@ func main() {
 	}
 
 	slog.Info("Darb exited")
+}
+
+// generateLocalToken generates a random token for local mode
+func generateLocalToken() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return "nebi_local_" + hex.EncodeToString(bytes), nil
+}
+
+// writeStateFile writes the server state to a file
+func writeStateFile(path string, state *serverState) error {
+	// Ensure directory exists
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create state directory: %w", err)
+	}
+
+	data, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("failed to marshal state: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return fmt.Errorf("failed to write state file: %w", err)
+	}
+
+	return nil
 }
 
 // createQueue creates a queue based on configuration

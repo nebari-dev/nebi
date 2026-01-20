@@ -157,7 +157,36 @@ func (a *BasicAuthenticator) Middleware() gin.HandlerFunc {
 			}
 		}
 
-		// Validate token
+		// Check for local token (CLI auto-spawned server mode)
+		if IsLocalToken(tokenString) {
+			// For local mode, create a synthetic admin user
+			// This allows the CLI to operate without requiring login
+			var adminUser models.User
+			result := a.db.Where("username = ?", "admin").First(&adminUser)
+			if result.Error != nil {
+				// If no admin user exists, find any user with admin role
+				result = a.db.Joins("JOIN user_roles ON user_roles.user_id = users.id").
+					Joins("JOIN roles ON roles.id = user_roles.role_id").
+					Where("roles.name = ?", "admin").
+					First(&adminUser)
+			}
+			if result.Error != nil {
+				// Create a synthetic local user for operations
+				adminUser = models.User{
+					Username: "local",
+					Email:    "local@localhost",
+				}
+				adminUser.ID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+				slog.Debug("Local token authenticated with synthetic user")
+			} else {
+				slog.Debug("Local token authenticated as admin user", "user_id", adminUser.ID)
+			}
+			c.Set(UserContextKey, &adminUser)
+			c.Next()
+			return
+		}
+
+		// Validate JWT token
 		claims, err := a.validateToken(tokenString)
 		if err != nil {
 			slog.Warn("Invalid token", "error", err)

@@ -1,7 +1,6 @@
 # Binaries
 bin/
 darb
-darb-server
 *.exe
 *.dll
 *.so
@@ -60,6 +59,3 @@ frontend/node_modules/
 .env
 dist/
 .env.prod
-
-# CLI generated client (regenerated from OpenAPI spec)
-cli/client/

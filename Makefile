@@ -1,11 +1,14 @@
-.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all up down
+.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all up down generate-cli-client build-cli build-cli-all
 
 # Variables
-BINARY_NAME=darb
+BINARY_NAME=darb-server
+CLI_BINARY_NAME=darb
 FRONTEND_DIR=frontend
 BUILD_DIR=bin
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS=-ldflags "-X main.Version=$(VERSION)"
+CLI_LDFLAGS=-ldflags "-X github.com/aktech/darb/cmd/darb-cli/cmd.Version=$(VERSION)"
+OPENAPI_GENERATOR_VERSION=7.10.0
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -13,11 +16,13 @@ help: ## Show this help message
 	@echo 'Available targets:'
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
-install-tools: ## Install development tools (swag, air)
+install-tools: ## Install development tools (swag, air, golangci-lint)
 	@echo "Installing swag..."
 	@go install github.com/swaggo/swag/cmd/swag@latest
 	@echo "Installing air..."
 	@go install github.com/air-verse/air@latest
+	@echo "Installing golangci-lint v1.64.8..."
+	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.64.8
 	@echo "Tools installed successfully"
 
 swagger: ## Generate Swagger documentation
@@ -25,6 +30,38 @@ swagger: ## Generate Swagger documentation
 	@command -v swag >/dev/null 2>&1 || { echo "swag not found, installing..."; go install github.com/swaggo/swag/cmd/swag@latest; }
 	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g cmd/server/main.go -o docs
 	@echo "Swagger docs generated at /docs"
+
+generate-cli-client: swagger ## Generate Go client from OpenAPI spec
+	@echo "Generating CLI client (OpenAPI Generator v$(OPENAPI_GENERATOR_VERSION) via Docker)..."
+	@mkdir -p cli/client
+	@docker run --rm -u $(shell id -u):$(shell id -g) -v $(PWD):/local openapitools/openapi-generator-cli:v$(OPENAPI_GENERATOR_VERSION) generate \
+		-i /local/docs/swagger.json \
+		-g go \
+		-o /local/cli/client \
+		--additional-properties=packageName=client,isGoSubmodule=true,withGoMod=false \
+		--global-property=apiTests=false,modelTests=false
+	@echo "CLI client generated at cli/client/"
+
+build-cli: generate-cli-client ## Build the CLI binary
+	@echo "Building CLI..."
+	@mkdir -p $(BUILD_DIR)
+	@go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME) ./cmd/darb-cli
+	@echo "CLI build complete: $(BUILD_DIR)/$(CLI_BINARY_NAME)"
+
+build-cli-all: generate-cli-client ## Build CLI for all platforms
+	@echo "Building CLI for all platforms..."
+	@mkdir -p $(BUILD_DIR)
+	@echo "Building linux/amd64..."
+	@GOOS=linux GOARCH=amd64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-linux-amd64 ./cmd/darb-cli
+	@echo "Building linux/arm64..."
+	@GOOS=linux GOARCH=arm64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-linux-arm64 ./cmd/darb-cli
+	@echo "Building darwin/amd64..."
+	@GOOS=darwin GOARCH=amd64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-darwin-amd64 ./cmd/darb-cli
+	@echo "Building darwin/arm64..."
+	@GOOS=darwin GOARCH=arm64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-darwin-arm64 ./cmd/darb-cli
+	@echo "Building windows/amd64..."
+	@GOOS=windows GOARCH=amd64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-windows-amd64.exe ./cmd/darb-cli
+	@echo "All CLI platform builds complete"
 
 build-frontend: ## Build frontend and copy to internal/web/dist
 	@echo "Building frontend..."
@@ -101,7 +138,10 @@ vet: ## Run go vet
 	@echo "Running go vet..."
 	@go vet ./...
 
-lint: fmt vet ## Run formatters and linters
+lint: fmt ## Run formatters and linters (matches CI)
+	@echo "Running golangci-lint..."
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint not found, installing..."; curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.64.8; }
+	@PATH="$$PATH:$$(go env GOPATH)/bin" golangci-lint run ./...
 	@echo "Lint complete"
 
 build-docker-pixi: ## Build pixi Docker image

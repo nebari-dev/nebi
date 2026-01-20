@@ -156,7 +156,7 @@ const docTemplate = `{
                 "summary": "Revoke a permission",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Permission ID",
                         "name": "id",
                         "in": "path",
@@ -172,6 +172,11 @@ const docTemplate = `{
         },
         "/admin/registries": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Get list of all configured OCI registries (admin only)",
                 "consumes": [
                     "application/json"
@@ -202,6 +207,11 @@ const docTemplate = `{
                 }
             },
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Add a new OCI registry configuration (admin only)",
                 "consumes": [
                     "application/json"
@@ -248,6 +258,11 @@ const docTemplate = `{
         },
         "/admin/registries/{id}": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Get details of a specific OCI registry (admin only)",
                 "consumes": [
                     "application/json"
@@ -284,6 +299,11 @@ const docTemplate = `{
                 }
             },
             "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Update OCI registry details (admin only)",
                 "consumes": [
                     "application/json"
@@ -335,6 +355,11 @@ const docTemplate = `{
                 }
             },
             "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Delete an OCI registry configuration (admin only)",
                 "consumes": [
                     "application/json"
@@ -810,7 +835,7 @@ const docTemplate = `{
                 "summary": "Get an environment by ID",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -856,7 +881,7 @@ const docTemplate = `{
                 "summary": "Delete an environment",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -940,7 +965,7 @@ const docTemplate = `{
                 "summary": "List packages in an environment",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -995,7 +1020,7 @@ const docTemplate = `{
                 "summary": "Install packages in an environment",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -1064,7 +1089,7 @@ const docTemplate = `{
                 "summary": "Remove packages from an environment",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -1128,7 +1153,7 @@ const docTemplate = `{
                 "summary": "Get pixi.toml content for an environment",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -1625,7 +1650,7 @@ const docTemplate = `{
                 "summary": "Get a job by ID",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Job ID",
                         "name": "id",
                         "in": "path",
@@ -1713,6 +1738,11 @@ const docTemplate = `{
         },
         "/registries": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Get list of registries for users to select from (no credentials exposed)",
                 "consumes": [
                     "application/json"

@@ -63,7 +63,7 @@ func (h *JobHandler) ListJobs(c *gin.Context) {
 // @Tags jobs
 // @Security BearerAuth
 // @Produce json
-// @Param id path int true "Job ID"
+// @Param id path string true "Job ID"
 // @Success 200 {object} models.Job
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse

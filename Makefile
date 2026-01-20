@@ -138,7 +138,10 @@ vet: ## Run go vet
 	@echo "Running go vet..."
 	@go vet ./...
 
-lint: fmt vet ## Run formatters and linters
+lint: fmt ## Run formatters and linters (matches CI)
+	@echo "Running golangci-lint..."
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint not found, installing..."; go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; }
+	@PATH="$$PATH:$$(go env GOPATH)/bin" golangci-lint run ./...
 	@echo "Lint complete"
 
 build-docker-pixi: ## Build pixi Docker image

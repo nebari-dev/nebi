@@ -1,4 +1,4 @@
-.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all up down generate-cli-client build-cli build-cli-all build-desktop dev-desktop build-desktop-all install-wails build-wails-builder build-desktop-docker
+.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all up down generate-cli-client build-cli build-cli-all build-desktop run-desktop-linux-amd64 build-wails-builder
 
 # Variables
 BINARY_NAME=darb-server
@@ -203,47 +203,8 @@ down: ## Stop Tilt and delete k3d cluster
 	@k3d cluster delete darb-dev || true
 	@echo "✓ Environment cleaned up!"
 
-# Desktop App Targets
+# Desktop App Targets (Docker-based builds for consistency)
 DESKTOP_BINARY_NAME=darb-desktop
-DESKTOP_LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X github.com/openteams-ai/darb/desktop.Version=$(VERSION)"
-
-install-wails: ## Install Wails CLI
-	@echo "Installing Wails CLI..."
-	@go install github.com/wailsapp/wails/v2/cmd/wails@latest
-	@echo "Wails CLI installed successfully"
-
-build-desktop: build-frontend ## Build desktop app for current platform
-	@echo "Building desktop app..."
-	@mkdir -p $(BUILD_DIR)
-	@cd cmd/desktop && wails build -tags webkit2_41 -o ../../$(BUILD_DIR)/$(DESKTOP_BINARY_NAME) -ldflags "-X main.Version=$(VERSION) -X github.com/openteams-ai/darb/desktop.Version=$(VERSION)"
-	@echo "Desktop build complete: $(BUILD_DIR)/$(DESKTOP_BINARY_NAME)"
-
-dev-desktop: swagger ## Run desktop app in development mode
-	@echo "Starting desktop app in development mode..."
-	@if [ ! -d "frontend/node_modules" ]; then \
-		echo "Frontend dependencies not found. Installing..."; \
-		cd frontend && npm install; \
-	fi
-	@echo ""
-	@echo "🚀 Starting Darb Desktop in development mode..."
-	@echo "   Frontend dev server will start automatically"
-	@echo ""
-	@cd cmd/desktop && wails dev -tags webkit2_41
-
-build-desktop-all: build-frontend ## Build desktop app for all platforms
-	@echo "Building desktop app for all platforms..."
-	@mkdir -p $(BUILD_DIR)
-	@echo "Building linux/amd64..."
-	@cd cmd/desktop && wails build -tags webkit2_41 -platform linux/amd64 -o ../../$(BUILD_DIR)/$(DESKTOP_BINARY_NAME)-linux-amd64 -ldflags "-X main.Version=$(VERSION) -X github.com/openteams-ai/darb/desktop.Version=$(VERSION)"
-	@echo "Building darwin/amd64..."
-	@cd cmd/desktop && wails build -platform darwin/amd64 -o ../../$(BUILD_DIR)/$(DESKTOP_BINARY_NAME)-darwin-amd64 -ldflags "-X main.Version=$(VERSION) -X github.com/openteams-ai/darb/desktop.Version=$(VERSION)"
-	@echo "Building darwin/arm64..."
-	@cd cmd/desktop && wails build -platform darwin/arm64 -o ../../$(BUILD_DIR)/$(DESKTOP_BINARY_NAME)-darwin-arm64 -ldflags "-X main.Version=$(VERSION) -X github.com/openteams-ai/darb/desktop.Version=$(VERSION)"
-	@echo "Building windows/amd64..."
-	@cd cmd/desktop && wails build -platform windows/amd64 -o ../../$(BUILD_DIR)/$(DESKTOP_BINARY_NAME)-windows-amd64.exe -ldflags "-X main.Version=$(VERSION) -X github.com/openteams-ai/darb/desktop.Version=$(VERSION)"
-	@echo "All desktop platform builds complete"
-
-# Docker-based Desktop Builds
 WAILS_BUILDER_IMAGE=ghcr.io/openteams-ai/darb-wails-builder:latest
 
 build-wails-builder: ## Build the Wails builder Docker image locally
@@ -251,7 +212,7 @@ build-wails-builder: ## Build the Wails builder Docker image locally
 	@docker build -f docker/wails-builder.Dockerfile -t $(WAILS_BUILDER_IMAGE) .
 	@echo "Builder image ready: $(WAILS_BUILDER_IMAGE)"
 
-build-desktop-docker: build-frontend swagger ## Build desktop app for Linux using Docker (consistent builds)
+build-desktop: build-frontend swagger ## Build desktop app for Linux using Docker
 	@echo "Building desktop app using Docker..."
 	@mkdir -p $(BUILD_DIR) .cache/go-mod .cache/go-build
 	@docker run --rm \
@@ -266,3 +227,8 @@ build-desktop-docker: build-frontend swagger ## Build desktop app for Linux usin
 		bash -c "cd /app/cmd/desktop && wails build -tags webkit2_41 -platform linux/amd64 -ldflags '-X main.Version=$(VERSION) -X github.com/openteams-ai/darb/desktop.Version=$(VERSION)'"
 	@cp cmd/desktop/build/bin/darb-desktop $(BUILD_DIR)/$(DESKTOP_BINARY_NAME)-linux-amd64
 	@echo "Desktop build complete: $(BUILD_DIR)/$(DESKTOP_BINARY_NAME)-linux-amd64"
+
+run-desktop-linux-amd64: build-desktop ## Build and run the desktop app
+	@echo "Starting Darb Desktop..."
+	# Use env -i to clear environment variables that can interfere with Wails/WebKit
+	@env -i HOME="$$HOME" DISPLAY="$$DISPLAY" XAUTHORITY="$$XAUTHORITY" ./$(BUILD_DIR)/$(DESKTOP_BINARY_NAME)-linux-amd64

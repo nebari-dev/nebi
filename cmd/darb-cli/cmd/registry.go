@@ -26,17 +26,17 @@ var registryCmd = &cobra.Command{
 var registryAddCmd = &cobra.Command{
 	Use:   "add <name> <url>",
 	Short: "Add a named registry",
-	Long: `Add a named OCI registry for storing environments.
+	Long: `Add a named OCI registry for storing workspaces.
 
 Examples:
   # Add Docker Hub with credentials
-  darb registry add my-dhub docker.io -u myuser -p <token>
+  nebi registry add my-dhub docker.io -u myuser -p <token>
 
   # Add GitHub Container Registry
-  darb registry add ghcr ghcr.io/myorg -u myuser -p <token>
+  nebi registry add ghcr ghcr.io/myorg -u myuser -p <token>
 
   # Add and set as default
-  darb registry add ds-team ghcr.io/myorg/data-science --default`,
+  nebi registry add ds-team ghcr.io/myorg/data-science --default`,
 	Args: cobra.ExactArgs(2),
 	Run:  runRegistryAdd,
 }
@@ -57,7 +57,7 @@ var registryRemoveCmd = &cobra.Command{
 	Long: `Remove a named registry from the configuration.
 
 Example:
-  darb registry remove ds-team`,
+  nebi registry remove ds-team`,
 	Args: cobra.ExactArgs(1),
 	Run:  runRegistryRemove,
 }
@@ -68,7 +68,7 @@ var registrySetDefaultCmd = &cobra.Command{
 	Long: `Set a registry as the default, making the -r flag optional in most commands.
 
 Example:
-  darb registry set-default ds-team`,
+  nebi registry set-default ds-team`,
 	Args: cobra.ExactArgs(1),
 	Run:  runRegistrySetDefault,
 }

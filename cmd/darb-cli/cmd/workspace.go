@@ -10,91 +10,92 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var repoListRegistry string
-var repoInfoRegistry string
-var repoListTagsRegistry string
+var workspaceListRegistry string
+var workspaceInfoRegistry string
+var workspaceListTagsRegistry string
 
-var repoCmd = &cobra.Command{
-	Use:   "repo",
-	Short: "Manage repos",
-	Long:  `List, delete, and inspect repos.`,
+var workspaceCmd = &cobra.Command{
+	Use:     "workspace",
+	Aliases: []string{"ws"},
+	Short:   "Manage workspaces",
+	Long:    `List, delete, and inspect workspaces.`,
 }
 
-var repoListCmd = &cobra.Command{
+var workspaceListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
-	Short:   "List repos",
-	Long: `List repos from the server.
+	Short:   "List workspaces",
+	Long: `List workspaces from the server.
 
 Examples:
-  # List all repos
-  darb repo list`,
+  # List all workspaces
+  nebi workspace list`,
 	Args: cobra.NoArgs,
-	Run:  runRepoList,
+	Run:  runWorkspaceList,
 }
 
-var repoListTagsCmd = &cobra.Command{
-	Use:   "tags <repo>",
-	Short: "List tags for a repo",
-	Long: `List all published tags for a repo.
+var workspaceListTagsCmd = &cobra.Command{
+	Use:   "tags <workspace>",
+	Short: "List tags for a workspace",
+	Long: `List all published tags for a workspace.
 
 Example:
-  darb repo list tags myrepo`,
+  nebi workspace list tags myworkspace`,
 	Args: cobra.ExactArgs(1),
-	Run:  runRepoListTags,
+	Run:  runWorkspaceListTags,
 }
 
-var repoDeleteCmd = &cobra.Command{
-	Use:     "delete <repo>",
+var workspaceDeleteCmd = &cobra.Command{
+	Use:     "delete <workspace>",
 	Aliases: []string{"rm"},
-	Short:   "Delete a repo",
-	Long: `Delete a repo from the server.
+	Short:   "Delete a workspace",
+	Long: `Delete a workspace from the server.
 
 Example:
-  darb repo delete myrepo`,
+  nebi workspace delete myworkspace`,
 	Args: cobra.ExactArgs(1),
-	Run:  runRepoDelete,
+	Run:  runWorkspaceDelete,
 }
 
-var repoInfoCmd = &cobra.Command{
-	Use:   "info <repo>",
-	Short: "Show repo details",
-	Long: `Show detailed information about a repo.
+var workspaceInfoCmd = &cobra.Command{
+	Use:   "info <workspace>",
+	Short: "Show workspace details",
+	Long: `Show detailed information about a workspace.
 
 Example:
-  darb repo info myrepo`,
+  nebi workspace info myworkspace`,
 	Args: cobra.ExactArgs(1),
-	Run:  runRepoInfo,
+	Run:  runWorkspaceInfo,
 }
 
 func init() {
-	rootCmd.AddCommand(repoCmd)
+	rootCmd.AddCommand(workspaceCmd)
 
-	// repo list
-	repoCmd.AddCommand(repoListCmd)
+	// workspace list
+	workspaceCmd.AddCommand(workspaceListCmd)
 
-	// repo list tags (subcommand of list)
-	repoListCmd.AddCommand(repoListTagsCmd)
+	// workspace list tags (subcommand of list)
+	workspaceListCmd.AddCommand(workspaceListTagsCmd)
 
-	// repo delete
-	repoCmd.AddCommand(repoDeleteCmd)
+	// workspace delete
+	workspaceCmd.AddCommand(workspaceDeleteCmd)
 
-	// repo info
-	repoCmd.AddCommand(repoInfoCmd)
+	// workspace info
+	workspaceCmd.AddCommand(workspaceInfoCmd)
 }
 
-func runRepoList(cmd *cobra.Command, args []string) {
+func runWorkspaceList(cmd *cobra.Command, args []string) {
 	apiClient := mustGetClient()
 	ctx := mustGetAuthContext()
 
 	envs, _, err := apiClient.EnvironmentsAPI.EnvironmentsGet(ctx).Execute()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to list repos: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to list workspaces: %v\n", err)
 		os.Exit(1)
 	}
 
 	if len(envs) == 0 {
-		fmt.Println("No repos found")
+		fmt.Println("No workspaces found")
 		return
 	}
 
@@ -115,14 +116,14 @@ func runRepoList(cmd *cobra.Command, args []string) {
 	w.Flush()
 }
 
-func runRepoListTags(cmd *cobra.Command, args []string) {
-	repoName := args[0]
+func runWorkspaceListTags(cmd *cobra.Command, args []string) {
+	workspaceName := args[0]
 
 	apiClient := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find repo by name
-	env, err := findRepoByName(apiClient, ctx, repoName)
+	// Find workspace by name
+	env, err := findWorkspaceByName(apiClient, ctx, workspaceName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -136,7 +137,7 @@ func runRepoListTags(cmd *cobra.Command, args []string) {
 	}
 
 	if len(pubs) == 0 {
-		fmt.Printf("No published tags for %q\n", repoName)
+		fmt.Printf("No published tags for %q\n", workspaceName)
 		return
 	}
 
@@ -158,14 +159,14 @@ func runRepoListTags(cmd *cobra.Command, args []string) {
 	w.Flush()
 }
 
-func runRepoDelete(cmd *cobra.Command, args []string) {
-	repoName := args[0]
+func runWorkspaceDelete(cmd *cobra.Command, args []string) {
+	workspaceName := args[0]
 
 	apiClient := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find repo by name
-	env, err := findRepoByName(apiClient, ctx, repoName)
+	// Find workspace by name
+	env, err := findWorkspaceByName(apiClient, ctx, workspaceName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -174,21 +175,21 @@ func runRepoDelete(cmd *cobra.Command, args []string) {
 	// Delete
 	_, err = apiClient.EnvironmentsAPI.EnvironmentsIdDelete(ctx, env.GetId()).Execute()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to delete repo: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to delete workspace: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Deleted repo %q\n", repoName)
+	fmt.Printf("Deleted workspace %q\n", workspaceName)
 }
 
-func runRepoInfo(cmd *cobra.Command, args []string) {
-	repoName := args[0]
+func runWorkspaceInfo(cmd *cobra.Command, args []string) {
+	workspaceName := args[0]
 
 	apiClient := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find repo by name
-	env, err := findRepoByName(apiClient, ctx, repoName)
+	// Find workspace by name
+	env, err := findWorkspaceByName(apiClient, ctx, workspaceName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -197,7 +198,7 @@ func runRepoInfo(cmd *cobra.Command, args []string) {
 	// Get full details
 	envDetail, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdGet(ctx, env.GetId()).Execute()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to get repo details: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to get workspace details: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -226,11 +227,11 @@ func runRepoInfo(cmd *cobra.Command, args []string) {
 	}
 }
 
-// findRepoByName looks up a repo by name and returns it
-func findRepoByName(apiClient *client.APIClient, ctx context.Context, name string) (*client.ModelsEnvironment, error) {
+// findWorkspaceByName looks up a workspace by name and returns it
+func findWorkspaceByName(apiClient *client.APIClient, ctx context.Context, name string) (*client.ModelsEnvironment, error) {
 	envs, _, err := apiClient.EnvironmentsAPI.EnvironmentsGet(ctx).Execute()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list repos: %v", err)
+		return nil, fmt.Errorf("failed to list workspaces: %v", err)
 	}
 
 	for _, env := range envs {
@@ -239,5 +240,5 @@ func findRepoByName(apiClient *client.APIClient, ctx context.Context, name strin
 		}
 	}
 
-	return nil, fmt.Errorf("repo %q not found", name)
+	return nil, fmt.Errorf("workspace %q not found", name)
 }

@@ -33,7 +33,7 @@ func getConfigDir() (string, error) {
 		return "", fmt.Errorf("failed to get config directory: %w", err)
 	}
 
-	configDir = filepath.Join(baseDir, "darb")
+	configDir = filepath.Join(baseDir, "nebi")
 	return configDir, nil
 }
 
@@ -112,7 +112,7 @@ func getAPIClient() (*client.APIClient, error) {
 	}
 
 	if cfg.ServerURL == "" {
-		return nil, fmt.Errorf("not logged in. Run 'darb login <url>' first")
+		return nil, fmt.Errorf("not logged in. Run 'nebi login <url>' first")
 	}
 
 	clientCfg := client.NewConfiguration()
@@ -132,7 +132,7 @@ func getAuthContext() (context.Context, error) {
 	}
 
 	if cfg.Token == "" {
-		return nil, fmt.Errorf("not logged in. Run 'darb login <url>' first")
+		return nil, fmt.Errorf("not logged in. Run 'nebi login <url>' first")
 	}
 
 	ctx := context.WithValue(context.Background(), client.ContextAPIKeys, map[string]client.APIKey{

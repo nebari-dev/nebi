@@ -12,21 +12,21 @@ import (
 var shellPixiEnv string
 
 var shellCmd = &cobra.Command{
-	Use:   "shell <repo>[:<tag>]",
-	Short: "Activate repo shell",
-	Long: `Activate a repo shell using pixi shell.
+	Use:   "shell <workspace>[:<tag>]",
+	Short: "Activate workspace shell",
+	Long: `Activate a workspace shell using pixi shell.
 
-The repo is pulled from the server and cached locally.
+The workspace is pulled from the server and cached locally.
 
 Examples:
   # Shell into latest version
-  darb shell myrepo
+  nebi shell myworkspace
 
   # Shell into specific tag
-  darb shell myrepo:v1.0.0
+  nebi shell myworkspace:v1.0.0
 
   # Shell into specific pixi environment
-  darb shell myrepo:v1.0.0 -e dev`,
+  nebi shell myworkspace:v1.0.0 -e dev`,
 	Args: cobra.ExactArgs(1),
 	Run:  runShell,
 }
@@ -37,8 +37,8 @@ func init() {
 }
 
 func runShell(cmd *cobra.Command, args []string) {
-	// Parse repo:tag format
-	repoName, tag, err := parseRepoRef(args[0])
+	// Parse workspace:tag format
+	workspaceName, tag, err := parseWorkspaceRef(args[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -47,19 +47,19 @@ func runShell(cmd *cobra.Command, args []string) {
 	apiClient := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find repo by name
-	env, err := findRepoByName(apiClient, ctx, repoName)
+	// Find workspace by name
+	env, err := findWorkspaceByName(apiClient, ctx, workspaceName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Create cache directory for this repo (include tag in path if specified)
-	cacheName := repoName
+	// Create cache directory for this workspace (include tag in path if specified)
+	cacheName := workspaceName
 	if tag != "" {
-		cacheName = repoName + "-" + tag
+		cacheName = workspaceName + "-" + tag
 	}
-	cacheDir, err := getRepoCacheDir(cacheName)
+	cacheDir, err := getWorkspaceCacheDir(cacheName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to create cache directory: %v\n", err)
 		os.Exit(1)
@@ -73,7 +73,7 @@ func runShell(cmd *cobra.Command, args []string) {
 	}
 
 	if len(versions) == 0 {
-		fmt.Fprintf(os.Stderr, "Error: Repo %q has no versions\n", repoName)
+		fmt.Fprintf(os.Stderr, "Error: Workspace %q has no versions\n", workspaceName)
 		os.Exit(1)
 	}
 
@@ -96,9 +96,9 @@ func runShell(cmd *cobra.Command, args []string) {
 		needsUpdate = false
 	}
 
-	refStr := repoName
+	refStr := workspaceName
 	if tag != "" {
-		refStr = repoName + ":" + tag
+		refStr = workspaceName + ":" + tag
 	}
 
 	if needsUpdate {
@@ -153,17 +153,17 @@ func runShell(cmd *cobra.Command, args []string) {
 	}
 }
 
-// getRepoCacheDir returns the cache directory for a repo
-func getRepoCacheDir(repoName string) (string, error) {
+// getWorkspaceCacheDir returns the cache directory for a workspace
+func getWorkspaceCacheDir(workspaceName string) (string, error) {
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
 	}
 
-	repoDir := filepath.Join(cacheDir, "darb", "repos", repoName)
-	if err := os.MkdirAll(repoDir, 0755); err != nil {
+	workspaceDir := filepath.Join(cacheDir, "nebi", "workspaces", workspaceName)
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
 		return "", err
 	}
 
-	return repoDir, nil
+	return workspaceDir, nil
 }

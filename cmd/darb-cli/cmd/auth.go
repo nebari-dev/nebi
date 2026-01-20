@@ -15,12 +15,12 @@ import (
 
 var loginCmd = &cobra.Command{
 	Use:   "login <url>",
-	Short: "Login to Darb server",
-	Long: `Login to a Darb server to enable server mode.
+	Short: "Login to Nebi server",
+	Long: `Login to a Nebi server to enable server mode.
 
 Example:
-  darb login https://darb.company.com
-  darb login http://localhost:8460`,
+  nebi login https://nebi.company.com
+  nebi login http://localhost:8460`,
 	Args: cobra.ExactArgs(1),
 	Run:  runLogin,
 }
@@ -28,7 +28,7 @@ Example:
 var logoutCmd = &cobra.Command{
 	Use:   "logout",
 	Short: "Logout from server",
-	Long:  `Logout from the Darb server and clear stored credentials.`,
+	Long:  `Logout from the Nebi server and clear stored credentials.`,
 	Args:  cobra.NoArgs,
 	Run:   runLogout,
 }

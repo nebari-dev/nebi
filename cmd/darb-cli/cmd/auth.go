@@ -70,7 +70,7 @@ func runLogin(cmd *cobra.Command, args []string) {
 	// Create API client for this server
 	clientCfg := client.NewConfiguration()
 	clientCfg.Servers = client.ServerConfigurations{
-		{URL: serverURL + "/api/v1"},
+		client.ServerConfiguration{URL: serverURL + "/api/v1"},
 	}
 	apiClient := client.NewAPIClient(clientCfg)
 

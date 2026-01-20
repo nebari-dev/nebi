@@ -136,18 +136,10 @@ func findServerBinary() (string, error) {
 		if _, err := os.Stat(serverPath); err == nil {
 			return serverPath, nil
 		}
-		// Also try darb-server for backwards compatibility
-		serverPath = filepath.Join(filepath.Dir(execPath), "darb-server")
-		if _, err := os.Stat(serverPath); err == nil {
-			return serverPath, nil
-		}
 	}
 
 	// Try PATH
 	if path, err := exec.LookPath("nebi-server"); err == nil {
-		return path, nil
-	}
-	if path, err := exec.LookPath("darb-server"); err == nil {
 		return path, nil
 	}
 
@@ -187,10 +179,10 @@ func spawnLocalServer(port int) error {
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("DARB_DATABASE_DSN=%s", paths.Database),
-		"DARB_DATABASE_DRIVER=sqlite",
-		fmt.Sprintf("DARB_LOCAL_STATE_FILE=%s", paths.StateFile),
-		"DARB_SERVER_HOST=127.0.0.1", // Bind to localhost only
+		fmt.Sprintf("NEBI_DATABASE_DSN=%s", paths.Database),
+		"NEBI_DATABASE_DRIVER=sqlite",
+		fmt.Sprintf("NEBI_LOCAL_STATE_FILE=%s", paths.StateFile),
+		"NEBI_SERVER_HOST=127.0.0.1", // Bind to localhost only
 	)
 
 	// Start detached process (new session so it survives CLI exit)

@@ -21,8 +21,8 @@ install-tools: ## Install development tools (swag, air, golangci-lint)
 	@go install github.com/swaggo/swag/cmd/swag@latest
 	@echo "Installing air..."
 	@go install github.com/air-verse/air@latest
-	@echo "Installing golangci-lint..."
-	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@echo "Installing golangci-lint v1.64.8..."
+	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.64.8
 	@echo "Tools installed successfully"
 
 swagger: ## Generate Swagger documentation
@@ -140,7 +140,7 @@ vet: ## Run go vet
 
 lint: fmt ## Run formatters and linters (matches CI)
 	@echo "Running golangci-lint..."
-	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint not found, installing..."; go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; }
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint not found, installing..."; curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.64.8; }
 	@PATH="$$PATH:$$(go env GOPATH)/bin" golangci-lint run ./...
 	@echo "Lint complete"
 

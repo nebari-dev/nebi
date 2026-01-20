@@ -251,7 +251,7 @@ build-wails-builder: ## Build the Wails builder Docker image locally
 	@docker build -f docker/wails-builder.Dockerfile -t $(WAILS_BUILDER_IMAGE) .
 	@echo "Builder image ready: $(WAILS_BUILDER_IMAGE)"
 
-build-desktop-docker: swagger ## Build desktop app for Linux using Docker (consistent builds)
+build-desktop-docker: build-frontend swagger ## Build desktop app for Linux using Docker (consistent builds)
 	@echo "Building desktop app using Docker..."
 	@mkdir -p $(BUILD_DIR) .cache/go-mod .cache/go-build
 	@docker run --rm \

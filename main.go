@@ -17,7 +17,7 @@ func main() {
 
 	// Run Wails application
 	err := wails.Run(&options.App{
-		Title:  "Darb - Environment Manager",
+		Title:  "Nebi - Environment Manager",
 		Width:  1280,
 		Height: 800,
 		AssetServer: &assetserver.Options{

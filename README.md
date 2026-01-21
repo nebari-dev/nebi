@@ -232,6 +232,32 @@ kubectl scale deployment darb-worker -n darb --replicas=5
 kubectl scale deployment darb-api -n darb --replicas=3
 ```
 
+## CLI Usage
+
+The `nebi` binary includes both the server and CLI commands:
+
+```bash
+# Start the server
+nebi serve
+nebi serve --port 8080 --mode server  # API only, custom port
+
+# Login to a server
+nebi login http://localhost:8460
+
+# Manage registries
+nebi registry add ds-team ghcr.io/myorg/data-science --default
+nebi registry list
+
+# Manage workspaces
+nebi workspace list
+nebi workspace info myworkspace
+
+# Push/pull environments
+nebi push myworkspace:v1.0.0
+nebi pull myworkspace:v1.0.0
+nebi shell myworkspace
+```
+
 ## Development
 
 ```bash
@@ -246,15 +272,17 @@ make swagger        # Generate API docs
 
 ```
 darb/
-├── cmd/server/           # Application entry point
+├── cmd/nebi/             # Unified CLI + server entry point
 ├── internal/
 │   ├── api/              # HTTP handlers and routing
 │   ├── auth/             # Authentication (JWT, basic auth)
+│   ├── cliclient/        # Lightweight HTTP client for CLI
 │   ├── db/               # Database models and migrations
 │   ├── executor/         # Job execution (local/docker/k8s)
 │   ├── queue/            # Job queue (memory/valkey)
+│   ├── server/           # Server initialization logic
 │   ├── worker/           # Background job processor
-│   └── packagemanager/   # Pixi/UV abstractions
+│   └── pkgmgr/           # Pixi/UV abstractions
 ├── chart/                # Helm chart for Kubernetes
 └── frontend/             # React web UI
 ```

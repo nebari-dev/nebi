@@ -53,4 +53,4 @@ EXPOSE 8460
 ENV GIN_MODE=release
 
 # Run the binary
-ENTRYPOINT ["/app/darb"]
+ENTRYPOINT ["/app/darb", "serve"]

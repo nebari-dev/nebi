@@ -73,7 +73,7 @@ func (c *Client) GetEnvironmentVersions(ctx context.Context, envID string) ([]En
 
 // GetVersionPixiToml returns the pixi.toml for a specific version.
 func (c *Client) GetVersionPixiToml(ctx context.Context, envID string, version int32) (string, error) {
-	content, _, err := c.GetText(ctx, fmt.Sprintf("/environments/%s/versions/%d/pixi.toml", envID, version))
+	content, _, err := c.GetText(ctx, fmt.Sprintf("/environments/%s/versions/%d/pixi-toml", envID, version))
 	if err != nil {
 		return "", err
 	}
@@ -82,7 +82,7 @@ func (c *Client) GetVersionPixiToml(ctx context.Context, envID string, version i
 
 // GetVersionPixiLock returns the pixi.lock for a specific version.
 func (c *Client) GetVersionPixiLock(ctx context.Context, envID string, version int32) (string, error) {
-	content, _, err := c.GetText(ctx, fmt.Sprintf("/environments/%s/versions/%d/pixi.lock", envID, version))
+	content, _, err := c.GetText(ctx, fmt.Sprintf("/environments/%s/versions/%d/pixi-lock", envID, version))
 	if err != nil {
 		return "", err
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -12,18 +13,22 @@ import (
 )
 
 var pushRegistry string
+var pushPath string
 
 var pushCmd = &cobra.Command{
 	Use:   "push <workspace>:<tag>",
 	Short: "Push workspace to registry",
 	Long: `Push a workspace to an OCI registry with a tag.
 
-Looks for pixi.toml and pixi.lock in the current directory.
+Looks for pixi.toml and pixi.lock in the specified path (default: current directory).
 If the workspace doesn't exist on the server, it will be created automatically.
 
 Examples:
-  # Push with tag
+  # Push from current directory
   nebi push myworkspace:v1.0.0 -r ds-team
+
+  # Push from a specific path
+  nebi push myworkspace:v1.0.0 --path ~/projects/data-science
 
   # Push using default registry
   nebi push myworkspace:v1.0.0`,
@@ -33,6 +38,7 @@ Examples:
 
 func init() {
 	pushCmd.Flags().StringVarP(&pushRegistry, "registry", "r", "", "Named registry (optional if default set)")
+	pushCmd.Flags().StringVarP(&pushPath, "path", "p", ".", "Path to directory containing pixi.toml")
 }
 
 func runPush(cmd *cobra.Command, args []string) {
@@ -50,16 +56,25 @@ func runPush(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	// Check for local pixi.toml
-	pixiTomlContent, err := os.ReadFile("pixi.toml")
+	// Resolve the source path
+	sourcePath, err := expandPath(pushPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: pixi.toml not found in current directory\n")
+		fmt.Fprintf(os.Stderr, "Error: Failed to resolve path: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Check for pixi.toml in the specified path
+	pixiTomlPath := filepath.Join(sourcePath, "pixi.toml")
+	pixiTomlContent, err := os.ReadFile(pixiTomlPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: pixi.toml not found in %s\n", sourcePath)
 		fmt.Fprintln(os.Stderr, "Run 'pixi init' to create a pixi project first")
 		os.Exit(1)
 	}
 
-	// Check for local pixi.lock (optional but recommended)
-	if _, err := os.Stat("pixi.lock"); os.IsNotExist(err) {
+	// Check for pixi.lock in the specified path (optional but recommended)
+	pixiLockPath := filepath.Join(sourcePath, "pixi.lock")
+	if _, err := os.Stat(pixiLockPath); os.IsNotExist(err) {
 		fmt.Fprintln(os.Stderr, "Warning: pixi.lock not found. Run 'pixi install' to generate it.")
 	}
 

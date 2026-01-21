@@ -60,9 +60,3 @@ frontend/node_modules/
 .env
 dist/
 .env.prod
-
-# Local environments
-my-pixi-env/
-
-# Scratch files
-scratch.md

@@ -2,7 +2,7 @@
 
 # Variables
 BINARY_NAME=darb-server
-CLI_BINARY_NAME=darb
+CLI_BINARY_NAME=nebi
 FRONTEND_DIR=frontend
 BUILD_DIR=bin
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")

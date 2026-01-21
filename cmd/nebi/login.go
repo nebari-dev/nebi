@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"bufio"
@@ -8,7 +8,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/aktech/darb/cli/client"
+	"github.com/aktech/darb/internal/cliclient"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -31,11 +31,6 @@ var logoutCmd = &cobra.Command{
 	Long:  `Logout from the Nebi server and clear stored credentials.`,
 	Args:  cobra.NoArgs,
 	Run:   runLogout,
-}
-
-func init() {
-	rootCmd.AddCommand(loginCmd)
-	rootCmd.AddCommand(logoutCmd)
 }
 
 func runLogin(cmd *cobra.Command, args []string) {
@@ -67,30 +62,14 @@ func runLogin(cmd *cobra.Command, args []string) {
 	fmt.Println() // newline after password
 	password := string(passwordBytes)
 
-	// Create API client for this server
-	clientCfg := client.NewConfiguration()
-	clientCfg.Servers = client.ServerConfigurations{
-		client.ServerConfiguration{URL: serverURL + "/api/v1"},
-	}
-	apiClient := client.NewAPIClient(clientCfg)
+	// Create API client for this server (without auth for login)
+	client := cliclient.NewWithoutAuth(serverURL)
 
 	// Attempt login
-	loginReq := client.AuthLoginRequest{
-		Username: username,
-		Password: password,
-	}
-
-	resp, httpResp, err := apiClient.AuthAPI.AuthLoginPost(context.Background()).Credentials(loginReq).Execute()
+	resp, err := client.Login(context.Background(), username, password)
 	if err != nil {
-		if httpResp != nil {
-			switch httpResp.StatusCode {
-			case 401:
-				fmt.Fprintln(os.Stderr, "Error: Invalid username or password")
-			case 400:
-				fmt.Fprintln(os.Stderr, "Error: Invalid request")
-			default:
-				fmt.Fprintf(os.Stderr, "Error: Login failed (%d)\n", httpResp.StatusCode)
-			}
+		if cliclient.IsUnauthorized(err) {
+			fmt.Fprintln(os.Stderr, "Error: Invalid username or password")
 		} else {
 			fmt.Fprintf(os.Stderr, "Error: Could not connect to server: %v\n", err)
 		}
@@ -100,7 +79,7 @@ func runLogin(cmd *cobra.Command, args []string) {
 	// Save config
 	cfg := &CLIConfig{
 		ServerURL: serverURL,
-		Token:     resp.GetToken(),
+		Token:     resp.Token,
 	}
 
 	if err := saveConfig(cfg); err != nil {
@@ -108,8 +87,7 @@ func runLogin(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	user := resp.GetUser()
-	fmt.Printf("Logged in as %s (%s)\n", user.GetUsername(), user.GetEmail())
+	fmt.Printf("Logged in as %s (%s)\n", resp.User.Username, resp.User.Email)
 
 	configPath, _ := getConfigPath()
 	fmt.Printf("Credentials saved to %s\n", configPath)

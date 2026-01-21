@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aktech/darb/cli/client"
+	"github.com/aktech/darb/internal/cliclient"
 	"github.com/spf13/cobra"
 )
 
@@ -32,7 +32,6 @@ Examples:
 }
 
 func init() {
-	rootCmd.AddCommand(pushCmd)
 	pushCmd.Flags().StringVarP(&pushRegistry, "registry", "r", "", "Named registry (optional if default set)")
 }
 
@@ -64,23 +63,23 @@ func runPush(cmd *cobra.Command, args []string) {
 		fmt.Fprintln(os.Stderr, "Warning: pixi.lock not found. Run 'pixi install' to generate it.")
 	}
 
-	apiClient := mustGetClient()
+	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
 	// Try to find workspace by name, create if not found
-	env, err := findWorkspaceByName(apiClient, ctx, workspaceName)
+	env, err := findWorkspaceByName(client, ctx, workspaceName)
 	if err != nil {
 		// Workspace doesn't exist, create it
 		fmt.Printf("Creating workspace %q...\n", workspaceName)
 		pixiTomlStr := string(pixiTomlContent)
 		pkgMgr := "pixi"
-		createReq := client.HandlersCreateEnvironmentRequest{
+		createReq := cliclient.CreateEnvironmentRequest{
 			Name:           workspaceName,
 			PackageManager: &pkgMgr,
 			PixiToml:       &pixiTomlStr,
 		}
 
-		newEnv, _, createErr := apiClient.EnvironmentsAPI.EnvironmentsPost(ctx).Environment(createReq).Execute()
+		newEnv, createErr := client.CreateEnvironment(ctx, createReq)
 		if createErr != nil {
 			fmt.Fprintf(os.Stderr, "Error: Failed to create workspace %q: %v\n", workspaceName, createErr)
 			os.Exit(1)
@@ -88,7 +87,7 @@ func runPush(cmd *cobra.Command, args []string) {
 		fmt.Printf("Created workspace %q\n", workspaceName)
 
 		// Wait for environment to be ready
-		env, err = waitForEnvReady(apiClient, ctx, newEnv.GetId(), 60*time.Second)
+		env, err = waitForEnvReady(client, ctx, newEnv.ID, 60*time.Second)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -96,16 +95,16 @@ func runPush(cmd *cobra.Command, args []string) {
 	}
 
 	// Find registry
-	var registry *client.HandlersRegistryResponse
+	var registry *cliclient.Registry
 	if pushRegistry != "" {
-		registry, err = findRegistryByName(apiClient, ctx, pushRegistry)
+		registry, err = findRegistryByName(client, ctx, pushRegistry)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	} else {
 		// Find default registry
-		registry, err = findDefaultRegistry(apiClient, ctx)
+		registry, err = findDefaultRegistry(client, ctx)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			fmt.Fprintln(os.Stderr, "Hint: Set a default registry with 'nebi registry set-default <name>' or specify one with -r")
@@ -116,29 +115,29 @@ func runPush(cmd *cobra.Command, args []string) {
 	// Use workspace name as repository
 	repository := workspaceName
 
-	req := client.HandlersPublishRequest{
-		RegistryId: registry.GetId(),
+	req := cliclient.PublishRequest{
+		RegistryID: registry.ID,
 		Repository: repository,
 		Tag:        tag,
 	}
 
-	fmt.Printf("Pushing %s:%s to %s...\n", repository, tag, registry.GetName())
-	resp, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdPublishPost(ctx, env.GetId()).Request(req).Execute()
+	fmt.Printf("Pushing %s:%s to %s...\n", repository, tag, registry.Name)
+	resp, err := client.PublishEnvironment(ctx, env.ID, req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to push %s:%s: %v\n", repository, tag, err)
 		os.Exit(1)
 	}
 
 	fmt.Printf("Pushed %s:%s\n", repository, tag)
-	if digest := resp.GetDigest(); digest != "" {
-		fmt.Printf("  Digest: %s\n", digest)
+	if resp.Digest != "" {
+		fmt.Printf("  Digest: %s\n", resp.Digest)
 	}
-	fmt.Printf("\nSuccessfully pushed to %s\n", registry.GetName())
+	fmt.Printf("\nSuccessfully pushed to %s\n", registry.Name)
 }
 
-// parseWorkspaceRef parses a reference in the format workspace:tag or workspace@digest
-// Returns (workspace, tag, error) for tag references
-// Returns (workspace, "", error) for digest references (digest is in tag field with @ prefix)
+// parseWorkspaceRef parses a reference in the format workspace:tag or workspace@digest.
+// Returns (workspace, tag, error) for tag references.
+// Returns (workspace, "", error) for digest references (digest is in tag field with @ prefix).
 func parseWorkspaceRef(ref string) (workspace string, tag string, err error) {
 	// Check for digest reference first (workspace@sha256:...)
 	if idx := strings.Index(ref, "@"); idx != -1 {
@@ -154,39 +153,18 @@ func parseWorkspaceRef(ref string) (workspace string, tag string, err error) {
 	return ref, "", nil
 }
 
-// findDefaultRegistry finds the default registry
-func findDefaultRegistry(apiClient *client.APIClient, ctx context.Context) (*client.HandlersRegistryResponse, error) {
-	registries, _, err := apiClient.AdminAPI.AdminRegistriesGet(ctx).Execute()
-	if err != nil {
-		// Try public endpoint
-		registries, _, err = apiClient.RegistriesAPI.RegistriesGet(ctx).Execute()
-		if err != nil {
-			return nil, fmt.Errorf("failed to list registries: %v", err)
-		}
-	}
-
-	for _, reg := range registries {
-		if reg.GetIsDefault() {
-			return &reg, nil
-		}
-	}
-
-	return nil, fmt.Errorf("no default registry set")
-}
-
-// waitForEnvReady polls until the environment is ready or timeout
-func waitForEnvReady(apiClient *client.APIClient, ctx context.Context, envID string, timeout time.Duration) (*client.ModelsEnvironment, error) {
+// waitForEnvReady polls until the environment is ready or timeout.
+func waitForEnvReady(client *cliclient.Client, ctx context.Context, envID string, timeout time.Duration) (*cliclient.Environment, error) {
 	deadline := time.Now().Add(timeout)
 	fmt.Print("Waiting for environment to be ready")
 
 	for time.Now().Before(deadline) {
-		env, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdGet(ctx, envID).Execute()
+		env, err := client.GetEnvironment(ctx, envID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get environment status: %v", err)
 		}
 
-		status := env.GetStatus()
-		switch status {
+		switch env.Status {
 		case "ready":
 			fmt.Println(" done")
 			return env, nil

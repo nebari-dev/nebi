@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"fmt"
@@ -32,7 +32,6 @@ Examples:
 }
 
 func init() {
-	rootCmd.AddCommand(shellCmd)
 	shellCmd.Flags().StringVarP(&shellPixiEnv, "env", "e", "", "Pixi environment name")
 }
 
@@ -44,11 +43,11 @@ func runShell(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	apiClient := mustGetClient()
+	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
 	// Find workspace by name
-	env, err := findWorkspaceByName(apiClient, ctx, workspaceName)
+	env, err := findWorkspaceByName(client, ctx, workspaceName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -66,7 +65,7 @@ func runShell(cmd *cobra.Command, args []string) {
 	}
 
 	// Get versions to find the latest
-	versions, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdVersionsGet(ctx, env.GetId()).Execute()
+	versions, err := client.GetEnvironmentVersions(ctx, env.ID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to get versions: %v\n", err)
 		os.Exit(1)
@@ -80,11 +79,11 @@ func runShell(cmd *cobra.Command, args []string) {
 	// Use the latest version
 	latestVersion := versions[0]
 	for _, v := range versions {
-		if v.GetVersionNumber() > latestVersion.GetVersionNumber() {
+		if v.VersionNumber > latestVersion.VersionNumber {
 			latestVersion = v
 		}
 	}
-	versionNumber := latestVersion.GetVersionNumber()
+	versionNumber := latestVersion.VersionNumber
 
 	// Check if we need to update the cached files
 	pixiTomlPath := filepath.Join(cacheDir, "pixi.toml")
@@ -105,14 +104,14 @@ func runShell(cmd *cobra.Command, args []string) {
 		fmt.Printf("Pulling %s (version %d)...\n", refStr, versionNumber)
 
 		// Get pixi.toml
-		pixiToml, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdVersionsVersionPixiTomlGet(ctx, env.GetId(), versionNumber).Execute()
+		pixiToml, err := client.GetVersionPixiToml(ctx, env.ID, versionNumber)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Failed to get pixi.toml: %v\n", err)
 			os.Exit(1)
 		}
 
 		// Get pixi.lock
-		pixiLock, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdVersionsVersionPixiLockGet(ctx, env.GetId(), versionNumber).Execute()
+		pixiLock, err := client.GetVersionPixiLock(ctx, env.ID, versionNumber)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Failed to get pixi.lock: %v\n", err)
 			os.Exit(1)
@@ -153,7 +152,7 @@ func runShell(cmd *cobra.Command, args []string) {
 	}
 }
 
-// getWorkspaceCacheDir returns the cache directory for a workspace
+// getWorkspaceCacheDir returns the cache directory for a workspace.
 func getWorkspaceCacheDir(workspaceName string) (string, error) {
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {

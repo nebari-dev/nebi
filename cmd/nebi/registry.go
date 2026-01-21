@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/aktech/darb/cli/client"
+	"github.com/aktech/darb/internal/cliclient"
 	"github.com/spf13/cobra"
 )
 
@@ -74,7 +74,6 @@ Example:
 }
 
 func init() {
-	rootCmd.AddCommand(registryCmd)
 	registryCmd.AddCommand(registryAddCmd)
 	registryCmd.AddCommand(registryListCmd)
 	registryCmd.AddCommand(registryRemoveCmd)
@@ -89,20 +88,20 @@ func runRegistryAdd(cmd *cobra.Command, args []string) {
 	name := args[0]
 	url := args[1]
 
-	apiClient := mustGetClient()
+	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	req := client.HandlersCreateRegistryRequest{
+	req := cliclient.CreateRegistryRequest{
 		Name:      name,
-		Url:       url,
+		URL:       url,
 		Username:  &registryAddUsername,
 		Password:  &registryAddPassword,
 		IsDefault: &registryAddDefault,
 	}
 
-	resp, httpResp, err := apiClient.AdminAPI.AdminRegistriesPost(ctx).Registry(req).Execute()
+	resp, err := client.CreateRegistry(ctx, req)
 	if err != nil {
-		if httpResp != nil && httpResp.StatusCode == 403 {
+		if cliclient.IsForbidden(err) {
 			fmt.Fprintln(os.Stderr, "Error: Admin access required to add registries")
 		} else {
 			fmt.Fprintf(os.Stderr, "Error: Failed to add registry: %v\n", err)
@@ -111,25 +110,20 @@ func runRegistryAdd(cmd *cobra.Command, args []string) {
 	}
 
 	defaultMsg := ""
-	if resp.GetIsDefault() {
+	if resp.IsDefault {
 		defaultMsg = " (default)"
 	}
-	fmt.Printf("Added registry %q (%s)%s\n", resp.GetName(), resp.GetUrl(), defaultMsg)
+	fmt.Printf("Added registry %q (%s)%s\n", resp.Name, resp.URL, defaultMsg)
 }
 
 func runRegistryList(cmd *cobra.Command, args []string) {
-	apiClient := mustGetClient()
+	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Try admin endpoint first for full details, fall back to public
-	registries, _, err := apiClient.AdminAPI.AdminRegistriesGet(ctx).Execute()
+	registries, err := client.ListRegistries(ctx)
 	if err != nil {
-		// Try public endpoint
-		registries, _, err = apiClient.RegistriesAPI.RegistriesGet(ctx).Execute()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Failed to list registries: %v\n", err)
-			os.Exit(1)
-		}
+		fmt.Fprintf(os.Stderr, "Error: Failed to list registries: %v\n", err)
+		os.Exit(1)
 	}
 
 	if len(registries) == 0 {
@@ -141,10 +135,10 @@ func runRegistryList(cmd *cobra.Command, args []string) {
 	fmt.Fprintln(w, "NAME\tURL\tDEFAULT")
 	for _, reg := range registries {
 		defaultMark := ""
-		if reg.GetIsDefault() {
+		if reg.IsDefault {
 			defaultMark = "*"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\n", reg.GetName(), reg.GetUrl(), defaultMark)
+		fmt.Fprintf(w, "%s\t%s\t%s\n", reg.Name, reg.URL, defaultMark)
 	}
 	w.Flush()
 }
@@ -152,20 +146,20 @@ func runRegistryList(cmd *cobra.Command, args []string) {
 func runRegistryRemove(cmd *cobra.Command, args []string) {
 	name := args[0]
 
-	apiClient := mustGetClient()
+	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
 	// Find registry by name
-	reg, err := findRegistryByName(apiClient, ctx, name)
+	reg, err := findRegistryByName(client, ctx, name)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Delete by ID
-	httpResp, err := apiClient.AdminAPI.AdminRegistriesIdDelete(ctx, reg.GetId()).Execute()
+	err = client.DeleteRegistry(ctx, reg.ID)
 	if err != nil {
-		if httpResp != nil && httpResp.StatusCode == 403 {
+		if cliclient.IsForbidden(err) {
 			fmt.Fprintln(os.Stderr, "Error: Admin access required to remove registries")
 		} else {
 			fmt.Fprintf(os.Stderr, "Error: Failed to remove registry: %v\n", err)
@@ -179,11 +173,11 @@ func runRegistryRemove(cmd *cobra.Command, args []string) {
 func runRegistrySetDefault(cmd *cobra.Command, args []string) {
 	name := args[0]
 
-	apiClient := mustGetClient()
+	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
 	// Find registry by name
-	reg, err := findRegistryByName(apiClient, ctx, name)
+	reg, err := findRegistryByName(client, ctx, name)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -191,13 +185,13 @@ func runRegistrySetDefault(cmd *cobra.Command, args []string) {
 
 	// Update to set as default
 	isDefault := true
-	updateReq := client.HandlersUpdateRegistryRequest{
+	updateReq := cliclient.UpdateRegistryRequest{
 		IsDefault: &isDefault,
 	}
 
-	_, httpResp, err := apiClient.AdminAPI.AdminRegistriesIdPut(ctx, reg.GetId()).Registry(updateReq).Execute()
+	_, err = client.UpdateRegistry(ctx, reg.ID, updateReq)
 	if err != nil {
-		if httpResp != nil && httpResp.StatusCode == 403 {
+		if cliclient.IsForbidden(err) {
 			fmt.Fprintln(os.Stderr, "Error: Admin access required to set default registry")
 		} else {
 			fmt.Fprintf(os.Stderr, "Error: Failed to set default registry: %v\n", err)
@@ -208,18 +202,34 @@ func runRegistrySetDefault(cmd *cobra.Command, args []string) {
 	fmt.Printf("Set %q as default registry\n", name)
 }
 
-// findRegistryByName looks up a registry by name and returns it
-func findRegistryByName(apiClient *client.APIClient, ctx context.Context, name string) (*client.HandlersRegistryResponse, error) {
-	registries, _, err := apiClient.AdminAPI.AdminRegistriesGet(ctx).Execute()
+// findRegistryByName looks up a registry by name and returns it.
+func findRegistryByName(client *cliclient.Client, ctx context.Context, name string) (*cliclient.Registry, error) {
+	registries, err := client.ListRegistriesAdmin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list registries: %v", err)
 	}
 
 	for _, reg := range registries {
-		if reg.GetName() == name {
+		if reg.Name == name {
 			return &reg, nil
 		}
 	}
 
 	return nil, fmt.Errorf("registry %q not found", name)
+}
+
+// findDefaultRegistry finds the default registry.
+func findDefaultRegistry(client *cliclient.Client, ctx context.Context) (*cliclient.Registry, error) {
+	registries, err := client.ListRegistries(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list registries: %v", err)
+	}
+
+	for _, reg := range registries {
+		if reg.IsDefault {
+			return &reg, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no default registry set")
 }

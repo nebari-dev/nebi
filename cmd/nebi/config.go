@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"context"
@@ -6,11 +6,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/aktech/darb/cli/client"
+	"github.com/aktech/darb/internal/cliclient"
 	"gopkg.in/yaml.v3"
 )
 
-// CLIConfig holds the CLI configuration
+// CLIConfig holds the CLI configuration.
 type CLIConfig struct {
 	ServerURL string `yaml:"server_url,omitempty"`
 	Token     string `yaml:"token,omitempty"`
@@ -19,10 +19,10 @@ type CLIConfig struct {
 var (
 	configDir    string
 	cachedConfig *CLIConfig
-	apiClient    *client.APIClient
+	apiClient    *cliclient.Client
 )
 
-// getConfigDir returns the platform-specific config directory
+// getConfigDir returns the platform-specific config directory.
 func getConfigDir() (string, error) {
 	if configDir != "" {
 		return configDir, nil
@@ -37,7 +37,7 @@ func getConfigDir() (string, error) {
 	return configDir, nil
 }
 
-// getConfigPath returns the path to the config file
+// getConfigPath returns the path to the config file.
 func getConfigPath() (string, error) {
 	dir, err := getConfigDir()
 	if err != nil {
@@ -46,7 +46,7 @@ func getConfigPath() (string, error) {
 	return filepath.Join(dir, "config.yaml"), nil
 }
 
-// loadConfig loads the CLI config from disk
+// loadConfig loads the CLI config from disk.
 func loadConfig() (*CLIConfig, error) {
 	if cachedConfig != nil {
 		return cachedConfig, nil
@@ -75,7 +75,7 @@ func loadConfig() (*CLIConfig, error) {
 	return cachedConfig, nil
 }
 
-// saveConfig saves the CLI config to disk
+// saveConfig saves the CLI config to disk.
 func saveConfig(cfg *CLIConfig) error {
 	dir, err := getConfigDir()
 	if err != nil {
@@ -100,8 +100,8 @@ func saveConfig(cfg *CLIConfig) error {
 	return nil
 }
 
-// getAPIClient returns a configured API client
-func getAPIClient() (*client.APIClient, error) {
+// getAPIClient returns a configured API client.
+func getAPIClient() (*cliclient.Client, error) {
 	if apiClient != nil {
 		return apiClient, nil
 	}
@@ -115,16 +115,11 @@ func getAPIClient() (*client.APIClient, error) {
 		return nil, fmt.Errorf("not logged in. Run 'nebi login <url>' first")
 	}
 
-	clientCfg := client.NewConfiguration()
-	clientCfg.Servers = client.ServerConfigurations{
-		client.ServerConfiguration{URL: cfg.ServerURL + "/api/v1"},
-	}
-
-	apiClient = client.NewAPIClient(clientCfg)
+	apiClient = cliclient.New(cfg.ServerURL, cfg.Token)
 	return apiClient, nil
 }
 
-// getAuthContext returns a context with authentication token
+// getAuthContext returns a context for authenticated requests.
 func getAuthContext() (context.Context, error) {
 	cfg, err := loadConfig()
 	if err != nil {
@@ -135,18 +130,11 @@ func getAuthContext() (context.Context, error) {
 		return nil, fmt.Errorf("not logged in. Run 'nebi login <url>' first")
 	}
 
-	ctx := context.WithValue(context.Background(), client.ContextAPIKeys, map[string]client.APIKey{
-		"BearerAuth": {
-			Key:    cfg.Token,
-			Prefix: "Bearer",
-		},
-	})
-
-	return ctx, nil
+	return context.Background(), nil
 }
 
-// mustGetClient returns the API client or exits with error
-func mustGetClient() *client.APIClient {
+// mustGetClient returns the API client or exits with error.
+func mustGetClient() *cliclient.Client {
 	c, err := getAPIClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -155,7 +143,7 @@ func mustGetClient() *client.APIClient {
 	return c
 }
 
-// mustGetAuthContext returns auth context or exits with error
+// mustGetAuthContext returns auth context or exits with error.
 func mustGetAuthContext() context.Context {
 	ctx, err := getAuthContext()
 	if err != nil {

@@ -1,14 +1,11 @@
-.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all up down generate-cli-client build-cli build-cli-all
+.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all up down
 
 # Variables
-BINARY_NAME=darb-server
-CLI_BINARY_NAME=nebi
+BINARY_NAME=nebi
 FRONTEND_DIR=frontend
 BUILD_DIR=bin
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS=-ldflags "-X main.Version=$(VERSION)"
-CLI_LDFLAGS=-ldflags "-X github.com/aktech/darb/cmd/darb-cli/cmd.Version=$(VERSION)"
-OPENAPI_GENERATOR_VERSION=7.10.0
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -28,40 +25,8 @@ install-tools: ## Install development tools (swag, air, golangci-lint)
 swagger: ## Generate Swagger documentation
 	@echo "Generating Swagger docs..."
 	@command -v swag >/dev/null 2>&1 || { echo "swag not found, installing..."; go install github.com/swaggo/swag/cmd/swag@latest; }
-	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g cmd/server/main.go -o docs
+	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g cmd/nebi/serve.go -o docs
 	@echo "Swagger docs generated at /docs"
-
-generate-cli-client: swagger ## Generate Go client from OpenAPI spec
-	@echo "Generating CLI client (OpenAPI Generator v$(OPENAPI_GENERATOR_VERSION) via Docker)..."
-	@mkdir -p cli/client
-	@docker run --rm -u $(shell id -u):$(shell id -g) -v $(PWD):/local openapitools/openapi-generator-cli:v$(OPENAPI_GENERATOR_VERSION) generate \
-		-i /local/docs/swagger.json \
-		-g go \
-		-o /local/cli/client \
-		--additional-properties=packageName=client,isGoSubmodule=true,withGoMod=false \
-		--global-property=apiTests=false,modelTests=false
-	@echo "CLI client generated at cli/client/"
-
-build-cli: generate-cli-client ## Build the CLI binary
-	@echo "Building CLI..."
-	@mkdir -p $(BUILD_DIR)
-	@go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME) ./cmd/darb-cli
-	@echo "CLI build complete: $(BUILD_DIR)/$(CLI_BINARY_NAME)"
-
-build-cli-all: generate-cli-client ## Build CLI for all platforms
-	@echo "Building CLI for all platforms..."
-	@mkdir -p $(BUILD_DIR)
-	@echo "Building linux/amd64..."
-	@GOOS=linux GOARCH=amd64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-linux-amd64 ./cmd/darb-cli
-	@echo "Building linux/arm64..."
-	@GOOS=linux GOARCH=arm64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-linux-arm64 ./cmd/darb-cli
-	@echo "Building darwin/amd64..."
-	@GOOS=darwin GOARCH=amd64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-darwin-amd64 ./cmd/darb-cli
-	@echo "Building darwin/arm64..."
-	@GOOS=darwin GOARCH=arm64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-darwin-arm64 ./cmd/darb-cli
-	@echo "Building windows/amd64..."
-	@GOOS=windows GOARCH=amd64 go build $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY_NAME)-windows-amd64.exe ./cmd/darb-cli
-	@echo "All CLI platform builds complete"
 
 build-frontend: ## Build frontend and copy to internal/web/dist
 	@echo "Building frontend..."
@@ -71,24 +36,24 @@ build-frontend: ## Build frontend and copy to internal/web/dist
 	@cp -r $(FRONTEND_DIR)/dist internal/web/dist
 	@echo "Frontend build complete"
 
-build-backend: swagger ## Build backend with embedded frontend
-	@echo "Building backend with embedded frontend..."
+build-backend: swagger ## Build nebi binary
+	@echo "Building nebi..."
 	@mkdir -p $(BUILD_DIR)
-	@go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/server
+	@go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/nebi
 	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)"
 
 build: build-frontend build-backend ## Build complete single binary (frontend + backend)
 	@echo "Single binary build complete: $(BUILD_DIR)/$(BINARY_NAME)"
 
 run: build ## Run the server (without hot reload)
-	@echo "Starting darb server..."
+	@echo "Starting nebi server..."
 	@if [ -f .env ]; then \
 		echo "✓ Loading environment variables from .env..."; \
 	fi
-	@bash -c 'set -a; [ -f .env ] && source .env; set +a; $(BUILD_DIR)/$(BINARY_NAME)'
+	@bash -c 'set -a; [ -f .env ] && source .env; set +a; $(BUILD_DIR)/$(BINARY_NAME) serve'
 
 dev: swagger ## Run with hot reload (frontend + backend)
-	@echo "Starting darb in development mode with hot reload..."
+	@echo "Starting nebi in development mode with hot reload..."
 	@if [ ! -d "frontend/node_modules" ]; then \
 		echo "Frontend dependencies not found. Installing..."; \
 		cd frontend && npm install; \
@@ -111,7 +76,7 @@ dev: swagger ## Run with hot reload (frontend + backend)
 
 migrate: ## Run database migrations
 	@echo "Running migrations..."
-	@go run cmd/server/main.go migrate
+	@go run cmd/nebi/main.go serve
 
 test: ## Run tests
 	@echo "Running tests..."
@@ -165,15 +130,15 @@ build-all: build-frontend ## Build binaries for all platforms
 	@echo "Building for all platforms..."
 	@mkdir -p $(BUILD_DIR)
 	@echo "Building linux/amd64..."
-	@GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/server
+	@GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/nebi
 	@echo "Building linux/arm64..."
-	@GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/server
+	@GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/nebi
 	@echo "Building darwin/amd64..."
-	@GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/server
+	@GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/nebi
 	@echo "Building darwin/arm64..."
-	@GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/server
+	@GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/nebi
 	@echo "Building windows/amd64..."
-	@GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/server
+	@GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/nebi
 	@echo "All platform builds complete"
 
 # K3d Development Environment

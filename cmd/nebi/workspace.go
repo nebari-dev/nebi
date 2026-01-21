@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"context"
@@ -6,13 +6,9 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/aktech/darb/cli/client"
+	"github.com/aktech/darb/internal/cliclient"
 	"github.com/spf13/cobra"
 )
-
-var workspaceListRegistry string
-var workspaceInfoRegistry string
-var workspaceListTagsRegistry string
 
 var workspaceCmd = &cobra.Command{
 	Use:     "workspace",
@@ -40,7 +36,7 @@ var workspaceListTagsCmd = &cobra.Command{
 	Long: `List all published tags for a workspace.
 
 Example:
-  nebi workspace list tags myworkspace`,
+  nebi workspace tags myworkspace`,
 	Args: cobra.ExactArgs(1),
 	Run:  runWorkspaceListTags,
 }
@@ -69,26 +65,19 @@ Example:
 }
 
 func init() {
-	rootCmd.AddCommand(workspaceCmd)
-
-	// workspace list
 	workspaceCmd.AddCommand(workspaceListCmd)
-
-	// workspace list tags (subcommand of list)
-	workspaceListCmd.AddCommand(workspaceListTagsCmd)
-
-	// workspace delete
 	workspaceCmd.AddCommand(workspaceDeleteCmd)
-
-	// workspace info
 	workspaceCmd.AddCommand(workspaceInfoCmd)
+
+	// workspace tags is a subcommand of list
+	workspaceListCmd.AddCommand(workspaceListTagsCmd)
 }
 
 func runWorkspaceList(cmd *cobra.Command, args []string) {
-	apiClient := mustGetClient()
+	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	envs, _, err := apiClient.EnvironmentsAPI.EnvironmentsGet(ctx).Execute()
+	envs, err := client.ListEnvironments(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to list workspaces: %v\n", err)
 		os.Exit(1)
@@ -104,12 +93,12 @@ func runWorkspaceList(cmd *cobra.Command, args []string) {
 	for _, env := range envs {
 		owner := ""
 		if env.Owner != nil {
-			owner = env.Owner.GetUsername()
+			owner = env.Owner.Username
 		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-			env.GetName(),
-			env.GetStatus(),
-			env.GetPackageManager(),
+			env.Name,
+			env.Status,
+			env.PackageManager,
 			owner,
 		)
 	}
@@ -119,18 +108,18 @@ func runWorkspaceList(cmd *cobra.Command, args []string) {
 func runWorkspaceListTags(cmd *cobra.Command, args []string) {
 	workspaceName := args[0]
 
-	apiClient := mustGetClient()
+	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
 	// Find workspace by name
-	env, err := findWorkspaceByName(apiClient, ctx, workspaceName)
+	env, err := findWorkspaceByName(client, ctx, workspaceName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Get publications (tags)
-	pubs, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdPublicationsGet(ctx, env.GetId()).Execute()
+	pubs, err := client.GetEnvironmentPublications(ctx, env.ID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to list tags: %v\n", err)
 		os.Exit(1)
@@ -144,16 +133,16 @@ func runWorkspaceListTags(cmd *cobra.Command, args []string) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "TAG\tREGISTRY\tREPOSITORY\tDIGEST\tPUBLISHED")
 	for _, pub := range pubs {
-		digest := pub.GetDigest()
+		digest := pub.Digest
 		if len(digest) > 19 {
 			digest = digest[:19] + "..."
 		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			pub.GetTag(),
-			pub.GetRegistryName(),
-			pub.GetRepository(),
+			pub.Tag,
+			pub.RegistryName,
+			pub.Repository,
 			digest,
-			pub.GetPublishedAt(),
+			pub.PublishedAt,
 		)
 	}
 	w.Flush()
@@ -162,18 +151,18 @@ func runWorkspaceListTags(cmd *cobra.Command, args []string) {
 func runWorkspaceDelete(cmd *cobra.Command, args []string) {
 	workspaceName := args[0]
 
-	apiClient := mustGetClient()
+	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
 	// Find workspace by name
-	env, err := findWorkspaceByName(apiClient, ctx, workspaceName)
+	env, err := findWorkspaceByName(client, ctx, workspaceName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Delete
-	_, err = apiClient.EnvironmentsAPI.EnvironmentsIdDelete(ctx, env.GetId()).Execute()
+	err = client.DeleteEnvironment(ctx, env.ID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to delete workspace: %v\n", err)
 		os.Exit(1)
@@ -185,57 +174,57 @@ func runWorkspaceDelete(cmd *cobra.Command, args []string) {
 func runWorkspaceInfo(cmd *cobra.Command, args []string) {
 	workspaceName := args[0]
 
-	apiClient := mustGetClient()
+	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
 	// Find workspace by name
-	env, err := findWorkspaceByName(apiClient, ctx, workspaceName)
+	env, err := findWorkspaceByName(client, ctx, workspaceName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Get full details
-	envDetail, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdGet(ctx, env.GetId()).Execute()
+	envDetail, err := client.GetEnvironment(ctx, env.ID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to get workspace details: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Name:            %s\n", envDetail.GetName())
-	fmt.Printf("ID:              %s\n", envDetail.GetId())
-	fmt.Printf("Status:          %s\n", envDetail.GetStatus())
-	fmt.Printf("Package Manager: %s\n", envDetail.GetPackageManager())
+	fmt.Printf("Name:            %s\n", envDetail.Name)
+	fmt.Printf("ID:              %s\n", envDetail.ID)
+	fmt.Printf("Status:          %s\n", envDetail.Status)
+	fmt.Printf("Package Manager: %s\n", envDetail.PackageManager)
 	if envDetail.Owner != nil {
-		fmt.Printf("Owner:           %s\n", envDetail.Owner.GetUsername())
+		fmt.Printf("Owner:           %s\n", envDetail.Owner.Username)
 	}
-	fmt.Printf("Size:            %d bytes\n", envDetail.GetSizeBytes())
-	fmt.Printf("Created:         %s\n", envDetail.GetCreatedAt())
-	fmt.Printf("Updated:         %s\n", envDetail.GetUpdatedAt())
+	fmt.Printf("Size:            %d bytes\n", envDetail.SizeBytes)
+	fmt.Printf("Created:         %s\n", envDetail.CreatedAt)
+	fmt.Printf("Updated:         %s\n", envDetail.UpdatedAt)
 
 	// Get packages
-	packages, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdPackagesGet(ctx, env.GetId()).Execute()
+	packages, err := client.GetEnvironmentPackages(ctx, env.ID)
 	if err == nil && len(packages) > 0 {
 		fmt.Printf("\nPackages (%d):\n", len(packages))
 		for _, pkg := range packages {
-			fmt.Printf("  - %s", pkg.GetName())
-			if v := pkg.GetVersion(); v != "" {
-				fmt.Printf(" (%s)", v)
+			fmt.Printf("  - %s", pkg.Name)
+			if pkg.Version != "" {
+				fmt.Printf(" (%s)", pkg.Version)
 			}
 			fmt.Println()
 		}
 	}
 }
 
-// findWorkspaceByName looks up a workspace by name and returns it
-func findWorkspaceByName(apiClient *client.APIClient, ctx context.Context, name string) (*client.ModelsEnvironment, error) {
-	envs, _, err := apiClient.EnvironmentsAPI.EnvironmentsGet(ctx).Execute()
+// findWorkspaceByName looks up a workspace by name and returns it.
+func findWorkspaceByName(client *cliclient.Client, ctx context.Context, name string) (*cliclient.Environment, error) {
+	envs, err := client.ListEnvironments(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list workspaces: %v", err)
 	}
 
 	for _, env := range envs {
-		if env.GetName() == name {
+		if env.Name == name {
 			return &env, nil
 		}
 	}

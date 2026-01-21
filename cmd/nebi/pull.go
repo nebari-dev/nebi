@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"fmt"
@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var pullRegistry string
 var pullOutput string
 
 var pullCmd = &cobra.Command{
@@ -39,7 +38,6 @@ Examples:
 }
 
 func init() {
-	rootCmd.AddCommand(pullCmd)
 	pullCmd.Flags().StringVarP(&pullOutput, "output", "o", ".", "Output directory")
 }
 
@@ -61,18 +59,18 @@ func runPull(cmd *cobra.Command, args []string) {
 		tag = tagOrDigest
 	}
 
-	apiClient := mustGetClient()
+	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
 	// Find workspace by name
-	env, err := findWorkspaceByName(apiClient, ctx, workspaceName)
+	env, err := findWorkspaceByName(client, ctx, workspaceName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Get versions to find the latest
-	versions, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdVersionsGet(ctx, env.GetId()).Execute()
+	versions, err := client.GetEnvironmentVersions(ctx, env.ID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to get versions: %v\n", err)
 		os.Exit(1)
@@ -84,10 +82,9 @@ func runPull(cmd *cobra.Command, args []string) {
 	}
 
 	// Find the version to pull
-	var versionNumber int32
 	if tag != "" || digest != "" {
 		// Find version matching tag or digest from publications
-		pubs, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdPublicationsGet(ctx, env.GetId()).Execute()
+		pubs, err := client.GetEnvironmentPublications(ctx, env.ID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Failed to get publications: %v\n", err)
 			os.Exit(1)
@@ -95,9 +92,7 @@ func runPull(cmd *cobra.Command, args []string) {
 
 		found := false
 		for _, pub := range pubs {
-			if (tag != "" && pub.GetTag() == tag) || (digest != "" && pub.GetDigest() == digest) {
-				// Find the version that matches - publications don't directly link to versions
-				// For now, use the latest version
+			if (tag != "" && pub.Tag == tag) || (digest != "" && pub.Digest == digest) {
 				found = true
 				break
 			}
@@ -116,21 +111,21 @@ func runPull(cmd *cobra.Command, args []string) {
 	// Use the latest version (highest version number)
 	latestVersion := versions[0]
 	for _, v := range versions {
-		if v.GetVersionNumber() > latestVersion.GetVersionNumber() {
+		if v.VersionNumber > latestVersion.VersionNumber {
 			latestVersion = v
 		}
 	}
-	versionNumber = latestVersion.GetVersionNumber()
+	versionNumber := latestVersion.VersionNumber
 
 	// Get pixi.toml
-	pixiToml, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdVersionsVersionPixiTomlGet(ctx, env.GetId(), versionNumber).Execute()
+	pixiToml, err := client.GetVersionPixiToml(ctx, env.ID, versionNumber)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to get pixi.toml: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Get pixi.lock
-	pixiLock, _, err := apiClient.EnvironmentsAPI.EnvironmentsIdVersionsVersionPixiLockGet(ctx, env.GetId(), versionNumber).Execute()
+	pixiLock, err := client.GetVersionPixiLock(ctx, env.ID, versionNumber)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to get pixi.lock: %v\n", err)
 		os.Exit(1)

@@ -33,9 +33,6 @@ jobs:
       - name: Build frontend for embed
         run: make build-frontend
 
-      - name: Generate CLI client
-        run: make generate-cli-client
-
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
@@ -63,9 +60,6 @@ jobs:
         run: |
           go mod download
           go install github.com/swaggo/swag/cmd/swag
-
-      - name: Generate CLI client
-        run: make generate-cli-client
 
       - name: Build
         run: make build

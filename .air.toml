@@ -3,9 +3,9 @@ testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
-  args_bin = []
+  args_bin = ["serve"]
   bin = "./tmp/main"
-  cmd = "swag init -g cmd/server/main.go -o docs && go build -o ./tmp/main cmd/server/main.go"
+  cmd = "swag init -g cmd/nebi/serve.go -o docs && go build -o ./tmp/main ./cmd/nebi"
   delay = 1000
   exclude_dir = ["assets", "tmp", "vendor", "testdata", "docs", "web"]
   exclude_file = []

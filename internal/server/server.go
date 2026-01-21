@@ -1,8 +1,8 @@
-package main
+// Package server provides the main server initialization and run logic.
+package server
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aktech/darb/internal/api"
+	"github.com/aktech/darb/internal/api/handlers"
 	"github.com/aktech/darb/internal/config"
 	"github.com/aktech/darb/internal/db"
 	"github.com/aktech/darb/internal/executor"
@@ -20,77 +21,64 @@ import (
 	"github.com/aktech/darb/internal/queue"
 	"github.com/aktech/darb/internal/worker"
 
-	_ "github.com/aktech/darb/docs" // Load swagger docs
-
-	"github.com/aktech/darb/internal/api/handlers"
 	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"
 )
 
-// Version is set via ldflags at build time
-var Version = "dev"
+// Config holds the server configuration options.
+type Config struct {
+	Port    int    // Port to run the server on (0 = use config default)
+	Mode    string // Run mode: server, worker, or both
+	Version string // Version string to report
+}
 
-// @title Darb API
-// @version 1.0
-// @description Multi-User Environment Management System API
-// @host localhost:8460
-// @BasePath /api/v1
-// @securityDefinitions.apikey BearerAuth
-// @in header
-// @name Authorization
-func main() {
-	// Define CLI flags
-	port := flag.Int("port", 0, "Port to run the server on (overrides config)")
-	mode := flag.String("mode", "both", "Run mode: server (API only), worker (worker only), or both")
-	flag.Parse()
-
+// Run starts the server with the given configuration and blocks until the context is canceled.
+func Run(ctx context.Context, cfg Config) error {
 	// Set version in handlers
-	handlers.Version = Version
+	if cfg.Version != "" {
+		handlers.Version = cfg.Version
+	}
+
 	// Load configuration
-	cfg, err := config.Load()
+	appCfg, err := config.Load()
 	if err != nil {
-		slog.Error("Failed to load configuration", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
 	// Override port from CLI flag if provided
-	if *port != 0 {
-		cfg.Server.Port = *port
+	if cfg.Port != 0 {
+		appCfg.Server.Port = cfg.Port
 	}
 
 	// Initialize logger
-	logger.Init(cfg.Log.Format, cfg.Log.Level)
-	slog.Info("Starting Darb server", "version", Version, "mode", cfg.Server.Mode)
+	logger.Init(appCfg.Log.Format, appCfg.Log.Level)
+	slog.Info("Starting Darb server", "version", cfg.Version, "mode", appCfg.Server.Mode)
 
 	// Initialize database
-	database, err := db.New(cfg.Database)
+	database, err := db.New(appCfg.Database)
 	if err != nil {
-		slog.Error("Failed to initialize database", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to initialize database: %w", err)
 	}
-	slog.Info("Database initialized", "driver", cfg.Database.Driver)
+	slog.Info("Database initialized", "driver", appCfg.Database.Driver)
 
 	// Run migrations
 	if err := db.Migrate(database); err != nil {
-		slog.Error("Failed to run migrations", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 	slog.Info("Database migrations completed")
 
 	// Create default admin user if configured
 	if err := db.CreateDefaultAdmin(database); err != nil {
-		slog.Error("Failed to create default admin user", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to create default admin user: %w", err)
 	}
 
 	// Initialize job queue based on configuration
-	jobQueue, err := createQueue(cfg, database)
+	jobQueue, err := createQueue(appCfg, database)
 	if err != nil {
-		slog.Error("Failed to initialize job queue", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to initialize job queue: %w", err)
 	}
 	defer jobQueue.Close()
-	slog.Info("Job queue initialized", "type", cfg.Queue.Type)
+	slog.Info("Job queue initialized", "type", appCfg.Queue.Type)
 
 	// Get Valkey client for log streaming (if using Valkey queue)
 	var valkeyClient valkey.Client
@@ -100,10 +88,9 @@ func main() {
 	}
 
 	// Initialize executor
-	exec, err := executor.NewLocalExecutor(cfg)
+	exec, err := executor.NewLocalExecutor(appCfg)
 	if err != nil {
-		slog.Error("Failed to initialize executor", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to initialize executor: %w", err)
 	}
 	slog.Info("Local executor initialized")
 
@@ -112,21 +99,24 @@ func main() {
 	var srv *http.Server
 	var workerCancel context.CancelFunc
 
-	runServer := *mode == "server" || *mode == "both"
-	runWorker := *mode == "worker" || *mode == "both"
-
-	if !runServer && !runWorker {
-		slog.Error("Invalid mode", "mode", *mode, "valid_modes", "server, worker, both")
-		os.Exit(1)
+	mode := cfg.Mode
+	if mode == "" {
+		mode = "both"
 	}
 
-	slog.Info("Starting Darb", "mode", *mode)
+	runServer := mode == "server" || mode == "both"
+	runWorker := mode == "worker" || mode == "both"
+
+	if !runServer && !runWorker {
+		return fmt.Errorf("invalid mode %q: valid modes are server, worker, both", mode)
+	}
+
+	slog.Info("Starting Darb", "mode", mode)
 
 	// Initialize and start worker if needed
 	if runWorker {
-		// Create worker with optional Valkey client (nil for local mode, non-nil for distributed mode)
 		w = worker.New(database, jobQueue, exec, slog.Default(), valkeyClient)
-		workerCtx, cancel := context.WithCancel(context.Background())
+		workerCtx, cancel := context.WithCancel(ctx)
 		workerCancel = cancel
 
 		go func() {
@@ -139,37 +129,30 @@ func main() {
 
 	// Initialize and start API server if needed
 	if runServer {
-		// Get broker for log streaming (nil if worker not running)
 		var broker *logstream.LogBroker
 		if w != nil {
 			broker = w.GetBroker()
 		}
 
-		// Initialize API router (pass valkeyClient as interface{} for compatibility)
 		var valkeyClientInterface interface{} = valkeyClient
-		router := api.NewRouter(cfg, database, jobQueue, exec, broker, valkeyClientInterface, slog.Default())
+		router := api.NewRouter(appCfg, database, jobQueue, exec, broker, valkeyClientInterface, slog.Default())
 
-		// Create HTTP server
-		addr := fmt.Sprintf(":%d", cfg.Server.Port)
+		addr := fmt.Sprintf(":%d", appCfg.Server.Port)
 		srv = &http.Server{
 			Addr:    addr,
 			Handler: router,
 		}
 
-		// Start server in goroutine
 		go func() {
 			slog.Info("Server listening", "address", addr)
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				slog.Error("Server failed", "error", err)
-				os.Exit(1)
 			}
 		}()
 	}
 
-	// Wait for interrupt signal for graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	// Wait for context cancellation
+	<-ctx.Done()
 	slog.Info("Shutting down...")
 
 	// Stop worker if running
@@ -180,20 +163,47 @@ func main() {
 
 	// Shutdown server if running
 	if srv != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		if err := srv.Shutdown(ctx); err != nil {
-			slog.Error("Server forced to shutdown", "error", err)
-			os.Exit(1)
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("server forced to shutdown: %w", err)
 		}
 		slog.Info("Server stopped")
 	}
 
 	slog.Info("Darb exited")
+	return nil
 }
 
-// createQueue creates a queue based on configuration
+// RunWithSignalHandling starts the server and handles OS signals for graceful shutdown.
+func RunWithSignalHandling(cfg Config) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Set up signal handling
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	// Run server in goroutine
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- Run(ctx, cfg)
+	}()
+
+	// Wait for signal or error
+	select {
+	case sig := <-quit:
+		slog.Info("Received signal", "signal", sig)
+		cancel()
+		// Wait for server to finish
+		return <-errCh
+	case err := <-errCh:
+		return err
+	}
+}
+
+// createQueue creates a queue based on configuration.
 func createQueue(cfg *config.Config, database *gorm.DB) (queue.Queue, error) {
 	switch cfg.Queue.Type {
 	case "memory":

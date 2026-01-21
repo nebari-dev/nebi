@@ -61,5 +61,8 @@ frontend/node_modules/
 dist/
 .env.prod
 
-# CLI generated client (regenerated from OpenAPI spec)
-cli/client/
+# Local environments
+my-pixi-env/
+
+# Scratch files
+scratch.md

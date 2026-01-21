@@ -25,13 +25,13 @@ COPY . .
 COPY --from=frontend-builder /app/frontend/dist ./internal/web/dist
 
 # Generate swagger docs
-RUN swag init -g cmd/server/main.go -o ./docs
+RUN swag init -g cmd/nebi/main.go -o ./docs
 
 # Build pure Go binary with CGO disabled
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -trimpath \
     -ldflags '-s -w -X main.Version=latest' \
-    -o /darb ./cmd/server
+    -o /darb ./cmd/nebi
 
 # Stage 3: Final image with pixi
 FROM ghcr.io/prefix-dev/pixi:latest

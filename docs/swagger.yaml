@@ -139,6 +139,8 @@ definitions:
         type: string
       tag:
         type: string
+      version_number:
+        type: integer
     type: object
   handlers.PublishRequest:
     properties:
@@ -522,7 +524,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       responses:
         "204":
           description: No Content
@@ -549,6 +551,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: List all OCI registries
       tags:
       - admin
@@ -578,6 +582,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Create a new OCI registry
       tags:
       - admin
@@ -601,6 +607,8 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Delete a registry
       tags:
       - admin
@@ -625,6 +633,8 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Get a registry by ID
       tags:
       - admin
@@ -659,6 +669,8 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Update a registry
       tags:
       - admin
@@ -936,7 +948,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       responses:
         "204":
           description: No Content
@@ -963,7 +975,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -1017,7 +1029,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -1052,7 +1064,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       - description: Packages to install
         in: body
         name: packages
@@ -1096,7 +1108,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       - description: Package name
         in: path
         name: package
@@ -1137,7 +1149,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -1448,7 +1460,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -1520,6 +1532,8 @@ paths:
             items:
               $ref: '#/definitions/handlers.RegistryResponse'
             type: array
+      security:
+      - BearerAuth: []
       summary: List available registries (public info only)
       tags:
       - registries

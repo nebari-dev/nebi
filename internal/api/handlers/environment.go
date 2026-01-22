@@ -153,7 +153,7 @@ func (h *EnvironmentHandler) CreateEnvironment(c *gin.Context) {
 // @Tags environments
 // @Security BearerAuth
 // @Produce json
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Success 200 {object} models.Environment
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -183,7 +183,7 @@ func (h *EnvironmentHandler) GetEnvironment(c *gin.Context) {
 // @Summary Delete an environment
 // @Tags environments
 // @Security BearerAuth
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Success 204
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -235,7 +235,7 @@ func (h *EnvironmentHandler) DeleteEnvironment(c *gin.Context) {
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Param packages body InstallPackagesRequest true "Packages to install"
 // @Success 202 {object} models.Job
 // @Failure 400 {object} ErrorResponse
@@ -298,7 +298,7 @@ func (h *EnvironmentHandler) InstallPackages(c *gin.Context) {
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Param package path string true "Package name"
 // @Success 202 {object} models.Job
 // @Failure 400 {object} ErrorResponse
@@ -355,7 +355,7 @@ func (h *EnvironmentHandler) RemovePackages(c *gin.Context) {
 // @Tags environments
 // @Security BearerAuth
 // @Produce json
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Success 200 {array} models.Package
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -385,7 +385,7 @@ func (h *EnvironmentHandler) ListPackages(c *gin.Context) {
 // @Tags environments
 // @Security BearerAuth
 // @Produce json
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Success 200 {object} PixiTomlResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -905,14 +905,15 @@ type PublishRequest struct {
 }
 
 type PublicationResponse struct {
-	ID           uuid.UUID `json:"id"`
-	RegistryName string    `json:"registry_name"`
-	RegistryURL  string    `json:"registry_url"`
-	Repository   string    `json:"repository"`
-	Tag          string    `json:"tag"`
-	Digest       string    `json:"digest"`
-	PublishedBy  string    `json:"published_by"`
-	PublishedAt  string    `json:"published_at"`
+	ID            uuid.UUID `json:"id"`
+	VersionNumber int       `json:"version_number"`
+	RegistryName  string    `json:"registry_name"`
+	RegistryURL   string    `json:"registry_url"`
+	Repository    string    `json:"repository"`
+	Tag           string    `json:"tag"`
+	Digest        string    `json:"digest"`
+	PublishedBy   string    `json:"published_by"`
+	PublishedAt   string    `json:"published_at"`
 }
 
 // PublishEnvironment godoc
@@ -952,6 +953,13 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 		return
 	}
 
+	// Get the latest version number for this environment
+	var latestVersion models.EnvironmentVersion
+	if err := h.db.Where("environment_id = ?", envID).Order("version_number DESC").First(&latestVersion).Error; err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Environment has no versions to publish"})
+		return
+	}
+
 	// Get registry
 	var registry models.OCIRegistry
 	if err := h.db.Where("id = ?", req.RegistryID).First(&registry).Error; err != nil {
@@ -981,6 +989,7 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 	// Create publication record
 	publication := models.Publication{
 		EnvironmentID: env.ID,
+		VersionNumber: latestVersion.VersionNumber,
 		RegistryID:    registry.ID,
 		Repository:    req.Repository,
 		Tag:           req.Tag,
@@ -997,14 +1006,15 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 	h.db.Preload("Registry").Preload("PublishedByUser").First(&publication, publication.ID)
 
 	response := PublicationResponse{
-		ID:           publication.ID,
-		RegistryName: publication.Registry.Name,
-		RegistryURL:  publication.Registry.URL,
-		Repository:   publication.Repository,
-		Tag:          publication.Tag,
-		Digest:       publication.Digest,
-		PublishedBy:  publication.PublishedByUser.Username,
-		PublishedAt:  publication.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:            publication.ID,
+		VersionNumber: publication.VersionNumber,
+		RegistryName:  publication.Registry.Name,
+		RegistryURL:   publication.Registry.URL,
+		Repository:    publication.Repository,
+		Tag:           publication.Tag,
+		Digest:        publication.Digest,
+		PublishedBy:   publication.PublishedByUser.Username,
+		PublishedAt:   publication.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
 
 	// Audit log
@@ -1051,14 +1061,15 @@ func (h *EnvironmentHandler) ListPublications(c *gin.Context) {
 	response := make([]PublicationResponse, len(publications))
 	for i, pub := range publications {
 		response[i] = PublicationResponse{
-			ID:           pub.ID,
-			RegistryName: pub.Registry.Name,
-			RegistryURL:  pub.Registry.URL,
-			Repository:   pub.Repository,
-			Tag:          pub.Tag,
-			Digest:       pub.Digest,
-			PublishedBy:  pub.PublishedByUser.Username,
-			PublishedAt:  pub.CreatedAt.Format("2006-01-02 15:04:05"),
+			ID:            pub.ID,
+			VersionNumber: pub.VersionNumber,
+			RegistryName:  pub.Registry.Name,
+			RegistryURL:   pub.Registry.URL,
+			Repository:    pub.Repository,
+			Tag:           pub.Tag,
+			Digest:        pub.Digest,
+			PublishedBy:   pub.PublishedByUser.Username,
+			PublishedAt:   pub.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
 	}
 

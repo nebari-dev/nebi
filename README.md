@@ -1,7 +1,7 @@
-# Darb
+# Nebi
 
 <p align="center">
-  <img src="assets/darb-high-resolution-logo.png" alt="Darb" width="500"/>
+  <img src="assets/nebi-logo.png" alt="Nebi" width="500"/>
 </p>
 
 <p align="center">
@@ -9,30 +9,30 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/aktech/darb/actions/workflows/ci.yml">
-    <img src="https://github.com/aktech/darb/actions/workflows/ci.yml/badge.svg" alt="CI">
+  <a href="https://github.com/nebari-dev/nebi/actions/workflows/ci.yml">
+    <img src="https://github.com/nebari-dev/nebi/actions/workflows/ci.yml/badge.svg" alt="CI">
   </a>
-  <a href="https://github.com/aktech/darb/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/aktech/darb" alt="License">
+  <a href="https://github.com/nebari-dev/nebi/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/nebari-dev/nebi" alt="License">
   </a>
-  <a href="https://github.com/aktech/darb/releases">
-    <img src="https://img.shields.io/github/v/release/aktech/darb?include_prereleases" alt="Release">
+  <a href="https://github.com/nebari-dev/nebi/releases">
+    <img src="https://img.shields.io/github/v/release/nebari-dev/nebi?include_prereleases" alt="Release">
   </a>
-  <a href="https://github.com/aktech/darb/issues">
-    <img src="https://img.shields.io/github/issues/aktech/darb" alt="Issues">
+  <a href="https://github.com/nebari-dev/nebi/issues">
+    <img src="https://img.shields.io/github/issues/nebari-dev/nebi" alt="Issues">
   </a>
-  <a href="https://github.com/aktech/darb/pulls">
-    <img src="https://img.shields.io/github/issues-pr/aktech/darb" alt="Pull Requests">
+  <a href="https://github.com/nebari-dev/nebi/pulls">
+    <img src="https://img.shields.io/github/issues-pr/nebari-dev/nebi" alt="Pull Requests">
   </a>
 </p>
 
 ---
 
-> **⚠️ Alpha Software**: Darb is currently in alpha. APIs and features may change without notice. Not recommended for production use.
+> **⚠️ Alpha Software**: Nebi is currently in alpha. APIs and features may change without notice. Not recommended for production use.
 
-## What is Darb?
+## What is Nebi?
 
-Darb is a REST API and web UI for managing [Pixi](https://prefix.dev/) environments in multi-user settings. It handles environment creation, package installation, and job execution with proper isolation and access control.
+Nebi is a REST API and web UI for managing [Pixi](https://prefix.dev/) environments in multi-user settings. It handles environment creation, package installation, and job execution with proper isolation and access control.
 
 > **Note**: [UV](https://github.com/astral-sh/uv) support is planned for a future release and is currently in the roadmap.
 
@@ -73,40 +73,16 @@ This will start:
 
 ```bash
 # Build and import to k3d
-docker build -t darb:latest .
-k3d image import darb:latest -c darb-dev
+docker build -t nebi:latest .
+k3d image import nebi:latest -c nebi-dev
 
 # Deploy
-helm install darb ./chart -n darb --create-namespace \
+helm install nebi ./chart -n nebi --create-namespace \
   -f chart/values-dev.yaml
 
 # Access
 curl http://localhost:8460/api/v1/health
 ```
-
-### Fly.io Deployment
-
-Deploy to fly.io using GitHub Actions:
-
-```bash
-# Generate a deploy token for CI/CD
-flyctl tokens create deploy --name github-actions-darb
-
-# Set GitHub secrets
-gh secret set FLY_API_TOKEN --body "<token-from-above>"
-gh secret set JWT_SECRET --body "$(openssl rand -base64 32)"
-gh secret set ADMIN_USERNAME --body "admin"
-gh secret set ADMIN_PASSWORD --body "$(openssl rand -base64 24)"
-
-# Deploy via GitHub Actions
-gh workflow run deploy.yml
-```
-
-The deployment workflow will:
-- Create the fly.io app (if it doesn't exist)
-- Create a 1GB volume for SQLite database
-- Set required secrets
-- Build and deploy the Docker image
 
 ## Architecture
 
@@ -173,28 +149,28 @@ curl -X POST http://localhost:8460/api/v1/environments/{id}/packages \
 
 ```bash
 # Server configuration
-DARB_SERVER_PORT=8460
-DARB_SERVER_MODE=development
+NEBI_SERVER_PORT=8460
+NEBI_SERVER_MODE=development
 
 # Database configuration
-DARB_DATABASE_DRIVER=postgres
-DARB_DATABASE_DSN="postgres://user:pass@host:5432/darb"
+NEBI_DATABASE_DRIVER=postgres
+NEBI_DATABASE_DSN="postgres://user:pass@host:5432/nebi"
 
 # Queue configuration
-DARB_QUEUE_TYPE=valkey
-DARB_QUEUE_VALKEY_ADDR=valkey:6379
+NEBI_QUEUE_TYPE=valkey
+NEBI_QUEUE_VALKEY_ADDR=valkey:6379
 
 # Authentication
-DARB_AUTH_JWT_SECRET=<secret>
+NEBI_AUTH_JWT_SECRET=<secret>
 
 # Logging
-DARB_LOG_LEVEL=info
-DARB_LOG_FORMAT=json
+NEBI_LOG_LEVEL=info
+NEBI_LOG_FORMAT=json
 
 # Admin user bootstrap (creates admin user on first startup if no users exist)
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin123
-ADMIN_EMAIL=admin@darb.local  # Optional, defaults to <username>@darb.local
+ADMIN_EMAIL=admin@nebi.local  # Optional, defaults to <username>@nebi.local
 ```
 
 ### Helm Values
@@ -220,16 +196,6 @@ database:
 
 queue:
   type: valkey
-```
-
-## Scaling
-
-```bash
-# Scale workers based on job queue depth
-kubectl scale deployment darb-worker -n darb --replicas=5
-
-# Scale API for HTTP traffic
-kubectl scale deployment darb-api -n darb --replicas=3
 ```
 
 ## CLI Usage
@@ -271,7 +237,7 @@ make swagger        # Generate API docs
 ## Project Structure
 
 ```
-darb/
+nebi/
 ├── cmd/nebi/             # Unified CLI + server entry point
 ├── internal/
 │   ├── api/              # HTTP handlers and routing

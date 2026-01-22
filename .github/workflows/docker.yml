@@ -73,8 +73,9 @@ jobs:
           IMAGE_TAG="${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}"
           echo "Testing image: ${IMAGE_TAG}"
 
-          # Start container
+          # Start container with port mapping
           docker run --rm -d --name test-darb \
+            -p 8460:8460 \
             -e DARB_AUTH_JWT_SECRET=test-secret \
             -e DARB_DATABASE_DSN=/tmp/test.db \
             ${IMAGE_TAG}
@@ -88,8 +89,8 @@ jobs:
           # Check logs
           docker logs test-darb
 
-          # Test health endpoint
-          docker exec test-darb wget --spider -q http://localhost:8460/api/v1/health || exit 1
+          # Test health endpoint from host (pixi image has no wget/curl)
+          curl -sf http://localhost:8460/api/v1/health || exit 1
 
           # Cleanup
           docker stop test-darb

@@ -507,33 +507,25 @@ origin:
   workspace: data-science
   tag: v1.0
   registry: ds-team
-  registry_url: ghcr.io/myorg           # Full OCI registry URL
-  manifest_digest: sha256:abc123def456...  # OCI manifest digest
+  server_url: https://nebi.example.com
+  server_version_id: 42                  # Server-side version ID
+  manifest_digest: sha256:abc123def456...  # OCI manifest digest (for drift detection)
   pulled_at: 2024-01-20T10:30:00Z
-  source: oci                            # "oci" (direct registry) or "server" (nebi server API)
-  server_url: https://nebi.example.com   # Only present if source: server
-  server_version_id: 42                  # Server-side version ID (if source: server)
 
 layers:
   pixi.toml:
-    digest: sha256:111...   # OCI layer digest (= sha256 of file content)
+    digest: sha256:111...   # sha256 of file content
     size: 2345
     media_type: application/vnd.pixi.toml.v1+toml
   pixi.lock:
-    digest: sha256:222...   # OCI layer digest (= sha256 of file content)
+    digest: sha256:222...   # sha256 of file content
     size: 45678
     media_type: application/vnd.pixi.lock.v1+yaml
 ```
 
-The `layers` digests come directly from the OCI manifest pulled from the registry - no separate computation needed. Since nebi stores files as raw blobs (not tar layers), these digests are simply `sha256(file_content)`, making local comparison trivial.
+The `layers` digests are computed as `sha256(file_content)` at pull time. Since the Nebi server stores files as raw blobs (not tar layers), the OCI layer digest equals the sha256 of the file bytes, making local comparison trivial.
 
-**Source field**: Indicates how the workspace was pulled:
-- `oci`: Pulled directly from an OCI registry. Use `registry_url` + `manifest_digest` to fetch content.
-- `server`: Pulled via the Nebi server API. Use `server_url` + `server_version_id` to fetch content.
-  The server stores versions independently of tag mutability, so fetching by version ID is always reliable.
-
-Both source types store the `manifest_digest` for drift detection, but the fetch path
-for `nebi diff` differs based on source type.
+All pulls go through the Nebi server REST API. The server stores version content independently of tag mutability, so fetching by `server_version_id` is always reliable for subsequent `nebi diff` operations.
 
 This allows:
 - Drift detection without network access (just re-hash local files and compare)
@@ -586,8 +578,8 @@ The local index is a JSON file at `~/.local/share/nebi/index.json`. It's human-r
       "workspace": "data-science",
       "tag": "v1.0",
       "registry": "ds-team",
-      "registry_url": "ghcr.io/myorg",
-      "source": "oci",
+      "server_url": "https://nebi.example.com",
+      "server_version_id": 42,
       "path": "/home/user/project-a",
       "is_global": false,
       "pulled_at": "2024-01-20T10:30:00Z",
@@ -601,6 +593,8 @@ The local index is a JSON file at `~/.local/share/nebi/index.json`. It's human-r
       "workspace": "data-science",
       "tag": "v1.0",
       "registry": "ds-team",
+      "server_url": "https://nebi.example.com",
+      "server_version_id": 42,
       "path": "/home/user/project-b",
       "is_global": false,
       "pulled_at": "2024-01-21T14:00:00Z",
@@ -614,6 +608,8 @@ The local index is a JSON file at `~/.local/share/nebi/index.json`. It's human-r
       "workspace": "data-science",
       "tag": "v2.0",
       "registry": "ds-team",
+      "server_url": "https://nebi.example.com",
+      "server_version_id": 55,
       "path": "/home/user/.local/share/nebi/workspaces/data-science/v2.0",
       "is_global": true,
       "pulled_at": "2024-01-22T09:00:00Z",

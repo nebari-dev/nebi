@@ -139,6 +139,8 @@ definitions:
         type: string
       tag:
         type: string
+      version_number:
+        type: integer
     type: object
   handlers.PublishRequest:
     properties:

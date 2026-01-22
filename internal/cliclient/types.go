@@ -57,14 +57,15 @@ type Package struct {
 
 // Publication represents a published version of an environment.
 type Publication struct {
-	ID           string `json:"id"`
-	EnvID        string `json:"environment_id"`
-	RegistryID   string `json:"registry_id"`
-	RegistryName string `json:"registry_name"`
-	Repository   string `json:"repository"`
-	Tag          string `json:"tag"`
-	Digest       string `json:"digest"`
-	PublishedAt  string `json:"published_at"`
+	ID            string `json:"id"`
+	EnvID         string `json:"environment_id"`
+	VersionNumber int    `json:"version_number"`
+	RegistryID    string `json:"registry_id"`
+	RegistryName  string `json:"registry_name"`
+	Repository    string `json:"repository"`
+	Tag           string `json:"tag"`
+	Digest        string `json:"digest"`
+	PublishedAt   string `json:"published_at"`
 }
 
 // PublishRequest represents a request to publish an environment.

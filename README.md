@@ -1,8 +1,10 @@
 # Nebi
 
-<p align="center">
-  <img src="assets/nebi-logo.png" alt="Nebi" width="500"/>
-</p>
+<div align="center">
+  <table><tr><td bgcolor="white" style="padding: 20px;">
+    <img src="assets/nebi-logo.png" alt="Nebi" width="500"/>
+  </td></tr></table>
+</div>
 
 <p align="center">
   Multi-user environment management for Pixi (UV support coming soon)

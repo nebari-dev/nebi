@@ -1,15 +1,25 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/aktech/darb/internal/localindex"
+	"github.com/aktech/darb/internal/nebifile"
 	"github.com/spf13/cobra"
 )
 
-var pullOutput string
+var (
+	pullOutput string
+	pullGlobal bool
+	pullForce  bool
+	pullYes    bool
+	pullName   string
+)
 
 var pullCmd = &cobra.Command{
 	Use:   "pull <workspace>[:<tag>]",
@@ -21,24 +31,39 @@ Supports Docker-style references:
   - workspace        - Pull latest version
   - workspace@digest - Pull by digest (immutable)
 
+Modes:
+  - Directory pull (default): Writes to current directory or -o path
+  - Global pull (--global): Writes to ~/.local/share/nebi/workspaces/<uuid>/<tag>/
+    with duplicate prevention (use --force to overwrite)
+
 Examples:
-  # Pull latest version
+  # Pull latest version to current directory
   nebi pull myworkspace
 
   # Pull specific tag
   nebi pull myworkspace:v1.0.0
 
-  # Pull by digest
-  nebi pull myworkspace@sha256:abc123def
-
   # Pull to specific directory
-  nebi pull myworkspace:v1.0.0 -o ./my-project`,
+  nebi pull myworkspace:v1.0.0 -o ./my-project
+
+  # Pull globally (single copy, shell-accessible)
+  nebi pull --global myworkspace:v1.0.0
+
+  # Pull globally with an alias
+  nebi pull --global myworkspace:v1.0.0 --name ds-stable
+
+  # Force re-pull of global workspace
+  nebi pull --global myworkspace:v1.0.0 --force`,
 	Args: cobra.ExactArgs(1),
 	Run:  runPull,
 }
 
 func init() {
-	pullCmd.Flags().StringVarP(&pullOutput, "output", "o", ".", "Output directory")
+	pullCmd.Flags().StringVarP(&pullOutput, "output", "o", ".", "Output directory (for directory pulls)")
+	pullCmd.Flags().BoolVar(&pullGlobal, "global", false, "Pull to global storage (~/.local/share/nebi/workspaces/)")
+	pullCmd.Flags().BoolVar(&pullForce, "force", false, "Force re-pull (overwrite existing)")
+	pullCmd.Flags().BoolVar(&pullYes, "yes", false, "Non-interactive mode (skip confirmations)")
+	pullCmd.Flags().StringVar(&pullName, "name", "", "Assign an alias to this global workspace (requires --global)")
 }
 
 func runPull(cmd *cobra.Command, args []string) {
@@ -59,8 +84,21 @@ func runPull(cmd *cobra.Command, args []string) {
 		tag = tagOrDigest
 	}
 
+	// Validate --name requires --global
+	if pullName != "" && !pullGlobal {
+		fmt.Fprintf(os.Stderr, "Error: --name requires --global flag\n")
+		os.Exit(1)
+	}
+
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
+
+	// Load CLI config for server URL
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Find workspace by name
 	env, err := findWorkspaceByName(client, ctx, workspaceName)
@@ -70,6 +108,7 @@ func runPull(cmd *cobra.Command, args []string) {
 	}
 
 	var versionNumber int32
+	var manifestDigest string
 
 	if tag != "" || digest != "" {
 		// Find the publication matching the tag or digest
@@ -83,6 +122,7 @@ func runPull(cmd *cobra.Command, args []string) {
 		for _, pub := range pubs {
 			if (tag != "" && pub.Tag == tag) || (digest != "" && pub.Digest == digest) {
 				versionNumber = int32(pub.VersionNumber)
+				manifestDigest = pub.Digest
 				found = true
 				break
 			}
@@ -117,6 +157,26 @@ func runPull(cmd *cobra.Command, args []string) {
 			}
 		}
 		versionNumber = latestVersion.VersionNumber
+		tag = "latest"
+	}
+
+	// Initialize local index
+	idxStore := localindex.NewStore()
+
+	// Determine output directory
+	var outputDir string
+	if pullGlobal {
+		outputDir, err = handleGlobalPull(idxStore, env.ID, workspaceName, tag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		outputDir, err = handleDirectoryPull(idxStore, workspaceName, tag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	// Get pixi.toml
@@ -134,34 +194,146 @@ func runPull(cmd *cobra.Command, args []string) {
 	}
 
 	// Create output directory if needed
-	if err := os.MkdirAll(pullOutput, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to create output directory: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Write pixi.toml
-	pixiTomlPath := filepath.Join(pullOutput, "pixi.toml")
-	if err := os.WriteFile(pixiTomlPath, []byte(pixiToml), 0644); err != nil {
+	pixiTomlBytes := []byte(pixiToml)
+	pixiTomlPath := filepath.Join(outputDir, "pixi.toml")
+	if err := os.WriteFile(pixiTomlPath, pixiTomlBytes, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to write pixi.toml: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Wrote %s\n", pixiTomlPath)
 
 	// Write pixi.lock
-	pixiLockPath := filepath.Join(pullOutput, "pixi.lock")
-	if err := os.WriteFile(pixiLockPath, []byte(pixiLock), 0644); err != nil {
+	pixiLockBytes := []byte(pixiLock)
+	pixiLockPath := filepath.Join(outputDir, "pixi.lock")
+	if err := os.WriteFile(pixiLockPath, pixiLockBytes, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to write pixi.lock: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Wrote %s\n", pixiLockPath)
 
+	// Compute layer digests
+	pixiTomlDigest := nebifile.ComputeDigest(pixiTomlBytes)
+	pixiLockDigest := nebifile.ComputeDigest(pixiLockBytes)
+
+	// Write .nebi metadata file
+	nf := nebifile.NewFromPull(
+		workspaceName, tag, "", cfg.ServerURL,
+		versionNumber, manifestDigest,
+		pixiTomlDigest, int64(len(pixiTomlBytes)),
+		pixiLockDigest, int64(len(pixiLockBytes)),
+	)
+	if err := nebifile.Write(outputDir, nf); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to write .nebi metadata: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Resolve absolute path for index
+	absOutputDir, err := filepath.Abs(outputDir)
+	if err != nil {
+		absOutputDir = outputDir
+	}
+
+	// Update local index
+	entry := localindex.WorkspaceEntry{
+		Workspace:       workspaceName,
+		Tag:             tag,
+		ServerURL:       cfg.ServerURL,
+		ServerVersionID: versionNumber,
+		Path:            absOutputDir,
+		IsGlobal:        pullGlobal,
+		PulledAt:        time.Now(),
+		ManifestDigest:  manifestDigest,
+		Layers: map[string]string{
+			"pixi.toml": pixiTomlDigest,
+			"pixi.lock": pixiLockDigest,
+		},
+	}
+	if err := idxStore.AddEntry(entry); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Failed to update local index: %v\n", err)
+	}
+
+	// Handle alias (--name flag)
+	if pullName != "" {
+		alias := localindex.Alias{UUID: env.ID, Tag: tag}
+		if err := idxStore.SetAlias(pullName, alias); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to set alias: %v\n", err)
+		} else {
+			fmt.Printf("Alias: %s → %s:%s\n", pullName, workspaceName, tag)
+		}
+	}
+
+	// Print summary
 	refStr := workspaceName
-	if tag != "" {
+	if tag != "" && tag != "latest" {
 		refStr = workspaceName + ":" + tag
 	} else if digest != "" {
 		refStr = workspaceName + "@" + digest
 	}
-	fmt.Printf("\nPulled %s (version %d)\n", refStr, versionNumber)
+	fmt.Printf("Pulled %s (version %d) → %s\n", refStr, versionNumber, absOutputDir)
 	fmt.Println("\nTo install the environment, run:")
-	fmt.Printf("  cd %s && pixi install\n", pullOutput)
+	fmt.Printf("  cd %s && pixi install\n", outputDir)
+}
+
+// handleGlobalPull handles the --global pull workflow.
+// Returns the output directory path or an error.
+func handleGlobalPull(store *localindex.Store, envID, workspace, tag string) (string, error) {
+	// Compute global path using the workspace's server-assigned UUID
+	outputDir := store.GlobalWorkspacePath(envID, tag)
+
+	// Check if already exists
+	existing, err := store.FindGlobal(workspace, tag)
+	if err != nil {
+		return "", fmt.Errorf("failed to check existing global workspace: %v", err)
+	}
+
+	if existing != nil && !pullForce {
+		return "", fmt.Errorf("%s:%s already exists globally.\n  Location: %s\n  Pulled: %s\nUse --force to re-pull and overwrite",
+			workspace, tag, existing.Path, existing.PulledAt.Format(time.RFC3339))
+	}
+
+	return outputDir, nil
+}
+
+// handleDirectoryPull handles the default directory pull workflow.
+// Returns the output directory path or an error.
+func handleDirectoryPull(store *localindex.Store, workspace, tag string) (string, error) {
+	outputDir := pullOutput
+
+	// Resolve absolute path for comparison
+	absDir, err := filepath.Abs(outputDir)
+	if err != nil {
+		return outputDir, nil
+	}
+
+	// Check if this directory already has a different workspace:tag
+	existing, err := store.FindByPath(absDir)
+	if err != nil {
+		return outputDir, nil // Non-fatal, proceed with pull
+	}
+
+	if existing != nil && existing.Workspace == workspace && existing.Tag == tag {
+		// Same workspace:tag to same directory - re-pull (overwrite), no prompt needed
+		return outputDir, nil
+	}
+
+	if existing != nil && (existing.Workspace != workspace || existing.Tag != tag) && !pullForce {
+		// Different workspace:tag to same directory - prompt for confirmation
+		if !pullYes {
+			fmt.Fprintf(os.Stderr, "Warning: %s already contains %s:%s\n", absDir, existing.Workspace, existing.Tag)
+			fmt.Fprintf(os.Stderr, "Overwrite with %s:%s? [y/N]: ", workspace, tag)
+
+			reader := bufio.NewReader(os.Stdin)
+			response, _ := reader.ReadString('\n')
+			response = strings.TrimSpace(strings.ToLower(response))
+			if response != "y" && response != "yes" {
+				return "", fmt.Errorf("pull cancelled")
+			}
+		}
+	}
+
+	return outputDir, nil
 }

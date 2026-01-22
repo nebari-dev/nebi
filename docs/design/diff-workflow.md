@@ -462,14 +462,14 @@ nebi diff data-science:v1.0 .
 
 The `.nebi` file stores layer digests but not the original file content. Two approaches:
 
-1. **Re-fetch from registry** (simpler): Use the stored `manifest_digest` to fetch the exact
-   original layers from the registry. This is immutable and guaranteed to match.
+1. **Re-fetch from server** (simpler): Use the stored `server_version_id` to fetch the exact
+   original content via the Nebi server API. Version IDs are immutable and guaranteed to match.
 2. **Stash original on pull** (faster, offline): Save a copy of pulled files to
    `~/.cache/nebi/pulled/<digest>/`. Enables offline diff but costs disk space.
 
-**Recommendation for MVP**: Re-fetch from registry. For `nebi status` (just modified/clean),
+**Recommendation for MVP**: Re-fetch from server. For `nebi status` (just modified/clean),
 no network is needed (local hash comparison). For `nebi diff` (show *what* changed), fetching
-the small files (~50KB) is fast enough.
+the small files (~50KB) from the server is fast enough.
 
 **Output format (unified diff, like git)**:
 ```
@@ -603,33 +603,31 @@ Used for:
 To compare against remote, we need to fetch the manifest and potentially file contents
 without writing them locally.
 
-### Two Fetch Modes: By Digest vs By Tag
+### Two Fetch Modes: By Version ID vs By Tag
 
 This distinction is critical for correctness:
 
-```go
-// MODE 1: Fetch by DIGEST (for "nebi diff" - compare against origin)
-// This is immutable - always returns the exact content originally pulled
-manifestDesc, manifestContent, _ := oras.FetchBytes(ctx, repo, "sha256:abc123...", oras.DefaultFetchBytesOptions)
+1. **By Version ID** (for `nebi diff` — compare against origin):
+   - Fetches the exact content originally pulled, immutable
+   - Uses `server_version_id` from `.nebi` metadata
+   - `GET /api/v1/environments/:id/versions/:version/pixi-toml`
+   - `GET /api/v1/environments/:id/versions/:version/pixi-lock`
 
-// MODE 2: Fetch by TAG (for "nebi diff --remote" - compare against current)
-// This resolves the tag, which may point to different content than when pulled
-manifestDesc, manifestContent, _ := oras.FetchBytes(ctx, repo, "v1.0", oras.DefaultFetchBytesOptions)
-```
+2. **By Tag** (for `nebi diff --remote` — compare against current):
+   - Resolves the tag to its current content, which may differ from what was pulled
+   - Uses the tag name to look up the current version via server API
 
 ### Digest-Only Check (for `nebi status --remote`)
 
-Just fetch the manifest by tag to get the current digest - no layers downloaded:
+Query the server to get the current manifest digest for the tag:
 
 ```go
-repo, _ := remote.NewRepository("ghcr.io/myorg/data-science")
-
-// Resolve the tag to its current digest
-manifestDesc, _, _ := oras.FetchBytes(ctx, repo, "v1.0", oras.DefaultFetchBytesOptions)
+// Resolve the tag to its current digest via server API
+currentVersion, _ := client.GetVersionByTag(ctx, workspaceID, tag)
 
 // Compare against what we originally pulled
 originDigest := nebiFile.Origin.ManifestDigest
-currentDigest := manifestDesc.Digest.String()
+currentDigest := currentVersion.ManifestDigest
 
 if originDigest != currentDigest {
     // Tag has been moved/overwritten since pull!
@@ -637,46 +635,41 @@ if originDigest != currentDigest {
 }
 ```
 
-This is a single HTTP request: `GET /v2/<name>/manifests/<reference>`
+This is a single API call to the Nebi server.
 
 ### Content Fetch (for `nebi diff` and `nebi diff --remote`)
 
-To show *what* changed, fetch the individual layers to memory:
+To show *what* changed, fetch the file contents from the server:
 
 ```go
-// For "nebi diff" (vs origin): fetch by digest
-manifestDesc, manifestContent, _ := oras.FetchBytes(ctx, repo, nebiFile.Origin.ManifestDigest, ...)
+// For "nebi diff" (vs origin): fetch by version ID (immutable)
+pixiToml, _ := client.GetVersionPixiToml(ctx, workspaceID, nebiFile.Origin.ServerVersionID)
+pixiLock, _ := client.GetVersionPixiLock(ctx, workspaceID, nebiFile.Origin.ServerVersionID)
 
-// For "nebi diff --remote" (vs current tag): fetch by tag
-manifestDesc, manifestContent, _ := oras.FetchBytes(ctx, repo, nebiFile.Origin.Tag, ...)
+// For "nebi diff --remote" (vs current tag): resolve tag first, then fetch
+currentVersion, _ := client.GetVersionByTag(ctx, workspaceID, tag)
+pixiToml, _ := client.GetVersionPixiToml(ctx, workspaceID, currentVersion.ID)
+pixiLock, _ := client.GetVersionPixiLock(ctx, workspaceID, currentVersion.ID)
 
-// Then fetch layers
-var manifest ocispec.Manifest
-json.Unmarshal(manifestContent, &manifest)
-
-for _, layer := range manifest.Layers {
-    rc, _ := repo.Fetch(ctx, layer)
-    content, _ := io.ReadAll(rc)
-    // Compare content in memory against local file
-}
+// Compare content in memory against local files
 ```
 
-For Nebi workspaces, this is just two small blobs:
+For Nebi workspaces, these are just two small files:
 - `pixi.toml`: ~2-10 KB typically
 - `pixi.lock`: ~50-200 KB typically
 
-### What If the Origin Digest Is Gone?
+The Nebi server stores version content independently of tag mutability, so fetching by
+`server_version_id` is always reliable. The `.nebi` metadata stores both the version
+ID and the manifest digest — see `duplicate-pulls.md` for the full `.nebi` format.
 
-In rare cases, a registry might garbage-collect unreferenced digests (e.g., if a tag was
-overwritten and the old content has no other references). In this case:
+### What If the Origin Version Is Gone?
+
+In rare cases, a server might have purged old versions. In this case:
 
 ```bash
 $ nebi diff
-Error: Origin digest sha256:abc123... is no longer available in the registry.
-  The tag 'v1.0' now points to sha256:xyz789...
-
-  This can happen if the tag was overwritten and the registry garbage-collected
-  the old content.
+Error: Origin version (ID: 42) is no longer available on the server.
+  The tag 'v1.0' now points to a different version.
 
   Options:
     nebi diff --remote    Compare against current tag content
@@ -685,20 +678,6 @@ Error: Origin digest sha256:abc123... is no longer available in the registry.
 
 `nebi status` (without `--remote`) still works because it only compares local file hashes
 against the stored layer digests in `.nebi` — no network needed.
-
-### Nebi Server API Path (Alternative)
-
-If the workspace was pulled via the Nebi server (`.nebi` has `source: server`), the
-existing API endpoints can be used instead of direct OCI access:
-
-```
-GET /api/environments/:id/versions/:version/pixi-toml
-GET /api/environments/:id/versions/:version/pixi-lock
-```
-
-The Nebi server stores version content independently of tag mutability, so fetching by
-`server_version_id` is always reliable. The `.nebi` metadata stores both the version
-ID and the OCI digest — see `duplicate-pulls.md` for the full `.nebi` format.
 
 ## Interaction with Existing Drift Detection
 

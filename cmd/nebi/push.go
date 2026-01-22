@@ -4,14 +4,21 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/aktech/darb/internal/cliclient"
+	"github.com/aktech/darb/internal/diff"
+	"github.com/aktech/darb/internal/drift"
+	"github.com/aktech/darb/internal/nebifile"
 	"github.com/spf13/cobra"
 )
 
-var pushRegistry string
+var (
+	pushRegistry string
+	pushDryRun   bool
+)
 
 var pushCmd = &cobra.Command{
 	Use:   "push <workspace>:<tag>",
@@ -26,13 +33,17 @@ Examples:
   nebi push myworkspace:v1.0.0 -r ds-team
 
   # Push using default registry
-  nebi push myworkspace:v1.0.0`,
+  nebi push myworkspace:v1.0.0
+
+  # Preview what would be pushed
+  nebi push myworkspace:v1.1 --dry-run`,
 	Args: cobra.ExactArgs(1),
 	Run:  runPush,
 }
 
 func init() {
 	pushCmd.Flags().StringVarP(&pushRegistry, "registry", "r", "", "Named registry (optional if default set)")
+	pushCmd.Flags().BoolVar(&pushDryRun, "dry-run", false, "Preview what would be pushed without actually pushing")
 }
 
 func runPush(cmd *cobra.Command, args []string) {
@@ -59,8 +70,15 @@ func runPush(cmd *cobra.Command, args []string) {
 	}
 
 	// Check for local pixi.lock (optional but recommended)
-	if _, err := os.Stat("pixi.lock"); os.IsNotExist(err) {
+	pixiLockContent, _ := os.ReadFile("pixi.lock")
+	if len(pixiLockContent) == 0 {
 		fmt.Fprintln(os.Stderr, "Warning: pixi.lock not found. Run 'pixi install' to generate it.")
+	}
+
+	// Handle --dry-run: show diff against origin if .nebi exists
+	if pushDryRun {
+		runPushDryRun(workspaceName, tag, pixiTomlContent, pixiLockContent)
+		return
 	}
 
 	client := mustGetClient()
@@ -133,6 +151,55 @@ func runPush(cmd *cobra.Command, args []string) {
 		fmt.Printf("  Digest: %s\n", resp.Digest)
 	}
 	fmt.Printf("\nSuccessfully pushed to %s\n", registry.Name)
+}
+
+// runPushDryRun shows what would be pushed without actually pushing.
+func runPushDryRun(workspaceName, tag string, pixiTomlContent, pixiLockContent []byte) {
+	absDir, _ := filepath.Abs(".")
+
+	fmt.Printf("Would push %s:%s\n\n", workspaceName, tag)
+
+	// Check if we have a .nebi file to diff against
+	if nebifile.Exists(absDir) {
+		nf, err := nebifile.Read(absDir)
+		if err == nil {
+			// Fetch origin content for comparison
+			client := mustGetClient()
+			ctx := mustGetAuthContext()
+
+			env, err := findWorkspaceByName(client, ctx, nf.Origin.Workspace)
+			if err == nil {
+				vc, err := drift.FetchVersionContent(ctx, client, env.ID, nf.Origin.ServerVersionID)
+				if err == nil {
+					// Show TOML diff
+					tomlDiff, err := diff.CompareToml([]byte(vc.PixiToml), pixiTomlContent)
+					if err == nil && tomlDiff.HasChanges() {
+						sourceLabel := fmt.Sprintf("origin (%s:%s)", nf.Origin.Workspace, nf.Origin.Tag)
+						targetLabel := "local (to be pushed)"
+						fmt.Print(diff.FormatUnifiedDiff(tomlDiff, sourceLabel, targetLabel))
+					}
+
+					// Show lock file change indicator
+					if !bytesEqual([]byte(vc.PixiLock), pixiLockContent) {
+						fmt.Println("\n@@ pixi.lock (changed) @@")
+					}
+
+					if tomlDiff != nil && !tomlDiff.HasChanges() && bytesEqual([]byte(vc.PixiLock), pixiLockContent) {
+						fmt.Println("No changes from origin")
+					}
+				}
+			}
+		}
+	} else {
+		fmt.Println("(No .nebi metadata found - cannot show diff against origin)")
+		fmt.Printf("\nFiles to push:\n")
+		fmt.Printf("  pixi.toml: %d bytes\n", len(pixiTomlContent))
+		if len(pixiLockContent) > 0 {
+			fmt.Printf("  pixi.lock: %d bytes\n", len(pixiLockContent))
+		}
+	}
+
+	fmt.Println("\nRun without --dry-run to push.")
 }
 
 // parseWorkspaceRef parses a reference in the format workspace:tag or workspace@digest.

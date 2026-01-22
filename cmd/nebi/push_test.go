@@ -224,3 +224,77 @@ func TestPushCmd_RequiresExactlyOneArg(t *testing.T) {
 		t.Fatal("Args should not be nil")
 	}
 }
+
+func TestShowPushDriftWarning_NoNebiFile(t *testing.T) {
+	dir := t.TempDir()
+	// Should not panic when no .nebi file exists
+	showPushDriftWarning(dir, "test", "v1.0", []byte("test"))
+}
+
+func TestShowPushDriftWarning_Clean(t *testing.T) {
+	dir := t.TempDir()
+
+	pixiToml := []byte("[workspace]\nname = \"test\"\n")
+	pixiLock := []byte("version: 1\n")
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), pixiToml, 0644)
+	os.WriteFile(filepath.Join(dir, "pixi.lock"), pixiLock, 0644)
+
+	tomlDigest := nebifile.ComputeDigest(pixiToml)
+	lockDigest := nebifile.ComputeDigest(pixiLock)
+	nf := nebifile.NewFromPull(
+		"test-workspace", "v1.0", "test-registry", "https://example.com",
+		1, "sha256:abc",
+		tomlDigest, int64(len(pixiToml)),
+		lockDigest, int64(len(pixiLock)),
+	)
+	nebifile.Write(dir, nf)
+
+	// Should not warn (clean workspace)
+	showPushDriftWarning(dir, "test-workspace", "v2.0", pixiToml)
+}
+
+func TestShowPushDriftWarning_ModifiedDifferentTag(t *testing.T) {
+	dir := t.TempDir()
+
+	originalToml := []byte("[workspace]\nname = \"test\"\n")
+	modifiedToml := []byte("[workspace]\nname = \"test\"\n[dependencies]\nnumpy = \"*\"\n")
+	pixiLock := []byte("version: 1\n")
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), modifiedToml, 0644)
+	os.WriteFile(filepath.Join(dir, "pixi.lock"), pixiLock, 0644)
+
+	tomlDigest := nebifile.ComputeDigest(originalToml)
+	lockDigest := nebifile.ComputeDigest(pixiLock)
+	nf := nebifile.NewFromPull(
+		"test-workspace", "v1.0", "test-registry", "https://example.com",
+		1, "sha256:abc",
+		tomlDigest, int64(len(originalToml)),
+		lockDigest, int64(len(pixiLock)),
+	)
+	nebifile.Write(dir, nf)
+
+	// Pushing to different tag - should show note but not the same-tag warning
+	showPushDriftWarning(dir, "test-workspace", "v2.0", modifiedToml)
+}
+
+func TestShowPushDriftWarning_ModifiedSameTag(t *testing.T) {
+	dir := t.TempDir()
+
+	originalToml := []byte("[workspace]\nname = \"test\"\n")
+	modifiedToml := []byte("[workspace]\nname = \"test\"\n[dependencies]\nnumpy = \"*\"\n")
+	pixiLock := []byte("version: 1\n")
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), modifiedToml, 0644)
+	os.WriteFile(filepath.Join(dir, "pixi.lock"), pixiLock, 0644)
+
+	tomlDigest := nebifile.ComputeDigest(originalToml)
+	lockDigest := nebifile.ComputeDigest(pixiLock)
+	nf := nebifile.NewFromPull(
+		"test-workspace", "v1.0", "test-registry", "https://example.com",
+		1, "sha256:abc",
+		tomlDigest, int64(len(originalToml)),
+		lockDigest, int64(len(pixiLock)),
+	)
+	nebifile.Write(dir, nf)
+
+	// Pushing to same tag with modified content - should show the overwrite warning
+	showPushDriftWarning(dir, "test-workspace", "v1.0", modifiedToml)
+}

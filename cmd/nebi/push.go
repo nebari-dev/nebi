@@ -81,6 +81,10 @@ func runPush(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	// Check for drift awareness: warn if pushing modified workspace
+	absDir, _ := filepath.Abs(".")
+	showPushDriftWarning(absDir, workspaceName, tag, pixiTomlContent)
+
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
@@ -218,6 +222,44 @@ func parseWorkspaceRef(ref string) (workspace string, tag string, err error) {
 
 	// No tag or digest specified
 	return ref, "", nil
+}
+
+// showPushDriftWarning checks if the local workspace has been modified and shows
+// an informational note about what's being pushed relative to the origin.
+func showPushDriftWarning(dir, workspaceName, tag string, pixiTomlContent []byte) {
+	if !nebifile.Exists(dir) {
+		return // No origin info available
+	}
+
+	nf, err := nebifile.Read(dir)
+	if err != nil {
+		return
+	}
+
+	// Check local drift
+	ws, err := drift.Check(dir)
+	if err != nil {
+		return
+	}
+
+	if ws.Overall == drift.StatusModified {
+		fmt.Printf("Note: This workspace was originally pulled from %s:%s\n",
+			nf.Origin.Workspace, nf.Origin.Tag)
+		for _, f := range ws.Files {
+			if f.Status == drift.StatusModified {
+				fmt.Printf("  - %s modified locally\n", f.Filename)
+			}
+		}
+		fmt.Println()
+	}
+
+	// Warn if pushing to the same tag as origin (potential overwrite)
+	if tag == nf.Origin.Tag && workspaceName == nf.Origin.Workspace && ws.Overall == drift.StatusModified {
+		fmt.Fprintf(os.Stderr, "Warning: Pushing modified content back to the same tag %q\n", tag)
+		fmt.Fprintf(os.Stderr, "  This will overwrite the existing content in the registry.\n")
+		fmt.Fprintf(os.Stderr, "  Consider using a new tag (e.g., %s-1) to preserve the original.\n\n",
+			tag)
+	}
 }
 
 // waitForEnvReady polls until the environment is ready or timeout.

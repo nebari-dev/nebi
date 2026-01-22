@@ -4,9 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/aktech/darb/internal/cliclient"
+	"github.com/aktech/darb/internal/drift"
+	"github.com/aktech/darb/internal/localindex"
 	"github.com/spf13/cobra"
 )
 
@@ -17,17 +21,38 @@ var workspaceCmd = &cobra.Command{
 	Long:    `List, delete, and inspect workspaces.`,
 }
 
+var workspaceListLocal bool
+
 var workspaceListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
 	Short:   "List workspaces",
-	Long: `List workspaces from the server.
+	Long: `List workspaces from the server, or locally pulled workspaces.
 
 Examples:
-  # List all workspaces
-  nebi workspace list`,
+  # List all server workspaces
+  nebi workspace list
+
+  # List locally pulled workspaces with drift status
+  nebi workspace list --local`,
 	Args: cobra.NoArgs,
 	Run:  runWorkspaceList,
+}
+
+var workspacePruneCmd = &cobra.Command{
+	Use:   "prune",
+	Short: "Remove stale entries from local index",
+	Long: `Remove entries from the local workspace index where the directory
+no longer exists on disk.
+
+This cleans up the index after workspaces have been moved or deleted
+outside of nebi. It does NOT delete any files.
+
+Examples:
+  # Remove stale entries
+  nebi workspace prune`,
+	Args: cobra.NoArgs,
+	Run:  runWorkspacePrune,
 }
 
 var workspaceListTagsCmd = &cobra.Command{
@@ -77,6 +102,10 @@ func init() {
 	workspaceCmd.AddCommand(workspaceDeleteCmd)
 	workspaceCmd.AddCommand(workspaceInfoCmd)
 	workspaceCmd.AddCommand(workspaceDiffCmd)
+	workspaceCmd.AddCommand(workspacePruneCmd)
+
+	// workspace list flags
+	workspaceListCmd.Flags().BoolVar(&workspaceListLocal, "local", false, "List locally pulled workspaces with drift status")
 
 	// workspace tags is a subcommand of list
 	workspaceListCmd.AddCommand(workspaceListTagsCmd)
@@ -90,6 +119,11 @@ func init() {
 }
 
 func runWorkspaceList(cmd *cobra.Command, args []string) {
+	if workspaceListLocal {
+		runWorkspaceListLocal()
+		return
+	}
+
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
@@ -119,6 +153,105 @@ func runWorkspaceList(cmd *cobra.Command, args []string) {
 		)
 	}
 	w.Flush()
+}
+
+// runWorkspaceListLocal lists locally pulled workspaces with drift indicators.
+func runWorkspaceListLocal() {
+	store := localindex.NewStore()
+	index, err := store.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to load local index: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(index.Workspaces) == 0 {
+		fmt.Println("No locally pulled workspaces found")
+		fmt.Println("\nUse 'nebi pull <workspace>:<tag>' to pull a workspace.")
+		return
+	}
+
+	hasMissing := false
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "WORKSPACE\tTAG\tSTATUS\tLOCATION")
+	for _, entry := range index.Workspaces {
+		// Check if path exists
+		status := getLocalEntryStatus(entry)
+		if status == "missing" {
+			hasMissing = true
+		}
+
+		location := formatLocation(entry.Path, entry.IsGlobal)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+			entry.Workspace,
+			entry.Tag,
+			status,
+			location,
+		)
+	}
+	w.Flush()
+
+	if hasMissing {
+		fmt.Println("\nRun 'nebi workspace prune' to remove stale entries.")
+	}
+}
+
+// getLocalEntryStatus checks the drift status of a local workspace entry.
+func getLocalEntryStatus(entry localindex.WorkspaceEntry) string {
+	// Check if path exists
+	if _, err := os.Stat(entry.Path); os.IsNotExist(err) {
+		return "missing"
+	}
+
+	// Check drift
+	ws, err := drift.Check(entry.Path)
+	if err != nil {
+		return "unknown"
+	}
+
+	return string(ws.Overall)
+}
+
+// formatLocation formats a path for display, abbreviating home directory and global paths.
+func formatLocation(path string, isGlobal bool) string {
+	home, _ := os.UserHomeDir()
+	display := path
+	if home != "" && strings.HasPrefix(path, home) {
+		display = "~" + path[len(home):]
+	}
+
+	// Truncate long global paths
+	if isGlobal {
+		dataDir := filepath.Join(home, ".local", "share", "nebi")
+		if strings.HasPrefix(path, dataDir) {
+			display = "~/.local/share/nebi/..." + " (global)"
+			return display
+		}
+		return display + " (global)"
+	}
+
+	return display + " (local)"
+}
+
+// runWorkspacePrune removes stale entries from the local index.
+func runWorkspacePrune(cmd *cobra.Command, args []string) {
+	store := localindex.NewStore()
+
+	removed, err := store.Prune()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to prune local index: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(removed) == 0 {
+		fmt.Println("No stale entries found")
+		return
+	}
+
+	fmt.Printf("Removed %d stale entries:\n", len(removed))
+	for _, entry := range removed {
+		fmt.Printf("  - %s:%s (%s)\n", entry.Workspace, entry.Tag, entry.Path)
+	}
 }
 
 func runWorkspaceListTags(cmd *cobra.Command, args []string) {

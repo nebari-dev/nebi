@@ -69,21 +69,10 @@ func runPull(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	// Get versions to find the latest
-	versions, err := client.GetEnvironmentVersions(ctx, env.ID)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to get versions: %v\n", err)
-		os.Exit(1)
-	}
+	var versionNumber int32
 
-	if len(versions) == 0 {
-		fmt.Fprintf(os.Stderr, "Error: Workspace %q has no versions\n", workspaceName)
-		os.Exit(1)
-	}
-
-	// Find the version to pull
 	if tag != "" || digest != "" {
-		// Find version matching tag or digest from publications
+		// Find the publication matching the tag or digest
 		pubs, err := client.GetEnvironmentPublications(ctx, env.ID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Failed to get publications: %v\n", err)
@@ -93,6 +82,7 @@ func runPull(cmd *cobra.Command, args []string) {
 		found := false
 		for _, pub := range pubs {
 			if (tag != "" && pub.Tag == tag) || (digest != "" && pub.Digest == digest) {
+				versionNumber = int32(pub.VersionNumber)
 				found = true
 				break
 			}
@@ -106,16 +96,28 @@ func runPull(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "Error: Digest %q not found for workspace %q\n", digest, workspaceName)
 			os.Exit(1)
 		}
-	}
-
-	// Use the latest version (highest version number)
-	latestVersion := versions[0]
-	for _, v := range versions {
-		if v.VersionNumber > latestVersion.VersionNumber {
-			latestVersion = v
+	} else {
+		// No tag/digest specified, get the latest version
+		versions, err := client.GetEnvironmentVersions(ctx, env.ID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Failed to get versions: %v\n", err)
+			os.Exit(1)
 		}
+
+		if len(versions) == 0 {
+			fmt.Fprintf(os.Stderr, "Error: Workspace %q has no versions\n", workspaceName)
+			os.Exit(1)
+		}
+
+		// Use the latest version (highest version number)
+		latestVersion := versions[0]
+		for _, v := range versions {
+			if v.VersionNumber > latestVersion.VersionNumber {
+				latestVersion = v
+			}
+		}
+		versionNumber = latestVersion.VersionNumber
 	}
-	versionNumber := latestVersion.VersionNumber
 
 	// Get pixi.toml
 	pixiToml, err := client.GetVersionPixiToml(ctx, env.ID, versionNumber)

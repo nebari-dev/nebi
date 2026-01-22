@@ -2002,6 +2002,9 @@ const docTemplate = `{
                 },
                 "tag": {
                     "type": "string"
+                },
+                "version_number": {
+                    "type": "integer"
                 }
             }
         },

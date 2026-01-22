@@ -57,6 +57,8 @@ func init() {
 	rootCmd.AddCommand(pushCmd)
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(shellCmd)
+	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(diffCmd)
 }
 
 func main() {

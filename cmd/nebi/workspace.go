@@ -64,13 +64,29 @@ Example:
 	Run:  runWorkspaceInfo,
 }
 
+var workspaceDiffCmd = &cobra.Command{
+	Use:   "diff",
+	Short: "Show workspace differences (alias for 'nebi diff')",
+	Long:  `This is an alias for 'nebi diff'. See 'nebi diff --help' for full documentation.`,
+	Args:  cobra.MaximumNArgs(2),
+	Run:   runDiff,
+}
+
 func init() {
 	workspaceCmd.AddCommand(workspaceListCmd)
 	workspaceCmd.AddCommand(workspaceDeleteCmd)
 	workspaceCmd.AddCommand(workspaceInfoCmd)
+	workspaceCmd.AddCommand(workspaceDiffCmd)
 
 	// workspace tags is a subcommand of list
 	workspaceListCmd.AddCommand(workspaceListTagsCmd)
+
+	// workspace diff mirrors the top-level diff flags
+	workspaceDiffCmd.Flags().BoolVar(&diffRemote, "remote", false, "Compare against current remote tag")
+	workspaceDiffCmd.Flags().BoolVar(&diffJSON, "json", false, "Output as JSON")
+	workspaceDiffCmd.Flags().BoolVar(&diffLock, "lock", false, "Show full lock file diff")
+	workspaceDiffCmd.Flags().BoolVar(&diffToml, "toml", false, "Show only pixi.toml diff")
+	workspaceDiffCmd.Flags().StringVarP(&diffPath, "path", "C", ".", "Workspace directory path")
 }
 
 func runWorkspaceList(cmd *cobra.Command, args []string) {

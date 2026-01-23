@@ -90,33 +90,6 @@ func TestGetLocalEntryStatus_NoNebiFile(t *testing.T) {
 	}
 }
 
-func TestGetLocalEntryStatus_FileDeleted(t *testing.T) {
-	dir := t.TempDir()
-
-	// Write pixi.toml but NOT pixi.lock (simulates deletion)
-	pixiToml := []byte("[workspace]\nname = \"test\"\n")
-	pixiLock := []byte("version: 1\n")
-	os.WriteFile(filepath.Join(dir, "pixi.toml"), pixiToml, 0644)
-	// pixi.lock intentionally missing
-
-	// Write .nebi with digests for both files
-	tomlDigest := nebifile.ComputeDigest(pixiToml)
-	lockDigest := nebifile.ComputeDigest(pixiLock)
-	nf := nebifile.NewFromPull(
-		"test", "v1.0", "", "https://example.com",
-		1, "sha256:abc",
-		tomlDigest, int64(len(pixiToml)),
-		lockDigest, int64(len(pixiLock)),
-	)
-	nebifile.Write(dir, nf)
-
-	entry := localindex.WorkspaceEntry{Path: dir}
-	status := getLocalEntryStatus(entry)
-	if status != string(drift.StatusMissing) {
-		t.Errorf("status = %q, want %q", status, drift.StatusMissing)
-	}
-}
-
 func TestFormatLocation_Local(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	path := filepath.Join(home, "projects", "my-workspace")

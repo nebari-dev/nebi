@@ -244,18 +244,11 @@ func checkShellDrift(dir string) {
 		return // No .nebi file or other issue - silently proceed
 	}
 
-	if ws.IsModified() {
-		if ws.Overall == drift.StatusMissing {
-			fmt.Fprintln(os.Stderr, "Warning: Tracked files have been deleted from workspace")
-		} else {
-			fmt.Fprintln(os.Stderr, "Warning: Local workspace has been modified since pull")
-		}
+	if ws.Overall == drift.StatusModified {
+		fmt.Fprintln(os.Stderr, "Warning: Local workspace has been modified since pull")
 		for _, f := range ws.Files {
-			switch f.Status {
-			case drift.StatusModified:
+			if f.Status == drift.StatusModified {
 				fmt.Fprintf(os.Stderr, "  modified: %s\n", f.Filename)
-			case drift.StatusMissing:
-				fmt.Fprintf(os.Stderr, "  deleted:  %s\n", f.Filename)
 			}
 		}
 		fmt.Fprintln(os.Stderr, "")

@@ -70,10 +70,7 @@ func CheckWithNebiFile(dir string, nf *nebifile.NebiFile) *WorkspaceStatus {
 		fs := checkFile(dir, filename, layer.Digest)
 		ws.Files = append(ws.Files, fs)
 
-		// Missing takes precedence over modified in overall status
-		if fs.Status == StatusMissing {
-			ws.Overall = StatusMissing
-		} else if fs.Status != StatusClean && ws.Overall != StatusMissing {
+		if fs.Status != StatusClean {
 			ws.Overall = StatusModified
 		}
 	}
@@ -123,7 +120,7 @@ func checkFile(dir, filename, originDigest string) FileStatus {
 
 // IsModified returns true if any file in the workspace has been modified.
 func (ws *WorkspaceStatus) IsModified() bool {
-	return ws.Overall == StatusModified || ws.Overall == StatusMissing
+	return ws.Overall == StatusModified
 }
 
 // GetFileStatus returns the status of a specific file, or nil if not tracked.

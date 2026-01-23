@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/aktech/darb/internal/drift"
@@ -62,7 +61,7 @@ func runShell(cmd *cobra.Command, args []string) {
 	checkShellDrift(shellDir)
 
 	// Run pixi shell
-	runPixiShell(shellDir)
+	execPixiShell(shellDir, shellPixiEnv)
 }
 
 // resolveShellFromCwd resolves a shell directory from the current working directory.
@@ -252,28 +251,6 @@ func checkShellDrift(dir string) {
 			}
 		}
 		fmt.Fprintln(os.Stderr, "")
-	}
-}
-
-// runPixiShell runs pixi shell in the given directory.
-func runPixiShell(dir string) {
-	pixiArgs := []string{"shell"}
-	if shellPixiEnv != "" {
-		pixiArgs = append(pixiArgs, "-e", shellPixiEnv)
-	}
-
-	pixiCmd := exec.Command("pixi", pixiArgs...)
-	pixiCmd.Dir = dir
-	pixiCmd.Stdin = os.Stdin
-	pixiCmd.Stdout = os.Stdout
-	pixiCmd.Stderr = os.Stderr
-
-	if err := pixiCmd.Run(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			os.Exit(exitErr.ExitCode())
-		}
-		fmt.Fprintf(os.Stderr, "Error: Failed to start pixi shell: %v\n", err)
-		os.Exit(1)
 	}
 }
 

@@ -14,11 +14,12 @@ import (
 )
 
 var (
-	pullOutput string
-	pullGlobal bool
-	pullForce  bool
-	pullYes    bool
-	pullName   string
+	pullOutput  string
+	pullGlobal  bool
+	pullForce   bool
+	pullYes     bool
+	pullName    string
+	pullInstall bool
 )
 
 var pullCmd = &cobra.Command{
@@ -53,17 +54,22 @@ Examples:
   nebi pull --global myworkspace:v1.0.0 --name ds-stable
 
   # Force re-pull of global workspace
-  nebi pull --global myworkspace:v1.0.0 --force`,
+  nebi pull --global myworkspace:v1.0.0 --force
+
+  # Pull and install immediately
+  nebi pull myworkspace:v1.0.0 --install
+  nebi pull -gi myworkspace:v1.0.0`,
 	Args: cobra.ExactArgs(1),
 	Run:  runPull,
 }
 
 func init() {
 	pullCmd.Flags().StringVarP(&pullOutput, "output", "o", ".", "Output directory (for directory pulls)")
-	pullCmd.Flags().BoolVar(&pullGlobal, "global", false, "Pull to global storage (~/.local/share/nebi/workspaces/)")
+	pullCmd.Flags().BoolVarP(&pullGlobal, "global", "g", false, "Pull to global storage (~/.local/share/nebi/workspaces/)")
 	pullCmd.Flags().BoolVar(&pullForce, "force", false, "Force re-pull (overwrite existing)")
 	pullCmd.Flags().BoolVar(&pullYes, "yes", false, "Non-interactive mode (skip confirmations)")
 	pullCmd.Flags().StringVar(&pullName, "name", "", "Assign an alias to this global workspace (requires --global)")
+	pullCmd.Flags().BoolVarP(&pullInstall, "install", "i", false, "Run pixi install after pulling (uses --frozen)")
 }
 
 func runPull(cmd *cobra.Command, args []string) {
@@ -274,8 +280,20 @@ func runPull(cmd *cobra.Command, args []string) {
 		refStr = workspaceName + "@" + digest
 	}
 	fmt.Printf("Pulled %s (version %d) → %s\n", refStr, versionNumber, absOutputDir)
-	fmt.Println("\nTo install the environment, run:")
-	fmt.Printf("  cd %s && pixi install\n", outputDir)
+
+	// Run pixi install if requested
+	if pullInstall {
+		fmt.Println()
+		if err := runPixiInstall(absOutputDir); err != nil {
+			fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
+			fmt.Fprintln(os.Stderr, "The workspace files were pulled successfully. You can retry with:")
+			fmt.Fprintf(os.Stderr, "  cd %s && pixi install --frozen\n", absOutputDir)
+			os.Exit(1)
+		}
+	} else {
+		fmt.Println("\nTo install the environment, run:")
+		fmt.Printf("  cd %s && pixi install\n", absOutputDir)
+	}
 }
 
 // handleGlobalPull handles the --global pull workflow.

@@ -335,6 +335,46 @@ func TestPullIntegration_GlobalWithAlias(t *testing.T) {
 	}
 }
 
+func TestPullCmd_HasGlobalShortFlag(t *testing.T) {
+	flag := pullCmd.Flags().Lookup("global")
+	if flag == nil {
+		t.Fatal("--global flag should be registered")
+	}
+	if flag.Shorthand != "g" {
+		t.Errorf("--global shorthand = %q, want %q", flag.Shorthand, "g")
+	}
+}
+
+func TestPullCmd_HasInstallFlag(t *testing.T) {
+	flag := pullCmd.Flags().Lookup("install")
+	if flag == nil {
+		t.Fatal("--install flag should be registered")
+	}
+	if flag.Shorthand != "i" {
+		t.Errorf("--install shorthand = %q, want %q", flag.Shorthand, "i")
+	}
+}
+
+func TestPullCmd_FlagShorthandsDoNotConflict(t *testing.T) {
+	// Verify all known pull command short flags are unique and correctly mapped
+	shortFlags := map[string]string{
+		"o": "output",
+		"g": "global",
+		"i": "install",
+	}
+
+	for short, long := range shortFlags {
+		flag := pullCmd.Flags().ShorthandLookup(short)
+		if flag == nil {
+			t.Errorf("Short flag -%s should exist (for --%s)", short, long)
+			continue
+		}
+		if flag.Name != long {
+			t.Errorf("Short flag -%s maps to --%s, want --%s", short, flag.Name, long)
+		}
+	}
+}
+
 func TestPullIntegration_DirectoryPullDuplicateAllowed(t *testing.T) {
 	dir := t.TempDir()
 	store := localindex.NewStoreWithDir(dir)

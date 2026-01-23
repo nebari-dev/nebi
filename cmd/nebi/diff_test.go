@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/aktech/darb/internal/diff"
@@ -154,4 +156,151 @@ func TestOutputDiffJSONRefs(t *testing.T) {
 
 	// Should not panic
 	outputDiffJSONRefs(source, target, tomlDiff, nil)
+}
+
+func TestIsPathLike(t *testing.T) {
+	tests := []struct {
+		arg  string
+		want bool
+	}{
+		{".", true},
+		{"./foo", true},
+		{"../bar", true},
+		{"/absolute/path", true},
+		{"~/projects/foo", true},
+		{"~user/foo", true},
+		{"data-science:v1.0", false},
+		{"workspace", false},
+		{"my-ws:latest", false},
+		{"foo/bar", false}, // relative without ./ prefix is NOT path-like
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.arg, func(t *testing.T) {
+			got := isPathLike(tt.arg)
+			if got != tt.want {
+				t.Errorf("isPathLike(%q) = %v, want %v", tt.arg, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolvePath(t *testing.T) {
+	t.Run("absolute path unchanged", func(t *testing.T) {
+		got, err := resolvePath("/tmp/foo")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != "/tmp/foo" {
+			t.Errorf("resolvePath('/tmp/foo') = %q, want '/tmp/foo'", got)
+		}
+	})
+
+	t.Run("dot resolves to cwd", func(t *testing.T) {
+		cwd, _ := os.Getwd()
+		got, err := resolvePath(".")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != cwd {
+			t.Errorf("resolvePath('.') = %q, want %q", got, cwd)
+		}
+	})
+
+	t.Run("tilde expands to home", func(t *testing.T) {
+		home, _ := os.UserHomeDir()
+		got, err := resolvePath("~/foo")
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := filepath.Join(home, "foo")
+		if got != want {
+			t.Errorf("resolvePath('~/foo') = %q, want %q", got, want)
+		}
+	})
+}
+
+func TestReadLocalWorkspace(t *testing.T) {
+	t.Run("reads pixi.toml and pixi.lock", func(t *testing.T) {
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("[workspace]\nname = \"test\""), 0644)
+		os.WriteFile(filepath.Join(dir, "pixi.lock"), []byte("version: 6"), 0644)
+
+		toml, lock, err := readLocalWorkspace(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(toml) != "[workspace]\nname = \"test\"" {
+			t.Errorf("unexpected toml: %q", toml)
+		}
+		if string(lock) != "version: 6" {
+			t.Errorf("unexpected lock: %q", lock)
+		}
+	})
+
+	t.Run("pixi.lock optional", func(t *testing.T) {
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("[workspace]"), 0644)
+
+		toml, lock, err := readLocalWorkspace(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(toml) != "[workspace]" {
+			t.Errorf("unexpected toml: %q", toml)
+		}
+		if lock != nil {
+			t.Errorf("expected nil lock, got %q", lock)
+		}
+	})
+
+	t.Run("error when pixi.toml missing", func(t *testing.T) {
+		dir := t.TempDir()
+		_, _, err := readLocalWorkspace(dir)
+		if err == nil {
+			t.Fatal("expected error for missing pixi.toml")
+		}
+	})
+}
+
+func TestRunDiffTwoPaths(t *testing.T) {
+	// Create two temp workspace directories with different content
+	dir1 := t.TempDir()
+	dir2 := t.TempDir()
+
+	toml1 := `[workspace]
+name = "test"
+
+[dependencies]
+numpy = ">=1.0"
+`
+	toml2 := `[workspace]
+name = "test"
+
+[dependencies]
+numpy = ">=2.0"
+scipy = ">=1.0"
+`
+	os.WriteFile(filepath.Join(dir1, "pixi.toml"), []byte(toml1), 0644)
+	os.WriteFile(filepath.Join(dir2, "pixi.toml"), []byte(toml2), 0644)
+
+	// readLocalWorkspace should work for both
+	t1, _, err := readLocalWorkspace(dir1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t2, _, err := readLocalWorkspace(dir2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The diff engine should detect changes
+	tomlDiff, err := diff.CompareToml(t1, t2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tomlDiff.HasChanges() {
+		t.Error("expected changes between the two workspaces")
+	}
 }

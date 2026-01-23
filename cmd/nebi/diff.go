@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/aktech/darb/internal/diff"
 	"github.com/aktech/darb/internal/drift"
@@ -27,11 +28,18 @@ var diffCmd = &cobra.Command{
 While 'nebi status' answers "has anything changed?", 'nebi diff' answers
 "what exactly changed?".
 
+Arguments can be workspace:tag references (fetched from server) or local
+paths (read directly from disk). Paths are detected by prefix: /, ./, ../,
+~, or the literal ".".
+
 Usage patterns:
   nebi diff                              Local changes vs what was pulled
   nebi diff --remote                     Local vs current remote tag
   nebi diff ws:v1.0 ws:v2.0              Compare two remote references
   nebi diff ws:v1.0                      Compare remote ref vs local
+  nebi diff ./project-a ./project-b      Compare two local paths
+  nebi diff . ~/other-project            Current dir vs another local path
+  nebi diff ~/local data-science:v2.0    Local path vs remote reference
 
 Examples:
   # Show local changes vs origin
@@ -45,6 +53,9 @@ Examples:
 
   # Compare remote ref vs local
   nebi diff data-science:v1.0
+
+  # Compare two local workspace directories
+  nebi diff ./experiment-1 ./experiment-2
 
   # Include lock file package-level diff
   nebi diff --lock
@@ -69,11 +80,26 @@ func init() {
 func runDiff(cmd *cobra.Command, args []string) {
 	switch len(args) {
 	case 2:
-		// nebi diff ref1 ref2 — compare two remote references
-		runDiffTwoRefs(args[0], args[1])
+		srcPath := isPathLike(args[0])
+		tgtPath := isPathLike(args[1])
+		switch {
+		case srcPath && tgtPath:
+			runDiffTwoPaths(args[0], args[1])
+		case srcPath && !tgtPath:
+			runDiffPathVsRef(args[0], args[1])
+		case !srcPath && tgtPath:
+			runDiffRefVsPath(args[0], args[1])
+		default:
+			runDiffTwoRefs(args[0], args[1])
+		}
 	case 1:
-		// nebi diff ref1 — compare remote ref vs local
-		runDiffRefVsLocal(args[0])
+		if isPathLike(args[0]) {
+			// nebi diff ./path — compare path vs origin (treat as source)
+			runDiffTwoPaths(diffPath, args[0])
+		} else {
+			// nebi diff ref1 — compare remote ref vs local
+			runDiffRefVsLocal(args[0])
+		}
 	default:
 		// nebi diff — local vs origin (or --remote)
 		runDiffLocal()
@@ -404,4 +430,222 @@ func bytesEqual(a, b []byte) bool {
 		}
 	}
 	return true
+}
+
+// isPathLike returns true if the argument looks like a filesystem path
+// rather than a workspace:tag reference.
+// Path-like: starts with /, ./, ../, ~, or is exactly "."
+func isPathLike(arg string) bool {
+	if arg == "." {
+		return true
+	}
+	return strings.HasPrefix(arg, "/") ||
+		strings.HasPrefix(arg, "./") ||
+		strings.HasPrefix(arg, "../") ||
+		strings.HasPrefix(arg, "~")
+}
+
+// resolvePath resolves a path argument to an absolute path.
+// Handles ~ expansion and relative paths.
+func resolvePath(path string) (string, error) {
+	if strings.HasPrefix(path, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("cannot expand ~: %w", err)
+		}
+		path = filepath.Join(home, path[1:])
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	return abs, nil
+}
+
+// readLocalWorkspace reads pixi.toml and pixi.lock from a directory.
+// Returns an error if pixi.toml doesn't exist. pixi.lock is optional.
+func readLocalWorkspace(dir string) (pixiToml, pixiLock []byte, err error) {
+	pixiToml, err = os.ReadFile(filepath.Join(dir, "pixi.toml"))
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s/pixi.toml: %w", dir, err)
+	}
+	pixiLock, _ = os.ReadFile(filepath.Join(dir, "pixi.lock"))
+	return pixiToml, pixiLock, nil
+}
+
+// runDiffTwoPaths compares two local workspace directories.
+func runDiffTwoPaths(path1, path2 string) {
+	abs1, err := resolvePath(path1)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
+	}
+	abs2, err := resolvePath(path2)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
+	}
+
+	toml1, lock1, err := readLocalWorkspace(abs1)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
+	}
+	toml2, lock2, err := readLocalWorkspace(abs2)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
+	}
+
+	tomlDiff, err := diff.CompareToml(toml1, toml2)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to compare pixi.toml: %v\n", err)
+		os.Exit(2)
+	}
+
+	var lockSummary *diff.LockSummary
+	if !bytesEqual(lock1, lock2) {
+		lockSummary, _ = diff.CompareLock(lock1, lock2)
+	}
+
+	sourceLabel := abs1
+	targetLabel := abs2
+
+	if diffJSON {
+		outputDiffJSONRefs(
+			diff.DiffRefJSON{Type: "local", Path: abs1},
+			diff.DiffRefJSON{Type: "local", Path: abs2},
+			tomlDiff, lockSummary,
+		)
+	} else {
+		outputDiffText(tomlDiff, lockSummary, lock1, lock2, sourceLabel, targetLabel)
+	}
+
+	if tomlDiff.HasChanges() || !bytesEqual(lock1, lock2) {
+		os.Exit(1)
+	}
+}
+
+// runDiffPathVsRef compares a local path (source) against a registry reference (target).
+func runDiffPathVsRef(path, ref string) {
+	abs, err := resolvePath(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
+	}
+
+	workspace, tag, err := parseWorkspaceRef(ref)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
+	}
+	if tag == "" {
+		fmt.Fprintf(os.Stderr, "Error: tag is required in reference (e.g., %s:v1.0)\n", workspace)
+		os.Exit(2)
+	}
+
+	localToml, localLock, err := readLocalWorkspace(abs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
+	}
+
+	client := mustGetClient()
+	ctx := mustGetAuthContext()
+
+	vc, err := drift.FetchByTag(ctx, client, workspace, tag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", workspace, tag, err)
+		os.Exit(2)
+	}
+
+	tomlDiff, err := diff.CompareToml(localToml, []byte(vc.PixiToml))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to compare pixi.toml: %v\n", err)
+		os.Exit(2)
+	}
+
+	var lockSummary *diff.LockSummary
+	if !bytesEqual(localLock, []byte(vc.PixiLock)) {
+		lockSummary, _ = diff.CompareLock(localLock, []byte(vc.PixiLock))
+	}
+
+	sourceLabel := abs
+	targetLabel := fmt.Sprintf("%s:%s", workspace, tag)
+
+	if diffJSON {
+		outputDiffJSONRefs(
+			diff.DiffRefJSON{Type: "local", Path: abs},
+			diff.DiffRefJSON{Type: "tag", Workspace: workspace, Tag: tag},
+			tomlDiff, lockSummary,
+		)
+	} else {
+		outputDiffText(tomlDiff, lockSummary, localLock, []byte(vc.PixiLock), sourceLabel, targetLabel)
+	}
+
+	if tomlDiff.HasChanges() || !bytesEqual(localLock, []byte(vc.PixiLock)) {
+		os.Exit(1)
+	}
+}
+
+// runDiffRefVsPath compares a registry reference (source) against a local path (target).
+func runDiffRefVsPath(ref, path string) {
+	abs, err := resolvePath(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
+	}
+
+	workspace, tag, err := parseWorkspaceRef(ref)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
+	}
+	if tag == "" {
+		fmt.Fprintf(os.Stderr, "Error: tag is required in reference (e.g., %s:v1.0)\n", workspace)
+		os.Exit(2)
+	}
+
+	localToml, localLock, err := readLocalWorkspace(abs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
+	}
+
+	client := mustGetClient()
+	ctx := mustGetAuthContext()
+
+	vc, err := drift.FetchByTag(ctx, client, workspace, tag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", workspace, tag, err)
+		os.Exit(2)
+	}
+
+	tomlDiff, err := diff.CompareToml([]byte(vc.PixiToml), localToml)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to compare pixi.toml: %v\n", err)
+		os.Exit(2)
+	}
+
+	var lockSummary *diff.LockSummary
+	if !bytesEqual([]byte(vc.PixiLock), localLock) {
+		lockSummary, _ = diff.CompareLock([]byte(vc.PixiLock), localLock)
+	}
+
+	sourceLabel := fmt.Sprintf("%s:%s", workspace, tag)
+	targetLabel := abs
+
+	if diffJSON {
+		outputDiffJSONRefs(
+			diff.DiffRefJSON{Type: "tag", Workspace: workspace, Tag: tag},
+			diff.DiffRefJSON{Type: "local", Path: abs},
+			tomlDiff, lockSummary,
+		)
+	} else {
+		outputDiffText(tomlDiff, lockSummary, []byte(vc.PixiLock), localLock, sourceLabel, targetLabel)
+	}
+
+	if tomlDiff.HasChanges() || !bytesEqual([]byte(vc.PixiLock), localLock) {
+		os.Exit(1)
+	}
 }

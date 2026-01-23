@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aktech/darb/internal/drift"
 	"github.com/aktech/darb/internal/localindex"
 	"github.com/aktech/darb/internal/nebifile"
 	"github.com/spf13/cobra"
@@ -185,6 +186,16 @@ func runPull(cmd *cobra.Command, args []string) {
 		}
 	}
 
+	// Check if already up to date (skip fetch if content matches)
+	if !pullForce {
+		absCheck, err := filepath.Abs(outputDir)
+		if err == nil {
+			if skip := checkAlreadyUpToDate(absCheck, workspaceName, tag, manifestDigest); skip {
+				return
+			}
+		}
+	}
+
 	// Get pixi.toml
 	pixiToml, err := client.GetVersionPixiToml(ctx, env.ID, versionNumber)
 	if err != nil {
@@ -314,6 +325,56 @@ func handleGlobalPull(store *localindex.Store, envID, workspace, tag string) (st
 	}
 
 	return outputDir, nil
+}
+
+// checkAlreadyUpToDate checks if the local workspace already matches what
+// would be pulled. Returns true if the pull should be skipped.
+func checkAlreadyUpToDate(dir, workspace, tag, remoteDigest string) bool {
+	if !nebifile.Exists(dir) {
+		return false
+	}
+
+	nf, err := nebifile.Read(dir)
+	if err != nil {
+		return false
+	}
+
+	// Different workspace or tag — not a match
+	if nf.Origin.Workspace != workspace || nf.Origin.Tag != tag {
+		return false
+	}
+
+	// If we have a remote digest and it differs, the tag has been updated remotely
+	if remoteDigest != "" && nf.Origin.ManifestDigest != "" && nf.Origin.ManifestDigest != remoteDigest {
+		return false
+	}
+
+	// Check if local files match the stored layer digests
+	ws := drift.CheckWithNebiFile(dir, nf)
+	if ws.Overall == drift.StatusClean {
+		refStr := workspace
+		if tag != "" && tag != "latest" {
+			refStr = workspace + ":" + tag
+		}
+		fmt.Printf("Already up to date (%s)\n", refStr)
+		return true
+	}
+
+	// Local files are modified — prompt user
+	if !pullYes {
+		fmt.Fprintf(os.Stderr, "Local files have been modified since last pull.\n")
+		fmt.Fprintf(os.Stderr, "Re-pull to discard local changes? [y/N]: ")
+
+		reader := bufio.NewReader(os.Stdin)
+		response, _ := reader.ReadString('\n')
+		response = strings.TrimSpace(strings.ToLower(response))
+		if response != "y" && response != "yes" {
+			fmt.Println("Pull skipped (local modifications preserved)")
+			return true
+		}
+	}
+
+	return false
 }
 
 // handleDirectoryPull handles the default directory pull workflow.

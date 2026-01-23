@@ -375,6 +375,127 @@ func TestPullCmd_FlagShorthandsDoNotConflict(t *testing.T) {
 	}
 }
 
+func TestCheckAlreadyUpToDate_NoNebiFile(t *testing.T) {
+	dir := t.TempDir()
+	// No .nebi file → should not skip
+	if checkAlreadyUpToDate(dir, "ws", "v1.0", "sha256:abc") {
+		t.Error("should not skip when .nebi file is missing")
+	}
+}
+
+func TestCheckAlreadyUpToDate_DifferentWorkspace(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("test content")
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), content, 0644)
+	os.WriteFile(filepath.Join(dir, "pixi.lock"), content, 0644)
+
+	digest := nebifile.ComputeDigest(content)
+	nf := nebifile.NewFromPull("other-ws", "v1.0", "", "http://localhost",
+		1, "sha256:abc", digest, int64(len(content)), digest, int64(len(content)))
+	nebifile.Write(dir, nf)
+
+	if checkAlreadyUpToDate(dir, "my-ws", "v1.0", "sha256:abc") {
+		t.Error("should not skip when workspace name differs")
+	}
+}
+
+func TestCheckAlreadyUpToDate_DifferentTag(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("test content")
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), content, 0644)
+	os.WriteFile(filepath.Join(dir, "pixi.lock"), content, 0644)
+
+	digest := nebifile.ComputeDigest(content)
+	nf := nebifile.NewFromPull("ws", "v1.0", "", "http://localhost",
+		1, "sha256:abc", digest, int64(len(content)), digest, int64(len(content)))
+	nebifile.Write(dir, nf)
+
+	if checkAlreadyUpToDate(dir, "ws", "v2.0", "sha256:abc") {
+		t.Error("should not skip when tag differs")
+	}
+}
+
+func TestCheckAlreadyUpToDate_CleanAndSameDigest(t *testing.T) {
+	dir := t.TempDir()
+	tomlContent := []byte("[workspace]\nname = \"test\"\n")
+	lockContent := []byte("version: 1\n")
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), tomlContent, 0644)
+	os.WriteFile(filepath.Join(dir, "pixi.lock"), lockContent, 0644)
+
+	tomlDigest := nebifile.ComputeDigest(tomlContent)
+	lockDigest := nebifile.ComputeDigest(lockContent)
+	nf := nebifile.NewFromPull("ws", "v1.0", "", "http://localhost",
+		1, "sha256:abc", tomlDigest, int64(len(tomlContent)), lockDigest, int64(len(lockContent)))
+	nebifile.Write(dir, nf)
+
+	if !checkAlreadyUpToDate(dir, "ws", "v1.0", "sha256:abc") {
+		t.Error("should skip when workspace is clean and digest matches")
+	}
+}
+
+func TestCheckAlreadyUpToDate_CleanButDigestDiffers(t *testing.T) {
+	dir := t.TempDir()
+	tomlContent := []byte("[workspace]\nname = \"test\"\n")
+	lockContent := []byte("version: 1\n")
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), tomlContent, 0644)
+	os.WriteFile(filepath.Join(dir, "pixi.lock"), lockContent, 0644)
+
+	tomlDigest := nebifile.ComputeDigest(tomlContent)
+	lockDigest := nebifile.ComputeDigest(lockContent)
+	nf := nebifile.NewFromPull("ws", "v1.0", "", "http://localhost",
+		1, "sha256:abc", tomlDigest, int64(len(tomlContent)), lockDigest, int64(len(lockContent)))
+	nebifile.Write(dir, nf)
+
+	// Remote digest differs — tag has been updated
+	if checkAlreadyUpToDate(dir, "ws", "v1.0", "sha256:xyz-new") {
+		t.Error("should not skip when remote digest differs (tag updated)")
+	}
+}
+
+func TestCheckAlreadyUpToDate_ModifiedFilesWithYes(t *testing.T) {
+	dir := t.TempDir()
+	tomlContent := []byte("[workspace]\nname = \"test\"\n")
+	lockContent := []byte("version: 1\n")
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), tomlContent, 0644)
+	os.WriteFile(filepath.Join(dir, "pixi.lock"), lockContent, 0644)
+
+	tomlDigest := nebifile.ComputeDigest(tomlContent)
+	lockDigest := nebifile.ComputeDigest(lockContent)
+	nf := nebifile.NewFromPull("ws", "v1.0", "", "http://localhost",
+		1, "sha256:abc", tomlDigest, int64(len(tomlContent)), lockDigest, int64(len(lockContent)))
+	nebifile.Write(dir, nf)
+
+	// Modify a file after writing .nebi
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("modified!"), 0644)
+
+	// With --yes, modified files should NOT skip (proceed with re-pull)
+	pullYes = true
+	defer func() { pullYes = false }()
+
+	if checkAlreadyUpToDate(dir, "ws", "v1.0", "sha256:abc") {
+		t.Error("should not skip when files are modified and --yes is set")
+	}
+}
+
+func TestCheckAlreadyUpToDate_EmptyRemoteDigest(t *testing.T) {
+	dir := t.TempDir()
+	tomlContent := []byte("[workspace]\nname = \"test\"\n")
+	lockContent := []byte("version: 1\n")
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), tomlContent, 0644)
+	os.WriteFile(filepath.Join(dir, "pixi.lock"), lockContent, 0644)
+
+	tomlDigest := nebifile.ComputeDigest(tomlContent)
+	lockDigest := nebifile.ComputeDigest(lockContent)
+	nf := nebifile.NewFromPull("ws", "v1.0", "", "http://localhost",
+		1, "sha256:abc", tomlDigest, int64(len(tomlContent)), lockDigest, int64(len(lockContent)))
+	nebifile.Write(dir, nf)
+
+	// Empty remote digest (e.g., pulling "latest" with no digest info) — skip digest check
+	if !checkAlreadyUpToDate(dir, "ws", "v1.0", "") {
+		t.Error("should skip when files are clean and remote digest is empty (no digest comparison)")
+	}
+}
+
 func TestPullIntegration_DirectoryPullDuplicateAllowed(t *testing.T) {
 	dir := t.TempDir()
 	store := localindex.NewStoreWithDir(dir)

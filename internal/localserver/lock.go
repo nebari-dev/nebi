@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 // Lock represents a file-based lock to prevent race conditions when spawning the server.
@@ -46,8 +48,10 @@ func AcquireLock() (*Lock, error) {
 		}
 	}
 
-	// Write our PID to the lock file for stale lock detection.
-	fmt.Fprintf(file, "%d", os.Getpid())
+	// Write PID and start time for stale lock detection.
+	// Format: "PID START_TIME" — the start time guards against PID recycling.
+	startTime := getProcessStartTime(os.Getpid())
+	fmt.Fprintf(file, "%d %d", os.Getpid(), startTime)
 
 	return &Lock{
 		path: lockPath,
@@ -66,7 +70,8 @@ func (l *Lock) Release() error {
 	return nil
 }
 
-// isLockStale checks if a lock file is stale by reading the PID and checking if it's alive.
+// isLockStale checks if a lock file is stale by verifying the PID is alive
+// and its start time matches what was recorded.
 func isLockStale(lockPath string) bool {
 	data, err := os.ReadFile(lockPath)
 	if err != nil {
@@ -74,11 +79,31 @@ func isLockStale(lockPath string) bool {
 		return true
 	}
 
-	var pid int
-	if _, err := fmt.Sscanf(string(data), "%d", &pid); err != nil {
-		// Can't parse PID; assume stale.
+	parts := strings.Fields(string(data))
+	if len(parts) == 0 {
 		return true
 	}
 
-	return !IsProcessAlive(pid)
+	pid, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return true
+	}
+
+	if !IsProcessAlive(pid) {
+		return true
+	}
+
+	// PID is alive — check if it's the same process by comparing start times.
+	if len(parts) >= 2 {
+		recordedStartTime, err := strconv.ParseInt(parts[1], 10, 64)
+		if err == nil && recordedStartTime > 0 {
+			currentStartTime := getProcessStartTime(pid)
+			if currentStartTime > 0 && currentStartTime != recordedStartTime {
+				// PID was recycled — a different process now has this PID.
+				return true
+			}
+		}
+	}
+
+	return false
 }

@@ -170,17 +170,15 @@ func runWorkspaceListLocal() {
 		return
 	}
 
-	hasStale := false
+	hasMissing := false
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "WORKSPACE\tTAG\tSTATUS\tLOCATION")
 	for _, entry := range index.Workspaces {
 		// Check if path exists
 		status := getLocalEntryStatus(entry)
-
-		// Only suggest prune when the directory itself is gone
-		if _, err := os.Stat(entry.Path); os.IsNotExist(err) {
-			hasStale = true
+		if status == "missing" {
+			hasMissing = true
 		}
 
 		location := formatLocation(entry.Path, entry.IsGlobal)
@@ -193,16 +191,16 @@ func runWorkspaceListLocal() {
 	}
 	w.Flush()
 
-	if hasStale {
+	if hasMissing {
 		fmt.Println("\nRun 'nebi workspace prune' to remove stale entries.")
 	}
 }
 
 // getLocalEntryStatus checks the drift status of a local workspace entry.
 func getLocalEntryStatus(entry localindex.WorkspaceEntry) string {
-	// Check if directory exists
+	// Check if path exists
 	if _, err := os.Stat(entry.Path); os.IsNotExist(err) {
-		return "stale"
+		return "missing"
 	}
 
 	// Check drift

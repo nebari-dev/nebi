@@ -242,19 +242,22 @@ func showPushDriftWarning(dir, workspaceName, tag string, pixiTomlContent []byte
 		return
 	}
 
-	if ws.Overall == drift.StatusModified {
+	if ws.IsModified() {
 		fmt.Printf("Note: This workspace was originally pulled from %s:%s\n",
 			nf.Origin.Workspace, nf.Origin.Tag)
 		for _, f := range ws.Files {
-			if f.Status == drift.StatusModified {
+			switch f.Status {
+			case drift.StatusModified:
 				fmt.Printf("  - %s modified locally\n", f.Filename)
+			case drift.StatusMissing:
+				fmt.Printf("  - %s deleted locally\n", f.Filename)
 			}
 		}
 		fmt.Println()
 	}
 
 	// Warn if pushing to the same tag as origin (potential overwrite)
-	if tag == nf.Origin.Tag && workspaceName == nf.Origin.Workspace && ws.Overall == drift.StatusModified {
+	if tag == nf.Origin.Tag && workspaceName == nf.Origin.Workspace && ws.IsModified() {
 		fmt.Fprintf(os.Stderr, "Warning: Pushing modified content back to the same tag %q\n", tag)
 		fmt.Fprintf(os.Stderr, "  This will overwrite the existing content in the registry.\n")
 		fmt.Fprintf(os.Stderr, "  Consider using a new tag (e.g., %s-1) to preserve the original.\n\n",

@@ -160,13 +160,54 @@ func TestCheck_MissingFile(t *testing.T) {
 		t.Fatalf("Check() error = %v", err)
 	}
 
-	if ws.Overall != StatusModified {
-		t.Errorf("Overall = %q, want %q", ws.Overall, StatusModified)
+	if ws.Overall != StatusMissing {
+		t.Errorf("Overall = %q, want %q", ws.Overall, StatusMissing)
+	}
+	if !ws.IsModified() {
+		t.Error("IsModified() should be true when files are missing")
 	}
 
 	lockStatus := ws.GetFileStatus("pixi.lock")
 	if lockStatus.Status != StatusMissing {
 		t.Errorf("pixi.lock status = %q, want %q", lockStatus.Status, StatusMissing)
+	}
+}
+
+func TestCheck_MixedModifiedAndMissing(t *testing.T) {
+	dir, _ := setupTestWorkspace(t,
+		"[workspace]\nname = \"test\"\n",
+		"version: 1\npackages: []\n",
+	)
+
+	// Modify pixi.toml, delete pixi.lock
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("changed content"), 0644)
+	os.Remove(filepath.Join(dir, "pixi.lock"))
+
+	ws, err := Check(dir)
+	if err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+
+	// Missing takes precedence over modified
+	if ws.Overall != StatusMissing {
+		t.Errorf("Overall = %q, want %q", ws.Overall, StatusMissing)
+	}
+
+	tomlStatus := ws.GetFileStatus("pixi.toml")
+	if tomlStatus.Status != StatusModified {
+		t.Errorf("pixi.toml status = %q, want %q", tomlStatus.Status, StatusModified)
+	}
+
+	lockStatus := ws.GetFileStatus("pixi.lock")
+	if lockStatus.Status != StatusMissing {
+		t.Errorf("pixi.lock status = %q, want %q", lockStatus.Status, StatusMissing)
+	}
+}
+
+func TestIsModified_TrueForMissing(t *testing.T) {
+	ws := &WorkspaceStatus{Overall: StatusMissing}
+	if !ws.IsModified() {
+		t.Error("IsModified() should be true when overall is StatusMissing")
 	}
 }
 

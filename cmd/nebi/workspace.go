@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"github.com/aktech/darb/internal/cliclient"
 	"github.com/aktech/darb/internal/drift"
 	"github.com/aktech/darb/internal/localindex"
+	"github.com/aktech/darb/internal/nebifile"
 	"github.com/spf13/cobra"
 )
 
@@ -22,6 +24,7 @@ var workspaceCmd = &cobra.Command{
 }
 
 var workspaceListLocal bool
+var workspaceListJSON bool
 
 var workspaceListCmd = &cobra.Command{
 	Use:     "list",
@@ -79,14 +82,28 @@ Example:
 	Run:  runWorkspaceDelete,
 }
 
+var workspaceInfoPath string
+
 var workspaceInfoCmd = &cobra.Command{
-	Use:   "info <workspace>",
+	Use:   "info [<workspace>]",
 	Short: "Show workspace details",
 	Long: `Show detailed information about a workspace.
 
-Example:
-  nebi workspace info myworkspace`,
-	Args: cobra.ExactArgs(1),
+When run without arguments in a directory containing a .nebi metadata file,
+shows both local drift status and server-side workspace details.
+
+When given a workspace name, shows server-side details only.
+
+Examples:
+  # From a workspace directory (reads .nebi to detect workspace)
+  nebi workspace info
+
+  # Explicit workspace name (server lookup only)
+  nebi workspace info myworkspace
+
+  # From a specific path
+  nebi workspace info -C /path/to/workspace`,
+	Args: cobra.MaximumNArgs(1),
 	Run:  runWorkspaceInfo,
 }
 
@@ -106,8 +123,12 @@ func init() {
 	workspaceCmd.AddCommand(workspacePruneCmd)
 	workspaceCmd.AddCommand(workspaceTagsCmd)
 
+	// workspace info flags
+	workspaceInfoCmd.Flags().StringVarP(&workspaceInfoPath, "path", "C", ".", "Workspace directory path")
+
 	// workspace list flags
 	workspaceListCmd.Flags().BoolVar(&workspaceListLocal, "local", false, "List locally pulled workspaces with drift status")
+	workspaceListCmd.Flags().BoolVar(&workspaceListJSON, "json", false, "Output as JSON")
 
 	// workspace diff mirrors the top-level diff flags
 	workspaceDiffCmd.Flags().BoolVar(&diffRemote, "remote", false, "Compare against current remote tag")
@@ -154,6 +175,15 @@ func runWorkspaceList(cmd *cobra.Command, args []string) {
 	w.Flush()
 }
 
+// workspaceListEntry is the JSON output structure for workspace list --local --json.
+type workspaceListEntry struct {
+	Workspace string `json:"workspace"`
+	Tag       string `json:"tag"`
+	Status    string `json:"status"`
+	Path      string `json:"path"`
+	IsGlobal  bool   `json:"is_global"`
+}
+
 // runWorkspaceListLocal lists locally pulled workspaces with drift indicators.
 func runWorkspaceListLocal() {
 	store := localindex.NewStore()
@@ -164,8 +194,33 @@ func runWorkspaceListLocal() {
 	}
 
 	if len(index.Workspaces) == 0 {
-		fmt.Println("No locally pulled workspaces found")
-		fmt.Println("\nUse 'nebi pull <workspace>:<tag>' to pull a workspace.")
+		if workspaceListJSON {
+			fmt.Println("[]")
+		} else {
+			fmt.Println("No locally pulled workspaces found")
+			fmt.Println("\nUse 'nebi pull <workspace>:<tag>' to pull a workspace.")
+		}
+		return
+	}
+
+	if workspaceListJSON {
+		var entries []workspaceListEntry
+		for _, entry := range index.Workspaces {
+			status := getLocalEntryStatus(entry)
+			entries = append(entries, workspaceListEntry{
+				Workspace: entry.Workspace,
+				Tag:       entry.Tag,
+				Status:    status,
+				Path:      entry.Path,
+				IsGlobal:  entry.IsGlobal,
+			})
+		}
+		data, err := json.MarshalIndent(entries, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Failed to encode JSON: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(data))
 		return
 	}
 
@@ -174,7 +229,6 @@ func runWorkspaceListLocal() {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "WORKSPACE\tTAG\tSTATUS\tLOCATION")
 	for _, entry := range index.Workspaces {
-		// Check if path exists
 		status := getLocalEntryStatus(entry)
 		if status == "missing" {
 			hasMissing = true
@@ -211,7 +265,8 @@ func getLocalEntryStatus(entry localindex.WorkspaceEntry) string {
 	return string(ws.Overall)
 }
 
-// formatLocation formats a path for display, abbreviating home directory and global paths.
+// formatLocation formats a path for display, abbreviating home directory
+// and shortening UUIDs in global workspace paths.
 func formatLocation(path string, isGlobal bool) string {
 	home, _ := os.UserHomeDir()
 	display := path
@@ -219,17 +274,45 @@ func formatLocation(path string, isGlobal bool) string {
 		display = "~" + path[len(home):]
 	}
 
-	// Truncate long global paths
 	if isGlobal {
-		dataDir := filepath.Join(home, ".local", "share", "nebi")
-		if strings.HasPrefix(path, dataDir) {
-			display = "~/.local/share/nebi/..." + " (global)"
-			return display
-		}
+		// Abbreviate UUIDs in global workspace paths for readability.
+		// Global paths look like: ~/.local/share/nebi/workspaces/<uuid>/<tag>
+		display = abbreviateUUID(display)
 		return display + " (global)"
 	}
 
 	return display + " (local)"
+}
+
+// abbreviateUUID shortens UUID path components (32 hex + 4 hyphens = 36 chars)
+// to their first 8 characters for display.
+func abbreviateUUID(path string) string {
+	parts := strings.Split(path, string(filepath.Separator))
+	for i, part := range parts {
+		if isUUID(part) {
+			parts[i] = part[:8]
+		}
+	}
+	return strings.Join(parts, string(filepath.Separator))
+}
+
+// isUUID checks if a string looks like a UUID (8-4-4-4-12 hex pattern, 36 chars).
+func isUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, c := range s {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' {
+				return false
+			}
+		} else {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // runWorkspacePrune removes stale entries from the local index.
@@ -320,8 +403,96 @@ func runWorkspaceDelete(cmd *cobra.Command, args []string) {
 }
 
 func runWorkspaceInfo(cmd *cobra.Command, args []string) {
-	workspaceName := args[0]
+	if len(args) == 1 {
+		// Explicit workspace name: server-only lookup (original behavior)
+		runWorkspaceInfoByName(args[0])
+		return
+	}
 
+	// No argument: detect workspace from .nebi file in current directory
+	runWorkspaceInfoFromCwd()
+}
+
+// runWorkspaceInfoFromCwd shows combined local status and server info
+// by reading the .nebi metadata file from the current (or -C) directory.
+func runWorkspaceInfoFromCwd() {
+	dir := workspaceInfoPath
+
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		absDir = dir
+	}
+
+	// Read .nebi metadata
+	nf, err := nebifile.Read(absDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Not a nebi workspace directory (no .nebi file found)\n")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Hint: Specify a workspace name: nebi workspace info <name>")
+		fmt.Fprintln(os.Stderr, "      Or pull a workspace first: nebi pull <workspace>:<tag>")
+		os.Exit(1)
+	}
+
+	// Show local status section
+	fmt.Println("Local:")
+	fmt.Printf("  Workspace: %s:%s\n", nf.Origin.Workspace, nf.Origin.Tag)
+	if nf.Origin.Registry != "" {
+		fmt.Printf("  Registry:  %s\n", nf.Origin.Registry)
+	}
+	if nf.Origin.ServerURL != "" {
+		fmt.Printf("  Server:    %s\n", nf.Origin.ServerURL)
+	}
+	fmt.Printf("  Pulled:    %s (%s)\n", nf.Origin.PulledAt.Format("2006-01-02 15:04:05"), formatTimeAgo(nf.Origin.PulledAt))
+	if nf.Origin.ManifestDigest != "" {
+		fmt.Printf("  Digest:    %s\n", nf.Origin.ManifestDigest)
+	}
+
+	// Perform drift check
+	ws := drift.CheckWithNebiFile(absDir, nf)
+	fmt.Printf("  Status:    %s\n", ws.Overall)
+	for _, fs := range ws.Files {
+		if fs.Status != drift.StatusClean {
+			fmt.Printf("    %-12s %s\n", fs.Filename+":", string(fs.Status))
+		}
+	}
+
+	// Show server info section
+	fmt.Println("")
+	client := mustGetClient()
+	ctx := mustGetAuthContext()
+
+	env, err := findWorkspaceByName(client, ctx, nf.Origin.Workspace)
+	if err != nil {
+		fmt.Println("Server:")
+		fmt.Printf("  (workspace %q not found on server)\n", nf.Origin.Workspace)
+		return
+	}
+
+	envDetail, err := client.GetEnvironment(ctx, env.ID)
+	if err != nil {
+		fmt.Println("Server:")
+		fmt.Printf("  (failed to get details: %v)\n", err)
+		return
+	}
+
+	printServerInfo(envDetail)
+
+	// Get packages
+	packages, err := client.GetEnvironmentPackages(ctx, env.ID)
+	if err == nil && len(packages) > 0 {
+		fmt.Printf("\n  Packages (%d):\n", len(packages))
+		for _, pkg := range packages {
+			fmt.Printf("    - %s", pkg.Name)
+			if pkg.Version != "" {
+				fmt.Printf(" (%s)", pkg.Version)
+			}
+			fmt.Println()
+		}
+	}
+}
+
+// runWorkspaceInfoByName shows server-side workspace info by name.
+func runWorkspaceInfoByName(workspaceName string) {
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
@@ -362,6 +533,21 @@ func runWorkspaceInfo(cmd *cobra.Command, args []string) {
 			fmt.Println()
 		}
 	}
+}
+
+// printServerInfo prints the server details section for workspace info.
+func printServerInfo(envDetail *cliclient.Environment) {
+	fmt.Println("Server:")
+	fmt.Printf("  Name:            %s\n", envDetail.Name)
+	fmt.Printf("  ID:              %s\n", envDetail.ID)
+	fmt.Printf("  Status:          %s\n", envDetail.Status)
+	fmt.Printf("  Package Manager: %s\n", envDetail.PackageManager)
+	if envDetail.Owner != nil {
+		fmt.Printf("  Owner:           %s\n", envDetail.Owner.Username)
+	}
+	fmt.Printf("  Size:            %d bytes\n", envDetail.SizeBytes)
+	fmt.Printf("  Created:         %s\n", envDetail.CreatedAt)
+	fmt.Printf("  Updated:         %s\n", envDetail.UpdatedAt)
 }
 
 // findWorkspaceByName looks up a workspace by name and returns it.

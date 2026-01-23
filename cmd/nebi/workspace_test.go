@@ -102,11 +102,24 @@ func TestFormatLocation_Local(t *testing.T) {
 
 func TestFormatLocation_Global(t *testing.T) {
 	home, _ := os.UserHomeDir()
-	path := filepath.Join(home, ".local", "share", "nebi", "workspaces", "uuid", "v1.0")
+	path := filepath.Join(home, ".local", "share", "nebi", "workspaces", "550e8400-e29b-41d4-a716-446655440000", "v1.0")
 
 	result := formatLocation(path, true)
-	if result != "~/.local/share/nebi/... (global)" {
-		t.Errorf("formatLocation() = %q, want %q", result, "~/.local/share/nebi/... (global)")
+	want := "~/.local/share/nebi/workspaces/550e8400/v1.0 (global)"
+	if result != want {
+		t.Errorf("formatLocation() = %q, want %q", result, want)
+	}
+}
+
+func TestFormatLocation_GlobalNonUUID(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	// Non-UUID directory name should not be abbreviated
+	path := filepath.Join(home, ".local", "share", "nebi", "workspaces", "my-workspace", "v1.0")
+
+	result := formatLocation(path, true)
+	want := "~/.local/share/nebi/workspaces/my-workspace/v1.0 (global)"
+	if result != want {
+		t.Errorf("formatLocation() = %q, want %q", result, want)
 	}
 }
 
@@ -205,6 +218,37 @@ func TestWorkspaceListLocal_WithEntries(t *testing.T) {
 	}
 }
 
+func TestWorkspaceInfoCmd_AcceptsZeroOrOneArgs(t *testing.T) {
+	// The command should accept 0 or 1 args (MaximumNArgs(1))
+	err := workspaceInfoCmd.Args(workspaceInfoCmd, []string{})
+	if err != nil {
+		t.Errorf("workspaceInfoCmd should accept 0 args, got error: %v", err)
+	}
+
+	err = workspaceInfoCmd.Args(workspaceInfoCmd, []string{"myworkspace"})
+	if err != nil {
+		t.Errorf("workspaceInfoCmd should accept 1 arg, got error: %v", err)
+	}
+
+	err = workspaceInfoCmd.Args(workspaceInfoCmd, []string{"a", "b"})
+	if err == nil {
+		t.Error("workspaceInfoCmd should reject 2 args")
+	}
+}
+
+func TestWorkspaceInfoCmd_HasPathFlag(t *testing.T) {
+	flag := workspaceInfoCmd.Flags().Lookup("path")
+	if flag == nil {
+		t.Fatal("--path/-C flag should be registered")
+	}
+	if flag.DefValue != "." {
+		t.Errorf("--path default = %q, want %q", flag.DefValue, ".")
+	}
+	if flag.Shorthand != "C" {
+		t.Errorf("--path shorthand = %q, want %q", flag.Shorthand, "C")
+	}
+}
+
 func TestWorkspacePruneCmd_HasNoArgs(t *testing.T) {
 	if workspacePruneCmd.Args == nil {
 		t.Fatal("Args should not be nil")
@@ -218,5 +262,63 @@ func TestWorkspaceListCmd_HasLocalFlag(t *testing.T) {
 	}
 	if flag.DefValue != "false" {
 		t.Errorf("--local default = %q, want %q", flag.DefValue, "false")
+	}
+}
+
+func TestWorkspaceListCmd_HasJSONFlag(t *testing.T) {
+	flag := workspaceListCmd.Flags().Lookup("json")
+	if flag == nil {
+		t.Fatal("--json flag should be registered")
+	}
+	if flag.DefValue != "false" {
+		t.Errorf("--json default = %q, want %q", flag.DefValue, "false")
+	}
+}
+
+func TestIsUUID(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"550e8400-e29b-41d4-a716-446655440000", true},
+		{"ABCDEF00-1234-5678-9ABC-DEF012345678", true},
+		{"not-a-uuid", false},
+		{"550e8400e29b41d4a716446655440000", false},   // no hyphens
+		{"550e8400-e29b-41d4-a716-44665544000", false}, // too short
+		{"v1.0", false},
+		{"", false},
+		{"workspaces", false},
+	}
+	for _, tt := range tests {
+		got := isUUID(tt.input)
+		if got != tt.want {
+			t.Errorf("isUUID(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestAbbreviateUUID(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{
+			"~/.local/share/nebi/workspaces/550e8400-e29b-41d4-a716-446655440000/v1.0",
+			"~/.local/share/nebi/workspaces/550e8400/v1.0",
+		},
+		{
+			"~/.local/share/nebi/workspaces/my-workspace/v1.0",
+			"~/.local/share/nebi/workspaces/my-workspace/v1.0",
+		},
+		{
+			"/opt/nebi/workspaces/550e8400-e29b-41d4-a716-446655440000/v2.0",
+			"/opt/nebi/workspaces/550e8400/v2.0",
+		},
+	}
+	for _, tt := range tests {
+		got := abbreviateUUID(tt.input)
+		if got != tt.want {
+			t.Errorf("abbreviateUUID(%q) = %q, want %q", tt.input, got, tt.want)
+		}
 	}
 }

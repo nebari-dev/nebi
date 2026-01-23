@@ -142,6 +142,8 @@ func runPush(cmd *cobra.Command, args []string) {
 		RegistryID: registry.ID,
 		Repository: repository,
 		Tag:        tag,
+		PixiToml:   string(pixiTomlContent),
+		PixiLock:   string(pixiLockContent),
 	}
 
 	fmt.Printf("Pushing %s:%s to %s...\n", repository, tag, registry.Name)

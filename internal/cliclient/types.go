@@ -73,6 +73,8 @@ type PublishRequest struct {
 	RegistryID string `json:"registry_id"`
 	Repository string `json:"repository"`
 	Tag        string `json:"tag"`
+	PixiToml   string `json:"pixi_toml,omitempty"`
+	PixiLock   string `json:"pixi_lock,omitempty"`
 }
 
 // PublishResponse represents the response from publishing an environment.

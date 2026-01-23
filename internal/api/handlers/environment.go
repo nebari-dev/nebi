@@ -902,6 +902,8 @@ type PublishRequest struct {
 	RegistryID uuid.UUID `json:"registry_id" binding:"required"`
 	Repository string    `json:"repository" binding:"required"` // e.g., "myorg/myenv"
 	Tag        string    `json:"tag" binding:"required"`        // e.g., "v1.0.0"
+	PixiToml   string    `json:"pixi_toml"`                     // Client-provided pixi.toml content
+	PixiLock   string    `json:"pixi_lock"`                     // Client-provided pixi.lock content
 }
 
 type PublicationResponse struct {
@@ -953,13 +955,6 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 		return
 	}
 
-	// Get the latest version number for this environment
-	var latestVersion models.EnvironmentVersion
-	if err := h.db.Where("environment_id = ?", envID).Order("version_number DESC").First(&latestVersion).Error; err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Environment has no versions to publish"})
-		return
-	}
-
 	// Get registry
 	var registry models.OCIRegistry
 	if err := h.db.Where("id = ?", req.RegistryID).First(&registry).Error; err != nil {
@@ -967,11 +962,54 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 		return
 	}
 
-	// Build full repository path
-	fullRepo := fmt.Sprintf("%s/%s", registry.URL, req.Repository)
-
-	// Publish using OCI package
 	envPath := h.executor.GetEnvironmentPath(&env)
+
+	// Determine version number: create new version from client content, or fall back to latest
+	var versionNumber int
+	if req.PixiToml != "" {
+		// Client provided content — write to envPath and create a new version
+		if err := os.MkdirAll(envPath, 0755); err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create environment directory"})
+			return
+		}
+
+		if err := os.WriteFile(filepath.Join(envPath, "pixi.toml"), []byte(req.PixiToml), 0644); err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to write pixi.toml"})
+			return
+		}
+
+		if req.PixiLock != "" {
+			if err := os.WriteFile(filepath.Join(envPath, "pixi.lock"), []byte(req.PixiLock), 0644); err != nil {
+				c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to write pixi.lock"})
+				return
+			}
+		}
+
+		newVersion := models.EnvironmentVersion{
+			EnvironmentID:   env.ID,
+			ManifestContent: req.PixiToml,
+			LockFileContent: req.PixiLock,
+			PackageMetadata: "[]",
+			CreatedBy:       userID,
+			Description:     fmt.Sprintf("Published as %s:%s", req.Repository, req.Tag),
+		}
+		if err := h.db.Create(&newVersion).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create version record"})
+			return
+		}
+		versionNumber = newVersion.VersionNumber
+	} else {
+		// No content provided — use latest existing version (backward compat)
+		var latestVersion models.EnvironmentVersion
+		if err := h.db.Where("environment_id = ?", envID).Order("version_number DESC").First(&latestVersion).Error; err != nil {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Environment has no versions to publish"})
+			return
+		}
+		versionNumber = latestVersion.VersionNumber
+	}
+
+	// Build full repository path and publish to OCI
+	fullRepo := fmt.Sprintf("%s/%s", registry.URL, req.Repository)
 
 	digest, err := oci.PublishEnvironment(c.Request.Context(), envPath, oci.PublishOptions{
 		Repository:   fullRepo,
@@ -989,7 +1027,7 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 	// Create publication record
 	publication := models.Publication{
 		EnvironmentID: env.ID,
-		VersionNumber: latestVersion.VersionNumber,
+		VersionNumber: versionNumber,
 		RegistryID:    registry.ID,
 		Repository:    req.Repository,
 		Tag:           req.Tag,

@@ -16,8 +16,8 @@ func TestGetLocalEntryStatus_PathMissing(t *testing.T) {
 		Path: "/nonexistent/path/12345",
 	}
 	status := getLocalEntryStatus(entry)
-	if status != "missing" {
-		t.Errorf("status = %q, want %q", status, "missing")
+	if status != "stale" {
+		t.Errorf("status = %q, want %q", status, "stale")
 	}
 }
 

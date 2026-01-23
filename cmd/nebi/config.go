@@ -145,7 +145,7 @@ func getAPIClient() (*cliclient.Client, error) {
 		return nil, fmt.Errorf("failed to start local server: %w", err)
 	}
 
-	fmt.Printf("Local server started on port %d (will auto-shutdown after 15 minutes of inactivity)\n", info.Port)
+	fmt.Println("Local mode enabled. Run 'nebi login <url>' to switch to a remote server.")
 
 	apiClient = cliclient.New(info.URL(), info.Token)
 	return apiClient, nil

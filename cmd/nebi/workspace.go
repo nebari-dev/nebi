@@ -55,15 +55,16 @@ Examples:
 	Run:  runWorkspacePrune,
 }
 
-var workspaceListTagsCmd = &cobra.Command{
+var workspaceTagsCmd = &cobra.Command{
 	Use:   "tags <workspace>",
 	Short: "List tags for a workspace",
 	Long: `List all published tags for a workspace.
 
 Example:
-  nebi workspace tags myworkspace`,
+  nebi workspace tags myworkspace
+  nebi ws tags myworkspace`,
 	Args: cobra.ExactArgs(1),
-	Run:  runWorkspaceListTags,
+	Run:  runWorkspaceTags,
 }
 
 var workspaceDeleteCmd = &cobra.Command{
@@ -103,12 +104,10 @@ func init() {
 	workspaceCmd.AddCommand(workspaceInfoCmd)
 	workspaceCmd.AddCommand(workspaceDiffCmd)
 	workspaceCmd.AddCommand(workspacePruneCmd)
+	workspaceCmd.AddCommand(workspaceTagsCmd)
 
 	// workspace list flags
 	workspaceListCmd.Flags().BoolVar(&workspaceListLocal, "local", false, "List locally pulled workspaces with drift status")
-
-	// workspace tags is a subcommand of list
-	workspaceListCmd.AddCommand(workspaceListTagsCmd)
 
 	// workspace diff mirrors the top-level diff flags
 	workspaceDiffCmd.Flags().BoolVar(&diffRemote, "remote", false, "Compare against current remote tag")
@@ -254,7 +253,7 @@ func runWorkspacePrune(cmd *cobra.Command, args []string) {
 	}
 }
 
-func runWorkspaceListTags(cmd *cobra.Command, args []string) {
+func runWorkspaceTags(cmd *cobra.Command, args []string) {
 	workspaceName := args[0]
 
 	client := mustGetClient()

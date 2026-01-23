@@ -28,7 +28,7 @@ When a default registry is set, the `-r` flag becomes optional for most commands
 | Command | Description |
 |---------|-------------|
 | `nebi workspace list [-r <registry>]` | List workspaces (local or remote) |
-| `nebi workspace list tags <workspace> [-r <registry>]` | List tags for a workspace |
+| `nebi workspace tags <workspace> [-r <registry>]` | List tags for a workspace |
 | `nebi workspace info <workspace> [-r <registry>]` | Show workspace details |
 | `nebi shell <workspace> [-r <registry>] [-e <env>]` | Activate environment shell |
 

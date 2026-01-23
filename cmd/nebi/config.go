@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/aktech/darb/internal/cliclient"
+	"github.com/aktech/darb/internal/localserver"
 	"gopkg.in/yaml.v3"
 )
 
@@ -14,6 +17,7 @@ import (
 type CLIConfig struct {
 	ServerURL string `yaml:"server_url,omitempty"`
 	Token     string `yaml:"token,omitempty"`
+	UseLocal  bool   `yaml:"use_local,omitempty"` // User confirmed local server mode
 }
 
 var (
@@ -101,6 +105,8 @@ func saveConfig(cfg *CLIConfig) error {
 }
 
 // getAPIClient returns a configured API client.
+// If no explicit server URL is configured, it prompts the user and then ensures
+// a local server is running, connecting to it using the local token.
 func getAPIClient() (*cliclient.Client, error) {
 	if apiClient != nil {
 		return apiClient, nil
@@ -111,22 +117,66 @@ func getAPIClient() (*cliclient.Client, error) {
 		return nil, err
 	}
 
-	if cfg.ServerURL == "" {
-		return nil, fmt.Errorf("not logged in. Run 'nebi login <url>' first")
+	// If an explicit server URL is configured, use it (remote mode).
+	if cfg.ServerURL != "" {
+		apiClient = cliclient.New(cfg.ServerURL, cfg.Token)
+		return apiClient, nil
 	}
 
-	apiClient = cliclient.New(cfg.ServerURL, cfg.Token)
+	// No server configured. If user hasn't previously confirmed local mode, prompt them.
+	if !cfg.UseLocal {
+		confirmed, err := promptLocalServer()
+		if err != nil {
+			return nil, err
+		}
+		if !confirmed {
+			return nil, fmt.Errorf("no remote server configured. Run 'nebi login <url>' to connect to a remote server")
+		}
+		// Save the user's choice so we don't prompt again.
+		cfg.UseLocal = true
+		if err := saveConfig(cfg); err != nil {
+			return nil, fmt.Errorf("failed to save config: %w", err)
+		}
+	}
+
+	// Use local server mode.
+	info, err := localserver.EnsureRunning(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to start local server: %w", err)
+	}
+
+	fmt.Printf("Local server started on port %d (will auto-stop after 15 minutes of inactivity)\n", info.Port)
+
+	apiClient = cliclient.New(info.URL(), info.Token)
 	return apiClient, nil
 }
 
+// promptLocalServer asks the user if they want to use nebi in local mode.
+func promptLocalServer() (bool, error) {
+	fmt.Println("No remote server configured. Would you like to use nebi in local mode?")
+	fmt.Println("  (To connect to a remote server, run 'nebi login <url>')")
+	fmt.Print("\nUse local mode? [Y/n] ")
+
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return false, fmt.Errorf("failed to read input: %w", err)
+	}
+
+	input = strings.TrimSpace(strings.ToLower(input))
+	return input == "" || input == "y" || input == "yes", nil
+}
+
 // getAuthContext returns a context for authenticated requests.
+// In local mode, this always succeeds since the token is managed internally.
 func getAuthContext() (context.Context, error) {
 	cfg, err := loadConfig()
 	if err != nil {
 		return nil, err
 	}
 
-	if cfg.Token == "" {
+	// If using a remote server, require a stored token.
+	if cfg.ServerURL != "" && cfg.Token == "" {
 		return nil, fmt.Errorf("not logged in. Run 'nebi login <url>' first")
 	}
 

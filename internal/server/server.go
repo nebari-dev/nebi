@@ -16,6 +16,7 @@ import (
 	"github.com/aktech/darb/internal/config"
 	"github.com/aktech/darb/internal/db"
 	"github.com/aktech/darb/internal/executor"
+	"github.com/aktech/darb/internal/localserver"
 	"github.com/aktech/darb/internal/logger"
 	"github.com/aktech/darb/internal/logstream"
 	"github.com/aktech/darb/internal/queue"
@@ -33,7 +34,8 @@ type Config struct {
 }
 
 // Run starts the server with the given configuration and blocks until the context is canceled.
-func Run(ctx context.Context, cfg Config) error {
+// The optional cancelFunc is called when the local server idle timeout expires.
+func Run(ctx context.Context, cfg Config, cancelFunc ...context.CancelFunc) error {
 	// Set version in handlers
 	if cfg.Version != "" {
 		handlers.Version = cfg.Version
@@ -138,15 +140,51 @@ func Run(ctx context.Context, cfg Config) error {
 		router := api.NewRouter(appCfg, database, jobQueue, exec, broker, valkeyClientInterface, slog.Default())
 
 		addr := fmt.Sprintf(":%d", appCfg.Server.Port)
+
+		var handler http.Handler = router
+
+		// If running as a local server, add idle timeout to auto-shutdown.
+		if os.Getenv("NEBI_LOCAL_TOKEN") != "" && len(cancelFunc) > 0 {
+			idleTimer := localserver.NewIdleTimer(localserver.DefaultIdleTimeout, func() {
+				slog.Info("Idle timeout reached, shutting down local server")
+				cancelFunc[0]()
+			})
+			defer idleTimer.Stop()
+			handler = localserver.IdleTimeoutMiddleware(idleTimer, router)
+			slog.Info("Idle timeout enabled", "timeout", localserver.DefaultIdleTimeout)
+		}
+
 		srv = &http.Server{
 			Addr:    addr,
-			Handler: router,
+			Handler: handler,
 		}
 
 		go func() {
 			slog.Info("Server listening", "address", addr)
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				slog.Error("Server failed", "error", err)
+			}
+		}()
+	}
+
+	// Write server.state if running as a local server (NEBI_LOCAL_TOKEN is set).
+	localToken := os.Getenv("NEBI_LOCAL_TOKEN")
+	if localToken != "" && runServer {
+		state := &localserver.ServerState{
+			PID:       os.Getpid(),
+			Port:      appCfg.Server.Port,
+			Token:     localToken,
+			StartedAt: time.Now(),
+		}
+		if err := localserver.WriteState(state); err != nil {
+			slog.Error("Failed to write server state", "error", err)
+		} else {
+			slog.Info("Server state written", "port", appCfg.Server.Port)
+		}
+		// Clean up state file on shutdown.
+		defer func() {
+			if err := localserver.RemoveState(); err != nil {
+				slog.Error("Failed to remove server state", "error", err)
 			}
 		}()
 	}
@@ -185,10 +223,10 @@ func RunWithSignalHandling(cfg Config) error {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	// Run server in goroutine
+	// Run server in goroutine, passing cancel so idle timeout can trigger shutdown.
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- Run(ctx, cfg)
+		errCh <- Run(ctx, cfg, cancel)
 	}()
 
 	// Wait for signal or error

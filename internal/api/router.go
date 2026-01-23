@@ -4,6 +4,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -47,6 +48,12 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	var oidcAuth *auth.OIDCAuthenticator
 	if cfg.Auth.Type == "basic" {
 		authenticator = auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
+	}
+
+	// If running as a local server, wrap the authenticator to also accept the local token.
+	if localToken := os.Getenv("NEBI_LOCAL_TOKEN"); localToken != "" {
+		authenticator = auth.NewLocalTokenAuthenticator(authenticator, localToken, db)
+		logger.Info("Local token authentication enabled")
 	}
 
 	// Initialize OIDC if configured

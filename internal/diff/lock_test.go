@@ -359,3 +359,214 @@ packages:
 		t.Errorf("PackagesAdded = %d, want 1 (django)", summary.PackagesAdded)
 	}
 }
+
+func TestCompareLock_V6Format_CondaAdded(t *testing.T) {
+	oldContent := []byte(`
+version: 6
+environments:
+  default:
+    packages:
+      linux-64:
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/numpy-2.4.1-py314h2b28147_0.conda
+packages:
+- conda: https://conda.anaconda.org/conda-forge/linux-64/numpy-2.4.1-py314h2b28147_0.conda
+  sha256: abc123
+`)
+	newContent := []byte(`
+version: 6
+environments:
+  default:
+    packages:
+      linux-64:
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/numpy-2.4.1-py314h2b28147_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/scipy-1.15.0-py314h12345_0.conda
+packages:
+- conda: https://conda.anaconda.org/conda-forge/linux-64/numpy-2.4.1-py314h2b28147_0.conda
+  sha256: abc123
+- conda: https://conda.anaconda.org/conda-forge/linux-64/scipy-1.15.0-py314h12345_0.conda
+  sha256: def456
+`)
+	summary, err := CompareLock(oldContent, newContent)
+	if err != nil {
+		t.Fatalf("CompareLock() error = %v", err)
+	}
+	if summary.PackagesAdded != 1 {
+		t.Errorf("PackagesAdded = %d, want 1", summary.PackagesAdded)
+	}
+	if len(summary.Added) != 1 || !strings.Contains(summary.Added[0], "scipy") {
+		t.Errorf("Added = %v, want scipy", summary.Added)
+	}
+}
+
+func TestCompareLock_V6Format_CondaUpdated(t *testing.T) {
+	oldContent := []byte(`
+version: 6
+packages:
+- conda: https://conda.anaconda.org/conda-forge/linux-64/numpy-1.24.0-py311h1234_0.conda
+  sha256: abc123
+`)
+	newContent := []byte(`
+version: 6
+packages:
+- conda: https://conda.anaconda.org/conda-forge/linux-64/numpy-2.4.1-py314h2b28147_0.conda
+  sha256: def456
+`)
+	summary, err := CompareLock(oldContent, newContent)
+	if err != nil {
+		t.Fatalf("CompareLock() error = %v", err)
+	}
+	if summary.PackagesUpdated != 1 {
+		t.Errorf("PackagesUpdated = %d, want 1", summary.PackagesUpdated)
+	}
+	if len(summary.Updated) != 1 {
+		t.Fatalf("Updated length = %d, want 1", len(summary.Updated))
+	}
+	if summary.Updated[0].Name != "numpy" {
+		t.Errorf("Updated[0].Name = %q, want %q", summary.Updated[0].Name, "numpy")
+	}
+	if summary.Updated[0].OldVersion != "1.24.0" {
+		t.Errorf("OldVersion = %q, want %q", summary.Updated[0].OldVersion, "1.24.0")
+	}
+	if summary.Updated[0].NewVersion != "2.4.1" {
+		t.Errorf("NewVersion = %q, want %q", summary.Updated[0].NewVersion, "2.4.1")
+	}
+}
+
+func TestCompareLock_V6Format_PypiPackages(t *testing.T) {
+	oldContent := []byte(`
+version: 6
+packages:
+- pypi: https://files.pythonhosted.org/packages/old/fastapi-0.100.0-py3-none-any.whl
+  name: fastapi
+  version: 0.100.0
+`)
+	newContent := []byte(`
+version: 6
+packages:
+- pypi: https://files.pythonhosted.org/packages/new/fastapi-0.128.0-py3-none-any.whl
+  name: fastapi
+  version: 0.128.0
+- pypi: https://files.pythonhosted.org/packages/new/uvicorn-0.30.0-py3-none-any.whl
+  name: uvicorn
+  version: 0.30.0
+`)
+	summary, err := CompareLock(oldContent, newContent)
+	if err != nil {
+		t.Fatalf("CompareLock() error = %v", err)
+	}
+	if summary.PackagesUpdated != 1 {
+		t.Errorf("PackagesUpdated = %d, want 1 (fastapi)", summary.PackagesUpdated)
+	}
+	if summary.PackagesAdded != 1 {
+		t.Errorf("PackagesAdded = %d, want 1 (uvicorn)", summary.PackagesAdded)
+	}
+}
+
+func TestCompareLock_V6Format_MixedCondaAndPypi(t *testing.T) {
+	oldContent := []byte(`
+version: 6
+packages:
+- conda: https://conda.anaconda.org/conda-forge/linux-64/python-3.11.0-h12345_0.conda
+  sha256: aaa
+- pypi: https://files.pythonhosted.org/packages/old/flask-2.3.0-py3-none-any.whl
+  name: flask
+  version: 2.3.0
+`)
+	newContent := []byte(`
+version: 6
+packages:
+- conda: https://conda.anaconda.org/conda-forge/linux-64/python-3.12.0-h67890_0.conda
+  sha256: bbb
+- pypi: https://files.pythonhosted.org/packages/new/flask-3.0.0-py3-none-any.whl
+  name: flask
+  version: 3.0.0
+- conda: https://conda.anaconda.org/conda-forge/linux-64/numpy-2.4.1-py314h2b28147_0.conda
+  sha256: ccc
+`)
+	summary, err := CompareLock(oldContent, newContent)
+	if err != nil {
+		t.Fatalf("CompareLock() error = %v", err)
+	}
+	if summary.PackagesUpdated != 2 {
+		t.Errorf("PackagesUpdated = %d, want 2 (python + flask)", summary.PackagesUpdated)
+	}
+	if summary.PackagesAdded != 1 {
+		t.Errorf("PackagesAdded = %d, want 1 (numpy)", summary.PackagesAdded)
+	}
+}
+
+func TestCompareLock_V6Format_CondaRemoved(t *testing.T) {
+	oldContent := []byte(`
+version: 6
+packages:
+- conda: https://conda.anaconda.org/conda-forge/linux-64/numpy-2.4.1-py314h2b28147_0.conda
+  sha256: abc
+- conda: https://conda.anaconda.org/conda-forge/linux-64/scipy-1.15.0-py314h12345_0.conda
+  sha256: def
+`)
+	newContent := []byte(`
+version: 6
+packages:
+- conda: https://conda.anaconda.org/conda-forge/linux-64/numpy-2.4.1-py314h2b28147_0.conda
+  sha256: abc
+`)
+	summary, err := CompareLock(oldContent, newContent)
+	if err != nil {
+		t.Fatalf("CompareLock() error = %v", err)
+	}
+	if summary.PackagesRemoved != 1 {
+		t.Errorf("PackagesRemoved = %d, want 1", summary.PackagesRemoved)
+	}
+	if len(summary.Removed) != 1 || !strings.Contains(summary.Removed[0], "scipy") {
+		t.Errorf("Removed = %v, want scipy", summary.Removed)
+	}
+}
+
+func TestParseCondaFilename(t *testing.T) {
+	tests := []struct {
+		url         string
+		wantName    string
+		wantVersion string
+	}{
+		{
+			url:         "https://conda.anaconda.org/conda-forge/linux-64/numpy-2.4.1-py314h2b28147_0.conda",
+			wantName:    "numpy",
+			wantVersion: "2.4.1",
+		},
+		{
+			url:         "https://conda.anaconda.org/conda-forge/linux-64/libgcc-ng-14.2.0-h69a702a_2.conda",
+			wantName:    "libgcc-ng",
+			wantVersion: "14.2.0",
+		},
+		{
+			url:         "https://conda.anaconda.org/conda-forge/linux-64/pip-25.0.1-pyh8b19718_0.conda",
+			wantName:    "pip",
+			wantVersion: "25.0.1",
+		},
+		{
+			url:         "https://conda.anaconda.org/conda-forge/linux-64/python-3.12.0-hab00c5b_0_cpython.tar.bz2",
+			wantName:    "python",
+			wantVersion: "3.12.0",
+		},
+		{
+			url:         "https://conda.anaconda.org/conda-forge/linux-64/ca-certificates-2024.12.14-hbcca054_0.conda",
+			wantName:    "ca-certificates",
+			wantVersion: "2024.12.14",
+		},
+		{
+			url:         "https://conda.anaconda.org/conda-forge/noarch/font-ttf-dejavu-sans-mono-2.37-hab24e00_0.tar.bz2",
+			wantName:    "font-ttf-dejavu-sans-mono",
+			wantVersion: "2.37",
+		},
+	}
+
+	for _, tt := range tests {
+		name, version := parseCondaFilename(tt.url)
+		if name != tt.wantName {
+			t.Errorf("parseCondaFilename(%q) name = %q, want %q", tt.url, name, tt.wantName)
+		}
+		if version != tt.wantVersion {
+			t.Errorf("parseCondaFilename(%q) version = %q, want %q", tt.url, version, tt.wantVersion)
+		}
+	}
+}

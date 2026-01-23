@@ -153,23 +153,32 @@ func compareMaps(oldMap, newMap map[string]interface{}, prefix string, diff *Tom
 	}
 }
 
-// addChangesForValue adds changes for a value (handling nested maps).
+// addChangesForValue adds changes for a value, recursing into nested maps to
+// produce proper dotted section paths (e.g., "feature.test.dependencies").
 func addChangesForValue(section, key string, val interface{}, changeType ChangeType, diff *TomlDiff) {
 	subMap, isMap := val.(map[string]interface{})
 	if isMap {
 		keys := sortedKeys(subMap)
 		for _, k := range keys {
-			change := Change{
-				Section: section,
-				Key:     k,
-				Type:    changeType,
-			}
-			if changeType == ChangeAdded {
-				change.NewValue = formatValue(subMap[k])
+			subVal := subMap[k]
+			// Build the full section path for nested maps
+			subSection := section + "." + k
+			if nestedMap, nestedIsMap := subVal.(map[string]interface{}); nestedIsMap {
+				// Recurse deeper for nested maps
+				addChangesForValue(subSection, k, nestedMap, changeType, diff)
 			} else {
-				change.OldValue = formatValue(subMap[k])
+				change := Change{
+					Section: section,
+					Key:     k,
+					Type:    changeType,
+				}
+				if changeType == ChangeAdded {
+					change.NewValue = formatValue(subVal)
+				} else {
+					change.OldValue = formatValue(subVal)
+				}
+				diff.Changes = append(diff.Changes, change)
 			}
-			diff.Changes = append(diff.Changes, change)
 		}
 	} else {
 		change := Change{
@@ -208,7 +217,13 @@ func formatValue(val interface{}) string {
 		}
 		return "[" + strings.Join(parts, ", ") + "]"
 	case map[string]interface{}:
-		return fmt.Sprintf("%v", v)
+		// Render as TOML inline table: {key = "val", ...}
+		keys := sortedKeys(v)
+		parts := make([]string, 0, len(keys))
+		for _, k := range keys {
+			parts = append(parts, fmt.Sprintf("%s = %q", k, formatValue(v[k])))
+		}
+		return "{" + strings.Join(parts, ", ") + "}"
 	default:
 		return fmt.Sprintf("%v", v)
 	}

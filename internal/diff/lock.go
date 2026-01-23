@@ -2,38 +2,12 @@ package diff
 
 import (
 	"fmt"
+	"path"
 	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
-
-// lockFile represents the structure of a pixi.lock (YAML) file.
-// We only parse what we need for package comparison.
-type lockFile struct {
-	Version  int                `yaml:"version"`
-	Packages lockFilePackages   `yaml:"packages"`
-}
-
-// lockFilePackages handles both the conda and pypi package formats in pixi.lock.
-type lockFilePackages struct {
-	Conda []lockPackage `yaml:"conda,omitempty"`
-	Pypi  []lockPackage `yaml:"pypi,omitempty"`
-}
-
-// lockPackage represents a package entry in the lock file.
-type lockPackage struct {
-	Name    string `yaml:"name"`
-	Version string `yaml:"version"`
-	Source  string `yaml:"source,omitempty"`
-	Channel string `yaml:"channel,omitempty"`
-}
-
-// packageKey uniquely identifies a package across sources.
-type packageKey struct {
-	Name   string
-	Source string // "conda" or "pypi"
-}
 
 // CompareLock compares two pixi.lock file contents and produces a LockSummary.
 // It parses the YAML structure and identifies added, removed, and updated packages.
@@ -53,19 +27,159 @@ func CompareLock(oldContent, newContent []byte) (*LockSummary, error) {
 }
 
 // parseLockPackages extracts a deduplicated map of packages from lock file content.
+// It handles pixi.lock v6 format (flat list with conda:/pypi: URL keys) as well
+// as simpler formats with explicit name/version fields.
 func parseLockPackages(content []byte) (map[string]string, error) {
 	if len(content) == 0 {
 		return make(map[string]string), nil
 	}
 
-	var lf lockFile
+	// Parse as generic YAML to inspect the structure
+	var raw map[string]interface{}
+	if err := yaml.Unmarshal(content, &raw); err != nil {
+		return make(map[string]string), fmt.Errorf("failed to parse lock YAML: %w", err)
+	}
+
+	// Try v6 format: packages is a flat list with conda:/pypi: URL entries
+	packages := parseV6Packages(content)
+	if len(packages) > 0 {
+		return packages, nil
+	}
+
+	// Fallback: try older format with packages.conda[] / packages.pypi[] sub-keys
+	packages = parseLegacyPackages(content)
+	if len(packages) > 0 {
+		return packages, nil
+	}
+
+	// Fallback: flat list with explicit name/version fields
+	packages = parseFlatNameVersionPackages(content)
+	return packages, nil
+}
+
+// parseV6Packages parses pixi.lock v6 format where packages is a flat list
+// and each entry has either a "conda: <url>" or "pypi: <url>" key.
+//
+// Conda entries encode name/version in the URL filename (e.g., numpy-2.4.1-py314h...conda).
+// PyPI entries have explicit "name" and "version" fields.
+func parseV6Packages(content []byte) map[string]string {
+	// Parse just the packages list as a sequence of maps
+	type v6Lock struct {
+		Packages []map[string]interface{} `yaml:"packages"`
+	}
+
+	var lf v6Lock
 	if err := yaml.Unmarshal(content, &lf); err != nil {
-		// Try alternate format: flat list of packages
-		return parseFlatLockPackages(content)
+		return nil
 	}
 
 	packages := make(map[string]string)
+	for _, entry := range lf.Packages {
+		name, version := extractV6Package(entry)
+		if name != "" {
+			// Deduplicate: first occurrence wins (packages can appear for multiple platforms)
+			if _, exists := packages[name]; !exists {
+				packages[name] = version
+			}
+		}
+	}
+	return packages
+}
 
+// extractV6Package extracts name and version from a v6 package entry.
+func extractV6Package(entry map[string]interface{}) (name, version string) {
+	// Check for PyPI entry (has explicit name and version fields)
+	if _, hasPypi := entry["pypi"]; hasPypi {
+		if n, ok := entry["name"].(string); ok {
+			name = n
+		}
+		if v, ok := entry["version"].(string); ok {
+			version = v
+		}
+		return name, version
+	}
+
+	// Check for conda entry (name/version encoded in URL filename)
+	if condaURL, hasConda := entry["conda"]; hasConda {
+		urlStr, ok := condaURL.(string)
+		if !ok {
+			return "", ""
+		}
+		return parseCondaFilename(urlStr)
+	}
+
+	return "", ""
+}
+
+// parseCondaFilename extracts package name and version from a conda URL.
+// Conda filenames follow the pattern: name-version-build.conda or name-version-build.tar.bz2
+// Examples:
+//   - https://conda.anaconda.org/conda-forge/linux-64/numpy-2.4.1-py314h2b28147_0.conda
+//   - https://conda.anaconda.org/conda-forge/noarch/pip-25.0.1-pyh8b19718_0.conda
+//   - https://conda.anaconda.org/conda-forge/linux-64/libgcc-14.2.0-h767d61c_2.conda
+func parseCondaFilename(url string) (name, version string) {
+	// Get the filename from the URL path
+	filename := path.Base(url)
+
+	// Strip extension (.conda or .tar.bz2)
+	if strings.HasSuffix(filename, ".tar.bz2") {
+		filename = strings.TrimSuffix(filename, ".tar.bz2")
+	} else if strings.HasSuffix(filename, ".conda") {
+		filename = strings.TrimSuffix(filename, ".conda")
+	} else {
+		return "", ""
+	}
+
+	// Split on "-" to find name-version-build
+	// The challenge: package names can contain hyphens (e.g., "libgcc-ng")
+	// Strategy: split from the right. Build is the last segment, version is second-to-last,
+	// everything else is the name. Version segments start with a digit.
+	parts := strings.Split(filename, "-")
+	if len(parts) < 3 {
+		return "", ""
+	}
+
+	// Find the version: scan from right, skip the build string (last part),
+	// then find the first part that looks like a version (starts with digit)
+	buildIdx := len(parts) - 1
+	versionIdx := -1
+	for i := buildIdx - 1; i >= 1; i-- {
+		if len(parts[i]) > 0 && parts[i][0] >= '0' && parts[i][0] <= '9' {
+			versionIdx = i
+			break
+		}
+	}
+
+	if versionIdx < 1 {
+		return "", ""
+	}
+
+	name = strings.Join(parts[:versionIdx], "-")
+	version = parts[versionIdx]
+	return name, version
+}
+
+// parseLegacyPackages handles the older format with packages.conda[] / packages.pypi[] sub-keys.
+func parseLegacyPackages(content []byte) map[string]string {
+	type legacyLock struct {
+		Packages struct {
+			Conda []struct {
+				Name    string `yaml:"name"`
+				Version string `yaml:"version"`
+			} `yaml:"conda,omitempty"`
+			Pypi []struct {
+				Name    string `yaml:"name"`
+				Version string `yaml:"version"`
+			} `yaml:"pypi,omitempty"`
+		} `yaml:"packages"`
+	}
+
+	var lf legacyLock
+	if err := yaml.Unmarshal(content, &lf); err != nil {
+		return nil
+	}
+
+	packages := make(map[string]string)
 	for _, pkg := range lf.Packages.Conda {
 		if pkg.Name != "" {
 			packages[pkg.Name] = pkg.Version
@@ -73,7 +187,6 @@ func parseLockPackages(content []byte) (map[string]string, error) {
 	}
 	for _, pkg := range lf.Packages.Pypi {
 		if pkg.Name != "" {
-			// Prefer conda version if both exist; pypi suffix for disambiguation
 			key := pkg.Name
 			if _, exists := packages[key]; exists {
 				key = pkg.Name + " (pypi)"
@@ -81,18 +194,11 @@ func parseLockPackages(content []byte) (map[string]string, error) {
 			packages[key] = pkg.Version
 		}
 	}
-
-	// If structured parsing yielded nothing, try flat format
-	if len(packages) == 0 {
-		return parseFlatLockPackages(content)
-	}
-
-	return packages, nil
+	return packages
 }
 
-// parseFlatLockPackages handles lock files with a flat package list format.
-func parseFlatLockPackages(content []byte) (map[string]string, error) {
-	// Try parsing as a map with package entries directly
+// parseFlatNameVersionPackages handles a flat list with explicit name/version fields.
+func parseFlatNameVersionPackages(content []byte) map[string]string {
 	type flatLock struct {
 		Packages []struct {
 			Name    string `yaml:"name"`
@@ -102,7 +208,7 @@ func parseFlatLockPackages(content []byte) (map[string]string, error) {
 
 	var fl flatLock
 	if err := yaml.Unmarshal(content, &fl); err != nil {
-		return make(map[string]string), nil
+		return make(map[string]string)
 	}
 
 	packages := make(map[string]string)
@@ -111,7 +217,7 @@ func parseFlatLockPackages(content []byte) (map[string]string, error) {
 			packages[pkg.Name] = pkg.Version
 		}
 	}
-	return packages, nil
+	return packages
 }
 
 // diffPackages compares two package maps and produces a LockSummary.

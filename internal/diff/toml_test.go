@@ -326,6 +326,138 @@ platforms = ["linux-64", "osx-arm64"]
 	}
 }
 
+func TestCompareToml_DeeplyNestedFeature(t *testing.T) {
+	oldContent := []byte(`[dependencies]
+python = ">=3.11"
+`)
+	newContent := []byte(`[dependencies]
+python = ">=3.11"
+
+[feature.test.dependencies]
+pytest = "*"
+`)
+
+	diff, err := CompareToml(oldContent, newContent)
+	if err != nil {
+		t.Fatalf("CompareToml() error = %v", err)
+	}
+
+	if !diff.HasChanges() {
+		t.Fatal("HasChanges() should be true for new nested section")
+	}
+
+	added := diff.Added()
+	found := false
+	for _, a := range added {
+		if a.Key == "pytest" && a.NewValue == "*" {
+			found = true
+			// Section should be the full dotted path
+			if !strings.Contains(a.Section, "test") || !strings.Contains(a.Section, "dependencies") {
+				t.Errorf("Section = %q, want it to contain the full path (feature.test.dependencies)", a.Section)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Should find added pytest with value *, got changes: %+v", added)
+	}
+}
+
+func TestCompareToml_DeeplyNestedFeatureRemoved(t *testing.T) {
+	oldContent := []byte(`[dependencies]
+python = ">=3.11"
+
+[feature.cuda.system-requirements]
+cuda = "12.0"
+`)
+	newContent := []byte(`[dependencies]
+python = ">=3.11"
+`)
+
+	diff, err := CompareToml(oldContent, newContent)
+	if err != nil {
+		t.Fatalf("CompareToml() error = %v", err)
+	}
+
+	removed := diff.Removed()
+	found := false
+	for _, r := range removed {
+		if r.Key == "cuda" && r.OldValue == "12.0" {
+			found = true
+			if !strings.Contains(r.Section, "cuda") || !strings.Contains(r.Section, "system-requirements") {
+				t.Errorf("Section = %q, want it to contain full path", r.Section)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Should find removed cuda, got changes: %+v", removed)
+	}
+}
+
+func TestCompareToml_NestedNoMapString(t *testing.T) {
+	// Ensure nested maps don't produce "map[...]" in values
+	oldContent := []byte(`[dependencies]
+python = ">=3.11"
+`)
+	newContent := []byte(`[dependencies]
+python = ">=3.11"
+
+[feature.test.dependencies]
+pytest = "*"
+coverage = ">=7.0"
+`)
+
+	diff, err := CompareToml(oldContent, newContent)
+	if err != nil {
+		t.Fatalf("CompareToml() error = %v", err)
+	}
+
+	for _, c := range diff.Changes {
+		if strings.Contains(c.NewValue, "map[") {
+			t.Errorf("Change value contains Go map representation: %+v", c)
+		}
+		if strings.Contains(c.OldValue, "map[") {
+			t.Errorf("Change value contains Go map representation: %+v", c)
+		}
+	}
+}
+
+func TestFormatUnifiedDiff_NestedSections(t *testing.T) {
+	diff := &TomlDiff{
+		Changes: []Change{
+			{Section: "feature.test.dependencies", Key: "pytest", Type: ChangeAdded, NewValue: "*"},
+			{Section: "feature.test.dependencies", Key: "coverage", Type: ChangeAdded, NewValue: ">=7.0"},
+		},
+	}
+
+	result := FormatUnifiedDiff(diff, "pulled (ws:v1.0)", "local")
+
+	if !strings.Contains(result, "[feature.test.dependencies]") {
+		t.Errorf("Should render full dotted section path, got:\n%s", result)
+	}
+	if !strings.Contains(result, "+pytest") {
+		t.Error("Should show added pytest")
+	}
+	if !strings.Contains(result, "+coverage") {
+		t.Error("Should show added coverage")
+	}
+}
+
+func TestFormatValue_MapProducesToml(t *testing.T) {
+	// If a map somehow reaches formatValue, it should produce TOML-like output
+	val := map[string]interface{}{
+		"key": "value",
+	}
+	result := formatValue(val)
+	if strings.Contains(result, "map[") {
+		t.Errorf("formatValue(map) should not produce Go map syntax, got %q", result)
+	}
+	if !strings.Contains(result, "key") || !strings.Contains(result, "value") {
+		t.Errorf("formatValue(map) should contain key and value, got %q", result)
+	}
+}
+
 func TestCompareToml_BooleanValues(t *testing.T) {
 	oldContent := []byte(`[settings]
 verbose = false

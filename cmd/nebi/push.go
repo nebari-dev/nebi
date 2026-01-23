@@ -11,6 +11,7 @@ import (
 	"github.com/aktech/darb/internal/cliclient"
 	"github.com/aktech/darb/internal/diff"
 	"github.com/aktech/darb/internal/drift"
+	"github.com/aktech/darb/internal/localindex"
 	"github.com/aktech/darb/internal/nebifile"
 	"github.com/spf13/cobra"
 )
@@ -155,6 +156,74 @@ func runPush(cmd *cobra.Command, args []string) {
 		fmt.Printf("  Digest: %s\n", resp.Digest)
 	}
 	fmt.Printf("\nSuccessfully pushed to %s\n", registry.Name)
+
+	// Update .nebi metadata and local index to reflect the pushed state.
+	// After a successful push, the local files ARE the origin — status becomes "clean".
+	cfg, cfgErr := loadConfig()
+	if cfgErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Failed to load config for metadata update: %v\n", cfgErr)
+		return
+	}
+
+	pixiTomlDigest := nebifile.ComputeDigest(pixiTomlContent)
+	var pixiLockDigest string
+	if len(pixiLockContent) > 0 {
+		pixiLockDigest = nebifile.ComputeDigest(pixiLockContent)
+	}
+
+	layers := map[string]nebifile.Layer{
+		"pixi.toml": {
+			Digest:    pixiTomlDigest,
+			Size:      int64(len(pixiTomlContent)),
+			MediaType: nebifile.MediaTypePixiToml,
+		},
+	}
+	if pixiLockDigest != "" {
+		layers["pixi.lock"] = nebifile.Layer{
+			Digest:    pixiLockDigest,
+			Size:      int64(len(pixiLockContent)),
+			MediaType: nebifile.MediaTypePixiLock,
+		}
+	}
+
+	nf := nebifile.New(nebifile.Origin{
+		Workspace:       workspaceName,
+		Tag:             tag,
+		RegistryURL:     registry.URL,
+		ServerURL:       cfg.ServerURL,
+		ServerVersionID: resp.VersionNumber,
+		ManifestDigest:  resp.Digest,
+		PulledAt:        time.Now(),
+	}, layers)
+
+	if err := nebifile.Write(absDir, nf); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Failed to update .nebi metadata: %v\n", err)
+	}
+
+	// Update local index
+	idxLayers := map[string]string{
+		"pixi.toml": pixiTomlDigest,
+	}
+	if pixiLockDigest != "" {
+		idxLayers["pixi.lock"] = pixiLockDigest
+	}
+
+	idxStore := localindex.NewStore()
+	entry := localindex.WorkspaceEntry{
+		Workspace:       workspaceName,
+		Tag:             tag,
+		RegistryURL:     registry.URL,
+		ServerURL:       cfg.ServerURL,
+		ServerVersionID: resp.VersionNumber,
+		Path:            absDir,
+		IsGlobal:        false,
+		PulledAt:        time.Now(),
+		ManifestDigest:  resp.Digest,
+		Layers:          idxLayers,
+	}
+	if err := idxStore.AddEntry(entry); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Failed to update local index: %v\n", err)
+	}
 }
 
 // runPushDryRun shows what would be pushed without actually pushing.

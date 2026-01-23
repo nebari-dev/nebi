@@ -55,7 +55,7 @@ type NebiFile struct {
 type Origin struct {
 	Workspace       string    `yaml:"workspace"`
 	Tag             string    `yaml:"tag"`
-	Registry        string    `yaml:"registry,omitempty"`
+	RegistryURL     string    `yaml:"registry_url,omitempty"`
 	ServerURL       string    `yaml:"server_url"`
 	ServerVersionID int32     `yaml:"server_version_id"`
 	ManifestDigest  string    `yaml:"manifest_digest,omitempty"`
@@ -137,7 +137,7 @@ func New(origin Origin, layers map[string]Layer) *NebiFile {
 
 // NewFromPull creates a NebiFile from pull operation results.
 // This is a convenience constructor that takes the common parameters from a pull.
-func NewFromPull(workspace, tag, registry, serverURL string, serverVersionID int32,
+func NewFromPull(workspace, tag, registryURL, serverURL string, serverVersionID int32,
 	manifestDigest string, pixiTomlDigest string, pixiTomlSize int64,
 	pixiLockDigest string, pixiLockSize int64) *NebiFile {
 
@@ -145,7 +145,7 @@ func NewFromPull(workspace, tag, registry, serverURL string, serverVersionID int
 		Origin: Origin{
 			Workspace:       workspace,
 			Tag:             tag,
-			Registry:        registry,
+			RegistryURL:     registryURL,
 			ServerURL:       serverURL,
 			ServerVersionID: serverVersionID,
 			ManifestDigest:  manifestDigest,

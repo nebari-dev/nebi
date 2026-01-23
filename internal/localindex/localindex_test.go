@@ -60,7 +60,7 @@ func TestSaveAndLoad(t *testing.T) {
 			{
 				Workspace:       "data-science",
 				Tag:             "v1.0",
-				Registry:        "ds-team",
+				RegistryURL:        "ds-team",
 				ServerURL:       "https://nebi.example.com",
 				ServerVersionID: 42,
 				Path:            "/home/user/project-a",
@@ -101,8 +101,8 @@ func TestSaveAndLoad(t *testing.T) {
 	if ws.Tag != "v1.0" {
 		t.Errorf("Tag = %q, want %q", ws.Tag, "v1.0")
 	}
-	if ws.Registry != "ds-team" {
-		t.Errorf("Registry = %q, want %q", ws.Registry, "ds-team")
+	if ws.RegistryURL != "ds-team" {
+		t.Errorf("Registry = %q, want %q", ws.RegistryURL, "ds-team")
 	}
 	if ws.ServerURL != "https://nebi.example.com" {
 		t.Errorf("ServerURL = %q, want %q", ws.ServerURL, "https://nebi.example.com")
@@ -531,7 +531,7 @@ func TestIndexJSONFormat(t *testing.T) {
 			{
 				Workspace:       "data-science",
 				Tag:             "v1.0",
-				Registry:        "ds-team",
+				RegistryURL:        "ds-team",
 				ServerURL:       "https://nebi.example.com",
 				ServerVersionID: 42,
 				Path:            "/home/user/project-a",

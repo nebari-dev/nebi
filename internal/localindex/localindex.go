@@ -36,7 +36,7 @@ type Index struct {
 type WorkspaceEntry struct {
 	Workspace       string            `json:"workspace"`
 	Tag             string            `json:"tag"`
-	Registry        string            `json:"registry,omitempty"`
+	RegistryURL     string            `json:"registry_url,omitempty"`
 	ServerURL       string            `json:"server_url"`
 	ServerVersionID int32             `json:"server_version_id"`
 	Path            string            `json:"path"`

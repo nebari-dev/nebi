@@ -60,7 +60,7 @@ func formatStatusJSONInternal(ws *drift.WorkspaceStatus, nf *nebifile.NebiFile, 
 	type statusOutput struct {
 		Workspace    string      `json:"workspace"`
 		Tag          string      `json:"tag"`
-		Registry     string      `json:"registry,omitempty"`
+		RegistryURL  string      `json:"registry_url,omitempty"`
 		ServerURL    string      `json:"server_url"`
 		PulledAt     string      `json:"pulled_at"`
 		OriginDigest string      `json:"origin_digest"`
@@ -71,7 +71,7 @@ func formatStatusJSONInternal(ws *drift.WorkspaceStatus, nf *nebifile.NebiFile, 
 	output := statusOutput{
 		Workspace:    nf.Origin.Workspace,
 		Tag:          nf.Origin.Tag,
-		Registry:     nf.Origin.Registry,
+		RegistryURL:  nf.Origin.RegistryURL,
 		ServerURL:    nf.Origin.ServerURL,
 		PulledAt:     nf.Origin.PulledAt.Format(time.RFC3339),
 		OriginDigest: nf.Origin.ManifestDigest,

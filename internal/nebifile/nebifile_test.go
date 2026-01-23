@@ -35,7 +35,7 @@ func TestWriteAndRead(t *testing.T) {
 		Origin: Origin{
 			Workspace:       "data-science",
 			Tag:             "v1.0",
-			Registry:        "ds-team",
+			RegistryURL:        "ds-team",
 			ServerURL:       "https://nebi.example.com",
 			ServerVersionID: 42,
 			ManifestDigest:  "sha256:abc123def456",
@@ -71,8 +71,8 @@ func TestWriteAndRead(t *testing.T) {
 	if loaded.Origin.Tag != "v1.0" {
 		t.Errorf("Tag = %q, want %q", loaded.Origin.Tag, "v1.0")
 	}
-	if loaded.Origin.Registry != "ds-team" {
-		t.Errorf("Registry = %q, want %q", loaded.Origin.Registry, "ds-team")
+	if loaded.Origin.RegistryURL != "ds-team" {
+		t.Errorf("Registry = %q, want %q", loaded.Origin.RegistryURL, "ds-team")
 	}
 	if loaded.Origin.ServerURL != "https://nebi.example.com" {
 		t.Errorf("ServerURL = %q, want %q", loaded.Origin.ServerURL, "https://nebi.example.com")
@@ -176,8 +176,8 @@ func TestNewFromPull(t *testing.T) {
 	if nf.Origin.Tag != "v1.0" {
 		t.Errorf("Tag = %q, want %q", nf.Origin.Tag, "v1.0")
 	}
-	if nf.Origin.Registry != "ds-team" {
-		t.Errorf("Registry = %q, want %q", nf.Origin.Registry, "ds-team")
+	if nf.Origin.RegistryURL != "ds-team" {
+		t.Errorf("Registry = %q, want %q", nf.Origin.RegistryURL, "ds-team")
 	}
 	if nf.Origin.ServerURL != "https://nebi.example.com" {
 		t.Errorf("ServerURL = %q, want %q", nf.Origin.ServerURL, "https://nebi.example.com")
@@ -257,7 +257,7 @@ func TestYAMLFormat(t *testing.T) {
 		Origin: Origin{
 			Workspace:       "data-science",
 			Tag:             "v1.0",
-			Registry:        "ds-team",
+			RegistryURL:        "ds-team",
 			ServerURL:       "https://nebi.example.com",
 			ServerVersionID: 42,
 			ManifestDigest:  "sha256:abc123",
@@ -421,8 +421,8 @@ func TestEmptyOriginFields(t *testing.T) {
 	}
 
 	// Optional fields should be empty
-	if loaded.Origin.Registry != "" {
-		t.Errorf("Registry = %q, want empty", loaded.Origin.Registry)
+	if loaded.Origin.RegistryURL != "" {
+		t.Errorf("Registry = %q, want empty", loaded.Origin.RegistryURL)
 	}
 	if loaded.Origin.ManifestDigest != "" {
 		t.Errorf("ManifestDigest = %q, want empty", loaded.Origin.ManifestDigest)
@@ -437,7 +437,7 @@ func TestRoundTripPreservesData(t *testing.T) {
 		Origin: Origin{
 			Workspace:       "ml-pipeline",
 			Tag:             "v2.3.1-beta",
-			Registry:        "ml-team",
+			RegistryURL:        "ml-team",
 			ServerURL:       "https://nebi.internal.company.com:8460",
 			ServerVersionID: 127,
 			ManifestDigest:  "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -473,8 +473,8 @@ func TestRoundTripPreservesData(t *testing.T) {
 	if loaded.Origin.Tag != original.Origin.Tag {
 		t.Errorf("Tag mismatch: got %q, want %q", loaded.Origin.Tag, original.Origin.Tag)
 	}
-	if loaded.Origin.Registry != original.Origin.Registry {
-		t.Errorf("Registry mismatch: got %q, want %q", loaded.Origin.Registry, original.Origin.Registry)
+	if loaded.Origin.RegistryURL != original.Origin.RegistryURL {
+		t.Errorf("Registry mismatch: got %q, want %q", loaded.Origin.RegistryURL, original.Origin.RegistryURL)
 	}
 	if loaded.Origin.ServerURL != original.Origin.ServerURL {
 		t.Errorf("ServerURL mismatch: got %q, want %q", loaded.Origin.ServerURL, original.Origin.ServerURL)

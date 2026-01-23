@@ -436,8 +436,8 @@ func runWorkspaceInfoFromCwd() {
 	// Show local status section
 	fmt.Println("Local:")
 	fmt.Printf("  Workspace: %s:%s\n", nf.Origin.Workspace, nf.Origin.Tag)
-	if nf.Origin.Registry != "" {
-		fmt.Printf("  Registry:  %s\n", nf.Origin.Registry)
+	if nf.Origin.RegistryURL != "" {
+		fmt.Printf("  Registry:  %s\n", nf.Origin.RegistryURL)
 	}
 	if nf.Origin.ServerURL != "" {
 		fmt.Printf("  Server:    %s\n", nf.Origin.ServerURL)

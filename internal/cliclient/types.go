@@ -77,9 +77,11 @@ type PublishRequest struct {
 
 // PublishResponse represents the response from publishing an environment.
 type PublishResponse struct {
-	Digest     string `json:"digest"`
-	Repository string `json:"repository"`
-	Tag        string `json:"tag"`
+	Digest        string `json:"digest"`
+	Repository    string `json:"repository"`
+	Tag           string `json:"tag"`
+	VersionNumber int32  `json:"version_number"`
+	RegistryURL   string `json:"registry_url"`
 }
 
 // EnvironmentVersion represents a version of an environment.

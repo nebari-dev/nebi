@@ -106,7 +106,7 @@ func outputStatusCompact(ws *drift.WorkspaceStatus, nf *nebifile.NebiFile, remot
 		ref += ":" + nf.Origin.Tag
 	}
 
-	registry := nf.Origin.Registry
+	registry := nf.Origin.RegistryURL
 	if registry == "" {
 		registry = "server"
 	}
@@ -120,8 +120,8 @@ func outputStatusCompact(ws *drift.WorkspaceStatus, nf *nebifile.NebiFile, remot
 
 func outputStatusVerbose(ws *drift.WorkspaceStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) {
 	fmt.Printf("Workspace: %s:%s\n", nf.Origin.Workspace, nf.Origin.Tag)
-	if nf.Origin.Registry != "" {
-		fmt.Printf("Registry:  %s\n", nf.Origin.Registry)
+	if nf.Origin.RegistryURL != "" {
+		fmt.Printf("Registry:  %s\n", nf.Origin.RegistryURL)
 	}
 	fmt.Printf("Server:    %s\n", nf.Origin.ServerURL)
 	fmt.Printf("Pulled:    %s (%s)\n", nf.Origin.PulledAt.Format("2006-01-02 15:04:05"), formatTimeAgo(nf.Origin.PulledAt))

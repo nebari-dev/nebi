@@ -2016,6 +2016,14 @@ const docTemplate = `{
                 "tag"
             ],
             "properties": {
+                "pixi_lock": {
+                    "description": "Client-provided pixi.lock content",
+                    "type": "string"
+                },
+                "pixi_toml": {
+                    "description": "Client-provided pixi.toml content",
+                    "type": "string"
+                },
                 "registry_id": {
                     "type": "string"
                 },

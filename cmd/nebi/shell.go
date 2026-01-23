@@ -1,17 +1,26 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/aktech/darb/internal/drift"
 	"github.com/aktech/darb/internal/localindex"
 	"github.com/aktech/darb/internal/nebifile"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
-var shellPixiEnv string
+var (
+	shellPixiEnv string
+	shellGlobal  bool
+	shellLocal   bool
+	shellPath    string
+)
 
 var shellCmd = &cobra.Command{
 	Use:   "shell [<workspace>[:<tag>]]",
@@ -21,6 +30,10 @@ var shellCmd = &cobra.Command{
 When run without arguments in a directory with .nebi metadata, uses the
 local workspace. When given a workspace reference, looks up the local
 index (preferring global copies) and falls back to pulling from server.
+
+When multiple local copies exist, an interactive prompt lets you choose
+which one to activate. Use -C to specify a path directly, or --global/--local
+to filter by storage type.
 
 Drift detection warns if local files have been modified since pull.
 
@@ -32,19 +45,44 @@ Examples:
   nebi shell myworkspace:v1.0.0
 
   # Shell into specific pixi environment
-  nebi shell myworkspace:v1.0.0 -e dev`,
+  nebi shell myworkspace:v1.0.0 -e dev
+
+  # Use global copy explicitly
+  nebi shell myworkspace:v1.0.0 --global
+
+  # Use a local copy (prompts if multiple)
+  nebi shell myworkspace:v1.0.0 --local
+
+  # Use workspace at a specific path
+  nebi shell myworkspace:v1.0.0 -C ~/project-a`,
 	Args: cobra.MaximumNArgs(1),
 	Run:  runShell,
 }
 
 func init() {
 	shellCmd.Flags().StringVarP(&shellPixiEnv, "env", "e", "", "Pixi environment name")
+	shellCmd.Flags().BoolVarP(&shellGlobal, "global", "g", false, "Use global copy")
+	shellCmd.Flags().BoolVarP(&shellLocal, "local", "l", false, "Use local copy (prompts if multiple)")
+	shellCmd.Flags().StringVarP(&shellPath, "path", "C", "", "Use workspace at specific directory path")
 }
 
 func runShell(cmd *cobra.Command, args []string) {
+	// Validate flag conflicts
+	if shellGlobal && shellLocal {
+		fmt.Fprintf(os.Stderr, "Error: --global and --local are mutually exclusive\n")
+		os.Exit(1)
+	}
+	if shellPath != "" && (shellGlobal || shellLocal) {
+		fmt.Fprintf(os.Stderr, "Error: -C/--path cannot be combined with --global or --local\n")
+		os.Exit(1)
+	}
+
 	var shellDir string
 
-	if len(args) == 0 {
+	if shellPath != "" {
+		// Explicit path - resolve and validate
+		shellDir = resolveShellFromPath(shellPath)
+	} else if len(args) == 0 {
 		// No argument - use current directory
 		shellDir = resolveShellFromCwd()
 	} else {
@@ -62,6 +100,34 @@ func runShell(cmd *cobra.Command, args []string) {
 
 	// Run pixi shell
 	execPixiShell(shellDir, shellPixiEnv)
+}
+
+// resolveShellFromPath resolves a shell directory from an explicit path.
+func resolveShellFromPath(path string) string {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Check the directory exists
+	info, err := os.Stat(absPath)
+	if err != nil || !info.IsDir() {
+		fmt.Fprintf(os.Stderr, "Error: No nebi workspace found at %s\n", absPath)
+		os.Exit(1)
+	}
+
+	// Check for .nebi metadata or pixi.toml
+	if nebifile.Exists(absPath) {
+		return absPath
+	}
+	if _, err := os.Stat(filepath.Join(absPath, "pixi.toml")); err == nil {
+		return absPath
+	}
+
+	fmt.Fprintf(os.Stderr, "Error: No nebi workspace found at %s\n", absPath)
+	os.Exit(1)
+	return ""
 }
 
 // resolveShellFromCwd resolves a shell directory from the current working directory.
@@ -89,55 +155,162 @@ func resolveShellFromCwd() string {
 }
 
 // resolveShellFromRef resolves a shell directory from a workspace reference.
-// Priority: global copy > most recent local copy > pull from server.
+// Priority depends on flags:
+//   - --global: use global copy only
+//   - --local: use local copies only (interactive select if multiple)
+//   - default: global > single local > interactive select > pull from server
 func resolveShellFromRef(workspaceName, tag string) string {
 	store := localindex.NewStore()
-
-	// First, check for a global copy
+	refStr := workspaceName
 	if tag != "" {
+		refStr += ":" + tag
+	}
+
+	// --global flag: force global copy
+	if shellGlobal {
+		if tag == "" {
+			fmt.Fprintf(os.Stderr, "Error: --global requires a tag (e.g., %s:v1.0)\n", workspaceName)
+			os.Exit(1)
+		}
+		global, err := store.FindGlobal(workspaceName, tag)
+		if err != nil || global == nil {
+			fmt.Fprintf(os.Stderr, "Error: No global copy of %s\n", refStr)
+			fmt.Fprintf(os.Stderr, "Use 'nebi pull --global %s' to create one.\n", refStr)
+			os.Exit(1)
+		}
+		if _, err := os.Stat(global.Path); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Global copy of %s no longer exists at %s\n", refStr, global.Path)
+			os.Exit(1)
+		}
+		fmt.Printf("Using global copy of %s\n", refStr)
+		return global.Path
+	}
+
+	// --local flag: force local copies only
+	if shellLocal {
+		if tag == "" {
+			fmt.Fprintf(os.Stderr, "Error: --local requires a tag (e.g., %s:v1.0)\n", workspaceName)
+			os.Exit(1)
+		}
+		locals := findValidLocalCopies(store, workspaceName, tag)
+		if len(locals) == 0 {
+			fmt.Fprintf(os.Stderr, "Error: No local copies of %s found\n", refStr)
+			os.Exit(1)
+		}
+		if len(locals) == 1 {
+			fmt.Printf("Using local copy at %s\n", locals[0].Path)
+			return locals[0].Path
+		}
+		return promptSelectCopy(locals, refStr)
+	}
+
+	// Default resolution: global > local > pull
+	if tag != "" {
+		// Check for global copy first (global always wins)
 		global, err := store.FindGlobal(workspaceName, tag)
 		if err == nil && global != nil {
 			if _, err := os.Stat(global.Path); err == nil {
-				refStr := workspaceName + ":" + tag
 				fmt.Printf("Using global copy of %s\n", refStr)
 				return global.Path
 			}
 		}
-	}
 
-	// Check local index for any matching entries
-	if tag != "" {
-		matches, err := store.FindByWorkspaceTag(workspaceName, tag)
-		if err == nil && len(matches) > 0 {
-			// Filter to entries that still exist
-			var valid []localindex.WorkspaceEntry
-			for _, m := range matches {
-				if _, err := os.Stat(m.Path); err == nil {
-					valid = append(valid, m)
-				}
-			}
-
-			if len(valid) == 1 {
-				fmt.Printf("Using local copy at %s\n", valid[0].Path)
-				return valid[0].Path
-			}
-			if len(valid) > 1 {
-				// Use most recent
-				best := valid[0]
-				for _, v := range valid[1:] {
-					if v.PulledAt.After(best.PulledAt) {
-						best = v
-					}
-				}
-				fmt.Printf("Using most recent local copy at %s (pulled %s)\n",
-					best.Path, formatTimeAgo(best.PulledAt))
-				return best.Path
-			}
+		// Check local copies
+		locals := findValidLocalCopies(store, workspaceName, tag)
+		if len(locals) == 1 {
+			fmt.Printf("Using local copy at %s\n", locals[0].Path)
+			return locals[0].Path
+		}
+		if len(locals) > 1 {
+			return promptSelectCopy(locals, refStr)
 		}
 	}
 
 	// Not in local index - pull from server
 	return pullForShell(workspaceName, tag)
+}
+
+// findValidLocalCopies returns local (non-global) copies that still exist on disk.
+func findValidLocalCopies(store *localindex.Store, workspace, tag string) []localindex.WorkspaceEntry {
+	matches, err := store.FindByWorkspaceTag(workspace, tag)
+	if err != nil {
+		return nil
+	}
+
+	var valid []localindex.WorkspaceEntry
+	for _, m := range matches {
+		if m.IsGlobal {
+			continue
+		}
+		if _, err := os.Stat(m.Path); err == nil {
+			valid = append(valid, m)
+		}
+	}
+	return valid
+}
+
+// promptSelectCopy presents an interactive selection prompt for multiple copies.
+// In non-interactive mode (no TTY), prints an error with available options and exits.
+func promptSelectCopy(copies []localindex.WorkspaceEntry, refStr string) string {
+	// Check if stdin is a terminal
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		fmt.Fprintf(os.Stderr, "Error: Multiple local copies of %s found, cannot disambiguate without a TTY.\n\n", refStr)
+		fmt.Fprintf(os.Stderr, "Available copies:\n")
+		for _, c := range copies {
+			fmt.Fprintf(os.Stderr, "  %s  (pulled %s)\n", shortenPath(c.Path), formatTimeAgo(c.PulledAt))
+		}
+		fmt.Fprintf(os.Stderr, "\nUse -C to specify:\n")
+		for _, c := range copies {
+			fmt.Fprintf(os.Stderr, "  nebi shell %s -C %s\n", refStr, c.Path)
+		}
+		os.Exit(2)
+	}
+
+	// Interactive selection
+	fmt.Printf("\nMultiple local copies found for %s:\n", refStr)
+	for i, c := range copies {
+		status := getDriftStatus(c.Path)
+		fmt.Printf("  [%d] %s  (pulled %s, %s)\n", i+1, shortenPath(c.Path), formatTimeAgo(c.PulledAt), status)
+	}
+	fmt.Printf("\nSelect [1-%d] or use -C to specify: ", len(copies))
+
+	scanner := bufio.NewScanner(os.Stdin)
+	if !scanner.Scan() {
+		fmt.Fprintf(os.Stderr, "\nError: No selection made\n")
+		os.Exit(1)
+	}
+
+	input := strings.TrimSpace(scanner.Text())
+	choice, err := strconv.Atoi(input)
+	if err != nil || choice < 1 || choice > len(copies) {
+		fmt.Fprintf(os.Stderr, "Error: Invalid selection %q\n", input)
+		os.Exit(1)
+	}
+
+	selected := copies[choice-1]
+	fmt.Printf("Using local copy at %s\n", shortenPath(selected.Path))
+	return selected.Path
+}
+
+// getDriftStatus returns a short drift status string for display.
+func getDriftStatus(dir string) string {
+	ws, err := drift.Check(dir)
+	if err != nil {
+		return "unknown"
+	}
+	return string(ws.Overall)
+}
+
+// shortenPath replaces the home directory prefix with ~.
+func shortenPath(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	if strings.HasPrefix(path, home) {
+		return "~" + path[len(home):]
+	}
+	return path
 }
 
 // pullForShell pulls a workspace from the server for shell activation.

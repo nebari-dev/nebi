@@ -129,9 +129,11 @@ func TestMain(m *testing.M) {
 
 	// Set CLI env vars
 	e2eEnv.configDir, _ = os.MkdirTemp("", "nebi-e2e-config-*")
+	dataDir, _ := os.MkdirTemp("", "nebi-e2e-data-*")
 	os.Setenv("NEBI_SERVER_URL", e2eEnv.serverURL)
 	os.Setenv("NEBI_TOKEN", e2eEnv.token)
 	os.Setenv("NEBI_CONFIG_DIR", e2eEnv.configDir)
+	os.Setenv("NEBI_DATA_DIR", dataDir)
 
 	// Run tests
 	code := m.Run()
@@ -140,6 +142,7 @@ func TestMain(m *testing.M) {
 	cancel()
 	e2eEnv.ociRegistry.Close()
 	os.RemoveAll(e2eEnv.configDir)
+	os.RemoveAll(dataDir)
 	os.Exit(code)
 }
 
@@ -697,5 +700,143 @@ func TestE2E_RepoDelete(t *testing.T) {
 	res = runCLI(t, dir, "pull", repoName+":v1", "--yes")
 	if res.ExitCode == 0 {
 		t.Error("expected pull to fail after delete")
+	}
+}
+
+func TestE2E_PullGlobal(t *testing.T) {
+	repoName := "e2e-pullglobal"
+	tag := "v1.0"
+
+	// Push a repo
+	srcDir := t.TempDir()
+	toml := "[project]\nname = \"global-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\npackages: []\n"
+	writePixiFiles(t, srcDir, toml, lock)
+
+	res := runCLI(t, srcDir, "push", repoName+":"+tag)
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed: %s", res.Stderr)
+	}
+
+	// Pull globally
+	workDir := t.TempDir()
+	res = runCLI(t, workDir, "pull", repoName+":"+tag, "--global", "--yes")
+	if res.ExitCode != 0 {
+		t.Fatalf("global pull failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Verify files exist in the global data directory (not in workDir)
+	_, err := os.Stat(filepath.Join(workDir, "pixi.toml"))
+	if err == nil {
+		t.Error("pixi.toml should NOT be in workDir for global pull")
+	}
+
+	// Verify it shows up in repo list --local
+	res = runCLI(t, workDir, "repo", "list", "--local")
+	if res.ExitCode != 0 {
+		t.Fatalf("repo list --local failed: %s", res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, repoName) {
+		t.Errorf("repo list --local should contain %s, got: %s", repoName, res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, tag) {
+		t.Errorf("repo list --local should contain %s, got: %s", tag, res.Stdout)
+	}
+}
+
+func TestE2E_PullGlobalAlreadyExists(t *testing.T) {
+	repoName := "e2e-global-exists"
+	tag := "v1.0"
+
+	// Push
+	srcDir := t.TempDir()
+	writePixiFiles(t, srcDir,
+		"[project]\nname = \"exists-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+		"version: 6\npackages: []\n",
+	)
+	res := runCLI(t, srcDir, "push", repoName+":"+tag)
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed: %s", res.Stderr)
+	}
+
+	// First global pull — should succeed
+	workDir := t.TempDir()
+	res = runCLI(t, workDir, "pull", repoName+":"+tag, "--global", "--yes")
+	if res.ExitCode != 0 {
+		t.Fatalf("first global pull failed: %s", res.Stderr)
+	}
+
+	// Second global pull — should fail (already exists)
+	res = runCLI(t, workDir, "pull", repoName+":"+tag, "--global", "--yes")
+	if res.ExitCode == 0 {
+		t.Error("expected second global pull to fail without --force")
+	}
+	if !strings.Contains(res.Stderr, "already exists") {
+		t.Errorf("expected 'already exists' error, got: %s", res.Stderr)
+	}
+}
+
+func TestE2E_PullGlobalForce(t *testing.T) {
+	repoName := "e2e-global-force"
+	tag := "v1.0"
+
+	// Push
+	srcDir := t.TempDir()
+	writePixiFiles(t, srcDir,
+		"[project]\nname = \"force-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+		"version: 6\npackages: []\n",
+	)
+	res := runCLI(t, srcDir, "push", repoName+":"+tag)
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed: %s", res.Stderr)
+	}
+
+	// First global pull
+	workDir := t.TempDir()
+	res = runCLI(t, workDir, "pull", repoName+":"+tag, "--global", "--yes")
+	if res.ExitCode != 0 {
+		t.Fatalf("first global pull failed: %s", res.Stderr)
+	}
+
+	// Second global pull with --force — should succeed
+	res = runCLI(t, workDir, "pull", repoName+":"+tag, "--global", "--force")
+	if res.ExitCode != 0 {
+		t.Fatalf("global pull --force failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+}
+
+func TestE2E_PullGlobalWithName(t *testing.T) {
+	repoName := "e2e-global-named"
+	tag := "v1.0"
+	alias := "my-ds-env"
+
+	// Push
+	srcDir := t.TempDir()
+	writePixiFiles(t, srcDir,
+		"[project]\nname = \"named-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+		"version: 6\npackages: []\n",
+	)
+	res := runCLI(t, srcDir, "push", repoName+":"+tag)
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed: %s", res.Stderr)
+	}
+
+	// Pull globally with --name
+	workDir := t.TempDir()
+	res = runCLI(t, workDir, "pull", repoName+":"+tag, "--global", "--name", alias, "--yes")
+	if res.ExitCode != 0 {
+		t.Fatalf("global pull with --name failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, "Alias") {
+		t.Errorf("expected alias confirmation in output, got: %s", res.Stdout)
+	}
+
+	// Verify alias shows in repo list --local
+	res = runCLI(t, workDir, "repo", "list", "--local")
+	if res.ExitCode != 0 {
+		t.Fatalf("repo list --local failed: %s", res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, repoName) {
+		t.Errorf("repo list --local should contain %s, got: %s", repoName, res.Stdout)
 	}
 }

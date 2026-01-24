@@ -59,7 +59,11 @@ type Store struct {
 }
 
 // NewStore creates a new Store with the default index directory.
+// Respects NEBI_DATA_DIR env var for overriding the data directory.
 func NewStore() *Store {
+	if dir := os.Getenv("NEBI_DATA_DIR"); dir != "" {
+		return &Store{indexDir: dir}
+	}
 	homeDir, _ := os.UserHomeDir()
 	return &Store{
 		indexDir: filepath.Join(homeDir, DefaultIndexDir),

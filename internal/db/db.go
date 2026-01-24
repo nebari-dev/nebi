@@ -35,8 +35,17 @@ func New(cfg config.DatabaseConfig) (*gorm.DB, error) {
 		return nil, fmt.Errorf("unsupported database driver: %s", cfg.Driver)
 	}
 
-	// Configure GORM logger (silent in production, info in dev)
-	gormLogger := logger.Default.LogMode(logger.Info)
+	// Configure GORM logger based on config
+	gormLogLevel := logger.Info
+	switch cfg.LogLevel {
+	case "silent":
+		gormLogLevel = logger.Silent
+	case "error":
+		gormLogLevel = logger.Error
+	case "warn":
+		gormLogLevel = logger.Warn
+	}
+	gormLogger := logger.Default.LogMode(gormLogLevel)
 
 	db, err := gorm.Open(dialector, &gorm.Config{
 		Logger: gormLogger,

@@ -31,7 +31,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	}
 
 	// Set Gin mode
-	if cfg.Server.Mode == "production" {
+	if cfg.Server.Mode == "production" || cfg.Server.Mode == "test" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 

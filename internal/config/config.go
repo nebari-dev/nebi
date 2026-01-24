@@ -31,6 +31,7 @@ type DatabaseConfig struct {
 	MaxIdleConns    int    `mapstructure:"max_idle_conns"`    // Maximum idle connections (Postgres)
 	MaxOpenConns    int    `mapstructure:"max_open_conns"`    // Maximum open connections (Postgres)
 	ConnMaxLifetime int    `mapstructure:"conn_max_lifetime"` // Connection max lifetime in minutes (Postgres)
+	LogLevel        string `mapstructure:"log_level"`         // GORM log level: "silent", "error", "warn", "info"
 }
 
 // AuthConfig holds authentication configuration
@@ -89,6 +90,7 @@ func Load() (*Config, error) {
 	v.SetDefault("queue.valkey_addr", "localhost:6379")
 	v.SetDefault("log.format", "text")
 	v.SetDefault("log.level", "info")
+	v.SetDefault("database.log_level", "")
 	v.SetDefault("package_manager.default_type", "pixi")
 	v.SetDefault("storage.environments_dir", "./data/environments")
 
@@ -109,6 +111,9 @@ func Load() (*Config, error) {
 	v.SetEnvPrefix("DARB")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
+
+	// Explicit bindings for keys with underscores (avoids Viper replacer ambiguity)
+	v.BindEnv("database.log_level", "DARB_DATABASE_LOG_LEVEL") //nolint:errcheck
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {

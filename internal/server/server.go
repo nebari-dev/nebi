@@ -54,6 +54,11 @@ func Run(ctx context.Context, cfg Config) error {
 	logger.Init(appCfg.Log.Format, appCfg.Log.Level)
 	slog.Info("Starting Darb server", "version", cfg.Version, "mode", appCfg.Server.Mode)
 
+	// Propagate app log level to database if not explicitly set
+	if appCfg.Database.LogLevel == "" {
+		appCfg.Database.LogLevel = appCfg.Log.Level
+	}
+
 	// Initialize database
 	database, err := db.New(appCfg.Database)
 	if err != nil {

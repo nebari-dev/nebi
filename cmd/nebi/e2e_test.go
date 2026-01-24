@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -55,8 +57,21 @@ func TestMain(m *testing.M) {
 	os.Setenv("DARB_DATABASE_DSN", dbPath)
 	os.Setenv("DARB_QUEUE_TYPE", "memory")
 	os.Setenv("DARB_AUTH_JWT_SECRET", "e2e-test-secret")
+	os.Setenv("DARB_SERVER_MODE", "test")
+	os.Setenv("DARB_LOG_LEVEL", "error")
+	os.Setenv("DARB_DATABASE_LOG_LEVEL", "silent")
 	os.Setenv("ADMIN_USERNAME", "admin")
 	os.Setenv("ADMIN_PASSWORD", "adminpass")
+
+	// Suppress server logs from polluting test output.
+	// Redirect stdout/stderr so loggers initialized by the server write to discard.
+	origStdout := os.Stdout
+	origStderr := os.Stderr
+	devNull, _ := os.Open(os.DevNull)
+	os.Stdout = devNull
+	os.Stderr = devNull
+	log.SetOutput(io.Discard)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	// Start server in background
 	ctx, cancel := context.WithCancel(context.Background())
@@ -92,6 +107,12 @@ func TestMain(m *testing.M) {
 		}
 	}
 
+	// Restore stdout/stderr for test output (server loggers still write to devNull)
+	os.Stdout = origStdout
+	os.Stderr = origStderr
+	// Re-suppress slog (server's logger.Init overrode our earlier setting)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
 	// Login to get a token
 	client := cliclient.NewWithoutAuth(e2eEnv.serverURL)
 	loginResp, err := client.Login(context.Background(), "admin", "adminpass")
@@ -101,8 +122,10 @@ func TestMain(m *testing.M) {
 	}
 	e2eEnv.token = loginResp.Token
 
-	// Start in-memory OCI registry
-	e2eEnv.ociRegistry = httptest.NewServer(registry.New())
+	// Start in-memory OCI registry (with logging suppressed)
+	e2eEnv.ociRegistry = httptest.NewServer(registry.New(
+		registry.Logger(log.New(io.Discard, "", 0)),
+	))
 
 	// Set CLI env vars
 	e2eEnv.configDir, _ = os.MkdirTemp("", "nebi-e2e-config-*")

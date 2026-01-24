@@ -202,7 +202,7 @@ func TestCheckWithNebiFile(t *testing.T) {
 }
 
 func TestGetFileStatus_NotFound(t *testing.T) {
-	ws := &WorkspaceStatus{
+	ws := &RepoStatus{
 		Files: []FileStatus{
 			{Filename: "pixi.toml", Status: StatusClean},
 		},

@@ -19,7 +19,7 @@ func TestHandleGlobalPull_NewWorkspace(t *testing.T) {
 		t.Fatalf("handleGlobalPull() error = %v", err)
 	}
 
-	expected := store.GlobalWorkspacePath("uuid-123", "v1.0")
+	expected := store.GlobalRepoPath("uuid-123", "v1.0")
 	if outputDir != expected {
 		t.Errorf("outputDir = %q, want %q", outputDir, expected)
 	}
@@ -30,10 +30,10 @@ func TestHandleGlobalPull_ExistingBlocked(t *testing.T) {
 	store := localindex.NewStoreWithDir(dir)
 
 	// Add existing global entry
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
-		Path:      store.GlobalWorkspacePath("uuid-123", "v1.0"),
+		Path:      store.GlobalRepoPath("uuid-123", "v1.0"),
 		IsGlobal:  true,
 		PulledAt:  time.Now(),
 	})
@@ -51,10 +51,10 @@ func TestHandleGlobalPull_ExistingForced(t *testing.T) {
 	store := localindex.NewStoreWithDir(dir)
 
 	// Add existing global entry
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
-		Path:      store.GlobalWorkspacePath("uuid-123", "v1.0"),
+		Path:      store.GlobalRepoPath("uuid-123", "v1.0"),
 		IsGlobal:  true,
 		PulledAt:  time.Now(),
 	})
@@ -68,7 +68,7 @@ func TestHandleGlobalPull_ExistingForced(t *testing.T) {
 		t.Fatalf("handleGlobalPull() with --force error = %v", err)
 	}
 
-	expected := store.GlobalWorkspacePath("uuid-123", "v1.0")
+	expected := store.GlobalRepoPath("uuid-123", "v1.0")
 	if outputDir != expected {
 		t.Errorf("outputDir = %q, want %q", outputDir, expected)
 	}
@@ -79,10 +79,10 @@ func TestHandleGlobalPull_DifferentTag(t *testing.T) {
 	store := localindex.NewStoreWithDir(dir)
 
 	// Add existing global entry for v1.0
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
-		Path:      store.GlobalWorkspacePath("uuid-123", "v1.0"),
+		Path:      store.GlobalRepoPath("uuid-123", "v1.0"),
 		IsGlobal:  true,
 		PulledAt:  time.Now(),
 	})
@@ -94,7 +94,7 @@ func TestHandleGlobalPull_DifferentTag(t *testing.T) {
 		t.Fatalf("handleGlobalPull() for different tag error = %v", err)
 	}
 
-	expected := store.GlobalWorkspacePath("uuid-123", "v2.0")
+	expected := store.GlobalRepoPath("uuid-123", "v2.0")
 	if outputDir != expected {
 		t.Errorf("outputDir = %q, want %q", outputDir, expected)
 	}
@@ -127,8 +127,8 @@ func TestHandleDirectoryPull_SameWorkspaceTag(t *testing.T) {
 
 	// Add existing entry for same workspace:tag
 	absPath, _ := filepath.Abs(outputPath)
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
 		Path:      absPath,
 		PulledAt:  time.Now(),
@@ -158,8 +158,8 @@ func TestHandleDirectoryPull_DifferentTagWithForce(t *testing.T) {
 
 	// Add existing entry for different tag
 	absPath, _ := filepath.Abs(outputPath)
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
 		Path:      absPath,
 		PulledAt:  time.Now(),
@@ -217,8 +217,8 @@ func TestPullIntegration_WritesNebiFile(t *testing.T) {
 		t.Fatalf("nebifile.Read() error = %v", err)
 	}
 
-	if loaded.Origin.Workspace != "test-workspace" {
-		t.Errorf("Workspace = %q, want %q", loaded.Origin.Workspace, "test-workspace")
+	if loaded.Origin.Repo != "test-workspace" {
+		t.Errorf("Workspace = %q, want %q", loaded.Origin.Repo, "test-workspace")
 	}
 	if loaded.Origin.Tag != "v1.0" {
 		t.Errorf("Tag = %q, want %q", loaded.Origin.Tag, "v1.0")
@@ -239,8 +239,8 @@ func TestPullIntegration_UpdatesIndex(t *testing.T) {
 	store := localindex.NewStoreWithDir(dir)
 
 	// Simulate adding an entry (as runPull does)
-	entry := localindex.WorkspaceEntry{
-		Workspace:       "test-workspace",
+	entry := localindex.RepoEntry{
+		Repo:            "test-workspace",
 		Tag:             "v1.0",
 		ServerURL:       "https://nebi.example.com",
 		ServerVersionID: 1,
@@ -266,8 +266,8 @@ func TestPullIntegration_UpdatesIndex(t *testing.T) {
 	if found == nil {
 		t.Fatal("Entry should be found in index")
 	}
-	if found.Workspace != "test-workspace" {
-		t.Errorf("Workspace = %q, want %q", found.Workspace, "test-workspace")
+	if found.Repo != "test-workspace" {
+		t.Errorf("Workspace = %q, want %q", found.Repo, "test-workspace")
 	}
 	if found.ManifestDigest != "sha256:manifest123" {
 		t.Errorf("ManifestDigest = %q, want %q", found.ManifestDigest, "sha256:manifest123")
@@ -282,12 +282,12 @@ func TestPullIntegration_GlobalWithAlias(t *testing.T) {
 	uuid := "550e8400-e29b-41d4-a716-446655440000"
 	tag := "v1.0"
 
-	entry := localindex.WorkspaceEntry{
-		Workspace:       "data-science",
+	entry := localindex.RepoEntry{
+		Repo:            "data-science",
 		Tag:             tag,
 		ServerURL:       "https://nebi.example.com",
 		ServerVersionID: 42,
-		Path:            store.GlobalWorkspacePath(uuid, tag),
+		Path:            store.GlobalRepoPath(uuid, tag),
 		IsGlobal:        true,
 		PulledAt:        time.Now(),
 		ManifestDigest:  "sha256:abc123",
@@ -503,8 +503,8 @@ func TestPullIntegration_DirectoryPullDuplicateAllowed(t *testing.T) {
 	now := time.Now()
 
 	// Pull to path A
-	entryA := localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	entryA := localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
 		Path:      filepath.Join(dir, "project-a"),
 		PulledAt:  now,
@@ -512,8 +512,8 @@ func TestPullIntegration_DirectoryPullDuplicateAllowed(t *testing.T) {
 	store.AddEntry(entryA)
 
 	// Pull same workspace:tag to path B (allowed for directory pulls)
-	entryB := localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	entryB := localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
 		Path:      filepath.Join(dir, "project-b"),
 		PulledAt:  now.Add(time.Hour),
@@ -521,9 +521,9 @@ func TestPullIntegration_DirectoryPullDuplicateAllowed(t *testing.T) {
 	store.AddEntry(entryB)
 
 	// Both should exist
-	matches, err := store.FindByWorkspaceTag("data-science", "v1.0")
+	matches, err := store.FindByRepoTag("data-science", "v1.0")
 	if err != nil {
-		t.Fatalf("FindByWorkspaceTag() error = %v", err)
+		t.Fatalf("FindByRepoTag() error = %v", err)
 	}
 	if len(matches) != 2 {
 		t.Errorf("Expected 2 entries for same workspace:tag, got %d", len(matches))

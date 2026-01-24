@@ -17,10 +17,10 @@ var rootCmd = &cobra.Command{
 	Long: `Nebi is a CLI and server for managing Pixi environments and pushing/pulling them to OCI registries.
 
 Examples:
-  # Login and push a workspace
+  # Login and push a repo
   nebi login https://nebi.company.com
   nebi registry add ds-team ghcr.io/myorg/data-science --default
-  nebi push myworkspace:v1.0.0
+  nebi push myrepo:v1.0.0
 
   # Start the server
   nebi serve --port 8460`,
@@ -35,7 +35,7 @@ func init() {
 	loginCmd.GroupID = "client"
 	logoutCmd.GroupID = "client"
 	registryCmd.GroupID = "client"
-	workspaceCmd.GroupID = "client"
+	repoCmd.GroupID = "client"
 	pushCmd.GroupID = "client"
 	pullCmd.GroupID = "client"
 	shellCmd.GroupID = "client"
@@ -49,8 +49,9 @@ func init() {
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(logoutCmd)
 	rootCmd.AddCommand(registryCmd)
-	rootCmd.AddCommand(workspaceCmd)
+	rootCmd.AddCommand(repoCmd)
 	rootCmd.AddCommand(pushCmd)
+	rootCmd.AddCommand(publishCmd)
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(shellCmd)
 	rootCmd.AddCommand(statusCmd)

@@ -16,131 +16,129 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var workspaceCmd = &cobra.Command{
-	Use:     "workspace",
-	Aliases: []string{"ws"},
-	Short:   "Manage workspaces",
-	Long:    `List, delete, and inspect workspaces.`,
+var repoCmd = &cobra.Command{
+	Use:   "repo",
+	Short: "Manage repos",
+	Long:  `List, delete, and inspect repos.`,
 }
 
-var workspaceListLocal bool
-var workspaceListJSON bool
+var repoListLocal bool
+var repoListJSON bool
 
-var workspaceListCmd = &cobra.Command{
+var repoListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
-	Short:   "List workspaces",
-	Long: `List workspaces from the server, or locally pulled workspaces.
+	Short:   "List repos",
+	Long: `List repos from the server, or locally pulled repos.
 
 Examples:
-  # List all server workspaces
-  nebi workspace list
+  # List all server repos
+  nebi repo list
 
-  # List locally pulled workspaces with drift status
-  nebi workspace list --local`,
+  # List locally pulled repos with drift status
+  nebi repo list --local`,
 	Args: cobra.NoArgs,
-	Run:  runWorkspaceList,
+	Run:  runRepoList,
 }
 
-var workspacePruneCmd = &cobra.Command{
+var repoPruneCmd = &cobra.Command{
 	Use:   "prune",
 	Short: "Remove stale entries from local index",
-	Long: `Remove entries from the local workspace index where the directory
+	Long: `Remove entries from the local repo index where the directory
 no longer exists on disk.
 
-This cleans up the index after workspaces have been moved or deleted
+This cleans up the index after repos have been moved or deleted
 outside of nebi. It does NOT delete any files.
 
 Examples:
   # Remove stale entries
-  nebi workspace prune`,
+  nebi repo prune`,
 	Args: cobra.NoArgs,
-	Run:  runWorkspacePrune,
+	Run:  runRepoPrune,
 }
 
-var workspaceTagsCmd = &cobra.Command{
-	Use:   "tags <workspace>",
-	Short: "List tags for a workspace",
-	Long: `List all published tags for a workspace.
+var repoTagsCmd = &cobra.Command{
+	Use:   "tags <repo>",
+	Short: "List tags for a repo",
+	Long: `List all published tags for a repo.
 
 Example:
-  nebi workspace tags myworkspace
-  nebi ws tags myworkspace`,
+  nebi repo tags myrepo`,
 	Args: cobra.ExactArgs(1),
-	Run:  runWorkspaceTags,
+	Run:  runRepoTags,
 }
 
-var workspaceDeleteCmd = &cobra.Command{
-	Use:     "delete <workspace>",
+var repoDeleteCmd = &cobra.Command{
+	Use:     "delete <repo>",
 	Aliases: []string{"rm"},
-	Short:   "Delete a workspace",
-	Long: `Delete a workspace from the server.
+	Short:   "Delete a repo",
+	Long: `Delete a repo from the server.
 
 Example:
-  nebi workspace delete myworkspace`,
+  nebi repo delete myrepo`,
 	Args: cobra.ExactArgs(1),
-	Run:  runWorkspaceDelete,
+	Run:  runRepoDelete,
 }
 
-var workspaceInfoPath string
+var repoInfoPath string
 
-var workspaceInfoCmd = &cobra.Command{
-	Use:   "info [<workspace>]",
-	Short: "Show workspace details",
-	Long: `Show detailed information about a workspace.
+var repoInfoCmd = &cobra.Command{
+	Use:   "info [<repo>]",
+	Short: "Show repo details",
+	Long: `Show detailed information about a repo.
 
 When run without arguments in a directory containing a .nebi metadata file,
-shows both local drift status and server-side workspace details.
+shows both local drift status and server-side repo details.
 
-When given a workspace name, shows server-side details only.
+When given a repo name, shows server-side details only.
 
 Examples:
-  # From a workspace directory (reads .nebi to detect workspace)
-  nebi workspace info
+  # From a repo directory (reads .nebi to detect repo)
+  nebi repo info
 
-  # Explicit workspace name (server lookup only)
-  nebi workspace info myworkspace
+  # Explicit repo name (server lookup only)
+  nebi repo info myrepo
 
   # From a specific path
-  nebi workspace info -C /path/to/workspace`,
+  nebi repo info -C /path/to/repo`,
 	Args: cobra.MaximumNArgs(1),
-	Run:  runWorkspaceInfo,
+	Run:  runRepoInfo,
 }
 
-var workspaceDiffCmd = &cobra.Command{
+var repoDiffCmd = &cobra.Command{
 	Use:   "diff",
-	Short: "Show workspace differences (alias for 'nebi diff')",
+	Short: "Show repo differences (alias for 'nebi diff')",
 	Long:  `This is an alias for 'nebi diff'. See 'nebi diff --help' for full documentation.`,
 	Args:  cobra.MaximumNArgs(2),
 	Run:   runDiff,
 }
 
 func init() {
-	workspaceCmd.AddCommand(workspaceListCmd)
-	workspaceCmd.AddCommand(workspaceDeleteCmd)
-	workspaceCmd.AddCommand(workspaceInfoCmd)
-	workspaceCmd.AddCommand(workspaceDiffCmd)
-	workspaceCmd.AddCommand(workspacePruneCmd)
-	workspaceCmd.AddCommand(workspaceTagsCmd)
+	repoCmd.AddCommand(repoListCmd)
+	repoCmd.AddCommand(repoDeleteCmd)
+	repoCmd.AddCommand(repoInfoCmd)
+	repoCmd.AddCommand(repoDiffCmd)
+	repoCmd.AddCommand(repoPruneCmd)
+	repoCmd.AddCommand(repoTagsCmd)
 
-	// workspace info flags
-	workspaceInfoCmd.Flags().StringVarP(&workspaceInfoPath, "path", "C", ".", "Workspace directory path")
+	// repo info flags
+	repoInfoCmd.Flags().StringVarP(&repoInfoPath, "path", "C", ".", "Repo directory path")
 
-	// workspace list flags
-	workspaceListCmd.Flags().BoolVar(&workspaceListLocal, "local", false, "List locally pulled workspaces with drift status")
-	workspaceListCmd.Flags().BoolVar(&workspaceListJSON, "json", false, "Output as JSON")
+	// repo list flags
+	repoListCmd.Flags().BoolVar(&repoListLocal, "local", false, "List locally pulled repos with drift status")
+	repoListCmd.Flags().BoolVar(&repoListJSON, "json", false, "Output as JSON")
 
-	// workspace diff mirrors the top-level diff flags
-	workspaceDiffCmd.Flags().BoolVar(&diffRemote, "remote", false, "Compare against current remote tag")
-	workspaceDiffCmd.Flags().BoolVar(&diffJSON, "json", false, "Output as JSON")
-	workspaceDiffCmd.Flags().BoolVar(&diffLock, "lock", false, "Show full lock file diff")
-	workspaceDiffCmd.Flags().BoolVar(&diffToml, "toml", false, "Show only pixi.toml diff")
-	workspaceDiffCmd.Flags().StringVarP(&diffPath, "path", "C", ".", "Workspace directory path")
+	// repo diff mirrors the top-level diff flags
+	repoDiffCmd.Flags().BoolVar(&diffRemote, "remote", false, "Compare against current remote tag")
+	repoDiffCmd.Flags().BoolVar(&diffJSON, "json", false, "Output as JSON")
+	repoDiffCmd.Flags().BoolVar(&diffLock, "lock", false, "Show full lock file diff")
+	repoDiffCmd.Flags().BoolVar(&diffToml, "toml", false, "Show only pixi.toml diff")
+	repoDiffCmd.Flags().StringVarP(&diffPath, "path", "C", ".", "Repo directory path")
 }
 
-func runWorkspaceList(cmd *cobra.Command, args []string) {
-	if workspaceListLocal {
-		runWorkspaceListLocal()
+func runRepoList(cmd *cobra.Command, args []string) {
+	if repoListLocal {
+		runRepoListLocal()
 		return
 	}
 
@@ -149,12 +147,12 @@ func runWorkspaceList(cmd *cobra.Command, args []string) {
 
 	envs, err := client.ListEnvironments(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to list workspaces: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to list repos: %v\n", err)
 		os.Exit(1)
 	}
 
 	if len(envs) == 0 {
-		fmt.Println("No workspaces found")
+		fmt.Println("No repos found")
 		return
 	}
 
@@ -175,17 +173,17 @@ func runWorkspaceList(cmd *cobra.Command, args []string) {
 	w.Flush()
 }
 
-// workspaceListEntry is the JSON output structure for workspace list --local --json.
-type workspaceListEntry struct {
-	Workspace string `json:"workspace"`
-	Tag       string `json:"tag"`
-	Status    string `json:"status"`
-	Path      string `json:"path"`
-	IsGlobal  bool   `json:"is_global"`
+// repoListEntry is the JSON output structure for repo list --local --json.
+type repoListEntry struct {
+	Repo     string `json:"repo"`
+	Tag      string `json:"tag"`
+	Status   string `json:"status"`
+	Path     string `json:"path"`
+	IsGlobal bool   `json:"is_global"`
 }
 
-// runWorkspaceListLocal lists locally pulled workspaces with drift indicators.
-func runWorkspaceListLocal() {
+// runRepoListLocal lists locally pulled repos with drift indicators.
+func runRepoListLocal() {
 	store := localindex.NewStore()
 	index, err := store.Load()
 	if err != nil {
@@ -193,26 +191,26 @@ func runWorkspaceListLocal() {
 		os.Exit(1)
 	}
 
-	if len(index.Workspaces) == 0 {
-		if workspaceListJSON {
+	if len(index.Repos) == 0 {
+		if repoListJSON {
 			fmt.Println("[]")
 		} else {
-			fmt.Println("No locally pulled workspaces found")
-			fmt.Println("\nUse 'nebi pull <workspace>:<tag>' to pull a workspace.")
+			fmt.Println("No locally pulled repos found")
+			fmt.Println("\nUse 'nebi pull <repo>:<tag>' to pull a repo.")
 		}
 		return
 	}
 
-	if workspaceListJSON {
-		var entries []workspaceListEntry
-		for _, entry := range index.Workspaces {
+	if repoListJSON {
+		var entries []repoListEntry
+		for _, entry := range index.Repos {
 			status := getLocalEntryStatus(entry)
-			entries = append(entries, workspaceListEntry{
-				Workspace: entry.Workspace,
-				Tag:       entry.Tag,
-				Status:    status,
-				Path:      entry.Path,
-				IsGlobal:  entry.IsGlobal,
+			entries = append(entries, repoListEntry{
+				Repo:     entry.Repo,
+				Tag:      entry.Tag,
+				Status:   status,
+				Path:     entry.Path,
+				IsGlobal: entry.IsGlobal,
 			})
 		}
 		data, err := json.MarshalIndent(entries, "", "  ")
@@ -227,8 +225,8 @@ func runWorkspaceListLocal() {
 	hasMissing := false
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "WORKSPACE\tTAG\tSTATUS\tLOCATION")
-	for _, entry := range index.Workspaces {
+	fmt.Fprintln(w, "REPO\tTAG\tSTATUS\tLOCATION")
+	for _, entry := range index.Repos {
 		status := getLocalEntryStatus(entry)
 		if status == "missing" {
 			hasMissing = true
@@ -236,7 +234,7 @@ func runWorkspaceListLocal() {
 
 		location := formatLocation(entry.Path, entry.IsGlobal)
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-			entry.Workspace,
+			entry.Repo,
 			entry.Tag,
 			status,
 			location,
@@ -245,12 +243,12 @@ func runWorkspaceListLocal() {
 	w.Flush()
 
 	if hasMissing {
-		fmt.Println("\nRun 'nebi workspace prune' to remove stale entries.")
+		fmt.Println("\nRun 'nebi repo prune' to remove stale entries.")
 	}
 }
 
-// getLocalEntryStatus checks the drift status of a local workspace entry.
-func getLocalEntryStatus(entry localindex.WorkspaceEntry) string {
+// getLocalEntryStatus checks the drift status of a local repo entry.
+func getLocalEntryStatus(entry localindex.RepoEntry) string {
 	// Check if path exists
 	if _, err := os.Stat(entry.Path); os.IsNotExist(err) {
 		return "missing"
@@ -266,7 +264,7 @@ func getLocalEntryStatus(entry localindex.WorkspaceEntry) string {
 }
 
 // formatLocation formats a path for display, abbreviating home directory
-// and shortening UUIDs in global workspace paths.
+// and shortening UUIDs in global repo paths.
 func formatLocation(path string, isGlobal bool) string {
 	home, _ := os.UserHomeDir()
 	display := path
@@ -275,8 +273,8 @@ func formatLocation(path string, isGlobal bool) string {
 	}
 
 	if isGlobal {
-		// Abbreviate UUIDs in global workspace paths for readability.
-		// Global paths look like: ~/.local/share/nebi/workspaces/<uuid>/<tag>
+		// Abbreviate UUIDs in global repo paths for readability.
+		// Global paths look like: ~/.local/share/nebi/repos/<uuid>/<tag>
 		display = abbreviateUUID(display)
 		return display + " (global)"
 	}
@@ -315,8 +313,8 @@ func isUUID(s string) bool {
 	return true
 }
 
-// runWorkspacePrune removes stale entries from the local index.
-func runWorkspacePrune(cmd *cobra.Command, args []string) {
+// runRepoPrune removes stale entries from the local index.
+func runRepoPrune(cmd *cobra.Command, args []string) {
 	store := localindex.NewStore()
 
 	removed, err := store.Prune()
@@ -332,18 +330,18 @@ func runWorkspacePrune(cmd *cobra.Command, args []string) {
 
 	fmt.Printf("Removed %d stale entries:\n", len(removed))
 	for _, entry := range removed {
-		fmt.Printf("  - %s:%s (%s)\n", entry.Workspace, entry.Tag, entry.Path)
+		fmt.Printf("  - %s:%s (%s)\n", entry.Repo, entry.Tag, entry.Path)
 	}
 }
 
-func runWorkspaceTags(cmd *cobra.Command, args []string) {
-	workspaceName := args[0]
+func runRepoTags(cmd *cobra.Command, args []string) {
+	repoName := args[0]
 
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find workspace by name
-	env, err := findWorkspaceByName(client, ctx, workspaceName)
+	// Find repo by name
+	env, err := findRepoByName(client, ctx, repoName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -357,7 +355,7 @@ func runWorkspaceTags(cmd *cobra.Command, args []string) {
 	}
 
 	if len(pubs) == 0 {
-		fmt.Printf("No published tags for %q\n", workspaceName)
+		fmt.Printf("No published tags for %q\n", repoName)
 		return
 	}
 
@@ -379,14 +377,14 @@ func runWorkspaceTags(cmd *cobra.Command, args []string) {
 	w.Flush()
 }
 
-func runWorkspaceDelete(cmd *cobra.Command, args []string) {
-	workspaceName := args[0]
+func runRepoDelete(cmd *cobra.Command, args []string) {
+	repoName := args[0]
 
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find workspace by name
-	env, err := findWorkspaceByName(client, ctx, workspaceName)
+	// Find repo by name
+	env, err := findRepoByName(client, ctx, repoName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -395,28 +393,28 @@ func runWorkspaceDelete(cmd *cobra.Command, args []string) {
 	// Delete
 	err = client.DeleteEnvironment(ctx, env.ID)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to delete workspace: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to delete repo: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Deleted workspace %q\n", workspaceName)
+	fmt.Printf("Deleted repo %q\n", repoName)
 }
 
-func runWorkspaceInfo(cmd *cobra.Command, args []string) {
+func runRepoInfo(cmd *cobra.Command, args []string) {
 	if len(args) == 1 {
-		// Explicit workspace name: server-only lookup (original behavior)
-		runWorkspaceInfoByName(args[0])
+		// Explicit repo name: server-only lookup (original behavior)
+		runRepoInfoByName(args[0])
 		return
 	}
 
-	// No argument: detect workspace from .nebi file in current directory
-	runWorkspaceInfoFromCwd()
+	// No argument: detect repo from .nebi file in current directory
+	runRepoInfoFromCwd()
 }
 
-// runWorkspaceInfoFromCwd shows combined local status and server info
+// runRepoInfoFromCwd shows combined local status and server info
 // by reading the .nebi metadata file from the current (or -C) directory.
-func runWorkspaceInfoFromCwd() {
-	dir := workspaceInfoPath
+func runRepoInfoFromCwd() {
+	dir := repoInfoPath
 
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
@@ -426,16 +424,16 @@ func runWorkspaceInfoFromCwd() {
 	// Read .nebi metadata
 	nf, err := nebifile.Read(absDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Not a nebi workspace directory (no .nebi file found)\n")
+		fmt.Fprintf(os.Stderr, "Error: Not a nebi repo directory (no .nebi file found)\n")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Hint: Specify a workspace name: nebi workspace info <name>")
-		fmt.Fprintln(os.Stderr, "      Or pull a workspace first: nebi pull <workspace>:<tag>")
+		fmt.Fprintln(os.Stderr, "Hint: Specify a repo name: nebi repo info <name>")
+		fmt.Fprintln(os.Stderr, "      Or pull a repo first: nebi pull <repo>:<tag>")
 		os.Exit(1)
 	}
 
 	// Show local status section
 	fmt.Println("Local:")
-	fmt.Printf("  Workspace: %s:%s\n", nf.Origin.Workspace, nf.Origin.Tag)
+	fmt.Printf("  Repo: %s:%s\n", nf.Origin.Repo, nf.Origin.Tag)
 	if nf.Origin.RegistryURL != "" {
 		fmt.Printf("  Registry:  %s\n", nf.Origin.RegistryURL)
 	}
@@ -461,17 +459,17 @@ func runWorkspaceInfoFromCwd() {
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	env, err := findWorkspaceByName(client, ctx, nf.Origin.Workspace)
+	env, err := findRepoByName(client, ctx, nf.Origin.Repo)
 	if err != nil {
 		fmt.Println("Server:")
-		fmt.Printf("  (workspace %q not found on server)\n", nf.Origin.Workspace)
+		fmt.Printf("  (repo %q not found on server)\n", nf.Origin.Repo)
 		return
 	}
 
 	envDetail, err := client.GetEnvironment(ctx, env.ID)
 	if err != nil {
 		fmt.Println("Server:")
-		fmt.Printf("  (failed to get details: %v)\n", err)
+		fmt.Printf("  (failed to get repo details: %v)\n", err)
 		return
 	}
 
@@ -491,13 +489,13 @@ func runWorkspaceInfoFromCwd() {
 	}
 }
 
-// runWorkspaceInfoByName shows server-side workspace info by name.
-func runWorkspaceInfoByName(workspaceName string) {
+// runRepoInfoByName shows server-side repo info by name.
+func runRepoInfoByName(repoName string) {
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find workspace by name
-	env, err := findWorkspaceByName(client, ctx, workspaceName)
+	// Find repo by name
+	env, err := findRepoByName(client, ctx, repoName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -506,7 +504,7 @@ func runWorkspaceInfoByName(workspaceName string) {
 	// Get full details
 	envDetail, err := client.GetEnvironment(ctx, env.ID)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to get workspace details: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to get repo details: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -535,7 +533,7 @@ func runWorkspaceInfoByName(workspaceName string) {
 	}
 }
 
-// printServerInfo prints the server details section for workspace info.
+// printServerInfo prints the server details section for repo info.
 func printServerInfo(envDetail *cliclient.Environment) {
 	fmt.Println("Server:")
 	fmt.Printf("  Name:            %s\n", envDetail.Name)
@@ -550,11 +548,11 @@ func printServerInfo(envDetail *cliclient.Environment) {
 	fmt.Printf("  Updated:         %s\n", envDetail.UpdatedAt)
 }
 
-// findWorkspaceByName looks up a workspace by name and returns it.
-func findWorkspaceByName(client *cliclient.Client, ctx context.Context, name string) (*cliclient.Environment, error) {
+// findRepoByName looks up a repo by name and returns it.
+func findRepoByName(client *cliclient.Client, ctx context.Context, name string) (*cliclient.Environment, error) {
 	envs, err := client.ListEnvironments(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list workspaces: %v", err)
+		return nil, fmt.Errorf("failed to list repos: %v", err)
 	}
 
 	for _, env := range envs {
@@ -563,5 +561,5 @@ func findWorkspaceByName(client *cliclient.Client, ctx context.Context, name str
 		}
 	}
 
-	return nil, fmt.Errorf("workspace %q not found", name)
+	return nil, fmt.Errorf("repo %q not found", name)
 }

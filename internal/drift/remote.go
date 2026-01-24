@@ -14,7 +14,7 @@ type RemoteStatus struct {
 	// than what was originally pulled.
 	TagHasMoved bool `json:"tag_has_moved"`
 
-	// OriginDigest is the manifest digest from when the workspace was pulled.
+	// OriginDigest is the manifest digest from when the repo was pulled.
 	OriginDigest string `json:"origin_digest"`
 
 	// CurrentTagDigest is what the tag currently resolves to on the server.
@@ -38,7 +38,7 @@ type VersionContent struct {
 // LOCAL ↔ ORIGIN ↔ CURRENT TAG
 type ThreeWayStatus struct {
 	// Local is the drift status of local files vs origin
-	Local *WorkspaceStatus `json:"local"`
+	Local *RepoStatus `json:"local"`
 
 	// Remote is the status of the tag in the registry
 	Remote *RemoteStatus `json:"remote"`
@@ -47,14 +47,14 @@ type ThreeWayStatus struct {
 	Summary string `json:"summary"`
 }
 
-// CheckRemote checks if the remote tag has moved since the workspace was pulled.
+// CheckRemote checks if the remote tag has moved since the repo was pulled.
 // It compares the stored manifest digest against the current tag resolution.
 func CheckRemote(ctx context.Context, client *cliclient.Client, nf *nebifile.NebiFile) *RemoteStatus {
 	rs := &RemoteStatus{
 		OriginDigest: nf.Origin.ManifestDigest,
 	}
 
-	// Find workspace by listing environments
+	// Find repo by listing environments
 	envs, err := client.ListEnvironments(ctx)
 	if err != nil {
 		rs.Error = fmt.Sprintf("failed to list environments: %v", err)
@@ -63,13 +63,13 @@ func CheckRemote(ctx context.Context, client *cliclient.Client, nf *nebifile.Neb
 
 	var envID string
 	for _, env := range envs {
-		if env.Name == nf.Origin.Workspace {
+		if env.Name == nf.Origin.Repo {
 			envID = env.ID
 			break
 		}
 	}
 	if envID == "" {
-		rs.Error = fmt.Sprintf("workspace %q not found on server", nf.Origin.Workspace)
+		rs.Error = fmt.Sprintf("repo %q not found on server", nf.Origin.Repo)
 		return rs
 	}
 
@@ -125,8 +125,8 @@ func FetchVersionContent(ctx context.Context, client *cliclient.Client, envID st
 
 // FetchByTag resolves a tag to a version and fetches its content.
 // This is used by nebi diff --remote.
-func FetchByTag(ctx context.Context, client *cliclient.Client, workspace, tag string) (*VersionContent, error) {
-	// Find workspace
+func FetchByTag(ctx context.Context, client *cliclient.Client, repo, tag string) (*VersionContent, error) {
+	// Find repo
 	envs, err := client.ListEnvironments(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list environments: %w", err)
@@ -134,13 +134,13 @@ func FetchByTag(ctx context.Context, client *cliclient.Client, workspace, tag st
 
 	var envID string
 	for _, env := range envs {
-		if env.Name == workspace {
+		if env.Name == repo {
 			envID = env.ID
 			break
 		}
 	}
 	if envID == "" {
-		return nil, fmt.Errorf("workspace %q not found", workspace)
+		return nil, fmt.Errorf("repo %q not found", repo)
 	}
 
 	// Find publication for tag
@@ -160,7 +160,7 @@ func FetchByTag(ctx context.Context, client *cliclient.Client, workspace, tag st
 	}
 
 	if !found {
-		return nil, fmt.Errorf("tag %q not found for workspace %q", tag, workspace)
+		return nil, fmt.Errorf("tag %q not found for repo %q", tag, repo)
 	}
 
 	return FetchVersionContent(ctx, client, envID, versionNumber)

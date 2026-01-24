@@ -1,7 +1,7 @@
-// Package localindex provides CRUD operations for the local workspace index.
+// Package localindex provides CRUD operations for the local repo index.
 //
 // The local index is stored at ~/.local/share/nebi/index.json and tracks all
-// workspaces that have been pulled to the local machine, including their
+// repos that have been pulled to the local machine, including their
 // origin information, layer digests for drift detection, and optional aliases.
 package localindex
 
@@ -25,16 +25,16 @@ const (
 	IndexFileName = "index.json"
 )
 
-// Index represents the local workspace index.
+// Index represents the local repo index.
 type Index struct {
-	Version    int              `json:"version"`
-	Workspaces []WorkspaceEntry `json:"workspaces"`
-	Aliases    map[string]Alias `json:"aliases,omitempty"`
+	Version int              `json:"version"`
+	Repos   []RepoEntry      `json:"repos"`
+	Aliases map[string]Alias `json:"aliases,omitempty"`
 }
 
-// WorkspaceEntry represents a single workspace entry in the index.
-type WorkspaceEntry struct {
-	Workspace       string            `json:"workspace"`
+// RepoEntry represents a single repo entry in the index.
+type RepoEntry struct {
+	Repo            string            `json:"repo"`
 	Tag             string            `json:"tag"`
 	RegistryURL     string            `json:"registry_url,omitempty"`
 	ServerURL       string            `json:"server_url"`
@@ -95,19 +95,62 @@ func (s *Store) loadUnsafe() (*Index, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &Index{
-				Version:    CurrentVersion,
-				Workspaces: []WorkspaceEntry{},
-				Aliases:    make(map[string]Alias),
+				Version: CurrentVersion,
+				Repos:   []RepoEntry{},
+				Aliases: make(map[string]Alias),
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to read index file: %w", err)
 	}
 
+	// First try to unmarshal with current format
 	var idx Index
 	if err := json.Unmarshal(data, &idx); err != nil {
 		return nil, fmt.Errorf("failed to parse index file: %w", err)
 	}
 
+	// Migration: handle old "workspaces" key and "workspace" field
+	if idx.Repos == nil {
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(data, &raw); err == nil {
+			if wsData, ok := raw["workspaces"]; ok && idx.Repos == nil {
+				// Old format: parse "workspaces" array with "workspace" field
+				var oldEntries []struct {
+					Workspace       string            `json:"workspace"`
+					Tag             string            `json:"tag"`
+					RegistryURL     string            `json:"registry_url,omitempty"`
+					ServerURL       string            `json:"server_url"`
+					ServerVersionID int32             `json:"server_version_id"`
+					Path            string            `json:"path"`
+					IsGlobal        bool              `json:"is_global"`
+					PulledAt        time.Time         `json:"pulled_at"`
+					ManifestDigest  string            `json:"manifest_digest,omitempty"`
+					Layers          map[string]string `json:"layers,omitempty"`
+				}
+				if err := json.Unmarshal(wsData, &oldEntries); err == nil {
+					idx.Repos = make([]RepoEntry, len(oldEntries))
+					for i, old := range oldEntries {
+						idx.Repos[i] = RepoEntry{
+							Repo:            old.Workspace,
+							Tag:             old.Tag,
+							RegistryURL:     old.RegistryURL,
+							ServerURL:       old.ServerURL,
+							ServerVersionID: old.ServerVersionID,
+							Path:            old.Path,
+							IsGlobal:        old.IsGlobal,
+							PulledAt:        old.PulledAt,
+							ManifestDigest:  old.ManifestDigest,
+							Layers:          old.Layers,
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if idx.Repos == nil {
+		idx.Repos = []RepoEntry{}
+	}
 	if idx.Aliases == nil {
 		idx.Aliases = make(map[string]Alias)
 	}
@@ -142,9 +185,9 @@ func (s *Store) saveUnsafe(idx *Index) error {
 	return nil
 }
 
-// AddEntry adds or updates a workspace entry in the index.
+// AddEntry adds or updates a repo entry in the index.
 // If an entry with the same path already exists, it is replaced.
-func (s *Store) AddEntry(entry WorkspaceEntry) error {
+func (s *Store) AddEntry(entry RepoEntry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -155,15 +198,15 @@ func (s *Store) AddEntry(entry WorkspaceEntry) error {
 
 	// Replace existing entry with same path
 	found := false
-	for i, existing := range idx.Workspaces {
+	for i, existing := range idx.Repos {
 		if existing.Path == entry.Path {
-			idx.Workspaces[i] = entry
+			idx.Repos[i] = entry
 			found = true
 			break
 		}
 	}
 	if !found {
-		idx.Workspaces = append(idx.Workspaces, entry)
+		idx.Repos = append(idx.Repos, entry)
 	}
 
 	return s.saveUnsafe(idx)
@@ -181,8 +224,8 @@ func (s *Store) RemoveByPath(path string) (bool, error) {
 	}
 
 	found := false
-	filtered := make([]WorkspaceEntry, 0, len(idx.Workspaces))
-	for _, entry := range idx.Workspaces {
+	filtered := make([]RepoEntry, 0, len(idx.Repos))
+	for _, entry := range idx.Repos {
 		if entry.Path == path {
 			found = true
 			continue
@@ -194,68 +237,68 @@ func (s *Store) RemoveByPath(path string) (bool, error) {
 		return false, nil
 	}
 
-	idx.Workspaces = filtered
+	idx.Repos = filtered
 	return true, s.saveUnsafe(idx)
 }
 
 // FindByPath returns the entry at the given path, or nil if not found.
-func (s *Store) FindByPath(path string) (*WorkspaceEntry, error) {
+func (s *Store) FindByPath(path string) (*RepoEntry, error) {
 	idx, err := s.Load()
 	if err != nil {
 		return nil, err
 	}
 
-	for i := range idx.Workspaces {
-		if idx.Workspaces[i].Path == path {
-			return &idx.Workspaces[i], nil
+	for i := range idx.Repos {
+		if idx.Repos[i].Path == path {
+			return &idx.Repos[i], nil
 		}
 	}
 	return nil, nil
 }
 
-// FindByWorkspaceTag returns all entries matching a workspace name and tag.
-func (s *Store) FindByWorkspaceTag(workspace, tag string) ([]WorkspaceEntry, error) {
+// FindByRepoTag returns all entries matching a repo name and tag.
+func (s *Store) FindByRepoTag(repo, tag string) ([]RepoEntry, error) {
 	idx, err := s.Load()
 	if err != nil {
 		return nil, err
 	}
 
-	var matches []WorkspaceEntry
-	for _, entry := range idx.Workspaces {
-		if entry.Workspace == workspace && entry.Tag == tag {
+	var matches []RepoEntry
+	for _, entry := range idx.Repos {
+		if entry.Repo == repo && entry.Tag == tag {
 			matches = append(matches, entry)
 		}
 	}
 	return matches, nil
 }
 
-// FindGlobal returns all entries matching a workspace name and tag that are global.
-func (s *Store) FindGlobal(workspace, tag string) (*WorkspaceEntry, error) {
+// FindGlobal returns the global entry matching a repo name and tag.
+func (s *Store) FindGlobal(repo, tag string) (*RepoEntry, error) {
 	idx, err := s.Load()
 	if err != nil {
 		return nil, err
 	}
 
-	for i := range idx.Workspaces {
-		if idx.Workspaces[i].Workspace == workspace &&
-			idx.Workspaces[i].Tag == tag &&
-			idx.Workspaces[i].IsGlobal {
-			return &idx.Workspaces[i], nil
+	for i := range idx.Repos {
+		if idx.Repos[i].Repo == repo &&
+			idx.Repos[i].Tag == tag &&
+			idx.Repos[i].IsGlobal {
+			return &idx.Repos[i], nil
 		}
 	}
 	return nil, nil
 }
 
-// ListAll returns all workspace entries.
-func (s *Store) ListAll() ([]WorkspaceEntry, error) {
+// ListAll returns all repo entries.
+func (s *Store) ListAll() ([]RepoEntry, error) {
 	idx, err := s.Load()
 	if err != nil {
 		return nil, err
 	}
-	return idx.Workspaces, nil
+	return idx.Repos, nil
 }
 
-// SetAlias sets a user-friendly alias for a global workspace.
+// SetAlias sets a user-friendly alias for a global repo.
 func (s *Store) SetAlias(name string, alias Alias) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -313,7 +356,7 @@ func (s *Store) ListAliases() (map[string]Alias, error) {
 
 // Prune removes entries whose paths no longer exist on disk.
 // Returns the list of removed entries.
-func (s *Store) Prune() ([]WorkspaceEntry, error) {
+func (s *Store) Prune() ([]RepoEntry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -322,9 +365,9 @@ func (s *Store) Prune() ([]WorkspaceEntry, error) {
 		return nil, err
 	}
 
-	var pruned []WorkspaceEntry
-	filtered := make([]WorkspaceEntry, 0, len(idx.Workspaces))
-	for _, entry := range idx.Workspaces {
+	var pruned []RepoEntry
+	filtered := make([]RepoEntry, 0, len(idx.Repos))
+	for _, entry := range idx.Repos {
 		if _, err := os.Stat(entry.Path); os.IsNotExist(err) {
 			pruned = append(pruned, entry)
 			continue
@@ -336,14 +379,14 @@ func (s *Store) Prune() ([]WorkspaceEntry, error) {
 		return nil, nil
 	}
 
-	idx.Workspaces = filtered
+	idx.Repos = filtered
 	if err := s.saveUnsafe(idx); err != nil {
 		return nil, err
 	}
 	return pruned, nil
 }
 
-// GlobalWorkspacePath returns the path where a global workspace would be stored.
-func (s *Store) GlobalWorkspacePath(uuid, tag string) string {
-	return filepath.Join(s.indexDir, "workspaces", uuid, tag)
+// GlobalRepoPath returns the path where a global repo would be stored.
+func (s *Store) GlobalRepoPath(uuid, tag string) string {
+	return filepath.Join(s.indexDir, "repos", uuid, tag)
 }

@@ -150,8 +150,8 @@ func TestBytesEqual(t *testing.T) {
 }
 
 func TestOutputDiffJSONRefs(t *testing.T) {
-	source := diff.DiffRefJSON{Type: "tag", Workspace: "ws1", Tag: "v1.0"}
-	target := diff.DiffRefJSON{Type: "tag", Workspace: "ws2", Tag: "v2.0"}
+	source := diff.DiffRefJSON{Type: "tag", Repo: "ws1", Tag: "v1.0"}
+	target := diff.DiffRefJSON{Type: "tag", Repo: "ws2", Tag: "v2.0"}
 	tomlDiff := &diff.TomlDiff{Changes: []diff.Change{}}
 
 	// Should not panic

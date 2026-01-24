@@ -89,6 +89,26 @@ func (c *Client) GetVersionPixiLock(ctx context.Context, envID string, version i
 	return content, nil
 }
 
+// GetEnvironmentTags returns server-side tags for an environment.
+func (c *Client) GetEnvironmentTags(ctx context.Context, envID string) ([]EnvironmentTag, error) {
+	var tags []EnvironmentTag
+	_, err := c.Get(ctx, fmt.Sprintf("/environments/%s/tags", envID), &tags)
+	if err != nil {
+		return nil, err
+	}
+	return tags, nil
+}
+
+// PushVersion pushes a new version to the server with a tag.
+func (c *Client) PushVersion(ctx context.Context, envID string, req PushRequest) (*PushResponse, error) {
+	var resp PushResponse
+	_, err := c.Post(ctx, fmt.Sprintf("/environments/%s/push", envID), req, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // PublishEnvironment publishes an environment to a registry.
 func (c *Client) PublishEnvironment(ctx context.Context, envID string, req PublishRequest) (*PublishResponse, error) {
 	var resp PublishResponse

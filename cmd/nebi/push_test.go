@@ -9,9 +9,9 @@ import (
 )
 
 func TestParseWorkspaceRef_WithTag(t *testing.T) {
-	ws, tag, err := parseWorkspaceRef("myworkspace:v1.0")
+	ws, tag, err := parseRepoRef("myworkspace:v1.0")
 	if err != nil {
-		t.Fatalf("parseWorkspaceRef() error = %v", err)
+		t.Fatalf("parseRepoRef() error = %v", err)
 	}
 	if ws != "myworkspace" {
 		t.Errorf("workspace = %q, want %q", ws, "myworkspace")
@@ -22,9 +22,9 @@ func TestParseWorkspaceRef_WithTag(t *testing.T) {
 }
 
 func TestParseWorkspaceRef_WithDigest(t *testing.T) {
-	ws, tag, err := parseWorkspaceRef("myworkspace@sha256:abc123")
+	ws, tag, err := parseRepoRef("myworkspace@sha256:abc123")
 	if err != nil {
-		t.Fatalf("parseWorkspaceRef() error = %v", err)
+		t.Fatalf("parseRepoRef() error = %v", err)
 	}
 	if ws != "myworkspace" {
 		t.Errorf("workspace = %q, want %q", ws, "myworkspace")
@@ -35,9 +35,9 @@ func TestParseWorkspaceRef_WithDigest(t *testing.T) {
 }
 
 func TestParseWorkspaceRef_NoTag(t *testing.T) {
-	ws, tag, err := parseWorkspaceRef("myworkspace")
+	ws, tag, err := parseRepoRef("myworkspace")
 	if err != nil {
-		t.Fatalf("parseWorkspaceRef() error = %v", err)
+		t.Fatalf("parseRepoRef() error = %v", err)
 	}
 	if ws != "myworkspace" {
 		t.Errorf("workspace = %q, want %q", ws, "myworkspace")
@@ -49,9 +49,9 @@ func TestParseWorkspaceRef_NoTag(t *testing.T) {
 
 func TestParseWorkspaceRef_ColonInTag(t *testing.T) {
 	// workspace:tag where tag contains colon (e.g. workspace:v1:latest)
-	ws, tag, err := parseWorkspaceRef("workspace:v1:latest")
+	ws, tag, err := parseRepoRef("workspace:v1:latest")
 	if err != nil {
-		t.Fatalf("parseWorkspaceRef() error = %v", err)
+		t.Fatalf("parseRepoRef() error = %v", err)
 	}
 	// LastIndex of ":" gives us the last colon
 	if ws != "workspace:v1" {
@@ -63,9 +63,9 @@ func TestParseWorkspaceRef_ColonInTag(t *testing.T) {
 }
 
 func TestParseWorkspaceRef_EmptyString(t *testing.T) {
-	ws, tag, err := parseWorkspaceRef("")
+	ws, tag, err := parseRepoRef("")
 	if err != nil {
-		t.Fatalf("parseWorkspaceRef() error = %v", err)
+		t.Fatalf("parseRepoRef() error = %v", err)
 	}
 	if ws != "" {
 		t.Errorf("workspace = %q, want empty", ws)
@@ -130,8 +130,8 @@ func TestPushDryRun_WithNebiFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("nebifile.Read() error = %v", err)
 	}
-	if loaded.Origin.Workspace != "test-workspace" {
-		t.Errorf("Origin.Workspace = %q, want %q", loaded.Origin.Workspace, "test-workspace")
+	if loaded.Origin.Repo != "test-workspace" {
+		t.Errorf("Origin.Workspace = %q, want %q", loaded.Origin.Repo, "test-workspace")
 	}
 	if loaded.Origin.Tag != "v1.0" {
 		t.Errorf("Origin.Tag = %q, want %q", loaded.Origin.Tag, "v1.0")
@@ -205,16 +205,6 @@ func TestPushCmd_HasDryRunFlag(t *testing.T) {
 	}
 	if flag.DefValue != "false" {
 		t.Errorf("--dry-run default = %q, want %q", flag.DefValue, "false")
-	}
-}
-
-func TestPushCmd_HasRegistryFlag(t *testing.T) {
-	flag := pushCmd.Flags().Lookup("registry")
-	if flag == nil {
-		t.Fatal("--registry flag should be registered")
-	}
-	if flag.Shorthand != "r" {
-		t.Errorf("--registry shorthand = %q, want %q", flag.Shorthand, "r")
 	}
 }
 

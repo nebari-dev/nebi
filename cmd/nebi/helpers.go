@@ -44,7 +44,7 @@ func formatTimeAgo(t time.Time) string {
 }
 
 // formatStatusJSONInternal produces JSON output for nebi status.
-func formatStatusJSONInternal(ws *drift.WorkspaceStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) ([]byte, error) {
+func formatStatusJSONInternal(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) ([]byte, error) {
 	type localStatus struct {
 		PixiToml string `json:"pixi_toml"`
 		PixiLock string `json:"pixi_lock"`
@@ -58,7 +58,7 @@ func formatStatusJSONInternal(ws *drift.WorkspaceStatus, nf *nebifile.NebiFile, 
 	}
 
 	type statusOutput struct {
-		Workspace    string      `json:"workspace"`
+		Repo         string      `json:"repo"`
 		Tag          string      `json:"tag"`
 		RegistryURL  string      `json:"registry_url,omitempty"`
 		ServerURL    string      `json:"server_url"`
@@ -69,7 +69,7 @@ func formatStatusJSONInternal(ws *drift.WorkspaceStatus, nf *nebifile.NebiFile, 
 	}
 
 	output := statusOutput{
-		Workspace:    nf.Origin.Workspace,
+		Repo:         nf.Origin.Repo,
 		Tag:          nf.Origin.Tag,
 		RegistryURL:  nf.Origin.RegistryURL,
 		ServerURL:    nf.Origin.ServerURL,
@@ -93,7 +93,7 @@ func formatStatusJSONInternal(ws *drift.WorkspaceStatus, nf *nebifile.NebiFile, 
 	return json.MarshalIndent(output, "", "  ")
 }
 
-func getFileStatus(ws *drift.WorkspaceStatus, filename string) string {
+func getFileStatus(ws *drift.RepoStatus, filename string) string {
 	fs := ws.GetFileStatus(filename)
 	if fs == nil {
 		return string(drift.StatusUnknown)

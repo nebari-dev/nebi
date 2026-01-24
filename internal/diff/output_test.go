@@ -9,7 +9,7 @@ import (
 )
 
 func TestExitCodeForStatus_Clean(t *testing.T) {
-	ws := &drift.WorkspaceStatus{Overall: drift.StatusClean}
+	ws := &drift.RepoStatus{Overall: drift.StatusClean}
 	code := ExitCodeForStatus(ws)
 	if code != ExitClean {
 		t.Errorf("ExitCodeForStatus(clean) = %d, want %d", code, ExitClean)
@@ -17,7 +17,7 @@ func TestExitCodeForStatus_Clean(t *testing.T) {
 }
 
 func TestExitCodeForStatus_Modified(t *testing.T) {
-	ws := &drift.WorkspaceStatus{
+	ws := &drift.RepoStatus{
 		Overall: drift.StatusModified,
 		Files: []drift.FileStatus{
 			{Filename: "pixi.toml", Status: drift.StatusModified},
@@ -53,7 +53,7 @@ func TestExitCodeForDiff_Nil(t *testing.T) {
 }
 
 func TestFormatStatusJSON(t *testing.T) {
-	ws := &drift.WorkspaceStatus{
+	ws := &drift.RepoStatus{
 		Overall: drift.StatusModified,
 		Files: []drift.FileStatus{
 			{Filename: "pixi.toml", Status: drift.StatusModified},
@@ -100,7 +100,7 @@ func TestFormatStatusJSON(t *testing.T) {
 }
 
 func TestFormatStatusJSON_NoRemote(t *testing.T) {
-	ws := &drift.WorkspaceStatus{
+	ws := &drift.RepoStatus{
 		Overall: drift.StatusClean,
 		Files: []drift.FileStatus{
 			{Filename: "pixi.toml", Status: drift.StatusClean},
@@ -125,7 +125,7 @@ func TestFormatStatusJSON_NoRemote(t *testing.T) {
 func TestFormatDiffJSON(t *testing.T) {
 	source := DiffRefJSON{
 		Type:      "pulled",
-		Workspace: "data-science",
+		Repo: "data-science",
 		Tag:       "v1.0",
 		Digest:    "sha256:abc",
 	}

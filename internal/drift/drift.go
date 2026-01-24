@@ -1,4 +1,4 @@
-// Package drift provides drift detection for Nebi workspaces.
+// Package drift provides drift detection for Nebi repos.
 //
 // Drift detection compares local file content against the layer digests
 // stored in the .nebi metadata file. This allows offline detection of
@@ -13,7 +13,7 @@ import (
 	"github.com/aktech/darb/internal/nebifile"
 )
 
-// Status represents the drift status of a workspace or file.
+// Status represents the drift status of a repo or file.
 type Status string
 
 const (
@@ -38,19 +38,19 @@ type FileStatus struct {
 	CurrentDigest string `json:"current_digest,omitempty"`
 }
 
-// WorkspaceStatus represents the overall drift status of a workspace.
-type WorkspaceStatus struct {
+// RepoStatus represents the overall drift status of a repo.
+type RepoStatus struct {
 	Overall Status       `json:"overall"`
 	Files   []FileStatus `json:"files"`
 }
 
-// Check performs drift detection on a workspace directory.
+// Check performs drift detection on a repo directory.
 // It reads the .nebi metadata file and compares local file hashes
 // against the stored layer digests.
-func Check(dir string) (*WorkspaceStatus, error) {
+func Check(dir string) (*RepoStatus, error) {
 	nf, err := nebifile.Read(dir)
 	if err != nil {
-		return &WorkspaceStatus{
+		return &RepoStatus{
 			Overall: StatusUnknown,
 		}, fmt.Errorf("failed to read .nebi metadata: %w", err)
 	}
@@ -60,8 +60,8 @@ func Check(dir string) (*WorkspaceStatus, error) {
 
 // CheckWithNebiFile performs drift detection using an already-loaded .nebi file.
 // This is useful when the caller already has the NebiFile loaded.
-func CheckWithNebiFile(dir string, nf *nebifile.NebiFile) *WorkspaceStatus {
-	ws := &WorkspaceStatus{
+func CheckWithNebiFile(dir string, nf *nebifile.NebiFile) *RepoStatus {
+	ws := &RepoStatus{
 		Overall: StatusClean,
 		Files:   make([]FileStatus, 0, len(nf.Layers)),
 	}
@@ -118,13 +118,13 @@ func checkFile(dir, filename, originDigest string) FileStatus {
 	}
 }
 
-// IsModified returns true if any file in the workspace has been modified.
-func (ws *WorkspaceStatus) IsModified() bool {
+// IsModified returns true if any file in the repo has been modified.
+func (ws *RepoStatus) IsModified() bool {
 	return ws.Overall == StatusModified
 }
 
 // GetFileStatus returns the status of a specific file, or nil if not tracked.
-func (ws *WorkspaceStatus) GetFileStatus(filename string) *FileStatus {
+func (ws *RepoStatus) GetFileStatus(filename string) *FileStatus {
 	for i := range ws.Files {
 		if ws.Files[i].Filename == filename {
 			return &ws.Files[i]

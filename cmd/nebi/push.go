@@ -16,49 +16,44 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	pushRegistry string
-	pushDryRun   bool
-)
+var pushDryRun bool
 
 var pushCmd = &cobra.Command{
-	Use:   "push <workspace>:<tag>",
-	Short: "Push workspace to registry",
-	Long: `Push a workspace to an OCI registry with a tag.
+	Use:   "push <repo>:<tag>",
+	Short: "Push repo to server",
+	Long: `Push a new version to the Nebi server with a tag.
 
 Looks for pixi.toml and pixi.lock in the current directory.
-If the workspace doesn't exist on the server, it will be created automatically.
+If the repo doesn't exist on the server, it will be created automatically.
+
+Use 'nebi publish' to distribute a pushed version to an OCI registry.
 
 Examples:
   # Push with tag
-  nebi push myworkspace:v1.0.0 -r ds-team
-
-  # Push using default registry
-  nebi push myworkspace:v1.0.0
+  nebi push myrepo:v1.0.0
 
   # Preview what would be pushed
-  nebi push myworkspace:v1.1 --dry-run`,
+  nebi push myrepo:v1.1 --dry-run`,
 	Args: cobra.ExactArgs(1),
 	Run:  runPush,
 }
 
 func init() {
-	pushCmd.Flags().StringVarP(&pushRegistry, "registry", "r", "", "Named registry (optional if default set)")
 	pushCmd.Flags().BoolVar(&pushDryRun, "dry-run", false, "Preview what would be pushed without actually pushing")
 }
 
 func runPush(cmd *cobra.Command, args []string) {
-	// Parse workspace:tag format
-	workspaceName, tag, err := parseWorkspaceRef(args[0])
+	// Parse repo:tag format
+	repoName, tag, err := parseRepoRef(args[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		fmt.Fprintln(os.Stderr, "Usage: nebi push <workspace>:<tag>")
+		fmt.Fprintln(os.Stderr, "Usage: nebi push <repo>:<tag>")
 		os.Exit(1)
 	}
 
 	if tag == "" {
 		fmt.Fprintf(os.Stderr, "Error: tag is required\n")
-		fmt.Fprintln(os.Stderr, "Usage: nebi push <workspace>:<tag>")
+		fmt.Fprintln(os.Stderr, "Usage: nebi push <repo>:<tag>")
 		os.Exit(1)
 	}
 
@@ -78,36 +73,36 @@ func runPush(cmd *cobra.Command, args []string) {
 
 	// Handle --dry-run: show diff against origin if .nebi exists
 	if pushDryRun {
-		runPushDryRun(workspaceName, tag, pixiTomlContent, pixiLockContent)
+		runPushDryRun(repoName, tag, pixiTomlContent, pixiLockContent)
 		return
 	}
 
-	// Check for drift awareness: warn if pushing modified workspace
+	// Check for drift awareness: warn if pushing modified repo
 	absDir, _ := filepath.Abs(".")
-	showPushDriftWarning(absDir, workspaceName, tag, pixiTomlContent)
+	showPushDriftWarning(absDir, repoName, tag, pixiTomlContent)
 
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Try to find workspace by name, create if not found
-	env, err := findWorkspaceByName(client, ctx, workspaceName)
+	// Try to find repo by name, create if not found
+	env, err := findRepoByName(client, ctx, repoName)
 	if err != nil {
-		// Workspace doesn't exist, create it
-		fmt.Printf("Creating workspace %q...\n", workspaceName)
+		// Repo doesn't exist, create it
+		fmt.Printf("Creating repo %q...\n", repoName)
 		pixiTomlStr := string(pixiTomlContent)
 		pkgMgr := "pixi"
 		createReq := cliclient.CreateEnvironmentRequest{
-			Name:           workspaceName,
+			Name:           repoName,
 			PackageManager: &pkgMgr,
 			PixiToml:       &pixiTomlStr,
 		}
 
 		newEnv, createErr := client.CreateEnvironment(ctx, createReq)
 		if createErr != nil {
-			fmt.Fprintf(os.Stderr, "Error: Failed to create workspace %q: %v\n", workspaceName, createErr)
+			fmt.Fprintf(os.Stderr, "Error: Failed to create repo %q: %v\n", repoName, createErr)
 			os.Exit(1)
 		}
-		fmt.Printf("Created workspace %q\n", workspaceName)
+		fmt.Printf("Created repo %q\n", repoName)
 
 		// Wait for environment to be ready
 		env, err = waitForEnvReady(client, ctx, newEnv.ID, 60*time.Second)
@@ -117,47 +112,22 @@ func runPush(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// Find registry
-	var registry *cliclient.Registry
-	if pushRegistry != "" {
-		registry, err = findRegistryByName(client, ctx, pushRegistry)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-	} else {
-		// Find default registry
-		registry, err = findDefaultRegistry(client, ctx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			fmt.Fprintln(os.Stderr, "Hint: Set a default registry with 'nebi registry set-default <name>' or specify one with -r")
-			os.Exit(1)
-		}
+	// Push version to server
+	req := cliclient.PushRequest{
+		Tag:      tag,
+		PixiToml: string(pixiTomlContent),
+		PixiLock: string(pixiLockContent),
 	}
 
-	// Use workspace name as repository
-	repository := workspaceName
-
-	req := cliclient.PublishRequest{
-		RegistryID: registry.ID,
-		Repository: repository,
-		Tag:        tag,
-		PixiToml:   string(pixiTomlContent),
-		PixiLock:   string(pixiLockContent),
-	}
-
-	fmt.Printf("Pushing %s:%s to %s...\n", repository, tag, registry.Name)
-	resp, err := client.PublishEnvironment(ctx, env.ID, req)
+	fmt.Printf("Pushing %s:%s...\n", repoName, tag)
+	resp, err := client.PushVersion(ctx, env.ID, req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to push %s:%s: %v\n", repository, tag, err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to push %s:%s: %v\n", repoName, tag, err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Pushed %s:%s\n", repository, tag)
-	if resp.Digest != "" {
-		fmt.Printf("  Digest: %s\n", resp.Digest)
-	}
-	fmt.Printf("\nSuccessfully pushed to %s\n", registry.Name)
+	fmt.Printf("Pushed %s:%s (version %d)\n", repoName, tag, resp.VersionNumber)
+	fmt.Printf("\nTo distribute via OCI registry:\n  nebi publish %s:%s -r <registry>\n", repoName, tag)
 
 	// Update .nebi metadata and local index to reflect the pushed state.
 	// After a successful push, the local files ARE the origin — status becomes "clean".
@@ -189,12 +159,10 @@ func runPush(cmd *cobra.Command, args []string) {
 	}
 
 	nf := nebifile.New(nebifile.Origin{
-		Workspace:       workspaceName,
+		Repo:            repoName,
 		Tag:             tag,
-		RegistryURL:     registry.URL,
 		ServerURL:       cfg.ServerURL,
-		ServerVersionID: resp.VersionNumber,
-		ManifestDigest:  resp.Digest,
+		ServerVersionID: int32(resp.VersionNumber),
 		PulledAt:        time.Now(),
 	}, layers)
 
@@ -211,16 +179,14 @@ func runPush(cmd *cobra.Command, args []string) {
 	}
 
 	idxStore := localindex.NewStore()
-	entry := localindex.WorkspaceEntry{
-		Workspace:       workspaceName,
+	entry := localindex.RepoEntry{
+		Repo:            repoName,
 		Tag:             tag,
-		RegistryURL:     registry.URL,
 		ServerURL:       cfg.ServerURL,
-		ServerVersionID: resp.VersionNumber,
+		ServerVersionID: int32(resp.VersionNumber),
 		Path:            absDir,
 		IsGlobal:        false,
 		PulledAt:        time.Now(),
-		ManifestDigest:  resp.Digest,
 		Layers:          idxLayers,
 	}
 	if err := idxStore.AddEntry(entry); err != nil {
@@ -229,10 +195,10 @@ func runPush(cmd *cobra.Command, args []string) {
 }
 
 // runPushDryRun shows what would be pushed without actually pushing.
-func runPushDryRun(workspaceName, tag string, pixiTomlContent, pixiLockContent []byte) {
+func runPushDryRun(repoName, tag string, pixiTomlContent, pixiLockContent []byte) {
 	absDir, _ := filepath.Abs(".")
 
-	fmt.Printf("Would push %s:%s\n\n", workspaceName, tag)
+	fmt.Printf("Would push %s:%s\n\n", repoName, tag)
 
 	// Check if we have a .nebi file to diff against
 	if nebifile.Exists(absDir) {
@@ -242,14 +208,14 @@ func runPushDryRun(workspaceName, tag string, pixiTomlContent, pixiLockContent [
 			client := mustGetClient()
 			ctx := mustGetAuthContext()
 
-			env, err := findWorkspaceByName(client, ctx, nf.Origin.Workspace)
+			env, err := findRepoByName(client, ctx, nf.Origin.Repo)
 			if err == nil {
 				vc, err := drift.FetchVersionContent(ctx, client, env.ID, nf.Origin.ServerVersionID)
 				if err == nil {
 					// Show TOML diff
 					tomlDiff, err := diff.CompareToml([]byte(vc.PixiToml), pixiTomlContent)
 					if err == nil && tomlDiff.HasChanges() {
-						sourceLabel := fmt.Sprintf("origin (%s:%s)", nf.Origin.Workspace, nf.Origin.Tag)
+						sourceLabel := fmt.Sprintf("origin (%s:%s)", nf.Origin.Repo, nf.Origin.Tag)
 						targetLabel := "local (to be pushed)"
 						fmt.Print(diff.FormatUnifiedDiff(tomlDiff, sourceLabel, targetLabel))
 					}
@@ -277,16 +243,16 @@ func runPushDryRun(workspaceName, tag string, pixiTomlContent, pixiLockContent [
 	fmt.Println("\nRun without --dry-run to push.")
 }
 
-// parseWorkspaceRef parses a reference in the format workspace:tag or workspace@digest.
-// Returns (workspace, tag, error) for tag references.
-// Returns (workspace, "", error) for digest references (digest is in tag field with @ prefix).
-func parseWorkspaceRef(ref string) (workspace string, tag string, err error) {
-	// Check for digest reference first (workspace@sha256:...)
+// parseRepoRef parses a reference in the format repo:tag or repo@digest.
+// Returns (repo, tag, error) for tag references.
+// Returns (repo, "", error) for digest references (digest is in tag field with @ prefix).
+func parseRepoRef(ref string) (repo string, tag string, err error) {
+	// Check for digest reference first (repo@sha256:...)
 	if idx := strings.Index(ref, "@"); idx != -1 {
 		return ref[:idx], ref[idx:], nil // Return @sha256:... as the "tag"
 	}
 
-	// Check for tag reference (workspace:tag)
+	// Check for tag reference (repo:tag)
 	if idx := strings.LastIndex(ref, ":"); idx != -1 {
 		return ref[:idx], ref[idx+1:], nil
 	}
@@ -295,9 +261,9 @@ func parseWorkspaceRef(ref string) (workspace string, tag string, err error) {
 	return ref, "", nil
 }
 
-// showPushDriftWarning checks if the local workspace has been modified and shows
+// showPushDriftWarning checks if the local repo has been modified and shows
 // an informational note about what's being pushed relative to the origin.
-func showPushDriftWarning(dir, workspaceName, tag string, pixiTomlContent []byte) {
+func showPushDriftWarning(dir, repoName, tag string, pixiTomlContent []byte) {
 	if !nebifile.Exists(dir) {
 		return // No origin info available
 	}
@@ -314,8 +280,8 @@ func showPushDriftWarning(dir, workspaceName, tag string, pixiTomlContent []byte
 	}
 
 	if ws.Overall == drift.StatusModified {
-		fmt.Printf("Note: This workspace was originally pulled from %s:%s\n",
-			nf.Origin.Workspace, nf.Origin.Tag)
+		fmt.Printf("Note: This repo was originally pulled from %s:%s\n",
+			nf.Origin.Repo, nf.Origin.Tag)
 		for _, f := range ws.Files {
 			if f.Status == drift.StatusModified {
 				fmt.Printf("  - %s modified locally\n", f.Filename)
@@ -325,9 +291,9 @@ func showPushDriftWarning(dir, workspaceName, tag string, pixiTomlContent []byte
 	}
 
 	// Warn if pushing to the same tag as origin (potential overwrite)
-	if tag == nf.Origin.Tag && workspaceName == nf.Origin.Workspace && ws.Overall == drift.StatusModified {
+	if tag == nf.Origin.Tag && repoName == nf.Origin.Repo && ws.Overall == drift.StatusModified {
 		fmt.Fprintf(os.Stderr, "Warning: Pushing modified content back to the same tag %q\n", tag)
-		fmt.Fprintf(os.Stderr, "  This will overwrite the existing content in the registry.\n")
+		fmt.Fprintf(os.Stderr, "  This will overwrite the existing version on the server.\n")
 		fmt.Fprintf(os.Stderr, "  Consider using a new tag (e.g., %s-1) to preserve the original.\n\n",
 			tag)
 	}

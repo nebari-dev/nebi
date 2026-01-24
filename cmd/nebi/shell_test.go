@@ -71,13 +71,13 @@ func TestResolveShellFromRef_GlobalPreferred(t *testing.T) {
 	store := localindex.NewStoreWithDir(dir)
 
 	// Create a global workspace directory
-	globalPath := store.GlobalWorkspacePath("uuid-123", "v1.0")
+	globalPath := store.GlobalRepoPath("uuid-123", "v1.0")
 	os.MkdirAll(globalPath, 0755)
 	os.WriteFile(filepath.Join(globalPath, "pixi.toml"), []byte("test"), 0644)
 
 	// Add global entry
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
 		Path:      globalPath,
 		IsGlobal:  true,
@@ -87,8 +87,8 @@ func TestResolveShellFromRef_GlobalPreferred(t *testing.T) {
 	// Also add a local entry
 	localPath := filepath.Join(dir, "local-ws")
 	os.MkdirAll(localPath, 0755)
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
 		Path:      localPath,
 		IsGlobal:  false,
@@ -116,25 +116,25 @@ func TestResolveShellFromRef_LocalFallback(t *testing.T) {
 	os.MkdirAll(localPath2, 0755)
 
 	now := time.Now()
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
 		Path:      localPath1,
 		IsGlobal:  false,
 		PulledAt:  now.Add(-time.Hour),
 	})
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
 		Path:      localPath2,
 		IsGlobal:  false,
 		PulledAt:  now,
 	})
 
-	// FindByWorkspaceTag should return both
-	matches, err := store.FindByWorkspaceTag("data-science", "v1.0")
+	// FindByRepoTag should return both
+	matches, err := store.FindByRepoTag("data-science", "v1.0")
 	if err != nil {
-		t.Fatalf("FindByWorkspaceTag() error = %v", err)
+		t.Fatalf("FindByRepoTag() error = %v", err)
 	}
 	if len(matches) != 2 {
 		t.Fatalf("Expected 2 matches, got %d", len(matches))
@@ -291,20 +291,20 @@ func TestFindValidLocalCopies_FiltersGlobal(t *testing.T) {
 
 	// Create directories
 	localPath := filepath.Join(dir, "local-ws")
-	globalPath := store.GlobalWorkspacePath("uuid-123", "v1.0")
+	globalPath := store.GlobalRepoPath("uuid-123", "v1.0")
 	os.MkdirAll(localPath, 0755)
 	os.MkdirAll(globalPath, 0755)
 
 	now := time.Now()
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
 		Path:      globalPath,
 		IsGlobal:  true,
 		PulledAt:  now,
 	})
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
 		Path:      localPath,
 		IsGlobal:  false,
@@ -330,15 +330,15 @@ func TestFindValidLocalCopies_FiltersMissing(t *testing.T) {
 	// Don't create missingPath
 
 	now := time.Now()
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
 		Path:      existingPath,
 		IsGlobal:  false,
 		PulledAt:  now,
 	})
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
 		Path:      missingPath,
 		IsGlobal:  false,

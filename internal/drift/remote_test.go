@@ -32,7 +32,7 @@ func TestRemoteStatus_TagUnchanged(t *testing.T) {
 
 func TestGenerateSummary_CleanLocalCleanRemote(t *testing.T) {
 	ts := &ThreeWayStatus{
-		Local: &WorkspaceStatus{Overall: StatusClean},
+		Local: &RepoStatus{Overall: StatusClean},
 		Remote: &RemoteStatus{
 			TagHasMoved: false,
 		},
@@ -46,7 +46,7 @@ func TestGenerateSummary_CleanLocalCleanRemote(t *testing.T) {
 
 func TestGenerateSummary_ModifiedLocalCleanRemote(t *testing.T) {
 	ts := &ThreeWayStatus{
-		Local: &WorkspaceStatus{Overall: StatusModified},
+		Local: &RepoStatus{Overall: StatusModified},
 		Remote: &RemoteStatus{
 			TagHasMoved: false,
 		},
@@ -60,7 +60,7 @@ func TestGenerateSummary_ModifiedLocalCleanRemote(t *testing.T) {
 
 func TestGenerateSummary_CleanLocalMovedRemote(t *testing.T) {
 	ts := &ThreeWayStatus{
-		Local: &WorkspaceStatus{Overall: StatusClean},
+		Local: &RepoStatus{Overall: StatusClean},
 		Remote: &RemoteStatus{
 			TagHasMoved: true,
 		},
@@ -74,7 +74,7 @@ func TestGenerateSummary_CleanLocalMovedRemote(t *testing.T) {
 
 func TestGenerateSummary_ModifiedLocalMovedRemote(t *testing.T) {
 	ts := &ThreeWayStatus{
-		Local: &WorkspaceStatus{Overall: StatusModified},
+		Local: &RepoStatus{Overall: StatusModified},
 		Remote: &RemoteStatus{
 			TagHasMoved: true,
 		},
@@ -88,7 +88,7 @@ func TestGenerateSummary_ModifiedLocalMovedRemote(t *testing.T) {
 
 func TestGenerateSummary_RemoteError(t *testing.T) {
 	ts := &ThreeWayStatus{
-		Local: &WorkspaceStatus{Overall: StatusClean},
+		Local: &RepoStatus{Overall: StatusClean},
 		Remote: &RemoteStatus{
 			Error: "network error",
 		},
@@ -102,7 +102,7 @@ func TestGenerateSummary_RemoteError(t *testing.T) {
 
 func TestGenerateSummary_RemoteErrorWithLocalModified(t *testing.T) {
 	ts := &ThreeWayStatus{
-		Local: &WorkspaceStatus{Overall: StatusModified},
+		Local: &RepoStatus{Overall: StatusModified},
 		Remote: &RemoteStatus{
 			Error: "network error",
 		},
@@ -116,7 +116,7 @@ func TestGenerateSummary_RemoteErrorWithLocalModified(t *testing.T) {
 
 func TestThreeWayStatus_Structure(t *testing.T) {
 	ts := &ThreeWayStatus{
-		Local: &WorkspaceStatus{
+		Local: &RepoStatus{
 			Overall: StatusModified,
 			Files: []FileStatus{
 				{Filename: "pixi.toml", Status: StatusModified},

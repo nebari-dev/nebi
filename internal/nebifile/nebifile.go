@@ -1,15 +1,15 @@
 // Package nebifile provides read/write operations for .nebi metadata files.
 //
-// A .nebi file is written to a workspace directory after a pull operation.
-// It contains origin information (where the workspace was pulled from) and
+// A .nebi file is written to a repo directory after a pull operation.
+// It contains origin information (where the repo was pulled from) and
 // per-file layer digests for drift detection.
 //
 // Format (YAML):
 //
 //	origin:
-//	  workspace: data-science
+//	  repo: data-science
 //	  tag: v1.0
-//	  registry: ds-team
+//	  registry_url: ds-team
 //	  server_url: https://nebi.example.com
 //	  server_version_id: 42
 //	  manifest_digest: sha256:abc123...
@@ -51,9 +51,9 @@ type NebiFile struct {
 	Layers map[string]Layer `yaml:"layers"`
 }
 
-// Origin contains information about where the workspace was pulled from.
+// Origin contains information about where the repo was pulled from.
 type Origin struct {
-	Workspace       string    `yaml:"workspace"`
+	Repo            string    `yaml:"repo"`
 	Tag             string    `yaml:"tag"`
 	RegistryURL     string    `yaml:"registry_url,omitempty"`
 	ServerURL       string    `yaml:"server_url"`
@@ -80,7 +80,7 @@ func ReadFile(path string) (*NebiFile, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("not a nebi workspace: %s not found", path)
+			return nil, fmt.Errorf("not a nebi repo: %s not found", path)
 		}
 		return nil, fmt.Errorf("failed to read %s: %w", FileName, err)
 	}
@@ -88,6 +88,18 @@ func ReadFile(path string) (*NebiFile, error) {
 	var nf NebiFile
 	if err := yaml.Unmarshal(data, &nf); err != nil {
 		return nil, fmt.Errorf("failed to parse %s: %w", FileName, err)
+	}
+
+	// Migration: handle old "workspace" YAML key
+	if nf.Origin.Repo == "" {
+		var raw struct {
+			Origin struct {
+				Workspace string `yaml:"workspace"`
+			} `yaml:"origin"`
+		}
+		if err := yaml.Unmarshal(data, &raw); err == nil && raw.Origin.Workspace != "" {
+			nf.Origin.Repo = raw.Origin.Workspace
+		}
 	}
 
 	if nf.Layers == nil {
@@ -137,13 +149,13 @@ func New(origin Origin, layers map[string]Layer) *NebiFile {
 
 // NewFromPull creates a NebiFile from pull operation results.
 // This is a convenience constructor that takes the common parameters from a pull.
-func NewFromPull(workspace, tag, registryURL, serverURL string, serverVersionID int32,
+func NewFromPull(repo, tag, registryURL, serverURL string, serverVersionID int32,
 	manifestDigest string, pixiTomlDigest string, pixiTomlSize int64,
 	pixiLockDigest string, pixiLockSize int64) *NebiFile {
 
 	return &NebiFile{
 		Origin: Origin{
-			Workspace:       workspace,
+			Repo:            repo,
 			Tag:             tag,
 			RegistryURL:     registryURL,
 			ServerURL:       serverURL,

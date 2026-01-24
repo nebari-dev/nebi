@@ -121,7 +121,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			env.POST("/share", envHandler.ShareEnvironment)
 			env.DELETE("/share/:user_id", envHandler.UnshareEnvironment)
 
-			// Publishing operations (require write permission)
+			// Tags (read permission)
+			env.GET("/tags", middleware.RequireEnvironmentAccess("read"), envHandler.ListTags)
+
+			// Push and publish operations (require write permission)
+			env.POST("/push", middleware.RequireEnvironmentAccess("write"), envHandler.PushVersion)
 			env.POST("/publish", middleware.RequireEnvironmentAccess("write"), envHandler.PublishEnvironment)
 			env.GET("/publications", middleware.RequireEnvironmentAccess("read"), envHandler.ListPublications)
 		}

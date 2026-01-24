@@ -12,7 +12,7 @@ import (
 )
 
 func TestGetLocalEntryStatus_PathMissing(t *testing.T) {
-	entry := localindex.WorkspaceEntry{
+	entry := localindex.RepoEntry{
 		Path: "/nonexistent/path/12345",
 	}
 	status := getLocalEntryStatus(entry)
@@ -41,7 +41,7 @@ func TestGetLocalEntryStatus_Clean(t *testing.T) {
 	)
 	nebifile.Write(dir, nf)
 
-	entry := localindex.WorkspaceEntry{Path: dir}
+	entry := localindex.RepoEntry{Path: dir}
 	status := getLocalEntryStatus(entry)
 	if status != string(drift.StatusClean) {
 		t.Errorf("status = %q, want %q", status, drift.StatusClean)
@@ -69,7 +69,7 @@ func TestGetLocalEntryStatus_Modified(t *testing.T) {
 	)
 	nebifile.Write(dir, nf)
 
-	entry := localindex.WorkspaceEntry{Path: dir}
+	entry := localindex.RepoEntry{Path: dir}
 	status := getLocalEntryStatus(entry)
 	if status != string(drift.StatusModified) {
 		t.Errorf("status = %q, want %q", status, drift.StatusModified)
@@ -82,7 +82,7 @@ func TestGetLocalEntryStatus_NoNebiFile(t *testing.T) {
 	// Just has pixi.toml, no .nebi
 	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("test"), 0644)
 
-	entry := localindex.WorkspaceEntry{Path: dir}
+	entry := localindex.RepoEntry{Path: dir}
 	status := getLocalEntryStatus(entry)
 	// Should be "unknown" since drift.Check will fail without .nebi
 	if status != "unknown" {
@@ -102,10 +102,10 @@ func TestFormatLocation_Local(t *testing.T) {
 
 func TestFormatLocation_Global(t *testing.T) {
 	home, _ := os.UserHomeDir()
-	path := filepath.Join(home, ".local", "share", "nebi", "workspaces", "550e8400-e29b-41d4-a716-446655440000", "v1.0")
+	path := filepath.Join(home, ".local", "share", "nebi", "repos", "550e8400-e29b-41d4-a716-446655440000", "v1.0")
 
 	result := formatLocation(path, true)
-	want := "~/.local/share/nebi/workspaces/550e8400/v1.0 (global)"
+	want := "~/.local/share/nebi/repos/550e8400/v1.0 (global)"
 	if result != want {
 		t.Errorf("formatLocation() = %q, want %q", result, want)
 	}
@@ -114,10 +114,10 @@ func TestFormatLocation_Global(t *testing.T) {
 func TestFormatLocation_GlobalNonUUID(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	// Non-UUID directory name should not be abbreviated
-	path := filepath.Join(home, ".local", "share", "nebi", "workspaces", "my-workspace", "v1.0")
+	path := filepath.Join(home, ".local", "share", "nebi", "repos", "my-workspace", "v1.0")
 
 	result := formatLocation(path, true)
-	want := "~/.local/share/nebi/workspaces/my-workspace/v1.0 (global)"
+	want := "~/.local/share/nebi/repos/my-workspace/v1.0 (global)"
 	if result != want {
 		t.Errorf("formatLocation() = %q, want %q", result, want)
 	}
@@ -138,14 +138,14 @@ func TestWorkspacePrune_Integration(t *testing.T) {
 	validPath := filepath.Join(dir, "valid")
 	os.MkdirAll(validPath, 0755)
 
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "valid-ws",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "valid-ws",
 		Tag:       "v1.0",
 		Path:      validPath,
 		PulledAt:  time.Now(),
 	})
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "missing-ws",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "missing-ws",
 		Tag:       "v1.0",
 		Path:      filepath.Join(dir, "does-not-exist"),
 		PulledAt:  time.Now(),
@@ -160,8 +160,8 @@ func TestWorkspacePrune_Integration(t *testing.T) {
 	if len(removed) != 1 {
 		t.Fatalf("Prune() removed %d entries, want 1", len(removed))
 	}
-	if removed[0].Workspace != "missing-ws" {
-		t.Errorf("removed workspace = %q, want %q", removed[0].Workspace, "missing-ws")
+	if removed[0].Repo != "missing-ws" {
+		t.Errorf("removed workspace = %q, want %q", removed[0].Repo, "missing-ws")
 	}
 
 	// Verify valid entry still exists
@@ -179,8 +179,8 @@ func TestWorkspaceListLocal_EmptyIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if len(index.Workspaces) != 0 {
-		t.Errorf("Empty index should have 0 workspaces, got %d", len(index.Workspaces))
+	if len(index.Repos) != 0 {
+		t.Errorf("Empty index should have 0 workspaces, got %d", len(index.Repos))
 	}
 }
 
@@ -194,15 +194,15 @@ func TestWorkspaceListLocal_WithEntries(t *testing.T) {
 	os.MkdirAll(path1, 0755)
 	os.MkdirAll(path2, 0755)
 
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
 		Path:      path1,
 		IsGlobal:  false,
 		PulledAt:  time.Now(),
 	})
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace: "data-science",
+	store.AddEntry(localindex.RepoEntry{
+		Repo: "data-science",
 		Tag:       "v2.0",
 		Path:      path2,
 		IsGlobal:  true,
@@ -213,31 +213,31 @@ func TestWorkspaceListLocal_WithEntries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if len(index.Workspaces) != 2 {
-		t.Errorf("Expected 2 workspaces, got %d", len(index.Workspaces))
+	if len(index.Repos) != 2 {
+		t.Errorf("Expected 2 workspaces, got %d", len(index.Repos))
 	}
 }
 
 func TestWorkspaceInfoCmd_AcceptsZeroOrOneArgs(t *testing.T) {
 	// The command should accept 0 or 1 args (MaximumNArgs(1))
-	err := workspaceInfoCmd.Args(workspaceInfoCmd, []string{})
+	err := repoInfoCmd.Args(repoInfoCmd, []string{})
 	if err != nil {
-		t.Errorf("workspaceInfoCmd should accept 0 args, got error: %v", err)
+		t.Errorf("repoInfoCmd should accept 0 args, got error: %v", err)
 	}
 
-	err = workspaceInfoCmd.Args(workspaceInfoCmd, []string{"myworkspace"})
+	err = repoInfoCmd.Args(repoInfoCmd, []string{"myworkspace"})
 	if err != nil {
-		t.Errorf("workspaceInfoCmd should accept 1 arg, got error: %v", err)
+		t.Errorf("repoInfoCmd should accept 1 arg, got error: %v", err)
 	}
 
-	err = workspaceInfoCmd.Args(workspaceInfoCmd, []string{"a", "b"})
+	err = repoInfoCmd.Args(repoInfoCmd, []string{"a", "b"})
 	if err == nil {
-		t.Error("workspaceInfoCmd should reject 2 args")
+		t.Error("repoInfoCmd should reject 2 args")
 	}
 }
 
 func TestWorkspaceInfoCmd_HasPathFlag(t *testing.T) {
-	flag := workspaceInfoCmd.Flags().Lookup("path")
+	flag := repoInfoCmd.Flags().Lookup("path")
 	if flag == nil {
 		t.Fatal("--path/-C flag should be registered")
 	}
@@ -250,13 +250,13 @@ func TestWorkspaceInfoCmd_HasPathFlag(t *testing.T) {
 }
 
 func TestWorkspacePruneCmd_HasNoArgs(t *testing.T) {
-	if workspacePruneCmd.Args == nil {
+	if repoPruneCmd.Args == nil {
 		t.Fatal("Args should not be nil")
 	}
 }
 
 func TestWorkspaceListCmd_HasLocalFlag(t *testing.T) {
-	flag := workspaceListCmd.Flags().Lookup("local")
+	flag := repoListCmd.Flags().Lookup("local")
 	if flag == nil {
 		t.Fatal("--local flag should be registered")
 	}
@@ -266,7 +266,7 @@ func TestWorkspaceListCmd_HasLocalFlag(t *testing.T) {
 }
 
 func TestWorkspaceListCmd_HasJSONFlag(t *testing.T) {
-	flag := workspaceListCmd.Flags().Lookup("json")
+	flag := repoListCmd.Flags().Lookup("json")
 	if flag == nil {
 		t.Fatal("--json flag should be registered")
 	}
@@ -287,7 +287,7 @@ func TestIsUUID(t *testing.T) {
 		{"550e8400-e29b-41d4-a716-44665544000", false}, // too short
 		{"v1.0", false},
 		{"", false},
-		{"workspaces", false},
+		{"repos", false},
 	}
 	for _, tt := range tests {
 		got := isUUID(tt.input)

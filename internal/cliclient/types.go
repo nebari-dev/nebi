@@ -68,11 +68,31 @@ type Publication struct {
 	PublishedAt   string `json:"published_at"`
 }
 
-// PublishRequest represents a request to publish an environment.
+// EnvironmentTag represents a server-side tag pointing to a version.
+type EnvironmentTag struct {
+	Tag           string `json:"tag"`
+	VersionNumber int    `json:"version_number"`
+}
+
+// PushRequest represents a request to push a version to the server.
+type PushRequest struct {
+	Tag      string `json:"tag"`
+	PixiToml string `json:"pixi_toml"`
+	PixiLock string `json:"pixi_lock,omitempty"`
+}
+
+// PushResponse represents the response from pushing a version.
+type PushResponse struct {
+	VersionNumber int    `json:"version_number"`
+	Tag           string `json:"tag"`
+}
+
+// PublishRequest represents a request to publish an environment to a registry.
 type PublishRequest struct {
 	RegistryID string `json:"registry_id"`
 	Repository string `json:"repository"`
 	Tag        string `json:"tag"`
+	Version    int    `json:"version,omitempty"` // Version number to publish (resolved from tag if omitted)
 	PixiToml   string `json:"pixi_toml,omitempty"`
 	PixiLock   string `json:"pixi_lock,omitempty"`
 }

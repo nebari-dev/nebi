@@ -50,11 +50,11 @@ type DiffJSON struct {
 
 // DiffRefJSON represents a reference in a diff (source or target).
 type DiffRefJSON struct {
-	Type      string `json:"type"` // "pulled", "local", "remote", "tag"
-	Workspace string `json:"workspace,omitempty"`
-	Tag       string `json:"tag,omitempty"`
-	Digest    string `json:"digest,omitempty"`
-	Path      string `json:"path,omitempty"`
+	Type   string `json:"type"` // "pulled", "local", "remote", "tag"
+	Repo   string `json:"repo,omitempty"`
+	Tag    string `json:"tag,omitempty"`
+	Digest string `json:"digest,omitempty"`
+	Path   string `json:"path,omitempty"`
 }
 
 // LockSummary represents a summary of lock file changes.
@@ -75,9 +75,9 @@ type PackageUpdate struct {
 }
 
 // FormatStatusJSON creates the JSON output for nebi status.
-func FormatStatusJSON(ws *drift.WorkspaceStatus, workspace, tag, registry, serverURL, pulledAt, originDigest string, remote *drift.RemoteStatus) ([]byte, error) {
+func FormatStatusJSON(ws *drift.RepoStatus, repo, tag, registry, serverURL, pulledAt, originDigest string, remote *drift.RemoteStatus) ([]byte, error) {
 	status := StatusJSON{
-		Workspace:    workspace,
+		Workspace:    repo,
 		Tag:          tag,
 		Registry:     registry,
 		ServerURL:    serverURL,
@@ -114,7 +114,7 @@ func FormatDiffJSON(source, target DiffRefJSON, tomlDiff *TomlDiff, lockSummary 
 }
 
 // getFileStatusString returns the status string for a file.
-func getFileStatusString(ws *drift.WorkspaceStatus, filename string) string {
+func getFileStatusString(ws *drift.RepoStatus, filename string) string {
 	fs := ws.GetFileStatus(filename)
 	if fs == nil {
 		return string(drift.StatusUnknown)
@@ -122,8 +122,8 @@ func getFileStatusString(ws *drift.WorkspaceStatus, filename string) string {
 	return string(fs.Status)
 }
 
-// ExitCodeForStatus returns the appropriate exit code for a workspace status.
-func ExitCodeForStatus(ws *drift.WorkspaceStatus) int {
+// ExitCodeForStatus returns the appropriate exit code for a repo status.
+func ExitCodeForStatus(ws *drift.RepoStatus) int {
 	if ws.IsModified() {
 		return ExitDiff
 	}

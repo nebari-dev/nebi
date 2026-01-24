@@ -42,8 +42,8 @@ func TestLoadEmptyIndex(t *testing.T) {
 	if idx.Version != CurrentVersion {
 		t.Errorf("Version = %d, want %d", idx.Version, CurrentVersion)
 	}
-	if len(idx.Workspaces) != 0 {
-		t.Errorf("Workspaces length = %d, want 0", len(idx.Workspaces))
+	if len(idx.Repos) != 0 {
+		t.Errorf("Workspaces length = %d, want 0", len(idx.Repos))
 	}
 	if idx.Aliases == nil {
 		t.Error("Aliases should not be nil")
@@ -56,9 +56,9 @@ func TestSaveAndLoad(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 	idx := &Index{
 		Version: CurrentVersion,
-		Workspaces: []WorkspaceEntry{
+		Repos: []RepoEntry{
 			{
-				Workspace:       "data-science",
+				Repo:       "data-science",
 				Tag:             "v1.0",
 				RegistryURL:        "ds-team",
 				ServerURL:       "https://nebi.example.com",
@@ -90,13 +90,13 @@ func TestSaveAndLoad(t *testing.T) {
 	if loaded.Version != CurrentVersion {
 		t.Errorf("Version = %d, want %d", loaded.Version, CurrentVersion)
 	}
-	if len(loaded.Workspaces) != 1 {
-		t.Fatalf("Workspaces length = %d, want 1", len(loaded.Workspaces))
+	if len(loaded.Repos) != 1 {
+		t.Fatalf("Workspaces length = %d, want 1", len(loaded.Repos))
 	}
 
-	ws := loaded.Workspaces[0]
-	if ws.Workspace != "data-science" {
-		t.Errorf("Workspace = %q, want %q", ws.Workspace, "data-science")
+	ws := loaded.Repos[0]
+	if ws.Repo != "data-science" {
+		t.Errorf("Workspace = %q, want %q", ws.Repo, "data-science")
 	}
 	if ws.Tag != "v1.0" {
 		t.Errorf("Tag = %q, want %q", ws.Tag, "v1.0")
@@ -143,8 +143,8 @@ func TestAddEntry(t *testing.T) {
 	store, _ := setupTestStore(t)
 	now := time.Now().Truncate(time.Second)
 
-	entry := WorkspaceEntry{
-		Workspace:       "data-science",
+	entry := RepoEntry{
+		Repo:       "data-science",
 		Tag:             "v1.0",
 		ServerURL:       "https://nebi.example.com",
 		ServerVersionID: 42,
@@ -163,8 +163,8 @@ func TestAddEntry(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("ListAll() length = %d, want 1", len(entries))
 	}
-	if entries[0].Workspace != "data-science" {
-		t.Errorf("Workspace = %q, want %q", entries[0].Workspace, "data-science")
+	if entries[0].Repo != "data-science" {
+		t.Errorf("Workspace = %q, want %q", entries[0].Repo, "data-science")
 	}
 }
 
@@ -172,14 +172,14 @@ func TestAddEntryReplacesSamePath(t *testing.T) {
 	store, _ := setupTestStore(t)
 	now := time.Now().Truncate(time.Second)
 
-	entry1 := WorkspaceEntry{
-		Workspace: "data-science",
+	entry1 := RepoEntry{
+		Repo: "data-science",
 		Tag:       "v1.0",
 		Path:      "/home/user/project-a",
 		PulledAt:  now,
 	}
-	entry2 := WorkspaceEntry{
-		Workspace: "data-science",
+	entry2 := RepoEntry{
+		Repo: "data-science",
 		Tag:       "v2.0",
 		Path:      "/home/user/project-a",
 		PulledAt:  now.Add(time.Hour),
@@ -208,10 +208,10 @@ func TestAddMultipleEntries(t *testing.T) {
 	store, _ := setupTestStore(t)
 	now := time.Now().Truncate(time.Second)
 
-	entries := []WorkspaceEntry{
-		{Workspace: "ws1", Tag: "v1.0", Path: "/path/a", PulledAt: now},
-		{Workspace: "ws2", Tag: "v1.0", Path: "/path/b", PulledAt: now},
-		{Workspace: "ws1", Tag: "v1.0", Path: "/path/c", PulledAt: now},
+	entries := []RepoEntry{
+		{Repo: "ws1", Tag: "v1.0", Path: "/path/a", PulledAt: now},
+		{Repo: "ws2", Tag: "v1.0", Path: "/path/b", PulledAt: now},
+		{Repo: "ws1", Tag: "v1.0", Path: "/path/c", PulledAt: now},
 	}
 
 	for _, e := range entries {
@@ -233,8 +233,8 @@ func TestRemoveByPath(t *testing.T) {
 	store, _ := setupTestStore(t)
 	now := time.Now().Truncate(time.Second)
 
-	store.AddEntry(WorkspaceEntry{Workspace: "ws1", Tag: "v1.0", Path: "/path/a", PulledAt: now})
-	store.AddEntry(WorkspaceEntry{Workspace: "ws2", Tag: "v1.0", Path: "/path/b", PulledAt: now})
+	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: "/path/a", PulledAt: now})
+	store.AddEntry(RepoEntry{Repo: "ws2", Tag: "v1.0", Path: "/path/b", PulledAt: now})
 
 	removed, err := store.RemoveByPath("/path/a")
 	if err != nil {
@@ -269,8 +269,8 @@ func TestFindByPath(t *testing.T) {
 	store, _ := setupTestStore(t)
 	now := time.Now().Truncate(time.Second)
 
-	store.AddEntry(WorkspaceEntry{Workspace: "ws1", Tag: "v1.0", Path: "/path/a", PulledAt: now})
-	store.AddEntry(WorkspaceEntry{Workspace: "ws2", Tag: "v2.0", Path: "/path/b", PulledAt: now})
+	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: "/path/a", PulledAt: now})
+	store.AddEntry(RepoEntry{Repo: "ws2", Tag: "v2.0", Path: "/path/b", PulledAt: now})
 
 	entry, err := store.FindByPath("/path/a")
 	if err != nil {
@@ -279,8 +279,8 @@ func TestFindByPath(t *testing.T) {
 	if entry == nil {
 		t.Fatal("FindByPath() returned nil")
 	}
-	if entry.Workspace != "ws1" {
-		t.Errorf("Workspace = %q, want %q", entry.Workspace, "ws1")
+	if entry.Repo != "ws1" {
+		t.Errorf("Workspace = %q, want %q", entry.Repo, "ws1")
 	}
 }
 
@@ -296,21 +296,21 @@ func TestFindByPathNotFound(t *testing.T) {
 	}
 }
 
-func TestFindByWorkspaceTag(t *testing.T) {
+func TestFindByRepoTag(t *testing.T) {
 	store, _ := setupTestStore(t)
 	now := time.Now().Truncate(time.Second)
 
-	store.AddEntry(WorkspaceEntry{Workspace: "ws1", Tag: "v1.0", Path: "/path/a", PulledAt: now})
-	store.AddEntry(WorkspaceEntry{Workspace: "ws1", Tag: "v1.0", Path: "/path/b", PulledAt: now})
-	store.AddEntry(WorkspaceEntry{Workspace: "ws1", Tag: "v2.0", Path: "/path/c", PulledAt: now})
-	store.AddEntry(WorkspaceEntry{Workspace: "ws2", Tag: "v1.0", Path: "/path/d", PulledAt: now})
+	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: "/path/a", PulledAt: now})
+	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: "/path/b", PulledAt: now})
+	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v2.0", Path: "/path/c", PulledAt: now})
+	store.AddEntry(RepoEntry{Repo: "ws2", Tag: "v1.0", Path: "/path/d", PulledAt: now})
 
-	matches, err := store.FindByWorkspaceTag("ws1", "v1.0")
+	matches, err := store.FindByRepoTag("ws1", "v1.0")
 	if err != nil {
-		t.Fatalf("FindByWorkspaceTag() error = %v", err)
+		t.Fatalf("FindByRepoTag() error = %v", err)
 	}
 	if len(matches) != 2 {
-		t.Errorf("FindByWorkspaceTag() length = %d, want 2", len(matches))
+		t.Errorf("FindByRepoTag() length = %d, want 2", len(matches))
 	}
 }
 
@@ -318,8 +318,8 @@ func TestFindGlobal(t *testing.T) {
 	store, _ := setupTestStore(t)
 	now := time.Now().Truncate(time.Second)
 
-	store.AddEntry(WorkspaceEntry{Workspace: "ws1", Tag: "v1.0", Path: "/path/a", IsGlobal: false, PulledAt: now})
-	store.AddEntry(WorkspaceEntry{Workspace: "ws1", Tag: "v1.0", Path: "/global/ws1/v1.0", IsGlobal: true, PulledAt: now})
+	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: "/path/a", IsGlobal: false, PulledAt: now})
+	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: "/global/ws1/v1.0", IsGlobal: true, PulledAt: now})
 
 	entry, err := store.FindGlobal("ws1", "v1.0")
 	if err != nil {
@@ -340,7 +340,7 @@ func TestFindGlobalNotFound(t *testing.T) {
 	store, _ := setupTestStore(t)
 	now := time.Now().Truncate(time.Second)
 
-	store.AddEntry(WorkspaceEntry{Workspace: "ws1", Tag: "v1.0", Path: "/path/a", IsGlobal: false, PulledAt: now})
+	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: "/path/a", IsGlobal: false, PulledAt: now})
 
 	entry, err := store.FindGlobal("ws1", "v1.0")
 	if err != nil {
@@ -443,8 +443,8 @@ func TestPrune(t *testing.T) {
 	realDir := filepath.Join(dir, "real-workspace")
 	os.MkdirAll(realDir, 0755)
 
-	store.AddEntry(WorkspaceEntry{Workspace: "ws1", Tag: "v1.0", Path: realDir, PulledAt: now})
-	store.AddEntry(WorkspaceEntry{Workspace: "ws2", Tag: "v1.0", Path: "/nonexistent/path", PulledAt: now})
+	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: realDir, PulledAt: now})
+	store.AddEntry(RepoEntry{Repo: "ws2", Tag: "v1.0", Path: "/nonexistent/path", PulledAt: now})
 
 	pruned, err := store.Prune()
 	if err != nil {
@@ -473,7 +473,7 @@ func TestPruneNothingToPrune(t *testing.T) {
 	realDir := filepath.Join(dir, "real-workspace")
 	os.MkdirAll(realDir, 0755)
 
-	store.AddEntry(WorkspaceEntry{Workspace: "ws1", Tag: "v1.0", Path: realDir, PulledAt: now})
+	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: realDir, PulledAt: now})
 
 	pruned, err := store.Prune()
 	if err != nil {
@@ -484,12 +484,12 @@ func TestPruneNothingToPrune(t *testing.T) {
 	}
 }
 
-func TestGlobalWorkspacePath(t *testing.T) {
+func TestGlobalRepoPath(t *testing.T) {
 	store := NewStoreWithDir("/home/user/.local/share/nebi")
-	path := store.GlobalWorkspacePath("550e8400-e29b-41d4-a716-446655440000", "v1.0")
-	expected := "/home/user/.local/share/nebi/workspaces/550e8400-e29b-41d4-a716-446655440000/v1.0"
+	path := store.GlobalRepoPath("550e8400-e29b-41d4-a716-446655440000", "v1.0")
+	expected := "/home/user/.local/share/nebi/repos/550e8400-e29b-41d4-a716-446655440000/v1.0"
 	if path != expected {
-		t.Errorf("GlobalWorkspacePath() = %q, want %q", path, expected)
+		t.Errorf("GlobalRepoPath() = %q, want %q", path, expected)
 	}
 }
 
@@ -510,7 +510,7 @@ func TestSaveCreatesDirectory(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "nested", "deep", "dir")
 	store := NewStoreWithDir(dir)
 
-	idx := &Index{Version: CurrentVersion, Workspaces: []WorkspaceEntry{}}
+	idx := &Index{Version: CurrentVersion, Repos: []RepoEntry{}}
 	if err := store.Save(idx); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -527,9 +527,9 @@ func TestIndexJSONFormat(t *testing.T) {
 
 	idx := &Index{
 		Version: CurrentVersion,
-		Workspaces: []WorkspaceEntry{
+		Repos: []RepoEntry{
 			{
-				Workspace:       "data-science",
+				Repo:       "data-science",
 				Tag:             "v1.0",
 				RegistryURL:        "ds-team",
 				ServerURL:       "https://nebi.example.com",
@@ -568,10 +568,10 @@ func TestIndexJSONFormat(t *testing.T) {
 		t.Errorf("version = %v, want 1", raw["version"])
 	}
 
-	// Check workspaces is array
-	workspaces, ok := raw["workspaces"].([]interface{})
-	if !ok || len(workspaces) != 1 {
-		t.Fatalf("workspaces = %v", raw["workspaces"])
+	// Check repos is array
+	repos, ok := raw["repos"].([]interface{})
+	if !ok || len(repos) != 1 {
+		t.Fatalf("repos = %v", raw["repos"])
 	}
 
 	// Check aliases is object

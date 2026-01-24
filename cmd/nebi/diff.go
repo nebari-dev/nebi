@@ -21,22 +21,22 @@ var (
 )
 
 var diffCmd = &cobra.Command{
-	Use:   "diff [workspace:tag] [workspace:tag]",
-	Short: "Show workspace differences",
-	Long: `Show detailed differences between workspace versions.
+	Use:   "diff [repo:tag] [repo:tag]",
+	Short: "Show repo differences",
+	Long: `Show detailed differences between repo versions.
 
 While 'nebi status' answers "has anything changed?", 'nebi diff' answers
 "what exactly changed?".
 
-Arguments can be workspace:tag references (fetched from server) or local
+Arguments can be repo:tag references (fetched from server) or local
 paths (read directly from disk). Paths are detected by prefix: /, ./, ../,
 ~, or the literal ".".
 
 Usage patterns:
   nebi diff                              Local changes vs what was pulled
   nebi diff --remote                     Local vs current remote tag
-  nebi diff ws:v1.0 ws:v2.0              Compare two remote references
-  nebi diff ws:v1.0                      Compare remote ref vs local
+  nebi diff repo:v1.0 repo:v2.0         Compare two remote references
+  nebi diff repo:v1.0                   Compare remote ref vs local
   nebi diff ./project-a ./project-b      Compare two local paths
   nebi diff . ~/other-project            Current dir vs another local path
   nebi diff ~/local data-science:v2.0    Local path vs remote reference
@@ -48,13 +48,13 @@ Examples:
   # Show changes vs current remote
   nebi diff --remote
 
-  # Compare two versions of a workspace
+  # Compare two versions of a repo
   nebi diff data-science:v1.0 data-science:v2.0
 
   # Compare remote ref vs local
   nebi diff data-science:v1.0
 
-  # Compare two local workspace directories
+  # Compare two local repo directories
   nebi diff ./experiment-1 ./experiment-2
 
   # Include lock file package-level diff
@@ -63,8 +63,8 @@ Examples:
   # JSON output for scripting
   nebi diff --json
 
-  # Check workspace at a specific path
-  nebi diff -C /path/to/workspace`,
+  # Check repo at a specific path
+  nebi diff -C /path/to/repo`,
 	Args: cobra.MaximumNArgs(2),
 	Run:  runDiff,
 }
@@ -74,7 +74,7 @@ func init() {
 	diffCmd.Flags().BoolVar(&diffJSON, "json", false, "Output as JSON")
 	diffCmd.Flags().BoolVar(&diffLock, "lock", false, "Show lock file package-level diff")
 	diffCmd.Flags().BoolVar(&diffToml, "toml", false, "Show only pixi.toml diff")
-	diffCmd.Flags().StringVarP(&diffPath, "path", "C", ".", "Workspace directory path")
+	diffCmd.Flags().StringVarP(&diffPath, "path", "C", ".", "Repo directory path")
 }
 
 func runDiff(cmd *cobra.Command, args []string) {
@@ -128,7 +128,7 @@ func runDiffLocal() {
 	ctx := mustGetAuthContext()
 
 	// Find workspace on server
-	env, err := findWorkspaceByName(client, ctx, nf.Origin.Workspace)
+	env, err := findRepoByName(client, ctx, nf.Origin.Repo)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(2)
@@ -140,12 +140,12 @@ func runDiffLocal() {
 
 	if diffRemote {
 		// Fetch current tag content
-		versionContent, err = drift.FetchByTag(ctx, client, nf.Origin.Workspace, nf.Origin.Tag)
+		versionContent, err = drift.FetchByTag(ctx, client, nf.Origin.Repo, nf.Origin.Tag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Failed to fetch remote content: %v\n", err)
 			os.Exit(2)
 		}
-		sourceLabel = fmt.Sprintf("remote (%s:%s, current)", nf.Origin.Workspace, nf.Origin.Tag)
+		sourceLabel = fmt.Sprintf("remote (%s:%s, current)", nf.Origin.Repo, nf.Origin.Tag)
 	} else {
 		// Fetch origin content (by version ID - immutable)
 		versionContent, err = drift.FetchVersionContent(ctx, client, env.ID, nf.Origin.ServerVersionID)
@@ -154,7 +154,7 @@ func runDiffLocal() {
 			fmt.Fprintln(os.Stderr, "Hint: The origin version may no longer be available on the server.")
 			os.Exit(2)
 		}
-		sourceLabel = fmt.Sprintf("pulled (%s:%s, %s)", nf.Origin.Workspace, nf.Origin.Tag, truncateDigest(nf.Origin.ManifestDigest))
+		sourceLabel = fmt.Sprintf("pulled (%s:%s, %s)", nf.Origin.Repo, nf.Origin.Tag, truncateDigest(nf.Origin.ManifestDigest))
 	}
 
 	// Read local files
@@ -196,7 +196,7 @@ func runDiffLocal() {
 
 // runDiffRefVsLocal compares a remote reference against local workspace.
 func runDiffRefVsLocal(ref string) {
-	workspace, tag, err := parseWorkspaceRef(ref)
+	workspace, tag, err := parseRepoRef(ref)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(2)
@@ -247,7 +247,7 @@ func runDiffRefVsLocal(ref string) {
 
 	if diffJSON {
 		outputDiffJSONRefs(
-			diff.DiffRefJSON{Type: "tag", Workspace: workspace, Tag: tag},
+			diff.DiffRefJSON{Type: "tag", Repo: workspace, Tag: tag},
 			diff.DiffRefJSON{Type: "local", Path: absDir},
 			tomlDiff, lockSummary,
 		)
@@ -262,7 +262,7 @@ func runDiffRefVsLocal(ref string) {
 
 // runDiffTwoRefs compares two remote workspace references.
 func runDiffTwoRefs(ref1, ref2 string) {
-	ws1, tag1, err := parseWorkspaceRef(ref1)
+	ws1, tag1, err := parseRepoRef(ref1)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(2)
@@ -272,7 +272,7 @@ func runDiffTwoRefs(ref1, ref2 string) {
 		os.Exit(2)
 	}
 
-	ws2, tag2, err := parseWorkspaceRef(ref2)
+	ws2, tag2, err := parseRepoRef(ref2)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(2)
@@ -315,8 +315,8 @@ func runDiffTwoRefs(ref1, ref2 string) {
 
 	if diffJSON {
 		outputDiffJSONRefs(
-			diff.DiffRefJSON{Type: "tag", Workspace: ws1, Tag: tag1},
-			diff.DiffRefJSON{Type: "tag", Workspace: ws2, Tag: tag2},
+			diff.DiffRefJSON{Type: "tag", Repo: ws1, Tag: tag1},
+			diff.DiffRefJSON{Type: "tag", Repo: ws2, Tag: tag2},
 			tomlDiff, lockSummary,
 		)
 	} else {
@@ -383,7 +383,7 @@ func outputDiffText(tomlDiff *diff.TomlDiff, lockSummary *diff.LockSummary, sour
 func outputDiffJSON(nf *nebifile.NebiFile, tomlDiff *diff.TomlDiff, lockSummary *diff.LockSummary, sourceLabel, absDir string) {
 	source := diff.DiffRefJSON{
 		Type:      "pulled",
-		Workspace: nf.Origin.Workspace,
+		Repo: nf.Origin.Repo,
 		Tag:       nf.Origin.Tag,
 		Digest:    nf.Origin.ManifestDigest,
 	}
@@ -534,7 +534,7 @@ func runDiffPathVsRef(path, ref string) {
 		os.Exit(2)
 	}
 
-	workspace, tag, err := parseWorkspaceRef(ref)
+	workspace, tag, err := parseRepoRef(ref)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(2)
@@ -576,7 +576,7 @@ func runDiffPathVsRef(path, ref string) {
 	if diffJSON {
 		outputDiffJSONRefs(
 			diff.DiffRefJSON{Type: "local", Path: abs},
-			diff.DiffRefJSON{Type: "tag", Workspace: workspace, Tag: tag},
+			diff.DiffRefJSON{Type: "tag", Repo: workspace, Tag: tag},
 			tomlDiff, lockSummary,
 		)
 	} else {
@@ -596,7 +596,7 @@ func runDiffRefVsPath(ref, path string) {
 		os.Exit(2)
 	}
 
-	workspace, tag, err := parseWorkspaceRef(ref)
+	workspace, tag, err := parseRepoRef(ref)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(2)
@@ -637,7 +637,7 @@ func runDiffRefVsPath(ref, path string) {
 
 	if diffJSON {
 		outputDiffJSONRefs(
-			diff.DiffRefJSON{Type: "tag", Workspace: workspace, Tag: tag},
+			diff.DiffRefJSON{Type: "tag", Repo: workspace, Tag: tag},
 			diff.DiffRefJSON{Type: "local", Path: abs},
 			tomlDiff, lockSummary,
 		)

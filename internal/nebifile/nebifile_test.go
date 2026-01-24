@@ -33,7 +33,7 @@ func TestWriteAndRead(t *testing.T) {
 
 	nf := &NebiFile{
 		Origin: Origin{
-			Workspace:       "data-science",
+			Repo:            "data-science",
 			Tag:             "v1.0",
 			RegistryURL:        "ds-team",
 			ServerURL:       "https://nebi.example.com",
@@ -65,8 +65,8 @@ func TestWriteAndRead(t *testing.T) {
 	}
 
 	// Verify origin
-	if loaded.Origin.Workspace != "data-science" {
-		t.Errorf("Workspace = %q, want %q", loaded.Origin.Workspace, "data-science")
+	if loaded.Origin.Repo != "data-science" {
+		t.Errorf("Workspace = %q, want %q", loaded.Origin.Repo, "data-science")
 	}
 	if loaded.Origin.Tag != "v1.0" {
 		t.Errorf("Tag = %q, want %q", loaded.Origin.Tag, "v1.0")
@@ -124,7 +124,7 @@ func TestExists(t *testing.T) {
 
 	// Create .nebi file
 	nf := &NebiFile{
-		Origin: Origin{Workspace: "test"},
+		Origin: Origin{Repo: "test"},
 		Layers: make(map[string]Layer),
 	}
 	Write(dir, nf)
@@ -136,7 +136,7 @@ func TestExists(t *testing.T) {
 
 func TestNew(t *testing.T) {
 	origin := Origin{
-		Workspace:       "test-ws",
+		Repo:            "test-ws",
 		Tag:             "v1.0",
 		ServerURL:       "https://example.com",
 		ServerVersionID: 1,
@@ -146,8 +146,8 @@ func TestNew(t *testing.T) {
 	}
 
 	nf := New(origin, layers)
-	if nf.Origin.Workspace != "test-ws" {
-		t.Errorf("Workspace = %q, want %q", nf.Origin.Workspace, "test-ws")
+	if nf.Origin.Repo != "test-ws" {
+		t.Errorf("Workspace = %q, want %q", nf.Origin.Repo, "test-ws")
 	}
 	if len(nf.Layers) != 1 {
 		t.Errorf("Layers length = %d, want 1", len(nf.Layers))
@@ -155,7 +155,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewNilLayers(t *testing.T) {
-	origin := Origin{Workspace: "test-ws"}
+	origin := Origin{Repo: "test-ws"}
 	nf := New(origin, nil)
 	if nf.Layers == nil {
 		t.Error("Layers should not be nil when created with nil argument")
@@ -170,8 +170,8 @@ func TestNewFromPull(t *testing.T) {
 		"sha256:lock789", 45678,
 	)
 
-	if nf.Origin.Workspace != "data-science" {
-		t.Errorf("Workspace = %q, want %q", nf.Origin.Workspace, "data-science")
+	if nf.Origin.Repo != "data-science" {
+		t.Errorf("Workspace = %q, want %q", nf.Origin.Repo, "data-science")
 	}
 	if nf.Origin.Tag != "v1.0" {
 		t.Errorf("Tag = %q, want %q", nf.Origin.Tag, "v1.0")
@@ -255,7 +255,7 @@ func TestYAMLFormat(t *testing.T) {
 
 	nf := &NebiFile{
 		Origin: Origin{
-			Workspace:       "data-science",
+			Repo:            "data-science",
 			Tag:             "v1.0",
 			RegistryURL:        "ds-team",
 			ServerURL:       "https://nebi.example.com",
@@ -298,8 +298,8 @@ func TestYAMLFormat(t *testing.T) {
 	if !ok {
 		t.Fatal("origin should be a map")
 	}
-	if origin["workspace"] != "data-science" {
-		t.Errorf("origin.workspace = %v, want %q", origin["workspace"], "data-science")
+	if origin["repo"] != "data-science" {
+		t.Errorf("origin.repo = %v, want %q", origin["repo"], "data-science")
 	}
 	if origin["server_url"] != "https://nebi.example.com" {
 		t.Errorf("origin.server_url = %v, want %q", origin["server_url"], "https://nebi.example.com")
@@ -333,7 +333,7 @@ func TestWriteFile(t *testing.T) {
 	path := filepath.Join(dir, "custom.nebi")
 
 	nf := &NebiFile{
-		Origin: Origin{Workspace: "test"},
+		Origin: Origin{Repo: "test"},
 		Layers: make(map[string]Layer),
 	}
 
@@ -345,8 +345,8 @@ func TestWriteFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
-	if loaded.Origin.Workspace != "test" {
-		t.Errorf("Workspace = %q, want %q", loaded.Origin.Workspace, "test")
+	if loaded.Origin.Repo != "test" {
+		t.Errorf("Workspace = %q, want %q", loaded.Origin.Repo, "test")
 	}
 }
 
@@ -361,11 +361,11 @@ func TestWriteOverwrite(t *testing.T) {
 	dir := t.TempDir()
 
 	nf1 := &NebiFile{
-		Origin: Origin{Workspace: "ws1", Tag: "v1.0"},
+		Origin: Origin{Repo: "ws1", Tag: "v1.0"},
 		Layers: make(map[string]Layer),
 	}
 	nf2 := &NebiFile{
-		Origin: Origin{Workspace: "ws2", Tag: "v2.0"},
+		Origin: Origin{Repo: "ws2", Tag: "v2.0"},
 		Layers: make(map[string]Layer),
 	}
 
@@ -373,8 +373,8 @@ func TestWriteOverwrite(t *testing.T) {
 	Write(dir, nf2)
 
 	loaded, _ := Read(dir)
-	if loaded.Origin.Workspace != "ws2" {
-		t.Errorf("Workspace = %q, want %q (should be overwritten)", loaded.Origin.Workspace, "ws2")
+	if loaded.Origin.Repo != "ws2" {
+		t.Errorf("Workspace = %q, want %q (should be overwritten)", loaded.Origin.Repo, "ws2")
 	}
 	if loaded.Origin.Tag != "v2.0" {
 		t.Errorf("Tag = %q, want %q (should be overwritten)", loaded.Origin.Tag, "v2.0")
@@ -402,7 +402,7 @@ func TestEmptyOriginFields(t *testing.T) {
 	// Only required fields
 	nf := &NebiFile{
 		Origin: Origin{
-			Workspace:       "test",
+			Repo:            "test",
 			Tag:             "v1.0",
 			ServerURL:       "https://example.com",
 			ServerVersionID: 1,
@@ -435,7 +435,7 @@ func TestRoundTripPreservesData(t *testing.T) {
 
 	original := &NebiFile{
 		Origin: Origin{
-			Workspace:       "ml-pipeline",
+			Repo:            "ml-pipeline",
 			Tag:             "v2.3.1-beta",
 			RegistryURL:        "ml-team",
 			ServerURL:       "https://nebi.internal.company.com:8460",
@@ -467,8 +467,8 @@ func TestRoundTripPreservesData(t *testing.T) {
 	}
 
 	// Compare all fields
-	if loaded.Origin.Workspace != original.Origin.Workspace {
-		t.Errorf("Workspace mismatch: got %q, want %q", loaded.Origin.Workspace, original.Origin.Workspace)
+	if loaded.Origin.Repo != original.Origin.Repo {
+		t.Errorf("Workspace mismatch: got %q, want %q", loaded.Origin.Repo, original.Origin.Repo)
 	}
 	if loaded.Origin.Tag != original.Origin.Tag {
 		t.Errorf("Tag mismatch: got %q, want %q", loaded.Origin.Tag, original.Origin.Tag)

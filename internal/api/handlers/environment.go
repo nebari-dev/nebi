@@ -902,8 +902,9 @@ type PublishRequest struct {
 	RegistryID uuid.UUID `json:"registry_id" binding:"required"`
 	Repository string    `json:"repository" binding:"required"` // e.g., "myorg/myenv"
 	Tag        string    `json:"tag" binding:"required"`        // e.g., "v1.0.0"
-	PixiToml   string    `json:"pixi_toml"`                     // Client-provided pixi.toml content
-	PixiLock   string    `json:"pixi_lock"`                     // Client-provided pixi.lock content
+	Version    int       `json:"version"`                       // Version number to publish (resolved from tag if omitted)
+	PixiToml   string    `json:"pixi_toml"`                     // Client-provided pixi.toml content (backward compat)
+	PixiLock   string    `json:"pixi_lock"`                     // Client-provided pixi.lock content (backward compat)
 }
 
 type PublicationResponse struct {
@@ -998,14 +999,65 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 			return
 		}
 		versionNumber = newVersion.VersionNumber
-	} else {
-		// No content provided — use latest existing version (backward compat)
-		var latestVersion models.EnvironmentVersion
-		if err := h.db.Where("environment_id = ?", envID).Order("version_number DESC").First(&latestVersion).Error; err != nil {
-			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Environment has no versions to publish"})
+	} else if req.Version > 0 {
+		// Explicit version number provided
+		var version models.EnvironmentVersion
+		if err := h.db.Where("environment_id = ? AND version_number = ?", envID, req.Version).First(&version).Error; err != nil {
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: fmt.Sprintf("Version %d not found", req.Version)})
 			return
 		}
-		versionNumber = latestVersion.VersionNumber
+		versionNumber = version.VersionNumber
+
+		// Write version content to envPath for OCI publish
+		if err := os.MkdirAll(envPath, 0755); err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create environment directory"})
+			return
+		}
+		if err := os.WriteFile(filepath.Join(envPath, "pixi.toml"), []byte(version.ManifestContent), 0644); err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to write pixi.toml"})
+			return
+		}
+		if version.LockFileContent != "" {
+			if err := os.WriteFile(filepath.Join(envPath, "pixi.lock"), []byte(version.LockFileContent), 0644); err != nil {
+				c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to write pixi.lock"})
+				return
+			}
+		}
+	} else {
+		// No content or version provided — resolve from tag via EnvironmentTag model
+		var envTag models.EnvironmentTag
+		if err := h.db.Where("environment_id = ? AND tag = ?", envID, req.Tag).First(&envTag).Error; err != nil {
+			// Fallback: use latest existing version (backward compat)
+			var latestVersion models.EnvironmentVersion
+			if err := h.db.Where("environment_id = ?", envID).Order("version_number DESC").First(&latestVersion).Error; err != nil {
+				c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Environment has no versions to publish"})
+				return
+			}
+			versionNumber = latestVersion.VersionNumber
+		} else {
+			versionNumber = envTag.VersionNumber
+		}
+
+		// Write version content to envPath for OCI publish
+		var version models.EnvironmentVersion
+		if err := h.db.Where("environment_id = ? AND version_number = ?", envID, versionNumber).First(&version).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to find version content"})
+			return
+		}
+		if err := os.MkdirAll(envPath, 0755); err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create environment directory"})
+			return
+		}
+		if err := os.WriteFile(filepath.Join(envPath, "pixi.toml"), []byte(version.ManifestContent), 0644); err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to write pixi.toml"})
+			return
+		}
+		if version.LockFileContent != "" {
+			if err := os.WriteFile(filepath.Join(envPath, "pixi.lock"), []byte(version.LockFileContent), 0644); err != nil {
+				c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to write pixi.lock"})
+				return
+			}
+		}
 	}
 
 	// Build full repository path and publish to OCI
@@ -1108,6 +1160,165 @@ func (h *EnvironmentHandler) ListPublications(c *gin.Context) {
 			Digest:        pub.Digest,
 			PublishedBy:   pub.PublishedByUser.Username,
 			PublishedAt:   pub.CreatedAt.Format("2006-01-02 15:04:05"),
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// Push (server-only version creation + tag assignment)
+
+type PushVersionRequest struct {
+	Tag      string `json:"tag" binding:"required"`
+	PixiToml string `json:"pixi_toml" binding:"required"`
+	PixiLock string `json:"pixi_lock"`
+}
+
+type PushVersionResponse struct {
+	VersionNumber int    `json:"version_number"`
+	Tag           string `json:"tag"`
+}
+
+// PushVersion godoc
+// @Summary Push a new version to the server
+// @Description Create a new environment version and assign a tag
+// @Tags environments
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path string true "Environment ID"
+// @Param request body PushVersionRequest true "Push request"
+// @Success 201 {object} PushVersionResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /environments/{id}/push [post]
+func (h *EnvironmentHandler) PushVersion(c *gin.Context) {
+	envID := c.Param("id")
+	userID := getUserID(c)
+
+	var req PushVersionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// Get environment
+	var env models.Environment
+	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+		return
+	}
+
+	if env.Status != models.EnvStatusReady {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Environment must be in ready state to push"})
+		return
+	}
+
+	// Write files to env path (for future publish operations)
+	envPath := h.executor.GetEnvironmentPath(&env)
+	if err := os.MkdirAll(envPath, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create environment directory"})
+		return
+	}
+
+	if err := os.WriteFile(filepath.Join(envPath, "pixi.toml"), []byte(req.PixiToml), 0644); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to write pixi.toml"})
+		return
+	}
+
+	if req.PixiLock != "" {
+		if err := os.WriteFile(filepath.Join(envPath, "pixi.lock"), []byte(req.PixiLock), 0644); err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to write pixi.lock"})
+			return
+		}
+	}
+
+	// Create version record
+	newVersion := models.EnvironmentVersion{
+		EnvironmentID:   env.ID,
+		ManifestContent: req.PixiToml,
+		LockFileContent: req.PixiLock,
+		PackageMetadata: "[]",
+		CreatedBy:       userID,
+		Description:     fmt.Sprintf("Pushed as %s:%s", env.Name, req.Tag),
+	}
+	if err := h.db.Create(&newVersion).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create version record"})
+		return
+	}
+
+	// Upsert tag: create or update the tag to point to this version
+	var existingTag models.EnvironmentTag
+	result := h.db.Where("environment_id = ? AND tag = ?", env.ID, req.Tag).First(&existingTag)
+	if result.Error == nil {
+		// Tag exists, update it
+		existingTag.VersionNumber = newVersion.VersionNumber
+		if err := h.db.Save(&existingTag).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update tag"})
+			return
+		}
+	} else {
+		// Create new tag
+		newTag := models.EnvironmentTag{
+			EnvironmentID: env.ID,
+			Tag:           req.Tag,
+			VersionNumber: newVersion.VersionNumber,
+			CreatedBy:     userID,
+		}
+		if err := h.db.Create(&newTag).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create tag"})
+			return
+		}
+	}
+
+	// Audit log
+	audit.Log(h.db, userID, audit.ActionPublishEnvironment, audit.ResourceEnvironment, env.ID, map[string]interface{}{
+		"tag":            req.Tag,
+		"version_number": newVersion.VersionNumber,
+	})
+
+	c.JSON(http.StatusCreated, PushVersionResponse{
+		VersionNumber: newVersion.VersionNumber,
+		Tag:           req.Tag,
+	})
+}
+
+type TagResponse struct {
+	Tag           string `json:"tag"`
+	VersionNumber int    `json:"version_number"`
+}
+
+// ListTags godoc
+// @Summary List tags for an environment
+// @Description Get all server-side tags for an environment
+// @Tags environments
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "Environment ID"
+// @Success 200 {array} TagResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /environments/{id}/tags [get]
+func (h *EnvironmentHandler) ListTags(c *gin.Context) {
+	envID := c.Param("id")
+
+	var env models.Environment
+	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+		return
+	}
+
+	var tags []models.EnvironmentTag
+	if err := h.db.Where("environment_id = ?", envID).Order("updated_at DESC").Find(&tags).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch tags"})
+		return
+	}
+
+	response := make([]TagResponse, len(tags))
+	for i, t := range tags {
+		response[i] = TagResponse{
+			Tag:           t.Tag,
+			VersionNumber: t.VersionNumber,
 		}
 	}
 

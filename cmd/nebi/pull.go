@@ -24,58 +24,58 @@ var (
 )
 
 var pullCmd = &cobra.Command{
-	Use:   "pull <workspace>[:<tag>]",
-	Short: "Pull workspace from server",
-	Long: `Pull a workspace's pixi.toml and pixi.lock from the server.
+	Use:   "pull <repo>[:<tag>]",
+	Short: "Pull repo from server",
+	Long: `Pull a repo's pixi.toml and pixi.lock from the server.
 
 Supports Docker-style references:
-  - workspace:tag    - Pull specific tag
-  - workspace        - Pull latest version
-  - workspace@digest - Pull by digest (immutable)
+  - repo:tag    - Pull specific tag
+  - repo        - Pull latest version
+  - repo@digest - Pull by digest (immutable)
 
 Modes:
   - Directory pull (default): Writes to current directory or -o path
-  - Global pull (--global): Writes to ~/.local/share/nebi/workspaces/<uuid>/<tag>/
+  - Global pull (--global): Writes to ~/.local/share/nebi/repos/<uuid>/<tag>/
     with duplicate prevention (use --force to overwrite)
 
 Examples:
   # Pull latest version to current directory
-  nebi pull myworkspace
+  nebi pull myrepo
 
   # Pull specific tag
-  nebi pull myworkspace:v1.0.0
+  nebi pull myrepo:v1.0.0
 
   # Pull to specific directory
-  nebi pull myworkspace:v1.0.0 -o ./my-project
+  nebi pull myrepo:v1.0.0 -o ./my-project
 
   # Pull globally (single copy, shell-accessible)
-  nebi pull --global myworkspace:v1.0.0
+  nebi pull --global myrepo:v1.0.0
 
   # Pull globally with an alias
-  nebi pull --global myworkspace:v1.0.0 --name ds-stable
+  nebi pull --global myrepo:v1.0.0 --name ds-stable
 
-  # Force re-pull of global workspace
-  nebi pull --global myworkspace:v1.0.0 --force
+  # Force re-pull of global repo
+  nebi pull --global myrepo:v1.0.0 --force
 
   # Pull and install immediately
-  nebi pull myworkspace:v1.0.0 --install
-  nebi pull -gi myworkspace:v1.0.0`,
+  nebi pull myrepo:v1.0.0 --install
+  nebi pull -gi myrepo:v1.0.0`,
 	Args: cobra.ExactArgs(1),
 	Run:  runPull,
 }
 
 func init() {
 	pullCmd.Flags().StringVarP(&pullOutput, "output", "o", ".", "Output directory (for directory pulls)")
-	pullCmd.Flags().BoolVarP(&pullGlobal, "global", "g", false, "Pull to global storage (~/.local/share/nebi/workspaces/)")
+	pullCmd.Flags().BoolVarP(&pullGlobal, "global", "g", false, "Pull to global storage (~/.local/share/nebi/repos/)")
 	pullCmd.Flags().BoolVar(&pullForce, "force", false, "Force re-pull (overwrite existing)")
 	pullCmd.Flags().BoolVar(&pullYes, "yes", false, "Non-interactive mode (skip confirmations)")
-	pullCmd.Flags().StringVar(&pullName, "name", "", "Assign an alias to this global workspace (requires --global)")
+	pullCmd.Flags().StringVar(&pullName, "name", "", "Assign an alias to this global repo (requires --global)")
 	pullCmd.Flags().BoolVarP(&pullInstall, "install", "i", false, "Run pixi install after pulling (uses --frozen)")
 }
 
 func runPull(cmd *cobra.Command, args []string) {
-	// Parse workspace:tag or workspace@digest format
-	workspaceName, tagOrDigest, err := parseWorkspaceRef(args[0])
+	// Parse repo:tag or repo@digest format
+	repoName, tagOrDigest, err := parseRepoRef(args[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -107,8 +107,8 @@ func runPull(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	// Find workspace by name
-	env, err := findWorkspaceByName(client, ctx, workspaceName)
+	// Find repo by name
+	env, err := findRepoByName(client, ctx, repoName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -118,29 +118,46 @@ func runPull(cmd *cobra.Command, args []string) {
 	var manifestDigest string
 
 	if tag != "" || digest != "" {
-		// Find the publication matching the tag or digest
-		pubs, err := client.GetEnvironmentPublications(ctx, env.ID)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Failed to get publications: %v\n", err)
-			os.Exit(1)
+		found := false
+
+		// First, try resolving from server-side tags (created by push)
+		if tag != "" {
+			tags, err := client.GetEnvironmentTags(ctx, env.ID)
+			if err == nil {
+				for _, t := range tags {
+					if t.Tag == tag {
+						versionNumber = int32(t.VersionNumber)
+						found = true
+						break
+					}
+				}
+			}
 		}
 
-		found := false
-		for _, pub := range pubs {
-			if (tag != "" && pub.Tag == tag) || (digest != "" && pub.Digest == digest) {
-				versionNumber = int32(pub.VersionNumber)
-				manifestDigest = pub.Digest
-				found = true
-				break
+		// Fallback: check publications (backward compat with pre-push/publish-split data)
+		if !found {
+			pubs, err := client.GetEnvironmentPublications(ctx, env.ID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: Failed to get publications: %v\n", err)
+				os.Exit(1)
+			}
+
+			for _, pub := range pubs {
+				if (tag != "" && pub.Tag == tag) || (digest != "" && pub.Digest == digest) {
+					versionNumber = int32(pub.VersionNumber)
+					manifestDigest = pub.Digest
+					found = true
+					break
+				}
 			}
 		}
 
 		if !found && tag != "" {
-			fmt.Fprintf(os.Stderr, "Error: Tag %q not found for workspace %q\n", tag, workspaceName)
+			fmt.Fprintf(os.Stderr, "Error: Tag %q not found for repo %q\n", tag, repoName)
 			os.Exit(1)
 		}
 		if !found && digest != "" {
-			fmt.Fprintf(os.Stderr, "Error: Digest %q not found for workspace %q\n", digest, workspaceName)
+			fmt.Fprintf(os.Stderr, "Error: Digest %q not found for repo %q\n", digest, repoName)
 			os.Exit(1)
 		}
 	} else {
@@ -152,7 +169,7 @@ func runPull(cmd *cobra.Command, args []string) {
 		}
 
 		if len(versions) == 0 {
-			fmt.Fprintf(os.Stderr, "Error: Workspace %q has no versions\n", workspaceName)
+			fmt.Fprintf(os.Stderr, "Error: Repo %q has no versions\n", repoName)
 			os.Exit(1)
 		}
 
@@ -173,13 +190,13 @@ func runPull(cmd *cobra.Command, args []string) {
 	// Determine output directory
 	var outputDir string
 	if pullGlobal {
-		outputDir, err = handleGlobalPull(idxStore, env.ID, workspaceName, tag)
+		outputDir, err = handleGlobalPull(idxStore, env.ID, repoName, tag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	} else {
-		outputDir, err = handleDirectoryPull(idxStore, workspaceName, tag)
+		outputDir, err = handleDirectoryPull(idxStore, repoName, tag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -190,7 +207,7 @@ func runPull(cmd *cobra.Command, args []string) {
 	if !pullForce {
 		absCheck, err := filepath.Abs(outputDir)
 		if err == nil {
-			if skip := checkAlreadyUpToDate(absCheck, workspaceName, tag, manifestDigest); skip {
+			if skip := checkAlreadyUpToDate(absCheck, repoName, tag, manifestDigest); skip {
 				return
 			}
 		}
@@ -238,7 +255,7 @@ func runPull(cmd *cobra.Command, args []string) {
 
 	// Write .nebi metadata file
 	nf := nebifile.NewFromPull(
-		workspaceName, tag, "", cfg.ServerURL,
+		repoName, tag, "", cfg.ServerURL,
 		versionNumber, manifestDigest,
 		pixiTomlDigest, int64(len(pixiTomlBytes)),
 		pixiLockDigest, int64(len(pixiLockBytes)),
@@ -255,8 +272,8 @@ func runPull(cmd *cobra.Command, args []string) {
 	}
 
 	// Update local index
-	entry := localindex.WorkspaceEntry{
-		Workspace:       workspaceName,
+	entry := localindex.RepoEntry{
+		Repo:            repoName,
 		Tag:             tag,
 		ServerURL:       cfg.ServerURL,
 		ServerVersionID: versionNumber,
@@ -279,16 +296,16 @@ func runPull(cmd *cobra.Command, args []string) {
 		if err := idxStore.SetAlias(pullName, alias); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Failed to set alias: %v\n", err)
 		} else {
-			fmt.Printf("Alias: %s → %s:%s\n", pullName, workspaceName, tag)
+			fmt.Printf("Alias: %s → %s:%s\n", pullName, repoName, tag)
 		}
 	}
 
 	// Print summary
-	refStr := workspaceName
+	refStr := repoName
 	if tag != "" && tag != "latest" {
-		refStr = workspaceName + ":" + tag
+		refStr = repoName + ":" + tag
 	} else if digest != "" {
-		refStr = workspaceName + "@" + digest
+		refStr = repoName + "@" + digest
 	}
 	fmt.Printf("Pulled %s (version %d) → %s\n", refStr, versionNumber, absOutputDir)
 
@@ -297,7 +314,7 @@ func runPull(cmd *cobra.Command, args []string) {
 		fmt.Println()
 		if err := runPixiInstall(absOutputDir); err != nil {
 			fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
-			fmt.Fprintln(os.Stderr, "The workspace files were pulled successfully. You can retry with:")
+			fmt.Fprintln(os.Stderr, "The repo files were pulled successfully. You can retry with:")
 			fmt.Fprintf(os.Stderr, "  cd %s && pixi install --frozen\n", absOutputDir)
 			os.Exit(1)
 		}
@@ -309,27 +326,27 @@ func runPull(cmd *cobra.Command, args []string) {
 
 // handleGlobalPull handles the --global pull workflow.
 // Returns the output directory path or an error.
-func handleGlobalPull(store *localindex.Store, envID, workspace, tag string) (string, error) {
-	// Compute global path using the workspace's server-assigned UUID
-	outputDir := store.GlobalWorkspacePath(envID, tag)
+func handleGlobalPull(store *localindex.Store, envID, repo, tag string) (string, error) {
+	// Compute global path using the repo's server-assigned UUID
+	outputDir := store.GlobalRepoPath(envID, tag)
 
 	// Check if already exists
-	existing, err := store.FindGlobal(workspace, tag)
+	existing, err := store.FindGlobal(repo, tag)
 	if err != nil {
-		return "", fmt.Errorf("failed to check existing global workspace: %v", err)
+		return "", fmt.Errorf("failed to check existing global repo: %v", err)
 	}
 
 	if existing != nil && !pullForce {
 		return "", fmt.Errorf("%s:%s already exists globally.\n  Location: %s\n  Pulled: %s\nUse --force to re-pull and overwrite",
-			workspace, tag, existing.Path, existing.PulledAt.Format(time.RFC3339))
+			repo, tag, existing.Path, existing.PulledAt.Format(time.RFC3339))
 	}
 
 	return outputDir, nil
 }
 
-// checkAlreadyUpToDate checks if the local workspace already matches what
+// checkAlreadyUpToDate checks if the local repo already matches what
 // would be pulled. Returns true if the pull should be skipped.
-func checkAlreadyUpToDate(dir, workspace, tag, remoteDigest string) bool {
+func checkAlreadyUpToDate(dir, repo, tag, remoteDigest string) bool {
 	if !nebifile.Exists(dir) {
 		return false
 	}
@@ -339,8 +356,8 @@ func checkAlreadyUpToDate(dir, workspace, tag, remoteDigest string) bool {
 		return false
 	}
 
-	// Different workspace or tag — not a match
-	if nf.Origin.Workspace != workspace || nf.Origin.Tag != tag {
+	// Different repo or tag — not a match
+	if nf.Origin.Repo != repo || nf.Origin.Tag != tag {
 		return false
 	}
 
@@ -352,9 +369,9 @@ func checkAlreadyUpToDate(dir, workspace, tag, remoteDigest string) bool {
 	// Check if local files match the stored layer digests
 	ws := drift.CheckWithNebiFile(dir, nf)
 	if ws.Overall == drift.StatusClean {
-		refStr := workspace
+		refStr := repo
 		if tag != "" && tag != "latest" {
-			refStr = workspace + ":" + tag
+			refStr = repo + ":" + tag
 		}
 		fmt.Printf("Already up to date (%s)\n", refStr)
 		return true
@@ -379,7 +396,7 @@ func checkAlreadyUpToDate(dir, workspace, tag, remoteDigest string) bool {
 
 // handleDirectoryPull handles the default directory pull workflow.
 // Returns the output directory path or an error.
-func handleDirectoryPull(store *localindex.Store, workspace, tag string) (string, error) {
+func handleDirectoryPull(store *localindex.Store, repo, tag string) (string, error) {
 	outputDir := pullOutput
 
 	// Resolve absolute path for comparison
@@ -388,22 +405,22 @@ func handleDirectoryPull(store *localindex.Store, workspace, tag string) (string
 		return outputDir, nil
 	}
 
-	// Check if this directory already has a different workspace:tag
+	// Check if this directory already has a different repo:tag
 	existing, err := store.FindByPath(absDir)
 	if err != nil {
 		return outputDir, nil // Non-fatal, proceed with pull
 	}
 
-	if existing != nil && existing.Workspace == workspace && existing.Tag == tag {
-		// Same workspace:tag to same directory - re-pull (overwrite), no prompt needed
+	if existing != nil && existing.Repo == repo && existing.Tag == tag {
+		// Same repo:tag to same directory - re-pull (overwrite), no prompt needed
 		return outputDir, nil
 	}
 
-	if existing != nil && (existing.Workspace != workspace || existing.Tag != tag) && !pullForce {
-		// Different workspace:tag to same directory - prompt for confirmation
+	if existing != nil && (existing.Repo != repo || existing.Tag != tag) && !pullForce {
+		// Different repo:tag to same directory - prompt for confirmation
 		if !pullYes {
-			fmt.Fprintf(os.Stderr, "Warning: %s already contains %s:%s\n", absDir, existing.Workspace, existing.Tag)
-			fmt.Fprintf(os.Stderr, "Overwrite with %s:%s? [y/N]: ", workspace, tag)
+			fmt.Fprintf(os.Stderr, "Warning: %s already contains %s:%s\n", absDir, existing.Repo, existing.Tag)
+			fmt.Fprintf(os.Stderr, "Overwrite with %s:%s? [y/N]: ", repo, tag)
 
 			reader := bufio.NewReader(os.Stdin)
 			response, _ := reader.ReadString('\n')

@@ -99,9 +99,9 @@ func runStatus(cmd *cobra.Command, args []string) {
 	}
 }
 
-func outputStatusCompact(ws *drift.WorkspaceStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) {
+func outputStatusCompact(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) {
 	status := string(ws.Overall)
-	ref := nf.Origin.Workspace
+	ref := nf.Origin.Repo
 	if nf.Origin.Tag != "" {
 		ref += ":" + nf.Origin.Tag
 	}
@@ -118,8 +118,8 @@ func outputStatusCompact(ws *drift.WorkspaceStatus, nf *nebifile.NebiFile, remot
 	}
 }
 
-func outputStatusVerbose(ws *drift.WorkspaceStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) {
-	fmt.Printf("Workspace: %s:%s\n", nf.Origin.Workspace, nf.Origin.Tag)
+func outputStatusVerbose(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) {
+	fmt.Printf("Repo:      %s:%s\n", nf.Origin.Repo, nf.Origin.Tag)
 	if nf.Origin.RegistryURL != "" {
 		fmt.Printf("Registry:  %s\n", nf.Origin.RegistryURL)
 	}
@@ -154,11 +154,11 @@ func outputStatusVerbose(ws *drift.WorkspaceStatus, nf *nebifile.NebiFile, remot
 		fmt.Println("Next steps:")
 		fmt.Println("  nebi diff              # See what changed")
 		fmt.Println("  nebi pull --force      # Discard local changes")
-		fmt.Printf("  nebi push %s:<tag>  # Publish as new version\n", nf.Origin.Workspace)
+		fmt.Printf("  nebi push %s:<tag>  # Publish as new version\n", nf.Origin.Repo)
 	}
 }
 
-func outputStatusJSON(ws *drift.WorkspaceStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) {
+func outputStatusJSON(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) {
 	data, err := formatStatusJSONHelper(ws, nf, remote)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to marshal JSON: %v\n", err)
@@ -167,7 +167,7 @@ func outputStatusJSON(ws *drift.WorkspaceStatus, nf *nebifile.NebiFile, remote *
 	fmt.Println(string(data))
 }
 
-func formatStatusJSONHelper(ws *drift.WorkspaceStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) ([]byte, error) {
+func formatStatusJSONHelper(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) ([]byte, error) {
 	// Use the diff package's JSON formatter
 	return formatStatusJSONInternal(ws, nf, remote)
 }

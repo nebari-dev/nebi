@@ -23,12 +23,12 @@ var (
 )
 
 var shellCmd = &cobra.Command{
-	Use:   "shell [<workspace>[:<tag>]]",
-	Short: "Activate workspace shell",
-	Long: `Activate a workspace shell using pixi shell.
+	Use:   "shell [<repo>[:<tag>]]",
+	Short: "Activate repo shell",
+	Long: `Activate a repo shell using pixi shell.
 
 When run without arguments in a directory with .nebi metadata, uses the
-local workspace. When given a workspace reference, looks up the local
+local repo. When given a repo reference, looks up the local
 index (preferring global copies) and falls back to pulling from server.
 
 When multiple local copies exist, an interactive prompt lets you choose
@@ -41,20 +41,20 @@ Examples:
   # Shell from current directory (reads .nebi metadata)
   nebi shell
 
-  # Shell into specific workspace by name
-  nebi shell myworkspace:v1.0.0
+  # Shell into specific repo by name
+  nebi shell myrepo:v1.0.0
 
   # Shell into specific pixi environment
-  nebi shell myworkspace:v1.0.0 -e dev
+  nebi shell myrepo:v1.0.0 -e dev
 
   # Use global copy explicitly
-  nebi shell myworkspace:v1.0.0 --global
+  nebi shell myrepo:v1.0.0 --global
 
   # Use a local copy (prompts if multiple)
-  nebi shell myworkspace:v1.0.0 --local
+  nebi shell myrepo:v1.0.0 --local
 
-  # Use workspace at a specific path
-  nebi shell myworkspace:v1.0.0 -C ~/project-a`,
+  # Use repo at a specific path
+  nebi shell myrepo:v1.0.0 -C ~/project-a`,
 	Args: cobra.MaximumNArgs(1),
 	Run:  runShell,
 }
@@ -63,7 +63,7 @@ func init() {
 	shellCmd.Flags().StringVarP(&shellPixiEnv, "env", "e", "", "Pixi environment name")
 	shellCmd.Flags().BoolVarP(&shellGlobal, "global", "g", false, "Use global copy")
 	shellCmd.Flags().BoolVarP(&shellLocal, "local", "l", false, "Use local copy (prompts if multiple)")
-	shellCmd.Flags().StringVarP(&shellPath, "path", "C", "", "Use workspace at specific directory path")
+	shellCmd.Flags().StringVarP(&shellPath, "path", "C", "", "Use repo at specific directory path")
 }
 
 func runShell(cmd *cobra.Command, args []string) {
@@ -86,13 +86,13 @@ func runShell(cmd *cobra.Command, args []string) {
 		// No argument - use current directory
 		shellDir = resolveShellFromCwd()
 	} else {
-		// Parse workspace:tag format
-		workspaceName, tag, err := parseWorkspaceRef(args[0])
+		// Parse repo:tag format
+		repoName, tag, err := parseRepoRef(args[0])
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		shellDir = resolveShellFromRef(workspaceName, tag)
+		shellDir = resolveShellFromRef(repoName, tag)
 	}
 
 	// Check for drift and warn
@@ -113,7 +113,7 @@ func resolveShellFromPath(path string) string {
 	// Check the directory exists
 	info, err := os.Stat(absPath)
 	if err != nil || !info.IsDir() {
-		fmt.Fprintf(os.Stderr, "Error: No nebi workspace found at %s\n", absPath)
+		fmt.Fprintf(os.Stderr, "Error: No nebi repo found at %s\n", absPath)
 		os.Exit(1)
 	}
 
@@ -125,7 +125,7 @@ func resolveShellFromPath(path string) string {
 		return absPath
 	}
 
-	fmt.Fprintf(os.Stderr, "Error: No nebi workspace found at %s\n", absPath)
+	fmt.Fprintf(os.Stderr, "Error: No nebi repo found at %s\n", absPath)
 	os.Exit(1)
 	return ""
 }
@@ -148,20 +148,20 @@ func resolveShellFromCwd() string {
 		return absDir
 	}
 
-	fmt.Fprintf(os.Stderr, "Error: No workspace found in current directory\n")
-	fmt.Fprintln(os.Stderr, "Run 'nebi pull <workspace>:<tag>' to pull a workspace, or specify one: 'nebi shell <workspace>:<tag>'")
+	fmt.Fprintf(os.Stderr, "Error: No repo found in current directory\n")
+	fmt.Fprintln(os.Stderr, "Run 'nebi pull <repo>:<tag>' to pull a repo, or specify one: 'nebi shell <repo>:<tag>'")
 	os.Exit(1)
 	return ""
 }
 
-// resolveShellFromRef resolves a shell directory from a workspace reference.
+// resolveShellFromRef resolves a shell directory from a repo reference.
 // Priority depends on flags:
 //   - --global: use global copy only
 //   - --local: use local copies only (interactive select if multiple)
 //   - default: global > single local > interactive select > pull from server
-func resolveShellFromRef(workspaceName, tag string) string {
+func resolveShellFromRef(repoName, tag string) string {
 	store := localindex.NewStore()
-	refStr := workspaceName
+	refStr := repoName
 	if tag != "" {
 		refStr += ":" + tag
 	}
@@ -169,10 +169,10 @@ func resolveShellFromRef(workspaceName, tag string) string {
 	// --global flag: force global copy
 	if shellGlobal {
 		if tag == "" {
-			fmt.Fprintf(os.Stderr, "Error: --global requires a tag (e.g., %s:v1.0)\n", workspaceName)
+			fmt.Fprintf(os.Stderr, "Error: --global requires a tag (e.g., %s:v1.0)\n", repoName)
 			os.Exit(1)
 		}
-		global, err := store.FindGlobal(workspaceName, tag)
+		global, err := store.FindGlobal(repoName, tag)
 		if err != nil || global == nil {
 			fmt.Fprintf(os.Stderr, "Error: No global copy of %s\n", refStr)
 			fmt.Fprintf(os.Stderr, "Use 'nebi pull --global %s' to create one.\n", refStr)
@@ -189,10 +189,10 @@ func resolveShellFromRef(workspaceName, tag string) string {
 	// --local flag: force local copies only
 	if shellLocal {
 		if tag == "" {
-			fmt.Fprintf(os.Stderr, "Error: --local requires a tag (e.g., %s:v1.0)\n", workspaceName)
+			fmt.Fprintf(os.Stderr, "Error: --local requires a tag (e.g., %s:v1.0)\n", repoName)
 			os.Exit(1)
 		}
-		locals := findValidLocalCopies(store, workspaceName, tag)
+		locals := findValidLocalCopies(store, repoName, tag)
 		if len(locals) == 0 {
 			fmt.Fprintf(os.Stderr, "Error: No local copies of %s found\n", refStr)
 			os.Exit(1)
@@ -207,7 +207,7 @@ func resolveShellFromRef(workspaceName, tag string) string {
 	// Default resolution: global > local > pull
 	if tag != "" {
 		// Check for global copy first (global always wins)
-		global, err := store.FindGlobal(workspaceName, tag)
+		global, err := store.FindGlobal(repoName, tag)
 		if err == nil && global != nil {
 			if _, err := os.Stat(global.Path); err == nil {
 				fmt.Printf("Using global copy of %s\n", refStr)
@@ -216,7 +216,7 @@ func resolveShellFromRef(workspaceName, tag string) string {
 		}
 
 		// Check local copies
-		locals := findValidLocalCopies(store, workspaceName, tag)
+		locals := findValidLocalCopies(store, repoName, tag)
 		if len(locals) == 1 {
 			fmt.Printf("Using local copy at %s\n", locals[0].Path)
 			return locals[0].Path
@@ -227,17 +227,17 @@ func resolveShellFromRef(workspaceName, tag string) string {
 	}
 
 	// Not in local index - pull from server
-	return pullForShell(workspaceName, tag)
+	return pullForShell(repoName, tag)
 }
 
 // findValidLocalCopies returns local (non-global) copies that still exist on disk.
-func findValidLocalCopies(store *localindex.Store, workspace, tag string) []localindex.WorkspaceEntry {
-	matches, err := store.FindByWorkspaceTag(workspace, tag)
+func findValidLocalCopies(store *localindex.Store, repo, tag string) []localindex.RepoEntry {
+	matches, err := store.FindByRepoTag(repo, tag)
 	if err != nil {
 		return nil
 	}
 
-	var valid []localindex.WorkspaceEntry
+	var valid []localindex.RepoEntry
 	for _, m := range matches {
 		if m.IsGlobal {
 			continue
@@ -251,7 +251,7 @@ func findValidLocalCopies(store *localindex.Store, workspace, tag string) []loca
 
 // promptSelectCopy presents an interactive selection prompt for multiple copies.
 // In non-interactive mode (no TTY), prints an error with available options and exits.
-func promptSelectCopy(copies []localindex.WorkspaceEntry, refStr string) string {
+func promptSelectCopy(copies []localindex.RepoEntry, refStr string) string {
 	// Check if stdin is a terminal
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		fmt.Fprintf(os.Stderr, "Error: Multiple local copies of %s found, cannot disambiguate without a TTY.\n\n", refStr)
@@ -313,13 +313,13 @@ func shortenPath(path string) string {
 	return path
 }
 
-// pullForShell pulls a workspace from the server for shell activation.
-func pullForShell(workspaceName, tag string) string {
+// pullForShell pulls a repo from the server for shell activation.
+func pullForShell(repoName, tag string) string {
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find workspace by name
-	env, err := findWorkspaceByName(client, ctx, workspaceName)
+	// Find repo by name
+	env, err := findRepoByName(client, ctx, repoName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -333,7 +333,7 @@ func pullForShell(workspaceName, tag string) string {
 	}
 
 	if len(versions) == 0 {
-		fmt.Fprintf(os.Stderr, "Error: Workspace %q has no versions\n", workspaceName)
+		fmt.Fprintf(os.Stderr, "Error: Repo %q has no versions\n", repoName)
 		os.Exit(1)
 	}
 
@@ -350,7 +350,7 @@ func pullForShell(workspaceName, tag string) string {
 		tag = "latest"
 	}
 
-	refStr := workspaceName + ":" + tag
+	refStr := repoName + ":" + tag
 	fmt.Printf("Pulling %s (version %d)...\n", refStr, latestVersion.VersionNumber)
 
 	// Get content
@@ -365,9 +365,9 @@ func pullForShell(workspaceName, tag string) string {
 		os.Exit(1)
 	}
 
-	// Use global storage for shell-pulled workspaces
+	// Use global storage for shell-pulled repos
 	store := localindex.NewStore()
-	cacheDir := store.GlobalWorkspacePath(env.ID, tag)
+	cacheDir := store.GlobalRepoPath(env.ID, tag)
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to create cache directory: %v\n", err)
 		os.Exit(1)
@@ -389,7 +389,7 @@ func pullForShell(workspaceName, tag string) string {
 	tomlDigest := nebifile.ComputeDigest(pixiTomlBytes)
 	lockDigest := nebifile.ComputeDigest(pixiLockBytes)
 	nf := nebifile.NewFromPull(
-		workspaceName, tag, "", "",
+		repoName, tag, "", "",
 		latestVersion.VersionNumber, "",
 		tomlDigest, int64(len(pixiTomlBytes)),
 		lockDigest, int64(len(pixiLockBytes)),
@@ -397,8 +397,8 @@ func pullForShell(workspaceName, tag string) string {
 	nebifile.Write(cacheDir, nf)
 
 	// Add to local index
-	store.AddEntry(localindex.WorkspaceEntry{
-		Workspace:       workspaceName,
+	store.AddEntry(localindex.RepoEntry{
+		Repo:            repoName,
 		Tag:             tag,
 		Path:            cacheDir,
 		IsGlobal:        true,
@@ -417,7 +417,7 @@ func checkShellDrift(dir string) {
 	}
 
 	if ws.Overall == drift.StatusModified {
-		fmt.Fprintln(os.Stderr, "Warning: Local workspace has been modified since pull")
+		fmt.Fprintln(os.Stderr, "Warning: Local repo has been modified since pull")
 		for _, f := range ws.Files {
 			if f.Status == drift.StatusModified {
 				fmt.Fprintf(os.Stderr, "  modified: %s\n", f.Filename)
@@ -427,17 +427,17 @@ func checkShellDrift(dir string) {
 	}
 }
 
-// getWorkspaceCacheDir returns the cache directory for a workspace.
-func getWorkspaceCacheDir(workspaceName string) (string, error) {
+// getRepoCacheDir returns the cache directory for a repo.
+func getRepoCacheDir(repoName string) (string, error) {
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
 	}
 
-	workspaceDir := filepath.Join(cacheDir, "nebi", "workspaces", workspaceName)
-	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+	repoDir := filepath.Join(cacheDir, "nebi", "repos", repoName)
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
 		return "", err
 	}
 
-	return workspaceDir, nil
+	return repoDir, nil
 }

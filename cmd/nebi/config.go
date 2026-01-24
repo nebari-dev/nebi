@@ -28,6 +28,11 @@ func getConfigDir() (string, error) {
 		return configDir, nil
 	}
 
+	if envDir := os.Getenv("NEBI_CONFIG_DIR"); envDir != "" {
+		configDir = envDir
+		return configDir, nil
+	}
+
 	baseDir, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get config directory: %w", err)
@@ -61,6 +66,7 @@ func loadConfig() (*CLIConfig, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			cachedConfig = &CLIConfig{}
+			applyEnvOverrides(cachedConfig)
 			return cachedConfig, nil
 		}
 		return nil, fmt.Errorf("failed to read config: %w", err)
@@ -72,7 +78,18 @@ func loadConfig() (*CLIConfig, error) {
 	}
 
 	cachedConfig = &cfg
+	applyEnvOverrides(cachedConfig)
 	return cachedConfig, nil
+}
+
+// applyEnvOverrides overrides config values with environment variables if set.
+func applyEnvOverrides(cfg *CLIConfig) {
+	if v := os.Getenv("NEBI_SERVER_URL"); v != "" {
+		cfg.ServerURL = v
+	}
+	if v := os.Getenv("NEBI_TOKEN"); v != "" {
+		cfg.Token = v
+	}
 }
 
 // saveConfig saves the CLI config to disk.
@@ -138,7 +155,7 @@ func mustGetClient() *cliclient.Client {
 	c, err := getAPIClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 	return c
 }
@@ -148,7 +165,7 @@ func mustGetAuthContext() context.Context {
 	ctx, err := getAuthContext()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 	return ctx
 }

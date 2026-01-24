@@ -78,7 +78,7 @@ func runPull(cmd *cobra.Command, args []string) {
 	repoName, tagOrDigest, err := parseRepoRef(args[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Determine if it's a digest reference
@@ -94,7 +94,7 @@ func runPull(cmd *cobra.Command, args []string) {
 	// Validate --name requires --global
 	if pullName != "" && !pullGlobal {
 		fmt.Fprintf(os.Stderr, "Error: --name requires --global flag\n")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	client := mustGetClient()
@@ -104,14 +104,14 @@ func runPull(cmd *cobra.Command, args []string) {
 	cfg, err := loadConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Find repo by name
 	env, err := findRepoByName(client, ctx, repoName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	var versionNumber int32
@@ -139,7 +139,7 @@ func runPull(cmd *cobra.Command, args []string) {
 			pubs, err := client.GetEnvironmentPublications(ctx, env.ID)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error: Failed to get publications: %v\n", err)
-				os.Exit(1)
+				osExit(1)
 			}
 
 			for _, pub := range pubs {
@@ -154,23 +154,23 @@ func runPull(cmd *cobra.Command, args []string) {
 
 		if !found && tag != "" {
 			fmt.Fprintf(os.Stderr, "Error: Tag %q not found for repo %q\n", tag, repoName)
-			os.Exit(1)
+			osExit(1)
 		}
 		if !found && digest != "" {
 			fmt.Fprintf(os.Stderr, "Error: Digest %q not found for repo %q\n", digest, repoName)
-			os.Exit(1)
+			osExit(1)
 		}
 	} else {
 		// No tag/digest specified, get the latest version
 		versions, err := client.GetEnvironmentVersions(ctx, env.ID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Failed to get versions: %v\n", err)
-			os.Exit(1)
+			osExit(1)
 		}
 
 		if len(versions) == 0 {
 			fmt.Fprintf(os.Stderr, "Error: Repo %q has no versions\n", repoName)
-			os.Exit(1)
+			osExit(1)
 		}
 
 		// Use the latest version (highest version number)
@@ -193,13 +193,13 @@ func runPull(cmd *cobra.Command, args []string) {
 		outputDir, err = handleGlobalPull(idxStore, env.ID, repoName, tag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			osExit(1)
 		}
 	} else {
 		outputDir, err = handleDirectoryPull(idxStore, repoName, tag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			osExit(1)
 		}
 	}
 
@@ -217,20 +217,20 @@ func runPull(cmd *cobra.Command, args []string) {
 	pixiToml, err := client.GetVersionPixiToml(ctx, env.ID, versionNumber)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to get pixi.toml: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Get pixi.lock
 	pixiLock, err := client.GetVersionPixiLock(ctx, env.ID, versionNumber)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to get pixi.lock: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Create output directory if needed
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to create output directory: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Write pixi.toml
@@ -238,7 +238,7 @@ func runPull(cmd *cobra.Command, args []string) {
 	pixiTomlPath := filepath.Join(outputDir, "pixi.toml")
 	if err := os.WriteFile(pixiTomlPath, pixiTomlBytes, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to write pixi.toml: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Write pixi.lock
@@ -246,7 +246,7 @@ func runPull(cmd *cobra.Command, args []string) {
 	pixiLockPath := filepath.Join(outputDir, "pixi.lock")
 	if err := os.WriteFile(pixiLockPath, pixiLockBytes, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to write pixi.lock: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Compute layer digests
@@ -262,7 +262,7 @@ func runPull(cmd *cobra.Command, args []string) {
 	)
 	if err := nebifile.Write(outputDir, nf); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to write .nebi metadata: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Resolve absolute path for index
@@ -316,7 +316,7 @@ func runPull(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
 			fmt.Fprintln(os.Stderr, "The repo files were pulled successfully. You can retry with:")
 			fmt.Fprintf(os.Stderr, "  cd %s && pixi install --frozen\n", absOutputDir)
-			os.Exit(1)
+			osExit(1)
 		}
 	} else {
 		fmt.Println("\nTo install the environment, run:")

@@ -20,7 +20,7 @@ func mustPixiBinary() string {
 	path, err := pixiBinary()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 	return path
 }
@@ -64,9 +64,9 @@ func execPixiShell(dir string, envName string) {
 
 	if err := cmd.Run(); err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			os.Exit(exitErr.ExitCode())
+			osExit(exitErr.ExitCode())
 		}
 		fmt.Fprintf(os.Stderr, "Error: Failed to start pixi shell: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }

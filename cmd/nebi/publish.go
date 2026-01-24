@@ -44,13 +44,13 @@ func runPublish(cmd *cobra.Command, args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		fmt.Fprintln(os.Stderr, "Usage: nebi publish <repo>:<tag>")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if tag == "" {
 		fmt.Fprintf(os.Stderr, "Error: tag is required\n")
 		fmt.Fprintln(os.Stderr, "Usage: nebi publish <repo>:<tag>")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	client := mustGetClient()
@@ -61,7 +61,7 @@ func runPublish(cmd *cobra.Command, args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: repo %q not found on server\n", repoName)
 		fmt.Fprintln(os.Stderr, "Hint: Run 'nebi push' first to create a version")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Find registry
@@ -70,14 +70,14 @@ func runPublish(cmd *cobra.Command, args []string) {
 		registry, err = findRegistryByName(client, ctx, publishRegistry)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			osExit(1)
 		}
 	} else {
 		registry, err = findDefaultRegistry(client, ctx)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			fmt.Fprintln(os.Stderr, "Hint: Set a default registry or specify one with -r")
-			os.Exit(1)
+			osExit(1)
 		}
 	}
 
@@ -97,7 +97,7 @@ func runPublish(cmd *cobra.Command, args []string) {
 	resp, err := client.PublishEnvironment(ctx, env.ID, req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to publish %s:%s: %v\n", repoName, tag, err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	fmt.Printf("Published %s:%s\n", repository, tag)

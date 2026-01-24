@@ -70,11 +70,11 @@ func runShell(cmd *cobra.Command, args []string) {
 	// Validate flag conflicts
 	if shellGlobal && shellLocal {
 		fmt.Fprintf(os.Stderr, "Error: --global and --local are mutually exclusive\n")
-		os.Exit(1)
+		osExit(1)
 	}
 	if shellPath != "" && (shellGlobal || shellLocal) {
 		fmt.Fprintf(os.Stderr, "Error: -C/--path cannot be combined with --global or --local\n")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	var shellDir string
@@ -90,7 +90,7 @@ func runShell(cmd *cobra.Command, args []string) {
 		repoName, tag, err := parseRepoRef(args[0])
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			osExit(1)
 		}
 		shellDir = resolveShellFromRef(repoName, tag)
 	}
@@ -107,14 +107,14 @@ func resolveShellFromPath(path string) string {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Check the directory exists
 	info, err := os.Stat(absPath)
 	if err != nil || !info.IsDir() {
 		fmt.Fprintf(os.Stderr, "Error: No nebi repo found at %s\n", absPath)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Check for .nebi metadata or pixi.toml
@@ -126,7 +126,7 @@ func resolveShellFromPath(path string) string {
 	}
 
 	fmt.Fprintf(os.Stderr, "Error: No nebi repo found at %s\n", absPath)
-	os.Exit(1)
+	osExit(1)
 	return ""
 }
 
@@ -135,7 +135,7 @@ func resolveShellFromCwd() string {
 	absDir, err := filepath.Abs(".")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Check for .nebi metadata
@@ -150,7 +150,7 @@ func resolveShellFromCwd() string {
 
 	fmt.Fprintf(os.Stderr, "Error: No repo found in current directory\n")
 	fmt.Fprintln(os.Stderr, "Run 'nebi pull <repo>:<tag>' to pull a repo, or specify one: 'nebi shell <repo>:<tag>'")
-	os.Exit(1)
+	osExit(1)
 	return ""
 }
 
@@ -170,17 +170,17 @@ func resolveShellFromRef(repoName, tag string) string {
 	if shellGlobal {
 		if tag == "" {
 			fmt.Fprintf(os.Stderr, "Error: --global requires a tag (e.g., %s:v1.0)\n", repoName)
-			os.Exit(1)
+			osExit(1)
 		}
 		global, err := store.FindGlobal(repoName, tag)
 		if err != nil || global == nil {
 			fmt.Fprintf(os.Stderr, "Error: No global copy of %s\n", refStr)
 			fmt.Fprintf(os.Stderr, "Use 'nebi pull --global %s' to create one.\n", refStr)
-			os.Exit(1)
+			osExit(1)
 		}
 		if _, err := os.Stat(global.Path); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Global copy of %s no longer exists at %s\n", refStr, global.Path)
-			os.Exit(1)
+			osExit(1)
 		}
 		fmt.Printf("Using global copy of %s\n", refStr)
 		return global.Path
@@ -190,12 +190,12 @@ func resolveShellFromRef(repoName, tag string) string {
 	if shellLocal {
 		if tag == "" {
 			fmt.Fprintf(os.Stderr, "Error: --local requires a tag (e.g., %s:v1.0)\n", repoName)
-			os.Exit(1)
+			osExit(1)
 		}
 		locals := findValidLocalCopies(store, repoName, tag)
 		if len(locals) == 0 {
 			fmt.Fprintf(os.Stderr, "Error: No local copies of %s found\n", refStr)
-			os.Exit(1)
+			osExit(1)
 		}
 		if len(locals) == 1 {
 			fmt.Printf("Using local copy at %s\n", locals[0].Path)
@@ -263,7 +263,7 @@ func promptSelectCopy(copies []localindex.RepoEntry, refStr string) string {
 		for _, c := range copies {
 			fmt.Fprintf(os.Stderr, "  nebi shell %s -C %s\n", refStr, c.Path)
 		}
-		os.Exit(2)
+		osExit(2)
 	}
 
 	// Interactive selection
@@ -277,14 +277,14 @@ func promptSelectCopy(copies []localindex.RepoEntry, refStr string) string {
 	scanner := bufio.NewScanner(os.Stdin)
 	if !scanner.Scan() {
 		fmt.Fprintf(os.Stderr, "\nError: No selection made\n")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	input := strings.TrimSpace(scanner.Text())
 	choice, err := strconv.Atoi(input)
 	if err != nil || choice < 1 || choice > len(copies) {
 		fmt.Fprintf(os.Stderr, "Error: Invalid selection %q\n", input)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	selected := copies[choice-1]
@@ -322,19 +322,19 @@ func pullForShell(repoName, tag string) string {
 	env, err := findRepoByName(client, ctx, repoName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Get versions to find the right one
 	versions, err := client.GetEnvironmentVersions(ctx, env.ID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to get versions: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if len(versions) == 0 {
 		fmt.Fprintf(os.Stderr, "Error: Repo %q has no versions\n", repoName)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Use the latest version
@@ -357,12 +357,12 @@ func pullForShell(repoName, tag string) string {
 	pixiToml, err := client.GetVersionPixiToml(ctx, env.ID, latestVersion.VersionNumber)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to get pixi.toml: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 	pixiLock, err := client.GetVersionPixiLock(ctx, env.ID, latestVersion.VersionNumber)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to get pixi.lock: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Use global storage for shell-pulled repos
@@ -370,7 +370,7 @@ func pullForShell(repoName, tag string) string {
 	cacheDir := store.GlobalRepoPath(env.ID, tag)
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to create cache directory: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Write files
@@ -378,11 +378,11 @@ func pullForShell(repoName, tag string) string {
 	pixiLockBytes := []byte(pixiLock)
 	if err := os.WriteFile(filepath.Join(cacheDir, "pixi.toml"), pixiTomlBytes, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to write pixi.toml: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 	if err := os.WriteFile(filepath.Join(cacheDir, "pixi.lock"), pixiLockBytes, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to write pixi.lock: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Write .nebi metadata

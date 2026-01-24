@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/aktech/darb/internal/audit"
 	"github.com/aktech/darb/internal/executor"
@@ -1061,14 +1062,17 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 	}
 
 	// Build full repository path and publish to OCI
-	fullRepo := fmt.Sprintf("%s/%s", registry.URL, req.Repository)
+	plainHTTP := strings.HasPrefix(registry.URL, "http://")
+	registryHost := strings.TrimPrefix(strings.TrimPrefix(registry.URL, "http://"), "https://")
+	fullRepo := fmt.Sprintf("%s/%s", registryHost, req.Repository)
 
 	digest, err := oci.PublishEnvironment(c.Request.Context(), envPath, oci.PublishOptions{
 		Repository:   fullRepo,
 		Tag:          req.Tag,
 		Username:     registry.Username,
 		Password:     registry.Password,
-		RegistryHost: registry.URL,
+		RegistryHost: registryHost,
+		PlainHTTP:    plainHTTP,
 	})
 
 	if err != nil {

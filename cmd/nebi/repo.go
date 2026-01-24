@@ -148,7 +148,7 @@ func runRepoList(cmd *cobra.Command, args []string) {
 	envs, err := client.ListEnvironments(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to list repos: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if len(envs) == 0 {
@@ -188,7 +188,7 @@ func runRepoListLocal() {
 	index, err := store.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to load local index: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if len(index.Repos) == 0 {
@@ -216,7 +216,7 @@ func runRepoListLocal() {
 		data, err := json.MarshalIndent(entries, "", "  ")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Failed to encode JSON: %v\n", err)
-			os.Exit(1)
+			osExit(1)
 		}
 		fmt.Println(string(data))
 		return
@@ -320,7 +320,7 @@ func runRepoPrune(cmd *cobra.Command, args []string) {
 	removed, err := store.Prune()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to prune local index: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if len(removed) == 0 {
@@ -344,14 +344,14 @@ func runRepoTags(cmd *cobra.Command, args []string) {
 	env, err := findRepoByName(client, ctx, repoName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Get publications (tags)
 	pubs, err := client.GetEnvironmentPublications(ctx, env.ID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to list tags: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if len(pubs) == 0 {
@@ -387,14 +387,14 @@ func runRepoDelete(cmd *cobra.Command, args []string) {
 	env, err := findRepoByName(client, ctx, repoName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Delete
 	err = client.DeleteEnvironment(ctx, env.ID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to delete repo: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	fmt.Printf("Deleted repo %q\n", repoName)
@@ -428,7 +428,7 @@ func runRepoInfoFromCwd() {
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Hint: Specify a repo name: nebi repo info <name>")
 		fmt.Fprintln(os.Stderr, "      Or pull a repo first: nebi pull <repo>:<tag>")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Show local status section
@@ -498,14 +498,14 @@ func runRepoInfoByName(repoName string) {
 	env, err := findRepoByName(client, ctx, repoName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Get full details
 	envDetail, err := client.GetEnvironment(ctx, env.ID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to get repo details: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	fmt.Printf("Name:            %s\n", envDetail.Name)

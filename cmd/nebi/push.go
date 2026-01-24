@@ -48,13 +48,13 @@ func runPush(cmd *cobra.Command, args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		fmt.Fprintln(os.Stderr, "Usage: nebi push <repo>:<tag>")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if tag == "" {
 		fmt.Fprintf(os.Stderr, "Error: tag is required\n")
 		fmt.Fprintln(os.Stderr, "Usage: nebi push <repo>:<tag>")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Check for local pixi.toml
@@ -62,7 +62,7 @@ func runPush(cmd *cobra.Command, args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: pixi.toml not found in current directory\n")
 		fmt.Fprintln(os.Stderr, "Run 'pixi init' to create a pixi project first")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Check for local pixi.lock (optional but recommended)
@@ -100,7 +100,7 @@ func runPush(cmd *cobra.Command, args []string) {
 		newEnv, createErr := client.CreateEnvironment(ctx, createReq)
 		if createErr != nil {
 			fmt.Fprintf(os.Stderr, "Error: Failed to create repo %q: %v\n", repoName, createErr)
-			os.Exit(1)
+			osExit(1)
 		}
 		fmt.Printf("Created repo %q\n", repoName)
 
@@ -108,7 +108,7 @@ func runPush(cmd *cobra.Command, args []string) {
 		env, err = waitForEnvReady(client, ctx, newEnv.ID, 60*time.Second)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			osExit(1)
 		}
 	}
 
@@ -123,7 +123,7 @@ func runPush(cmd *cobra.Command, args []string) {
 	resp, err := client.PushVersion(ctx, env.ID, req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to push %s:%s: %v\n", repoName, tag, err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	fmt.Printf("Pushed %s:%s (version %d)\n", repoName, tag, resp.VersionNumber)

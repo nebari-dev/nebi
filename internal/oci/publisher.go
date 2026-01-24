@@ -32,6 +32,7 @@ type PublishOptions struct {
 	Username     string // Registry username
 	Password     string // Registry password/token
 	RegistryHost string // Registry hostname (e.g., "ghcr.io")
+	PlainHTTP    bool   // Use plain HTTP instead of HTTPS
 }
 
 // PublishEnvironment publishes pixi.toml and pixi.lock to an OCI registry
@@ -102,6 +103,7 @@ func PublishEnvironment(ctx context.Context, envPath string, opts PublishOptions
 	if err != nil {
 		return "", fmt.Errorf("failed to create repository: %w", err)
 	}
+	repo.PlainHTTP = opts.PlainHTTP
 
 	// Extract hostname from repository for credential matching
 	// Repository format: "docker.io/user/repo" -> hostname is "docker.io"

@@ -106,7 +106,7 @@ func runRegistryAdd(cmd *cobra.Command, args []string) {
 		} else {
 			fmt.Fprintf(os.Stderr, "Error: Failed to add registry: %v\n", err)
 		}
-		os.Exit(1)
+		osExit(1)
 	}
 
 	defaultMsg := ""
@@ -123,7 +123,7 @@ func runRegistryList(cmd *cobra.Command, args []string) {
 	registries, err := client.ListRegistries(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to list registries: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if len(registries) == 0 {
@@ -153,7 +153,7 @@ func runRegistryRemove(cmd *cobra.Command, args []string) {
 	reg, err := findRegistryByName(client, ctx, name)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Delete by ID
@@ -164,7 +164,7 @@ func runRegistryRemove(cmd *cobra.Command, args []string) {
 		} else {
 			fmt.Fprintf(os.Stderr, "Error: Failed to remove registry: %v\n", err)
 		}
-		os.Exit(1)
+		osExit(1)
 	}
 
 	fmt.Printf("Removed registry %q\n", name)
@@ -180,7 +180,7 @@ func runRegistrySetDefault(cmd *cobra.Command, args []string) {
 	reg, err := findRegistryByName(client, ctx, name)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Update to set as default
@@ -196,7 +196,7 @@ func runRegistrySetDefault(cmd *cobra.Command, args []string) {
 		} else {
 			fmt.Fprintf(os.Stderr, "Error: Failed to set default registry: %v\n", err)
 		}
-		os.Exit(1)
+		osExit(1)
 	}
 
 	fmt.Printf("Set %q as default registry\n", name)

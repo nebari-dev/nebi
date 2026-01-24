@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-
 	"github.com/spf13/cobra"
 
 	_ "github.com/aktech/darb/docs" // Load swagger docs
@@ -60,6 +58,6 @@ func init() {
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
+		osExit(1)
 	}
 }

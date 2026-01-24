@@ -70,7 +70,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		fmt.Fprintln(os.Stderr, "Hint: Run 'nebi pull' first to create a workspace with tracking metadata.")
-		os.Exit(2)
+		osExit(2)
 	}
 
 	// Perform local drift check
@@ -95,7 +95,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 
 	// Exit code
 	if ws.IsModified() {
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -162,7 +162,7 @@ func outputStatusJSON(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift
 	data, err := formatStatusJSONHelper(ws, nf, remote)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to marshal JSON: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 	fmt.Println(string(data))
 }

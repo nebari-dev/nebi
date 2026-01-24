@@ -49,7 +49,7 @@ func runLogin(cmd *cobra.Command, args []string) {
 	username, err := reader.ReadString('\n')
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading username: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 	username = strings.TrimSpace(username)
 
@@ -57,7 +57,7 @@ func runLogin(cmd *cobra.Command, args []string) {
 	passwordBytes, err := term.ReadPassword(int(syscall.Stdin))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\nError reading password: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 	fmt.Println() // newline after password
 	password := string(passwordBytes)
@@ -73,7 +73,7 @@ func runLogin(cmd *cobra.Command, args []string) {
 		} else {
 			fmt.Fprintf(os.Stderr, "Error: Could not connect to server: %v\n", err)
 		}
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Save config
@@ -84,7 +84,7 @@ func runLogin(cmd *cobra.Command, args []string) {
 
 	if err := saveConfig(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error saving config: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	fmt.Printf("Logged in as %s (%s)\n", resp.User.Username, resp.User.Email)
@@ -97,7 +97,7 @@ func runLogout(cmd *cobra.Command, args []string) {
 	cfg, err := loadConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if cfg.ServerURL == "" && cfg.Token == "" {
@@ -111,7 +111,7 @@ func runLogout(cmd *cobra.Command, args []string) {
 
 	if err := saveConfig(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error saving config: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	fmt.Println("Logged out successfully")

@@ -121,7 +121,7 @@ func runDiffLocal() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		fmt.Fprintln(os.Stderr, "Hint: Run 'nebi pull' first to create a workspace with tracking metadata.")
-		os.Exit(2)
+		osExit(2)
 	}
 
 	client := mustGetClient()
@@ -131,7 +131,7 @@ func runDiffLocal() {
 	env, err := findRepoByName(client, ctx, nf.Origin.Repo)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	// Determine what to fetch for comparison
@@ -143,7 +143,7 @@ func runDiffLocal() {
 		versionContent, err = drift.FetchByTag(ctx, client, nf.Origin.Repo, nf.Origin.Tag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Failed to fetch remote content: %v\n", err)
-			os.Exit(2)
+			osExit(2)
 		}
 		sourceLabel = fmt.Sprintf("remote (%s:%s, current)", nf.Origin.Repo, nf.Origin.Tag)
 	} else {
@@ -152,7 +152,7 @@ func runDiffLocal() {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Failed to fetch origin content: %v\n", err)
 			fmt.Fprintln(os.Stderr, "Hint: The origin version may no longer be available on the server.")
-			os.Exit(2)
+			osExit(2)
 		}
 		sourceLabel = fmt.Sprintf("pulled (%s:%s, %s)", nf.Origin.Repo, nf.Origin.Tag, truncateDigest(nf.Origin.ManifestDigest))
 	}
@@ -161,7 +161,7 @@ func runDiffLocal() {
 	localPixiToml, err := os.ReadFile(filepath.Join(absDir, "pixi.toml"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to read local pixi.toml: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	localPixiLock, _ := os.ReadFile(filepath.Join(absDir, "pixi.lock"))
@@ -170,7 +170,7 @@ func runDiffLocal() {
 	tomlDiff, err := diff.CompareToml([]byte(versionContent.PixiToml), localPixiToml)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to compare pixi.toml: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	// Compute lock diff
@@ -190,7 +190,7 @@ func runDiffLocal() {
 
 	// Exit code
 	if tomlDiff.HasChanges() || !bytesEqual([]byte(versionContent.PixiLock), localPixiLock) {
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -199,11 +199,11 @@ func runDiffRefVsLocal(ref string) {
 	workspace, tag, err := parseRepoRef(ref)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 	if tag == "" {
 		fmt.Fprintf(os.Stderr, "Error: tag is required in reference (e.g., %s:v1.0)\n", workspace)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	dir := diffPath
@@ -219,14 +219,14 @@ func runDiffRefVsLocal(ref string) {
 	vc, err := drift.FetchByTag(ctx, client, workspace, tag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", workspace, tag, err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	// Read local files
 	localPixiToml, err := os.ReadFile(filepath.Join(absDir, "pixi.toml"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to read local pixi.toml: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 	localPixiLock, _ := os.ReadFile(filepath.Join(absDir, "pixi.lock"))
 
@@ -234,7 +234,7 @@ func runDiffRefVsLocal(ref string) {
 	tomlDiff, err := diff.CompareToml([]byte(vc.PixiToml), localPixiToml)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to compare pixi.toml: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	var lockSummary *diff.LockSummary
@@ -256,7 +256,7 @@ func runDiffRefVsLocal(ref string) {
 	}
 
 	if tomlDiff.HasChanges() || !bytesEqual([]byte(vc.PixiLock), localPixiLock) {
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -265,21 +265,21 @@ func runDiffTwoRefs(ref1, ref2 string) {
 	ws1, tag1, err := parseRepoRef(ref1)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 	if tag1 == "" {
 		fmt.Fprintf(os.Stderr, "Error: tag is required in first reference (e.g., %s:v1.0)\n", ws1)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	ws2, tag2, err := parseRepoRef(ref2)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 	if tag2 == "" {
 		fmt.Fprintf(os.Stderr, "Error: tag is required in second reference (e.g., %s:v2.0)\n", ws2)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	client := mustGetClient()
@@ -289,20 +289,20 @@ func runDiffTwoRefs(ref1, ref2 string) {
 	vc1, err := drift.FetchByTag(ctx, client, ws1, tag1)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", ws1, tag1, err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	vc2, err := drift.FetchByTag(ctx, client, ws2, tag2)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", ws2, tag2, err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	// Compute diffs
 	tomlDiff, err := diff.CompareToml([]byte(vc1.PixiToml), []byte(vc2.PixiToml))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to compare pixi.toml: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	var lockSummary *diff.LockSummary
@@ -324,7 +324,7 @@ func runDiffTwoRefs(ref1, ref2 string) {
 	}
 
 	if tomlDiff.HasChanges() || !bytesEqual([]byte(vc1.PixiLock), []byte(vc2.PixiLock)) {
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -399,7 +399,7 @@ func outputDiffJSON(nf *nebifile.NebiFile, tomlDiff *diff.TomlDiff, lockSummary 
 	data, err := diff.FormatDiffJSON(source, target, tomlDiff, lockSummary)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to marshal JSON: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 	fmt.Println(string(data))
 }
@@ -408,7 +408,7 @@ func outputDiffJSONRefs(source, target diff.DiffRefJSON, tomlDiff *diff.TomlDiff
 	data, err := diff.FormatDiffJSON(source, target, tomlDiff, lockSummary)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to marshal JSON: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 	fmt.Println(string(data))
 }
@@ -478,29 +478,29 @@ func runDiffTwoPaths(path1, path2 string) {
 	abs1, err := resolvePath(path1)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 	abs2, err := resolvePath(path2)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	toml1, lock1, err := readLocalWorkspace(abs1)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 	toml2, lock2, err := readLocalWorkspace(abs2)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	tomlDiff, err := diff.CompareToml(toml1, toml2)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to compare pixi.toml: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	var lockSummary *diff.LockSummary
@@ -522,7 +522,7 @@ func runDiffTwoPaths(path1, path2 string) {
 	}
 
 	if tomlDiff.HasChanges() || !bytesEqual(lock1, lock2) {
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -531,23 +531,23 @@ func runDiffPathVsRef(path, ref string) {
 	abs, err := resolvePath(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	workspace, tag, err := parseRepoRef(ref)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 	if tag == "" {
 		fmt.Fprintf(os.Stderr, "Error: tag is required in reference (e.g., %s:v1.0)\n", workspace)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	localToml, localLock, err := readLocalWorkspace(abs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	client := mustGetClient()
@@ -556,13 +556,13 @@ func runDiffPathVsRef(path, ref string) {
 	vc, err := drift.FetchByTag(ctx, client, workspace, tag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", workspace, tag, err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	tomlDiff, err := diff.CompareToml(localToml, []byte(vc.PixiToml))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to compare pixi.toml: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	var lockSummary *diff.LockSummary
@@ -584,7 +584,7 @@ func runDiffPathVsRef(path, ref string) {
 	}
 
 	if tomlDiff.HasChanges() || !bytesEqual(localLock, []byte(vc.PixiLock)) {
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -593,23 +593,23 @@ func runDiffRefVsPath(ref, path string) {
 	abs, err := resolvePath(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	workspace, tag, err := parseRepoRef(ref)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 	if tag == "" {
 		fmt.Fprintf(os.Stderr, "Error: tag is required in reference (e.g., %s:v1.0)\n", workspace)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	localToml, localLock, err := readLocalWorkspace(abs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	client := mustGetClient()
@@ -618,13 +618,13 @@ func runDiffRefVsPath(ref, path string) {
 	vc, err := drift.FetchByTag(ctx, client, workspace, tag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", workspace, tag, err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	tomlDiff, err := diff.CompareToml([]byte(vc.PixiToml), localToml)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to compare pixi.toml: %v\n", err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	var lockSummary *diff.LockSummary
@@ -646,6 +646,6 @@ func runDiffRefVsPath(ref, path string) {
 	}
 
 	if tomlDiff.HasChanges() || !bytesEqual([]byte(vc.PixiLock), localLock) {
-		os.Exit(1)
+		osExit(1)
 	}
 }

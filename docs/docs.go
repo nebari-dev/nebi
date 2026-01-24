@@ -1295,6 +1295,70 @@ const docTemplate = `{
                 }
             }
         },
+        "/environments/{id}/push": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new environment version and assign a tag",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "environments"
+                ],
+                "summary": "Push a new version to the server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Environment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Push request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.PushVersionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.PushVersionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/environments/{id}/rollback": {
             "post": {
                 "security": [
@@ -1415,6 +1479,49 @@ const docTemplate = `{
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/environments/{id}/tags": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get all server-side tags for an environment",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "environments"
+                ],
+                "summary": "List tags for an environment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Environment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handlers.TagResponse"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -2017,11 +2124,11 @@ const docTemplate = `{
             ],
             "properties": {
                 "pixi_lock": {
-                    "description": "Client-provided pixi.lock content",
+                    "description": "Client-provided pixi.lock content (backward compat)",
                     "type": "string"
                 },
                 "pixi_toml": {
-                    "description": "Client-provided pixi.toml content",
+                    "description": "Client-provided pixi.toml content (backward compat)",
                     "type": "string"
                 },
                 "registry_id": {
@@ -2034,6 +2141,39 @@ const docTemplate = `{
                 "tag": {
                     "description": "e.g., \"v1.0.0\"",
                     "type": "string"
+                },
+                "version": {
+                    "description": "Version number to publish (resolved from tag if omitted)",
+                    "type": "integer"
+                }
+            }
+        },
+        "handlers.PushVersionRequest": {
+            "type": "object",
+            "required": [
+                "pixi_toml",
+                "tag"
+            ],
+            "properties": {
+                "pixi_lock": {
+                    "type": "string"
+                },
+                "pixi_toml": {
+                    "type": "string"
+                },
+                "tag": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.PushVersionResponse": {
+            "type": "object",
+            "properties": {
+                "tag": {
+                    "type": "string"
+                },
+                "version_number": {
+                    "type": "integer"
                 }
             }
         },
@@ -2084,6 +2224,17 @@ const docTemplate = `{
                 },
                 "user_id": {
                     "type": "string"
+                }
+            }
+        },
+        "handlers.TagResponse": {
+            "type": "object",
+            "properties": {
+                "tag": {
+                    "type": "string"
+                },
+                "version_number": {
+                    "type": "integer"
                 }
             }
         },

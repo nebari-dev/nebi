@@ -1,3 +1,5 @@
+//go:build e2e
+
 package main
 
 import (
@@ -29,11 +31,6 @@ var e2eEnv struct {
 }
 
 func TestMain(m *testing.M) {
-	if os.Getenv("NEBI_E2E") == "" {
-		// Run any unit tests in this package normally
-		os.Exit(m.Run())
-	}
-
 	// Find a free port
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -264,14 +261,6 @@ func resetFlags() {
 	registryAddDefault = false
 }
 
-// skipIfNotE2E skips the test if NEBI_E2E is not set.
-func skipIfNotE2E(t *testing.T) {
-	t.Helper()
-	if os.Getenv("NEBI_E2E") == "" {
-		t.Skip("skipping E2E test (set NEBI_E2E=1 to run)")
-	}
-}
-
 // writePixiFiles writes pixi.toml and pixi.lock in the given directory.
 func writePixiFiles(t *testing.T, dir, toml, lock string) {
 	t.Helper()
@@ -286,7 +275,6 @@ func writePixiFiles(t *testing.T, dir, toml, lock string) {
 // --- E2E Tests ---
 
 func TestE2E_PushAndPull(t *testing.T) {
-	skipIfNotE2E(t)
 	repoName := "e2e-push-pull-" + t.Name()
 	tag := "v1.0"
 
@@ -331,7 +319,6 @@ func TestE2E_PushAndPull(t *testing.T) {
 }
 
 func TestE2E_PushAutoCreatesRepo(t *testing.T) {
-	skipIfNotE2E(t)
 	repoName := "e2e-autocreate-" + t.Name()
 	tag := "v1.0"
 
@@ -351,7 +338,6 @@ func TestE2E_PushAutoCreatesRepo(t *testing.T) {
 }
 
 func TestE2E_PushRequiresTag(t *testing.T) {
-	skipIfNotE2E(t)
 	dir := t.TempDir()
 	writePixiFiles(t, dir,
 		"[project]\nname = \"notag\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
@@ -368,7 +354,6 @@ func TestE2E_PushRequiresTag(t *testing.T) {
 }
 
 func TestE2E_PushRequiresPixiToml(t *testing.T) {
-	skipIfNotE2E(t)
 	dir := t.TempDir() // empty directory
 
 	res := runCLI(t, dir, "push", "some-repo:v1")
@@ -381,7 +366,6 @@ func TestE2E_PushRequiresPixiToml(t *testing.T) {
 }
 
 func TestE2E_PullNotFound(t *testing.T) {
-	skipIfNotE2E(t)
 	dir := t.TempDir()
 
 	res := runCLI(t, dir, "pull", "nonexistent-repo-xyz:v1", "--yes")
@@ -394,7 +378,6 @@ func TestE2E_PullNotFound(t *testing.T) {
 }
 
 func TestE2E_PullBadTag(t *testing.T) {
-	skipIfNotE2E(t)
 	// First create a repo
 	repoName := "e2e-badtag-" + t.Name()
 	srcDir := t.TempDir()
@@ -419,7 +402,6 @@ func TestE2E_PullBadTag(t *testing.T) {
 }
 
 func TestE2E_PullAlreadyUpToDate(t *testing.T) {
-	skipIfNotE2E(t)
 	repoName := "e2e-uptodate-" + t.Name()
 	tag := "v1.0"
 
@@ -452,7 +434,6 @@ func TestE2E_PullAlreadyUpToDate(t *testing.T) {
 }
 
 func TestE2E_StatusClean(t *testing.T) {
-	skipIfNotE2E(t)
 	repoName := "e2e-status-clean-" + t.Name()
 	tag := "v1.0"
 
@@ -484,7 +465,6 @@ func TestE2E_StatusClean(t *testing.T) {
 }
 
 func TestE2E_StatusModified(t *testing.T) {
-	skipIfNotE2E(t)
 	repoName := "e2e-status-mod-" + t.Name()
 	tag := "v1.0"
 
@@ -519,7 +499,6 @@ func TestE2E_StatusModified(t *testing.T) {
 }
 
 func TestE2E_PushMultipleVersions(t *testing.T) {
-	skipIfNotE2E(t)
 	repoName := "e2e-multi-" + t.Name()
 
 	// Push v1
@@ -567,7 +546,6 @@ func TestE2E_PushMultipleVersions(t *testing.T) {
 }
 
 func TestE2E_PushDryRun(t *testing.T) {
-	skipIfNotE2E(t)
 	repoName := "e2e-dryrun-" + t.Name()
 	tag := "v1.0"
 
@@ -599,7 +577,6 @@ func TestE2E_PushDryRun(t *testing.T) {
 }
 
 func TestE2E_PublishToOCI(t *testing.T) {
-	skipIfNotE2E(t)
 	repoName := "e2e-publish-oci"
 	tag := "v1.0"
 
@@ -647,7 +624,6 @@ func TestE2E_PublishToOCI(t *testing.T) {
 }
 
 func TestE2E_RepoList(t *testing.T) {
-	skipIfNotE2E(t)
 	repoName := "e2e-repolist-" + t.Name()
 
 	// Create a repo
@@ -672,7 +648,6 @@ func TestE2E_RepoList(t *testing.T) {
 }
 
 func TestE2E_RepoDelete(t *testing.T) {
-	skipIfNotE2E(t)
 	repoName := "e2e-repodelete-" + t.Name()
 
 	// Create a repo

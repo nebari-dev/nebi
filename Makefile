@@ -84,7 +84,7 @@ test: ## Run tests
 
 test-e2e: ## Run end-to-end tests (starts server in-process)
 	@echo "Running E2E tests..."
-	@NEBI_E2E=1 go test -v -count=1 ./cmd/nebi/ -run TestE2E
+	@go test -v -count=1 -tags=e2e ./cmd/nebi/ -run TestE2E
 
 clean: ## Clean build artifacts
 	@echo "Cleaning..."

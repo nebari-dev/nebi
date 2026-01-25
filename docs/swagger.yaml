@@ -1,3 +1,4 @@
+basePath: /api/v1
 definitions:
   auth.LoginRequest:
     properties:
@@ -432,8 +433,12 @@ definitions:
       username:
         type: string
     type: object
+host: localhost:8460
 info:
   contact: {}
+  description: Multi-User Environment Management System API
+  title: Nebi API
+  version: "1.0"
 paths:
   /admin/audit-logs:
     get:
@@ -1547,4 +1552,9 @@ paths:
       summary: Get version information
       tags:
       - system
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

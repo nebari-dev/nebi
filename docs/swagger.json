@@ -1,8 +1,13 @@
 {
     "swagger": "2.0",
     "info": {
-        "contact": {}
+        "description": "Multi-User Environment Management System API",
+        "title": "Nebi API",
+        "contact": {},
+        "version": "1.0"
     },
+    "host": "localhost:8460",
+    "basePath": "/api/v1",
     "paths": {
         "/admin/audit-logs": {
             "get": {
@@ -2417,6 +2422,13 @@
                     "type": "string"
                 }
             }
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
         }
     }
 }

@@ -2,7 +2,7 @@ services:
   # Traefik - Reverse Proxy with automatic HTTPS
   traefik:
     image: traefik:v3.2
-    container_name: darb-traefik
+    container_name: nebi-traefik
     command:
       # API and dashboard
       - "--api.dashboard=true"
@@ -36,16 +36,16 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_certs:/letsencrypt
     networks:
-      - darb-network
+      - nebi-network
     restart: unless-stopped
 
   # PostgreSQL 18 - Latest version
   postgres:
     image: postgres:18
-    container_name: darb-postgres
+    container_name: nebi-postgres
     environment:
-      POSTGRES_DB: darb
-      POSTGRES_USER: darb
+      POSTGRES_DB: nebi
+      POSTGRES_USER: nebi
       POSTGRES_PASSWORD: password
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
@@ -53,17 +53,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U darb"]
+      test: ["CMD-SHELL", "pg_isready -U nebi"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - darb-network
+      - nebi-network
 
   # Valkey 9.0 - Latest version (Redis replacement)
   valkey:
     image: valkey/valkey:9.0.0
-    container_name: darb-valkey
+    container_name: nebi-valkey
     ports:
       - "6379:6379"
     volumes:
@@ -74,46 +74,46 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - darb-network
+      - nebi-network
 
-  # Darb API + Worker (both mode)
-  darb-api:
+  # Nebi API + Worker (both mode)
+  nebi-api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: darb-api
+    container_name: nebi-api
     labels:
       - "traefik.enable=true"
       # HTTP router
-      - "traefik.http.routers.darb.rule=Host(`${DARB_DOMAIN:-darb.localhost}`)"
-      - "traefik.http.routers.darb.entrypoints=websecure"
-      - "traefik.http.routers.darb.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.nebi.rule=Host(`${NEBI_DOMAIN:-nebi.localhost}`)"
+      - "traefik.http.routers.nebi.entrypoints=websecure"
+      - "traefik.http.routers.nebi.tls.certresolver=letsencrypt"
       # Service
-      - "traefik.http.services.darb.loadbalancer.server.port=8460"
+      - "traefik.http.services.nebi.loadbalancer.server.port=8460"
     environment:
       # Database configuration
-      DARB_DATABASE_DRIVER: postgres
-      DARB_DATABASE_DSN: "postgres://darb:password@postgres:5432/darb?sslmode=disable"
-      DARB_DATABASE_MAX_IDLE_CONNS: 10
-      DARB_DATABASE_MAX_OPEN_CONNS: 100
-      DARB_DATABASE_CONN_MAX_LIFETIME: 60
+      NEBI_DATABASE_DRIVER: postgres
+      NEBI_DATABASE_DSN: "postgres://nebi:password@postgres:5432/nebi?sslmode=disable"
+      NEBI_DATABASE_MAX_IDLE_CONNS: 10
+      NEBI_DATABASE_MAX_OPEN_CONNS: 100
+      NEBI_DATABASE_CONN_MAX_LIFETIME: 60
 
       # Queue configuration
-      DARB_QUEUE_TYPE: valkey
-      DARB_QUEUE_VALKEY_ADDR: "valkey:6379"
+      NEBI_QUEUE_TYPE: valkey
+      NEBI_QUEUE_VALKEY_ADDR: "valkey:6379"
 
       # Logging
-      DARB_LOG_LEVEL: debug
-      DARB_LOG_FORMAT: text
+      NEBI_LOG_LEVEL: debug
+      NEBI_LOG_FORMAT: text
 
       # Server configuration
-      DARB_SERVER_PORT: 8460
-      DARB_SERVER_MODE: development
+      NEBI_SERVER_PORT: 8460
+      NEBI_SERVER_MODE: development
 
       # Admin user (created on first startup)
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: admin123
-      ADMIN_EMAIL: admin@darb.local
+      ADMIN_EMAIL: admin@nebi.local
     depends_on:
       postgres:
         condition: service_healthy
@@ -121,78 +121,78 @@ services:
         condition: service_healthy
       traefik:
         condition: service_started
-    command: ["/app/darb", "--mode=both"]
+    command: ["/app/nebi", "--mode=both"]
     volumes:
       - ./data/environments:/app/data/environments
     networks:
-      - darb-network
+      - nebi-network
 
-  # Darb Worker (worker-only mode) - Additional workers
-  darb-worker-1:
+  # Nebi Worker (worker-only mode) - Additional workers
+  nebi-worker-1:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: darb-worker-1
+    container_name: nebi-worker-1
     environment:
       # Database configuration
-      DARB_DATABASE_DRIVER: postgres
-      DARB_DATABASE_DSN: "postgres://darb:password@postgres:5432/darb?sslmode=disable"
-      DARB_DATABASE_MAX_IDLE_CONNS: 10
-      DARB_DATABASE_MAX_OPEN_CONNS: 100
-      DARB_DATABASE_CONN_MAX_LIFETIME: 60
+      NEBI_DATABASE_DRIVER: postgres
+      NEBI_DATABASE_DSN: "postgres://nebi:password@postgres:5432/nebi?sslmode=disable"
+      NEBI_DATABASE_MAX_IDLE_CONNS: 10
+      NEBI_DATABASE_MAX_OPEN_CONNS: 100
+      NEBI_DATABASE_CONN_MAX_LIFETIME: 60
 
       # Queue configuration
-      DARB_QUEUE_TYPE: valkey
-      DARB_QUEUE_VALKEY_ADDR: "valkey:6379"
+      NEBI_QUEUE_TYPE: valkey
+      NEBI_QUEUE_VALKEY_ADDR: "valkey:6379"
 
       # Logging
-      DARB_LOG_LEVEL: debug
-      DARB_LOG_FORMAT: text
+      NEBI_LOG_LEVEL: debug
+      NEBI_LOG_FORMAT: text
     depends_on:
       postgres:
         condition: service_healthy
       valkey:
         condition: service_healthy
-      darb-api:
+      nebi-api:
         condition: service_started
-    command: ["/app/darb", "--mode=worker"]
+    command: ["/app/nebi", "--mode=worker"]
     volumes:
       - ./data/environments:/app/data/environments
     networks:
-      - darb-network
+      - nebi-network
 
-  darb-worker-2:
+  nebi-worker-2:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: darb-worker-2
+    container_name: nebi-worker-2
     environment:
       # Database configuration
-      DARB_DATABASE_DRIVER: postgres
-      DARB_DATABASE_DSN: "postgres://darb:password@postgres:5432/darb?sslmode=disable"
-      DARB_DATABASE_MAX_IDLE_CONNS: 10
-      DARB_DATABASE_MAX_OPEN_CONNS: 100
-      DARB_DATABASE_CONN_MAX_LIFETIME: 60
+      NEBI_DATABASE_DRIVER: postgres
+      NEBI_DATABASE_DSN: "postgres://nebi:password@postgres:5432/nebi?sslmode=disable"
+      NEBI_DATABASE_MAX_IDLE_CONNS: 10
+      NEBI_DATABASE_MAX_OPEN_CONNS: 100
+      NEBI_DATABASE_CONN_MAX_LIFETIME: 60
 
       # Queue configuration
-      DARB_QUEUE_TYPE: valkey
-      DARB_QUEUE_VALKEY_ADDR: "valkey:6379"
+      NEBI_QUEUE_TYPE: valkey
+      NEBI_QUEUE_VALKEY_ADDR: "valkey:6379"
 
       # Logging
-      DARB_LOG_LEVEL: debug
-      DARB_LOG_FORMAT: text
+      NEBI_LOG_LEVEL: debug
+      NEBI_LOG_FORMAT: text
     depends_on:
       postgres:
         condition: service_healthy
       valkey:
         condition: service_healthy
-      darb-api:
+      nebi-api:
         condition: service_started
-    command: ["/app/darb", "--mode=worker"]
+    command: ["/app/nebi", "--mode=worker"]
     volumes:
       - ./data/environments:/app/data/environments
     networks:
-      - darb-network
+      - nebi-network
 
 volumes:
   postgres_data:
@@ -203,5 +203,5 @@ volumes:
     driver: local
 
 networks:
-  darb-network:
+  nebi-network:
     driver: bridge

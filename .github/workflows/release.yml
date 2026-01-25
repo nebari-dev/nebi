@@ -36,7 +36,7 @@ jobs:
           go install github.com/swaggo/swag/cmd/swag@latest
 
       - name: Generate Swagger docs
-        run: swag init -g cmd/server/main.go -o docs
+        run: swag init -g cmd/nebi/main.go -o docs
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6

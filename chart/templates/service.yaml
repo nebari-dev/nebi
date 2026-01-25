@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "darb.fullname" . }}
-  namespace: {{ include "darb.namespace" . }}
+  name: {{ include "nebi.fullname" . }}
+  namespace: {{ include "nebi.namespace" . }}
   labels:
-    {{- include "darb.labels" . | nindent 4 }}
+    {{- include "nebi.labels" . | nindent 4 }}
   {{- with .Values.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -20,5 +20,5 @@ spec:
     nodePort: {{ .Values.service.nodePort }}
     {{- end }}
   selector:
-    {{- include "darb.selectorLabels" . | nindent 4 }}
+    {{- include "nebi.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: api

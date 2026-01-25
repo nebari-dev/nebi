@@ -4,10 +4,10 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "darb.fullname" . }}-data
-  namespace: {{ include "darb.namespace" . }}
+  name: {{ include "nebi.fullname" . }}-data
+  namespace: {{ include "nebi.namespace" . }}
   labels:
-    {{- include "darb.labels" . | nindent 4 }}
+    {{- include "nebi.labels" . | nindent 4 }}
     app.kubernetes.io/component: storage
   {{- with .Values.persistence.data.annotations }}
   annotations:
@@ -32,10 +32,10 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "darb.fullname" . }}-environments
-  namespace: {{ include "darb.namespace" . }}
+  name: {{ include "nebi.fullname" . }}-environments
+  namespace: {{ include "nebi.namespace" . }}
   labels:
-    {{- include "darb.labels" . | nindent 4 }}
+    {{- include "nebi.labels" . | nindent 4 }}
     app.kubernetes.io/component: storage
   {{- with .Values.persistence.environments.annotations }}
   annotations:

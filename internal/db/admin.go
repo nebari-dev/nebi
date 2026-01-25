@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/aktech/darb/internal/models"
-	"github.com/aktech/darb/internal/rbac"
+	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/rbac"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -26,7 +26,7 @@ func CreateDefaultAdmin(db *gorm.DB) error {
 
 	// Set default email if not provided
 	if email == "" {
-		email = fmt.Sprintf("%s@darb.local", username)
+		email = fmt.Sprintf("%s@nebi.local", username)
 	}
 
 	// Check if any users exist

@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/aktech/darb/internal/cliclient"
+	"github.com/nebari-dev/nebi/internal/cliclient"
 	"gopkg.in/yaml.v3"
 )
 

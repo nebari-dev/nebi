@@ -149,32 +149,32 @@ curl -X POST http://localhost:8460/api/v1/environments/{id}/packages \
 
 ### Environment Variables
 
-> **Note**: Environment variables currently use the `DARB_` prefix. This will be renamed to `NEBI_` in a future release.
+> **Note**: Environment variables currently use the `NEBI_` prefix. This will be renamed to `NEBI_` in a future release.
 
 ```bash
 # Server configuration
-DARB_SERVER_PORT=8460
-DARB_SERVER_MODE=development
+NEBI_SERVER_PORT=8460
+NEBI_SERVER_MODE=development
 
 # Database configuration
-DARB_DATABASE_DRIVER=postgres
-DARB_DATABASE_DSN="postgres://user:pass@host:5432/darb"
+NEBI_DATABASE_DRIVER=postgres
+NEBI_DATABASE_DSN="postgres://user:pass@host:5432/nebi"
 
 # Queue configuration
-DARB_QUEUE_TYPE=valkey
-DARB_QUEUE_VALKEY_ADDR=valkey:6379
+NEBI_QUEUE_TYPE=valkey
+NEBI_QUEUE_VALKEY_ADDR=valkey:6379
 
 # Authentication
-DARB_AUTH_JWT_SECRET=<secret>
+NEBI_AUTH_JWT_SECRET=<secret>
 
 # Logging
-DARB_LOG_LEVEL=info
-DARB_LOG_FORMAT=json
+NEBI_LOG_LEVEL=info
+NEBI_LOG_FORMAT=json
 
 # Admin user bootstrap (creates admin user on first startup if no users exist)
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin123
-ADMIN_EMAIL=admin@darb.local  # Optional, defaults to <username>@darb.local
+ADMIN_EMAIL=admin@nebi.local  # Optional, defaults to <username>@nebi.local
 ```
 
 ### Helm Values

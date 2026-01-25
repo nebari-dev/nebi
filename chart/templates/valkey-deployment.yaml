@@ -2,10 +2,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "darb.fullname" . }}-valkey
+  name: {{ include "nebi.fullname" . }}-valkey
   namespace: {{ .Values.namespace }}
   labels:
-    {{- include "darb.labels" . | nindent 4 }}
+    {{- include "nebi.labels" . | nindent 4 }}
     app.kubernetes.io/component: cache
 spec:
   ports:
@@ -14,27 +14,27 @@ spec:
     protocol: TCP
     name: valkey
   selector:
-    {{- include "darb.selectorLabels" . | nindent 4 }}
+    {{- include "nebi.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: cache
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "darb.fullname" . }}-valkey
+  name: {{ include "nebi.fullname" . }}-valkey
   namespace: {{ .Values.namespace }}
   labels:
-    {{- include "darb.labels" . | nindent 4 }}
+    {{- include "nebi.labels" . | nindent 4 }}
     app.kubernetes.io/component: cache
 spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "darb.selectorLabels" . | nindent 6 }}
+      {{- include "nebi.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: cache
   template:
     metadata:
       labels:
-        {{- include "darb.selectorLabels" . | nindent 8 }}
+        {{- include "nebi.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: cache
     spec:
       containers:
@@ -74,17 +74,17 @@ spec:
       volumes:
       - name: data
         persistentVolumeClaim:
-          claimName: {{ include "darb.fullname" . }}-valkey
+          claimName: {{ include "nebi.fullname" . }}-valkey
       {{- end }}
 ---
 {{- if .Values.valkey.persistence.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "darb.fullname" . }}-valkey
+  name: {{ include "nebi.fullname" . }}-valkey
   namespace: {{ .Values.namespace }}
   labels:
-    {{- include "darb.labels" . | nindent 4 }}
+    {{- include "nebi.labels" . | nindent 4 }}
     app.kubernetes.io/component: cache
 spec:
   accessModes:

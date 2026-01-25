@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aktech/darb/internal/models"
+	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -98,7 +98,7 @@ func (a *BasicAuthenticator) generateToken(user *models.User) (string, error) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenDuration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    "darb",
+			Issuer:    "nebi",
 		},
 	}
 

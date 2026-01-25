@@ -13,7 +13,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/aktech/darb/internal/pkgmgr"
+	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"github.com/pelletier/go-toml/v2"
 )
 

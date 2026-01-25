@@ -11,15 +11,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aktech/darb/internal/api"
-	"github.com/aktech/darb/internal/api/handlers"
-	"github.com/aktech/darb/internal/config"
-	"github.com/aktech/darb/internal/db"
-	"github.com/aktech/darb/internal/executor"
-	"github.com/aktech/darb/internal/logger"
-	"github.com/aktech/darb/internal/logstream"
-	"github.com/aktech/darb/internal/queue"
-	"github.com/aktech/darb/internal/worker"
+	"github.com/nebari-dev/nebi/internal/api"
+	"github.com/nebari-dev/nebi/internal/api/handlers"
+	"github.com/nebari-dev/nebi/internal/config"
+	"github.com/nebari-dev/nebi/internal/db"
+	"github.com/nebari-dev/nebi/internal/executor"
+	"github.com/nebari-dev/nebi/internal/logger"
+	"github.com/nebari-dev/nebi/internal/logstream"
+	"github.com/nebari-dev/nebi/internal/queue"
+	"github.com/nebari-dev/nebi/internal/worker"
 
 	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"
@@ -52,7 +52,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 	// Initialize logger
 	logger.Init(appCfg.Log.Format, appCfg.Log.Level)
-	slog.Info("Starting Darb server", "version", cfg.Version, "mode", appCfg.Server.Mode)
+	slog.Info("Starting Nebi server", "version", cfg.Version, "mode", appCfg.Server.Mode)
 
 	// Initialize database
 	database, err := db.New(appCfg.Database)
@@ -111,7 +111,7 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("invalid mode %q: valid modes are server, worker, both", mode)
 	}
 
-	slog.Info("Starting Darb", "mode", mode)
+	slog.Info("Starting Nebi", "mode", mode)
 
 	// Initialize and start worker if needed
 	if runWorker {
@@ -172,7 +172,7 @@ func Run(ctx context.Context, cfg Config) error {
 		slog.Info("Server stopped")
 	}
 
-	slog.Info("Darb exited")
+	slog.Info("Nebi exited")
 	return nil
 }
 

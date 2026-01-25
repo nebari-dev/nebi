@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/aktech/darb/internal/models"
+	"github.com/nebari-dev/nebi/internal/models"
 )
 
 // Executor interface for running environment operations

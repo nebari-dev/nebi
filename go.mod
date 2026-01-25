@@ -1,4 +1,4 @@
-module github.com/aktech/darb
+module github.com/nebari-dev/nebi
 
 go 1.24.0
 

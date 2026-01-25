@@ -10,16 +10,16 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/aktech/darb/internal/config"
-	"github.com/aktech/darb/internal/models"
-	"github.com/aktech/darb/internal/pkgmgr"
-	"github.com/aktech/darb/internal/pkgmgr/pixi"
-	_ "github.com/aktech/darb/internal/pkgmgr/uv" // Register uv
+	"github.com/nebari-dev/nebi/internal/config"
+	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/pkgmgr"
+	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
+	_ "github.com/nebari-dev/nebi/internal/pkgmgr/uv" // Register uv
 )
 
 // LocalExecutor runs operations on the local machine
 type LocalExecutor struct {
-	baseDir string // Base directory for environments (e.g., /var/lib/darb/environments)
+	baseDir string // Base directory for environments (e.g., /var/lib/nebi/environments)
 	config  *config.Config
 }
 

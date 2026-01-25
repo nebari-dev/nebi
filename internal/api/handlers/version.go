@@ -12,7 +12,7 @@ var Version = "dev"
 
 // GetVersion godoc
 // @Summary Get version information
-// @Description Returns version information about the Darb server
+// @Description Returns version information about the Nebi server
 // @Tags system
 // @Produce json
 // @Success 200 {object} map[string]string

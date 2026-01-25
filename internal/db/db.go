@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/aktech/darb/internal/config"
-	"github.com/aktech/darb/internal/models"
+	"github.com/nebari-dev/nebi/internal/config"
+	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"

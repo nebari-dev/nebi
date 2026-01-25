@@ -13,14 +13,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aktech/darb/internal/executor"
-	"github.com/aktech/darb/internal/logstream"
-	"github.com/aktech/darb/internal/models"
-	"github.com/aktech/darb/internal/pkgmgr"
-	_ "github.com/aktech/darb/internal/pkgmgr/pixi" // Register pixi
-	_ "github.com/aktech/darb/internal/pkgmgr/uv"   // Register uv
-	"github.com/aktech/darb/internal/queue"
-	"github.com/aktech/darb/internal/utils"
+	"github.com/nebari-dev/nebi/internal/executor"
+	"github.com/nebari-dev/nebi/internal/logstream"
+	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/pkgmgr"
+	_ "github.com/nebari-dev/nebi/internal/pkgmgr/pixi" // Register pixi
+	_ "github.com/nebari-dev/nebi/internal/pkgmgr/uv"   // Register uv
+	"github.com/nebari-dev/nebi/internal/queue"
+	"github.com/nebari-dev/nebi/internal/utils"
 	"github.com/google/uuid"
 	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"

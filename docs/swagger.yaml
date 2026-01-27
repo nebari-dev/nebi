@@ -437,7 +437,7 @@ host: localhost:8460
 info:
   contact: {}
   description: Multi-User Environment Management System API
-  title: Darb API
+  title: Nebi API
   version: "1.0"
 paths:
   /admin/audit-logs:
@@ -1539,7 +1539,7 @@ paths:
       - registries
   /version:
     get:
-      description: Returns version information about the Darb server
+      description: Returns version information about the Nebi server
       produces:
       - application/json
       responses:

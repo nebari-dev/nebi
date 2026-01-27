@@ -3,7 +3,7 @@
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'darb'
+app = 'nebi'
 primary_region = 'sjc'
 
 [build]
@@ -20,5 +20,5 @@ primary_region = 'sjc'
   memory = "2048mb"
 
 [mounts]
-  source = "darb_data"
+  source = "nebi_data"
   destination = "/app/data"

@@ -2,7 +2,7 @@
     "swagger": "2.0",
     "info": {
         "description": "Multi-User Environment Management System API",
-        "title": "Darb API",
+        "title": "Nebi API",
         "contact": {},
         "version": "1.0"
     },
@@ -1763,7 +1763,7 @@
         },
         "/version": {
             "get": {
-                "description": "Returns version information about the Darb server",
+                "description": "Returns version information about the Nebi server",
                 "produces": [
                     "application/json"
                 ],

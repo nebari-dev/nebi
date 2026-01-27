@@ -75,7 +75,7 @@ func Load() (*Config, error) {
 	v.SetDefault("server.port", 8460)
 	v.SetDefault("server.mode", "development")
 	v.SetDefault("database.driver", "sqlite")
-	v.SetDefault("database.dsn", "./darb.db")
+	v.SetDefault("database.dsn", "./nebi.db")
 	v.SetDefault("database.max_idle_conns", 10)
 	v.SetDefault("database.max_open_conns", 100)
 	v.SetDefault("database.conn_max_lifetime", 60) // 60 minutes
@@ -96,7 +96,7 @@ func Load() (*Config, error) {
 	v.SetConfigName("config")
 	v.SetConfigType("yaml")
 	v.AddConfigPath(".")
-	v.AddConfigPath("/etc/darb/")
+	v.AddConfigPath("/etc/nebi/")
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
@@ -106,7 +106,7 @@ func Load() (*Config, error) {
 	}
 
 	// Environment variables override
-	v.SetEnvPrefix("DARB")
+	v.SetEnvPrefix("NEBI")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 

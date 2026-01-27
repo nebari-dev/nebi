@@ -1,6 +1,6 @@
-# Darb Helm Chart
+# Nebi Helm Chart
 
-Helm chart for deploying Darb (Dynamic Arbitrary Runtime Bundle) to Kubernetes.
+Helm chart for deploying Nebi (Dynamic Arbitrary Runtime Bundle) to Kubernetes.
 
 ## Installation
 
@@ -18,10 +18,10 @@ tilt up
 
 ```bash
 # Install with default values
-helm install darb ./chart --create-namespace --namespace darb
+helm install nebi ./chart --create-namespace --namespace nebi
 
 # Install with custom values
-helm install darb ./chart -f custom-values.yaml --namespace darb
+helm install nebi ./chart -f custom-values.yaml --namespace nebi
 ```
 
 ## Configuration
@@ -30,7 +30,7 @@ helm install darb ./chart -f custom-values.yaml --namespace darb
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `image.repository` | Image repository | `darb` |
+| `image.repository` | Image repository | `nebi` |
 | `image.tag` | Image tag | `latest` |
 | `image.pullPolicy` | Image pull policy | `IfNotPresent` |
 | `replicaCount` | Number of replicas | `1` |
@@ -62,39 +62,39 @@ helm install darb ./chart -f custom-values.yaml --namespace darb
 ### Update an existing installation
 
 ```bash
-helm upgrade darb ./chart --namespace darb
+helm upgrade nebi ./chart --namespace nebi
 ```
 
 ### Customize storage class
 
 ```bash
-helm install darb ./chart \
+helm install nebi ./chart \
   --set persistence.data.storageClass=fast-ssd \
-  --namespace darb
+  --namespace nebi
 ```
 
 ### Change resource limits
 
 ```bash
-helm install darb ./chart \
+helm install nebi ./chart \
   --set resources.limits.memory=1Gi \
   --set resources.limits.cpu=1000m \
-  --namespace darb
+  --namespace nebi
 ```
 
 ### Enable ingress
 
 ```bash
-helm install darb ./chart \
+helm install nebi ./chart \
   --set ingress.enabled=true \
-  --set ingress.hosts[0].host=darb.example.com \
-  --namespace darb
+  --set ingress.hosts[0].host=nebi.example.com \
+  --namespace nebi
 ```
 
 ## Uninstallation
 
 ```bash
-helm uninstall darb --namespace darb
+helm uninstall nebi --namespace nebi
 ```
 
 ## Development
@@ -108,7 +108,7 @@ helm lint ./chart
 ### Render templates
 
 ```bash
-helm template darb ./chart -f ./chart/values-dev.yaml
+helm template nebi ./chart -f ./chart/values-dev.yaml
 ```
 
 ### Package chart

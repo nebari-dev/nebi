@@ -88,7 +88,7 @@ clean: ## Clean build artifacts
 	@rm -rf docs/
 	@rm -rf internal/web/dist
 	@rm -rf $(FRONTEND_DIR)/dist
-	@rm -f darb.db
+	@rm -f nebi.db
 	@echo "Clean complete"
 
 tidy: ## Tidy go.mod
@@ -111,13 +111,13 @@ lint: fmt ## Run formatters and linters (matches CI)
 
 build-docker-pixi: ## Build pixi Docker image
 	@echo "Building pixi Docker image..."
-	@docker build -f docker/pixi.Dockerfile -t darb-pixi:latest .
-	@echo "Docker image built: darb-pixi:latest"
+	@docker build -f docker/pixi.Dockerfile -t nebi-pixi:latest .
+	@echo "Docker image built: nebi-pixi:latest"
 
 build-docker-uv: ## Build uv Docker image
 	@echo "Building uv Docker image..."
-	@docker build -f docker/uv.Dockerfile -t darb-uv:latest .
-	@echo "Docker image built: darb-uv:latest"
+	@docker build -f docker/uv.Dockerfile -t nebi-uv:latest .
+	@echo "Docker image built: nebi-uv:latest"
 
 build-docker: build-docker-pixi build-docker-uv ## Build all Docker images
 	@echo "All Docker images built successfully"
@@ -143,20 +143,20 @@ build-all: build-frontend ## Build binaries for all platforms
 
 # K3d Development Environment
 up: ## Create k3d cluster and start Tilt (recreates cluster if exists)
-	@echo "Setting up Darb development environment..."
-	@if k3d cluster list | grep -q darb-dev; then \
+	@echo "Setting up Nebi development environment..."
+	@if k3d cluster list | grep -q nebi-dev; then \
 		echo ""; \
-		echo "⚠️  Cluster 'darb-dev' already exists"; \
+		echo "⚠️  Cluster 'nebi-dev' already exists"; \
 		read -p "Do you want to delete and recreate it? [y/N] " confirm; \
 		if [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ]; then \
 			echo "Deleting existing cluster..."; \
-			k3d cluster delete darb-dev; \
+			k3d cluster delete nebi-dev; \
 		else \
 			echo "Using existing cluster..."; \
 		fi; \
 	fi
-	@if ! k3d cluster list | grep -q darb-dev; then \
-		echo "Creating k3d cluster 'darb-dev'..."; \
+	@if ! k3d cluster list | grep -q nebi-dev; then \
+		echo "Creating k3d cluster 'nebi-dev'..."; \
 		k3d cluster create -c k3d-config.yaml --wait; \
 		kubectl wait --for=condition=ready node --all --timeout=60s; \
 		echo "✓ Cluster ready!"; \
@@ -169,6 +169,6 @@ up: ## Create k3d cluster and start Tilt (recreates cluster if exists)
 down: ## Stop Tilt and delete k3d cluster
 	@echo "Stopping Tilt..."
 	@tilt down || true
-	@echo "Deleting k3d cluster 'darb-dev'..."
-	@k3d cluster delete darb-dev || true
+	@echo "Deleting k3d cluster 'nebi-dev'..."
+	@k3d cluster delete nebi-dev || true
 	@echo "✓ Environment cleaned up!"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/aktech/darb/internal/pkgmgr"
+	"github.com/nebari-dev/nebi/internal/pkgmgr"
 )
 
 func init() {

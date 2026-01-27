@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/aktech/darb/internal/models"
-	"github.com/aktech/darb/internal/rbac"
+	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"

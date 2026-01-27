@@ -39,6 +39,7 @@ func init() {
 	shellCmd.GroupID = "client"
 	statusCmd.GroupID = "client"
 	diffCmd.GroupID = "client"
+	repairCmd.GroupID = "client"
 
 	serveCmd.GroupID = "server"
 
@@ -54,6 +55,7 @@ func init() {
 	rootCmd.AddCommand(shellCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(diffCmd)
+	rootCmd.AddCommand(repairCmd)
 }
 
 func main() {

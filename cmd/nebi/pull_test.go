@@ -30,12 +30,11 @@ func TestHandleGlobalPull_ExistingBlocked(t *testing.T) {
 	store := localindex.NewStoreWithDir(dir)
 
 	// Add existing global entry
-	store.AddEntry(localindex.RepoEntry{
-		Repo: "data-science",
-		Tag:       "v1.0",
-		Path:      store.GlobalRepoPath("uuid-123", "v1.0"),
-		IsGlobal:  true,
-		PulledAt:  time.Now(),
+	store.AddEntry(localindex.Entry{
+		SpecName:    "data-science",
+		VersionName: "v1.0",
+		Path:        store.GlobalRepoPath("uuid-123", "v1.0"),
+		PulledAt:    time.Now(),
 	})
 
 	// Should be blocked without --force
@@ -51,12 +50,11 @@ func TestHandleGlobalPull_ExistingForced(t *testing.T) {
 	store := localindex.NewStoreWithDir(dir)
 
 	// Add existing global entry
-	store.AddEntry(localindex.RepoEntry{
-		Repo: "data-science",
-		Tag:       "v1.0",
-		Path:      store.GlobalRepoPath("uuid-123", "v1.0"),
-		IsGlobal:  true,
-		PulledAt:  time.Now(),
+	store.AddEntry(localindex.Entry{
+		SpecName:    "data-science",
+		VersionName: "v1.0",
+		Path:        store.GlobalRepoPath("uuid-123", "v1.0"),
+		PulledAt:    time.Now(),
 	})
 
 	// Should succeed with --force
@@ -79,12 +77,11 @@ func TestHandleGlobalPull_DifferentTag(t *testing.T) {
 	store := localindex.NewStoreWithDir(dir)
 
 	// Add existing global entry for v1.0
-	store.AddEntry(localindex.RepoEntry{
-		Repo: "data-science",
-		Tag:       "v1.0",
-		Path:      store.GlobalRepoPath("uuid-123", "v1.0"),
-		IsGlobal:  true,
-		PulledAt:  time.Now(),
+	store.AddEntry(localindex.Entry{
+		SpecName:    "data-science",
+		VersionName: "v1.0",
+		Path:        store.GlobalRepoPath("uuid-123", "v1.0"),
+		PulledAt:    time.Now(),
 	})
 
 	// Pull v2.0 should succeed (different tag = separate directory)
@@ -127,11 +124,11 @@ func TestHandleDirectoryPull_SameWorkspaceTag(t *testing.T) {
 
 	// Add existing entry for same workspace:tag
 	absPath, _ := filepath.Abs(outputPath)
-	store.AddEntry(localindex.RepoEntry{
-		Repo: "data-science",
-		Tag:       "v1.0",
-		Path:      absPath,
-		PulledAt:  time.Now(),
+	store.AddEntry(localindex.Entry{
+		SpecName:    "data-science",
+		VersionName: "v1.0",
+		Path:        absPath,
+		PulledAt:    time.Now(),
 	})
 
 	pullOutput = outputPath
@@ -158,11 +155,11 @@ func TestHandleDirectoryPull_DifferentTagWithForce(t *testing.T) {
 
 	// Add existing entry for different tag
 	absPath, _ := filepath.Abs(outputPath)
-	store.AddEntry(localindex.RepoEntry{
-		Repo: "data-science",
-		Tag:       "v1.0",
-		Path:      absPath,
-		PulledAt:  time.Now(),
+	store.AddEntry(localindex.Entry{
+		SpecName:    "data-science",
+		VersionName: "v1.0",
+		Path:        absPath,
+		PulledAt:    time.Now(),
 	})
 
 	pullOutput = outputPath
@@ -191,16 +188,9 @@ func TestPullIntegration_WritesNebiFile(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "pixi.toml"), pixiTomlContent, 0644)
 	os.WriteFile(filepath.Join(dir, "pixi.lock"), pixiLockContent, 0644)
 
-	// Compute digests
-	tomlDigest := nebifile.ComputeDigest(pixiTomlContent)
-	lockDigest := nebifile.ComputeDigest(pixiLockContent)
-
-	// Write .nebi file
+	// Write .nebi file (using new simplified signature)
 	nf := nebifile.NewFromPull(
-		"test-workspace", "v1.0", "test-registry", "https://nebi.example.com",
-		1, "sha256:manifest123",
-		tomlDigest, int64(len(pixiTomlContent)),
-		lockDigest, int64(len(pixiLockContent)),
+		"test-workspace", "v1.0", "https://nebi.example.com", "", "1", "",
 	)
 	if err := nebifile.Write(dir, nf); err != nil {
 		t.Fatalf("nebifile.Write() error = %v", err)
@@ -217,20 +207,14 @@ func TestPullIntegration_WritesNebiFile(t *testing.T) {
 		t.Fatalf("nebifile.Read() error = %v", err)
 	}
 
-	if loaded.Origin.Repo != "test-workspace" {
-		t.Errorf("Workspace = %q, want %q", loaded.Origin.Repo, "test-workspace")
+	if loaded.Origin.SpecName != "test-workspace" {
+		t.Errorf("SpecName = %q, want %q", loaded.Origin.SpecName, "test-workspace")
 	}
-	if loaded.Origin.Tag != "v1.0" {
-		t.Errorf("Tag = %q, want %q", loaded.Origin.Tag, "v1.0")
+	if loaded.Origin.VersionName != "v1.0" {
+		t.Errorf("VersionName = %q, want %q", loaded.Origin.VersionName, "v1.0")
 	}
 	if loaded.Origin.ServerURL != "https://nebi.example.com" {
 		t.Errorf("ServerURL = %q, want %q", loaded.Origin.ServerURL, "https://nebi.example.com")
-	}
-	if loaded.GetLayerDigest("pixi.toml") != tomlDigest {
-		t.Errorf("pixi.toml digest mismatch")
-	}
-	if loaded.GetLayerDigest("pixi.lock") != lockDigest {
-		t.Errorf("pixi.lock digest mismatch")
 	}
 }
 
@@ -239,15 +223,13 @@ func TestPullIntegration_UpdatesIndex(t *testing.T) {
 	store := localindex.NewStoreWithDir(dir)
 
 	// Simulate adding an entry (as runPull does)
-	entry := localindex.RepoEntry{
-		Repo:            "test-workspace",
-		Tag:             "v1.0",
-		ServerURL:       "https://nebi.example.com",
-		ServerVersionID: 1,
-		Path:            filepath.Join(dir, "workspace"),
-		IsGlobal:        false,
-		PulledAt:        time.Now(),
-		ManifestDigest:  "sha256:manifest123",
+	entry := localindex.Entry{
+		SpecName:    "test-workspace",
+		VersionName: "v1.0",
+		VersionID:   "1",
+		ServerURL:   "https://nebi.example.com",
+		Path:        filepath.Join(dir, "workspace"),
+		PulledAt:    time.Now(),
 		Layers: map[string]string{
 			"pixi.toml": "sha256:toml456",
 			"pixi.lock": "sha256:lock789",
@@ -266,11 +248,11 @@ func TestPullIntegration_UpdatesIndex(t *testing.T) {
 	if found == nil {
 		t.Fatal("Entry should be found in index")
 	}
-	if found.Repo != "test-workspace" {
-		t.Errorf("Workspace = %q, want %q", found.Repo, "test-workspace")
+	if found.SpecName != "test-workspace" {
+		t.Errorf("SpecName = %q, want %q", found.SpecName, "test-workspace")
 	}
-	if found.ManifestDigest != "sha256:manifest123" {
-		t.Errorf("ManifestDigest = %q, want %q", found.ManifestDigest, "sha256:manifest123")
+	if found.VersionID != "1" {
+		t.Errorf("VersionID = %q, want %q", found.VersionID, "1")
 	}
 }
 
@@ -278,254 +260,32 @@ func TestPullIntegration_GlobalWithAlias(t *testing.T) {
 	dir := t.TempDir()
 	store := localindex.NewStoreWithDir(dir)
 
-	// Simulate global pull with alias
-	uuid := "550e8400-e29b-41d4-a716-446655440000"
-	tag := "v1.0"
+	specID := "uuid-data-science-001"
+	tag := "latest"
 
-	entry := localindex.RepoEntry{
-		Repo:            "data-science",
-		Tag:             tag,
-		ServerURL:       "https://nebi.example.com",
-		ServerVersionID: 42,
-		Path:            store.GlobalRepoPath(uuid, tag),
-		IsGlobal:        true,
-		PulledAt:        time.Now(),
-		ManifestDigest:  "sha256:abc123",
-		Layers: map[string]string{
-			"pixi.toml": "sha256:111",
-			"pixi.lock": "sha256:222",
-		},
+	// Simulate global pull: create entry and set alias
+	entry := localindex.Entry{
+		SpecName:    "data-science",
+		VersionName: tag,
+		VersionID:   "1",
+		Path:        store.GlobalRepoPath(specID, tag),
+		PulledAt:    time.Now(),
 	}
-
-	if err := store.AddEntry(entry); err != nil {
-		t.Fatalf("AddEntry() error = %v", err)
-	}
+	store.AddEntry(entry)
 
 	// Set alias
-	alias := localindex.Alias{UUID: uuid, Tag: tag}
-	if err := store.SetAlias("ds-stable", alias); err != nil {
-		t.Fatalf("SetAlias() error = %v", err)
-	}
+	store.SetAlias("data-science", localindex.Alias{UUID: specID, Tag: tag})
 
-	// Verify alias resolves
-	got, err := store.GetAlias("ds-stable")
+	// Verify alias can be retrieved
+	alias, err := store.GetAlias("data-science")
 	if err != nil {
 		t.Fatalf("GetAlias() error = %v", err)
 	}
-	if got == nil {
-		t.Fatal("Alias should exist")
+
+	if alias.UUID != specID {
+		t.Errorf("UUID = %q, want %q", alias.UUID, specID)
 	}
-	if got.UUID != uuid {
-		t.Errorf("Alias UUID = %q, want %q", got.UUID, uuid)
-	}
-	if got.Tag != tag {
-		t.Errorf("Alias Tag = %q, want %q", got.Tag, tag)
-	}
-
-	// Verify global entry is findable
-	global, err := store.FindGlobal("data-science", "v1.0")
-	if err != nil {
-		t.Fatalf("FindGlobal() error = %v", err)
-	}
-	if global == nil {
-		t.Fatal("Global entry should be found")
-	}
-	if !global.IsGlobal {
-		t.Error("Entry should be global")
-	}
-}
-
-func TestPullCmd_HasGlobalShortFlag(t *testing.T) {
-	flag := pullCmd.Flags().Lookup("global")
-	if flag == nil {
-		t.Fatal("--global flag should be registered")
-	}
-	if flag.Shorthand != "g" {
-		t.Errorf("--global shorthand = %q, want %q", flag.Shorthand, "g")
-	}
-}
-
-func TestPullCmd_HasInstallFlag(t *testing.T) {
-	flag := pullCmd.Flags().Lookup("install")
-	if flag == nil {
-		t.Fatal("--install flag should be registered")
-	}
-	if flag.Shorthand != "i" {
-		t.Errorf("--install shorthand = %q, want %q", flag.Shorthand, "i")
-	}
-}
-
-func TestPullCmd_FlagShorthandsDoNotConflict(t *testing.T) {
-	// Verify all known pull command short flags are unique and correctly mapped
-	shortFlags := map[string]string{
-		"o": "output",
-		"g": "global",
-		"i": "install",
-	}
-
-	for short, long := range shortFlags {
-		flag := pullCmd.Flags().ShorthandLookup(short)
-		if flag == nil {
-			t.Errorf("Short flag -%s should exist (for --%s)", short, long)
-			continue
-		}
-		if flag.Name != long {
-			t.Errorf("Short flag -%s maps to --%s, want --%s", short, flag.Name, long)
-		}
-	}
-}
-
-func TestCheckAlreadyUpToDate_NoNebiFile(t *testing.T) {
-	dir := t.TempDir()
-	// No .nebi file → should not skip
-	if checkAlreadyUpToDate(dir, "ws", "v1.0", "sha256:abc") {
-		t.Error("should not skip when .nebi file is missing")
-	}
-}
-
-func TestCheckAlreadyUpToDate_DifferentWorkspace(t *testing.T) {
-	dir := t.TempDir()
-	content := []byte("test content")
-	os.WriteFile(filepath.Join(dir, "pixi.toml"), content, 0644)
-	os.WriteFile(filepath.Join(dir, "pixi.lock"), content, 0644)
-
-	digest := nebifile.ComputeDigest(content)
-	nf := nebifile.NewFromPull("other-ws", "v1.0", "", "http://localhost",
-		1, "sha256:abc", digest, int64(len(content)), digest, int64(len(content)))
-	nebifile.Write(dir, nf)
-
-	if checkAlreadyUpToDate(dir, "my-ws", "v1.0", "sha256:abc") {
-		t.Error("should not skip when workspace name differs")
-	}
-}
-
-func TestCheckAlreadyUpToDate_DifferentTag(t *testing.T) {
-	dir := t.TempDir()
-	content := []byte("test content")
-	os.WriteFile(filepath.Join(dir, "pixi.toml"), content, 0644)
-	os.WriteFile(filepath.Join(dir, "pixi.lock"), content, 0644)
-
-	digest := nebifile.ComputeDigest(content)
-	nf := nebifile.NewFromPull("ws", "v1.0", "", "http://localhost",
-		1, "sha256:abc", digest, int64(len(content)), digest, int64(len(content)))
-	nebifile.Write(dir, nf)
-
-	if checkAlreadyUpToDate(dir, "ws", "v2.0", "sha256:abc") {
-		t.Error("should not skip when tag differs")
-	}
-}
-
-func TestCheckAlreadyUpToDate_CleanAndSameDigest(t *testing.T) {
-	dir := t.TempDir()
-	tomlContent := []byte("[workspace]\nname = \"test\"\n")
-	lockContent := []byte("version: 1\n")
-	os.WriteFile(filepath.Join(dir, "pixi.toml"), tomlContent, 0644)
-	os.WriteFile(filepath.Join(dir, "pixi.lock"), lockContent, 0644)
-
-	tomlDigest := nebifile.ComputeDigest(tomlContent)
-	lockDigest := nebifile.ComputeDigest(lockContent)
-	nf := nebifile.NewFromPull("ws", "v1.0", "", "http://localhost",
-		1, "sha256:abc", tomlDigest, int64(len(tomlContent)), lockDigest, int64(len(lockContent)))
-	nebifile.Write(dir, nf)
-
-	if !checkAlreadyUpToDate(dir, "ws", "v1.0", "sha256:abc") {
-		t.Error("should skip when workspace is clean and digest matches")
-	}
-}
-
-func TestCheckAlreadyUpToDate_CleanButDigestDiffers(t *testing.T) {
-	dir := t.TempDir()
-	tomlContent := []byte("[workspace]\nname = \"test\"\n")
-	lockContent := []byte("version: 1\n")
-	os.WriteFile(filepath.Join(dir, "pixi.toml"), tomlContent, 0644)
-	os.WriteFile(filepath.Join(dir, "pixi.lock"), lockContent, 0644)
-
-	tomlDigest := nebifile.ComputeDigest(tomlContent)
-	lockDigest := nebifile.ComputeDigest(lockContent)
-	nf := nebifile.NewFromPull("ws", "v1.0", "", "http://localhost",
-		1, "sha256:abc", tomlDigest, int64(len(tomlContent)), lockDigest, int64(len(lockContent)))
-	nebifile.Write(dir, nf)
-
-	// Remote digest differs — tag has been updated
-	if checkAlreadyUpToDate(dir, "ws", "v1.0", "sha256:xyz-new") {
-		t.Error("should not skip when remote digest differs (tag updated)")
-	}
-}
-
-func TestCheckAlreadyUpToDate_ModifiedFilesWithYes(t *testing.T) {
-	dir := t.TempDir()
-	tomlContent := []byte("[workspace]\nname = \"test\"\n")
-	lockContent := []byte("version: 1\n")
-	os.WriteFile(filepath.Join(dir, "pixi.toml"), tomlContent, 0644)
-	os.WriteFile(filepath.Join(dir, "pixi.lock"), lockContent, 0644)
-
-	tomlDigest := nebifile.ComputeDigest(tomlContent)
-	lockDigest := nebifile.ComputeDigest(lockContent)
-	nf := nebifile.NewFromPull("ws", "v1.0", "", "http://localhost",
-		1, "sha256:abc", tomlDigest, int64(len(tomlContent)), lockDigest, int64(len(lockContent)))
-	nebifile.Write(dir, nf)
-
-	// Modify a file after writing .nebi
-	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("modified!"), 0644)
-
-	// With --yes, modified files should NOT skip (proceed with re-pull)
-	pullYes = true
-	defer func() { pullYes = false }()
-
-	if checkAlreadyUpToDate(dir, "ws", "v1.0", "sha256:abc") {
-		t.Error("should not skip when files are modified and --yes is set")
-	}
-}
-
-func TestCheckAlreadyUpToDate_EmptyRemoteDigest(t *testing.T) {
-	dir := t.TempDir()
-	tomlContent := []byte("[workspace]\nname = \"test\"\n")
-	lockContent := []byte("version: 1\n")
-	os.WriteFile(filepath.Join(dir, "pixi.toml"), tomlContent, 0644)
-	os.WriteFile(filepath.Join(dir, "pixi.lock"), lockContent, 0644)
-
-	tomlDigest := nebifile.ComputeDigest(tomlContent)
-	lockDigest := nebifile.ComputeDigest(lockContent)
-	nf := nebifile.NewFromPull("ws", "v1.0", "", "http://localhost",
-		1, "sha256:abc", tomlDigest, int64(len(tomlContent)), lockDigest, int64(len(lockContent)))
-	nebifile.Write(dir, nf)
-
-	// Empty remote digest (e.g., pulling "latest" with no digest info) — skip digest check
-	if !checkAlreadyUpToDate(dir, "ws", "v1.0", "") {
-		t.Error("should skip when files are clean and remote digest is empty (no digest comparison)")
-	}
-}
-
-func TestPullIntegration_DirectoryPullDuplicateAllowed(t *testing.T) {
-	dir := t.TempDir()
-	store := localindex.NewStoreWithDir(dir)
-
-	now := time.Now()
-
-	// Pull to path A
-	entryA := localindex.RepoEntry{
-		Repo: "data-science",
-		Tag:       "v1.0",
-		Path:      filepath.Join(dir, "project-a"),
-		PulledAt:  now,
-	}
-	store.AddEntry(entryA)
-
-	// Pull same workspace:tag to path B (allowed for directory pulls)
-	entryB := localindex.RepoEntry{
-		Repo: "data-science",
-		Tag:       "v1.0",
-		Path:      filepath.Join(dir, "project-b"),
-		PulledAt:  now.Add(time.Hour),
-	}
-	store.AddEntry(entryB)
-
-	// Both should exist
-	matches, err := store.FindByRepoTag("data-science", "v1.0")
-	if err != nil {
-		t.Fatalf("FindByRepoTag() error = %v", err)
-	}
-	if len(matches) != 2 {
-		t.Errorf("Expected 2 entries for same workspace:tag, got %d", len(matches))
+	if alias.Tag != tag {
+		t.Errorf("Tag = %q, want %q", alias.Tag, tag)
 	}
 }

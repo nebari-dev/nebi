@@ -253,34 +253,31 @@ func runPull(cmd *cobra.Command, args []string) {
 	pixiTomlDigest := nebifile.ComputeDigest(pixiTomlBytes)
 	pixiLockDigest := nebifile.ComputeDigest(pixiLockBytes)
 
-	// Write .nebi metadata file
-	nf := nebifile.NewFromPull(
-		repoName, tag, "", cfg.ServerURL,
-		versionNumber, manifestDigest,
-		pixiTomlDigest, int64(len(pixiTomlBytes)),
-		pixiLockDigest, int64(len(pixiLockBytes)),
-	)
-	if err := nebifile.Write(outputDir, nf); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to write .nebi metadata: %v\n", err)
-		osExit(1)
-	}
-
 	// Resolve absolute path for index
 	absOutputDir, err := filepath.Abs(outputDir)
 	if err != nil {
 		absOutputDir = outputDir
 	}
 
+	// Write .nebi.toml metadata file
+	nf := nebifile.NewFromPull(
+		repoName, tag, cfg.ServerURL,
+		env.ID, fmt.Sprintf("%d", versionNumber), "", // specID, versionID, serverID
+	)
+	if err := nebifile.Write(outputDir, nf); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to write .nebi.toml metadata: %v\n", err)
+		osExit(1)
+	}
+
 	// Update local index
-	entry := localindex.RepoEntry{
-		Repo:            repoName,
-		Tag:             tag,
-		ServerURL:       cfg.ServerURL,
-		ServerVersionID: versionNumber,
-		Path:            absOutputDir,
-		IsGlobal:        pullGlobal,
-		PulledAt:        time.Now(),
-		ManifestDigest:  manifestDigest,
+	entry := localindex.Entry{
+		SpecName:    repoName,
+		SpecID:      env.ID,
+		VersionName: tag,
+		VersionID:   fmt.Sprintf("%d", versionNumber),
+		ServerURL:   cfg.ServerURL,
+		Path:        absOutputDir,
+		PulledAt:    time.Now(),
 		Layers: map[string]string{
 			"pixi.toml": pixiTomlDigest,
 			"pixi.lock": pixiLockDigest,
@@ -357,12 +354,12 @@ func checkAlreadyUpToDate(dir, repo, tag, remoteDigest string) bool {
 	}
 
 	// Different repo or tag — not a match
-	if nf.Origin.Repo != repo || nf.Origin.Tag != tag {
+	if nf.Origin.SpecName != repo || nf.Origin.VersionName != tag {
 		return false
 	}
 
 	// If we have a remote digest and it differs, the tag has been updated remotely
-	if remoteDigest != "" && nf.Origin.ManifestDigest != "" && nf.Origin.ManifestDigest != remoteDigest {
+	if remoteDigest != "" && nf.Origin.VersionID != "" && nf.Origin.VersionID != remoteDigest {
 		return false
 	}
 
@@ -411,15 +408,15 @@ func handleDirectoryPull(store *localindex.Store, repo, tag string) (string, err
 		return outputDir, nil // Non-fatal, proceed with pull
 	}
 
-	if existing != nil && existing.Repo == repo && existing.Tag == tag {
+	if existing != nil && existing.SpecName == repo && existing.VersionName == tag {
 		// Same repo:tag to same directory - re-pull (overwrite), no prompt needed
 		return outputDir, nil
 	}
 
-	if existing != nil && (existing.Repo != repo || existing.Tag != tag) && !pullForce {
+	if existing != nil && (existing.SpecName != repo || existing.VersionName != tag) && !pullForce {
 		// Different repo:tag to same directory - prompt for confirmation
 		if !pullYes {
-			fmt.Fprintf(os.Stderr, "Warning: %s already contains %s:%s\n", absDir, existing.Repo, existing.Tag)
+			fmt.Fprintf(os.Stderr, "Warning: %s already contains %s:%s\n", absDir, existing.SpecName, existing.VersionName)
 			fmt.Fprintf(os.Stderr, "Overwrite with %s:%s? [y/N]: ", repo, tag)
 
 			reader := bufio.NewReader(os.Stdin)

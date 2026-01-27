@@ -191,7 +191,7 @@ func runRepoListLocal() {
 		osExit(1)
 	}
 
-	if len(index.Repos) == 0 {
+	if len(index.Entries) == 0 {
 		if repoListJSON {
 			fmt.Println("[]")
 		} else {
@@ -203,14 +203,14 @@ func runRepoListLocal() {
 
 	if repoListJSON {
 		var entries []repoListEntry
-		for _, entry := range index.Repos {
+		for _, entry := range index.Entries {
 			status := getLocalEntryStatus(entry)
 			entries = append(entries, repoListEntry{
-				Repo:     entry.Repo,
-				Tag:      entry.Tag,
+				Repo:     entry.SpecName,
+				Tag:      entry.VersionName,
 				Status:   status,
 				Path:     entry.Path,
-				IsGlobal: entry.IsGlobal,
+				IsGlobal: entry.IsGlobal(),
 			})
 		}
 		data, err := json.MarshalIndent(entries, "", "  ")
@@ -226,16 +226,16 @@ func runRepoListLocal() {
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "REPO\tTAG\tSTATUS\tLOCATION")
-	for _, entry := range index.Repos {
+	for _, entry := range index.Entries {
 		status := getLocalEntryStatus(entry)
 		if status == "missing" {
 			hasMissing = true
 		}
 
-		location := formatLocation(entry.Path, entry.IsGlobal)
+		location := formatLocation(entry.Path, entry.IsGlobal())
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-			entry.Repo,
-			entry.Tag,
+			entry.SpecName,
+			entry.VersionName,
 			status,
 			location,
 		)
@@ -330,7 +330,7 @@ func runRepoPrune(cmd *cobra.Command, args []string) {
 
 	fmt.Printf("Removed %d stale entries:\n", len(removed))
 	for _, entry := range removed {
-		fmt.Printf("  - %s:%s (%s)\n", entry.Repo, entry.Tag, entry.Path)
+		fmt.Printf("  - %s:%s (%s)\n", entry.SpecName, entry.VersionName, entry.Path)
 	}
 }
 
@@ -433,16 +433,13 @@ func runRepoInfoFromCwd() {
 
 	// Show local status section
 	fmt.Println("Local:")
-	fmt.Printf("  Repo: %s:%s\n", nf.Origin.Repo, nf.Origin.Tag)
-	if nf.Origin.RegistryURL != "" {
-		fmt.Printf("  Registry:  %s\n", nf.Origin.RegistryURL)
-	}
+	fmt.Printf("  Repo: %s:%s\n", nf.Origin.SpecName, nf.Origin.VersionName)
 	if nf.Origin.ServerURL != "" {
 		fmt.Printf("  Server:    %s\n", nf.Origin.ServerURL)
 	}
 	fmt.Printf("  Pulled:    %s (%s)\n", nf.Origin.PulledAt.Format("2006-01-02 15:04:05"), formatTimeAgo(nf.Origin.PulledAt))
-	if nf.Origin.ManifestDigest != "" {
-		fmt.Printf("  Digest:    %s\n", nf.Origin.ManifestDigest)
+	if nf.Origin.VersionID != "" {
+		fmt.Printf("  Version:   %s\n", nf.Origin.VersionID)
 	}
 
 	// Perform drift check
@@ -459,10 +456,10 @@ func runRepoInfoFromCwd() {
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	env, err := findRepoByName(client, ctx, nf.Origin.Repo)
+	env, err := findRepoByName(client, ctx, nf.Origin.SpecName)
 	if err != nil {
 		fmt.Println("Server:")
-		fmt.Printf("  (repo %q not found on server)\n", nf.Origin.Repo)
+		fmt.Printf("  (repo %q not found on server)\n", nf.Origin.SpecName)
 		return
 	}
 

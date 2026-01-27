@@ -159,12 +159,12 @@ func runPush(cmd *cobra.Command, args []string) {
 	}
 
 	nf := nebifile.New(nebifile.Origin{
-		Repo:            repoName,
-		Tag:             tag,
-		ServerURL:       cfg.ServerURL,
-		ServerVersionID: int32(resp.VersionNumber),
-		PulledAt:        time.Now(),
-	}, layers)
+		SpecName:    repoName,
+		VersionName: tag,
+		VersionID:   fmt.Sprintf("%d", resp.VersionNumber),
+		ServerURL:   cfg.ServerURL,
+		PulledAt:    time.Now(),
+	})
 
 	if err := nebifile.Write(absDir, nf); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to update .nebi metadata: %v\n", err)
@@ -179,15 +179,14 @@ func runPush(cmd *cobra.Command, args []string) {
 	}
 
 	idxStore := localindex.NewStore()
-	entry := localindex.RepoEntry{
-		Repo:            repoName,
-		Tag:             tag,
-		ServerURL:       cfg.ServerURL,
-		ServerVersionID: int32(resp.VersionNumber),
-		Path:            absDir,
-		IsGlobal:        false,
-		PulledAt:        time.Now(),
-		Layers:          idxLayers,
+	entry := localindex.Entry{
+		SpecName:    repoName,
+		VersionName: tag,
+		VersionID:   fmt.Sprintf("%d", resp.VersionNumber),
+		ServerURL:   cfg.ServerURL,
+		Path:        absDir,
+		PulledAt:    time.Now(),
+		Layers:      idxLayers,
 	}
 	if err := idxStore.AddEntry(entry); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to update local index: %v\n", err)
@@ -200,7 +199,7 @@ func runPushDryRun(repoName, tag string, pixiTomlContent, pixiLockContent []byte
 
 	fmt.Printf("Would push %s:%s\n\n", repoName, tag)
 
-	// Check if we have a .nebi file to diff against
+	// Check if we have a .nebi.toml file to diff against
 	if nebifile.Exists(absDir) {
 		nf, err := nebifile.Read(absDir)
 		if err == nil {
@@ -208,14 +207,16 @@ func runPushDryRun(repoName, tag string, pixiTomlContent, pixiLockContent []byte
 			client := mustGetClient()
 			ctx := mustGetAuthContext()
 
-			env, err := findRepoByName(client, ctx, nf.Origin.Repo)
+			env, err := findRepoByName(client, ctx, nf.Origin.SpecName)
 			if err == nil {
-				vc, err := drift.FetchVersionContent(ctx, client, env.ID, nf.Origin.ServerVersionID)
+				var versionID int32
+				fmt.Sscanf(nf.Origin.VersionID, "%d", &versionID)
+				vc, err := drift.FetchVersionContent(ctx, client, env.ID, versionID)
 				if err == nil {
 					// Show TOML diff
 					tomlDiff, err := diff.CompareToml([]byte(vc.PixiToml), pixiTomlContent)
 					if err == nil && tomlDiff.HasChanges() {
-						sourceLabel := fmt.Sprintf("origin (%s:%s)", nf.Origin.Repo, nf.Origin.Tag)
+						sourceLabel := fmt.Sprintf("origin (%s:%s)", nf.Origin.SpecName, nf.Origin.VersionName)
 						targetLabel := "local (to be pushed)"
 						fmt.Print(diff.FormatUnifiedDiff(tomlDiff, sourceLabel, targetLabel))
 					}
@@ -232,7 +233,7 @@ func runPushDryRun(repoName, tag string, pixiTomlContent, pixiLockContent []byte
 			}
 		}
 	} else {
-		fmt.Println("(No .nebi metadata found - cannot show diff against origin)")
+		fmt.Println("(No .nebi.toml metadata found - cannot show diff against origin)")
 		fmt.Printf("\nFiles to push:\n")
 		fmt.Printf("  pixi.toml: %d bytes\n", len(pixiTomlContent))
 		if len(pixiLockContent) > 0 {
@@ -281,7 +282,7 @@ func showPushDriftWarning(dir, repoName, tag string, pixiTomlContent []byte) {
 
 	if ws.Overall == drift.StatusModified {
 		fmt.Printf("Note: This repo was originally pulled from %s:%s\n",
-			nf.Origin.Repo, nf.Origin.Tag)
+			nf.Origin.SpecName, nf.Origin.VersionName)
 		for _, f := range ws.Files {
 			if f.Status == drift.StatusModified {
 				fmt.Printf("  - %s modified locally\n", f.Filename)
@@ -291,7 +292,7 @@ func showPushDriftWarning(dir, repoName, tag string, pixiTomlContent []byte) {
 	}
 
 	// Warn if pushing to the same tag as origin (potential overwrite)
-	if tag == nf.Origin.Tag && repoName == nf.Origin.Repo && ws.Overall == drift.StatusModified {
+	if tag == nf.Origin.VersionName && repoName == nf.Origin.SpecName && ws.Overall == drift.StatusModified {
 		fmt.Fprintf(os.Stderr, "Warning: Pushing modified content back to the same tag %q\n", tag)
 		fmt.Fprintf(os.Stderr, "  This will overwrite the existing version on the server.\n")
 		fmt.Fprintf(os.Stderr, "  Consider using a new tag (e.g., %s-1) to preserve the original.\n\n",

@@ -128,7 +128,7 @@ func runDiffLocal() {
 	ctx := mustGetAuthContext()
 
 	// Find workspace on server
-	env, err := findRepoByName(client, ctx, nf.Origin.Repo)
+	env, err := findRepoByName(client, ctx, nf.Origin.SpecName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(2)
@@ -138,23 +138,29 @@ func runDiffLocal() {
 	var versionContent *drift.VersionContent
 	var sourceLabel string
 
+	// Parse version ID as int32
+	var versionID int32
+	if nf.Origin.VersionID != "" {
+		fmt.Sscanf(nf.Origin.VersionID, "%d", &versionID)
+	}
+
 	if diffRemote {
 		// Fetch current tag content
-		versionContent, err = drift.FetchByTag(ctx, client, nf.Origin.Repo, nf.Origin.Tag)
+		versionContent, err = drift.FetchByTag(ctx, client, nf.Origin.SpecName, nf.Origin.VersionName)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Failed to fetch remote content: %v\n", err)
 			osExit(2)
 		}
-		sourceLabel = fmt.Sprintf("remote (%s:%s, current)", nf.Origin.Repo, nf.Origin.Tag)
+		sourceLabel = fmt.Sprintf("remote (%s:%s, current)", nf.Origin.SpecName, nf.Origin.VersionName)
 	} else {
 		// Fetch origin content (by version ID - immutable)
-		versionContent, err = drift.FetchVersionContent(ctx, client, env.ID, nf.Origin.ServerVersionID)
+		versionContent, err = drift.FetchVersionContent(ctx, client, env.ID, versionID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Failed to fetch origin content: %v\n", err)
 			fmt.Fprintln(os.Stderr, "Hint: The origin version may no longer be available on the server.")
 			osExit(2)
 		}
-		sourceLabel = fmt.Sprintf("pulled (%s:%s, %s)", nf.Origin.Repo, nf.Origin.Tag, truncateDigest(nf.Origin.ManifestDigest))
+		sourceLabel = fmt.Sprintf("pulled (%s:%s, version %s)", nf.Origin.SpecName, nf.Origin.VersionName, nf.Origin.VersionID)
 	}
 
 	// Read local files
@@ -382,10 +388,10 @@ func outputDiffText(tomlDiff *diff.TomlDiff, lockSummary *diff.LockSummary, sour
 
 func outputDiffJSON(nf *nebifile.NebiFile, tomlDiff *diff.TomlDiff, lockSummary *diff.LockSummary, sourceLabel, absDir string) {
 	source := diff.DiffRefJSON{
-		Type:      "pulled",
-		Repo: nf.Origin.Repo,
-		Tag:       nf.Origin.Tag,
-		Digest:    nf.Origin.ManifestDigest,
+		Type:   "pulled",
+		Repo:   nf.Origin.SpecName,
+		Tag:    nf.Origin.VersionName,
+		Digest: nf.Origin.VersionID,
 	}
 	if diffRemote {
 		source.Type = "remote"

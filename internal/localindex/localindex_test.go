@@ -42,8 +42,8 @@ func TestLoadEmptyIndex(t *testing.T) {
 	if idx.Version != CurrentVersion {
 		t.Errorf("Version = %d, want %d", idx.Version, CurrentVersion)
 	}
-	if len(idx.Repos) != 0 {
-		t.Errorf("Workspaces length = %d, want 0", len(idx.Repos))
+	if len(idx.Entries) != 0 {
+		t.Errorf("Entries length = %d, want 0", len(idx.Entries))
 	}
 	if idx.Aliases == nil {
 		t.Error("Aliases should not be nil")
@@ -56,17 +56,17 @@ func TestSaveAndLoad(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 	idx := &Index{
 		Version: CurrentVersion,
-		Repos: []RepoEntry{
+		Entries: []Entry{
 			{
-				Repo:       "data-science",
-				Tag:             "v1.0",
-				RegistryURL:        "ds-team",
-				ServerURL:       "https://nebi.example.com",
-				ServerVersionID: 42,
-				Path:            "/home/user/project-a",
-				IsGlobal:        false,
-				PulledAt:        now,
-				ManifestDigest:  "sha256:abc123",
+				ID:          "test-entry-uuid",
+				SpecName:    "data-science",
+				SpecID:      "spec-uuid-123",
+				VersionName: "v1.0",
+				VersionID:   "version-uuid-456",
+				ServerURL:   "https://nebi.example.com",
+				ServerID:    "server-uuid-789",
+				Path:        "/home/user/project-a",
+				PulledAt:    now,
 				Layers: map[string]string{
 					"pixi.toml": "sha256:111",
 					"pixi.lock": "sha256:222",
@@ -90,40 +90,31 @@ func TestSaveAndLoad(t *testing.T) {
 	if loaded.Version != CurrentVersion {
 		t.Errorf("Version = %d, want %d", loaded.Version, CurrentVersion)
 	}
-	if len(loaded.Repos) != 1 {
-		t.Fatalf("Workspaces length = %d, want 1", len(loaded.Repos))
+	if len(loaded.Entries) != 1 {
+		t.Fatalf("Entries length = %d, want 1", len(loaded.Entries))
 	}
 
-	ws := loaded.Repos[0]
-	if ws.Repo != "data-science" {
-		t.Errorf("Workspace = %q, want %q", ws.Repo, "data-science")
+	e := loaded.Entries[0]
+	if e.ID != "test-entry-uuid" {
+		t.Errorf("ID = %q, want %q", e.ID, "test-entry-uuid")
 	}
-	if ws.Tag != "v1.0" {
-		t.Errorf("Tag = %q, want %q", ws.Tag, "v1.0")
+	if e.SpecName != "data-science" {
+		t.Errorf("SpecName = %q, want %q", e.SpecName, "data-science")
 	}
-	if ws.RegistryURL != "ds-team" {
-		t.Errorf("Registry = %q, want %q", ws.RegistryURL, "ds-team")
+	if e.VersionName != "v1.0" {
+		t.Errorf("VersionName = %q, want %q", e.VersionName, "v1.0")
 	}
-	if ws.ServerURL != "https://nebi.example.com" {
-		t.Errorf("ServerURL = %q, want %q", ws.ServerURL, "https://nebi.example.com")
+	if e.ServerURL != "https://nebi.example.com" {
+		t.Errorf("ServerURL = %q, want %q", e.ServerURL, "https://nebi.example.com")
 	}
-	if ws.ServerVersionID != 42 {
-		t.Errorf("ServerVersionID = %d, want 42", ws.ServerVersionID)
+	if e.Path != "/home/user/project-a" {
+		t.Errorf("Path = %q, want %q", e.Path, "/home/user/project-a")
 	}
-	if ws.Path != "/home/user/project-a" {
-		t.Errorf("Path = %q, want %q", ws.Path, "/home/user/project-a")
+	if e.Layers["pixi.toml"] != "sha256:111" {
+		t.Errorf("Layers[pixi.toml] = %q, want %q", e.Layers["pixi.toml"], "sha256:111")
 	}
-	if ws.IsGlobal {
-		t.Error("IsGlobal should be false")
-	}
-	if ws.ManifestDigest != "sha256:abc123" {
-		t.Errorf("ManifestDigest = %q, want %q", ws.ManifestDigest, "sha256:abc123")
-	}
-	if ws.Layers["pixi.toml"] != "sha256:111" {
-		t.Errorf("Layers[pixi.toml] = %q, want %q", ws.Layers["pixi.toml"], "sha256:111")
-	}
-	if ws.Layers["pixi.lock"] != "sha256:222" {
-		t.Errorf("Layers[pixi.lock] = %q, want %q", ws.Layers["pixi.lock"], "sha256:222")
+	if e.Layers["pixi.lock"] != "sha256:222" {
+		t.Errorf("Layers[pixi.lock] = %q, want %q", e.Layers["pixi.lock"], "sha256:222")
 	}
 
 	// Check alias
@@ -143,13 +134,13 @@ func TestAddEntry(t *testing.T) {
 	store, _ := setupTestStore(t)
 	now := time.Now().Truncate(time.Second)
 
-	entry := RepoEntry{
-		Repo:       "data-science",
-		Tag:             "v1.0",
-		ServerURL:       "https://nebi.example.com",
-		ServerVersionID: 42,
-		Path:            "/home/user/project-a",
-		PulledAt:        now,
+	entry := Entry{
+		SpecName:    "data-science",
+		VersionName: "v1.0",
+		ServerURL:   "https://nebi.example.com",
+		VersionID:   "42",
+		Path:        "/home/user/project-a",
+		PulledAt:    now,
 	}
 
 	if err := store.AddEntry(entry); err != nil {
@@ -163,8 +154,12 @@ func TestAddEntry(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("ListAll() length = %d, want 1", len(entries))
 	}
-	if entries[0].Repo != "data-science" {
-		t.Errorf("Workspace = %q, want %q", entries[0].Repo, "data-science")
+	if entries[0].SpecName != "data-science" {
+		t.Errorf("SpecName = %q, want %q", entries[0].SpecName, "data-science")
+	}
+	// Check that ID was auto-generated
+	if entries[0].ID == "" {
+		t.Error("ID should be auto-generated")
 	}
 }
 
@@ -172,17 +167,17 @@ func TestAddEntryReplacesSamePath(t *testing.T) {
 	store, _ := setupTestStore(t)
 	now := time.Now().Truncate(time.Second)
 
-	entry1 := RepoEntry{
-		Repo: "data-science",
-		Tag:       "v1.0",
-		Path:      "/home/user/project-a",
-		PulledAt:  now,
+	entry1 := Entry{
+		SpecName:    "data-science",
+		VersionName: "v1.0",
+		Path:        "/home/user/project-a",
+		PulledAt:    now,
 	}
-	entry2 := RepoEntry{
-		Repo: "data-science",
-		Tag:       "v2.0",
-		Path:      "/home/user/project-a",
-		PulledAt:  now.Add(time.Hour),
+	entry2 := Entry{
+		SpecName:    "data-science",
+		VersionName: "v2.0",
+		Path:        "/home/user/project-a",
+		PulledAt:    now.Add(time.Hour),
 	}
 
 	if err := store.AddEntry(entry1); err != nil {
@@ -199,8 +194,8 @@ func TestAddEntryReplacesSamePath(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("ListAll() length = %d, want 1", len(entries))
 	}
-	if entries[0].Tag != "v2.0" {
-		t.Errorf("Tag = %q, want %q (should be replaced)", entries[0].Tag, "v2.0")
+	if entries[0].VersionName != "v2.0" {
+		t.Errorf("VersionName = %q, want %q (should be replaced)", entries[0].VersionName, "v2.0")
 	}
 }
 
@@ -208,10 +203,10 @@ func TestAddMultipleEntries(t *testing.T) {
 	store, _ := setupTestStore(t)
 	now := time.Now().Truncate(time.Second)
 
-	entries := []RepoEntry{
-		{Repo: "ws1", Tag: "v1.0", Path: "/path/a", PulledAt: now},
-		{Repo: "ws2", Tag: "v1.0", Path: "/path/b", PulledAt: now},
-		{Repo: "ws1", Tag: "v1.0", Path: "/path/c", PulledAt: now},
+	entries := []Entry{
+		{SpecName: "ws1", VersionName: "v1.0", Path: "/path/a", PulledAt: now},
+		{SpecName: "ws2", VersionName: "v1.0", Path: "/path/b", PulledAt: now},
+		{SpecName: "ws1", VersionName: "v1.0", Path: "/path/c", PulledAt: now},
 	}
 
 	for _, e := range entries {
@@ -233,8 +228,8 @@ func TestRemoveByPath(t *testing.T) {
 	store, _ := setupTestStore(t)
 	now := time.Now().Truncate(time.Second)
 
-	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: "/path/a", PulledAt: now})
-	store.AddEntry(RepoEntry{Repo: "ws2", Tag: "v1.0", Path: "/path/b", PulledAt: now})
+	store.AddEntry(Entry{SpecName: "ws1", VersionName: "v1.0", Path: "/path/a", PulledAt: now})
+	store.AddEntry(Entry{SpecName: "ws2", VersionName: "v1.0", Path: "/path/b", PulledAt: now})
 
 	removed, err := store.RemoveByPath("/path/a")
 	if err != nil {
@@ -269,8 +264,8 @@ func TestFindByPath(t *testing.T) {
 	store, _ := setupTestStore(t)
 	now := time.Now().Truncate(time.Second)
 
-	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: "/path/a", PulledAt: now})
-	store.AddEntry(RepoEntry{Repo: "ws2", Tag: "v2.0", Path: "/path/b", PulledAt: now})
+	store.AddEntry(Entry{SpecName: "ws1", VersionName: "v1.0", Path: "/path/a", PulledAt: now})
+	store.AddEntry(Entry{SpecName: "ws2", VersionName: "v2.0", Path: "/path/b", PulledAt: now})
 
 	entry, err := store.FindByPath("/path/a")
 	if err != nil {
@@ -279,8 +274,8 @@ func TestFindByPath(t *testing.T) {
 	if entry == nil {
 		t.Fatal("FindByPath() returned nil")
 	}
-	if entry.Repo != "ws1" {
-		t.Errorf("Workspace = %q, want %q", entry.Repo, "ws1")
+	if entry.SpecName != "ws1" {
+		t.Errorf("SpecName = %q, want %q", entry.SpecName, "ws1")
 	}
 }
 
@@ -296,30 +291,34 @@ func TestFindByPathNotFound(t *testing.T) {
 	}
 }
 
-func TestFindByRepoTag(t *testing.T) {
+func TestFindBySpecVersion(t *testing.T) {
 	store, _ := setupTestStore(t)
 	now := time.Now().Truncate(time.Second)
 
-	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: "/path/a", PulledAt: now})
-	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: "/path/b", PulledAt: now})
-	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v2.0", Path: "/path/c", PulledAt: now})
-	store.AddEntry(RepoEntry{Repo: "ws2", Tag: "v1.0", Path: "/path/d", PulledAt: now})
+	store.AddEntry(Entry{SpecName: "ws1", VersionName: "v1.0", Path: "/path/a", PulledAt: now})
+	store.AddEntry(Entry{SpecName: "ws1", VersionName: "v1.0", Path: "/path/b", PulledAt: now})
+	store.AddEntry(Entry{SpecName: "ws1", VersionName: "v2.0", Path: "/path/c", PulledAt: now})
+	store.AddEntry(Entry{SpecName: "ws2", VersionName: "v1.0", Path: "/path/d", PulledAt: now})
 
-	matches, err := store.FindByRepoTag("ws1", "v1.0")
+	matches, err := store.FindBySpecVersion("ws1", "v1.0")
 	if err != nil {
-		t.Fatalf("FindByRepoTag() error = %v", err)
+		t.Fatalf("FindBySpecVersion() error = %v", err)
 	}
 	if len(matches) != 2 {
-		t.Errorf("FindByRepoTag() length = %d, want 2", len(matches))
+		t.Errorf("FindBySpecVersion() length = %d, want 2", len(matches))
 	}
 }
 
 func TestFindGlobal(t *testing.T) {
-	store, _ := setupTestStore(t)
+	store, dir := setupTestStore(t)
 	now := time.Now().Truncate(time.Second)
 
-	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: "/path/a", IsGlobal: false, PulledAt: now})
-	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: "/global/ws1/v1.0", IsGlobal: true, PulledAt: now})
+	// Non-global entry
+	store.AddEntry(Entry{SpecName: "ws1", VersionName: "v1.0", Path: "/path/a", PulledAt: now})
+
+	// Global entry (path is under store's repos directory)
+	globalPath := filepath.Join(dir, "repos", "ws1-uuid", "v1.0")
+	store.AddEntry(Entry{SpecName: "ws1", VersionName: "v1.0", Path: globalPath, PulledAt: now})
 
 	entry, err := store.FindGlobal("ws1", "v1.0")
 	if err != nil {
@@ -328,11 +327,8 @@ func TestFindGlobal(t *testing.T) {
 	if entry == nil {
 		t.Fatal("FindGlobal() returned nil")
 	}
-	if !entry.IsGlobal {
-		t.Error("Expected IsGlobal = true")
-	}
-	if entry.Path != "/global/ws1/v1.0" {
-		t.Errorf("Path = %q, want %q", entry.Path, "/global/ws1/v1.0")
+	if entry.Path != globalPath {
+		t.Errorf("Path = %q, want %q", entry.Path, globalPath)
 	}
 }
 
@@ -340,7 +336,7 @@ func TestFindGlobalNotFound(t *testing.T) {
 	store, _ := setupTestStore(t)
 	now := time.Now().Truncate(time.Second)
 
-	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: "/path/a", IsGlobal: false, PulledAt: now})
+	store.AddEntry(Entry{SpecName: "ws1", VersionName: "v1.0", Path: "/path/a", PulledAt: now})
 
 	entry, err := store.FindGlobal("ws1", "v1.0")
 	if err != nil {
@@ -348,6 +344,21 @@ func TestFindGlobalNotFound(t *testing.T) {
 	}
 	if entry != nil {
 		t.Errorf("FindGlobal() = %v, want nil", entry)
+	}
+}
+
+func TestIsGlobal(t *testing.T) {
+	store, dir := setupTestStore(t)
+
+	globalPath := filepath.Join(dir, "repos", "ws1-uuid", "v1.0")
+	globalEntry := &Entry{Path: globalPath}
+	localEntry := &Entry{Path: "/some/local/path"}
+
+	if !store.IsGlobal(globalEntry) {
+		t.Error("IsGlobal() should return true for global path")
+	}
+	if store.IsGlobal(localEntry) {
+		t.Error("IsGlobal() should return false for local path")
 	}
 }
 
@@ -443,8 +454,8 @@ func TestPrune(t *testing.T) {
 	realDir := filepath.Join(dir, "real-workspace")
 	os.MkdirAll(realDir, 0755)
 
-	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: realDir, PulledAt: now})
-	store.AddEntry(RepoEntry{Repo: "ws2", Tag: "v1.0", Path: "/nonexistent/path", PulledAt: now})
+	store.AddEntry(Entry{SpecName: "ws1", VersionName: "v1.0", Path: realDir, PulledAt: now})
+	store.AddEntry(Entry{SpecName: "ws2", VersionName: "v1.0", Path: "/nonexistent/path", PulledAt: now})
 
 	pruned, err := store.Prune()
 	if err != nil {
@@ -473,7 +484,7 @@ func TestPruneNothingToPrune(t *testing.T) {
 	realDir := filepath.Join(dir, "real-workspace")
 	os.MkdirAll(realDir, 0755)
 
-	store.AddEntry(RepoEntry{Repo: "ws1", Tag: "v1.0", Path: realDir, PulledAt: now})
+	store.AddEntry(Entry{SpecName: "ws1", VersionName: "v1.0", Path: realDir, PulledAt: now})
 
 	pruned, err := store.Prune()
 	if err != nil {
@@ -510,7 +521,7 @@ func TestSaveCreatesDirectory(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "nested", "deep", "dir")
 	store := NewStoreWithDir(dir)
 
-	idx := &Index{Version: CurrentVersion, Repos: []RepoEntry{}}
+	idx := &Index{Version: CurrentVersion, Entries: []Entry{}}
 	if err := store.Save(idx); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -527,17 +538,17 @@ func TestIndexJSONFormat(t *testing.T) {
 
 	idx := &Index{
 		Version: CurrentVersion,
-		Repos: []RepoEntry{
+		Entries: []Entry{
 			{
-				Repo:       "data-science",
-				Tag:             "v1.0",
-				RegistryURL:        "ds-team",
-				ServerURL:       "https://nebi.example.com",
-				ServerVersionID: 42,
-				Path:            "/home/user/project-a",
-				IsGlobal:        false,
-				PulledAt:        now,
-				ManifestDigest:  "sha256:abc123def456",
+				ID:          "test-uuid",
+				SpecName:    "data-science",
+				SpecID:      "spec-uuid",
+				VersionName: "v1.0",
+				VersionID:   "version-uuid",
+				ServerURL:   "https://nebi.example.com",
+				ServerID:    "server-uuid",
+				Path:        "/home/user/project-a",
+				PulledAt:    now,
 				Layers: map[string]string{
 					"pixi.toml": "sha256:111aaa",
 					"pixi.lock": "sha256:222bbb",
@@ -564,14 +575,14 @@ func TestIndexJSONFormat(t *testing.T) {
 
 	// Check version field is number
 	version, ok := raw["version"].(float64)
-	if !ok || version != 1 {
-		t.Errorf("version = %v, want 1", raw["version"])
+	if !ok || version != float64(CurrentVersion) {
+		t.Errorf("version = %v, want %d", raw["version"], CurrentVersion)
 	}
 
-	// Check repos is array
-	repos, ok := raw["repos"].([]interface{})
-	if !ok || len(repos) != 1 {
-		t.Fatalf("repos = %v", raw["repos"])
+	// Check entries is array
+	entries, ok := raw["entries"].([]interface{})
+	if !ok || len(entries) != 1 {
+		t.Fatalf("entries = %v", raw["entries"])
 	}
 
 	// Check aliases is object
@@ -584,7 +595,7 @@ func TestIndexJSONFormat(t *testing.T) {
 func TestLoadNilAliases(t *testing.T) {
 	store, dir := setupTestStore(t)
 
-	// Write JSON without aliases field
+	// Write JSON without aliases field (old v0 format)
 	os.MkdirAll(dir, 0755)
 	data := `{"version": 1, "workspaces": []}`
 	os.WriteFile(filepath.Join(dir, IndexFileName), []byte(data), 0644)
@@ -595,5 +606,64 @@ func TestLoadNilAliases(t *testing.T) {
 	}
 	if idx.Aliases == nil {
 		t.Error("Aliases should be initialized to empty map, not nil")
+	}
+}
+
+func TestMigrationFromV1Format(t *testing.T) {
+	store, dir := setupTestStore(t)
+	now := time.Date(2024, 1, 20, 10, 30, 0, 0, time.UTC)
+
+	// Write old v1 format with "repos" array
+	os.MkdirAll(dir, 0755)
+	oldData := `{
+		"version": 1,
+		"repos": [
+			{
+				"repo": "data-science",
+				"tag": "v1.0",
+				"server_url": "https://nebi.example.com",
+				"server_version_id": 42,
+				"path": "/home/user/project-a",
+				"is_global": false,
+				"pulled_at": "2024-01-20T10:30:00Z",
+				"layers": {
+					"pixi.toml": "sha256:111",
+					"pixi.lock": "sha256:222"
+				}
+			}
+		]
+	}`
+	os.WriteFile(filepath.Join(dir, IndexFileName), []byte(oldData), 0644)
+
+	idx, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if len(idx.Entries) != 1 {
+		t.Fatalf("Entries length = %d, want 1", len(idx.Entries))
+	}
+
+	e := idx.Entries[0]
+	if e.SpecName != "data-science" {
+		t.Errorf("SpecName = %q, want %q", e.SpecName, "data-science")
+	}
+	if e.VersionName != "v1.0" {
+		t.Errorf("VersionName = %q, want %q", e.VersionName, "v1.0")
+	}
+	if e.VersionID != "42" {
+		t.Errorf("VersionID = %q, want %q", e.VersionID, "42")
+	}
+	if e.ServerURL != "https://nebi.example.com" {
+		t.Errorf("ServerURL = %q, want %q", e.ServerURL, "https://nebi.example.com")
+	}
+	if e.Path != "/home/user/project-a" {
+		t.Errorf("Path = %q, want %q", e.Path, "/home/user/project-a")
+	}
+	if !e.PulledAt.Equal(now) {
+		t.Errorf("PulledAt = %v, want %v", e.PulledAt, now)
+	}
+	if e.ID == "" {
+		t.Error("ID should be auto-generated during migration")
 	}
 }

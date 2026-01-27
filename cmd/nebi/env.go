@@ -443,7 +443,7 @@ func runEnvInfoFromCwd() {
 
 	// Show local status section
 	fmt.Println("Local:")
-	fmt.Printf("  Env:         %s\n", nf.Origin.SpecName)
+	fmt.Printf("  Name:        %s\n", nf.Origin.SpecName)
 	fmt.Printf("  Version:     %s\n", nf.Origin.VersionName)
 	if nf.Origin.VersionID != "" {
 		fmt.Printf("  Version ID:  %s\n", nf.Origin.VersionID)

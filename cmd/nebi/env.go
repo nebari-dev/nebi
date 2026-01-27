@@ -489,20 +489,20 @@ func runEnvInfoFromCwd() {
 		return
 	}
 
-	printServerInfo(envDetail)
+	// Get packages (always fetch for count)
+	packages, _ := client.GetEnvironmentPackages(ctx, env.ID)
 
-	// Get packages only if flag is set
-	if envInfoPackages {
-		packages, err := client.GetEnvironmentPackages(ctx, env.ID)
-		if err == nil && len(packages) > 0 {
-			fmt.Printf("\n  Packages (%d):\n", len(packages))
-			for _, pkg := range packages {
-				fmt.Printf("    - %s", pkg.Name)
-				if pkg.Version != "" {
-					fmt.Printf(" (%s)", pkg.Version)
-				}
-				fmt.Println()
+	printServerInfo(envDetail, len(packages))
+
+	// Show package details only if flag is set
+	if envInfoPackages && len(packages) > 0 {
+		fmt.Printf("\n  Package list:\n")
+		for _, pkg := range packages {
+			fmt.Printf("    - %s", pkg.Name)
+			if pkg.Version != "" {
+				fmt.Printf(" (%s)", pkg.Version)
 			}
+			fmt.Println()
 		}
 	}
 }
@@ -526,15 +526,17 @@ func runEnvInfoByName(envName string) {
 		osExit(1)
 	}
 
-	// Get packages if requested
-	var packages []cliclient.Package
-	if envInfoPackages {
-		packages, _ = client.GetEnvironmentPackages(ctx, env.ID)
-	}
+	// Get packages (always fetch for count, show details only with --packages)
+	packages, _ := client.GetEnvironmentPackages(ctx, env.ID)
 
 	// JSON output
 	if envInfoJSON {
-		outputEnvInfoJSON(envDetail, packages)
+		// Only include package details in JSON if --packages flag is set
+		if !envInfoPackages {
+			outputEnvInfoJSON(envDetail, nil, len(packages))
+		} else {
+			outputEnvInfoJSON(envDetail, packages, len(packages))
+		}
 		return
 	}
 
@@ -546,12 +548,13 @@ func runEnvInfoByName(envName string) {
 		fmt.Printf("Owner:           %s\n", envDetail.Owner.Username)
 	}
 	fmt.Printf("Size:            %s\n", formatBytes(envDetail.SizeBytes))
+	fmt.Printf("Packages:        %d\n", len(packages))
 	fmt.Printf("Created:         %s\n", envDetail.CreatedAt)
 	fmt.Printf("Updated:         %s\n", envDetail.UpdatedAt)
 
-	// Show packages only if flag is set
+	// Show package details only if flag is set
 	if envInfoPackages && len(packages) > 0 {
-		fmt.Printf("\nPackages (%d):\n", len(packages))
+		fmt.Printf("\nPackage list:\n")
 		for _, pkg := range packages {
 			fmt.Printf("  - %s", pkg.Name)
 			if pkg.Version != "" {
@@ -563,7 +566,7 @@ func runEnvInfoByName(envName string) {
 }
 
 // outputEnvInfoJSON outputs environment info as JSON.
-func outputEnvInfoJSON(envDetail *cliclient.Environment, packages []cliclient.Package) {
+func outputEnvInfoJSON(envDetail *cliclient.Environment, packages []cliclient.Package, packageCount int) {
 	type pkgJSON struct {
 		Name    string `json:"name"`
 		Version string `json:"version,omitempty"`
@@ -574,15 +577,16 @@ func outputEnvInfoJSON(envDetail *cliclient.Environment, packages []cliclient.Pa
 	}
 
 	type envInfoJSON struct {
-		Name           string    `json:"name"`
-		ID             string    `json:"id"`
-		Status         string    `json:"status"`
-		PackageManager string    `json:"package_manager"`
+		Name           string     `json:"name"`
+		ID             string     `json:"id"`
+		Status         string     `json:"status"`
+		PackageManager string     `json:"package_manager"`
 		Owner          *ownerJSON `json:"owner,omitempty"`
-		SizeBytes      int64     `json:"size_bytes"`
-		CreatedAt      string    `json:"created_at"`
-		UpdatedAt      string    `json:"updated_at"`
-		Packages       []pkgJSON `json:"packages,omitempty"`
+		SizeBytes      int64      `json:"size_bytes"`
+		PackageCount   int        `json:"package_count"`
+		CreatedAt      string     `json:"created_at"`
+		UpdatedAt      string     `json:"updated_at"`
+		Packages       []pkgJSON  `json:"packages,omitempty"`
 	}
 
 	output := envInfoJSON{
@@ -591,6 +595,7 @@ func outputEnvInfoJSON(envDetail *cliclient.Environment, packages []cliclient.Pa
 		Status:         envDetail.Status,
 		PackageManager: envDetail.PackageManager,
 		SizeBytes:      envDetail.SizeBytes,
+		PackageCount:   packageCount,
 		CreatedAt:      envDetail.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:      envDetail.UpdatedAt.Format(time.RFC3339),
 	}
@@ -615,7 +620,7 @@ func outputEnvInfoJSON(envDetail *cliclient.Environment, packages []cliclient.Pa
 }
 
 // printServerInfo prints the server details section for environment info.
-func printServerInfo(envDetail *cliclient.Environment) {
+func printServerInfo(envDetail *cliclient.Environment, packageCount int) {
 	fmt.Println("Server:")
 	fmt.Printf("  Name:            %s\n", envDetail.Name)
 	fmt.Printf("  ID:              %s\n", envDetail.ID)
@@ -625,6 +630,7 @@ func printServerInfo(envDetail *cliclient.Environment) {
 		fmt.Printf("  Owner:           %s\n", envDetail.Owner.Username)
 	}
 	fmt.Printf("  Size:            %s\n", formatBytes(envDetail.SizeBytes))
+	fmt.Printf("  Packages:        %d\n", packageCount)
 	fmt.Printf("  Created:         %s\n", envDetail.CreatedAt)
 	fmt.Printf("  Updated:         %s\n", envDetail.UpdatedAt)
 }

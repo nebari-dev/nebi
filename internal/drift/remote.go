@@ -123,10 +123,10 @@ func FetchVersionContent(ctx context.Context, client *cliclient.Client, envID st
 	}, nil
 }
 
-// FetchByTag resolves a tag to a version and fetches its content.
+// FetchByTag resolves a tag (version name) to a version and fetches its content from the database.
 // This is used by nebi diff --remote.
-func FetchByTag(ctx context.Context, client *cliclient.Client, repo, tag string) (*VersionContent, error) {
-	// Find repo
+func FetchByTag(ctx context.Context, client *cliclient.Client, envName, versionName string) (*VersionContent, error) {
+	// Find environment
 	envs, err := client.ListEnvironments(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list environments: %w", err)
@@ -134,33 +134,33 @@ func FetchByTag(ctx context.Context, client *cliclient.Client, repo, tag string)
 
 	var envID string
 	for _, env := range envs {
-		if env.Name == repo {
+		if env.Name == envName {
 			envID = env.ID
 			break
 		}
 	}
 	if envID == "" {
-		return nil, fmt.Errorf("repo %q not found", repo)
+		return nil, fmt.Errorf("environment %q not found", envName)
 	}
 
-	// Find publication for tag
-	pubs, err := client.GetEnvironmentPublications(ctx, envID)
+	// Find version by tag name in the database
+	tags, err := client.GetEnvironmentTags(ctx, envID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get publications: %w", err)
+		return nil, fmt.Errorf("failed to get versions: %w", err)
 	}
 
 	var versionNumber int32
 	found := false
-	for _, pub := range pubs {
-		if pub.Tag == tag {
-			versionNumber = int32(pub.VersionNumber)
+	for _, t := range tags {
+		if t.Tag == versionName {
+			versionNumber = int32(t.VersionNumber)
 			found = true
 			break
 		}
 	}
 
 	if !found {
-		return nil, fmt.Errorf("tag %q not found for repo %q", tag, repo)
+		return nil, fmt.Errorf("version %q not found for environment %q", versionName, envName)
 	}
 
 	return FetchVersionContent(ctx, client, envID, versionNumber)

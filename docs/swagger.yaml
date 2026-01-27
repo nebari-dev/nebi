@@ -107,6 +107,19 @@ definitions:
       version:
         type: string
     type: object
+  handlers.InfoResponse:
+    properties:
+      arch:
+        type: string
+      go_version:
+        type: string
+      os:
+        type: string
+      server_id:
+        type: string
+      version:
+        type: string
+    type: object
   handlers.InstallPackagesRequest:
     properties:
       packages:
@@ -172,6 +185,9 @@ definitions:
         type: string
       pixi_toml:
         type: string
+      set_default:
+        description: Set this version as the default
+        type: boolean
       tag:
         type: string
     required:
@@ -180,6 +196,9 @@ definitions:
     type: object
   handlers.PushVersionResponse:
     properties:
+      is_default:
+        description: Whether this version is now the default
+        type: boolean
       tag:
         type: string
       version_number:
@@ -279,6 +298,9 @@ definitions:
     properties:
       created_at:
         type: string
+      default_version_id:
+        description: Points to default version number
+        type: integer
       id:
         type: string
       name:
@@ -1532,6 +1554,23 @@ paths:
       summary: Health check endpoint
       tags:
       - health
+  /info:
+    get:
+      description: Returns server information including the unique server ID and version
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.InfoResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Get server information
+      tags:
+      - system
   /jobs:
     get:
       produces:

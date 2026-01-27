@@ -48,10 +48,10 @@ type ThreeWayStatus struct {
 }
 
 // CheckRemote checks if the remote tag has moved since the repo was pulled.
-// It compares the stored manifest digest against the current tag resolution.
+// It compares the stored version against the current tag resolution.
 func CheckRemote(ctx context.Context, client *cliclient.Client, nf *nebifile.NebiFile) *RemoteStatus {
 	rs := &RemoteStatus{
-		OriginDigest: nf.Origin.ManifestDigest,
+		OriginDigest: nf.Origin.VersionID, // Use VersionID as the origin reference
 	}
 
 	// Find repo by listing environments
@@ -63,13 +63,13 @@ func CheckRemote(ctx context.Context, client *cliclient.Client, nf *nebifile.Neb
 
 	var envID string
 	for _, env := range envs {
-		if env.Name == nf.Origin.Repo {
+		if env.Name == nf.Origin.SpecName {
 			envID = env.ID
 			break
 		}
 	}
 	if envID == "" {
-		rs.Error = fmt.Sprintf("repo %q not found on server", nf.Origin.Repo)
+		rs.Error = fmt.Sprintf("repo %q not found on server", nf.Origin.SpecName)
 		return rs
 	}
 
@@ -82,7 +82,7 @@ func CheckRemote(ctx context.Context, client *cliclient.Client, nf *nebifile.Neb
 
 	found := false
 	for _, pub := range pubs {
-		if pub.Tag == nf.Origin.Tag {
+		if pub.Tag == nf.Origin.VersionName {
 			rs.CurrentTagDigest = pub.Digest
 			rs.CurrentVersionID = int32(pub.VersionNumber)
 			found = true
@@ -91,7 +91,7 @@ func CheckRemote(ctx context.Context, client *cliclient.Client, nf *nebifile.Neb
 	}
 
 	if !found {
-		rs.Error = fmt.Sprintf("tag %q not found in registry", nf.Origin.Tag)
+		rs.Error = fmt.Sprintf("tag %q not found in registry", nf.Origin.VersionName)
 		return rs
 	}
 

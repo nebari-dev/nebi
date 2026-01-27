@@ -101,32 +101,24 @@ func runStatus(cmd *cobra.Command, args []string) {
 
 func outputStatusCompact(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) {
 	status := string(ws.Overall)
-	ref := nf.Origin.Repo
-	if nf.Origin.Tag != "" {
-		ref += ":" + nf.Origin.Tag
+	ref := nf.Origin.SpecName
+	if nf.Origin.VersionName != "" {
+		ref += ":" + nf.Origin.VersionName
 	}
 
-	registry := nf.Origin.RegistryURL
-	if registry == "" {
-		registry = "server"
-	}
-
-	fmt.Printf("%s (%s)  •  pulled %s  •  %s\n", ref, registry, formatTimeAgo(nf.Origin.PulledAt), status)
+	fmt.Printf("%s (server)  •  pulled %s  •  %s\n", ref, formatTimeAgo(nf.Origin.PulledAt), status)
 
 	if remote != nil && remote.TagHasMoved {
-		fmt.Printf("  ⚠ Tag '%s' has been updated on remote\n", nf.Origin.Tag)
+		fmt.Printf("  ⚠ Tag '%s' has been updated on remote\n", nf.Origin.VersionName)
 	}
 }
 
 func outputStatusVerbose(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) {
-	fmt.Printf("Repo:      %s:%s\n", nf.Origin.Repo, nf.Origin.Tag)
-	if nf.Origin.RegistryURL != "" {
-		fmt.Printf("Registry:  %s\n", nf.Origin.RegistryURL)
-	}
+	fmt.Printf("Repo:      %s:%s\n", nf.Origin.SpecName, nf.Origin.VersionName)
 	fmt.Printf("Server:    %s\n", nf.Origin.ServerURL)
 	fmt.Printf("Pulled:    %s (%s)\n", nf.Origin.PulledAt.Format("2006-01-02 15:04:05"), formatTimeAgo(nf.Origin.PulledAt))
-	if nf.Origin.ManifestDigest != "" {
-		fmt.Printf("Digest:    %s\n", nf.Origin.ManifestDigest)
+	if nf.Origin.VersionID != "" {
+		fmt.Printf("Version:   %s\n", nf.Origin.VersionID)
 	}
 	fmt.Println()
 
@@ -142,7 +134,7 @@ func outputStatusVerbose(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *dr
 			fmt.Printf("  Error: %s\n", remote.Error)
 		} else if remote.TagHasMoved {
 			fmt.Printf("  ⚠ Tag '%s' now points to %s (was %s when pulled)\n",
-				nf.Origin.Tag, remote.CurrentTagDigest, remote.OriginDigest)
+				nf.Origin.VersionName, remote.CurrentTagDigest, remote.OriginDigest)
 			fmt.Println("  The tag has been updated since you pulled.")
 		} else {
 			fmt.Println("  Tag unchanged since pull")
@@ -154,7 +146,7 @@ func outputStatusVerbose(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *dr
 		fmt.Println("Next steps:")
 		fmt.Println("  nebi diff              # See what changed")
 		fmt.Println("  nebi pull --force      # Discard local changes")
-		fmt.Printf("  nebi push %s:<tag>  # Publish as new version\n", nf.Origin.Repo)
+		fmt.Printf("  nebi push %s:<tag>  # Publish as new version\n", nf.Origin.SpecName)
 	}
 }
 

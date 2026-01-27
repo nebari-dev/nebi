@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"github.com/pelletier/go-toml/v2"
 )
 
 func TestReadNonExistentFile(t *testing.T) {
@@ -16,14 +16,14 @@ func TestReadNonExistentFile(t *testing.T) {
 	}
 }
 
-func TestReadInvalidYAML(t *testing.T) {
+func TestReadInvalidTOML(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, FileName)
-	os.WriteFile(path, []byte("not: valid: yaml: {{{"), 0644)
+	os.WriteFile(path, []byte("not valid toml = {{{"), 0644)
 
 	_, err := Read(dir)
 	if err == nil {
-		t.Fatal("Read() should return error for invalid YAML")
+		t.Fatal("Read() should return error for invalid TOML")
 	}
 }
 
@@ -32,26 +32,15 @@ func TestWriteAndRead(t *testing.T) {
 	now := time.Date(2024, 1, 20, 10, 30, 0, 0, time.UTC)
 
 	nf := &NebiFile{
+		ID: "test-uuid-123",
 		Origin: Origin{
-			Repo:            "data-science",
-			Tag:             "v1.0",
-			RegistryURL:        "ds-team",
-			ServerURL:       "https://nebi.example.com",
-			ServerVersionID: 42,
-			ManifestDigest:  "sha256:abc123def456",
-			PulledAt:        now,
-		},
-		Layers: map[string]Layer{
-			"pixi.toml": {
-				Digest:    "sha256:111aaa",
-				Size:      2345,
-				MediaType: MediaTypePixiToml,
-			},
-			"pixi.lock": {
-				Digest:    "sha256:222bbb",
-				Size:      45678,
-				MediaType: MediaTypePixiLock,
-			},
+			ServerID:    "server-uuid",
+			ServerURL:   "https://nebi.example.com",
+			SpecID:      "spec-uuid",
+			SpecName:    "data-science",
+			VersionID:   "version-uuid",
+			VersionName: "v1.0",
+			PulledAt:    now,
 		},
 	}
 
@@ -64,54 +53,21 @@ func TestWriteAndRead(t *testing.T) {
 		t.Fatalf("Read() error = %v", err)
 	}
 
-	// Verify origin
-	if loaded.Origin.Repo != "data-science" {
-		t.Errorf("Workspace = %q, want %q", loaded.Origin.Repo, "data-science")
+	// Verify fields
+	if loaded.ID != "test-uuid-123" {
+		t.Errorf("ID = %q, want %q", loaded.ID, "test-uuid-123")
 	}
-	if loaded.Origin.Tag != "v1.0" {
-		t.Errorf("Tag = %q, want %q", loaded.Origin.Tag, "v1.0")
+	if loaded.Origin.SpecName != "data-science" {
+		t.Errorf("SpecName = %q, want %q", loaded.Origin.SpecName, "data-science")
 	}
-	if loaded.Origin.RegistryURL != "ds-team" {
-		t.Errorf("Registry = %q, want %q", loaded.Origin.RegistryURL, "ds-team")
+	if loaded.Origin.VersionName != "v1.0" {
+		t.Errorf("VersionName = %q, want %q", loaded.Origin.VersionName, "v1.0")
 	}
 	if loaded.Origin.ServerURL != "https://nebi.example.com" {
 		t.Errorf("ServerURL = %q, want %q", loaded.Origin.ServerURL, "https://nebi.example.com")
 	}
-	if loaded.Origin.ServerVersionID != 42 {
-		t.Errorf("ServerVersionID = %d, want 42", loaded.Origin.ServerVersionID)
-	}
-	if loaded.Origin.ManifestDigest != "sha256:abc123def456" {
-		t.Errorf("ManifestDigest = %q, want %q", loaded.Origin.ManifestDigest, "sha256:abc123def456")
-	}
 	if !loaded.Origin.PulledAt.Equal(now) {
 		t.Errorf("PulledAt = %v, want %v", loaded.Origin.PulledAt, now)
-	}
-
-	// Verify layers
-	if len(loaded.Layers) != 2 {
-		t.Fatalf("Layers length = %d, want 2", len(loaded.Layers))
-	}
-
-	tomlLayer := loaded.Layers["pixi.toml"]
-	if tomlLayer.Digest != "sha256:111aaa" {
-		t.Errorf("pixi.toml Digest = %q, want %q", tomlLayer.Digest, "sha256:111aaa")
-	}
-	if tomlLayer.Size != 2345 {
-		t.Errorf("pixi.toml Size = %d, want 2345", tomlLayer.Size)
-	}
-	if tomlLayer.MediaType != MediaTypePixiToml {
-		t.Errorf("pixi.toml MediaType = %q, want %q", tomlLayer.MediaType, MediaTypePixiToml)
-	}
-
-	lockLayer := loaded.Layers["pixi.lock"]
-	if lockLayer.Digest != "sha256:222bbb" {
-		t.Errorf("pixi.lock Digest = %q, want %q", lockLayer.Digest, "sha256:222bbb")
-	}
-	if lockLayer.Size != 45678 {
-		t.Errorf("pixi.lock Size = %d, want 45678", lockLayer.Size)
-	}
-	if lockLayer.MediaType != MediaTypePixiLock {
-		t.Errorf("pixi.lock MediaType = %q, want %q", lockLayer.MediaType, MediaTypePixiLock)
 	}
 }
 
@@ -122,175 +78,123 @@ func TestExists(t *testing.T) {
 		t.Error("Exists() should return false for empty directory")
 	}
 
-	// Create .nebi file
+	// Create .nebi.toml file
 	nf := &NebiFile{
-		Origin: Origin{Repo: "test"},
-		Layers: make(map[string]Layer),
+		ID: "test-uuid",
+		Origin: Origin{
+			SpecName: "test",
+		},
 	}
 	Write(dir, nf)
 
 	if !Exists(dir) {
-		t.Error("Exists() should return true after writing .nebi file")
+		t.Error("Exists() should return true after writing .nebi.toml file")
+	}
+}
+
+func TestExistsOldFormat(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create old .nebi YAML file
+	oldContent := `origin:
+  repo: test
+  tag: v1.0
+  server_url: https://example.com
+  server_version_id: 1
+  pulled_at: 2024-01-20T10:30:00Z
+`
+	os.WriteFile(filepath.Join(dir, OldFileName), []byte(oldContent), 0644)
+
+	if !Exists(dir) {
+		t.Error("Exists() should return true for old .nebi YAML file")
 	}
 }
 
 func TestNew(t *testing.T) {
 	origin := Origin{
-		Repo:            "test-ws",
-		Tag:             "v1.0",
-		ServerURL:       "https://example.com",
-		ServerVersionID: 1,
-	}
-	layers := map[string]Layer{
-		"pixi.toml": {Digest: "sha256:aaa", Size: 100, MediaType: MediaTypePixiToml},
+		SpecName:    "test-ws",
+		VersionName: "v1.0",
+		ServerURL:   "https://example.com",
+		VersionID:   "1",
 	}
 
-	nf := New(origin, layers)
-	if nf.Origin.Repo != "test-ws" {
-		t.Errorf("Workspace = %q, want %q", nf.Origin.Repo, "test-ws")
+	nf := New(origin)
+	if nf.Origin.SpecName != "test-ws" {
+		t.Errorf("SpecName = %q, want %q", nf.Origin.SpecName, "test-ws")
 	}
-	if len(nf.Layers) != 1 {
-		t.Errorf("Layers length = %d, want 1", len(nf.Layers))
-	}
-}
-
-func TestNewNilLayers(t *testing.T) {
-	origin := Origin{Repo: "test-ws"}
-	nf := New(origin, nil)
-	if nf.Layers == nil {
-		t.Error("Layers should not be nil when created with nil argument")
+	if nf.ID == "" {
+		t.Error("ID should be auto-generated")
 	}
 }
 
 func TestNewFromPull(t *testing.T) {
 	nf := NewFromPull(
-		"data-science", "v1.0", "ds-team", "https://nebi.example.com",
-		42, "sha256:manifest123",
-		"sha256:toml456", 2345,
-		"sha256:lock789", 45678,
+		"data-science", "v1.0", "https://nebi.example.com",
+		"spec-uuid", "version-uuid", "server-uuid",
 	)
 
-	if nf.Origin.Repo != "data-science" {
-		t.Errorf("Workspace = %q, want %q", nf.Origin.Repo, "data-science")
+	if nf.Origin.SpecName != "data-science" {
+		t.Errorf("SpecName = %q, want %q", nf.Origin.SpecName, "data-science")
 	}
-	if nf.Origin.Tag != "v1.0" {
-		t.Errorf("Tag = %q, want %q", nf.Origin.Tag, "v1.0")
-	}
-	if nf.Origin.RegistryURL != "ds-team" {
-		t.Errorf("Registry = %q, want %q", nf.Origin.RegistryURL, "ds-team")
+	if nf.Origin.VersionName != "v1.0" {
+		t.Errorf("VersionName = %q, want %q", nf.Origin.VersionName, "v1.0")
 	}
 	if nf.Origin.ServerURL != "https://nebi.example.com" {
 		t.Errorf("ServerURL = %q, want %q", nf.Origin.ServerURL, "https://nebi.example.com")
 	}
-	if nf.Origin.ServerVersionID != 42 {
-		t.Errorf("ServerVersionID = %d, want 42", nf.Origin.ServerVersionID)
+	if nf.Origin.SpecID != "spec-uuid" {
+		t.Errorf("SpecID = %q, want %q", nf.Origin.SpecID, "spec-uuid")
 	}
-	if nf.Origin.ManifestDigest != "sha256:manifest123" {
-		t.Errorf("ManifestDigest = %q, want %q", nf.Origin.ManifestDigest, "sha256:manifest123")
+	if nf.Origin.VersionID != "version-uuid" {
+		t.Errorf("VersionID = %q, want %q", nf.Origin.VersionID, "version-uuid")
+	}
+	if nf.Origin.ServerID != "server-uuid" {
+		t.Errorf("ServerID = %q, want %q", nf.Origin.ServerID, "server-uuid")
 	}
 	if nf.Origin.PulledAt.IsZero() {
 		t.Error("PulledAt should not be zero")
 	}
-
-	toml := nf.Layers["pixi.toml"]
-	if toml.Digest != "sha256:toml456" {
-		t.Errorf("pixi.toml Digest = %q, want %q", toml.Digest, "sha256:toml456")
-	}
-	if toml.Size != 2345 {
-		t.Errorf("pixi.toml Size = %d, want 2345", toml.Size)
-	}
-	if toml.MediaType != MediaTypePixiToml {
-		t.Errorf("pixi.toml MediaType = %q, want %q", toml.MediaType, MediaTypePixiToml)
-	}
-
-	lock := nf.Layers["pixi.lock"]
-	if lock.Digest != "sha256:lock789" {
-		t.Errorf("pixi.lock Digest = %q, want %q", lock.Digest, "sha256:lock789")
-	}
-	if lock.Size != 45678 {
-		t.Errorf("pixi.lock Size = %d, want 45678", lock.Size)
-	}
-	if lock.MediaType != MediaTypePixiLock {
-		t.Errorf("pixi.lock MediaType = %q, want %q", lock.MediaType, MediaTypePixiLock)
+	if nf.ID == "" {
+		t.Error("ID should be auto-generated")
 	}
 }
 
-func TestGetLayerDigest(t *testing.T) {
-	nf := &NebiFile{
-		Layers: map[string]Layer{
-			"pixi.toml": {Digest: "sha256:aaa"},
-			"pixi.lock": {Digest: "sha256:bbb"},
-		},
-	}
-
-	if got := nf.GetLayerDigest("pixi.toml"); got != "sha256:aaa" {
-		t.Errorf("GetLayerDigest(pixi.toml) = %q, want %q", got, "sha256:aaa")
-	}
-	if got := nf.GetLayerDigest("pixi.lock"); got != "sha256:bbb" {
-		t.Errorf("GetLayerDigest(pixi.lock) = %q, want %q", got, "sha256:bbb")
-	}
-	if got := nf.GetLayerDigest("nonexistent"); got != "" {
-		t.Errorf("GetLayerDigest(nonexistent) = %q, want empty string", got)
-	}
-}
-
-func TestHasLayer(t *testing.T) {
-	nf := &NebiFile{
-		Layers: map[string]Layer{
-			"pixi.toml": {Digest: "sha256:aaa"},
-		},
-	}
-
-	if !nf.HasLayer("pixi.toml") {
-		t.Error("HasLayer(pixi.toml) should return true")
-	}
-	if nf.HasLayer("pixi.lock") {
-		t.Error("HasLayer(pixi.lock) should return false")
-	}
-}
-
-func TestYAMLFormat(t *testing.T) {
+func TestTOMLFormat(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Date(2024, 1, 20, 10, 30, 0, 0, time.UTC)
 
 	nf := &NebiFile{
+		ID: "test-uuid",
 		Origin: Origin{
-			Repo:            "data-science",
-			Tag:             "v1.0",
-			RegistryURL:        "ds-team",
-			ServerURL:       "https://nebi.example.com",
-			ServerVersionID: 42,
-			ManifestDigest:  "sha256:abc123",
-			PulledAt:        now,
-		},
-		Layers: map[string]Layer{
-			"pixi.toml": {
-				Digest:    "sha256:111",
-				Size:      2345,
-				MediaType: MediaTypePixiToml,
-			},
+			ServerID:    "server-uuid",
+			ServerURL:   "https://nebi.example.com",
+			SpecID:      "spec-uuid",
+			SpecName:    "data-science",
+			VersionID:   "version-uuid",
+			VersionName: "v1.0",
+			PulledAt:    now,
 		},
 	}
 
 	Write(dir, nf)
 
-	// Read raw YAML and verify structure
+	// Read raw TOML and verify structure
 	data, err := os.ReadFile(filepath.Join(dir, FileName))
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
 
 	var raw map[string]interface{}
-	if err := yaml.Unmarshal(data, &raw); err != nil {
+	if err := toml.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
 
-	// Check top-level keys
-	if _, ok := raw["origin"]; !ok {
-		t.Error("YAML should have 'origin' key")
+	// Check top-level fields
+	if _, ok := raw["id"]; !ok {
+		t.Error("TOML should have 'id' key")
 	}
-	if _, ok := raw["layers"]; !ok {
-		t.Error("YAML should have 'layers' key")
+	if _, ok := raw["origin"]; !ok {
+		t.Error("TOML should have 'origin' key")
 	}
 
 	// Check origin structure
@@ -298,43 +202,23 @@ func TestYAMLFormat(t *testing.T) {
 	if !ok {
 		t.Fatal("origin should be a map")
 	}
-	if origin["repo"] != "data-science" {
-		t.Errorf("origin.repo = %v, want %q", origin["repo"], "data-science")
+	if origin["spec_name"] != "data-science" {
+		t.Errorf("origin.spec_name = %v, want %q", origin["spec_name"], "data-science")
 	}
 	if origin["server_url"] != "https://nebi.example.com" {
 		t.Errorf("origin.server_url = %v, want %q", origin["server_url"], "https://nebi.example.com")
 	}
 }
 
-func TestReadNilLayers(t *testing.T) {
-	dir := t.TempDir()
-
-	// Write YAML without layers field
-	data := `origin:
-  workspace: test
-  tag: v1.0
-  server_url: https://example.com
-  server_version_id: 1
-  pulled_at: 2024-01-20T10:30:00Z
-`
-	os.WriteFile(filepath.Join(dir, FileName), []byte(data), 0644)
-
-	nf, err := Read(dir)
-	if err != nil {
-		t.Fatalf("Read() error = %v", err)
-	}
-	if nf.Layers == nil {
-		t.Error("Layers should be initialized to empty map, not nil")
-	}
-}
-
 func TestWriteFile(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "custom.nebi")
+	path := filepath.Join(dir, "custom.nebi.toml")
 
 	nf := &NebiFile{
-		Origin: Origin{Repo: "test"},
-		Layers: make(map[string]Layer),
+		ID: "test-uuid",
+		Origin: Origin{
+			SpecName: "test",
+		},
 	}
 
 	if err := WriteFile(path, nf); err != nil {
@@ -345,13 +229,13 @@ func TestWriteFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
-	if loaded.Origin.Repo != "test" {
-		t.Errorf("Workspace = %q, want %q", loaded.Origin.Repo, "test")
+	if loaded.Origin.SpecName != "test" {
+		t.Errorf("SpecName = %q, want %q", loaded.Origin.SpecName, "test")
 	}
 }
 
 func TestReadFileNonExistent(t *testing.T) {
-	_, err := ReadFile("/nonexistent/path/.nebi")
+	_, err := ReadFile("/nonexistent/path/.nebi.toml")
 	if err == nil {
 		t.Fatal("ReadFile() should return error for nonexistent file")
 	}
@@ -361,23 +245,23 @@ func TestWriteOverwrite(t *testing.T) {
 	dir := t.TempDir()
 
 	nf1 := &NebiFile{
-		Origin: Origin{Repo: "ws1", Tag: "v1.0"},
-		Layers: make(map[string]Layer),
+		ID:     "uuid-1",
+		Origin: Origin{SpecName: "ws1", VersionName: "v1.0"},
 	}
 	nf2 := &NebiFile{
-		Origin: Origin{Repo: "ws2", Tag: "v2.0"},
-		Layers: make(map[string]Layer),
+		ID:     "uuid-2",
+		Origin: Origin{SpecName: "ws2", VersionName: "v2.0"},
 	}
 
 	Write(dir, nf1)
 	Write(dir, nf2)
 
 	loaded, _ := Read(dir)
-	if loaded.Origin.Repo != "ws2" {
-		t.Errorf("Workspace = %q, want %q (should be overwritten)", loaded.Origin.Repo, "ws2")
+	if loaded.Origin.SpecName != "ws2" {
+		t.Errorf("SpecName = %q, want %q (should be overwritten)", loaded.Origin.SpecName, "ws2")
 	}
-	if loaded.Origin.Tag != "v2.0" {
-		t.Errorf("Tag = %q, want %q (should be overwritten)", loaded.Origin.Tag, "v2.0")
+	if loaded.Origin.VersionName != "v2.0" {
+		t.Errorf("VersionName = %q, want %q (should be overwritten)", loaded.Origin.VersionName, "v2.0")
 	}
 }
 
@@ -391,8 +275,11 @@ func TestMediaTypeConstants(t *testing.T) {
 }
 
 func TestFileNameConstant(t *testing.T) {
-	if FileName != ".nebi" {
-		t.Errorf("FileName = %q, want %q", FileName, ".nebi")
+	if FileName != ".nebi.toml" {
+		t.Errorf("FileName = %q, want %q", FileName, ".nebi.toml")
+	}
+	if OldFileName != ".nebi" {
+		t.Errorf("OldFileName = %q, want %q", OldFileName, ".nebi")
 	}
 }
 
@@ -401,14 +288,14 @@ func TestEmptyOriginFields(t *testing.T) {
 
 	// Only required fields
 	nf := &NebiFile{
+		ID: "test-uuid",
 		Origin: Origin{
-			Repo:            "test",
-			Tag:             "v1.0",
-			ServerURL:       "https://example.com",
-			ServerVersionID: 1,
-			PulledAt:        time.Now(),
+			SpecName:    "test",
+			VersionName: "v1.0",
+			ServerURL:   "https://example.com",
+			VersionID:   "1",
+			PulledAt:    time.Now(),
 		},
-		Layers: make(map[string]Layer),
 	}
 
 	if err := Write(dir, nf); err != nil {
@@ -421,11 +308,11 @@ func TestEmptyOriginFields(t *testing.T) {
 	}
 
 	// Optional fields should be empty
-	if loaded.Origin.RegistryURL != "" {
-		t.Errorf("Registry = %q, want empty", loaded.Origin.RegistryURL)
+	if loaded.Origin.SpecID != "" {
+		t.Errorf("SpecID = %q, want empty", loaded.Origin.SpecID)
 	}
-	if loaded.Origin.ManifestDigest != "" {
-		t.Errorf("ManifestDigest = %q, want empty", loaded.Origin.ManifestDigest)
+	if loaded.Origin.ServerID != "" {
+		t.Errorf("ServerID = %q, want empty", loaded.Origin.ServerID)
 	}
 }
 
@@ -434,26 +321,15 @@ func TestRoundTripPreservesData(t *testing.T) {
 	now := time.Date(2024, 6, 15, 14, 30, 0, 0, time.UTC)
 
 	original := &NebiFile{
+		ID: "original-uuid",
 		Origin: Origin{
-			Repo:            "ml-pipeline",
-			Tag:             "v2.3.1-beta",
-			RegistryURL:        "ml-team",
-			ServerURL:       "https://nebi.internal.company.com:8460",
-			ServerVersionID: 127,
-			ManifestDigest:  "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-			PulledAt:        now,
-		},
-		Layers: map[string]Layer{
-			"pixi.toml": {
-				Digest:    "sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
-				Size:      4096,
-				MediaType: MediaTypePixiToml,
-			},
-			"pixi.lock": {
-				Digest:    "sha256:f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5",
-				Size:      102400,
-				MediaType: MediaTypePixiLock,
-			},
+			ServerID:    "server-uuid-123",
+			ServerURL:   "https://nebi.internal.company.com:8460",
+			SpecID:      "spec-uuid-456",
+			SpecName:    "ml-pipeline",
+			VersionID:   "version-uuid-789",
+			VersionName: "v2.3.1-beta",
+			PulledAt:    now,
 		},
 	}
 
@@ -467,42 +343,140 @@ func TestRoundTripPreservesData(t *testing.T) {
 	}
 
 	// Compare all fields
-	if loaded.Origin.Repo != original.Origin.Repo {
-		t.Errorf("Workspace mismatch: got %q, want %q", loaded.Origin.Repo, original.Origin.Repo)
+	if loaded.ID != original.ID {
+		t.Errorf("ID mismatch: got %q, want %q", loaded.ID, original.ID)
 	}
-	if loaded.Origin.Tag != original.Origin.Tag {
-		t.Errorf("Tag mismatch: got %q, want %q", loaded.Origin.Tag, original.Origin.Tag)
+	if loaded.Origin.SpecName != original.Origin.SpecName {
+		t.Errorf("SpecName mismatch: got %q, want %q", loaded.Origin.SpecName, original.Origin.SpecName)
 	}
-	if loaded.Origin.RegistryURL != original.Origin.RegistryURL {
-		t.Errorf("Registry mismatch: got %q, want %q", loaded.Origin.RegistryURL, original.Origin.RegistryURL)
+	if loaded.Origin.VersionName != original.Origin.VersionName {
+		t.Errorf("VersionName mismatch: got %q, want %q", loaded.Origin.VersionName, original.Origin.VersionName)
 	}
 	if loaded.Origin.ServerURL != original.Origin.ServerURL {
 		t.Errorf("ServerURL mismatch: got %q, want %q", loaded.Origin.ServerURL, original.Origin.ServerURL)
 	}
-	if loaded.Origin.ServerVersionID != original.Origin.ServerVersionID {
-		t.Errorf("ServerVersionID mismatch: got %d, want %d", loaded.Origin.ServerVersionID, original.Origin.ServerVersionID)
+	if loaded.Origin.ServerID != original.Origin.ServerID {
+		t.Errorf("ServerID mismatch: got %q, want %q", loaded.Origin.ServerID, original.Origin.ServerID)
 	}
-	if loaded.Origin.ManifestDigest != original.Origin.ManifestDigest {
-		t.Errorf("ManifestDigest mismatch: got %q, want %q", loaded.Origin.ManifestDigest, original.Origin.ManifestDigest)
+	if loaded.Origin.SpecID != original.Origin.SpecID {
+		t.Errorf("SpecID mismatch: got %q, want %q", loaded.Origin.SpecID, original.Origin.SpecID)
+	}
+	if loaded.Origin.VersionID != original.Origin.VersionID {
+		t.Errorf("VersionID mismatch: got %q, want %q", loaded.Origin.VersionID, original.Origin.VersionID)
 	}
 	if !loaded.Origin.PulledAt.Equal(original.Origin.PulledAt) {
 		t.Errorf("PulledAt mismatch: got %v, want %v", loaded.Origin.PulledAt, original.Origin.PulledAt)
 	}
+}
 
-	for name, origLayer := range original.Layers {
-		loadedLayer, ok := loaded.Layers[name]
-		if !ok {
-			t.Errorf("Layer %q not found in loaded file", name)
-			continue
-		}
-		if loadedLayer.Digest != origLayer.Digest {
-			t.Errorf("Layer %q Digest mismatch: got %q, want %q", name, loadedLayer.Digest, origLayer.Digest)
-		}
-		if loadedLayer.Size != origLayer.Size {
-			t.Errorf("Layer %q Size mismatch: got %d, want %d", name, loadedLayer.Size, origLayer.Size)
-		}
-		if loadedLayer.MediaType != origLayer.MediaType {
-			t.Errorf("Layer %q MediaType mismatch: got %q, want %q", name, loadedLayer.MediaType, origLayer.MediaType)
-		}
+func TestMigrationFromOldYAMLFormat(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2024, 1, 20, 10, 30, 0, 0, time.UTC)
+
+	// Write old YAML format
+	oldContent := `origin:
+  repo: data-science
+  tag: v1.0
+  registry_url: ds-team
+  server_url: https://nebi.example.com
+  server_version_id: 42
+  manifest_digest: sha256:abc123
+  pulled_at: 2024-01-20T10:30:00Z
+layers:
+  pixi.toml:
+    digest: sha256:111
+    size: 2345
+    media_type: application/vnd.pixi.toml.v1+toml
+`
+	os.WriteFile(filepath.Join(dir, OldFileName), []byte(oldContent), 0644)
+
+	// Read should migrate from old format
+	loaded, err := Read(dir)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+
+	// Verify migrated fields
+	if loaded.Origin.SpecName != "data-science" {
+		t.Errorf("SpecName = %q, want %q", loaded.Origin.SpecName, "data-science")
+	}
+	if loaded.Origin.VersionName != "v1.0" {
+		t.Errorf("VersionName = %q, want %q", loaded.Origin.VersionName, "v1.0")
+	}
+	if loaded.Origin.VersionID != "42" {
+		t.Errorf("VersionID = %q, want %q", loaded.Origin.VersionID, "42")
+	}
+	if loaded.Origin.ServerURL != "https://nebi.example.com" {
+		t.Errorf("ServerURL = %q, want %q", loaded.Origin.ServerURL, "https://nebi.example.com")
+	}
+	if !loaded.Origin.PulledAt.Equal(now) {
+		t.Errorf("PulledAt = %v, want %v", loaded.Origin.PulledAt, now)
+	}
+	if loaded.ID == "" {
+		t.Error("ID should be auto-generated during migration")
+	}
+}
+
+func TestMigrationFromOldWorkspaceField(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write old YAML format with "workspace" instead of "repo"
+	oldContent := `origin:
+  workspace: old-workspace-name
+  tag: v1.0
+  server_url: https://example.com
+  server_version_id: 1
+  pulled_at: 2024-01-20T10:30:00Z
+`
+	os.WriteFile(filepath.Join(dir, OldFileName), []byte(oldContent), 0644)
+
+	loaded, err := Read(dir)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+
+	// Should use "workspace" value when "repo" is empty
+	if loaded.Origin.SpecName != "old-workspace-name" {
+		t.Errorf("SpecName = %q, want %q", loaded.Origin.SpecName, "old-workspace-name")
+	}
+}
+
+func TestWriteRemovesOldFile(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create old YAML file
+	os.WriteFile(filepath.Join(dir, OldFileName), []byte("old content"), 0644)
+
+	// Write new format
+	nf := &NebiFile{
+		ID:     "test-uuid",
+		Origin: Origin{SpecName: "test"},
+	}
+	Write(dir, nf)
+
+	// Old file should be removed
+	if _, err := os.Stat(filepath.Join(dir, OldFileName)); !os.IsNotExist(err) {
+		t.Error("Old .nebi file should be removed after writing new format")
+	}
+
+	// New file should exist
+	if _, err := os.Stat(filepath.Join(dir, FileName)); err != nil {
+		t.Errorf("New .nebi.toml file should exist: %v", err)
+	}
+}
+
+func TestAutoGenerateID(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write without ID
+	nf := &NebiFile{
+		Origin: Origin{SpecName: "test"},
+	}
+	Write(dir, nf)
+
+	// Read should have ID
+	loaded, _ := Read(dir)
+	if loaded.ID == "" {
+		t.Error("ID should be auto-generated when writing")
 	}
 }

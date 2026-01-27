@@ -69,12 +69,12 @@ func formatStatusJSONInternal(ws *drift.RepoStatus, nf *nebifile.NebiFile, remot
 	}
 
 	output := statusOutput{
-		Repo:         nf.Origin.Repo,
-		Tag:          nf.Origin.Tag,
-		RegistryURL:  nf.Origin.RegistryURL,
+		Repo:         nf.Origin.SpecName,
+		Tag:          nf.Origin.VersionName,
+		RegistryURL:  "", // No longer stored in nebifile
 		ServerURL:    nf.Origin.ServerURL,
 		PulledAt:     nf.Origin.PulledAt.Format(time.RFC3339),
-		OriginDigest: nf.Origin.ManifestDigest,
+		OriginDigest: nf.Origin.VersionID,
 		Local: localStatus{
 			PixiToml: getFileStatus(ws, "pixi.toml"),
 			PixiLock: getFileStatus(ws, "pixi.lock"),

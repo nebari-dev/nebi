@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aktech/darb/internal/drift"
 	"github.com/aktech/darb/internal/localindex"
@@ -239,7 +240,7 @@ func findValidLocalCopies(store *localindex.Store, repo, tag string) []localinde
 
 	var valid []localindex.RepoEntry
 	for _, m := range matches {
-		if m.IsGlobal {
+		if m.IsGlobal() {
 			continue
 		}
 		if _, err := os.Stat(m.Path); err == nil {
@@ -390,19 +391,21 @@ func pullForShell(repoName, tag string) string {
 	lockDigest := nebifile.ComputeDigest(pixiLockBytes)
 	nf := nebifile.NewFromPull(
 		repoName, tag, "", "",
-		latestVersion.VersionNumber, "",
-		tomlDigest, int64(len(pixiTomlBytes)),
-		lockDigest, int64(len(pixiLockBytes)),
+		fmt.Sprintf("%d", latestVersion.VersionNumber), "",
 	)
 	nebifile.Write(cacheDir, nf)
 
 	// Add to local index
-	store.AddEntry(localindex.RepoEntry{
-		Repo:            repoName,
-		Tag:             tag,
-		Path:            cacheDir,
-		IsGlobal:        true,
-		ServerVersionID: latestVersion.VersionNumber,
+	store.AddEntry(localindex.Entry{
+		SpecName:    repoName,
+		VersionName: tag,
+		VersionID:   fmt.Sprintf("%d", latestVersion.VersionNumber),
+		Path:        cacheDir,
+		PulledAt:    time.Now(),
+		Layers: map[string]string{
+			"pixi.toml": tomlDigest,
+			"pixi.lock": lockDigest,
+		},
 	})
 
 	fmt.Printf("Cached at %s\n", cacheDir)

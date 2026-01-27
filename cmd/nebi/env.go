@@ -82,6 +82,8 @@ Example:
 }
 
 var envInfoPath string
+var envInfoPackages bool
+var envInfoJSON bool
 
 var envInfoCmd = &cobra.Command{
 	Use:   "info [<env>]",
@@ -124,6 +126,8 @@ func init() {
 
 	// env info flags
 	envInfoCmd.Flags().StringVarP(&envInfoPath, "path", "C", ".", "Environment directory path")
+	envInfoCmd.Flags().BoolVarP(&envInfoPackages, "packages", "p", false, "Show package list")
+	envInfoCmd.Flags().BoolVar(&envInfoJSON, "json", false, "Output as JSON")
 
 	// env list flags
 	envListCmd.Flags().BoolVar(&envListLocal, "local", false, "List locally pulled environments with drift status")
@@ -487,16 +491,18 @@ func runEnvInfoFromCwd() {
 
 	printServerInfo(envDetail)
 
-	// Get packages
-	packages, err := client.GetEnvironmentPackages(ctx, env.ID)
-	if err == nil && len(packages) > 0 {
-		fmt.Printf("\n  Packages (%d):\n", len(packages))
-		for _, pkg := range packages {
-			fmt.Printf("    - %s", pkg.Name)
-			if pkg.Version != "" {
-				fmt.Printf(" (%s)", pkg.Version)
+	// Get packages only if flag is set
+	if envInfoPackages {
+		packages, err := client.GetEnvironmentPackages(ctx, env.ID)
+		if err == nil && len(packages) > 0 {
+			fmt.Printf("\n  Packages (%d):\n", len(packages))
+			for _, pkg := range packages {
+				fmt.Printf("    - %s", pkg.Name)
+				if pkg.Version != "" {
+					fmt.Printf(" (%s)", pkg.Version)
+				}
+				fmt.Println()
 			}
-			fmt.Println()
 		}
 	}
 }
@@ -520,6 +526,18 @@ func runEnvInfoByName(envName string) {
 		osExit(1)
 	}
 
+	// Get packages if requested
+	var packages []cliclient.Package
+	if envInfoPackages {
+		packages, _ = client.GetEnvironmentPackages(ctx, env.ID)
+	}
+
+	// JSON output
+	if envInfoJSON {
+		outputEnvInfoJSON(envDetail, packages)
+		return
+	}
+
 	fmt.Printf("Name:            %s\n", envDetail.Name)
 	fmt.Printf("ID:              %s\n", envDetail.ID)
 	fmt.Printf("Status:          %s\n", envDetail.Status)
@@ -527,13 +545,12 @@ func runEnvInfoByName(envName string) {
 	if envDetail.Owner != nil {
 		fmt.Printf("Owner:           %s\n", envDetail.Owner.Username)
 	}
-	fmt.Printf("Size:            %d bytes\n", envDetail.SizeBytes)
+	fmt.Printf("Size:            %s\n", formatBytes(envDetail.SizeBytes))
 	fmt.Printf("Created:         %s\n", envDetail.CreatedAt)
 	fmt.Printf("Updated:         %s\n", envDetail.UpdatedAt)
 
-	// Get packages
-	packages, err := client.GetEnvironmentPackages(ctx, env.ID)
-	if err == nil && len(packages) > 0 {
+	// Show packages only if flag is set
+	if envInfoPackages && len(packages) > 0 {
 		fmt.Printf("\nPackages (%d):\n", len(packages))
 		for _, pkg := range packages {
 			fmt.Printf("  - %s", pkg.Name)
@@ -543,6 +560,58 @@ func runEnvInfoByName(envName string) {
 			fmt.Println()
 		}
 	}
+}
+
+// outputEnvInfoJSON outputs environment info as JSON.
+func outputEnvInfoJSON(envDetail *cliclient.Environment, packages []cliclient.Package) {
+	type pkgJSON struct {
+		Name    string `json:"name"`
+		Version string `json:"version,omitempty"`
+	}
+
+	type ownerJSON struct {
+		Username string `json:"username"`
+	}
+
+	type envInfoJSON struct {
+		Name           string    `json:"name"`
+		ID             string    `json:"id"`
+		Status         string    `json:"status"`
+		PackageManager string    `json:"package_manager"`
+		Owner          *ownerJSON `json:"owner,omitempty"`
+		SizeBytes      int64     `json:"size_bytes"`
+		CreatedAt      string    `json:"created_at"`
+		UpdatedAt      string    `json:"updated_at"`
+		Packages       []pkgJSON `json:"packages,omitempty"`
+	}
+
+	output := envInfoJSON{
+		Name:           envDetail.Name,
+		ID:             envDetail.ID,
+		Status:         envDetail.Status,
+		PackageManager: envDetail.PackageManager,
+		SizeBytes:      envDetail.SizeBytes,
+		CreatedAt:      envDetail.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:      envDetail.UpdatedAt.Format(time.RFC3339),
+	}
+
+	if envDetail.Owner != nil {
+		output.Owner = &ownerJSON{Username: envDetail.Owner.Username}
+	}
+
+	if len(packages) > 0 {
+		output.Packages = make([]pkgJSON, len(packages))
+		for i, pkg := range packages {
+			output.Packages[i] = pkgJSON{Name: pkg.Name, Version: pkg.Version}
+		}
+	}
+
+	data, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to marshal JSON: %v\n", err)
+		osExit(1)
+	}
+	fmt.Println(string(data))
 }
 
 // printServerInfo prints the server details section for environment info.
@@ -555,7 +624,7 @@ func printServerInfo(envDetail *cliclient.Environment) {
 	if envDetail.Owner != nil {
 		fmt.Printf("  Owner:           %s\n", envDetail.Owner.Username)
 	}
-	fmt.Printf("  Size:            %d bytes\n", envDetail.SizeBytes)
+	fmt.Printf("  Size:            %s\n", formatBytes(envDetail.SizeBytes))
 	fmt.Printf("  Created:         %s\n", envDetail.CreatedAt)
 	fmt.Printf("  Updated:         %s\n", envDetail.UpdatedAt)
 }

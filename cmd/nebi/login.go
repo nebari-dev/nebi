@@ -105,9 +105,10 @@ func runLogout(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// Clear config
+	// Clear config (including UseLocal so user gets prompted again)
 	cfg.ServerURL = ""
 	cfg.Token = ""
+	cfg.UseLocal = false
 
 	if err := saveConfig(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error saving config: %v\n", err)

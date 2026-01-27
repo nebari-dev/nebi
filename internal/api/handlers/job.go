@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/nebari-dev/nebi/internal/logstream"
-	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/logstream"
+	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"
 )

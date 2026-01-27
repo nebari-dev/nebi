@@ -4,9 +4,11 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/nebari-dev/nebi/internal/api/handlers"
 	"github.com/nebari-dev/nebi/internal/api/middleware"
 	"github.com/nebari-dev/nebi/internal/auth"
@@ -16,7 +18,6 @@ import (
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/nebari-dev/nebi/internal/web"
-	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/gorm"
@@ -47,6 +48,12 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	var oidcAuth *auth.OIDCAuthenticator
 	if cfg.Auth.Type == "basic" {
 		authenticator = auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
+	}
+
+	// If running as a local server, wrap the authenticator to also accept the local token.
+	if localToken := os.Getenv("NEBI_LOCAL_TOKEN"); localToken != "" {
+		authenticator = auth.NewLocalTokenAuthenticator(authenticator, localToken, db)
+		logger.Info("Local token authentication enabled")
 	}
 
 	// Initialize OIDC if configured

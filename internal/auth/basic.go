@@ -180,7 +180,7 @@ func (a *BasicAuthenticator) Middleware() gin.HandlerFunc {
 		result := a.db.First(&user, userID)
 		if result.Error != nil {
 			slog.Error("Failed to load user from token", "user_id", userID, "error", result.Error)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token - please run 'nebi login' again"})
 			c.Abort()
 			return
 		}

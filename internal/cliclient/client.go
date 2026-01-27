@@ -172,3 +172,13 @@ func IsUnauthorized(err error) bool {
 	}
 	return false
 }
+
+// GetServerInfo returns server information including the server ID.
+func (c *Client) GetServerInfo(ctx context.Context) (*ServerInfo, error) {
+	var info ServerInfo
+	_, err := c.Get(ctx, "/info", &info)
+	if err != nil {
+		return nil, err
+	}
+	return &info, nil
+}

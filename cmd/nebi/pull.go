@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aktech/darb/internal/cliclient"
 	"github.com/aktech/darb/internal/drift"
 	"github.com/aktech/darb/internal/localindex"
 	"github.com/aktech/darb/internal/nebifile"
@@ -105,6 +106,13 @@ func runPull(cmd *cobra.Command, args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(1)
+	}
+
+	// Get server info (for server_id)
+	serverInfo, err := client.GetServerInfo(ctx)
+	if err != nil {
+		// Non-fatal - server might not support /info endpoint yet
+		serverInfo = &cliclient.ServerInfo{}
 	}
 
 	// Find environment by name
@@ -269,7 +277,7 @@ func runPull(cmd *cobra.Command, args []string) {
 	// Write .nebi.toml metadata file
 	nf := nebifile.NewFromPull(
 		envName, version, cfg.ServerURL,
-		env.ID, fmt.Sprintf("%d", versionNumber), "",
+		env.ID, fmt.Sprintf("%d", versionNumber), serverInfo.ServerID,
 	)
 	if err := nebifile.Write(outputDir, nf); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to write .nebi.toml metadata: %v\n", err)
@@ -283,6 +291,7 @@ func runPull(cmd *cobra.Command, args []string) {
 		VersionName: version,
 		VersionID:   fmt.Sprintf("%d", versionNumber),
 		ServerURL:   cfg.ServerURL,
+		ServerID:    serverInfo.ServerID,
 		Path:        absOutputDir,
 		PulledAt:    time.Now(),
 		Layers: map[string]string{

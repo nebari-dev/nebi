@@ -145,3 +145,12 @@ type UpdateRegistryRequest struct {
 	Password  *string `json:"password,omitempty"`
 	IsDefault *bool   `json:"is_default,omitempty"`
 }
+
+// ServerInfo represents server information returned by /api/v1/info.
+type ServerInfo struct {
+	ServerID  string `json:"server_id"`
+	Version   string `json:"version"`
+	GoVersion string `json:"go_version"`
+	OS        string `json:"os"`
+	Arch      string `json:"arch"`
+}

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aktech/darb/internal/cliclient"
 	"github.com/aktech/darb/internal/drift"
 	"github.com/aktech/darb/internal/localindex"
 	"github.com/aktech/darb/internal/nebifile"
@@ -319,6 +320,19 @@ func pullForShell(envName, version string) string {
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
+	// Get server info (for server_id)
+	serverInfo, err := client.GetServerInfo(ctx)
+	if err != nil {
+		// Non-fatal - server might not support /info endpoint yet
+		serverInfo = &cliclient.ServerInfo{}
+	}
+
+	// Load CLI config for server URL
+	cfg, err := loadConfig()
+	if err != nil {
+		cfg = &CLIConfig{}
+	}
+
 	// Find environment by name
 	env, err := findEnvByName(client, ctx, envName)
 	if err != nil {
@@ -419,16 +433,19 @@ func pullForShell(envName, version string) string {
 	tomlDigest := nebifile.ComputeDigest(pixiTomlBytes)
 	lockDigest := nebifile.ComputeDigest(pixiLockBytes)
 	nf := nebifile.NewFromPull(
-		envName, version, "", "",
-		fmt.Sprintf("%d", versionNumber), "",
+		envName, version, cfg.ServerURL,
+		env.ID, fmt.Sprintf("%d", versionNumber), serverInfo.ServerID,
 	)
 	nebifile.Write(cacheDir, nf)
 
 	// Add to local index
 	store.AddEntry(localindex.Entry{
 		SpecName:    envName,
+		SpecID:      env.ID,
 		VersionName: version,
 		VersionID:   fmt.Sprintf("%d", versionNumber),
+		ServerURL:   cfg.ServerURL,
+		ServerID:    serverInfo.ServerID,
 		Path:        cacheDir,
 		PulledAt:    time.Now(),
 		Layers: map[string]string{

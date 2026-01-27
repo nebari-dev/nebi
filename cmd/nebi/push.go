@@ -89,6 +89,13 @@ func runPush(cmd *cobra.Command, args []string) {
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
+	// Get server info (for server_id)
+	serverInfo, err := client.GetServerInfo(ctx)
+	if err != nil {
+		// Non-fatal - server might not support /info endpoint yet
+		serverInfo = &cliclient.ServerInfo{}
+	}
+
 	// Try to find environment by name, create if not found
 	env, err := findEnvByName(client, ctx, envName)
 	if err != nil {
@@ -153,13 +160,10 @@ func runPush(cmd *cobra.Command, args []string) {
 		pixiLockDigest = nebifile.ComputeDigest(pixiLockContent)
 	}
 
-	nf := nebifile.New(nebifile.Origin{
-		SpecName:    envName,
-		VersionName: version,
-		VersionID:   fmt.Sprintf("%d", resp.VersionNumber),
-		ServerURL:   cfg.ServerURL,
-		PulledAt:    time.Now(),
-	})
+	nf := nebifile.NewFromPull(
+		envName, version, cfg.ServerURL,
+		env.ID, fmt.Sprintf("%d", resp.VersionNumber), serverInfo.ServerID,
+	)
 
 	if err := nebifile.Write(absDir, nf); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to update .nebi metadata: %v\n", err)
@@ -176,9 +180,11 @@ func runPush(cmd *cobra.Command, args []string) {
 	idxStore := localindex.NewStore()
 	entry := localindex.Entry{
 		SpecName:    envName,
+		SpecID:      env.ID,
 		VersionName: version,
 		VersionID:   fmt.Sprintf("%d", resp.VersionNumber),
 		ServerURL:   cfg.ServerURL,
+		ServerID:    serverInfo.ServerID,
 		Path:        absDir,
 		PulledAt:    time.Now(),
 		Layers:      idxLayers,

@@ -30,7 +30,7 @@ var pullCmd = &cobra.Command{
 
 Supports Docker-style references:
   - repo:tag    - Pull specific tag
-  - repo        - Pull latest version
+  - repo        - Pull default version (or latest if no default set)
   - repo@digest - Pull by digest (immutable)
 
 Modes:
@@ -39,7 +39,7 @@ Modes:
     with duplicate prevention (use --force to overwrite)
 
 Examples:
-  # Pull latest version to current directory
+  # Pull default version to current directory
   nebi pull myrepo
 
   # Pull specific tag
@@ -161,27 +161,34 @@ func runPull(cmd *cobra.Command, args []string) {
 			osExit(1)
 		}
 	} else {
-		// No tag/digest specified, get the latest version
-		versions, err := client.GetEnvironmentVersions(ctx, env.ID)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Failed to get versions: %v\n", err)
-			osExit(1)
-		}
-
-		if len(versions) == 0 {
-			fmt.Fprintf(os.Stderr, "Error: Repo %q has no versions\n", repoName)
-			osExit(1)
-		}
-
-		// Use the latest version (highest version number)
-		latestVersion := versions[0]
-		for _, v := range versions {
-			if v.VersionNumber > latestVersion.VersionNumber {
-				latestVersion = v
+		// No tag/digest specified - check for default version first, then fall back to latest
+		if env.DefaultVersionID != nil {
+			// Use the default version
+			versionNumber = int32(*env.DefaultVersionID)
+			tag = "default"
+		} else {
+			// No default set, get the latest version
+			versions, err := client.GetEnvironmentVersions(ctx, env.ID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: Failed to get versions: %v\n", err)
+				osExit(1)
 			}
+
+			if len(versions) == 0 {
+				fmt.Fprintf(os.Stderr, "Error: Repo %q has no versions\n", repoName)
+				osExit(1)
+			}
+
+			// Use the latest version (highest version number)
+			latestVersion := versions[0]
+			for _, v := range versions {
+				if v.VersionNumber > latestVersion.VersionNumber {
+					latestVersion = v
+				}
+			}
+			versionNumber = latestVersion.VersionNumber
+			tag = "latest"
 		}
-		versionNumber = latestVersion.VersionNumber
-		tag = "latest"
 	}
 
 	// Initialize local index

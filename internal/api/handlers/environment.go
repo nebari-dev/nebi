@@ -1173,14 +1173,16 @@ func (h *EnvironmentHandler) ListPublications(c *gin.Context) {
 // Push (server-only version creation + tag assignment)
 
 type PushVersionRequest struct {
-	Tag      string `json:"tag" binding:"required"`
-	PixiToml string `json:"pixi_toml" binding:"required"`
-	PixiLock string `json:"pixi_lock"`
+	Tag        string `json:"tag" binding:"required"`
+	PixiToml   string `json:"pixi_toml" binding:"required"`
+	PixiLock   string `json:"pixi_lock"`
+	SetDefault bool   `json:"set_default"` // Set this version as the default
 }
 
 type PushVersionResponse struct {
-	VersionNumber int    `json:"version_number"`
+	VersionNumber int  `json:"version_number"`
 	Tag           string `json:"tag"`
+	IsDefault     bool   `json:"is_default"` // Whether this version is now the default
 }
 
 // PushVersion godoc
@@ -1276,15 +1278,31 @@ func (h *EnvironmentHandler) PushVersion(c *gin.Context) {
 		}
 	}
 
+	// Handle default version:
+	// - If set_default is true, set this version as default
+	// - If this is the first version (no default set), automatically set it as default
+	isDefault := false
+	if req.SetDefault || env.DefaultVersionID == nil {
+		versionNum := newVersion.VersionNumber
+		env.DefaultVersionID = &versionNum
+		if err := h.db.Save(&env).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update default version"})
+			return
+		}
+		isDefault = true
+	}
+
 	// Audit log
 	audit.Log(h.db, userID, audit.ActionPublishEnvironment, audit.ResourceEnvironment, env.ID, map[string]interface{}{
 		"tag":            req.Tag,
 		"version_number": newVersion.VersionNumber,
+		"is_default":     isDefault,
 	})
 
 	c.JSON(http.StatusCreated, PushVersionResponse{
 		VersionNumber: newVersion.VersionNumber,
 		Tag:           req.Tag,
+		IsDefault:     isDefault,
 	})
 }
 

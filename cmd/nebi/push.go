@@ -17,6 +17,7 @@ import (
 )
 
 var pushDryRun bool
+var pushSetDefault bool
 
 var pushCmd = &cobra.Command{
 	Use:   "push <env>:<version>",
@@ -32,6 +33,9 @@ Examples:
   # Push with version
   nebi push myenv:v1.0.0
 
+  # Push and set as default version
+  nebi push myenv:v2.0 --set-default
+
   # Preview what would be pushed
   nebi push myenv:v1.1 --dry-run`,
 	Args: cobra.ExactArgs(1),
@@ -40,6 +44,7 @@ Examples:
 
 func init() {
 	pushCmd.Flags().BoolVar(&pushDryRun, "dry-run", false, "Preview what would be pushed without actually pushing")
+	pushCmd.Flags().BoolVar(&pushSetDefault, "set-default", false, "Set this version as the default for the environment")
 }
 
 func runPush(cmd *cobra.Command, args []string) {
@@ -114,9 +119,10 @@ func runPush(cmd *cobra.Command, args []string) {
 
 	// Push version to server
 	req := cliclient.PushRequest{
-		Tag:      version,
-		PixiToml: string(pixiTomlContent),
-		PixiLock: string(pixiLockContent),
+		Tag:        version,
+		PixiToml:   string(pixiTomlContent),
+		PixiLock:   string(pixiLockContent),
+		SetDefault: pushSetDefault,
 	}
 
 	fmt.Printf("Pushing %s:%s...\n", envName, version)
@@ -126,7 +132,11 @@ func runPush(cmd *cobra.Command, args []string) {
 		osExit(1)
 	}
 
-	fmt.Printf("Pushed %s:%s (version %d)\n", envName, version, resp.VersionNumber)
+	if resp.IsDefault {
+		fmt.Printf("Pushed %s:%s (version %d, default)\n", envName, version, resp.VersionNumber)
+	} else {
+		fmt.Printf("Pushed %s:%s (version %d)\n", envName, version, resp.VersionNumber)
+	}
 	fmt.Printf("\nTo distribute via OCI registry:\n  nebi publish %s:%s -r <registry>\n", envName, version)
 
 	// Update .nebi metadata and local index to reflect the pushed state.

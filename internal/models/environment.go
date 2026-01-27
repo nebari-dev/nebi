@@ -20,16 +20,17 @@ const (
 
 // Environment represents a package manager environment
 type Environment struct {
-	ID             uuid.UUID         `gorm:"type:text;primary_key" json:"id"`
-	Name           string            `gorm:"not null" json:"name"`
-	OwnerID        uuid.UUID         `gorm:"type:text;not null;index" json:"owner_id"`
-	Owner          User              `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
-	Status         EnvironmentStatus `gorm:"not null;default:'pending'" json:"status"`
-	PackageManager string            `gorm:"not null" json:"package_manager"` // "pixi" or "uv"
-	SizeBytes      int64             `gorm:"default:0" json:"size_bytes"`
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
-	DeletedAt      gorm.DeletedAt    `gorm:"index" json:"-"`
+	ID               uuid.UUID         `gorm:"type:text;primary_key" json:"id"`
+	Name             string            `gorm:"not null" json:"name"`
+	OwnerID          uuid.UUID         `gorm:"type:text;not null;index" json:"owner_id"`
+	Owner            User              `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
+	Status           EnvironmentStatus `gorm:"not null;default:'pending'" json:"status"`
+	PackageManager   string            `gorm:"not null" json:"package_manager"` // "pixi" or "uv"
+	SizeBytes        int64             `gorm:"default:0" json:"size_bytes"`
+	DefaultVersionID *int              `gorm:"type:integer" json:"default_version_id,omitempty"` // Points to default version number
+	CreatedAt        time.Time         `json:"created_at"`
+	UpdatedAt        time.Time         `json:"updated_at"`
+	DeletedAt        gorm.DeletedAt    `gorm:"index" json:"-"`
 }
 
 // BeforeCreate hook to generate UUID

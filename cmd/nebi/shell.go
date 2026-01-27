@@ -326,41 +326,70 @@ func pullForShell(envName, version string) string {
 		osExit(1)
 	}
 
-	// Get versions to find the right one
-	versions, err := client.GetEnvironmentVersions(ctx, env.ID)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to get versions: %v\n", err)
-		osExit(1)
-	}
+	var versionNumber int32
 
-	if len(versions) == 0 {
-		fmt.Fprintf(os.Stderr, "Error: Environment %q has no versions\n", envName)
-		osExit(1)
-	}
+	// If no version specified, try default version first, then fall back to latest
+	if version == "" {
+		if env.DefaultVersionID != nil {
+			// Use the default version
+			versionNumber = int32(*env.DefaultVersionID)
+			version = "default"
+		} else {
+			// No default set, get the latest version
+			versions, err := client.GetEnvironmentVersions(ctx, env.ID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: Failed to get versions: %v\n", err)
+				osExit(1)
+			}
 
-	// Use the latest version
-	latestVersion := versions[0]
-	for _, v := range versions {
-		if v.VersionNumber > latestVersion.VersionNumber {
-			latestVersion = v
+			if len(versions) == 0 {
+				fmt.Fprintf(os.Stderr, "Error: Environment %q has no versions\n", envName)
+				osExit(1)
+			}
+
+			// Use the latest version
+			latestVersion := versions[0]
+			for _, v := range versions {
+				if v.VersionNumber > latestVersion.VersionNumber {
+					latestVersion = v
+				}
+			}
+			versionNumber = latestVersion.VersionNumber
+			version = "latest"
+		}
+	} else {
+		// Version specified - resolve it
+		tags, err := client.GetEnvironmentTags(ctx, env.ID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Failed to get tags: %v\n", err)
+			osExit(1)
+		}
+
+		found := false
+		for _, t := range tags {
+			if t.Tag == version {
+				versionNumber = int32(t.VersionNumber)
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			fmt.Fprintf(os.Stderr, "Error: Version %q not found for environment %q\n", version, envName)
+			osExit(1)
 		}
 	}
 
-	// Resolve version for display
-	if version == "" {
-		version = "latest"
-	}
-
 	refStr := envName + ":" + version
-	fmt.Printf("Pulling %s (version %d)...\n", refStr, latestVersion.VersionNumber)
+	fmt.Printf("Pulling %s (version %d)...\n", refStr, versionNumber)
 
 	// Get content
-	pixiToml, err := client.GetVersionPixiToml(ctx, env.ID, latestVersion.VersionNumber)
+	pixiToml, err := client.GetVersionPixiToml(ctx, env.ID, versionNumber)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to get pixi.toml: %v\n", err)
 		osExit(1)
 	}
-	pixiLock, err := client.GetVersionPixiLock(ctx, env.ID, latestVersion.VersionNumber)
+	pixiLock, err := client.GetVersionPixiLock(ctx, env.ID, versionNumber)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to get pixi.lock: %v\n", err)
 		osExit(1)
@@ -391,7 +420,7 @@ func pullForShell(envName, version string) string {
 	lockDigest := nebifile.ComputeDigest(pixiLockBytes)
 	nf := nebifile.NewFromPull(
 		envName, version, "", "",
-		fmt.Sprintf("%d", latestVersion.VersionNumber), "",
+		fmt.Sprintf("%d", versionNumber), "",
 	)
 	nebifile.Write(cacheDir, nf)
 
@@ -399,7 +428,7 @@ func pullForShell(envName, version string) string {
 	store.AddEntry(localindex.Entry{
 		SpecName:    envName,
 		VersionName: version,
-		VersionID:   fmt.Sprintf("%d", latestVersion.VersionNumber),
+		VersionID:   fmt.Sprintf("%d", versionNumber),
 		Path:        cacheDir,
 		PulledAt:    time.Now(),
 		Layers: map[string]string{

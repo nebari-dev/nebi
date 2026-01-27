@@ -16,129 +16,129 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var repoCmd = &cobra.Command{
-	Use:   "repo",
-	Short: "Manage repos",
-	Long:  `List, delete, and inspect repos.`,
+var envCmd = &cobra.Command{
+	Use:   "env",
+	Short: "Manage environments",
+	Long:  `List, delete, and inspect environments.`,
 }
 
-var repoListLocal bool
-var repoListJSON bool
+var envListLocal bool
+var envListJSON bool
 
-var repoListCmd = &cobra.Command{
+var envListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
-	Short:   "List repos",
-	Long: `List repos from the server, or locally pulled repos.
+	Short:   "List environments",
+	Long: `List environments from the server, or locally pulled environments.
 
 Examples:
-  # List all server repos
-  nebi repo list
+  # List all server environments
+  nebi env list
 
-  # List locally pulled repos with drift status
-  nebi repo list --local`,
+  # List locally pulled environments with drift status
+  nebi env list --local`,
 	Args: cobra.NoArgs,
-	Run:  runRepoList,
+	Run:  runEnvList,
 }
 
-var repoPruneCmd = &cobra.Command{
+var envPruneCmd = &cobra.Command{
 	Use:   "prune",
 	Short: "Remove stale entries from local index",
-	Long: `Remove entries from the local repo index where the directory
+	Long: `Remove entries from the local environment index where the directory
 no longer exists on disk.
 
-This cleans up the index after repos have been moved or deleted
+This cleans up the index after environments have been moved or deleted
 outside of nebi. It does NOT delete any files.
 
 Examples:
   # Remove stale entries
-  nebi repo prune`,
+  nebi env prune`,
 	Args: cobra.NoArgs,
-	Run:  runRepoPrune,
+	Run:  runEnvPrune,
 }
 
-var repoTagsCmd = &cobra.Command{
-	Use:   "tags <repo>",
-	Short: "List tags for a repo",
-	Long: `List all published tags for a repo.
+var envVersionsCmd = &cobra.Command{
+	Use:   "versions <env>",
+	Short: "List versions for an environment",
+	Long: `List all published versions for an environment.
 
 Example:
-  nebi repo tags myrepo`,
+  nebi env versions myenv`,
 	Args: cobra.ExactArgs(1),
-	Run:  runRepoTags,
+	Run:  runEnvVersions,
 }
 
-var repoDeleteCmd = &cobra.Command{
-	Use:     "delete <repo>",
+var envDeleteCmd = &cobra.Command{
+	Use:     "delete <env>",
 	Aliases: []string{"rm"},
-	Short:   "Delete a repo",
-	Long: `Delete a repo from the server.
+	Short:   "Delete an environment",
+	Long: `Delete an environment from the server.
 
 Example:
-  nebi repo delete myrepo`,
+  nebi env delete myenv`,
 	Args: cobra.ExactArgs(1),
-	Run:  runRepoDelete,
+	Run:  runEnvDelete,
 }
 
-var repoInfoPath string
+var envInfoPath string
 
-var repoInfoCmd = &cobra.Command{
-	Use:   "info [<repo>]",
-	Short: "Show repo details",
-	Long: `Show detailed information about a repo.
+var envInfoCmd = &cobra.Command{
+	Use:   "info [<env>]",
+	Short: "Show environment details",
+	Long: `Show detailed information about an environment.
 
 When run without arguments in a directory containing a .nebi metadata file,
-shows both local drift status and server-side repo details.
+shows both local drift status and server-side environment details.
 
-When given a repo name, shows server-side details only.
+When given an environment name, shows server-side details only.
 
 Examples:
-  # From a repo directory (reads .nebi to detect repo)
-  nebi repo info
+  # From an environment directory (reads .nebi to detect environment)
+  nebi env info
 
-  # Explicit repo name (server lookup only)
-  nebi repo info myrepo
+  # Explicit environment name (server lookup only)
+  nebi env info myenv
 
   # From a specific path
-  nebi repo info -C /path/to/repo`,
+  nebi env info -C /path/to/env`,
 	Args: cobra.MaximumNArgs(1),
-	Run:  runRepoInfo,
+	Run:  runEnvInfo,
 }
 
-var repoDiffCmd = &cobra.Command{
+var envDiffCmd = &cobra.Command{
 	Use:   "diff",
-	Short: "Show repo differences (alias for 'nebi diff')",
+	Short: "Show environment differences (alias for 'nebi diff')",
 	Long:  `This is an alias for 'nebi diff'. See 'nebi diff --help' for full documentation.`,
 	Args:  cobra.MaximumNArgs(2),
 	Run:   runDiff,
 }
 
 func init() {
-	repoCmd.AddCommand(repoListCmd)
-	repoCmd.AddCommand(repoDeleteCmd)
-	repoCmd.AddCommand(repoInfoCmd)
-	repoCmd.AddCommand(repoDiffCmd)
-	repoCmd.AddCommand(repoPruneCmd)
-	repoCmd.AddCommand(repoTagsCmd)
+	envCmd.AddCommand(envListCmd)
+	envCmd.AddCommand(envDeleteCmd)
+	envCmd.AddCommand(envInfoCmd)
+	envCmd.AddCommand(envDiffCmd)
+	envCmd.AddCommand(envPruneCmd)
+	envCmd.AddCommand(envVersionsCmd)
 
-	// repo info flags
-	repoInfoCmd.Flags().StringVarP(&repoInfoPath, "path", "C", ".", "Repo directory path")
+	// env info flags
+	envInfoCmd.Flags().StringVarP(&envInfoPath, "path", "C", ".", "Environment directory path")
 
-	// repo list flags
-	repoListCmd.Flags().BoolVar(&repoListLocal, "local", false, "List locally pulled repos with drift status")
-	repoListCmd.Flags().BoolVar(&repoListJSON, "json", false, "Output as JSON")
+	// env list flags
+	envListCmd.Flags().BoolVar(&envListLocal, "local", false, "List locally pulled environments with drift status")
+	envListCmd.Flags().BoolVar(&envListJSON, "json", false, "Output as JSON")
 
-	// repo diff mirrors the top-level diff flags
-	repoDiffCmd.Flags().BoolVar(&diffRemote, "remote", false, "Compare against current remote tag")
-	repoDiffCmd.Flags().BoolVar(&diffJSON, "json", false, "Output as JSON")
-	repoDiffCmd.Flags().BoolVar(&diffLock, "lock", false, "Show full lock file diff")
-	repoDiffCmd.Flags().BoolVar(&diffToml, "toml", false, "Show only pixi.toml diff")
-	repoDiffCmd.Flags().StringVarP(&diffPath, "path", "C", ".", "Repo directory path")
+	// env diff mirrors the top-level diff flags
+	envDiffCmd.Flags().BoolVar(&diffRemote, "remote", false, "Compare against current remote version")
+	envDiffCmd.Flags().BoolVar(&diffJSON, "json", false, "Output as JSON")
+	envDiffCmd.Flags().BoolVar(&diffLock, "lock", false, "Show full lock file diff")
+	envDiffCmd.Flags().BoolVar(&diffToml, "toml", false, "Show only pixi.toml diff")
+	envDiffCmd.Flags().StringVarP(&diffPath, "path", "C", ".", "Environment directory path")
 }
 
-func runRepoList(cmd *cobra.Command, args []string) {
-	if repoListLocal {
-		runRepoListLocal()
+func runEnvList(cmd *cobra.Command, args []string) {
+	if envListLocal {
+		runEnvListLocal()
 		return
 	}
 
@@ -147,12 +147,12 @@ func runRepoList(cmd *cobra.Command, args []string) {
 
 	envs, err := client.ListEnvironments(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to list repos: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to list environments: %v\n", err)
 		osExit(1)
 	}
 
 	if len(envs) == 0 {
-		fmt.Println("No repos found")
+		fmt.Println("No environments found")
 		return
 	}
 
@@ -173,17 +173,17 @@ func runRepoList(cmd *cobra.Command, args []string) {
 	w.Flush()
 }
 
-// repoListEntry is the JSON output structure for repo list --local --json.
-type repoListEntry struct {
-	Repo     string `json:"repo"`
-	Tag      string `json:"tag"`
+// envListEntry is the JSON output structure for env list --local --json.
+type envListEntry struct {
+	Env      string `json:"env"`
+	Version  string `json:"version"`
 	Status   string `json:"status"`
 	Path     string `json:"path"`
 	IsGlobal bool   `json:"is_global"`
 }
 
-// runRepoListLocal lists locally pulled repos with drift indicators.
-func runRepoListLocal() {
+// runEnvListLocal lists locally pulled environments with drift indicators.
+func runEnvListLocal() {
 	store := localindex.NewStore()
 	index, err := store.Load()
 	if err != nil {
@@ -192,22 +192,22 @@ func runRepoListLocal() {
 	}
 
 	if len(index.Repos) == 0 {
-		if repoListJSON {
+		if envListJSON {
 			fmt.Println("[]")
 		} else {
-			fmt.Println("No locally pulled repos found")
-			fmt.Println("\nUse 'nebi pull <repo>:<tag>' to pull a repo.")
+			fmt.Println("No locally pulled environments found")
+			fmt.Println("\nUse 'nebi pull <env>:<version>' to pull an environment.")
 		}
 		return
 	}
 
-	if repoListJSON {
-		var entries []repoListEntry
+	if envListJSON {
+		var entries []envListEntry
 		for _, entry := range index.Repos {
 			status := getLocalEntryStatus(entry)
-			entries = append(entries, repoListEntry{
-				Repo:     entry.Repo,
-				Tag:      entry.Tag,
+			entries = append(entries, envListEntry{
+				Env:      entry.Repo,
+				Version:  entry.Tag,
 				Status:   status,
 				Path:     entry.Path,
 				IsGlobal: entry.IsGlobal,
@@ -225,7 +225,7 @@ func runRepoListLocal() {
 	hasMissing := false
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "REPO\tTAG\tSTATUS\tLOCATION")
+	fmt.Fprintln(w, "ENV\tVERSION\tSTATUS\tLOCATION")
 	for _, entry := range index.Repos {
 		status := getLocalEntryStatus(entry)
 		if status == "missing" {
@@ -243,11 +243,11 @@ func runRepoListLocal() {
 	w.Flush()
 
 	if hasMissing {
-		fmt.Println("\nRun 'nebi repo prune' to remove stale entries.")
+		fmt.Println("\nRun 'nebi env prune' to remove stale entries.")
 	}
 }
 
-// getLocalEntryStatus checks the drift status of a local repo entry.
+// getLocalEntryStatus checks the drift status of a local environment entry.
 func getLocalEntryStatus(entry localindex.RepoEntry) string {
 	// Check if path exists
 	if _, err := os.Stat(entry.Path); os.IsNotExist(err) {
@@ -264,7 +264,7 @@ func getLocalEntryStatus(entry localindex.RepoEntry) string {
 }
 
 // formatLocation formats a path for display, abbreviating home directory
-// and shortening UUIDs in global repo paths.
+// and shortening UUIDs in global environment paths.
 func formatLocation(path string, isGlobal bool) string {
 	home, _ := os.UserHomeDir()
 	display := path
@@ -273,8 +273,8 @@ func formatLocation(path string, isGlobal bool) string {
 	}
 
 	if isGlobal {
-		// Abbreviate UUIDs in global repo paths for readability.
-		// Global paths look like: ~/.local/share/nebi/repos/<uuid>/<tag>
+		// Abbreviate UUIDs in global environment paths for readability.
+		// Global paths look like: ~/.local/share/nebi/repos/<uuid>/<version>
 		display = abbreviateUUID(display)
 		return display + " (global)"
 	}
@@ -313,8 +313,8 @@ func isUUID(s string) bool {
 	return true
 }
 
-// runRepoPrune removes stale entries from the local index.
-func runRepoPrune(cmd *cobra.Command, args []string) {
+// runEnvPrune removes stale entries from the local index.
+func runEnvPrune(cmd *cobra.Command, args []string) {
 	store := localindex.NewStore()
 
 	removed, err := store.Prune()
@@ -334,33 +334,33 @@ func runRepoPrune(cmd *cobra.Command, args []string) {
 	}
 }
 
-func runRepoTags(cmd *cobra.Command, args []string) {
-	repoName := args[0]
+func runEnvVersions(cmd *cobra.Command, args []string) {
+	envName := args[0]
 
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find repo by name
-	env, err := findRepoByName(client, ctx, repoName)
+	// Find environment by name
+	env, err := findEnvByName(client, ctx, envName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(1)
 	}
 
-	// Get publications (tags)
+	// Get publications (versions)
 	pubs, err := client.GetEnvironmentPublications(ctx, env.ID)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to list tags: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to list versions: %v\n", err)
 		osExit(1)
 	}
 
 	if len(pubs) == 0 {
-		fmt.Printf("No published tags for %q\n", repoName)
+		fmt.Printf("No published versions for %q\n", envName)
 		return
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "TAG\tREGISTRY\tREPOSITORY\tDIGEST\tPUBLISHED")
+	fmt.Fprintln(w, "VERSION\tREGISTRY\tREPOSITORY\tDIGEST\tPUBLISHED")
 	for _, pub := range pubs {
 		digest := pub.Digest
 		if len(digest) > 19 {
@@ -377,14 +377,14 @@ func runRepoTags(cmd *cobra.Command, args []string) {
 	w.Flush()
 }
 
-func runRepoDelete(cmd *cobra.Command, args []string) {
-	repoName := args[0]
+func runEnvDelete(cmd *cobra.Command, args []string) {
+	envName := args[0]
 
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find repo by name
-	env, err := findRepoByName(client, ctx, repoName)
+	// Find environment by name
+	env, err := findEnvByName(client, ctx, envName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(1)
@@ -393,28 +393,28 @@ func runRepoDelete(cmd *cobra.Command, args []string) {
 	// Delete
 	err = client.DeleteEnvironment(ctx, env.ID)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to delete repo: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to delete environment: %v\n", err)
 		osExit(1)
 	}
 
-	fmt.Printf("Deleted repo %q\n", repoName)
+	fmt.Printf("Deleted environment %q\n", envName)
 }
 
-func runRepoInfo(cmd *cobra.Command, args []string) {
+func runEnvInfo(cmd *cobra.Command, args []string) {
 	if len(args) == 1 {
-		// Explicit repo name: server-only lookup (original behavior)
-		runRepoInfoByName(args[0])
+		// Explicit environment name: server-only lookup (original behavior)
+		runEnvInfoByName(args[0])
 		return
 	}
 
-	// No argument: detect repo from .nebi file in current directory
-	runRepoInfoFromCwd()
+	// No argument: detect environment from .nebi file in current directory
+	runEnvInfoFromCwd()
 }
 
-// runRepoInfoFromCwd shows combined local status and server info
+// runEnvInfoFromCwd shows combined local status and server info
 // by reading the .nebi metadata file from the current (or -C) directory.
-func runRepoInfoFromCwd() {
-	dir := repoInfoPath
+func runEnvInfoFromCwd() {
+	dir := envInfoPath
 
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
@@ -424,16 +424,16 @@ func runRepoInfoFromCwd() {
 	// Read .nebi metadata
 	nf, err := nebifile.Read(absDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Not a nebi repo directory (no .nebi file found)\n")
+		fmt.Fprintf(os.Stderr, "Error: Not a nebi environment directory (no .nebi file found)\n")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Hint: Specify a repo name: nebi repo info <name>")
-		fmt.Fprintln(os.Stderr, "      Or pull a repo first: nebi pull <repo>:<tag>")
+		fmt.Fprintln(os.Stderr, "Hint: Specify an environment name: nebi env info <name>")
+		fmt.Fprintln(os.Stderr, "      Or pull an environment first: nebi pull <env>:<version>")
 		osExit(1)
 	}
 
 	// Show local status section
 	fmt.Println("Local:")
-	fmt.Printf("  Repo: %s:%s\n", nf.Origin.Repo, nf.Origin.Tag)
+	fmt.Printf("  Env: %s:%s\n", nf.Origin.Repo, nf.Origin.Tag)
 	if nf.Origin.RegistryURL != "" {
 		fmt.Printf("  Registry:  %s\n", nf.Origin.RegistryURL)
 	}
@@ -459,17 +459,17 @@ func runRepoInfoFromCwd() {
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	env, err := findRepoByName(client, ctx, nf.Origin.Repo)
+	env, err := findEnvByName(client, ctx, nf.Origin.Repo)
 	if err != nil {
 		fmt.Println("Server:")
-		fmt.Printf("  (repo %q not found on server)\n", nf.Origin.Repo)
+		fmt.Printf("  (environment %q not found on server)\n", nf.Origin.Repo)
 		return
 	}
 
 	envDetail, err := client.GetEnvironment(ctx, env.ID)
 	if err != nil {
 		fmt.Println("Server:")
-		fmt.Printf("  (failed to get repo details: %v)\n", err)
+		fmt.Printf("  (failed to get environment details: %v)\n", err)
 		return
 	}
 
@@ -489,13 +489,13 @@ func runRepoInfoFromCwd() {
 	}
 }
 
-// runRepoInfoByName shows server-side repo info by name.
-func runRepoInfoByName(repoName string) {
+// runEnvInfoByName shows server-side environment info by name.
+func runEnvInfoByName(envName string) {
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find repo by name
-	env, err := findRepoByName(client, ctx, repoName)
+	// Find environment by name
+	env, err := findEnvByName(client, ctx, envName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(1)
@@ -504,7 +504,7 @@ func runRepoInfoByName(repoName string) {
 	// Get full details
 	envDetail, err := client.GetEnvironment(ctx, env.ID)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to get repo details: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to get environment details: %v\n", err)
 		osExit(1)
 	}
 
@@ -533,7 +533,7 @@ func runRepoInfoByName(repoName string) {
 	}
 }
 
-// printServerInfo prints the server details section for repo info.
+// printServerInfo prints the server details section for environment info.
 func printServerInfo(envDetail *cliclient.Environment) {
 	fmt.Println("Server:")
 	fmt.Printf("  Name:            %s\n", envDetail.Name)
@@ -548,11 +548,11 @@ func printServerInfo(envDetail *cliclient.Environment) {
 	fmt.Printf("  Updated:         %s\n", envDetail.UpdatedAt)
 }
 
-// findRepoByName looks up a repo by name and returns it.
-func findRepoByName(client *cliclient.Client, ctx context.Context, name string) (*cliclient.Environment, error) {
+// findEnvByName looks up an environment by name and returns it.
+func findEnvByName(client *cliclient.Client, ctx context.Context, name string) (*cliclient.Environment, error) {
 	envs, err := client.ListEnvironments(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list repos: %v", err)
+		return nil, fmt.Errorf("failed to list environments: %v", err)
 	}
 
 	for _, env := range envs {
@@ -561,5 +561,5 @@ func findRepoByName(client *cliclient.Client, ctx context.Context, name string) 
 		}
 	}
 
-	return nil, fmt.Errorf("repo %q not found", name)
+	return nil, fmt.Errorf("environment %q not found", name)
 }

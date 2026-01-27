@@ -23,12 +23,12 @@ var (
 )
 
 var shellCmd = &cobra.Command{
-	Use:   "shell [<repo>[:<tag>]]",
-	Short: "Activate repo shell",
-	Long: `Activate a repo shell using pixi shell.
+	Use:   "shell [<env>[:<version>]]",
+	Short: "Activate environment shell",
+	Long: `Activate an environment shell using pixi shell.
 
 When run without arguments in a directory with .nebi metadata, uses the
-local repo. When given a repo reference, looks up the local
+local environment. When given an environment reference, looks up the local
 index (preferring global copies) and falls back to pulling from server.
 
 When multiple local copies exist, an interactive prompt lets you choose
@@ -41,20 +41,20 @@ Examples:
   # Shell from current directory (reads .nebi metadata)
   nebi shell
 
-  # Shell into specific repo by name
-  nebi shell myrepo:v1.0.0
+  # Shell into specific environment by name
+  nebi shell myenv:v1.0.0
 
   # Shell into specific pixi environment
-  nebi shell myrepo:v1.0.0 -e dev
+  nebi shell myenv:v1.0.0 -e dev
 
   # Use global copy explicitly
-  nebi shell myrepo:v1.0.0 --global
+  nebi shell myenv:v1.0.0 --global
 
   # Use a local copy (prompts if multiple)
-  nebi shell myrepo:v1.0.0 --local
+  nebi shell myenv:v1.0.0 --local
 
-  # Use repo at a specific path
-  nebi shell myrepo:v1.0.0 -C ~/project-a`,
+  # Use environment at a specific path
+  nebi shell myenv:v1.0.0 -C ~/project-a`,
 	Args: cobra.MaximumNArgs(1),
 	Run:  runShell,
 }
@@ -63,7 +63,7 @@ func init() {
 	shellCmd.Flags().StringVarP(&shellPixiEnv, "env", "e", "", "Pixi environment name")
 	shellCmd.Flags().BoolVarP(&shellGlobal, "global", "g", false, "Use global copy")
 	shellCmd.Flags().BoolVarP(&shellLocal, "local", "l", false, "Use local copy (prompts if multiple)")
-	shellCmd.Flags().StringVarP(&shellPath, "path", "C", "", "Use repo at specific directory path")
+	shellCmd.Flags().StringVarP(&shellPath, "path", "C", "", "Use environment at specific directory path")
 }
 
 func runShell(cmd *cobra.Command, args []string) {
@@ -86,13 +86,13 @@ func runShell(cmd *cobra.Command, args []string) {
 		// No argument - use current directory
 		shellDir = resolveShellFromCwd()
 	} else {
-		// Parse repo:tag format
-		repoName, tag, err := parseRepoRef(args[0])
+		// Parse env:version format
+		envName, version, err := parseEnvRef(args[0])
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			osExit(1)
 		}
-		shellDir = resolveShellFromRef(repoName, tag)
+		shellDir = resolveShellFromRef(envName, version)
 	}
 
 	// Check for drift and warn
@@ -113,7 +113,7 @@ func resolveShellFromPath(path string) string {
 	// Check the directory exists
 	info, err := os.Stat(absPath)
 	if err != nil || !info.IsDir() {
-		fmt.Fprintf(os.Stderr, "Error: No nebi repo found at %s\n", absPath)
+		fmt.Fprintf(os.Stderr, "Error: No nebi environment found at %s\n", absPath)
 		osExit(1)
 	}
 
@@ -125,7 +125,7 @@ func resolveShellFromPath(path string) string {
 		return absPath
 	}
 
-	fmt.Fprintf(os.Stderr, "Error: No nebi repo found at %s\n", absPath)
+	fmt.Fprintf(os.Stderr, "Error: No nebi environment found at %s\n", absPath)
 	osExit(1)
 	return ""
 }
@@ -148,31 +148,31 @@ func resolveShellFromCwd() string {
 		return absDir
 	}
 
-	fmt.Fprintf(os.Stderr, "Error: No repo found in current directory\n")
-	fmt.Fprintln(os.Stderr, "Run 'nebi pull <repo>:<tag>' to pull a repo, or specify one: 'nebi shell <repo>:<tag>'")
+	fmt.Fprintf(os.Stderr, "Error: No environment found in current directory\n")
+	fmt.Fprintln(os.Stderr, "Run 'nebi pull <env>:<version>' to pull an environment, or specify one: 'nebi shell <env>:<version>'")
 	osExit(1)
 	return ""
 }
 
-// resolveShellFromRef resolves a shell directory from a repo reference.
+// resolveShellFromRef resolves a shell directory from an environment reference.
 // Priority depends on flags:
 //   - --global: use global copy only
 //   - --local: use local copies only (interactive select if multiple)
 //   - default: global > single local > interactive select > pull from server
-func resolveShellFromRef(repoName, tag string) string {
+func resolveShellFromRef(envName, version string) string {
 	store := localindex.NewStore()
-	refStr := repoName
-	if tag != "" {
-		refStr += ":" + tag
+	refStr := envName
+	if version != "" {
+		refStr += ":" + version
 	}
 
 	// --global flag: force global copy
 	if shellGlobal {
-		if tag == "" {
-			fmt.Fprintf(os.Stderr, "Error: --global requires a tag (e.g., %s:v1.0)\n", repoName)
+		if version == "" {
+			fmt.Fprintf(os.Stderr, "Error: --global requires a version (e.g., %s:v1.0)\n", envName)
 			osExit(1)
 		}
-		global, err := store.FindGlobal(repoName, tag)
+		global, err := store.FindGlobal(envName, version)
 		if err != nil || global == nil {
 			fmt.Fprintf(os.Stderr, "Error: No global copy of %s\n", refStr)
 			fmt.Fprintf(os.Stderr, "Use 'nebi pull --global %s' to create one.\n", refStr)
@@ -188,11 +188,11 @@ func resolveShellFromRef(repoName, tag string) string {
 
 	// --local flag: force local copies only
 	if shellLocal {
-		if tag == "" {
-			fmt.Fprintf(os.Stderr, "Error: --local requires a tag (e.g., %s:v1.0)\n", repoName)
+		if version == "" {
+			fmt.Fprintf(os.Stderr, "Error: --local requires a version (e.g., %s:v1.0)\n", envName)
 			osExit(1)
 		}
-		locals := findValidLocalCopies(store, repoName, tag)
+		locals := findValidLocalCopies(store, envName, version)
 		if len(locals) == 0 {
 			fmt.Fprintf(os.Stderr, "Error: No local copies of %s found\n", refStr)
 			osExit(1)
@@ -205,9 +205,9 @@ func resolveShellFromRef(repoName, tag string) string {
 	}
 
 	// Default resolution: global > local > pull
-	if tag != "" {
+	if version != "" {
 		// Check for global copy first (global always wins)
-		global, err := store.FindGlobal(repoName, tag)
+		global, err := store.FindGlobal(envName, version)
 		if err == nil && global != nil {
 			if _, err := os.Stat(global.Path); err == nil {
 				fmt.Printf("Using global copy of %s\n", refStr)
@@ -216,7 +216,7 @@ func resolveShellFromRef(repoName, tag string) string {
 		}
 
 		// Check local copies
-		locals := findValidLocalCopies(store, repoName, tag)
+		locals := findValidLocalCopies(store, envName, version)
 		if len(locals) == 1 {
 			fmt.Printf("Using local copy at %s\n", locals[0].Path)
 			return locals[0].Path
@@ -227,12 +227,12 @@ func resolveShellFromRef(repoName, tag string) string {
 	}
 
 	// Not in local index - pull from server
-	return pullForShell(repoName, tag)
+	return pullForShell(envName, version)
 }
 
 // findValidLocalCopies returns local (non-global) copies that still exist on disk.
-func findValidLocalCopies(store *localindex.Store, repo, tag string) []localindex.RepoEntry {
-	matches, err := store.FindByRepoTag(repo, tag)
+func findValidLocalCopies(store *localindex.Store, env, version string) []localindex.RepoEntry {
+	matches, err := store.FindByRepoTag(env, version)
 	if err != nil {
 		return nil
 	}
@@ -313,13 +313,13 @@ func shortenPath(path string) string {
 	return path
 }
 
-// pullForShell pulls a repo from the server for shell activation.
-func pullForShell(repoName, tag string) string {
+// pullForShell pulls an environment from the server for shell activation.
+func pullForShell(envName, version string) string {
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find repo by name
-	env, err := findRepoByName(client, ctx, repoName)
+	// Find environment by name
+	env, err := findEnvByName(client, ctx, envName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(1)
@@ -333,7 +333,7 @@ func pullForShell(repoName, tag string) string {
 	}
 
 	if len(versions) == 0 {
-		fmt.Fprintf(os.Stderr, "Error: Repo %q has no versions\n", repoName)
+		fmt.Fprintf(os.Stderr, "Error: Environment %q has no versions\n", envName)
 		osExit(1)
 	}
 
@@ -345,12 +345,12 @@ func pullForShell(repoName, tag string) string {
 		}
 	}
 
-	// Resolve tag for display
-	if tag == "" {
-		tag = "latest"
+	// Resolve version for display
+	if version == "" {
+		version = "latest"
 	}
 
-	refStr := repoName + ":" + tag
+	refStr := envName + ":" + version
 	fmt.Printf("Pulling %s (version %d)...\n", refStr, latestVersion.VersionNumber)
 
 	// Get content
@@ -365,9 +365,9 @@ func pullForShell(repoName, tag string) string {
 		osExit(1)
 	}
 
-	// Use global storage for shell-pulled repos
+	// Use global storage for shell-pulled environments
 	store := localindex.NewStore()
-	cacheDir := store.GlobalRepoPath(env.ID, tag)
+	cacheDir := store.GlobalRepoPath(env.ID, version)
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to create cache directory: %v\n", err)
 		osExit(1)
@@ -389,7 +389,7 @@ func pullForShell(repoName, tag string) string {
 	tomlDigest := nebifile.ComputeDigest(pixiTomlBytes)
 	lockDigest := nebifile.ComputeDigest(pixiLockBytes)
 	nf := nebifile.NewFromPull(
-		repoName, tag, "", "",
+		envName, version, "", "",
 		latestVersion.VersionNumber, "",
 		tomlDigest, int64(len(pixiTomlBytes)),
 		lockDigest, int64(len(pixiLockBytes)),
@@ -398,8 +398,8 @@ func pullForShell(repoName, tag string) string {
 
 	// Add to local index
 	store.AddEntry(localindex.RepoEntry{
-		Repo:            repoName,
-		Tag:             tag,
+		Repo:            envName,
+		Tag:             version,
 		Path:            cacheDir,
 		IsGlobal:        true,
 		ServerVersionID: latestVersion.VersionNumber,
@@ -417,7 +417,7 @@ func checkShellDrift(dir string) {
 	}
 
 	if ws.Overall == drift.StatusModified {
-		fmt.Fprintln(os.Stderr, "Warning: Local repo has been modified since pull")
+		fmt.Fprintln(os.Stderr, "Warning: Local environment has been modified since pull")
 		for _, f := range ws.Files {
 			if f.Status == drift.StatusModified {
 				fmt.Fprintf(os.Stderr, "  modified: %s\n", f.Filename)
@@ -427,17 +427,17 @@ func checkShellDrift(dir string) {
 	}
 }
 
-// getRepoCacheDir returns the cache directory for a repo.
-func getRepoCacheDir(repoName string) (string, error) {
+// getEnvCacheDir returns the cache directory for an environment.
+func getEnvCacheDir(envName string) (string, error) {
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
 	}
 
-	repoDir := filepath.Join(cacheDir, "nebi", "repos", repoName)
-	if err := os.MkdirAll(repoDir, 0755); err != nil {
+	envDir := filepath.Join(cacheDir, "nebi", "envs", envName)
+	if err := os.MkdirAll(envDir, 0755); err != nil {
 		return "", err
 	}
 
-	return repoDir, nil
+	return envDir, nil
 }

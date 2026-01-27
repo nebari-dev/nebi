@@ -8,70 +8,70 @@ import (
 	"github.com/aktech/darb/internal/nebifile"
 )
 
-func TestParseWorkspaceRef_WithTag(t *testing.T) {
-	ws, tag, err := parseRepoRef("myworkspace:v1.0")
+func TestParseEnvRef_WithVersion(t *testing.T) {
+	env, version, err := parseEnvRef("myenv:v1.0")
 	if err != nil {
-		t.Fatalf("parseRepoRef() error = %v", err)
+		t.Fatalf("parseEnvRef() error = %v", err)
 	}
-	if ws != "myworkspace" {
-		t.Errorf("workspace = %q, want %q", ws, "myworkspace")
+	if env != "myenv" {
+		t.Errorf("env = %q, want %q", env, "myenv")
 	}
-	if tag != "v1.0" {
-		t.Errorf("tag = %q, want %q", tag, "v1.0")
+	if version != "v1.0" {
+		t.Errorf("version = %q, want %q", version, "v1.0")
 	}
 }
 
-func TestParseWorkspaceRef_WithDigest(t *testing.T) {
-	ws, tag, err := parseRepoRef("myworkspace@sha256:abc123")
+func TestParseEnvRef_WithDigest(t *testing.T) {
+	env, version, err := parseEnvRef("myenv@sha256:abc123")
 	if err != nil {
-		t.Fatalf("parseRepoRef() error = %v", err)
+		t.Fatalf("parseEnvRef() error = %v", err)
 	}
-	if ws != "myworkspace" {
-		t.Errorf("workspace = %q, want %q", ws, "myworkspace")
+	if env != "myenv" {
+		t.Errorf("env = %q, want %q", env, "myenv")
 	}
-	if tag != "@sha256:abc123" {
-		t.Errorf("tag = %q, want %q", tag, "@sha256:abc123")
+	if version != "@sha256:abc123" {
+		t.Errorf("version = %q, want %q", version, "@sha256:abc123")
 	}
 }
 
-func TestParseWorkspaceRef_NoTag(t *testing.T) {
-	ws, tag, err := parseRepoRef("myworkspace")
+func TestParseEnvRef_NoVersion(t *testing.T) {
+	env, version, err := parseEnvRef("myenv")
 	if err != nil {
-		t.Fatalf("parseRepoRef() error = %v", err)
+		t.Fatalf("parseEnvRef() error = %v", err)
 	}
-	if ws != "myworkspace" {
-		t.Errorf("workspace = %q, want %q", ws, "myworkspace")
+	if env != "myenv" {
+		t.Errorf("env = %q, want %q", env, "myenv")
 	}
-	if tag != "" {
-		t.Errorf("tag = %q, want empty", tag)
+	if version != "" {
+		t.Errorf("version = %q, want empty", version)
 	}
 }
 
-func TestParseWorkspaceRef_ColonInTag(t *testing.T) {
-	// workspace:tag where tag contains colon (e.g. workspace:v1:latest)
-	ws, tag, err := parseRepoRef("workspace:v1:latest")
+func TestParseEnvRef_ColonInVersion(t *testing.T) {
+	// env:version where version contains colon (e.g. env:v1:latest)
+	env, version, err := parseEnvRef("env:v1:latest")
 	if err != nil {
-		t.Fatalf("parseRepoRef() error = %v", err)
+		t.Fatalf("parseEnvRef() error = %v", err)
 	}
 	// LastIndex of ":" gives us the last colon
-	if ws != "workspace:v1" {
-		t.Errorf("workspace = %q, want %q", ws, "workspace:v1")
+	if env != "env:v1" {
+		t.Errorf("env = %q, want %q", env, "env:v1")
 	}
-	if tag != "latest" {
-		t.Errorf("tag = %q, want %q", tag, "latest")
+	if version != "latest" {
+		t.Errorf("version = %q, want %q", version, "latest")
 	}
 }
 
-func TestParseWorkspaceRef_EmptyString(t *testing.T) {
-	ws, tag, err := parseRepoRef("")
+func TestParseEnvRef_EmptyString(t *testing.T) {
+	env, version, err := parseEnvRef("")
 	if err != nil {
-		t.Fatalf("parseRepoRef() error = %v", err)
+		t.Fatalf("parseEnvRef() error = %v", err)
 	}
-	if ws != "" {
-		t.Errorf("workspace = %q, want empty", ws)
+	if env != "" {
+		t.Errorf("env = %q, want empty", env)
 	}
-	if tag != "" {
-		t.Errorf("tag = %q, want empty", tag)
+	if version != "" {
+		t.Errorf("version = %q, want empty", version)
 	}
 }
 

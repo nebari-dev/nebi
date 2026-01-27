@@ -21,22 +21,22 @@ var (
 )
 
 var diffCmd = &cobra.Command{
-	Use:   "diff [repo:tag] [repo:tag]",
-	Short: "Show repo differences",
-	Long: `Show detailed differences between repo versions.
+	Use:   "diff [env:version] [env:version]",
+	Short: "Show environment differences",
+	Long: `Show detailed differences between environment versions.
 
 While 'nebi status' answers "has anything changed?", 'nebi diff' answers
 "what exactly changed?".
 
-Arguments can be repo:tag references (fetched from server) or local
+Arguments can be env:version references (fetched from server) or local
 paths (read directly from disk). Paths are detected by prefix: /, ./, ../,
 ~, or the literal ".".
 
 Usage patterns:
   nebi diff                              Local changes vs what was pulled
-  nebi diff --remote                     Local vs current remote tag
-  nebi diff repo:v1.0 repo:v2.0         Compare two remote references
-  nebi diff repo:v1.0                   Compare remote ref vs local
+  nebi diff --remote                     Local vs current remote version
+  nebi diff env:v1.0 env:v2.0           Compare two remote references
+  nebi diff env:v1.0                    Compare remote ref vs local
   nebi diff ./project-a ./project-b      Compare two local paths
   nebi diff . ~/other-project            Current dir vs another local path
   nebi diff ~/local data-science:v2.0    Local path vs remote reference
@@ -48,13 +48,13 @@ Examples:
   # Show changes vs current remote
   nebi diff --remote
 
-  # Compare two versions of a repo
+  # Compare two versions of an environment
   nebi diff data-science:v1.0 data-science:v2.0
 
   # Compare remote ref vs local
   nebi diff data-science:v1.0
 
-  # Compare two local repo directories
+  # Compare two local environment directories
   nebi diff ./experiment-1 ./experiment-2
 
   # Include lock file package-level diff
@@ -63,18 +63,18 @@ Examples:
   # JSON output for scripting
   nebi diff --json
 
-  # Check repo at a specific path
-  nebi diff -C /path/to/repo`,
+  # Check environment at a specific path
+  nebi diff -C /path/to/env`,
 	Args: cobra.MaximumNArgs(2),
 	Run:  runDiff,
 }
 
 func init() {
-	diffCmd.Flags().BoolVar(&diffRemote, "remote", false, "Compare against current remote tag")
+	diffCmd.Flags().BoolVar(&diffRemote, "remote", false, "Compare against current remote version")
 	diffCmd.Flags().BoolVar(&diffJSON, "json", false, "Output as JSON")
 	diffCmd.Flags().BoolVar(&diffLock, "lock", false, "Show lock file package-level diff")
 	diffCmd.Flags().BoolVar(&diffToml, "toml", false, "Show only pixi.toml diff")
-	diffCmd.Flags().StringVarP(&diffPath, "path", "C", ".", "Repo directory path")
+	diffCmd.Flags().StringVarP(&diffPath, "path", "C", ".", "Environment directory path")
 }
 
 func runDiff(cmd *cobra.Command, args []string) {
@@ -120,15 +120,15 @@ func runDiffLocal() {
 	nf, err := nebifile.Read(absDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		fmt.Fprintln(os.Stderr, "Hint: Run 'nebi pull' first to create a workspace with tracking metadata.")
+		fmt.Fprintln(os.Stderr, "Hint: Run 'nebi pull' first to create an environment with tracking metadata.")
 		osExit(2)
 	}
 
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Find workspace on server
-	env, err := findRepoByName(client, ctx, nf.Origin.Repo)
+	// Find environment on server
+	env, err := findEnvByName(client, ctx, nf.Origin.Repo)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(2)
@@ -139,7 +139,7 @@ func runDiffLocal() {
 	var sourceLabel string
 
 	if diffRemote {
-		// Fetch current tag content
+		// Fetch current version content
 		versionContent, err = drift.FetchByTag(ctx, client, nf.Origin.Repo, nf.Origin.Tag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Failed to fetch remote content: %v\n", err)
@@ -194,15 +194,15 @@ func runDiffLocal() {
 	}
 }
 
-// runDiffRefVsLocal compares a remote reference against local workspace.
+// runDiffRefVsLocal compares a remote reference against local environment.
 func runDiffRefVsLocal(ref string) {
-	workspace, tag, err := parseRepoRef(ref)
+	envName, version, err := parseEnvRef(ref)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(2)
 	}
-	if tag == "" {
-		fmt.Fprintf(os.Stderr, "Error: tag is required in reference (e.g., %s:v1.0)\n", workspace)
+	if version == "" {
+		fmt.Fprintf(os.Stderr, "Error: version is required in reference (e.g., %s:v1.0)\n", envName)
 		osExit(2)
 	}
 
@@ -216,9 +216,9 @@ func runDiffRefVsLocal(ref string) {
 	ctx := mustGetAuthContext()
 
 	// Fetch the remote reference content
-	vc, err := drift.FetchByTag(ctx, client, workspace, tag)
+	vc, err := drift.FetchByTag(ctx, client, envName, version)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", workspace, tag, err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", envName, version, err)
 		osExit(2)
 	}
 
@@ -242,12 +242,12 @@ func runDiffRefVsLocal(ref string) {
 		lockSummary, _ = diff.CompareLock([]byte(vc.PixiLock), localPixiLock)
 	}
 
-	sourceLabel := fmt.Sprintf("%s:%s", workspace, tag)
+	sourceLabel := fmt.Sprintf("%s:%s", envName, version)
 	targetLabel := "local"
 
 	if diffJSON {
 		outputDiffJSONRefs(
-			diff.DiffRefJSON{Type: "tag", Repo: workspace, Tag: tag},
+			diff.DiffRefJSON{Type: "version", Repo: envName, Tag: version},
 			diff.DiffRefJSON{Type: "local", Path: absDir},
 			tomlDiff, lockSummary,
 		)
@@ -260,25 +260,25 @@ func runDiffRefVsLocal(ref string) {
 	}
 }
 
-// runDiffTwoRefs compares two remote workspace references.
+// runDiffTwoRefs compares two remote environment references.
 func runDiffTwoRefs(ref1, ref2 string) {
-	ws1, tag1, err := parseRepoRef(ref1)
+	env1, version1, err := parseEnvRef(ref1)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(2)
 	}
-	if tag1 == "" {
-		fmt.Fprintf(os.Stderr, "Error: tag is required in first reference (e.g., %s:v1.0)\n", ws1)
+	if version1 == "" {
+		fmt.Fprintf(os.Stderr, "Error: version is required in first reference (e.g., %s:v1.0)\n", env1)
 		osExit(2)
 	}
 
-	ws2, tag2, err := parseRepoRef(ref2)
+	env2, version2, err := parseEnvRef(ref2)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(2)
 	}
-	if tag2 == "" {
-		fmt.Fprintf(os.Stderr, "Error: tag is required in second reference (e.g., %s:v2.0)\n", ws2)
+	if version2 == "" {
+		fmt.Fprintf(os.Stderr, "Error: version is required in second reference (e.g., %s:v2.0)\n", env2)
 		osExit(2)
 	}
 
@@ -286,15 +286,15 @@ func runDiffTwoRefs(ref1, ref2 string) {
 	ctx := mustGetAuthContext()
 
 	// Fetch both references
-	vc1, err := drift.FetchByTag(ctx, client, ws1, tag1)
+	vc1, err := drift.FetchByTag(ctx, client, env1, version1)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", ws1, tag1, err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", env1, version1, err)
 		osExit(2)
 	}
 
-	vc2, err := drift.FetchByTag(ctx, client, ws2, tag2)
+	vc2, err := drift.FetchByTag(ctx, client, env2, version2)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", ws2, tag2, err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", env2, version2, err)
 		osExit(2)
 	}
 
@@ -310,13 +310,13 @@ func runDiffTwoRefs(ref1, ref2 string) {
 		lockSummary, _ = diff.CompareLock([]byte(vc1.PixiLock), []byte(vc2.PixiLock))
 	}
 
-	sourceLabel := fmt.Sprintf("%s:%s", ws1, tag1)
-	targetLabel := fmt.Sprintf("%s:%s", ws2, tag2)
+	sourceLabel := fmt.Sprintf("%s:%s", env1, version1)
+	targetLabel := fmt.Sprintf("%s:%s", env2, version2)
 
 	if diffJSON {
 		outputDiffJSONRefs(
-			diff.DiffRefJSON{Type: "tag", Repo: ws1, Tag: tag1},
-			diff.DiffRefJSON{Type: "tag", Repo: ws2, Tag: tag2},
+			diff.DiffRefJSON{Type: "version", Repo: env1, Tag: version1},
+			diff.DiffRefJSON{Type: "version", Repo: env2, Tag: version2},
 			tomlDiff, lockSummary,
 		)
 	} else {
@@ -382,10 +382,10 @@ func outputDiffText(tomlDiff *diff.TomlDiff, lockSummary *diff.LockSummary, sour
 
 func outputDiffJSON(nf *nebifile.NebiFile, tomlDiff *diff.TomlDiff, lockSummary *diff.LockSummary, sourceLabel, absDir string) {
 	source := diff.DiffRefJSON{
-		Type:      "pulled",
-		Repo: nf.Origin.Repo,
-		Tag:       nf.Origin.Tag,
-		Digest:    nf.Origin.ManifestDigest,
+		Type:   "pulled",
+		Repo:   nf.Origin.Repo,
+		Tag:    nf.Origin.Tag,
+		Digest: nf.Origin.ManifestDigest,
 	}
 	if diffRemote {
 		source.Type = "remote"
@@ -433,7 +433,7 @@ func bytesEqual(a, b []byte) bool {
 }
 
 // isPathLike returns true if the argument looks like a filesystem path
-// rather than a workspace:tag reference.
+// rather than an env:version reference.
 // Path-like: starts with /, ./, ../, ~, or is exactly "."
 func isPathLike(arg string) bool {
 	if arg == "." {
@@ -462,9 +462,9 @@ func resolvePath(path string) (string, error) {
 	return abs, nil
 }
 
-// readLocalWorkspace reads pixi.toml and pixi.lock from a directory.
+// readLocalEnv reads pixi.toml and pixi.lock from a directory.
 // Returns an error if pixi.toml doesn't exist. pixi.lock is optional.
-func readLocalWorkspace(dir string) (pixiToml, pixiLock []byte, err error) {
+func readLocalEnv(dir string) (pixiToml, pixiLock []byte, err error) {
 	pixiToml, err = os.ReadFile(filepath.Join(dir, "pixi.toml"))
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s/pixi.toml: %w", dir, err)
@@ -473,7 +473,7 @@ func readLocalWorkspace(dir string) (pixiToml, pixiLock []byte, err error) {
 	return pixiToml, pixiLock, nil
 }
 
-// runDiffTwoPaths compares two local workspace directories.
+// runDiffTwoPaths compares two local environment directories.
 func runDiffTwoPaths(path1, path2 string) {
 	abs1, err := resolvePath(path1)
 	if err != nil {
@@ -486,12 +486,12 @@ func runDiffTwoPaths(path1, path2 string) {
 		osExit(2)
 	}
 
-	toml1, lock1, err := readLocalWorkspace(abs1)
+	toml1, lock1, err := readLocalEnv(abs1)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(2)
 	}
-	toml2, lock2, err := readLocalWorkspace(abs2)
+	toml2, lock2, err := readLocalEnv(abs2)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(2)
@@ -526,7 +526,7 @@ func runDiffTwoPaths(path1, path2 string) {
 	}
 }
 
-// runDiffPathVsRef compares a local path (source) against a registry reference (target).
+// runDiffPathVsRef compares a local path (source) against a remote reference (target).
 func runDiffPathVsRef(path, ref string) {
 	abs, err := resolvePath(path)
 	if err != nil {
@@ -534,17 +534,17 @@ func runDiffPathVsRef(path, ref string) {
 		osExit(2)
 	}
 
-	workspace, tag, err := parseRepoRef(ref)
+	envName, version, err := parseEnvRef(ref)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(2)
 	}
-	if tag == "" {
-		fmt.Fprintf(os.Stderr, "Error: tag is required in reference (e.g., %s:v1.0)\n", workspace)
+	if version == "" {
+		fmt.Fprintf(os.Stderr, "Error: version is required in reference (e.g., %s:v1.0)\n", envName)
 		osExit(2)
 	}
 
-	localToml, localLock, err := readLocalWorkspace(abs)
+	localToml, localLock, err := readLocalEnv(abs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(2)
@@ -553,9 +553,9 @@ func runDiffPathVsRef(path, ref string) {
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	vc, err := drift.FetchByTag(ctx, client, workspace, tag)
+	vc, err := drift.FetchByTag(ctx, client, envName, version)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", workspace, tag, err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", envName, version, err)
 		osExit(2)
 	}
 
@@ -571,12 +571,12 @@ func runDiffPathVsRef(path, ref string) {
 	}
 
 	sourceLabel := abs
-	targetLabel := fmt.Sprintf("%s:%s", workspace, tag)
+	targetLabel := fmt.Sprintf("%s:%s", envName, version)
 
 	if diffJSON {
 		outputDiffJSONRefs(
 			diff.DiffRefJSON{Type: "local", Path: abs},
-			diff.DiffRefJSON{Type: "tag", Repo: workspace, Tag: tag},
+			diff.DiffRefJSON{Type: "version", Repo: envName, Tag: version},
 			tomlDiff, lockSummary,
 		)
 	} else {
@@ -588,7 +588,7 @@ func runDiffPathVsRef(path, ref string) {
 	}
 }
 
-// runDiffRefVsPath compares a registry reference (source) against a local path (target).
+// runDiffRefVsPath compares a remote reference (source) against a local path (target).
 func runDiffRefVsPath(ref, path string) {
 	abs, err := resolvePath(path)
 	if err != nil {
@@ -596,17 +596,17 @@ func runDiffRefVsPath(ref, path string) {
 		osExit(2)
 	}
 
-	workspace, tag, err := parseRepoRef(ref)
+	envName, version, err := parseEnvRef(ref)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(2)
 	}
-	if tag == "" {
-		fmt.Fprintf(os.Stderr, "Error: tag is required in reference (e.g., %s:v1.0)\n", workspace)
+	if version == "" {
+		fmt.Fprintf(os.Stderr, "Error: version is required in reference (e.g., %s:v1.0)\n", envName)
 		osExit(2)
 	}
 
-	localToml, localLock, err := readLocalWorkspace(abs)
+	localToml, localLock, err := readLocalEnv(abs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(2)
@@ -615,9 +615,9 @@ func runDiffRefVsPath(ref, path string) {
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	vc, err := drift.FetchByTag(ctx, client, workspace, tag)
+	vc, err := drift.FetchByTag(ctx, client, envName, version)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", workspace, tag, err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to fetch %s:%s: %v\n", envName, version, err)
 		osExit(2)
 	}
 
@@ -632,12 +632,12 @@ func runDiffRefVsPath(ref, path string) {
 		lockSummary, _ = diff.CompareLock([]byte(vc.PixiLock), localLock)
 	}
 
-	sourceLabel := fmt.Sprintf("%s:%s", workspace, tag)
+	sourceLabel := fmt.Sprintf("%s:%s", envName, version)
 	targetLabel := abs
 
 	if diffJSON {
 		outputDiffJSONRefs(
-			diff.DiffRefJSON{Type: "tag", Repo: workspace, Tag: tag},
+			diff.DiffRefJSON{Type: "version", Repo: envName, Tag: version},
 			diff.DiffRefJSON{Type: "local", Path: abs},
 			tomlDiff, lockSummary,
 		)

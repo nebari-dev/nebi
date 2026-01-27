@@ -130,7 +130,7 @@ func TestFormatLocation_AbsolutePath(t *testing.T) {
 	}
 }
 
-func TestWorkspacePrune_Integration(t *testing.T) {
+func TestEnvPrune_Integration(t *testing.T) {
 	dir := t.TempDir()
 	store := localindex.NewStoreWithDir(dir)
 
@@ -139,16 +139,16 @@ func TestWorkspacePrune_Integration(t *testing.T) {
 	os.MkdirAll(validPath, 0755)
 
 	store.AddEntry(localindex.RepoEntry{
-		Repo: "valid-ws",
-		Tag:       "v1.0",
-		Path:      validPath,
-		PulledAt:  time.Now(),
+		Repo:     "valid-env",
+		Tag:      "v1.0",
+		Path:     validPath,
+		PulledAt: time.Now(),
 	})
 	store.AddEntry(localindex.RepoEntry{
-		Repo: "missing-ws",
-		Tag:       "v1.0",
-		Path:      filepath.Join(dir, "does-not-exist"),
-		PulledAt:  time.Now(),
+		Repo:     "missing-env",
+		Tag:      "v1.0",
+		Path:     filepath.Join(dir, "does-not-exist"),
+		PulledAt: time.Now(),
 	})
 
 	// Prune
@@ -160,8 +160,8 @@ func TestWorkspacePrune_Integration(t *testing.T) {
 	if len(removed) != 1 {
 		t.Fatalf("Prune() removed %d entries, want 1", len(removed))
 	}
-	if removed[0].Repo != "missing-ws" {
-		t.Errorf("removed workspace = %q, want %q", removed[0].Repo, "missing-ws")
+	if removed[0].Repo != "missing-env" {
+		t.Errorf("removed environment = %q, want %q", removed[0].Repo, "missing-env")
 	}
 
 	// Verify valid entry still exists
@@ -171,7 +171,7 @@ func TestWorkspacePrune_Integration(t *testing.T) {
 	}
 }
 
-func TestWorkspaceListLocal_EmptyIndex(t *testing.T) {
+func TestEnvListLocal_EmptyIndex(t *testing.T) {
 	dir := t.TempDir()
 	store := localindex.NewStoreWithDir(dir)
 
@@ -180,33 +180,33 @@ func TestWorkspaceListLocal_EmptyIndex(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 	if len(index.Repos) != 0 {
-		t.Errorf("Empty index should have 0 workspaces, got %d", len(index.Repos))
+		t.Errorf("Empty index should have 0 environments, got %d", len(index.Repos))
 	}
 }
 
-func TestWorkspaceListLocal_WithEntries(t *testing.T) {
+func TestEnvListLocal_WithEntries(t *testing.T) {
 	dir := t.TempDir()
 	store := localindex.NewStoreWithDir(dir)
 
 	// Add some entries
-	path1 := filepath.Join(dir, "ws1")
-	path2 := filepath.Join(dir, "ws2")
+	path1 := filepath.Join(dir, "env1")
+	path2 := filepath.Join(dir, "env2")
 	os.MkdirAll(path1, 0755)
 	os.MkdirAll(path2, 0755)
 
 	store.AddEntry(localindex.RepoEntry{
-		Repo: "data-science",
-		Tag:       "v1.0",
-		Path:      path1,
-		IsGlobal:  false,
-		PulledAt:  time.Now(),
+		Repo:     "data-science",
+		Tag:      "v1.0",
+		Path:     path1,
+		IsGlobal: false,
+		PulledAt: time.Now(),
 	})
 	store.AddEntry(localindex.RepoEntry{
-		Repo: "data-science",
-		Tag:       "v2.0",
-		Path:      path2,
-		IsGlobal:  true,
-		PulledAt:  time.Now(),
+		Repo:     "data-science",
+		Tag:      "v2.0",
+		Path:     path2,
+		IsGlobal: true,
+		PulledAt: time.Now(),
 	})
 
 	index, err := store.Load()
@@ -214,30 +214,30 @@ func TestWorkspaceListLocal_WithEntries(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 	if len(index.Repos) != 2 {
-		t.Errorf("Expected 2 workspaces, got %d", len(index.Repos))
+		t.Errorf("Expected 2 environments, got %d", len(index.Repos))
 	}
 }
 
-func TestWorkspaceInfoCmd_AcceptsZeroOrOneArgs(t *testing.T) {
+func TestEnvInfoCmd_AcceptsZeroOrOneArgs(t *testing.T) {
 	// The command should accept 0 or 1 args (MaximumNArgs(1))
-	err := repoInfoCmd.Args(repoInfoCmd, []string{})
+	err := envInfoCmd.Args(envInfoCmd, []string{})
 	if err != nil {
-		t.Errorf("repoInfoCmd should accept 0 args, got error: %v", err)
+		t.Errorf("envInfoCmd should accept 0 args, got error: %v", err)
 	}
 
-	err = repoInfoCmd.Args(repoInfoCmd, []string{"myworkspace"})
+	err = envInfoCmd.Args(envInfoCmd, []string{"myenv"})
 	if err != nil {
-		t.Errorf("repoInfoCmd should accept 1 arg, got error: %v", err)
+		t.Errorf("envInfoCmd should accept 1 arg, got error: %v", err)
 	}
 
-	err = repoInfoCmd.Args(repoInfoCmd, []string{"a", "b"})
+	err = envInfoCmd.Args(envInfoCmd, []string{"a", "b"})
 	if err == nil {
-		t.Error("repoInfoCmd should reject 2 args")
+		t.Error("envInfoCmd should reject 2 args")
 	}
 }
 
-func TestWorkspaceInfoCmd_HasPathFlag(t *testing.T) {
-	flag := repoInfoCmd.Flags().Lookup("path")
+func TestEnvInfoCmd_HasPathFlag(t *testing.T) {
+	flag := envInfoCmd.Flags().Lookup("path")
 	if flag == nil {
 		t.Fatal("--path/-C flag should be registered")
 	}
@@ -249,14 +249,14 @@ func TestWorkspaceInfoCmd_HasPathFlag(t *testing.T) {
 	}
 }
 
-func TestWorkspacePruneCmd_HasNoArgs(t *testing.T) {
-	if repoPruneCmd.Args == nil {
+func TestEnvPruneCmd_HasNoArgs(t *testing.T) {
+	if envPruneCmd.Args == nil {
 		t.Fatal("Args should not be nil")
 	}
 }
 
-func TestWorkspaceListCmd_HasLocalFlag(t *testing.T) {
-	flag := repoListCmd.Flags().Lookup("local")
+func TestEnvListCmd_HasLocalFlag(t *testing.T) {
+	flag := envListCmd.Flags().Lookup("local")
 	if flag == nil {
 		t.Fatal("--local flag should be registered")
 	}
@@ -265,8 +265,8 @@ func TestWorkspaceListCmd_HasLocalFlag(t *testing.T) {
 	}
 }
 
-func TestWorkspaceListCmd_HasJSONFlag(t *testing.T) {
-	flag := repoListCmd.Flags().Lookup("json")
+func TestEnvListCmd_HasJSONFlag(t *testing.T) {
+	flag := envListCmd.Flags().Lookup("json")
 	if flag == nil {
 		t.Fatal("--json flag should be registered")
 	}
@@ -303,16 +303,16 @@ func TestAbbreviateUUID(t *testing.T) {
 		want  string
 	}{
 		{
-			"~/.local/share/nebi/workspaces/550e8400-e29b-41d4-a716-446655440000/v1.0",
-			"~/.local/share/nebi/workspaces/550e8400/v1.0",
+			"~/.local/share/nebi/envs/550e8400-e29b-41d4-a716-446655440000/v1.0",
+			"~/.local/share/nebi/envs/550e8400/v1.0",
 		},
 		{
-			"~/.local/share/nebi/workspaces/my-workspace/v1.0",
-			"~/.local/share/nebi/workspaces/my-workspace/v1.0",
+			"~/.local/share/nebi/envs/my-env/v1.0",
+			"~/.local/share/nebi/envs/my-env/v1.0",
 		},
 		{
-			"/opt/nebi/workspaces/550e8400-e29b-41d4-a716-446655440000/v2.0",
-			"/opt/nebi/workspaces/550e8400/v2.0",
+			"/opt/nebi/envs/550e8400-e29b-41d4-a716-446655440000/v2.0",
+			"/opt/nebi/envs/550e8400/v2.0",
 		},
 	}
 	for _, tt := range tests {

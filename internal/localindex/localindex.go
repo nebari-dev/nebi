@@ -308,6 +308,21 @@ func (s *Store) FindByPath(path string) (*Entry, error) {
 	return nil, nil
 }
 
+// FindByID returns the entry with the given ID, or nil if not found.
+func (s *Store) FindByID(id string) (*Entry, error) {
+	idx, err := s.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range idx.Entries {
+		if idx.Entries[i].ID == id {
+			return &idx.Entries[i], nil
+		}
+	}
+	return nil, nil
+}
+
 // FindBySpecVersion returns all entries matching a spec name and version name.
 func (s *Store) FindBySpecVersion(specName, versionName string) ([]Entry, error) {
 	idx, err := s.Load()

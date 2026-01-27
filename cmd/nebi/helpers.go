@@ -44,7 +44,7 @@ func formatTimeAgo(t time.Time) string {
 }
 
 // formatStatusJSONInternal produces JSON output for nebi status.
-func formatStatusJSONInternal(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) ([]byte, error) {
+func formatStatusJSONInternal(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus, pulledAt time.Time) ([]byte, error) {
 	type localStatus struct {
 		PixiToml string `json:"pixi_toml"`
 		PixiLock string `json:"pixi_lock"`
@@ -58,22 +58,25 @@ func formatStatusJSONInternal(ws *drift.RepoStatus, nf *nebifile.NebiFile, remot
 	}
 
 	type statusOutput struct {
-		Repo         string      `json:"repo"`
-		Tag          string      `json:"tag"`
-		RegistryURL  string      `json:"registry_url,omitempty"`
+		Env          string      `json:"env"`
+		Version      string      `json:"version"`
 		ServerURL    string      `json:"server_url"`
-		PulledAt     string      `json:"pulled_at"`
+		PulledAt     string      `json:"pulled_at,omitempty"`
 		OriginDigest string      `json:"origin_digest"`
 		Local        localStatus `json:"local"`
 		Remote       *remoteJSON `json:"remote,omitempty"`
 	}
 
+	var pulledAtStr string
+	if !pulledAt.IsZero() {
+		pulledAtStr = pulledAt.Format(time.RFC3339)
+	}
+
 	output := statusOutput{
-		Repo:         nf.Origin.SpecName,
-		Tag:          nf.Origin.VersionName,
-		RegistryURL:  "", // No longer stored in nebifile
+		Env:          nf.Origin.SpecName,
+		Version:      nf.Origin.VersionName,
 		ServerURL:    nf.Origin.ServerURL,
-		PulledAt:     nf.Origin.PulledAt.Format(time.RFC3339),
+		PulledAt:     pulledAtStr,
 		OriginDigest: nf.Origin.VersionID,
 		Local: localStatus{
 			PixiToml: getFileStatus(ws, "pixi.toml"),

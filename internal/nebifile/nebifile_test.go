@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -29,7 +28,6 @@ func TestReadInvalidTOML(t *testing.T) {
 
 func TestWriteAndRead(t *testing.T) {
 	dir := t.TempDir()
-	now := time.Date(2024, 1, 20, 10, 30, 0, 0, time.UTC)
 
 	nf := &NebiFile{
 		ID: "test-uuid-123",
@@ -40,7 +38,6 @@ func TestWriteAndRead(t *testing.T) {
 			SpecName:    "data-science",
 			VersionID:   "version-uuid",
 			VersionName: "v1.0",
-			PulledAt:    now,
 		},
 	}
 
@@ -66,8 +63,14 @@ func TestWriteAndRead(t *testing.T) {
 	if loaded.Origin.ServerURL != "https://nebi.example.com" {
 		t.Errorf("ServerURL = %q, want %q", loaded.Origin.ServerURL, "https://nebi.example.com")
 	}
-	if !loaded.Origin.PulledAt.Equal(now) {
-		t.Errorf("PulledAt = %v, want %v", loaded.Origin.PulledAt, now)
+	if loaded.Origin.ServerID != "server-uuid" {
+		t.Errorf("ServerID = %q, want %q", loaded.Origin.ServerID, "server-uuid")
+	}
+	if loaded.Origin.SpecID != "spec-uuid" {
+		t.Errorf("SpecID = %q, want %q", loaded.Origin.SpecID, "spec-uuid")
+	}
+	if loaded.Origin.VersionID != "version-uuid" {
+		t.Errorf("VersionID = %q, want %q", loaded.Origin.VersionID, "version-uuid")
 	}
 }
 
@@ -89,24 +92,6 @@ func TestExists(t *testing.T) {
 
 	if !Exists(dir) {
 		t.Error("Exists() should return true after writing .nebi.toml file")
-	}
-}
-
-func TestExistsOldFormat(t *testing.T) {
-	dir := t.TempDir()
-
-	// Create old .nebi YAML file
-	oldContent := `origin:
-  repo: test
-  tag: v1.0
-  server_url: https://example.com
-  server_version_id: 1
-  pulled_at: 2024-01-20T10:30:00Z
-`
-	os.WriteFile(filepath.Join(dir, OldFileName), []byte(oldContent), 0644)
-
-	if !Exists(dir) {
-		t.Error("Exists() should return true for old .nebi YAML file")
 	}
 }
 
@@ -151,9 +136,6 @@ func TestNewFromPull(t *testing.T) {
 	if nf.Origin.ServerID != "server-uuid" {
 		t.Errorf("ServerID = %q, want %q", nf.Origin.ServerID, "server-uuid")
 	}
-	if nf.Origin.PulledAt.IsZero() {
-		t.Error("PulledAt should not be zero")
-	}
 	if nf.ID == "" {
 		t.Error("ID should be auto-generated")
 	}
@@ -161,7 +143,6 @@ func TestNewFromPull(t *testing.T) {
 
 func TestTOMLFormat(t *testing.T) {
 	dir := t.TempDir()
-	now := time.Date(2024, 1, 20, 10, 30, 0, 0, time.UTC)
 
 	nf := &NebiFile{
 		ID: "test-uuid",
@@ -172,7 +153,6 @@ func TestTOMLFormat(t *testing.T) {
 			SpecName:    "data-science",
 			VersionID:   "version-uuid",
 			VersionName: "v1.0",
-			PulledAt:    now,
 		},
 	}
 
@@ -278,9 +258,6 @@ func TestFileNameConstant(t *testing.T) {
 	if FileName != ".nebi.toml" {
 		t.Errorf("FileName = %q, want %q", FileName, ".nebi.toml")
 	}
-	if OldFileName != ".nebi" {
-		t.Errorf("OldFileName = %q, want %q", OldFileName, ".nebi")
-	}
 }
 
 func TestEmptyOriginFields(t *testing.T) {
@@ -294,7 +271,6 @@ func TestEmptyOriginFields(t *testing.T) {
 			VersionName: "v1.0",
 			ServerURL:   "https://example.com",
 			VersionID:   "1",
-			PulledAt:    time.Now(),
 		},
 	}
 
@@ -318,7 +294,6 @@ func TestEmptyOriginFields(t *testing.T) {
 
 func TestRoundTripPreservesData(t *testing.T) {
 	dir := t.TempDir()
-	now := time.Date(2024, 6, 15, 14, 30, 0, 0, time.UTC)
 
 	original := &NebiFile{
 		ID: "original-uuid",
@@ -329,7 +304,6 @@ func TestRoundTripPreservesData(t *testing.T) {
 			SpecName:    "ml-pipeline",
 			VersionID:   "version-uuid-789",
 			VersionName: "v2.3.1-beta",
-			PulledAt:    now,
 		},
 	}
 
@@ -363,105 +337,6 @@ func TestRoundTripPreservesData(t *testing.T) {
 	}
 	if loaded.Origin.VersionID != original.Origin.VersionID {
 		t.Errorf("VersionID mismatch: got %q, want %q", loaded.Origin.VersionID, original.Origin.VersionID)
-	}
-	if !loaded.Origin.PulledAt.Equal(original.Origin.PulledAt) {
-		t.Errorf("PulledAt mismatch: got %v, want %v", loaded.Origin.PulledAt, original.Origin.PulledAt)
-	}
-}
-
-func TestMigrationFromOldYAMLFormat(t *testing.T) {
-	dir := t.TempDir()
-	now := time.Date(2024, 1, 20, 10, 30, 0, 0, time.UTC)
-
-	// Write old YAML format
-	oldContent := `origin:
-  repo: data-science
-  tag: v1.0
-  registry_url: ds-team
-  server_url: https://nebi.example.com
-  server_version_id: 42
-  manifest_digest: sha256:abc123
-  pulled_at: 2024-01-20T10:30:00Z
-layers:
-  pixi.toml:
-    digest: sha256:111
-    size: 2345
-    media_type: application/vnd.pixi.toml.v1+toml
-`
-	os.WriteFile(filepath.Join(dir, OldFileName), []byte(oldContent), 0644)
-
-	// Read should migrate from old format
-	loaded, err := Read(dir)
-	if err != nil {
-		t.Fatalf("Read() error = %v", err)
-	}
-
-	// Verify migrated fields
-	if loaded.Origin.SpecName != "data-science" {
-		t.Errorf("SpecName = %q, want %q", loaded.Origin.SpecName, "data-science")
-	}
-	if loaded.Origin.VersionName != "v1.0" {
-		t.Errorf("VersionName = %q, want %q", loaded.Origin.VersionName, "v1.0")
-	}
-	if loaded.Origin.VersionID != "42" {
-		t.Errorf("VersionID = %q, want %q", loaded.Origin.VersionID, "42")
-	}
-	if loaded.Origin.ServerURL != "https://nebi.example.com" {
-		t.Errorf("ServerURL = %q, want %q", loaded.Origin.ServerURL, "https://nebi.example.com")
-	}
-	if !loaded.Origin.PulledAt.Equal(now) {
-		t.Errorf("PulledAt = %v, want %v", loaded.Origin.PulledAt, now)
-	}
-	if loaded.ID == "" {
-		t.Error("ID should be auto-generated during migration")
-	}
-}
-
-func TestMigrationFromOldWorkspaceField(t *testing.T) {
-	dir := t.TempDir()
-
-	// Write old YAML format with "workspace" instead of "repo"
-	oldContent := `origin:
-  workspace: old-workspace-name
-  tag: v1.0
-  server_url: https://example.com
-  server_version_id: 1
-  pulled_at: 2024-01-20T10:30:00Z
-`
-	os.WriteFile(filepath.Join(dir, OldFileName), []byte(oldContent), 0644)
-
-	loaded, err := Read(dir)
-	if err != nil {
-		t.Fatalf("Read() error = %v", err)
-	}
-
-	// Should use "workspace" value when "repo" is empty
-	if loaded.Origin.SpecName != "old-workspace-name" {
-		t.Errorf("SpecName = %q, want %q", loaded.Origin.SpecName, "old-workspace-name")
-	}
-}
-
-func TestWriteRemovesOldFile(t *testing.T) {
-	dir := t.TempDir()
-
-	// Create old YAML file
-	os.WriteFile(filepath.Join(dir, OldFileName), []byte("old content"), 0644)
-
-	// Write new format
-	nf := &NebiFile{
-		ID:     "test-uuid",
-		Origin: Origin{SpecName: "test"},
-	}
-	Write(dir, nf)
-
-	// Old file should be removed
-	if _, err := os.Stat(filepath.Join(dir, OldFileName)); !os.IsNotExist(err) {
-		t.Error("Old .nebi file should be removed after writing new format")
-	}
-
-	// New file should exist
-	if _, err := os.Stat(filepath.Join(dir, FileName)); err != nil {
-		t.Errorf("New .nebi.toml file should exist: %v", err)
 	}
 }
 

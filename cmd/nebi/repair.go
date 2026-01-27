@@ -191,8 +191,8 @@ func scanForNebiFiles(dirs []string) []foundEnv {
 				return nil
 			}
 
-			// Look for .nebi.toml files (new format) or .nebi files (old format)
-			if info.Name() == nebifile.FileName || info.Name() == nebifile.OldFileName {
+			// Look for .nebi.toml files
+			if info.Name() == nebifile.FileName {
 				envDir := filepath.Dir(path)
 				absDir, _ := filepath.Abs(envDir)
 

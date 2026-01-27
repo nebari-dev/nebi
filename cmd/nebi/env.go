@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/aktech/darb/internal/cliclient"
 	"github.com/aktech/darb/internal/drift"
@@ -436,13 +437,22 @@ func runEnvInfoFromCwd() {
 		osExit(1)
 	}
 
+	// Get PulledAt from index (if available)
+	store := localindex.NewStore()
+	var pulledAt time.Time
+	if entry, err := store.FindByID(nf.ID); err == nil && entry != nil {
+		pulledAt = entry.PulledAt
+	}
+
 	// Show local status section
 	fmt.Println("Local:")
 	fmt.Printf("  Env: %s:%s\n", nf.Origin.SpecName, nf.Origin.VersionName)
 	if nf.Origin.ServerURL != "" {
 		fmt.Printf("  Server:    %s\n", nf.Origin.ServerURL)
 	}
-	fmt.Printf("  Pulled:    %s (%s)\n", nf.Origin.PulledAt.Format("2006-01-02 15:04:05"), formatTimeAgo(nf.Origin.PulledAt))
+	if !pulledAt.IsZero() {
+		fmt.Printf("  Pulled:    %s (%s)\n", pulledAt.Format("2006-01-02 15:04:05"), formatTimeAgo(pulledAt))
+	}
 	if nf.Origin.VersionID != "" {
 		fmt.Printf("  Version:   %s\n", nf.Origin.VersionID)
 	}

@@ -181,6 +181,9 @@ definitions:
     type: object
   handlers.PushVersionRequest:
     properties:
+      force:
+        description: Force overwrite of existing tag
+        type: boolean
       pixi_lock:
         type: string
       pixi_toml:

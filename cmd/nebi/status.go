@@ -116,13 +116,15 @@ func outputStatusCompact(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *dr
 	}
 
 	if !pulledAt.IsZero() {
-		fmt.Printf("%s (server)  •  pulled %s  •  %s\n", ref, formatTimeAgo(pulledAt), status)
+		fmt.Printf("%s  •  pulled %s  •  %s\n", ref, formatTimeAgo(pulledAt), status)
 	} else {
-		fmt.Printf("%s (server)  •  %s\n", ref, status)
+		fmt.Printf("%s  •  %s\n", ref, status)
 	}
 
 	if remote != nil && remote.TagHasMoved {
-		fmt.Printf("  Version '%s' has been updated on remote\n", nf.Origin.VersionName)
+		fmt.Printf("\nRemote tag '%s' has moved to a new version.\n", nf.Origin.VersionName)
+		fmt.Println("  To compare local vs new remote:  nebi diff --remote")
+		fmt.Printf("  To update to new remote:         nebi pull %s:%s --force\n", nf.Origin.SpecName, nf.Origin.VersionName)
 	}
 }
 
@@ -148,11 +150,11 @@ func outputStatusVerbose(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *dr
 		if remote.Error != "" {
 			fmt.Printf("  Error: %s\n", remote.Error)
 		} else if remote.TagHasMoved {
-			fmt.Printf("  Version '%s' now points to %s (was %s when pulled)\n",
-				nf.Origin.VersionName, remote.CurrentTagDigest, remote.OriginDigest)
-			fmt.Println("  The version has been updated since you pulled.")
+			fmt.Printf("  Tag '%s' now points to version %d (was %s when pulled)\n",
+				nf.Origin.VersionName, remote.CurrentVersionID, nf.Origin.VersionID)
+			fmt.Println("  Run 'nebi pull --force' to update to the latest.")
 		} else {
-			fmt.Println("  Version unchanged since pull")
+			fmt.Println("  Tag unchanged since pull")
 		}
 	}
 

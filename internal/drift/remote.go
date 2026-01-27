@@ -48,11 +48,15 @@ type ThreeWayStatus struct {
 }
 
 // CheckRemote checks if the remote tag has moved since the repo was pulled.
-// It compares the stored version against the current tag resolution.
+// It compares the stored version against the current tag resolution on the server.
 func CheckRemote(ctx context.Context, client *cliclient.Client, nf *nebifile.NebiFile) *RemoteStatus {
 	rs := &RemoteStatus{
 		OriginDigest: nf.Origin.VersionID, // Use VersionID as the origin reference
 	}
+
+	// Parse origin version ID
+	var originVersionID int32
+	fmt.Sscanf(nf.Origin.VersionID, "%d", &originVersionID)
 
 	// Find repo by listing environments
 	envs, err := client.ListEnvironments(ctx)
@@ -69,35 +73,34 @@ func CheckRemote(ctx context.Context, client *cliclient.Client, nf *nebifile.Neb
 		}
 	}
 	if envID == "" {
-		rs.Error = fmt.Sprintf("repo %q not found on server", nf.Origin.SpecName)
+		rs.Error = fmt.Sprintf("environment %q not found on server", nf.Origin.SpecName)
 		return rs
 	}
 
-	// Get publications to find current digest for the tag
-	pubs, err := client.GetEnvironmentPublications(ctx, envID)
+	// Get server-side tags to find current version for the tag
+	tags, err := client.GetEnvironmentTags(ctx, envID)
 	if err != nil {
-		rs.Error = fmt.Sprintf("failed to get publications: %v", err)
+		rs.Error = fmt.Sprintf("failed to get tags: %v", err)
 		return rs
 	}
 
 	found := false
-	for _, pub := range pubs {
-		if pub.Tag == nf.Origin.VersionName {
-			rs.CurrentTagDigest = pub.Digest
-			rs.CurrentVersionID = int32(pub.VersionNumber)
+	for _, tag := range tags {
+		if tag.Tag == nf.Origin.VersionName {
+			rs.CurrentVersionID = int32(tag.VersionNumber)
 			found = true
 			break
 		}
 	}
 
 	if !found {
-		rs.Error = fmt.Sprintf("tag %q not found in registry", nf.Origin.VersionName)
+		rs.Error = fmt.Sprintf("tag %q not found on server", nf.Origin.VersionName)
 		return rs
 	}
 
-	// Compare digests
-	if rs.OriginDigest != "" && rs.CurrentTagDigest != "" {
-		rs.TagHasMoved = rs.OriginDigest != rs.CurrentTagDigest
+	// Compare version IDs
+	if originVersionID > 0 && rs.CurrentVersionID > 0 {
+		rs.TagHasMoved = originVersionID != rs.CurrentVersionID
 	}
 
 	return rs

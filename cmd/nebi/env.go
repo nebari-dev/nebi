@@ -206,10 +206,16 @@ func runEnvListLocal() {
 		return
 	}
 
+	// Try to fetch remote environments to detect orphaned entries
+	remoteEnvIDs, serverReachable := fetchRemoteEnvIDs()
+	if !serverReachable && !envListJSON {
+		fmt.Fprintln(os.Stderr, "Warning: Could not reach server - showing offline status only")
+	}
+
 	if envListJSON {
 		var entries []envListEntry
 		for _, entry := range index.Entries {
-			status := getLocalEntryStatus(entry)
+			status := getLocalEntryStatusWithRemote(entry, remoteEnvIDs, serverReachable)
 			entries = append(entries, envListEntry{
 				Env:      entry.SpecName,
 				Version:  entry.VersionName,
@@ -228,13 +234,17 @@ func runEnvListLocal() {
 	}
 
 	hasMissing := false
+	hasOrphaned := false
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "ENV\tVERSION\tSTATUS\tLOCATION")
 	for _, entry := range index.Entries {
-		status := getLocalEntryStatus(entry)
+		status := getLocalEntryStatusWithRemote(entry, remoteEnvIDs, serverReachable)
 		if status == "missing" {
 			hasMissing = true
+		}
+		if status == "orphaned" {
+			hasOrphaned = true
 		}
 
 		location := formatLocation(entry.Path, entry.IsGlobal())
@@ -247,9 +257,81 @@ func runEnvListLocal() {
 	}
 	w.Flush()
 
-	if hasMissing {
+	if hasMissing || hasOrphaned {
 		fmt.Println("\nRun 'nebi env prune' to remove stale entries.")
 	}
+}
+
+// fetchRemoteEnvIDs attempts to fetch the set of environment IDs from the server.
+// Returns (envIDs, serverReachable). If server is unreachable, returns (nil, false).
+func fetchRemoteEnvIDs() (map[string]bool, bool) {
+	client, err := tryGetClient()
+	if err != nil {
+		return nil, false
+	}
+
+	ctx, err := tryGetAuthContext()
+	if err != nil {
+		return nil, false
+	}
+
+	envs, err := client.ListEnvironments(ctx)
+	if err != nil {
+		return nil, false
+	}
+
+	ids := make(map[string]bool)
+	for _, env := range envs {
+		ids[env.ID] = true
+	}
+	return ids, true
+}
+
+// tryGetClient attempts to create a client, returning an error if config is not available.
+func tryGetClient() (*cliclient.Client, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, err
+	}
+	if cfg.ServerURL == "" {
+		return nil, fmt.Errorf("not logged in")
+	}
+	return cliclient.New(cfg.ServerURL, cfg.Token), nil
+}
+
+// tryGetAuthContext attempts to create an auth context, returning an error if not logged in.
+func tryGetAuthContext() (context.Context, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Token == "" {
+		return nil, fmt.Errorf("not logged in")
+	}
+	return context.Background(), nil
+}
+
+// getLocalEntryStatusWithRemote checks the status of a local entry, including orphaned detection.
+func getLocalEntryStatusWithRemote(entry localindex.Entry, remoteEnvIDs map[string]bool, serverReachable bool) string {
+	// Check if path exists
+	if _, err := os.Stat(entry.Path); os.IsNotExist(err) {
+		return "missing"
+	}
+
+	// Check if remote environment still exists (only if server is reachable)
+	if serverReachable && entry.SpecID != "" {
+		if !remoteEnvIDs[entry.SpecID] {
+			return "orphaned"
+		}
+	}
+
+	// Check drift
+	ws, err := drift.Check(entry.Path)
+	if err != nil {
+		return "unknown"
+	}
+
+	return string(ws.Overall)
 }
 
 // getLocalEntryStatus checks the drift status of a local environment entry.
@@ -279,7 +361,7 @@ func formatLocation(path string, isGlobal bool) string {
 
 	if isGlobal {
 		// Abbreviate UUIDs in global environment paths for readability.
-		// Global paths look like: ~/.local/share/nebi/repos/<uuid>/<version>
+		// Global paths look like: ~/.local/share/nebi/envs/<uuid>/<version>
 		display = abbreviateUUID(display)
 		return display + " (global)"
 	}
@@ -322,20 +404,63 @@ func isUUID(s string) bool {
 func runEnvPrune(cmd *cobra.Command, args []string) {
 	store := localindex.NewStore()
 
-	removed, err := store.Prune()
+	// First, prune entries where the directory no longer exists
+	missingRemoved, err := store.Prune()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to prune local index: %v\n", err)
 		osExit(1)
 	}
 
-	if len(removed) == 0 {
+	// Try to prune orphaned entries (remote deleted)
+	var orphanedRemoved []localindex.Entry
+	remoteEnvIDs, serverReachable := fetchRemoteEnvIDs()
+	if serverReachable {
+		orphanedRemoved, err = store.PruneOrphaned(remoteEnvIDs)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Failed to prune orphaned entries: %v\n", err)
+			osExit(1)
+		}
+	} else {
+		fmt.Fprintln(os.Stderr, "Warning: Could not reach server - skipping orphaned entry detection")
+	}
+
+	// Clean up orphaned entries
+	// - Global entries: delete entire directory (managed by nebi)
+	// - Local entries: delete only .nebi.toml (preserve user's work)
+	for _, entry := range orphanedRemoved {
+		if entry.IsGlobal() {
+			if err := os.RemoveAll(entry.Path); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Failed to delete global directory %s: %v\n", entry.Path, err)
+			}
+		} else {
+			if err := nebifile.Delete(entry.Path); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Failed to delete .nebi.toml at %s: %v\n", entry.Path, err)
+			}
+		}
+	}
+
+	totalRemoved := len(missingRemoved) + len(orphanedRemoved)
+	if totalRemoved == 0 {
 		fmt.Println("No stale entries found")
 		return
 	}
 
-	fmt.Printf("Removed %d stale entries:\n", len(removed))
-	for _, entry := range removed {
-		fmt.Printf("  - %s:%s (%s)\n", entry.SpecName, entry.VersionName, entry.Path)
+	if len(missingRemoved) > 0 {
+		fmt.Printf("Removed %d missing entries (directory no longer exists):\n", len(missingRemoved))
+		for _, entry := range missingRemoved {
+			fmt.Printf("  - %s:%s (%s)\n", entry.SpecName, entry.VersionName, entry.Path)
+		}
+	}
+
+	if len(orphanedRemoved) > 0 {
+		fmt.Printf("Removed %d orphaned entries (remote deleted):\n", len(orphanedRemoved))
+		for _, entry := range orphanedRemoved {
+			if entry.IsGlobal() {
+				fmt.Printf("  - %s:%s (%s) [directory deleted]\n", entry.SpecName, entry.VersionName, entry.Path)
+			} else {
+				fmt.Printf("  - %s:%s (%s) [.nebi.toml deleted]\n", entry.SpecName, entry.VersionName, entry.Path)
+			}
+		}
 	}
 }
 

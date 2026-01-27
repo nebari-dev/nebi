@@ -411,7 +411,7 @@ func pullForShell(envName, version string) string {
 
 	// Use global storage for shell-pulled environments
 	store := localindex.NewStore()
-	cacheDir := store.GlobalRepoPath(env.ID, version)
+	cacheDir := store.GlobalEnvPath(env.ID, version)
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to create cache directory: %v\n", err)
 		osExit(1)

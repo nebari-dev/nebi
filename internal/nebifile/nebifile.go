@@ -123,6 +123,17 @@ func Exists(dir string) bool {
 	return err == nil
 }
 
+// Delete removes the .nebi.toml file from the given directory.
+// Returns nil if the file doesn't exist.
+func Delete(dir string) error {
+	tomlPath := filepath.Join(dir, FileName)
+	err := os.Remove(tomlPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to delete %s: %w", FileName, err)
+	}
+	return nil
+}
+
 // New creates a new NebiFile with the given origin.
 func New(origin Origin) *NebiFile {
 	return &NebiFile{

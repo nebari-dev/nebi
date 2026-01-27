@@ -2201,6 +2201,10 @@ const docTemplate = `{
                 "tag"
             ],
             "properties": {
+                "force": {
+                    "description": "Force overwrite of existing tag",
+                    "type": "boolean"
+                },
                 "pixi_lock": {
                     "type": "string"
                 },

@@ -99,10 +99,10 @@ func TestFormatLocation_Local(t *testing.T) {
 
 func TestFormatLocation_Global(t *testing.T) {
 	home, _ := os.UserHomeDir()
-	path := filepath.Join(home, ".local", "share", "nebi", "repos", "550e8400-e29b-41d4-a716-446655440000", "v1.0")
+	path := filepath.Join(home, ".local", "share", "nebi", "envs", "550e8400-e29b-41d4-a716-446655440000", "v1.0")
 
 	result := formatLocation(path, true)
-	want := "~/.local/share/nebi/repos/550e8400/v1.0 (global)"
+	want := "~/.local/share/nebi/envs/550e8400/v1.0 (global)"
 	if result != want {
 		t.Errorf("formatLocation() = %q, want %q", result, want)
 	}
@@ -111,10 +111,10 @@ func TestFormatLocation_Global(t *testing.T) {
 func TestFormatLocation_GlobalNonUUID(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	// Non-UUID directory name should not be abbreviated
-	path := filepath.Join(home, ".local", "share", "nebi", "repos", "my-workspace", "v1.0")
+	path := filepath.Join(home, ".local", "share", "nebi", "envs", "my-workspace", "v1.0")
 
 	result := formatLocation(path, true)
-	want := "~/.local/share/nebi/repos/my-workspace/v1.0 (global)"
+	want := "~/.local/share/nebi/envs/my-workspace/v1.0 (global)"
 	if result != want {
 		t.Errorf("formatLocation() = %q, want %q", result, want)
 	}

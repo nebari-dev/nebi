@@ -45,9 +45,6 @@ func TestLoadEmptyIndex(t *testing.T) {
 	if len(idx.Entries) != 0 {
 		t.Errorf("Entries length = %d, want 0", len(idx.Entries))
 	}
-	if idx.Aliases == nil {
-		t.Error("Aliases should not be nil")
-	}
 }
 
 func TestSaveAndLoad(t *testing.T) {
@@ -72,9 +69,6 @@ func TestSaveAndLoad(t *testing.T) {
 					"pixi.lock": "sha256:222",
 				},
 			},
-		},
-		Aliases: map[string]Alias{
-			"ds-stable": {UUID: "550e8400-e29b-41d4-a716-446655440000", Tag: "v1.0"},
 		},
 	}
 
@@ -115,18 +109,6 @@ func TestSaveAndLoad(t *testing.T) {
 	}
 	if e.Layers["pixi.lock"] != "sha256:222" {
 		t.Errorf("Layers[pixi.lock] = %q, want %q", e.Layers["pixi.lock"], "sha256:222")
-	}
-
-	// Check alias
-	alias, exists := loaded.Aliases["ds-stable"]
-	if !exists {
-		t.Fatal("Alias 'ds-stable' not found")
-	}
-	if alias.UUID != "550e8400-e29b-41d4-a716-446655440000" {
-		t.Errorf("Alias UUID = %q, want %q", alias.UUID, "550e8400-e29b-41d4-a716-446655440000")
-	}
-	if alias.Tag != "v1.0" {
-		t.Errorf("Alias Tag = %q, want %q", alias.Tag, "v1.0")
 	}
 }
 
@@ -316,8 +298,8 @@ func TestFindGlobal(t *testing.T) {
 	// Non-global entry
 	store.AddEntry(Entry{SpecName: "ws1", VersionName: "v1.0", Path: "/path/a", PulledAt: now})
 
-	// Global entry (path is under store's repos directory)
-	globalPath := filepath.Join(dir, "repos", "ws1-uuid", "v1.0")
+	// Global entry (path is under store's envs directory)
+	globalPath := filepath.Join(dir, "envs", "ws1-uuid", "v1.0")
 	store.AddEntry(Entry{SpecName: "ws1", VersionName: "v1.0", Path: globalPath, PulledAt: now})
 
 	entry, err := store.FindGlobal("ws1", "v1.0")
@@ -350,7 +332,7 @@ func TestFindGlobalNotFound(t *testing.T) {
 func TestIsGlobal(t *testing.T) {
 	store, dir := setupTestStore(t)
 
-	globalPath := filepath.Join(dir, "repos", "ws1-uuid", "v1.0")
+	globalPath := filepath.Join(dir, "envs", "ws1-uuid", "v1.0")
 	globalEntry := &Entry{Path: globalPath}
 	localEntry := &Entry{Path: "/some/local/path"}
 
@@ -359,90 +341,6 @@ func TestIsGlobal(t *testing.T) {
 	}
 	if store.IsGlobal(localEntry) {
 		t.Error("IsGlobal() should return false for local path")
-	}
-}
-
-func TestSetAlias(t *testing.T) {
-	store, _ := setupTestStore(t)
-
-	alias := Alias{UUID: "test-uuid", Tag: "v1.0"}
-	if err := store.SetAlias("my-alias", alias); err != nil {
-		t.Fatalf("SetAlias() error = %v", err)
-	}
-
-	got, err := store.GetAlias("my-alias")
-	if err != nil {
-		t.Fatalf("GetAlias() error = %v", err)
-	}
-	if got == nil {
-		t.Fatal("GetAlias() returned nil")
-	}
-	if got.UUID != "test-uuid" {
-		t.Errorf("UUID = %q, want %q", got.UUID, "test-uuid")
-	}
-	if got.Tag != "v1.0" {
-		t.Errorf("Tag = %q, want %q", got.Tag, "v1.0")
-	}
-}
-
-func TestSetAliasOverwrite(t *testing.T) {
-	store, _ := setupTestStore(t)
-
-	store.SetAlias("my-alias", Alias{UUID: "uuid-1", Tag: "v1.0"})
-	store.SetAlias("my-alias", Alias{UUID: "uuid-2", Tag: "v2.0"})
-
-	got, err := store.GetAlias("my-alias")
-	if err != nil {
-		t.Fatalf("GetAlias() error = %v", err)
-	}
-	if got.UUID != "uuid-2" {
-		t.Errorf("UUID = %q, want %q (should be overwritten)", got.UUID, "uuid-2")
-	}
-}
-
-func TestRemoveAlias(t *testing.T) {
-	store, _ := setupTestStore(t)
-
-	store.SetAlias("my-alias", Alias{UUID: "test-uuid", Tag: "v1.0"})
-
-	removed, err := store.RemoveAlias("my-alias")
-	if err != nil {
-		t.Fatalf("RemoveAlias() error = %v", err)
-	}
-	if !removed {
-		t.Error("RemoveAlias() should return true")
-	}
-
-	got, _ := store.GetAlias("my-alias")
-	if got != nil {
-		t.Errorf("GetAlias() after remove = %v, want nil", got)
-	}
-}
-
-func TestRemoveAliasNotFound(t *testing.T) {
-	store, _ := setupTestStore(t)
-
-	removed, err := store.RemoveAlias("nonexistent")
-	if err != nil {
-		t.Fatalf("RemoveAlias() error = %v", err)
-	}
-	if removed {
-		t.Error("RemoveAlias() should return false for nonexistent alias")
-	}
-}
-
-func TestListAliases(t *testing.T) {
-	store, _ := setupTestStore(t)
-
-	store.SetAlias("alias1", Alias{UUID: "uuid-1", Tag: "v1.0"})
-	store.SetAlias("alias2", Alias{UUID: "uuid-2", Tag: "v2.0"})
-
-	aliases, err := store.ListAliases()
-	if err != nil {
-		t.Fatalf("ListAliases() error = %v", err)
-	}
-	if len(aliases) != 2 {
-		t.Errorf("ListAliases() length = %d, want 2", len(aliases))
 	}
 }
 
@@ -498,7 +396,7 @@ func TestPruneNothingToPrune(t *testing.T) {
 func TestGlobalRepoPath(t *testing.T) {
 	store := NewStoreWithDir("/home/user/.local/share/nebi")
 	path := store.GlobalRepoPath("550e8400-e29b-41d4-a716-446655440000", "v1.0")
-	expected := "/home/user/.local/share/nebi/repos/550e8400-e29b-41d4-a716-446655440000/v1.0"
+	expected := "/home/user/.local/share/nebi/envs/550e8400-e29b-41d4-a716-446655440000/v1.0"
 	if path != expected {
 		t.Errorf("GlobalRepoPath() = %q, want %q", path, expected)
 	}
@@ -555,9 +453,6 @@ func TestIndexJSONFormat(t *testing.T) {
 				},
 			},
 		},
-		Aliases: map[string]Alias{
-			"ds-stable": {UUID: "550e8400-e29b-41d4-a716-446655440000", Tag: "v1.0"},
-		},
 	}
 
 	store.Save(idx)
@@ -583,29 +478,6 @@ func TestIndexJSONFormat(t *testing.T) {
 	entries, ok := raw["entries"].([]interface{})
 	if !ok || len(entries) != 1 {
 		t.Fatalf("entries = %v", raw["entries"])
-	}
-
-	// Check aliases is object
-	aliases, ok := raw["aliases"].(map[string]interface{})
-	if !ok || len(aliases) != 1 {
-		t.Fatalf("aliases = %v", raw["aliases"])
-	}
-}
-
-func TestLoadNilAliases(t *testing.T) {
-	store, dir := setupTestStore(t)
-
-	// Write JSON without aliases field (old v0 format)
-	os.MkdirAll(dir, 0755)
-	data := `{"version": 1, "workspaces": []}`
-	os.WriteFile(filepath.Join(dir, IndexFileName), []byte(data), 0644)
-
-	idx, err := store.Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if idx.Aliases == nil {
-		t.Error("Aliases should be initialized to empty map, not nil")
 	}
 }
 
@@ -665,5 +537,76 @@ func TestMigrationFromV1Format(t *testing.T) {
 	}
 	if e.ID == "" {
 		t.Error("ID should be auto-generated during migration")
+	}
+}
+
+func TestPruneOrphaned(t *testing.T) {
+	store, _ := setupTestStore(t)
+	now := time.Now().Truncate(time.Second)
+
+	// Add entries with different SpecIDs
+	store.AddEntry(Entry{SpecName: "ws1", VersionName: "v1.0", SpecID: "spec-1", Path: "/path/a", PulledAt: now})
+	store.AddEntry(Entry{SpecName: "ws2", VersionName: "v1.0", SpecID: "spec-2", Path: "/path/b", PulledAt: now})
+	store.AddEntry(Entry{SpecName: "ws3", VersionName: "v1.0", SpecID: "spec-3", Path: "/path/c", PulledAt: now})
+	store.AddEntry(Entry{SpecName: "ws4", VersionName: "v1.0", SpecID: "", Path: "/path/d", PulledAt: now}) // No SpecID
+
+	// Only spec-1 and spec-3 still exist on server
+	validRemoteIDs := map[string]bool{
+		"spec-1": true,
+		"spec-3": true,
+	}
+
+	pruned, err := store.PruneOrphaned(validRemoteIDs)
+	if err != nil {
+		t.Fatalf("PruneOrphaned() error = %v", err)
+	}
+
+	// Should have pruned spec-2
+	if len(pruned) != 1 {
+		t.Fatalf("PruneOrphaned() pruned %d entries, want 1", len(pruned))
+	}
+	if pruned[0].SpecID != "spec-2" {
+		t.Errorf("PruneOrphaned() pruned SpecID = %q, want %q", pruned[0].SpecID, "spec-2")
+	}
+
+	// Verify remaining entries
+	entries, _ := store.ListAll()
+	if len(entries) != 3 {
+		t.Fatalf("ListAll() length = %d, want 3", len(entries))
+	}
+
+	// Check that spec-1, spec-3, and empty SpecID entries remain
+	specIDs := make(map[string]bool)
+	for _, e := range entries {
+		specIDs[e.SpecID] = true
+	}
+	if !specIDs["spec-1"] {
+		t.Error("spec-1 should remain")
+	}
+	if !specIDs["spec-3"] {
+		t.Error("spec-3 should remain")
+	}
+	if !specIDs[""] {
+		t.Error("Entry with empty SpecID should remain")
+	}
+}
+
+func TestPruneOrphanedNothingToPrune(t *testing.T) {
+	store, _ := setupTestStore(t)
+	now := time.Now().Truncate(time.Second)
+
+	store.AddEntry(Entry{SpecName: "ws1", VersionName: "v1.0", SpecID: "spec-1", Path: "/path/a", PulledAt: now})
+
+	// All entries exist on server
+	validRemoteIDs := map[string]bool{
+		"spec-1": true,
+	}
+
+	pruned, err := store.PruneOrphaned(validRemoteIDs)
+	if err != nil {
+		t.Fatalf("PruneOrphaned() error = %v", err)
+	}
+	if pruned != nil {
+		t.Errorf("PruneOrphaned() should return nil when nothing to prune, got %v", pruned)
 	}
 }

@@ -30,9 +30,8 @@ const (
 
 // Index represents the local repo index.
 type Index struct {
-	Version int              `json:"version"`
-	Entries []Entry          `json:"entries"`
-	Aliases map[string]Alias `json:"aliases,omitempty"`
+	Version int     `json:"version"`
+	Entries []Entry `json:"entries"`
 }
 
 // Entry represents a single entry in the index.
@@ -65,17 +64,11 @@ type Entry struct {
 type RepoEntry = Entry
 
 // IsGlobal returns true if this entry is stored in global storage.
-// Determined by checking if the path is under ~/.local/share/nebi/repos/
+// Determined by checking if the path is under ~/.local/share/nebi/envs/
 func (e *Entry) IsGlobal() bool {
 	homeDir, _ := os.UserHomeDir()
-	globalPrefix := filepath.Join(homeDir, DefaultIndexDir, "repos") + string(filepath.Separator)
+	globalPrefix := filepath.Join(homeDir, DefaultIndexDir, "envs") + string(filepath.Separator)
 	return strings.HasPrefix(e.Path, globalPrefix)
-}
-
-// Alias maps a user-friendly name to a UUID + tag in global storage.
-type Alias struct {
-	UUID string `json:"uuid"`
-	Tag  string `json:"tag"`
 }
 
 // Store provides CRUD operations for the local index.
@@ -127,7 +120,6 @@ func (s *Store) loadUnsafe() (*Index, error) {
 			return &Index{
 				Version: CurrentVersion,
 				Entries: []Entry{},
-				Aliases: make(map[string]Alias),
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to read index file: %w", err)
@@ -193,9 +185,6 @@ func (s *Store) loadUnsafe() (*Index, error) {
 
 	if idx.Entries == nil {
 		idx.Entries = []Entry{}
-	}
-	if idx.Aliases == nil {
-		idx.Aliases = make(map[string]Alias)
 	}
 
 	return &idx, nil
@@ -346,14 +335,14 @@ func (s *Store) FindByRepoTag(repo, tag string) ([]Entry, error) {
 }
 
 // FindGlobal returns the global entry matching a spec name and version name.
-// Global entries are identified by having a path under the global repos directory.
+// Global entries are identified by having a path under the global envs directory.
 func (s *Store) FindGlobal(specName, versionName string) (*Entry, error) {
 	idx, err := s.Load()
 	if err != nil {
 		return nil, err
 	}
 
-	globalPrefix := s.indexDir + "/repos/"
+	globalPrefix := s.indexDir + "/envs/"
 	for i := range idx.Entries {
 		if idx.Entries[i].SpecName == specName &&
 			idx.Entries[i].VersionName == versionName &&
@@ -367,7 +356,7 @@ func (s *Store) FindGlobal(specName, versionName string) (*Entry, error) {
 
 // IsGlobal returns true if the entry is stored in global storage.
 func (s *Store) IsGlobal(entry *Entry) bool {
-	globalPrefix := s.indexDir + "/repos/"
+	globalPrefix := s.indexDir + "/envs/"
 	return len(entry.Path) > len(globalPrefix) && entry.Path[:len(globalPrefix)] == globalPrefix
 }
 
@@ -378,62 +367,6 @@ func (s *Store) ListAll() ([]Entry, error) {
 		return nil, err
 	}
 	return idx.Entries, nil
-}
-
-// SetAlias sets a user-friendly alias for a global repo.
-func (s *Store) SetAlias(name string, alias Alias) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	idx, err := s.loadUnsafe()
-	if err != nil {
-		return err
-	}
-
-	idx.Aliases[name] = alias
-	return s.saveUnsafe(idx)
-}
-
-// RemoveAlias removes an alias by name.
-// Returns true if the alias was removed, false if not found.
-func (s *Store) RemoveAlias(name string) (bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	idx, err := s.loadUnsafe()
-	if err != nil {
-		return false, err
-	}
-
-	if _, exists := idx.Aliases[name]; !exists {
-		return false, nil
-	}
-
-	delete(idx.Aliases, name)
-	return true, s.saveUnsafe(idx)
-}
-
-// GetAlias returns the alias for the given name, or nil if not found.
-func (s *Store) GetAlias(name string) (*Alias, error) {
-	idx, err := s.Load()
-	if err != nil {
-		return nil, err
-	}
-
-	alias, exists := idx.Aliases[name]
-	if !exists {
-		return nil, nil
-	}
-	return &alias, nil
-}
-
-// ListAliases returns all aliases.
-func (s *Store) ListAliases() (map[string]Alias, error) {
-	idx, err := s.Load()
-	if err != nil {
-		return nil, err
-	}
-	return idx.Aliases, nil
 }
 
 // Prune removes entries whose paths no longer exist on disk.
@@ -468,7 +401,51 @@ func (s *Store) Prune() ([]Entry, error) {
 	return pruned, nil
 }
 
-// GlobalRepoPath returns the path where a global repo would be stored.
+// PruneOrphaned removes entries whose remote environments no longer exist.
+// The validRemoteIDs map should contain the IDs of environments that still exist on the server.
+// Returns the list of removed entries.
+func (s *Store) PruneOrphaned(validRemoteIDs map[string]bool) ([]Entry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	idx, err := s.loadUnsafe()
+	if err != nil {
+		return nil, err
+	}
+
+	var pruned []Entry
+	filtered := make([]Entry, 0, len(idx.Entries))
+	for _, entry := range idx.Entries {
+		// Skip entries without a SpecID (shouldn't happen, but be safe)
+		if entry.SpecID == "" {
+			filtered = append(filtered, entry)
+			continue
+		}
+		// Check if remote still exists
+		if !validRemoteIDs[entry.SpecID] {
+			pruned = append(pruned, entry)
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+
+	if len(pruned) == 0 {
+		return nil, nil
+	}
+
+	idx.Entries = filtered
+	if err := s.saveUnsafe(idx); err != nil {
+		return nil, err
+	}
+	return pruned, nil
+}
+
+// GlobalEnvPath returns the path where a global environment would be stored.
+func (s *Store) GlobalEnvPath(uuid, tag string) string {
+	return filepath.Join(s.indexDir, "envs", uuid, tag)
+}
+
+// GlobalRepoPath is deprecated. Use GlobalEnvPath instead.
 func (s *Store) GlobalRepoPath(uuid, tag string) string {
-	return filepath.Join(s.indexDir, "repos", uuid, tag)
+	return s.GlobalEnvPath(uuid, tag)
 }

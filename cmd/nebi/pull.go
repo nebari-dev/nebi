@@ -20,7 +20,6 @@ var (
 	pullGlobal  bool
 	pullForce   bool
 	pullYes     bool
-	pullName    string
 	pullInstall bool
 )
 
@@ -36,7 +35,7 @@ Supports Docker-style references:
 
 Modes:
   - Directory pull (default): Writes to current directory or -o path
-  - Global pull (--global): Writes to ~/.local/share/nebi/repos/<uuid>/<version>/
+  - Global pull (--global): Writes to ~/.local/share/nebi/envs/<uuid>/<version>/
     with duplicate prevention (use --force to overwrite)
 
 Examples:
@@ -52,9 +51,6 @@ Examples:
   # Pull globally (single copy, shell-accessible)
   nebi pull --global myenv:v1.0.0
 
-  # Pull globally with an alias
-  nebi pull --global myenv:v1.0.0 --name ds-stable
-
   # Force re-pull of global environment
   nebi pull --global myenv:v1.0.0 --force
 
@@ -67,10 +63,9 @@ Examples:
 
 func init() {
 	pullCmd.Flags().StringVarP(&pullOutput, "output", "o", ".", "Output directory (for directory pulls)")
-	pullCmd.Flags().BoolVarP(&pullGlobal, "global", "g", false, "Pull to global storage (~/.local/share/nebi/repos/)")
+	pullCmd.Flags().BoolVarP(&pullGlobal, "global", "g", false, "Pull to global storage (~/.local/share/nebi/envs/)")
 	pullCmd.Flags().BoolVar(&pullForce, "force", false, "Force re-pull (overwrite existing)")
 	pullCmd.Flags().BoolVar(&pullYes, "yes", false, "Non-interactive mode (skip confirmations)")
-	pullCmd.Flags().StringVar(&pullName, "name", "", "Assign an alias to this global environment (requires --global)")
 	pullCmd.Flags().BoolVarP(&pullInstall, "install", "i", false, "Run pixi install after pulling (uses --frozen)")
 }
 
@@ -90,12 +85,6 @@ func runPull(cmd *cobra.Command, args []string) {
 		digest = versionOrDigest[1:] // Remove @ prefix
 	} else {
 		version = versionOrDigest
-	}
-
-	// Validate --name requires --global
-	if pullName != "" && !pullGlobal {
-		fmt.Fprintf(os.Stderr, "Error: --name requires --global flag\n")
-		osExit(1)
 	}
 
 	client := mustGetClient()
@@ -303,16 +292,6 @@ func runPull(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to update local index: %v\n", err)
 	}
 
-	// Handle alias (--name flag)
-	if pullName != "" {
-		alias := localindex.Alias{UUID: env.ID, Tag: version}
-		if err := idxStore.SetAlias(pullName, alias); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: Failed to set alias: %v\n", err)
-		} else {
-			fmt.Printf("Alias: %s -> %s:%s\n", pullName, envName, version)
-		}
-	}
-
 	// Print summary
 	refStr := envName
 	if version != "" && version != "latest" {
@@ -341,7 +320,7 @@ func runPull(cmd *cobra.Command, args []string) {
 // Returns the output directory path or an error.
 func handleGlobalPull(store *localindex.Store, envID, env, version string) (string, error) {
 	// Compute global path using the environment's server-assigned UUID
-	outputDir := store.GlobalRepoPath(envID, version)
+	outputDir := store.GlobalEnvPath(envID, version)
 
 	// Check if already exists
 	existing, err := store.FindGlobal(env, version)

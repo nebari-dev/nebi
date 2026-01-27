@@ -355,3 +355,40 @@ func TestAutoGenerateID(t *testing.T) {
 		t.Error("ID should be auto-generated when writing")
 	}
 }
+
+func TestDelete(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write a .nebi.toml file first
+	nf := &NebiFile{
+		ID:     "test-uuid",
+		Origin: Origin{SpecName: "test", VersionName: "v1.0"},
+	}
+	if err := Write(dir, nf); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+
+	// Verify it exists
+	if !Exists(dir) {
+		t.Fatal("File should exist after write")
+	}
+
+	// Delete it
+	if err := Delete(dir); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+
+	// Verify it's gone
+	if Exists(dir) {
+		t.Error("File should not exist after delete")
+	}
+}
+
+func TestDeleteNonExistent(t *testing.T) {
+	dir := t.TempDir()
+
+	// Delete should not error on non-existent file
+	if err := Delete(dir); err != nil {
+		t.Errorf("Delete() should not error for non-existent file: %v", err)
+	}
+}

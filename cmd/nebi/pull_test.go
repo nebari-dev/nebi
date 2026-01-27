@@ -256,36 +256,3 @@ func TestPullIntegration_UpdatesIndex(t *testing.T) {
 	}
 }
 
-func TestPullIntegration_GlobalWithAlias(t *testing.T) {
-	dir := t.TempDir()
-	store := localindex.NewStoreWithDir(dir)
-
-	specID := "uuid-data-science-001"
-	tag := "latest"
-
-	// Simulate global pull: create entry and set alias
-	entry := localindex.Entry{
-		SpecName:    "data-science",
-		VersionName: tag,
-		VersionID:   "1",
-		Path:        store.GlobalRepoPath(specID, tag),
-		PulledAt:    time.Now(),
-	}
-	store.AddEntry(entry)
-
-	// Set alias
-	store.SetAlias("data-science", localindex.Alias{UUID: specID, Tag: tag})
-
-	// Verify alias can be retrieved
-	alias, err := store.GetAlias("data-science")
-	if err != nil {
-		t.Fatalf("GetAlias() error = %v", err)
-	}
-
-	if alias.UUID != specID {
-		t.Errorf("UUID = %q, want %q", alias.UUID, specID)
-	}
-	if alias.Tag != tag {
-		t.Errorf("Tag = %q, want %q", alias.Tag, tag)
-	}
-}

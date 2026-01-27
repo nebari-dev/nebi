@@ -347,31 +347,36 @@ func runEnvVersions(cmd *cobra.Command, args []string) {
 		osExit(1)
 	}
 
-	// Get publications (versions)
-	pubs, err := client.GetEnvironmentPublications(ctx, env.ID)
+	// Get server-side versions (tags)
+	tags, err := client.GetEnvironmentTags(ctx, env.ID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to list versions: %v\n", err)
 		osExit(1)
 	}
 
-	if len(pubs) == 0 {
-		fmt.Printf("No published versions for %q\n", envName)
+	if len(tags) == 0 {
+		fmt.Printf("No versions for %q\n", envName)
+		fmt.Println("\nPush a version with: nebi push " + envName + ":<version>")
 		return
 	}
 
+	// Check if there's a default version
+	var defaultVersionNum *int
+	if env.DefaultVersionID != nil {
+		defaultVersionNum = env.DefaultVersionID
+	}
+
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "VERSION\tREGISTRY\tREPOSITORY\tDIGEST\tPUBLISHED")
-	for _, pub := range pubs {
-		digest := pub.Digest
-		if len(digest) > 19 {
-			digest = digest[:19] + "..."
+	fmt.Fprintln(w, "VERSION\tNUMBER\tDEFAULT")
+	for _, tag := range tags {
+		isDefault := ""
+		if defaultVersionNum != nil && tag.VersionNumber == *defaultVersionNum {
+			isDefault = "✓"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			pub.Tag,
-			pub.RegistryName,
-			pub.Repository,
-			digest,
-			pub.PublishedAt,
+		fmt.Fprintf(w, "%s\t%d\t%s\n",
+			tag.Tag,
+			tag.VersionNumber,
+			isDefault,
 		)
 	}
 	w.Flush()

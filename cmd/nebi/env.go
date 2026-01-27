@@ -441,29 +441,20 @@ func runEnvInfoFromCwd() {
 		osExit(1)
 	}
 
-	// Get PulledAt from index (if available)
-	store := localindex.NewStore()
-	var pulledAt time.Time
-	if entry, err := store.FindByID(nf.ID); err == nil && entry != nil {
-		pulledAt = entry.PulledAt
-	}
-
 	// Show local status section
 	fmt.Println("Local:")
-	fmt.Printf("  Env: %s:%s\n", nf.Origin.SpecName, nf.Origin.VersionName)
-	if nf.Origin.ServerURL != "" {
-		fmt.Printf("  Server:    %s\n", nf.Origin.ServerURL)
-	}
-	if !pulledAt.IsZero() {
-		fmt.Printf("  Pulled:    %s (%s)\n", pulledAt.Format("2006-01-02 15:04:05"), formatTimeAgo(pulledAt))
-	}
+	fmt.Printf("  Env:         %s\n", nf.Origin.SpecName)
+	fmt.Printf("  Version:     %s\n", nf.Origin.VersionName)
 	if nf.Origin.VersionID != "" {
-		fmt.Printf("  Version:   %s\n", nf.Origin.VersionID)
+		fmt.Printf("  Version ID:  %s\n", nf.Origin.VersionID)
+	}
+	if nf.Origin.ServerURL != "" {
+		fmt.Printf("  Server:      %s\n", nf.Origin.ServerURL)
 	}
 
 	// Perform drift check
 	ws := drift.CheckWithNebiFile(absDir, nf)
-	fmt.Printf("  Status:    %s\n", ws.Overall)
+	fmt.Printf("  Status:      %s\n", ws.Overall)
 	for _, fs := range ws.Files {
 		if fs.Status != drift.StatusClean {
 			fmt.Printf("    %-12s %s\n", fs.Filename+":", string(fs.Status))

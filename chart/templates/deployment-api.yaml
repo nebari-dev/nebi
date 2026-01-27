@@ -1,26 +1,26 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "darb.fullname" . }}-api
+  name: {{ include "nebi.fullname" . }}-api
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "darb.labels" . | nindent 4 }}
+    {{- include "nebi.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
 spec:
   replicas: {{ .Values.deployment.api.replicas }}
   selector:
     matchLabels:
-      {{- include "darb.selectorLabels" . | nindent 6 }}
+      {{- include "nebi.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: api
   template:
     metadata:
       labels:
-        {{- include "darb.selectorLabels" . | nindent 8 }}
+        {{- include "nebi.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: api
     spec:
-      serviceAccountName: {{ include "darb.serviceAccountName" . }}
+      serviceAccountName: {{ include "nebi.serviceAccountName" . }}
       containers:
-      - name: darb
+      - name: nebi
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         args: ["--mode=server"]  # API only, no workers
@@ -44,41 +44,41 @@ spec:
         - name: GIN_MODE
           value: {{ .Values.config.ginMode | quote }}
         # Database configuration
-        - name: DARB_DATABASE_DRIVER
+        - name: NEBI_DATABASE_DRIVER
           value: {{ .Values.database.driver | quote }}
-        - name: DARB_DATABASE_DSN
+        - name: NEBI_DATABASE_DSN
           {{- if .Values.database.dsn }}
           value: {{ .Values.database.dsn | quote }}
           {{- else if eq .Values.database.driver "postgres" }}
           {{- if .Values.postgres.enabled }}
-          value: "postgres://{{ .Values.postgres.user }}:{{ .Values.postgres.password }}@{{ include "darb.fullname" . }}-postgres:5432/{{ .Values.postgres.database }}?sslmode=disable"
+          value: "postgres://{{ .Values.postgres.user }}:{{ .Values.postgres.password }}@{{ include "nebi.fullname" . }}-postgres:5432/{{ .Values.postgres.database }}?sslmode=disable"
           {{- end }}
           {{- else }}
           value: {{ .Values.config.databasePath | quote }}
           {{- end }}
-        - name: DARB_DATABASE_MAX_IDLE_CONNS
+        - name: NEBI_DATABASE_MAX_IDLE_CONNS
           value: {{ .Values.database.maxIdleConns | quote }}
-        - name: DARB_DATABASE_MAX_OPEN_CONNS
+        - name: NEBI_DATABASE_MAX_OPEN_CONNS
           value: {{ .Values.database.maxOpenConns | quote }}
-        - name: DARB_DATABASE_CONN_MAX_LIFETIME
+        - name: NEBI_DATABASE_CONN_MAX_LIFETIME
           value: {{ .Values.database.connMaxLifetime | quote }}
         # Queue configuration
-        - name: DARB_QUEUE_TYPE
+        - name: NEBI_QUEUE_TYPE
           value: {{ .Values.queue.type | quote }}
-        - name: DARB_QUEUE_VALKEY_ADDR
+        - name: NEBI_QUEUE_VALKEY_ADDR
           {{- if .Values.queue.valkeyAddr }}
           value: {{ .Values.queue.valkeyAddr | quote }}
           {{- else if eq .Values.queue.type "valkey" }}
           {{- if .Values.valkey.enabled }}
-          value: "{{ include "darb.fullname" . }}-valkey:6379"
+          value: "{{ include "nebi.fullname" . }}-valkey:6379"
           {{- end }}
           {{- else }}
           value: "localhost:6379"
           {{- end }}
         # Logging configuration
-        - name: DARB_LOG_LEVEL
+        - name: NEBI_LOG_LEVEL
           value: {{ .Values.config.logLevel | quote }}
-        - name: DARB_LOG_FORMAT
+        - name: NEBI_LOG_FORMAT
           value: {{ .Values.config.logFormat | quote }}
         {{- if .Values.admin }}
         # Admin user bootstrap
@@ -97,4 +97,4 @@ spec:
       volumes:
       - name: environments
         persistentVolumeClaim:
-          claimName: {{ include "darb.fullname" . }}-environments
+          claimName: {{ include "nebi.fullname" . }}-environments

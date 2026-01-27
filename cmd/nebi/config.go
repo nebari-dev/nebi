@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/aktech/darb/internal/cliclient"
-	"github.com/aktech/darb/internal/localserver"
+	"github.com/nebari-dev/nebi/internal/cliclient"
+	"github.com/nebari-dev/nebi/internal/localserver"
 	"gopkg.in/yaml.v3"
 )
 

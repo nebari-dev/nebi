@@ -1,4 +1,4 @@
-# Production overrides for Darb deployment
+# Production overrides for Nebi deployment
 # These values override the defaults in values.yaml
 
 ## Image configuration for production
@@ -22,14 +22,14 @@ ingress:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
   hosts:
-    - host: darb.example.com
+    - host: nebi.example.com
       paths:
         - path: /
           pathType: Prefix
   tls:
-    - secretName: darb-tls
+    - secretName: nebi-tls
       hosts:
-        - darb.example.com
+        - nebi.example.com
 
 ## Resource limits for production
 resources:
@@ -59,7 +59,7 @@ persistence:
 ## Application configuration
 config:
   ginMode: release
-  databasePath: /app/data/darb.db  # Only used if SQLite is enabled
+  databasePath: /app/data/nebi.db  # Only used if SQLite is enabled
   logLevel: info
   logFormat: json
 
@@ -72,7 +72,7 @@ database:
 
   # Option 2: Use external managed database (postgres.enabled: false)
   # Uncomment and set your external database DSN:
-  # dsn: "postgres://darb:PASSWORD@my-rds-instance.region.rds.amazonaws.com:5432/darb?sslmode=require"
+  # dsn: "postgres://nebi:PASSWORD@my-rds-instance.region.rds.amazonaws.com:5432/nebi?sslmode=require"
 
   # Connection pool settings
   maxIdleConns: 25
@@ -97,8 +97,8 @@ postgres:
     repository: postgres
     tag: "18"  # Latest PostgreSQL 18
     pullPolicy: IfNotPresent
-  database: darb
-  user: darb
+  database: nebi
+  user: nebi
   password: "CHANGE-ME-IN-PRODUCTION"  # Use Kubernetes secrets in production
   storage: 50Gi
   storageClassName: "gp3"  # AWS EBS gp3, change for your cloud provider
@@ -185,5 +185,5 @@ affinity:
               - key: app.kubernetes.io/name
                 operator: In
                 values:
-                  - darb
+                  - nebi
           topologyKey: kubernetes.io/hostname

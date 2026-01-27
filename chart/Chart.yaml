@@ -1,5 +1,5 @@
 apiVersion: v2
-name: darb
+name: nebi
 description: Dynamic Arbitrary Runtime Bundle - Pixi environment orchestration and code execution platform
 type: application
 version: 0.1.0
@@ -10,5 +10,5 @@ keywords:
   - code-execution
   - jupyter
 maintainers:
-  - name: Darb Team
-home: https://github.com/yourusername/darb
+  - name: Nebi Team
+home: https://github.com/yourusername/nebi

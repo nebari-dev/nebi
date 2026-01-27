@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/aktech/darb/internal/server"
+	"github.com/nebari-dev/nebi/internal/server"
 	"github.com/spf13/cobra"
 )
 
@@ -13,7 +13,7 @@ var (
 	serveMode string
 )
 
-// @title Darb API
+// @title Nebi API
 // @version 1.0
 // @description Multi-User Environment Management System API
 // @host localhost:8460
@@ -33,11 +33,11 @@ Examples:
   nebi serve --port 8080        # Override port
 
 Environment variables:
-  DARB_SERVER_PORT         Server port (default: 8460)
-  DARB_DATABASE_DRIVER     Database driver: sqlite, postgres
-  DARB_DATABASE_DSN        Database connection string
-  DARB_QUEUE_TYPE          Queue type: memory, valkey
-  DARB_AUTH_JWT_SECRET     JWT signing secret
+  NEBI_SERVER_PORT         Server port (default: 8460)
+  NEBI_DATABASE_DRIVER     Database driver: sqlite, postgres
+  NEBI_DATABASE_DSN        Database connection string
+  NEBI_QUEUE_TYPE          Queue type: memory, valkey
+  NEBI_AUTH_JWT_SECRET     JWT signing secret
   ADMIN_USERNAME           Bootstrap admin username
   ADMIN_PASSWORD           Bootstrap admin password`,
 	Run: runServe,

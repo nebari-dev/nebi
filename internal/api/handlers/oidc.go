@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/aktech/darb/internal/auth"
+	"github.com/nebari-dev/nebi/internal/auth"
 	"github.com/gin-gonic/gin"
 )
 

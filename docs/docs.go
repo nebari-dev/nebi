@@ -1769,7 +1769,7 @@ const docTemplate = `{
         },
         "/version": {
             "get": {
-                "description": "Returns version information about the Darb server",
+                "description": "Returns version information about the Nebi server",
                 "produces": [
                     "application/json"
                 ],
@@ -2445,7 +2445,7 @@ var SwaggerInfo = &swag.Spec{
 	Host:             "localhost:8460",
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
-	Title:            "Darb API",
+	Title:            "Nebi API",
 	Description:      "Multi-User Environment Management System API",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,

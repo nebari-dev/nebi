@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/aktech/darb/internal/models"
+	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/google/uuid"
 )
 

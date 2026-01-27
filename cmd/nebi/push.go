@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aktech/darb/internal/cliclient"
+	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/spf13/cobra"
 )
 

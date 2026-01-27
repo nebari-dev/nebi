@@ -1,4 +1,4 @@
-# Default values for Darb
+# Default values for Nebi
 # This is a YAML-formatted file with production-ready defaults
 # Override these values using values-dev.yaml for local development
 
@@ -32,7 +32,7 @@ deployment:
 
 ## Image configuration
 image:
-  repository: darb
+  repository: nebi
   pullPolicy: IfNotPresent
   tag: "latest"
 
@@ -73,7 +73,7 @@ ingress:
   className: ""
   annotations: {}
   hosts:
-    - host: darb.local
+    - host: nebi.local
       paths:
         - path: /
           pathType: Prefix
@@ -112,7 +112,7 @@ persistence:
 ## Application configuration
 config:
   ginMode: release
-  databasePath: /app/data/darb.db
+  databasePath: /app/data/nebi.db
   logLevel: info
   logFormat: json
 
@@ -177,8 +177,8 @@ postgres:
     repository: postgres
     tag: "18"  # Latest PostgreSQL 18
     pullPolicy: IfNotPresent
-  database: darb
-  user: darb
+  database: nebi
+  user: nebi
   password: "changeme-in-production"
   storage: 10Gi
   storageClassName: ""

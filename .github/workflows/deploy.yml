@@ -18,9 +18,9 @@ jobs:
 
       - name: Create app if it doesn't exist
         run: |
-          if ! flyctl status --app darb 2>/dev/null; then
+          if ! flyctl status --app nebi 2>/dev/null; then
             echo "Creating app..."
-            flyctl apps create darb
+            flyctl apps create nebi
           else
             echo "App already exists"
           fi
@@ -29,9 +29,9 @@ jobs:
 
       - name: Create volume if it doesn't exist
         run: |
-          if ! flyctl volumes list --app darb 2>/dev/null | grep -q darb_data; then
+          if ! flyctl volumes list --app nebi 2>/dev/null | grep -q nebi_data; then
             echo "Creating volume..."
-            flyctl volumes create darb_data --region sjc --size 1 --yes --app darb
+            flyctl volumes create nebi_data --region sjc --size 1 --yes --app nebi
           else
             echo "Volume already exists"
           fi
@@ -41,10 +41,10 @@ jobs:
       - name: Set Fly.io secrets
         run: |
           flyctl secrets set \
-            DARB_AUTH_JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+            NEBI_AUTH_JWT_SECRET="${{ secrets.JWT_SECRET }}" \
             ADMIN_USERNAME="${{ secrets.ADMIN_USERNAME }}" \
             ADMIN_PASSWORD="${{ secrets.ADMIN_PASSWORD }}" \
-            --app darb
+            --app nebi
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 

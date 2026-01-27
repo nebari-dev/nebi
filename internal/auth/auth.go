@@ -3,7 +3,7 @@ package auth
 import (
 	"errors"
 
-	"github.com/aktech/darb/internal/models"
+	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/gin-gonic/gin"
 )
 

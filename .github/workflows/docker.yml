@@ -13,7 +13,7 @@ concurrency:
 env:
   REGISTRY: ${{ vars.DOCKER_REGISTRY }}
   PROJECT: ${{ vars.DOCKER_PROJECT }}
-  IMAGE_NAME: darb
+  IMAGE_NAME: nebi
 
 jobs:
   build:
@@ -74,26 +74,26 @@ jobs:
           echo "Testing image: ${IMAGE_TAG}"
 
           # Start container with port mapping
-          docker run --rm -d --name test-darb \
+          docker run --rm -d --name test-nebi \
             -p 8460:8460 \
-            -e DARB_AUTH_JWT_SECRET=test-secret \
-            -e DARB_DATABASE_DSN=/tmp/test.db \
+            -e NEBI_AUTH_JWT_SECRET=test-secret \
+            -e NEBI_DATABASE_DSN=/tmp/test.db \
             ${IMAGE_TAG}
 
           # Wait for startup
           sleep 10
 
           # Check if container is still running
-          docker ps | grep test-darb
+          docker ps | grep test-nebi
 
           # Check logs
-          docker logs test-darb
+          docker logs test-nebi
 
           # Test health endpoint from host (pixi image has no wget/curl)
           curl -sf http://localhost:8460/api/v1/health || exit 1
 
           # Cleanup
-          docker stop test-darb
+          docker stop test-nebi
 
       - name: Add image tags to summary
         if: ${{ github.event_name == 'push' }}

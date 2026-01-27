@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/nebari-dev/nebi/internal/auth"
 	"github.com/gin-gonic/gin"
+	"github.com/nebari-dev/nebi/internal/auth"
 )
 
 // OIDCLogin godoc

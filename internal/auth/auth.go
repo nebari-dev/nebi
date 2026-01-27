@@ -3,8 +3,8 @@ package auth
 import (
 	"errors"
 
-	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/gin-gonic/gin"
+	"github.com/nebari-dev/nebi/internal/models"
 )
 
 var (

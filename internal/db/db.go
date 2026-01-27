@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/rbac"
 	"gorm.io/gorm"
 )
 

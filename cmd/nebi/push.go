@@ -18,6 +18,7 @@ import (
 
 var pushDryRun bool
 var pushSetDefault bool
+var pushForce bool
 
 var pushCmd = &cobra.Command{
 	Use:   "push <env>:<version>",
@@ -45,6 +46,7 @@ Examples:
 func init() {
 	pushCmd.Flags().BoolVar(&pushDryRun, "dry-run", false, "Preview what would be pushed without actually pushing")
 	pushCmd.Flags().BoolVar(&pushSetDefault, "set-default", false, "Set this version as the default for the environment")
+	pushCmd.Flags().BoolVar(&pushForce, "force", false, "Overwrite existing tag")
 }
 
 func runPush(cmd *cobra.Command, args []string) {
@@ -130,6 +132,7 @@ func runPush(cmd *cobra.Command, args []string) {
 		PixiToml:   string(pixiTomlContent),
 		PixiLock:   string(pixiLockContent),
 		SetDefault: pushSetDefault,
+		Force:      pushForce,
 	}
 
 	fmt.Printf("Pushing %s:%s...\n", envName, version)

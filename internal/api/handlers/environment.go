@@ -1177,6 +1177,7 @@ type PushVersionRequest struct {
 	PixiToml   string `json:"pixi_toml" binding:"required"`
 	PixiLock   string `json:"pixi_lock"`
 	SetDefault bool   `json:"set_default"` // Set this version as the default
+	Force      bool   `json:"force"`       // Force overwrite of existing tag
 }
 
 type PushVersionResponse struct {
@@ -1254,16 +1255,30 @@ func (h *EnvironmentHandler) PushVersion(c *gin.Context) {
 		return
 	}
 
-	// Upsert tag: create or update the tag to point to this version
+	// Check if tag already exists
 	var existingTag models.EnvironmentTag
 	result := h.db.Where("environment_id = ? AND tag = ?", env.ID, req.Tag).First(&existingTag)
 	if result.Error == nil {
-		// Tag exists, update it
+		// Tag exists - reject unless force flag is set
+		if !req.Force {
+			c.JSON(http.StatusConflict, ErrorResponse{
+				Error: fmt.Sprintf("tag %q already exists at version %d; use --force to reassign", req.Tag, existingTag.VersionNumber),
+			})
+			return
+		}
+		// Force flag set - update the tag
+		oldVersion := existingTag.VersionNumber
 		existingTag.VersionNumber = newVersion.VersionNumber
 		if err := h.db.Save(&existingTag).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update tag"})
 			return
 		}
+		// Audit the tag reassignment
+		audit.Log(h.db, userID, audit.ActionReassignTag, audit.ResourceEnvironment, env.ID, map[string]interface{}{
+			"tag":         req.Tag,
+			"old_version": oldVersion,
+			"new_version": newVersion.VersionNumber,
+		})
 	} else {
 		// Create new tag
 		newTag := models.EnvironmentTag{

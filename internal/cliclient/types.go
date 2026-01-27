@@ -81,6 +81,7 @@ type PushRequest struct {
 	PixiToml   string `json:"pixi_toml"`
 	PixiLock   string `json:"pixi_lock,omitempty"`
 	SetDefault bool   `json:"set_default,omitempty"` // Set this version as the default
+	Force      bool   `json:"force,omitempty"`       // Force overwrite of existing tag
 }
 
 // PushResponse represents the response from pushing a version.

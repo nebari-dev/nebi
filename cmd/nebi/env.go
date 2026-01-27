@@ -532,7 +532,7 @@ func runEnvInfoByName(envName string) {
 	}
 
 	fmt.Printf("Name:            %s\n", envDetail.Name)
-	fmt.Printf("ID:              %s\n", envDetail.ID)
+	fmt.Printf("Spec ID:         %s\n", envDetail.ID)
 	fmt.Printf("Status:          %s\n", envDetail.Status)
 	fmt.Printf("Package Manager: %s\n", envDetail.PackageManager)
 	if envDetail.Owner != nil {
@@ -614,7 +614,7 @@ func outputEnvInfoJSON(envDetail *cliclient.Environment, packages []cliclient.Pa
 func printServerInfo(envDetail *cliclient.Environment, packageCount int) {
 	fmt.Println("Server:")
 	fmt.Printf("  Name:            %s\n", envDetail.Name)
-	fmt.Printf("  ID:              %s\n", envDetail.ID)
+	fmt.Printf("  Spec ID:         %s\n", envDetail.ID)
 	fmt.Printf("  Status:          %s\n", envDetail.Status)
 	fmt.Printf("  Package Manager: %s\n", envDetail.PackageManager)
 	if envDetail.Owner != nil {

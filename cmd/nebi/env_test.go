@@ -127,7 +127,7 @@ func TestFormatLocation_AbsolutePath(t *testing.T) {
 	}
 }
 
-func TestWorkspacePrune_Integration(t *testing.T) {
+func TestEnvPrune_Integration(t *testing.T) {
 	dir := t.TempDir()
 	store := localindex.NewStoreWithDir(dir)
 
@@ -136,13 +136,13 @@ func TestWorkspacePrune_Integration(t *testing.T) {
 	os.MkdirAll(validPath, 0755)
 
 	store.AddEntry(localindex.Entry{
-		SpecName:    "valid-ws",
+		SpecName:    "valid-env",
 		VersionName: "v1.0",
 		Path:        validPath,
 		PulledAt:    time.Now(),
 	})
 	store.AddEntry(localindex.Entry{
-		SpecName:    "missing-ws",
+		SpecName:    "missing-env",
 		VersionName: "v1.0",
 		Path:        filepath.Join(dir, "does-not-exist"),
 		PulledAt:    time.Now(),
@@ -157,8 +157,8 @@ func TestWorkspacePrune_Integration(t *testing.T) {
 	if len(removed) != 1 {
 		t.Fatalf("Prune() removed %d entries, want 1", len(removed))
 	}
-	if removed[0].SpecName != "missing-ws" {
-		t.Errorf("removed workspace = %q, want %q", removed[0].SpecName, "missing-ws")
+	if removed[0].SpecName != "missing-env" {
+		t.Errorf("removed environment = %q, want %q", removed[0].SpecName, "missing-env")
 	}
 
 	// Verify valid entry still exists
@@ -168,7 +168,7 @@ func TestWorkspacePrune_Integration(t *testing.T) {
 	}
 }
 
-func TestWorkspaceListLocal_EmptyIndex(t *testing.T) {
+func TestEnvListLocal_EmptyIndex(t *testing.T) {
 	dir := t.TempDir()
 	store := localindex.NewStoreWithDir(dir)
 
@@ -177,17 +177,17 @@ func TestWorkspaceListLocal_EmptyIndex(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 	if len(index.Entries) != 0 {
-		t.Errorf("Empty index should have 0 workspaces, got %d", len(index.Entries))
+		t.Errorf("Empty index should have 0 environments, got %d", len(index.Entries))
 	}
 }
 
-func TestWorkspaceListLocal_WithEntries(t *testing.T) {
+func TestEnvListLocal_WithEntries(t *testing.T) {
 	dir := t.TempDir()
 	store := localindex.NewStoreWithDir(dir)
 
 	// Add some entries
-	path1 := filepath.Join(dir, "ws1")
-	path2 := filepath.Join(dir, "ws2")
+	path1 := filepath.Join(dir, "env1")
+	path2 := filepath.Join(dir, "env2")
 	os.MkdirAll(path1, 0755)
 	os.MkdirAll(path2, 0755)
 
@@ -209,34 +209,111 @@ func TestWorkspaceListLocal_WithEntries(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 	if len(index.Entries) != 2 {
-		t.Errorf("Expected 2 workspaces, got %d", len(index.Entries))
+		t.Errorf("Expected 2 environments, got %d", len(index.Entries))
 	}
 }
 
-func TestWorkspaceInfoCmd_AcceptsZeroOrOneArgs(t *testing.T) {
+func TestEnvInfoCmd_AcceptsZeroOrOneArgs(t *testing.T) {
 	// The command should accept 0 or 1 args (MaximumNArgs(1))
-	err := repoInfoCmd.Args(repoInfoCmd, []string{})
+	err := envInfoCmd.Args(envInfoCmd, []string{})
 	if err != nil {
-		t.Errorf("repoInfoCmd should accept 0 args, got error: %v", err)
+		t.Errorf("envInfoCmd should accept 0 args, got error: %v", err)
 	}
 
-	err = repoInfoCmd.Args(repoInfoCmd, []string{"myworkspace"})
+	err = envInfoCmd.Args(envInfoCmd, []string{"myenv"})
 	if err != nil {
-		t.Errorf("repoInfoCmd should accept 1 arg, got error: %v", err)
+		t.Errorf("envInfoCmd should accept 1 arg, got error: %v", err)
 	}
 
-	err = repoInfoCmd.Args(repoInfoCmd, []string{"a", "b"})
+	err = envInfoCmd.Args(envInfoCmd, []string{"a", "b"})
 	if err == nil {
-		t.Error("repoInfoCmd should reject 2 args")
+		t.Error("envInfoCmd should reject 2 args")
 	}
 }
 
-func TestWorkspaceInfoCmd_HasPathFlag(t *testing.T) {
-	flag := repoInfoCmd.Flags().Lookup("path")
+func TestEnvInfoCmd_HasPathFlag(t *testing.T) {
+	flag := envInfoCmd.Flags().Lookup("path")
 	if flag == nil {
 		t.Fatal("--path/-C flag should be registered")
 	}
 	if flag.DefValue != "." {
 		t.Errorf("--path default = %q, want %q", flag.DefValue, ".")
+	}
+	if flag.Shorthand != "C" {
+		t.Errorf("--path shorthand = %q, want %q", flag.Shorthand, "C")
+	}
+}
+
+func TestEnvPruneCmd_HasNoArgs(t *testing.T) {
+	if envPruneCmd.Args == nil {
+		t.Fatal("Args should not be nil")
+	}
+}
+
+func TestEnvListCmd_HasLocalFlag(t *testing.T) {
+	flag := envListCmd.Flags().Lookup("local")
+	if flag == nil {
+		t.Fatal("--local flag should be registered")
+	}
+	if flag.DefValue != "false" {
+		t.Errorf("--local default = %q, want %q", flag.DefValue, "false")
+	}
+}
+
+func TestEnvListCmd_HasJSONFlag(t *testing.T) {
+	flag := envListCmd.Flags().Lookup("json")
+	if flag == nil {
+		t.Fatal("--json flag should be registered")
+	}
+	if flag.DefValue != "false" {
+		t.Errorf("--json default = %q, want %q", flag.DefValue, "false")
+	}
+}
+
+func TestIsUUID(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"550e8400-e29b-41d4-a716-446655440000", true},
+		{"ABCDEF00-1234-5678-9ABC-DEF012345678", true},
+		{"not-a-uuid", false},
+		{"550e8400e29b41d4a716446655440000", false},   // no hyphens
+		{"550e8400-e29b-41d4-a716-44665544000", false}, // too short
+		{"v1.0", false},
+		{"", false},
+		{"repos", false},
+	}
+	for _, tt := range tests {
+		got := isUUID(tt.input)
+		if got != tt.want {
+			t.Errorf("isUUID(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestAbbreviateUUID(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{
+			"~/.local/share/nebi/envs/550e8400-e29b-41d4-a716-446655440000/v1.0",
+			"~/.local/share/nebi/envs/550e8400/v1.0",
+		},
+		{
+			"~/.local/share/nebi/envs/my-env/v1.0",
+			"~/.local/share/nebi/envs/my-env/v1.0",
+		},
+		{
+			"/opt/nebi/envs/550e8400-e29b-41d4-a716-446655440000/v2.0",
+			"/opt/nebi/envs/550e8400/v2.0",
+		},
+	}
+	for _, tt := range tests {
+		got := abbreviateUUID(tt.input)
+		if got != tt.want {
+			t.Errorf("abbreviateUUID(%q) = %q, want %q", tt.input, got, tt.want)
+		}
 	}
 }

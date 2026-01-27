@@ -19,21 +19,21 @@ import (
 var pushDryRun bool
 
 var pushCmd = &cobra.Command{
-	Use:   "push <repo>:<tag>",
-	Short: "Push repo to server",
-	Long: `Push a new version to the Nebi server with a tag.
+	Use:   "push <env>:<version>",
+	Short: "Push environment to server",
+	Long: `Push a new version to the Nebi server.
 
 Looks for pixi.toml and pixi.lock in the current directory.
-If the repo doesn't exist on the server, it will be created automatically.
+If the environment doesn't exist on the server, it will be created automatically.
 
 Use 'nebi publish' to distribute a pushed version to an OCI registry.
 
 Examples:
-  # Push with tag
-  nebi push myrepo:v1.0.0
+  # Push with version
+  nebi push myenv:v1.0.0
 
   # Preview what would be pushed
-  nebi push myrepo:v1.1 --dry-run`,
+  nebi push myenv:v1.1 --dry-run`,
 	Args: cobra.ExactArgs(1),
 	Run:  runPush,
 }
@@ -43,17 +43,17 @@ func init() {
 }
 
 func runPush(cmd *cobra.Command, args []string) {
-	// Parse repo:tag format
-	repoName, tag, err := parseRepoRef(args[0])
+	// Parse env:version format
+	envName, version, err := parseEnvRef(args[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		fmt.Fprintln(os.Stderr, "Usage: nebi push <repo>:<tag>")
+		fmt.Fprintln(os.Stderr, "Usage: nebi push <env>:<version>")
 		osExit(1)
 	}
 
-	if tag == "" {
-		fmt.Fprintf(os.Stderr, "Error: tag is required\n")
-		fmt.Fprintln(os.Stderr, "Usage: nebi push <repo>:<tag>")
+	if version == "" {
+		fmt.Fprintf(os.Stderr, "Error: version is required\n")
+		fmt.Fprintln(os.Stderr, "Usage: nebi push <env>:<version>")
 		osExit(1)
 	}
 
@@ -73,36 +73,36 @@ func runPush(cmd *cobra.Command, args []string) {
 
 	// Handle --dry-run: show diff against origin if .nebi exists
 	if pushDryRun {
-		runPushDryRun(repoName, tag, pixiTomlContent, pixiLockContent)
+		runPushDryRun(envName, version, pixiTomlContent, pixiLockContent)
 		return
 	}
 
-	// Check for drift awareness: warn if pushing modified repo
+	// Check for drift awareness: warn if pushing modified environment
 	absDir, _ := filepath.Abs(".")
-	showPushDriftWarning(absDir, repoName, tag, pixiTomlContent)
+	showPushDriftWarning(absDir, envName, version, pixiTomlContent)
 
 	client := mustGetClient()
 	ctx := mustGetAuthContext()
 
-	// Try to find repo by name, create if not found
-	env, err := findRepoByName(client, ctx, repoName)
+	// Try to find environment by name, create if not found
+	env, err := findEnvByName(client, ctx, envName)
 	if err != nil {
-		// Repo doesn't exist, create it
-		fmt.Printf("Creating repo %q...\n", repoName)
+		// Environment doesn't exist, create it
+		fmt.Printf("Creating environment %q...\n", envName)
 		pixiTomlStr := string(pixiTomlContent)
 		pkgMgr := "pixi"
 		createReq := cliclient.CreateEnvironmentRequest{
-			Name:           repoName,
+			Name:           envName,
 			PackageManager: &pkgMgr,
 			PixiToml:       &pixiTomlStr,
 		}
 
 		newEnv, createErr := client.CreateEnvironment(ctx, createReq)
 		if createErr != nil {
-			fmt.Fprintf(os.Stderr, "Error: Failed to create repo %q: %v\n", repoName, createErr)
+			fmt.Fprintf(os.Stderr, "Error: Failed to create environment %q: %v\n", envName, createErr)
 			osExit(1)
 		}
-		fmt.Printf("Created repo %q\n", repoName)
+		fmt.Printf("Created environment %q\n", envName)
 
 		// Wait for environment to be ready
 		env, err = waitForEnvReady(client, ctx, newEnv.ID, 60*time.Second)
@@ -114,20 +114,20 @@ func runPush(cmd *cobra.Command, args []string) {
 
 	// Push version to server
 	req := cliclient.PushRequest{
-		Tag:      tag,
+		Tag:      version,
 		PixiToml: string(pixiTomlContent),
 		PixiLock: string(pixiLockContent),
 	}
 
-	fmt.Printf("Pushing %s:%s...\n", repoName, tag)
+	fmt.Printf("Pushing %s:%s...\n", envName, version)
 	resp, err := client.PushVersion(ctx, env.ID, req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to push %s:%s: %v\n", repoName, tag, err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to push %s:%s: %v\n", envName, version, err)
 		osExit(1)
 	}
 
-	fmt.Printf("Pushed %s:%s (version %d)\n", repoName, tag, resp.VersionNumber)
-	fmt.Printf("\nTo distribute via OCI registry:\n  nebi publish %s:%s -r <registry>\n", repoName, tag)
+	fmt.Printf("Pushed %s:%s (version %d)\n", envName, version, resp.VersionNumber)
+	fmt.Printf("\nTo distribute via OCI registry:\n  nebi publish %s:%s -r <registry>\n", envName, version)
 
 	// Update .nebi metadata and local index to reflect the pushed state.
 	// After a successful push, the local files ARE the origin — status becomes "clean".
@@ -143,24 +143,9 @@ func runPush(cmd *cobra.Command, args []string) {
 		pixiLockDigest = nebifile.ComputeDigest(pixiLockContent)
 	}
 
-	layers := map[string]nebifile.Layer{
-		"pixi.toml": {
-			Digest:    pixiTomlDigest,
-			Size:      int64(len(pixiTomlContent)),
-			MediaType: nebifile.MediaTypePixiToml,
-		},
-	}
-	if pixiLockDigest != "" {
-		layers["pixi.lock"] = nebifile.Layer{
-			Digest:    pixiLockDigest,
-			Size:      int64(len(pixiLockContent)),
-			MediaType: nebifile.MediaTypePixiLock,
-		}
-	}
-
 	nf := nebifile.New(nebifile.Origin{
-		SpecName:    repoName,
-		VersionName: tag,
+		SpecName:    envName,
+		VersionName: version,
 		VersionID:   fmt.Sprintf("%d", resp.VersionNumber),
 		ServerURL:   cfg.ServerURL,
 		PulledAt:    time.Now(),
@@ -180,8 +165,8 @@ func runPush(cmd *cobra.Command, args []string) {
 
 	idxStore := localindex.NewStore()
 	entry := localindex.Entry{
-		SpecName:    repoName,
-		VersionName: tag,
+		SpecName:    envName,
+		VersionName: version,
 		VersionID:   fmt.Sprintf("%d", resp.VersionNumber),
 		ServerURL:   cfg.ServerURL,
 		Path:        absDir,
@@ -194,10 +179,10 @@ func runPush(cmd *cobra.Command, args []string) {
 }
 
 // runPushDryRun shows what would be pushed without actually pushing.
-func runPushDryRun(repoName, tag string, pixiTomlContent, pixiLockContent []byte) {
+func runPushDryRun(envName, version string, pixiTomlContent, pixiLockContent []byte) {
 	absDir, _ := filepath.Abs(".")
 
-	fmt.Printf("Would push %s:%s\n\n", repoName, tag)
+	fmt.Printf("Would push %s:%s\n\n", envName, version)
 
 	// Check if we have a .nebi.toml file to diff against
 	if nebifile.Exists(absDir) {
@@ -207,7 +192,7 @@ func runPushDryRun(repoName, tag string, pixiTomlContent, pixiLockContent []byte
 			client := mustGetClient()
 			ctx := mustGetAuthContext()
 
-			env, err := findRepoByName(client, ctx, nf.Origin.SpecName)
+			env, err := findEnvByName(client, ctx, nf.Origin.SpecName)
 			if err == nil {
 				var versionID int32
 				fmt.Sscanf(nf.Origin.VersionID, "%d", &versionID)
@@ -244,27 +229,27 @@ func runPushDryRun(repoName, tag string, pixiTomlContent, pixiLockContent []byte
 	fmt.Println("\nRun without --dry-run to push.")
 }
 
-// parseRepoRef parses a reference in the format repo:tag or repo@digest.
-// Returns (repo, tag, error) for tag references.
-// Returns (repo, "", error) for digest references (digest is in tag field with @ prefix).
-func parseRepoRef(ref string) (repo string, tag string, err error) {
-	// Check for digest reference first (repo@sha256:...)
+// parseEnvRef parses a reference in the format env:version or env@digest.
+// Returns (env, version, error) for version references.
+// Returns (env, "", error) for digest references (digest is in version field with @ prefix).
+func parseEnvRef(ref string) (env string, version string, err error) {
+	// Check for digest reference first (env@sha256:...)
 	if idx := strings.Index(ref, "@"); idx != -1 {
-		return ref[:idx], ref[idx:], nil // Return @sha256:... as the "tag"
+		return ref[:idx], ref[idx:], nil // Return @sha256:... as the "version"
 	}
 
-	// Check for tag reference (repo:tag)
+	// Check for version reference (env:version)
 	if idx := strings.LastIndex(ref, ":"); idx != -1 {
 		return ref[:idx], ref[idx+1:], nil
 	}
 
-	// No tag or digest specified
+	// No version or digest specified
 	return ref, "", nil
 }
 
-// showPushDriftWarning checks if the local repo has been modified and shows
+// showPushDriftWarning checks if the local environment has been modified and shows
 // an informational note about what's being pushed relative to the origin.
-func showPushDriftWarning(dir, repoName, tag string, pixiTomlContent []byte) {
+func showPushDriftWarning(dir, envName, version string, pixiTomlContent []byte) {
 	if !nebifile.Exists(dir) {
 		return // No origin info available
 	}
@@ -281,7 +266,7 @@ func showPushDriftWarning(dir, repoName, tag string, pixiTomlContent []byte) {
 	}
 
 	if ws.Overall == drift.StatusModified {
-		fmt.Printf("Note: This repo was originally pulled from %s:%s\n",
+		fmt.Printf("Note: This environment was originally pulled from %s:%s\n",
 			nf.Origin.SpecName, nf.Origin.VersionName)
 		for _, f := range ws.Files {
 			if f.Status == drift.StatusModified {
@@ -291,12 +276,12 @@ func showPushDriftWarning(dir, repoName, tag string, pixiTomlContent []byte) {
 		fmt.Println()
 	}
 
-	// Warn if pushing to the same tag as origin (potential overwrite)
-	if tag == nf.Origin.VersionName && repoName == nf.Origin.SpecName && ws.Overall == drift.StatusModified {
-		fmt.Fprintf(os.Stderr, "Warning: Pushing modified content back to the same tag %q\n", tag)
+	// Warn if pushing to the same version as origin (potential overwrite)
+	if version == nf.Origin.VersionName && envName == nf.Origin.SpecName && ws.Overall == drift.StatusModified {
+		fmt.Fprintf(os.Stderr, "Warning: Pushing modified content back to the same version %q\n", version)
 		fmt.Fprintf(os.Stderr, "  This will overwrite the existing version on the server.\n")
-		fmt.Fprintf(os.Stderr, "  Consider using a new tag (e.g., %s-1) to preserve the original.\n\n",
-			tag)
+		fmt.Fprintf(os.Stderr, "  Consider using a new version (e.g., %s-1) to preserve the original.\n\n",
+			version)
 	}
 }
 

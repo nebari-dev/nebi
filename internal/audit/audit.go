@@ -41,6 +41,7 @@ const (
 	ActionInstallPackage     = "install_package"
 	ActionRemovePackage      = "remove_package"
 	ActionPublishEnvironment = "publish_environment"
+	ActionReassignTag        = "reassign_tag"
 	ActionLogin              = "login"
 	ActionLoginFailed        = "login_failed"
 )

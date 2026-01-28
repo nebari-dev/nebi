@@ -227,7 +227,7 @@ func TestReadLocalWorkspace(t *testing.T) {
 		os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("[workspace]\nname = \"test\""), 0644)
 		os.WriteFile(filepath.Join(dir, "pixi.lock"), []byte("version: 6"), 0644)
 
-		toml, lock, err := readLocalWorkspace(dir)
+		toml, lock, err := readLocalEnv(dir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -243,7 +243,7 @@ func TestReadLocalWorkspace(t *testing.T) {
 		dir := t.TempDir()
 		os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("[workspace]"), 0644)
 
-		toml, lock, err := readLocalWorkspace(dir)
+		toml, lock, err := readLocalEnv(dir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -257,7 +257,7 @@ func TestReadLocalWorkspace(t *testing.T) {
 
 	t.Run("error when pixi.toml missing", func(t *testing.T) {
 		dir := t.TempDir()
-		_, _, err := readLocalWorkspace(dir)
+		_, _, err := readLocalEnv(dir)
 		if err == nil {
 			t.Fatal("expected error for missing pixi.toml")
 		}
@@ -285,12 +285,12 @@ scipy = ">=1.0"
 	os.WriteFile(filepath.Join(dir1, "pixi.toml"), []byte(toml1), 0644)
 	os.WriteFile(filepath.Join(dir2, "pixi.toml"), []byte(toml2), 0644)
 
-	// readLocalWorkspace should work for both
-	t1, _, err := readLocalWorkspace(dir1)
+	// readLocalEnv should work for both
+	t1, _, err := readLocalEnv(dir1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t2, _, err := readLocalWorkspace(dir2)
+	t2, _, err := readLocalEnv(dir2)
 	if err != nil {
 		t.Fatal(err)
 	}

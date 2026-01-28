@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/aktech/darb/internal/drift"
+	"github.com/aktech/darb/internal/localindex"
 	"github.com/aktech/darb/internal/nebifile"
 	"github.com/spf13/cobra"
 )
@@ -19,8 +21,8 @@ var (
 
 var statusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Show workspace drift status",
-	Long: `Show the current state of a local workspace by comparing local files
+	Short: "Show environment drift status",
+	Long: `Show the current state of a local environment by comparing local files
 against the origin layer digests stored in the .nebi metadata file.
 
 This command works offline unless --remote is specified.
@@ -37,23 +39,23 @@ Examples:
   # Verbose output with next-step suggestions
   nebi status -v
 
-  # Check if remote tag has been updated
+  # Check if remote version has been updated
   nebi status --remote
 
   # Machine-readable JSON output
   nebi status --json
 
-  # Check workspace at a specific path
-  nebi status -C /path/to/workspace`,
+  # Check environment at a specific path
+  nebi status -C /path/to/env`,
 	Args: cobra.NoArgs,
 	Run:  runStatus,
 }
 
 func init() {
-	statusCmd.Flags().BoolVar(&statusRemote, "remote", false, "Also check remote for tag updates")
+	statusCmd.Flags().BoolVar(&statusRemote, "remote", false, "Also check remote for version updates")
 	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output as JSON")
 	statusCmd.Flags().BoolVarP(&statusVerbose, "verbose", "v", false, "Verbose output")
-	statusCmd.Flags().StringVarP(&statusPath, "path", "C", ".", "Workspace directory path")
+	statusCmd.Flags().StringVarP(&statusPath, "path", "C", ".", "Environment directory path")
 }
 
 func runStatus(cmd *cobra.Command, args []string) {
@@ -69,8 +71,15 @@ func runStatus(cmd *cobra.Command, args []string) {
 	nf, err := nebifile.Read(absDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		fmt.Fprintln(os.Stderr, "Hint: Run 'nebi pull' first to create a workspace with tracking metadata.")
+		fmt.Fprintln(os.Stderr, "Hint: Run 'nebi pull' first to create an environment with tracking metadata.")
 		osExit(2)
+	}
+
+	// Get PulledAt from index (if available)
+	var pulledAt time.Time
+	store := localindex.NewStore()
+	if entry, err := store.FindByID(nf.ID); err == nil && entry != nil {
+		pulledAt = entry.PulledAt
 	}
 
 	// Perform local drift check
@@ -86,11 +95,11 @@ func runStatus(cmd *cobra.Command, args []string) {
 
 	// Output
 	if statusJSON {
-		outputStatusJSON(ws, nf, remoteStatus)
+		outputStatusJSON(ws, nf, remoteStatus, pulledAt)
 	} else if statusVerbose {
-		outputStatusVerbose(ws, nf, remoteStatus)
+		outputStatusVerbose(ws, nf, remoteStatus, pulledAt)
 	} else {
-		outputStatusCompact(ws, nf, remoteStatus)
+		outputStatusCompact(ws, nf, remoteStatus, pulledAt)
 	}
 
 	// Exit code
@@ -99,34 +108,34 @@ func runStatus(cmd *cobra.Command, args []string) {
 	}
 }
 
-func outputStatusCompact(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) {
+func outputStatusCompact(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus, pulledAt time.Time) {
 	status := string(ws.Overall)
-	ref := nf.Origin.Repo
-	if nf.Origin.Tag != "" {
-		ref += ":" + nf.Origin.Tag
+	ref := nf.Origin.SpecName
+	if nf.Origin.VersionName != "" {
+		ref += ":" + nf.Origin.VersionName
 	}
 
-	registry := nf.Origin.RegistryURL
-	if registry == "" {
-		registry = "server"
+	if !pulledAt.IsZero() {
+		fmt.Printf("%s  •  pulled %s  •  %s\n", ref, formatTimeAgo(pulledAt), status)
+	} else {
+		fmt.Printf("%s  •  %s\n", ref, status)
 	}
-
-	fmt.Printf("%s (%s)  •  pulled %s  •  %s\n", ref, registry, formatTimeAgo(nf.Origin.PulledAt), status)
 
 	if remote != nil && remote.TagHasMoved {
-		fmt.Printf("  ⚠ Tag '%s' has been updated on remote\n", nf.Origin.Tag)
+		fmt.Printf("\nRemote tag '%s' has moved to a new version.\n", nf.Origin.VersionName)
+		fmt.Println("  To compare local vs new remote:  nebi diff --remote")
+		fmt.Printf("  To update to new remote:         nebi pull %s:%s --force\n", nf.Origin.SpecName, nf.Origin.VersionName)
 	}
 }
 
-func outputStatusVerbose(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) {
-	fmt.Printf("Repo:      %s:%s\n", nf.Origin.Repo, nf.Origin.Tag)
-	if nf.Origin.RegistryURL != "" {
-		fmt.Printf("Registry:  %s\n", nf.Origin.RegistryURL)
-	}
+func outputStatusVerbose(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus, pulledAt time.Time) {
+	fmt.Printf("Env:       %s:%s\n", nf.Origin.SpecName, nf.Origin.VersionName)
 	fmt.Printf("Server:    %s\n", nf.Origin.ServerURL)
-	fmt.Printf("Pulled:    %s (%s)\n", nf.Origin.PulledAt.Format("2006-01-02 15:04:05"), formatTimeAgo(nf.Origin.PulledAt))
-	if nf.Origin.ManifestDigest != "" {
-		fmt.Printf("Digest:    %s\n", nf.Origin.ManifestDigest)
+	if !pulledAt.IsZero() {
+		fmt.Printf("Pulled:    %s (%s)\n", pulledAt.Format("2006-01-02 15:04:05"), formatTimeAgo(pulledAt))
+	}
+	if nf.Origin.VersionID != "" {
+		fmt.Printf("Version:   %s\n", nf.Origin.VersionID)
 	}
 	fmt.Println()
 
@@ -141,9 +150,9 @@ func outputStatusVerbose(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *dr
 		if remote.Error != "" {
 			fmt.Printf("  Error: %s\n", remote.Error)
 		} else if remote.TagHasMoved {
-			fmt.Printf("  ⚠ Tag '%s' now points to %s (was %s when pulled)\n",
-				nf.Origin.Tag, remote.CurrentTagDigest, remote.OriginDigest)
-			fmt.Println("  The tag has been updated since you pulled.")
+			fmt.Printf("  Tag '%s' now points to version %d (was %s when pulled)\n",
+				nf.Origin.VersionName, remote.CurrentVersionID, nf.Origin.VersionID)
+			fmt.Println("  Run 'nebi pull --force' to update to the latest.")
 		} else {
 			fmt.Println("  Tag unchanged since pull")
 		}
@@ -154,12 +163,12 @@ func outputStatusVerbose(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *dr
 		fmt.Println("Next steps:")
 		fmt.Println("  nebi diff              # See what changed")
 		fmt.Println("  nebi pull --force      # Discard local changes")
-		fmt.Printf("  nebi push %s:<tag>  # Publish as new version\n", nf.Origin.Repo)
+		fmt.Printf("  nebi push %s:<version>  # Publish as new version\n", nf.Origin.SpecName)
 	}
 }
 
-func outputStatusJSON(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) {
-	data, err := formatStatusJSONHelper(ws, nf, remote)
+func outputStatusJSON(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus, pulledAt time.Time) {
+	data, err := formatStatusJSONHelper(ws, nf, remote, pulledAt)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to marshal JSON: %v\n", err)
 		osExit(2)
@@ -167,7 +176,7 @@ func outputStatusJSON(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift
 	fmt.Println(string(data))
 }
 
-func formatStatusJSONHelper(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) ([]byte, error) {
+func formatStatusJSONHelper(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus, pulledAt time.Time) ([]byte, error) {
 	// Use the diff package's JSON formatter
-	return formatStatusJSONInternal(ws, nf, remote)
+	return formatStatusJSONInternal(ws, nf, remote, pulledAt)
 }

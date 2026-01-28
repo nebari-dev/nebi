@@ -67,11 +67,15 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		}
 	}
 
+	// Initialize info handler
+	infoHandler := handlers.NewInfoHandler(db)
+
 	// Public routes
 	public := router.Group("/api/v1")
 	{
 		public.GET("/health", handlers.HealthCheck)
 		public.GET("/version", handlers.GetVersion)
+		public.GET("/info", infoHandler.GetInfo)
 		public.POST("/auth/login", handlers.Login(authenticator))
 
 		// OIDC routes (if enabled)

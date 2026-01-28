@@ -10,13 +10,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
 	// CurrentVersion is the current schema version of the index file.
-	CurrentVersion = 1
+	CurrentVersion = 2
 
 	// DefaultIndexDir is the default directory for the index file.
 	DefaultIndexDir = ".local/share/nebi"
@@ -27,29 +30,45 @@ const (
 
 // Index represents the local repo index.
 type Index struct {
-	Version int              `json:"version"`
-	Repos   []RepoEntry      `json:"repos"`
-	Aliases map[string]Alias `json:"aliases,omitempty"`
+	Version int     `json:"version"`
+	Entries []Entry `json:"entries"`
 }
 
-// RepoEntry represents a single repo entry in the index.
-type RepoEntry struct {
-	Repo            string            `json:"repo"`
-	Tag             string            `json:"tag"`
-	RegistryURL     string            `json:"registry_url,omitempty"`
-	ServerURL       string            `json:"server_url"`
-	ServerVersionID int32             `json:"server_version_id"`
-	Path            string            `json:"path"`
-	IsGlobal        bool              `json:"is_global"`
-	PulledAt        time.Time         `json:"pulled_at"`
-	ManifestDigest  string            `json:"manifest_digest,omitempty"`
-	Layers          map[string]string `json:"layers,omitempty"`
+// Entry represents a single entry in the index.
+type Entry struct {
+	// ID is a unique identifier for this local entry
+	ID string `json:"id"`
+
+	// Spec identification
+	SpecName string `json:"spec_name"`
+	SpecID   string `json:"spec_id"`
+
+	// Version identification
+	VersionName string `json:"version_name"`
+	VersionID   string `json:"version_id"`
+
+	// Server information
+	ServerURL string `json:"server_url"`
+	ServerID  string `json:"server_id"`
+
+	// Local state
+	Path     string    `json:"path"`
+	PulledAt time.Time `json:"pulled_at"`
+
+	// Layer digests for drift detection
+	Layers map[string]string `json:"layers,omitempty"`
 }
 
-// Alias maps a user-friendly name to a UUID + tag in global storage.
-type Alias struct {
-	UUID string `json:"uuid"`
-	Tag  string `json:"tag"`
+// RepoEntry is an alias for Entry for backward compatibility.
+// Deprecated: Use Entry instead.
+type RepoEntry = Entry
+
+// IsGlobal returns true if this entry is stored in global storage.
+// Determined by checking if the path is under ~/.local/share/nebi/envs/
+func (e *Entry) IsGlobal() bool {
+	homeDir, _ := os.UserHomeDir()
+	globalPrefix := filepath.Join(homeDir, DefaultIndexDir, "envs") + string(filepath.Separator)
+	return strings.HasPrefix(e.Path, globalPrefix)
 }
 
 // Store provides CRUD operations for the local index.
@@ -100,8 +119,7 @@ func (s *Store) loadUnsafe() (*Index, error) {
 		if os.IsNotExist(err) {
 			return &Index{
 				Version: CurrentVersion,
-				Repos:   []RepoEntry{},
-				Aliases: make(map[string]Alias),
+				Entries: []Entry{},
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to read index file: %w", err)
@@ -113,14 +131,22 @@ func (s *Store) loadUnsafe() (*Index, error) {
 		return nil, fmt.Errorf("failed to parse index file: %w", err)
 	}
 
-	// Migration: handle old "workspaces" key and "workspace" field
-	if idx.Repos == nil {
+	// Migration: handle old v1 format with "repos" or "workspaces" keys
+	if idx.Entries == nil {
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(data, &raw); err == nil {
-			if wsData, ok := raw["workspaces"]; ok && idx.Repos == nil {
-				// Old format: parse "workspaces" array with "workspace" field
+			// Try "repos" first (v1 format), then "workspaces" (v0 format)
+			var entriesData json.RawMessage
+			if reposData, ok := raw["repos"]; ok {
+				entriesData = reposData
+			} else if wsData, ok := raw["workspaces"]; ok {
+				entriesData = wsData
+			}
+
+			if entriesData != nil {
 				var oldEntries []struct {
 					Workspace       string            `json:"workspace"`
+					Repo            string            `json:"repo"`
 					Tag             string            `json:"tag"`
 					RegistryURL     string            `json:"registry_url,omitempty"`
 					ServerURL       string            `json:"server_url"`
@@ -131,20 +157,25 @@ func (s *Store) loadUnsafe() (*Index, error) {
 					ManifestDigest  string            `json:"manifest_digest,omitempty"`
 					Layers          map[string]string `json:"layers,omitempty"`
 				}
-				if err := json.Unmarshal(wsData, &oldEntries); err == nil {
-					idx.Repos = make([]RepoEntry, len(oldEntries))
+				if err := json.Unmarshal(entriesData, &oldEntries); err == nil {
+					idx.Entries = make([]Entry, len(oldEntries))
 					for i, old := range oldEntries {
-						idx.Repos[i] = RepoEntry{
-							Repo:            old.Workspace,
-							Tag:             old.Tag,
-							RegistryURL:     old.RegistryURL,
-							ServerURL:       old.ServerURL,
-							ServerVersionID: old.ServerVersionID,
-							Path:            old.Path,
-							IsGlobal:        old.IsGlobal,
-							PulledAt:        old.PulledAt,
-							ManifestDigest:  old.ManifestDigest,
-							Layers:          old.Layers,
+						// Use Repo if present, fall back to Workspace
+						specName := old.Repo
+						if specName == "" {
+							specName = old.Workspace
+						}
+						idx.Entries[i] = Entry{
+							ID:          uuid.New().String(),
+							SpecName:    specName,
+							SpecID:      "", // Not available in old format
+							VersionName: old.Tag,
+							VersionID:   fmt.Sprintf("%d", old.ServerVersionID), // Convert int to string
+							ServerURL:   old.ServerURL,
+							ServerID:    "", // Not available in old format
+							Path:        old.Path,
+							PulledAt:    old.PulledAt,
+							Layers:      old.Layers,
 						}
 					}
 				}
@@ -152,11 +183,8 @@ func (s *Store) loadUnsafe() (*Index, error) {
 		}
 	}
 
-	if idx.Repos == nil {
-		idx.Repos = []RepoEntry{}
-	}
-	if idx.Aliases == nil {
-		idx.Aliases = make(map[string]Alias)
+	if idx.Entries == nil {
+		idx.Entries = []Entry{}
 	}
 
 	return &idx, nil
@@ -189,9 +217,9 @@ func (s *Store) saveUnsafe(idx *Index) error {
 	return nil
 }
 
-// AddEntry adds or updates a repo entry in the index.
+// AddEntry adds or updates an entry in the index.
 // If an entry with the same path already exists, it is replaced.
-func (s *Store) AddEntry(entry RepoEntry) error {
+func (s *Store) AddEntry(entry Entry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -200,17 +228,26 @@ func (s *Store) AddEntry(entry RepoEntry) error {
 		return err
 	}
 
+	// Ensure entry has an ID
+	if entry.ID == "" {
+		entry.ID = uuid.New().String()
+	}
+
 	// Replace existing entry with same path
 	found := false
-	for i, existing := range idx.Repos {
+	for i, existing := range idx.Entries {
 		if existing.Path == entry.Path {
-			idx.Repos[i] = entry
+			// Preserve the original ID when replacing
+			if entry.ID == "" {
+				entry.ID = existing.ID
+			}
+			idx.Entries[i] = entry
 			found = true
 			break
 		}
 	}
 	if !found {
-		idx.Repos = append(idx.Repos, entry)
+		idx.Entries = append(idx.Entries, entry)
 	}
 
 	return s.saveUnsafe(idx)
@@ -228,8 +265,8 @@ func (s *Store) RemoveByPath(path string) (bool, error) {
 	}
 
 	found := false
-	filtered := make([]RepoEntry, 0, len(idx.Repos))
-	for _, entry := range idx.Repos {
+	filtered := make([]Entry, 0, len(idx.Entries))
+	for _, entry := range idx.Entries {
 		if entry.Path == path {
 			found = true
 			continue
@@ -241,126 +278,100 @@ func (s *Store) RemoveByPath(path string) (bool, error) {
 		return false, nil
 	}
 
-	idx.Repos = filtered
+	idx.Entries = filtered
 	return true, s.saveUnsafe(idx)
 }
 
 // FindByPath returns the entry at the given path, or nil if not found.
-func (s *Store) FindByPath(path string) (*RepoEntry, error) {
+func (s *Store) FindByPath(path string) (*Entry, error) {
 	idx, err := s.Load()
 	if err != nil {
 		return nil, err
 	}
 
-	for i := range idx.Repos {
-		if idx.Repos[i].Path == path {
-			return &idx.Repos[i], nil
+	for i := range idx.Entries {
+		if idx.Entries[i].Path == path {
+			return &idx.Entries[i], nil
 		}
 	}
 	return nil, nil
 }
 
-// FindByRepoTag returns all entries matching a repo name and tag.
-func (s *Store) FindByRepoTag(repo, tag string) ([]RepoEntry, error) {
+// FindByID returns the entry with the given ID, or nil if not found.
+func (s *Store) FindByID(id string) (*Entry, error) {
 	idx, err := s.Load()
 	if err != nil {
 		return nil, err
 	}
 
-	var matches []RepoEntry
-	for _, entry := range idx.Repos {
-		if entry.Repo == repo && entry.Tag == tag {
+	for i := range idx.Entries {
+		if idx.Entries[i].ID == id {
+			return &idx.Entries[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// FindBySpecVersion returns all entries matching a spec name and version name.
+func (s *Store) FindBySpecVersion(specName, versionName string) ([]Entry, error) {
+	idx, err := s.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	var matches []Entry
+	for _, entry := range idx.Entries {
+		if entry.SpecName == specName && entry.VersionName == versionName {
 			matches = append(matches, entry)
 		}
 	}
 	return matches, nil
 }
 
-// FindGlobal returns the global entry matching a repo name and tag.
-func (s *Store) FindGlobal(repo, tag string) (*RepoEntry, error) {
+// FindByRepoTag is an alias for FindBySpecVersion for backward compatibility.
+// Deprecated: Use FindBySpecVersion instead.
+func (s *Store) FindByRepoTag(repo, tag string) ([]Entry, error) {
+	return s.FindBySpecVersion(repo, tag)
+}
+
+// FindGlobal returns the global entry matching a spec name and version name.
+// Global entries are identified by having a path under the global envs directory.
+func (s *Store) FindGlobal(specName, versionName string) (*Entry, error) {
 	idx, err := s.Load()
 	if err != nil {
 		return nil, err
 	}
 
-	for i := range idx.Repos {
-		if idx.Repos[i].Repo == repo &&
-			idx.Repos[i].Tag == tag &&
-			idx.Repos[i].IsGlobal {
-			return &idx.Repos[i], nil
+	globalPrefix := s.indexDir + "/envs/"
+	for i := range idx.Entries {
+		if idx.Entries[i].SpecName == specName &&
+			idx.Entries[i].VersionName == versionName &&
+			len(idx.Entries[i].Path) > len(globalPrefix) &&
+			idx.Entries[i].Path[:len(globalPrefix)] == globalPrefix {
+			return &idx.Entries[i], nil
 		}
 	}
 	return nil, nil
 }
 
-// ListAll returns all repo entries.
-func (s *Store) ListAll() ([]RepoEntry, error) {
+// IsGlobal returns true if the entry is stored in global storage.
+func (s *Store) IsGlobal(entry *Entry) bool {
+	globalPrefix := s.indexDir + "/envs/"
+	return len(entry.Path) > len(globalPrefix) && entry.Path[:len(globalPrefix)] == globalPrefix
+}
+
+// ListAll returns all entries.
+func (s *Store) ListAll() ([]Entry, error) {
 	idx, err := s.Load()
 	if err != nil {
 		return nil, err
 	}
-	return idx.Repos, nil
-}
-
-// SetAlias sets a user-friendly alias for a global repo.
-func (s *Store) SetAlias(name string, alias Alias) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	idx, err := s.loadUnsafe()
-	if err != nil {
-		return err
-	}
-
-	idx.Aliases[name] = alias
-	return s.saveUnsafe(idx)
-}
-
-// RemoveAlias removes an alias by name.
-// Returns true if the alias was removed, false if not found.
-func (s *Store) RemoveAlias(name string) (bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	idx, err := s.loadUnsafe()
-	if err != nil {
-		return false, err
-	}
-
-	if _, exists := idx.Aliases[name]; !exists {
-		return false, nil
-	}
-
-	delete(idx.Aliases, name)
-	return true, s.saveUnsafe(idx)
-}
-
-// GetAlias returns the alias for the given name, or nil if not found.
-func (s *Store) GetAlias(name string) (*Alias, error) {
-	idx, err := s.Load()
-	if err != nil {
-		return nil, err
-	}
-
-	alias, exists := idx.Aliases[name]
-	if !exists {
-		return nil, nil
-	}
-	return &alias, nil
-}
-
-// ListAliases returns all aliases.
-func (s *Store) ListAliases() (map[string]Alias, error) {
-	idx, err := s.Load()
-	if err != nil {
-		return nil, err
-	}
-	return idx.Aliases, nil
+	return idx.Entries, nil
 }
 
 // Prune removes entries whose paths no longer exist on disk.
 // Returns the list of removed entries.
-func (s *Store) Prune() ([]RepoEntry, error) {
+func (s *Store) Prune() ([]Entry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -369,9 +380,9 @@ func (s *Store) Prune() ([]RepoEntry, error) {
 		return nil, err
 	}
 
-	var pruned []RepoEntry
-	filtered := make([]RepoEntry, 0, len(idx.Repos))
-	for _, entry := range idx.Repos {
+	var pruned []Entry
+	filtered := make([]Entry, 0, len(idx.Entries))
+	for _, entry := range idx.Entries {
 		if _, err := os.Stat(entry.Path); os.IsNotExist(err) {
 			pruned = append(pruned, entry)
 			continue
@@ -383,14 +394,58 @@ func (s *Store) Prune() ([]RepoEntry, error) {
 		return nil, nil
 	}
 
-	idx.Repos = filtered
+	idx.Entries = filtered
 	if err := s.saveUnsafe(idx); err != nil {
 		return nil, err
 	}
 	return pruned, nil
 }
 
-// GlobalRepoPath returns the path where a global repo would be stored.
+// PruneOrphaned removes entries whose remote environments no longer exist.
+// The validRemoteIDs map should contain the IDs of environments that still exist on the server.
+// Returns the list of removed entries.
+func (s *Store) PruneOrphaned(validRemoteIDs map[string]bool) ([]Entry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	idx, err := s.loadUnsafe()
+	if err != nil {
+		return nil, err
+	}
+
+	var pruned []Entry
+	filtered := make([]Entry, 0, len(idx.Entries))
+	for _, entry := range idx.Entries {
+		// Skip entries without a SpecID (shouldn't happen, but be safe)
+		if entry.SpecID == "" {
+			filtered = append(filtered, entry)
+			continue
+		}
+		// Check if remote still exists
+		if !validRemoteIDs[entry.SpecID] {
+			pruned = append(pruned, entry)
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+
+	if len(pruned) == 0 {
+		return nil, nil
+	}
+
+	idx.Entries = filtered
+	if err := s.saveUnsafe(idx); err != nil {
+		return nil, err
+	}
+	return pruned, nil
+}
+
+// GlobalEnvPath returns the path where a global environment would be stored.
+func (s *Store) GlobalEnvPath(uuid, tag string) string {
+	return filepath.Join(s.indexDir, "envs", uuid, tag)
+}
+
+// GlobalRepoPath is deprecated. Use GlobalEnvPath instead.
 func (s *Store) GlobalRepoPath(uuid, tag string) string {
-	return filepath.Join(s.indexDir, "repos", uuid, tag)
+	return s.GlobalEnvPath(uuid, tag)
 }

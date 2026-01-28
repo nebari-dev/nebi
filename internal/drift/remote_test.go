@@ -2,8 +2,6 @@ package drift
 
 import (
 	"testing"
-
-	"github.com/aktech/darb/internal/nebifile"
 )
 
 func TestRemoteStatus_TagHasMoved(t *testing.T) {
@@ -161,12 +159,10 @@ func TestVersionContent_Structure(t *testing.T) {
 	}
 }
 
-func TestCheckWithNebiFile_EmptyLayers(t *testing.T) {
-	nf := &nebifile.NebiFile{
-		Layers: map[string]nebifile.Layer{},
-	}
+func TestCheckWithLayers_EmptyLayers(t *testing.T) {
+	layers := map[string]string{}
 
-	ws := CheckWithNebiFile("/tmp", nf)
+	ws := CheckWithLayers("/tmp", layers)
 	if ws.Overall != StatusClean {
 		t.Errorf("Overall = %q, want %q (empty layers should be clean)", ws.Overall, StatusClean)
 	}

@@ -1173,14 +1173,17 @@ func (h *EnvironmentHandler) ListPublications(c *gin.Context) {
 // Push (server-only version creation + tag assignment)
 
 type PushVersionRequest struct {
-	Tag      string `json:"tag" binding:"required"`
-	PixiToml string `json:"pixi_toml" binding:"required"`
-	PixiLock string `json:"pixi_lock"`
+	Tag        string `json:"tag" binding:"required"`
+	PixiToml   string `json:"pixi_toml" binding:"required"`
+	PixiLock   string `json:"pixi_lock"`
+	SetDefault bool   `json:"set_default"` // Set this version as the default
+	Force      bool   `json:"force"`       // Force overwrite of existing tag
 }
 
 type PushVersionResponse struct {
-	VersionNumber int    `json:"version_number"`
+	VersionNumber int  `json:"version_number"`
 	Tag           string `json:"tag"`
+	IsDefault     bool   `json:"is_default"` // Whether this version is now the default
 }
 
 // PushVersion godoc
@@ -1252,16 +1255,30 @@ func (h *EnvironmentHandler) PushVersion(c *gin.Context) {
 		return
 	}
 
-	// Upsert tag: create or update the tag to point to this version
+	// Check if tag already exists
 	var existingTag models.EnvironmentTag
 	result := h.db.Where("environment_id = ? AND tag = ?", env.ID, req.Tag).First(&existingTag)
 	if result.Error == nil {
-		// Tag exists, update it
+		// Tag exists - reject unless force flag is set
+		if !req.Force {
+			c.JSON(http.StatusConflict, ErrorResponse{
+				Error: fmt.Sprintf("tag %q already exists at version %d; use --force to reassign", req.Tag, existingTag.VersionNumber),
+			})
+			return
+		}
+		// Force flag set - update the tag
+		oldVersion := existingTag.VersionNumber
 		existingTag.VersionNumber = newVersion.VersionNumber
 		if err := h.db.Save(&existingTag).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update tag"})
 			return
 		}
+		// Audit the tag reassignment
+		audit.Log(h.db, userID, audit.ActionReassignTag, audit.ResourceEnvironment, env.ID, map[string]interface{}{
+			"tag":         req.Tag,
+			"old_version": oldVersion,
+			"new_version": newVersion.VersionNumber,
+		})
 	} else {
 		// Create new tag
 		newTag := models.EnvironmentTag{
@@ -1276,15 +1293,31 @@ func (h *EnvironmentHandler) PushVersion(c *gin.Context) {
 		}
 	}
 
+	// Handle default version:
+	// - If set_default is true, set this version as default
+	// - If this is the first version (no default set), automatically set it as default
+	isDefault := false
+	if req.SetDefault || env.DefaultVersionID == nil {
+		versionNum := newVersion.VersionNumber
+		env.DefaultVersionID = &versionNum
+		if err := h.db.Save(&env).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update default version"})
+			return
+		}
+		isDefault = true
+	}
+
 	// Audit log
 	audit.Log(h.db, userID, audit.ActionPublishEnvironment, audit.ResourceEnvironment, env.ID, map[string]interface{}{
 		"tag":            req.Tag,
 		"version_number": newVersion.VersionNumber,
+		"is_default":     isDefault,
 	})
 
 	c.JSON(http.StatusCreated, PushVersionResponse{
 		VersionNumber: newVersion.VersionNumber,
 		Tag:           req.Tag,
+		IsDefault:     isDefault,
 	})
 }
 

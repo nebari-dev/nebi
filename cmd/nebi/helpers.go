@@ -43,8 +43,28 @@ func formatTimeAgo(t time.Time) string {
 	}
 }
 
+// formatBytes formats a byte count as a human-readable string.
+func formatBytes(bytes int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+	)
+
+	switch {
+	case bytes >= GB:
+		return fmt.Sprintf("%.1f GB", float64(bytes)/float64(GB))
+	case bytes >= MB:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(MB))
+	case bytes >= KB:
+		return fmt.Sprintf("%.1f KB", float64(bytes)/float64(KB))
+	default:
+		return fmt.Sprintf("%d bytes", bytes)
+	}
+}
+
 // formatStatusJSONInternal produces JSON output for nebi status.
-func formatStatusJSONInternal(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus) ([]byte, error) {
+func formatStatusJSONInternal(ws *drift.RepoStatus, nf *nebifile.NebiFile, remote *drift.RemoteStatus, pulledAt time.Time) ([]byte, error) {
 	type localStatus struct {
 		PixiToml string `json:"pixi_toml"`
 		PixiLock string `json:"pixi_lock"`
@@ -58,23 +78,26 @@ func formatStatusJSONInternal(ws *drift.RepoStatus, nf *nebifile.NebiFile, remot
 	}
 
 	type statusOutput struct {
-		Repo         string      `json:"repo"`
-		Tag          string      `json:"tag"`
-		RegistryURL  string      `json:"registry_url,omitempty"`
+		Env          string      `json:"env"`
+		Version      string      `json:"version"`
 		ServerURL    string      `json:"server_url"`
-		PulledAt     string      `json:"pulled_at"`
+		PulledAt     string      `json:"pulled_at,omitempty"`
 		OriginDigest string      `json:"origin_digest"`
 		Local        localStatus `json:"local"`
 		Remote       *remoteJSON `json:"remote,omitempty"`
 	}
 
+	var pulledAtStr string
+	if !pulledAt.IsZero() {
+		pulledAtStr = pulledAt.Format(time.RFC3339)
+	}
+
 	output := statusOutput{
-		Repo:         nf.Origin.Repo,
-		Tag:          nf.Origin.Tag,
-		RegistryURL:  nf.Origin.RegistryURL,
+		Env:          nf.Origin.SpecName,
+		Version:      nf.Origin.VersionName,
 		ServerURL:    nf.Origin.ServerURL,
-		PulledAt:     nf.Origin.PulledAt.Format(time.RFC3339),
-		OriginDigest: nf.Origin.ManifestDigest,
+		PulledAt:     pulledAtStr,
+		OriginDigest: nf.Origin.VersionID,
 		Local: localStatus{
 			PixiToml: getFileStatus(ws, "pixi.toml"),
 			PixiLock: getFileStatus(ws, "pixi.lock"),

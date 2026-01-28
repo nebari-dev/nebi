@@ -805,38 +805,3 @@ func TestE2E_PullGlobalForce(t *testing.T) {
 	}
 }
 
-func TestE2E_PullGlobalWithName(t *testing.T) {
-	repoName := "e2e-global-named"
-	tag := "v1.0"
-	alias := "my-ds-env"
-
-	// Push
-	srcDir := t.TempDir()
-	writePixiFiles(t, srcDir,
-		"[project]\nname = \"named-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
-		"version: 6\npackages: []\n",
-	)
-	res := runCLI(t, srcDir, "push", repoName+":"+tag)
-	if res.ExitCode != 0 {
-		t.Fatalf("push failed: %s", res.Stderr)
-	}
-
-	// Pull globally with --name
-	workDir := t.TempDir()
-	res = runCLI(t, workDir, "pull", repoName+":"+tag, "--global", "--name", alias, "--yes")
-	if res.ExitCode != 0 {
-		t.Fatalf("global pull with --name failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
-	}
-	if !strings.Contains(res.Stdout, "Alias") {
-		t.Errorf("expected alias confirmation in output, got: %s", res.Stdout)
-	}
-
-	// Verify alias shows in repo list --local
-	res = runCLI(t, workDir, "repo", "list", "--local")
-	if res.ExitCode != 0 {
-		t.Fatalf("repo list --local failed: %s", res.Stderr)
-	}
-	if !strings.Contains(res.Stdout, repoName) {
-		t.Errorf("repo list --local should contain %s, got: %s", repoName, res.Stdout)
-	}
-}

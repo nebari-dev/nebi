@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aktech/darb/internal/cliclient"
 	"github.com/aktech/darb/internal/drift"
 	"github.com/aktech/darb/internal/localindex"
 	"github.com/aktech/darb/internal/nebifile"
@@ -19,82 +20,71 @@ var (
 	pullGlobal  bool
 	pullForce   bool
 	pullYes     bool
-	pullName    string
 	pullInstall bool
 )
 
 var pullCmd = &cobra.Command{
-	Use:   "pull <repo>[:<tag>]",
-	Short: "Pull repo from server",
-	Long: `Pull a repo's pixi.toml and pixi.lock from the server.
+	Use:   "pull <env>[:<version>]",
+	Short: "Pull environment from server",
+	Long: `Pull an environment's pixi.toml and pixi.lock from the server.
 
 Supports Docker-style references:
-  - repo:tag    - Pull specific tag
-  - repo        - Pull latest version
-  - repo@digest - Pull by digest (immutable)
+  - env:version  - Pull specific version
+  - env          - Pull default version (or latest if no default set)
+  - env@digest   - Pull by digest (immutable)
 
 Modes:
   - Directory pull (default): Writes to current directory or -o path
-  - Global pull (--global): Writes to ~/.local/share/nebi/repos/<uuid>/<tag>/
+  - Global pull (--global): Writes to ~/.local/share/nebi/envs/<uuid>/<version>/
     with duplicate prevention (use --force to overwrite)
 
 Examples:
-  # Pull latest version to current directory
-  nebi pull myrepo
+  # Pull default version to current directory
+  nebi pull myenv
 
-  # Pull specific tag
-  nebi pull myrepo:v1.0.0
+  # Pull specific version
+  nebi pull myenv:v1.0.0
 
   # Pull to specific directory
-  nebi pull myrepo:v1.0.0 -o ./my-project
+  nebi pull myenv:v1.0.0 -o ./my-project
 
   # Pull globally (single copy, shell-accessible)
-  nebi pull --global myrepo:v1.0.0
+  nebi pull --global myenv:v1.0.0
 
-  # Pull globally with an alias
-  nebi pull --global myrepo:v1.0.0 --name ds-stable
-
-  # Force re-pull of global repo
-  nebi pull --global myrepo:v1.0.0 --force
+  # Force re-pull of global environment
+  nebi pull --global myenv:v1.0.0 --force
 
   # Pull and install immediately
-  nebi pull myrepo:v1.0.0 --install
-  nebi pull -gi myrepo:v1.0.0`,
+  nebi pull myenv:v1.0.0 --install
+  nebi pull -gi myenv:v1.0.0`,
 	Args: cobra.ExactArgs(1),
 	Run:  runPull,
 }
 
 func init() {
 	pullCmd.Flags().StringVarP(&pullOutput, "output", "o", ".", "Output directory (for directory pulls)")
-	pullCmd.Flags().BoolVarP(&pullGlobal, "global", "g", false, "Pull to global storage (~/.local/share/nebi/repos/)")
+	pullCmd.Flags().BoolVarP(&pullGlobal, "global", "g", false, "Pull to global storage (~/.local/share/nebi/envs/)")
 	pullCmd.Flags().BoolVar(&pullForce, "force", false, "Force re-pull (overwrite existing)")
 	pullCmd.Flags().BoolVar(&pullYes, "yes", false, "Non-interactive mode (skip confirmations)")
-	pullCmd.Flags().StringVar(&pullName, "name", "", "Assign an alias to this global repo (requires --global)")
 	pullCmd.Flags().BoolVarP(&pullInstall, "install", "i", false, "Run pixi install after pulling (uses --frozen)")
 }
 
 func runPull(cmd *cobra.Command, args []string) {
-	// Parse repo:tag or repo@digest format
-	repoName, tagOrDigest, err := parseRepoRef(args[0])
+	// Parse env:version or env@digest format
+	envName, versionOrDigest, err := parseEnvRef(args[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(1)
 	}
 
 	// Determine if it's a digest reference
-	isDigest := strings.HasPrefix(tagOrDigest, "@")
-	tag := ""
+	isDigest := strings.HasPrefix(versionOrDigest, "@")
+	version := ""
 	digest := ""
 	if isDigest {
-		digest = tagOrDigest[1:] // Remove @ prefix
+		digest = versionOrDigest[1:] // Remove @ prefix
 	} else {
-		tag = tagOrDigest
-	}
-
-	// Validate --name requires --global
-	if pullName != "" && !pullGlobal {
-		fmt.Fprintf(os.Stderr, "Error: --name requires --global flag\n")
-		osExit(1)
+		version = versionOrDigest
 	}
 
 	client := mustGetClient()
@@ -107,8 +97,15 @@ func runPull(cmd *cobra.Command, args []string) {
 		osExit(1)
 	}
 
-	// Find repo by name
-	env, err := findRepoByName(client, ctx, repoName)
+	// Get server info (for server_id)
+	serverInfo, err := client.GetServerInfo(ctx)
+	if err != nil {
+		// Non-fatal - server might not support /info endpoint yet
+		serverInfo = &cliclient.ServerInfo{}
+	}
+
+	// Find environment by name
+	env, err := findEnvByName(client, ctx, envName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(1)
@@ -117,15 +114,15 @@ func runPull(cmd *cobra.Command, args []string) {
 	var versionNumber int32
 	var manifestDigest string
 
-	if tag != "" || digest != "" {
+	if version != "" || digest != "" {
 		found := false
 
-		// First, try resolving from server-side tags (created by push)
-		if tag != "" {
+		// First, try resolving from server-side versions (created by push)
+		if version != "" {
 			tags, err := client.GetEnvironmentTags(ctx, env.ID)
 			if err == nil {
 				for _, t := range tags {
-					if t.Tag == tag {
+					if t.Tag == version {
 						versionNumber = int32(t.VersionNumber)
 						found = true
 						break
@@ -143,7 +140,7 @@ func runPull(cmd *cobra.Command, args []string) {
 			}
 
 			for _, pub := range pubs {
-				if (tag != "" && pub.Tag == tag) || (digest != "" && pub.Digest == digest) {
+				if (version != "" && pub.Tag == version) || (digest != "" && pub.Digest == digest) {
 					versionNumber = int32(pub.VersionNumber)
 					manifestDigest = pub.Digest
 					found = true
@@ -152,36 +149,43 @@ func runPull(cmd *cobra.Command, args []string) {
 			}
 		}
 
-		if !found && tag != "" {
-			fmt.Fprintf(os.Stderr, "Error: Tag %q not found for repo %q\n", tag, repoName)
+		if !found && version != "" {
+			fmt.Fprintf(os.Stderr, "Error: Version %q not found for environment %q\n", version, envName)
 			osExit(1)
 		}
 		if !found && digest != "" {
-			fmt.Fprintf(os.Stderr, "Error: Digest %q not found for repo %q\n", digest, repoName)
+			fmt.Fprintf(os.Stderr, "Error: Digest %q not found for environment %q\n", digest, envName)
 			osExit(1)
 		}
 	} else {
-		// No tag/digest specified, get the latest version
-		versions, err := client.GetEnvironmentVersions(ctx, env.ID)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Failed to get versions: %v\n", err)
-			osExit(1)
-		}
-
-		if len(versions) == 0 {
-			fmt.Fprintf(os.Stderr, "Error: Repo %q has no versions\n", repoName)
-			osExit(1)
-		}
-
-		// Use the latest version (highest version number)
-		latestVersion := versions[0]
-		for _, v := range versions {
-			if v.VersionNumber > latestVersion.VersionNumber {
-				latestVersion = v
+		// No version/digest specified - check for default version first, then fall back to latest
+		if env.DefaultVersionID != nil {
+			// Use the default version
+			versionNumber = int32(*env.DefaultVersionID)
+			version = "default"
+		} else {
+			// No default set, get the latest version
+			versions, err := client.GetEnvironmentVersions(ctx, env.ID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: Failed to get versions: %v\n", err)
+				osExit(1)
 			}
+
+			if len(versions) == 0 {
+				fmt.Fprintf(os.Stderr, "Error: Environment %q has no versions\n", envName)
+				osExit(1)
+			}
+
+			// Use the latest version (highest version number)
+			latestVersion := versions[0]
+			for _, v := range versions {
+				if v.VersionNumber > latestVersion.VersionNumber {
+					latestVersion = v
+				}
+			}
+			versionNumber = latestVersion.VersionNumber
+			version = "latest"
 		}
-		versionNumber = latestVersion.VersionNumber
-		tag = "latest"
 	}
 
 	// Initialize local index
@@ -190,13 +194,13 @@ func runPull(cmd *cobra.Command, args []string) {
 	// Determine output directory
 	var outputDir string
 	if pullGlobal {
-		outputDir, err = handleGlobalPull(idxStore, env.ID, repoName, tag)
+		outputDir, err = handleGlobalPull(idxStore, env.ID, envName, version)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			osExit(1)
 		}
 	} else {
-		outputDir, err = handleDirectoryPull(idxStore, repoName, tag)
+		outputDir, err = handleDirectoryPull(idxStore, envName, version)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			osExit(1)
@@ -207,7 +211,7 @@ func runPull(cmd *cobra.Command, args []string) {
 	if !pullForce {
 		absCheck, err := filepath.Abs(outputDir)
 		if err == nil {
-			if skip := checkAlreadyUpToDate(absCheck, repoName, tag, manifestDigest); skip {
+			if skip := checkAlreadyUpToDate(absCheck, envName, version, manifestDigest); skip {
 				return
 			}
 		}
@@ -253,34 +257,32 @@ func runPull(cmd *cobra.Command, args []string) {
 	pixiTomlDigest := nebifile.ComputeDigest(pixiTomlBytes)
 	pixiLockDigest := nebifile.ComputeDigest(pixiLockBytes)
 
-	// Write .nebi metadata file
-	nf := nebifile.NewFromPull(
-		repoName, tag, "", cfg.ServerURL,
-		versionNumber, manifestDigest,
-		pixiTomlDigest, int64(len(pixiTomlBytes)),
-		pixiLockDigest, int64(len(pixiLockBytes)),
-	)
-	if err := nebifile.Write(outputDir, nf); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to write .nebi metadata: %v\n", err)
-		osExit(1)
-	}
-
 	// Resolve absolute path for index
 	absOutputDir, err := filepath.Abs(outputDir)
 	if err != nil {
 		absOutputDir = outputDir
 	}
 
+	// Write .nebi.toml metadata file
+	nf := nebifile.NewFromPull(
+		envName, version, cfg.ServerURL,
+		env.ID, fmt.Sprintf("%d", versionNumber), serverInfo.ServerID,
+	)
+	if err := nebifile.Write(outputDir, nf); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to write .nebi.toml metadata: %v\n", err)
+		osExit(1)
+	}
+
 	// Update local index
-	entry := localindex.RepoEntry{
-		Repo:            repoName,
-		Tag:             tag,
-		ServerURL:       cfg.ServerURL,
-		ServerVersionID: versionNumber,
-		Path:            absOutputDir,
-		IsGlobal:        pullGlobal,
-		PulledAt:        time.Now(),
-		ManifestDigest:  manifestDigest,
+	entry := localindex.Entry{
+		SpecName:    envName,
+		SpecID:      env.ID,
+		VersionName: version,
+		VersionID:   fmt.Sprintf("%d", versionNumber),
+		ServerURL:   cfg.ServerURL,
+		ServerID:    serverInfo.ServerID,
+		Path:        absOutputDir,
+		PulledAt:    time.Now(),
 		Layers: map[string]string{
 			"pixi.toml": pixiTomlDigest,
 			"pixi.lock": pixiLockDigest,
@@ -290,31 +292,21 @@ func runPull(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to update local index: %v\n", err)
 	}
 
-	// Handle alias (--name flag)
-	if pullName != "" {
-		alias := localindex.Alias{UUID: env.ID, Tag: tag}
-		if err := idxStore.SetAlias(pullName, alias); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: Failed to set alias: %v\n", err)
-		} else {
-			fmt.Printf("Alias: %s → %s:%s\n", pullName, repoName, tag)
-		}
-	}
-
 	// Print summary
-	refStr := repoName
-	if tag != "" && tag != "latest" {
-		refStr = repoName + ":" + tag
+	refStr := envName
+	if version != "" && version != "latest" {
+		refStr = envName + ":" + version
 	} else if digest != "" {
-		refStr = repoName + "@" + digest
+		refStr = envName + "@" + digest
 	}
-	fmt.Printf("Pulled %s (version %d) → %s\n", refStr, versionNumber, absOutputDir)
+	fmt.Printf("Pulled %s (version %d) -> %s\n", refStr, versionNumber, absOutputDir)
 
 	// Run pixi install if requested
 	if pullInstall {
 		fmt.Println()
 		if err := runPixiInstall(absOutputDir); err != nil {
 			fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
-			fmt.Fprintln(os.Stderr, "The repo files were pulled successfully. You can retry with:")
+			fmt.Fprintln(os.Stderr, "The environment files were pulled successfully. You can retry with:")
 			fmt.Fprintf(os.Stderr, "  cd %s && pixi install --frozen\n", absOutputDir)
 			osExit(1)
 		}
@@ -326,27 +318,27 @@ func runPull(cmd *cobra.Command, args []string) {
 
 // handleGlobalPull handles the --global pull workflow.
 // Returns the output directory path or an error.
-func handleGlobalPull(store *localindex.Store, envID, repo, tag string) (string, error) {
-	// Compute global path using the repo's server-assigned UUID
-	outputDir := store.GlobalRepoPath(envID, tag)
+func handleGlobalPull(store *localindex.Store, envID, env, version string) (string, error) {
+	// Compute global path using the environment's server-assigned UUID
+	outputDir := store.GlobalEnvPath(envID, version)
 
 	// Check if already exists
-	existing, err := store.FindGlobal(repo, tag)
+	existing, err := store.FindGlobal(env, version)
 	if err != nil {
-		return "", fmt.Errorf("failed to check existing global repo: %v", err)
+		return "", fmt.Errorf("failed to check existing global environment: %v", err)
 	}
 
 	if existing != nil && !pullForce {
 		return "", fmt.Errorf("%s:%s already exists globally.\n  Location: %s\n  Pulled: %s\nUse --force to re-pull and overwrite",
-			repo, tag, existing.Path, existing.PulledAt.Format(time.RFC3339))
+			env, version, existing.Path, existing.PulledAt.Format(time.RFC3339))
 	}
 
 	return outputDir, nil
 }
 
-// checkAlreadyUpToDate checks if the local repo already matches what
+// checkAlreadyUpToDate checks if the local environment already matches what
 // would be pulled. Returns true if the pull should be skipped.
-func checkAlreadyUpToDate(dir, repo, tag, remoteDigest string) bool {
+func checkAlreadyUpToDate(dir, env, version, remoteDigest string) bool {
 	if !nebifile.Exists(dir) {
 		return false
 	}
@@ -356,28 +348,28 @@ func checkAlreadyUpToDate(dir, repo, tag, remoteDigest string) bool {
 		return false
 	}
 
-	// Different repo or tag — not a match
-	if nf.Origin.Repo != repo || nf.Origin.Tag != tag {
+	// Different environment or version - not a match
+	if nf.Origin.SpecName != env || nf.Origin.VersionName != version {
 		return false
 	}
 
-	// If we have a remote digest and it differs, the tag has been updated remotely
-	if remoteDigest != "" && nf.Origin.ManifestDigest != "" && nf.Origin.ManifestDigest != remoteDigest {
+	// If we have a remote digest and it differs, the version has been updated remotely
+	if remoteDigest != "" && nf.Origin.VersionID != "" && nf.Origin.VersionID != remoteDigest {
 		return false
 	}
 
 	// Check if local files match the stored layer digests
 	ws := drift.CheckWithNebiFile(dir, nf)
 	if ws.Overall == drift.StatusClean {
-		refStr := repo
-		if tag != "" && tag != "latest" {
-			refStr = repo + ":" + tag
+		refStr := env
+		if version != "" && version != "latest" {
+			refStr = env + ":" + version
 		}
 		fmt.Printf("Already up to date (%s)\n", refStr)
 		return true
 	}
 
-	// Local files are modified — prompt user
+	// Local files are modified - prompt user
 	if !pullYes {
 		fmt.Fprintf(os.Stderr, "Local files have been modified since last pull.\n")
 		fmt.Fprintf(os.Stderr, "Re-pull to discard local changes? [y/N]: ")
@@ -396,7 +388,7 @@ func checkAlreadyUpToDate(dir, repo, tag, remoteDigest string) bool {
 
 // handleDirectoryPull handles the default directory pull workflow.
 // Returns the output directory path or an error.
-func handleDirectoryPull(store *localindex.Store, repo, tag string) (string, error) {
+func handleDirectoryPull(store *localindex.Store, env, version string) (string, error) {
 	outputDir := pullOutput
 
 	// Resolve absolute path for comparison
@@ -405,22 +397,22 @@ func handleDirectoryPull(store *localindex.Store, repo, tag string) (string, err
 		return outputDir, nil
 	}
 
-	// Check if this directory already has a different repo:tag
+	// Check if this directory already has a different env:version
 	existing, err := store.FindByPath(absDir)
 	if err != nil {
 		return outputDir, nil // Non-fatal, proceed with pull
 	}
 
-	if existing != nil && existing.Repo == repo && existing.Tag == tag {
-		// Same repo:tag to same directory - re-pull (overwrite), no prompt needed
+	if existing != nil && existing.SpecName == env && existing.VersionName == version {
+		// Same env:version to same directory - re-pull (overwrite), no prompt needed
 		return outputDir, nil
 	}
 
-	if existing != nil && (existing.Repo != repo || existing.Tag != tag) && !pullForce {
-		// Different repo:tag to same directory - prompt for confirmation
+	if existing != nil && (existing.SpecName != env || existing.VersionName != version) && !pullForce {
+		// Different env:version to same directory - prompt for confirmation
 		if !pullYes {
-			fmt.Fprintf(os.Stderr, "Warning: %s already contains %s:%s\n", absDir, existing.Repo, existing.Tag)
-			fmt.Fprintf(os.Stderr, "Overwrite with %s:%s? [y/N]: ", repo, tag)
+			fmt.Fprintf(os.Stderr, "Warning: %s already contains %s:%s\n", absDir, existing.SpecName, existing.VersionName)
+			fmt.Fprintf(os.Stderr, "Overwrite with %s:%s? [y/N]: ", env, version)
 
 			reader := bufio.NewReader(os.Stdin)
 			response, _ := reader.ReadString('\n')

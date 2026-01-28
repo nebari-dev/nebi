@@ -26,14 +26,15 @@ type User struct {
 
 // Environment represents an environment/workspace.
 type Environment struct {
-	ID             string    `json:"id"`
-	Name           string    `json:"name"`
-	Status         string    `json:"status"`
-	PackageManager string    `json:"package_manager"`
-	SizeBytes      int64     `json:"size_bytes"`
-	Owner          *User     `json:"owner,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	Status           string    `json:"status"`
+	PackageManager   string    `json:"package_manager"`
+	SizeBytes        int64     `json:"size_bytes"`
+	DefaultVersionID *int      `json:"default_version_id,omitempty"` // Default version number
+	Owner            *User     `json:"owner,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // CreateEnvironmentRequest represents a request to create an environment.
@@ -76,15 +77,18 @@ type EnvironmentTag struct {
 
 // PushRequest represents a request to push a version to the server.
 type PushRequest struct {
-	Tag      string `json:"tag"`
-	PixiToml string `json:"pixi_toml"`
-	PixiLock string `json:"pixi_lock,omitempty"`
+	Tag        string `json:"tag"`
+	PixiToml   string `json:"pixi_toml"`
+	PixiLock   string `json:"pixi_lock,omitempty"`
+	SetDefault bool   `json:"set_default,omitempty"` // Set this version as the default
+	Force      bool   `json:"force,omitempty"`       // Force overwrite of existing tag
 }
 
 // PushResponse represents the response from pushing a version.
 type PushResponse struct {
 	VersionNumber int    `json:"version_number"`
 	Tag           string `json:"tag"`
+	IsDefault     bool   `json:"is_default"` // Whether this version is now the default
 }
 
 // PublishRequest represents a request to publish an environment to a registry.
@@ -141,4 +145,13 @@ type UpdateRegistryRequest struct {
 	Username  *string `json:"username,omitempty"`
 	Password  *string `json:"password,omitempty"`
 	IsDefault *bool   `json:"is_default,omitempty"`
+}
+
+// ServerInfo represents server information returned by /api/v1/info.
+type ServerInfo struct {
+	ServerID  string `json:"server_id"`
+	Version   string `json:"version"`
+	GoVersion string `json:"go_version"`
+	OS        string `json:"os"`
+	Arch      string `json:"arch"`
 }

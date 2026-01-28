@@ -1702,6 +1702,32 @@ const docTemplate = `{
                 }
             }
         },
+        "/info": {
+            "get": {
+                "description": "Returns server information including the unique server ID and version",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Get server information",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.InfoResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/jobs": {
             "get": {
                 "security": [
@@ -2061,6 +2087,26 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.InfoResponse": {
+            "type": "object",
+            "properties": {
+                "arch": {
+                    "type": "string"
+                },
+                "go_version": {
+                    "type": "string"
+                },
+                "os": {
+                    "type": "string"
+                },
+                "server_id": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
         "handlers.InstallPackagesRequest": {
             "type": "object",
             "required": [
@@ -2155,11 +2201,19 @@ const docTemplate = `{
                 "tag"
             ],
             "properties": {
+                "force": {
+                    "description": "Force overwrite of existing tag",
+                    "type": "boolean"
+                },
                 "pixi_lock": {
                     "type": "string"
                 },
                 "pixi_toml": {
                     "type": "string"
+                },
+                "set_default": {
+                    "description": "Set this version as the default",
+                    "type": "boolean"
                 },
                 "tag": {
                     "type": "string"
@@ -2169,6 +2223,10 @@ const docTemplate = `{
         "handlers.PushVersionResponse": {
             "type": "object",
             "properties": {
+                "is_default": {
+                    "description": "Whether this version is now the default",
+                    "type": "boolean"
+                },
                 "tag": {
                     "type": "string"
                 },
@@ -2318,6 +2376,10 @@ const docTemplate = `{
             "properties": {
                 "created_at": {
                     "type": "string"
+                },
+                "default_version_id": {
+                    "description": "Points to default version number",
+                    "type": "integer"
                 },
                 "id": {
                     "type": "string"

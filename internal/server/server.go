@@ -72,6 +72,13 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	slog.Info("Database migrations completed")
 
+	// Initialize server ID (generate if not exists)
+	serverID, err := db.GetOrCreateServerID(database)
+	if err != nil {
+		return fmt.Errorf("failed to initialize server ID: %w", err)
+	}
+	slog.Info("Server ID initialized", "server_id", serverID)
+
 	// Create default admin user if configured
 	if err := db.CreateDefaultAdmin(database); err != nil {
 		return fmt.Errorf("failed to create default admin user: %w", err)

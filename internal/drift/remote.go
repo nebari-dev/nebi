@@ -48,11 +48,15 @@ type ThreeWayStatus struct {
 }
 
 // CheckRemote checks if the remote tag has moved since the repo was pulled.
-// It compares the stored manifest digest against the current tag resolution.
+// It compares the stored version against the current tag resolution on the server.
 func CheckRemote(ctx context.Context, client *cliclient.Client, nf *nebifile.NebiFile) *RemoteStatus {
 	rs := &RemoteStatus{
-		OriginDigest: nf.Origin.ManifestDigest,
+		OriginDigest: nf.Origin.VersionID, // Use VersionID as the origin reference
 	}
+
+	// Parse origin version ID
+	var originVersionID int32
+	fmt.Sscanf(nf.Origin.VersionID, "%d", &originVersionID)
 
 	// Find repo by listing environments
 	envs, err := client.ListEnvironments(ctx)
@@ -63,41 +67,40 @@ func CheckRemote(ctx context.Context, client *cliclient.Client, nf *nebifile.Neb
 
 	var envID string
 	for _, env := range envs {
-		if env.Name == nf.Origin.Repo {
+		if env.Name == nf.Origin.SpecName {
 			envID = env.ID
 			break
 		}
 	}
 	if envID == "" {
-		rs.Error = fmt.Sprintf("repo %q not found on server", nf.Origin.Repo)
+		rs.Error = fmt.Sprintf("environment %q not found on server", nf.Origin.SpecName)
 		return rs
 	}
 
-	// Get publications to find current digest for the tag
-	pubs, err := client.GetEnvironmentPublications(ctx, envID)
+	// Get server-side tags to find current version for the tag
+	tags, err := client.GetEnvironmentTags(ctx, envID)
 	if err != nil {
-		rs.Error = fmt.Sprintf("failed to get publications: %v", err)
+		rs.Error = fmt.Sprintf("failed to get tags: %v", err)
 		return rs
 	}
 
 	found := false
-	for _, pub := range pubs {
-		if pub.Tag == nf.Origin.Tag {
-			rs.CurrentTagDigest = pub.Digest
-			rs.CurrentVersionID = int32(pub.VersionNumber)
+	for _, tag := range tags {
+		if tag.Tag == nf.Origin.VersionName {
+			rs.CurrentVersionID = int32(tag.VersionNumber)
 			found = true
 			break
 		}
 	}
 
 	if !found {
-		rs.Error = fmt.Sprintf("tag %q not found in registry", nf.Origin.Tag)
+		rs.Error = fmt.Sprintf("tag %q not found on server", nf.Origin.VersionName)
 		return rs
 	}
 
-	// Compare digests
-	if rs.OriginDigest != "" && rs.CurrentTagDigest != "" {
-		rs.TagHasMoved = rs.OriginDigest != rs.CurrentTagDigest
+	// Compare version IDs
+	if originVersionID > 0 && rs.CurrentVersionID > 0 {
+		rs.TagHasMoved = originVersionID != rs.CurrentVersionID
 	}
 
 	return rs
@@ -123,10 +126,10 @@ func FetchVersionContent(ctx context.Context, client *cliclient.Client, envID st
 	}, nil
 }
 
-// FetchByTag resolves a tag to a version and fetches its content.
+// FetchByTag resolves a tag (version name) to a version and fetches its content from the database.
 // This is used by nebi diff --remote.
-func FetchByTag(ctx context.Context, client *cliclient.Client, repo, tag string) (*VersionContent, error) {
-	// Find repo
+func FetchByTag(ctx context.Context, client *cliclient.Client, envName, versionName string) (*VersionContent, error) {
+	// Find environment
 	envs, err := client.ListEnvironments(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list environments: %w", err)
@@ -134,33 +137,33 @@ func FetchByTag(ctx context.Context, client *cliclient.Client, repo, tag string)
 
 	var envID string
 	for _, env := range envs {
-		if env.Name == repo {
+		if env.Name == envName {
 			envID = env.ID
 			break
 		}
 	}
 	if envID == "" {
-		return nil, fmt.Errorf("repo %q not found", repo)
+		return nil, fmt.Errorf("environment %q not found", envName)
 	}
 
-	// Find publication for tag
-	pubs, err := client.GetEnvironmentPublications(ctx, envID)
+	// Find version by tag name in the database
+	tags, err := client.GetEnvironmentTags(ctx, envID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get publications: %w", err)
+		return nil, fmt.Errorf("failed to get versions: %w", err)
 	}
 
 	var versionNumber int32
 	found := false
-	for _, pub := range pubs {
-		if pub.Tag == tag {
-			versionNumber = int32(pub.VersionNumber)
+	for _, t := range tags {
+		if t.Tag == versionName {
+			versionNumber = int32(t.VersionNumber)
 			found = true
 			break
 		}
 	}
 
 	if !found {
-		return nil, fmt.Errorf("tag %q not found for repo %q", tag, repo)
+		return nil, fmt.Errorf("version %q not found for environment %q", versionName, envName)
 	}
 
 	return FetchVersionContent(ctx, client, envID, versionNumber)

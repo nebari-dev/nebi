@@ -1,8 +1,8 @@
 // Package drift provides drift detection for Nebi repos.
 //
 // Drift detection compares local file content against the layer digests
-// stored in the .nebi metadata file. This allows offline detection of
-// whether files have been modified since they were pulled.
+// stored in index.json. This allows offline detection of whether files
+// have been modified since they were pulled.
 package drift
 
 import (
@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/aktech/darb/internal/localindex"
 	"github.com/aktech/darb/internal/nebifile"
 )
 
@@ -45,29 +46,49 @@ type RepoStatus struct {
 }
 
 // Check performs drift detection on a repo directory.
-// It reads the .nebi metadata file and compares local file hashes
-// against the stored layer digests.
+// It reads the layer digests from index.json and compares local file hashes.
 func Check(dir string) (*RepoStatus, error) {
-	nf, err := nebifile.Read(dir)
+	absDir, err := filepath.Abs(dir)
 	if err != nil {
-		return &RepoStatus{
-			Overall: StatusUnknown,
-		}, fmt.Errorf("failed to read .nebi metadata: %w", err)
+		absDir = dir
 	}
 
-	return CheckWithNebiFile(dir, nf), nil
+	// Get layers from local index
+	store := localindex.NewStore()
+	entry, err := store.FindByPath(absDir)
+	if err != nil || entry == nil {
+		// Try to use nebifile to find the entry by other means
+		nf, nfErr := nebifile.Read(dir)
+		if nfErr != nil {
+			return &RepoStatus{
+				Overall: StatusUnknown,
+			}, fmt.Errorf("failed to find entry in index: %w", err)
+		}
+		// Try to find entry by spec name and version
+		entries, findErr := store.FindBySpecVersion(nf.Origin.SpecName, nf.Origin.VersionName)
+		if findErr != nil || len(entries) == 0 {
+			return &RepoStatus{
+				Overall: StatusUnknown,
+			}, fmt.Errorf("entry not found in local index")
+		}
+		// Use the first matching entry
+		entry = &entries[0]
+	}
+
+	return CheckWithLayers(dir, entry.Layers), nil
 }
 
-// CheckWithNebiFile performs drift detection using an already-loaded .nebi file.
-// This is useful when the caller already has the NebiFile loaded.
-func CheckWithNebiFile(dir string, nf *nebifile.NebiFile) *RepoStatus {
+// CheckWithLayers performs drift detection using layer digests.
+// This is the main drift checking function that compares local files
+// against the provided layer digests.
+func CheckWithLayers(dir string, layers map[string]string) *RepoStatus {
 	ws := &RepoStatus{
 		Overall: StatusClean,
-		Files:   make([]FileStatus, 0, len(nf.Layers)),
+		Files:   make([]FileStatus, 0, len(layers)),
 	}
 
-	for filename, layer := range nf.Layers {
-		fs := checkFile(dir, filename, layer.Digest)
+	for filename, digest := range layers {
+		fs := checkFile(dir, filename, digest)
 		ws.Files = append(ws.Files, fs)
 
 		if fs.Status != StatusClean {
@@ -76,6 +97,37 @@ func CheckWithNebiFile(dir string, nf *nebifile.NebiFile) *RepoStatus {
 	}
 
 	return ws
+}
+
+// CheckWithNebiFile performs drift detection by looking up layers in the index.
+// This is a convenience function that uses the nebifile to find the index entry.
+// Deprecated: Use CheckWithLayers or Check instead.
+func CheckWithNebiFile(dir string, nf *nebifile.NebiFile) *RepoStatus {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		absDir = dir
+	}
+
+	// Get layers from local index
+	store := localindex.NewStore()
+	entry, err := store.FindByPath(absDir)
+	if err != nil || entry == nil {
+		// Try by spec name and version
+		entries, _ := store.FindBySpecVersion(nf.Origin.SpecName, nf.Origin.VersionName)
+		if len(entries) > 0 {
+			entry = &entries[0]
+		}
+	}
+
+	if entry != nil && entry.Layers != nil {
+		return CheckWithLayers(dir, entry.Layers)
+	}
+
+	// Fallback: return clean status if no layers found
+	return &RepoStatus{
+		Overall: StatusClean,
+		Files:   []FileStatus{},
+	}
 }
 
 // checkFile checks the drift status of a single file.

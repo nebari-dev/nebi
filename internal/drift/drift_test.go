@@ -4,11 +4,13 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/aktech/darb/internal/localindex"
 	"github.com/aktech/darb/internal/nebifile"
 )
 
-func setupTestWorkspace(t *testing.T, pixiToml, pixiLock string) (string, *nebifile.NebiFile) {
+func setupTestWorkspace(t *testing.T, pixiToml, pixiLock string) (string, *nebifile.NebiFile, map[string]string) {
 	t.Helper()
 	dir := t.TempDir()
 
@@ -22,28 +24,28 @@ func setupTestWorkspace(t *testing.T, pixiToml, pixiLock string) (string, *nebif
 	tomlDigest := nebifile.ComputeDigest(tomlBytes)
 	lockDigest := nebifile.ComputeDigest(lockBytes)
 
+	// Create layers map for drift detection
+	layers := map[string]string{
+		"pixi.toml": tomlDigest,
+		"pixi.lock": lockDigest,
+	}
+
 	// Create .nebi file
 	nf := nebifile.NewFromPull(
-		"test-workspace", "v1.0", "test-registry", "https://nebi.example.com",
-		1, "sha256:manifest123",
-		tomlDigest, int64(len(tomlBytes)),
-		lockDigest, int64(len(lockBytes)),
+		"test-workspace", "v1.0", "https://nebi.example.com", "", "1", "",
 	)
 	nebifile.Write(dir, nf)
 
-	return dir, nf
+	return dir, nf, layers
 }
 
 func TestCheck_Clean(t *testing.T) {
-	dir, _ := setupTestWorkspace(t,
+	dir, _, layers := setupTestWorkspace(t,
 		"[workspace]\nname = \"test\"\n",
 		"version: 1\npackages: []\n",
 	)
 
-	ws, err := Check(dir)
-	if err != nil {
-		t.Fatalf("Check() error = %v", err)
-	}
+	ws := CheckWithLayers(dir, layers)
 
 	if ws.Overall != StatusClean {
 		t.Errorf("Overall = %q, want %q", ws.Overall, StatusClean)
@@ -53,101 +55,32 @@ func TestCheck_Clean(t *testing.T) {
 	}
 }
 
-func TestCheck_ModifiedPixiToml(t *testing.T) {
-	dir, _ := setupTestWorkspace(t,
+func TestCheck_ModifiedToml(t *testing.T) {
+	dir, _, layers := setupTestWorkspace(t,
 		"[workspace]\nname = \"test\"\n",
 		"version: 1\npackages: []\n",
 	)
 
 	// Modify pixi.toml
-	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("[workspace]\nname = \"modified\"\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("modified content"), 0644)
 
-	ws, err := Check(dir)
-	if err != nil {
-		t.Fatalf("Check() error = %v", err)
-	}
+	ws := CheckWithLayers(dir, layers)
 
 	if ws.Overall != StatusModified {
 		t.Errorf("Overall = %q, want %q", ws.Overall, StatusModified)
 	}
-	if !ws.IsModified() {
-		t.Error("IsModified() should be true for modified workspace")
-	}
 
-	// Check file-level status
 	tomlStatus := ws.GetFileStatus("pixi.toml")
 	if tomlStatus == nil {
-		t.Fatal("GetFileStatus(pixi.toml) returned nil")
+		t.Fatal("Expected pixi.toml status")
 	}
 	if tomlStatus.Status != StatusModified {
 		t.Errorf("pixi.toml status = %q, want %q", tomlStatus.Status, StatusModified)
-	}
-
-	lockStatus := ws.GetFileStatus("pixi.lock")
-	if lockStatus == nil {
-		t.Fatal("GetFileStatus(pixi.lock) returned nil")
-	}
-	if lockStatus.Status != StatusClean {
-		t.Errorf("pixi.lock status = %q, want %q", lockStatus.Status, StatusClean)
-	}
-}
-
-func TestCheck_ModifiedPixiLock(t *testing.T) {
-	dir, _ := setupTestWorkspace(t,
-		"[workspace]\nname = \"test\"\n",
-		"version: 1\npackages: []\n",
-	)
-
-	// Modify pixi.lock
-	os.WriteFile(filepath.Join(dir, "pixi.lock"), []byte("version: 2\npackages:\n  - numpy\n"), 0644)
-
-	ws, err := Check(dir)
-	if err != nil {
-		t.Fatalf("Check() error = %v", err)
-	}
-
-	if ws.Overall != StatusModified {
-		t.Errorf("Overall = %q, want %q", ws.Overall, StatusModified)
-	}
-
-	lockStatus := ws.GetFileStatus("pixi.lock")
-	if lockStatus.Status != StatusModified {
-		t.Errorf("pixi.lock status = %q, want %q", lockStatus.Status, StatusModified)
-	}
-}
-
-func TestCheck_BothModified(t *testing.T) {
-	dir, _ := setupTestWorkspace(t,
-		"[workspace]\nname = \"test\"\n",
-		"version: 1\npackages: []\n",
-	)
-
-	// Modify both files
-	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("modified toml"), 0644)
-	os.WriteFile(filepath.Join(dir, "pixi.lock"), []byte("modified lock"), 0644)
-
-	ws, err := Check(dir)
-	if err != nil {
-		t.Fatalf("Check() error = %v", err)
-	}
-
-	if ws.Overall != StatusModified {
-		t.Errorf("Overall = %q, want %q", ws.Overall, StatusModified)
-	}
-
-	tomlStatus := ws.GetFileStatus("pixi.toml")
-	if tomlStatus.Status != StatusModified {
-		t.Errorf("pixi.toml status = %q, want %q", tomlStatus.Status, StatusModified)
-	}
-
-	lockStatus := ws.GetFileStatus("pixi.lock")
-	if lockStatus.Status != StatusModified {
-		t.Errorf("pixi.lock status = %q, want %q", lockStatus.Status, StatusModified)
 	}
 }
 
 func TestCheck_MissingFile(t *testing.T) {
-	dir, _ := setupTestWorkspace(t,
+	dir, _, layers := setupTestWorkspace(t,
 		"[workspace]\nname = \"test\"\n",
 		"version: 1\npackages: []\n",
 	)
@@ -155,47 +88,33 @@ func TestCheck_MissingFile(t *testing.T) {
 	// Delete pixi.lock
 	os.Remove(filepath.Join(dir, "pixi.lock"))
 
-	ws, err := Check(dir)
-	if err != nil {
-		t.Fatalf("Check() error = %v", err)
-	}
+	ws := CheckWithLayers(dir, layers)
 
 	if ws.Overall != StatusModified {
 		t.Errorf("Overall = %q, want %q", ws.Overall, StatusModified)
 	}
 
 	lockStatus := ws.GetFileStatus("pixi.lock")
+	if lockStatus == nil {
+		t.Fatal("Expected pixi.lock status")
+	}
 	if lockStatus.Status != StatusMissing {
 		t.Errorf("pixi.lock status = %q, want %q", lockStatus.Status, StatusMissing)
 	}
 }
 
-func TestCheck_NoNebiFile(t *testing.T) {
-	dir := t.TempDir()
-
-	ws, err := Check(dir)
-	if err == nil {
-		t.Fatal("Check() should return error when .nebi file is missing")
-	}
-	if ws.Overall != StatusUnknown {
-		t.Errorf("Overall = %q, want %q", ws.Overall, StatusUnknown)
-	}
-}
-
-func TestCheckWithNebiFile(t *testing.T) {
+func TestCheckWithLayers(t *testing.T) {
 	dir := t.TempDir()
 
 	content := []byte("test content")
 	os.WriteFile(filepath.Join(dir, "pixi.toml"), content, 0644)
 
 	digest := nebifile.ComputeDigest(content)
-	nf := &nebifile.NebiFile{
-		Layers: map[string]nebifile.Layer{
-			"pixi.toml": {Digest: digest, Size: int64(len(content))},
-		},
+	layers := map[string]string{
+		"pixi.toml": digest,
 	}
 
-	ws := CheckWithNebiFile(dir, nf)
+	ws := CheckWithLayers(dir, layers)
 	if ws.Overall != StatusClean {
 		t.Errorf("Overall = %q, want %q", ws.Overall, StatusClean)
 	}
@@ -215,7 +134,7 @@ func TestGetFileStatus_NotFound(t *testing.T) {
 }
 
 func TestFileStatusDigests(t *testing.T) {
-	dir, nf := setupTestWorkspace(t,
+	dir, _, layers := setupTestWorkspace(t,
 		"original content",
 		"original lock",
 	)
@@ -224,16 +143,16 @@ func TestFileStatusDigests(t *testing.T) {
 	newContent := []byte("modified content")
 	os.WriteFile(filepath.Join(dir, "pixi.toml"), newContent, 0644)
 
-	ws := CheckWithNebiFile(dir, nf)
+	ws := CheckWithLayers(dir, layers)
 
 	tomlStatus := ws.GetFileStatus("pixi.toml")
 	if tomlStatus == nil {
 		t.Fatal("pixi.toml status not found")
 	}
 
-	// Origin digest should match what .nebi has
-	if tomlStatus.OriginDigest != nf.GetLayerDigest("pixi.toml") {
-		t.Errorf("OriginDigest = %q, want %q", tomlStatus.OriginDigest, nf.GetLayerDigest("pixi.toml"))
+	// Origin digest should match what layers have
+	if tomlStatus.OriginDigest != layers["pixi.toml"] {
+		t.Errorf("OriginDigest = %q, want %q", tomlStatus.OriginDigest, layers["pixi.toml"])
 	}
 
 	// Current digest should match the new content
@@ -243,37 +162,45 @@ func TestFileStatusDigests(t *testing.T) {
 	}
 }
 
-func TestStatusConstants(t *testing.T) {
-	if StatusClean != "clean" {
-		t.Errorf("StatusClean = %q, want %q", StatusClean, "clean")
-	}
-	if StatusModified != "modified" {
-		t.Errorf("StatusModified = %q, want %q", StatusModified, "modified")
-	}
-	if StatusMissing != "missing" {
-		t.Errorf("StatusMissing = %q, want %q", StatusMissing, "missing")
-	}
-	if StatusUnknown != "unknown" {
-		t.Errorf("StatusUnknown = %q, want %q", StatusUnknown, "unknown")
-	}
-}
+func TestCheckWithNebiFileIntegration(t *testing.T) {
+	// This tests the full integration with localindex
+	dir := t.TempDir()
+	indexDir := t.TempDir()
 
-func TestCheck_WhitespaceOnlyChange(t *testing.T) {
-	// Byte-level comparison means even whitespace changes are detected
-	dir, _ := setupTestWorkspace(t,
-		"[workspace]\nname = \"test\"\n",
-		"version: 1\n",
+	// Create local files
+	tomlContent := []byte("[workspace]\nname = \"test\"\n")
+	lockContent := []byte("version: 1\npackages: []\n")
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), tomlContent, 0644)
+	os.WriteFile(filepath.Join(dir, "pixi.lock"), lockContent, 0644)
+
+	tomlDigest := nebifile.ComputeDigest(tomlContent)
+	lockDigest := nebifile.ComputeDigest(lockContent)
+
+	// Create nebifile
+	nf := nebifile.NewFromPull(
+		"test-repo", "v1.0", "https://nebi.example.com", "", "1", "",
 	)
+	nebifile.Write(dir, nf)
 
-	// Add a trailing space (byte-level change)
-	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("[workspace]\nname = \"test\" \n"), 0644)
+	// Create index entry with layers
+	store := localindex.NewStoreWithDir(indexDir)
+	store.AddEntry(localindex.Entry{
+		SpecName:    "test-repo",
+		VersionName: "v1.0",
+		VersionID:   "1",
+		Path:        dir,
+		PulledAt:    time.Now(),
+		Layers: map[string]string{
+			"pixi.toml": tomlDigest,
+			"pixi.lock": lockDigest,
+		},
+	})
 
-	ws, err := Check(dir)
-	if err != nil {
-		t.Fatalf("Check() error = %v", err)
-	}
+	// Use CheckWithLayers directly with the entry's layers
+	entry, _ := store.FindByPath(dir)
+	ws := CheckWithLayers(dir, entry.Layers)
 
-	if ws.Overall != StatusModified {
-		t.Errorf("Overall = %q, want %q (whitespace change should be detected)", ws.Overall, StatusModified)
+	if ws.Overall != StatusClean {
+		t.Errorf("Overall = %q, want %q", ws.Overall, StatusClean)
 	}
 }

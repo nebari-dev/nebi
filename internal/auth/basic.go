@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/nebari-dev/nebi/internal/models"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )

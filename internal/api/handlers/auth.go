@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/nebari-dev/nebi/internal/auth"
+	"github.com/gin-gonic/gin"
 )
 
 // Login godoc

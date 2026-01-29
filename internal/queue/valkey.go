@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/google/uuid"
 	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"
 )

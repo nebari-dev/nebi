@@ -67,3 +67,4 @@ go.work.sum
 
 # Claude
 CLAUDE.md
+.claude/

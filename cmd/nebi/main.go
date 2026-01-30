@@ -32,20 +32,22 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.AddGroup(
 		&cobra.Group{ID: "workspace", Title: "Workspace Commands:"},
-		&cobra.Group{ID: "connection", Title: "Connection Commands:"},
+		&cobra.Group{ID: "sync", Title: "Sync Commands:"},
+		&cobra.Group{ID: "server", Title: "Server Commands:"},
 		&cobra.Group{ID: "admin", Title: "Admin Commands:"},
 	)
 
 	initCmd.GroupID = "workspace"
 	workspaceCmd.GroupID = "workspace"
-	diffCmd.GroupID = "workspace"
-	pushCmd.GroupID = "workspace"
-	pullCmd.GroupID = "workspace"
 	shellCmd.GroupID = "workspace"
 
-	loginCmd.GroupID = "connection"
-	serverCmd.GroupID = "connection"
-	registryCmd.GroupID = "connection"
+	pushCmd.GroupID = "sync"
+	pullCmd.GroupID = "sync"
+	diffCmd.GroupID = "sync"
+
+	loginCmd.GroupID = "server"
+	serverCmd.GroupID = "server"
+	registryCmd.GroupID = "server"
 
 	serveCmd.GroupID = "admin"
 

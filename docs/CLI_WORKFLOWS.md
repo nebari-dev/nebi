@@ -193,7 +193,54 @@ Removed workspace "data-science"
 
 ---
 
-## Workflow 6: Publish to an OCI Registry
+## Workflow 6: Origin Tracking and Status
+
+After pushing or pulling, nebi remembers the server, workspace name, and tag as an "origin" (one per server). This enables shorthand commands and sync status checks.
+
+```bash
+# Push sets the origin automatically
+$ nebi push my-project:v1.0 -s work
+Pushed my-project:v1.0 (version 1)
+
+# Check sync status
+$ nebi status
+Workspace: my-project
+Type:      local
+Path:      /home/alice/my-project
+
+Origins:
+  work → my-project:v1.0 (push, 2025-06-15T14:22:00Z)
+    In sync with my-project:v1.0
+
+# Diff against origin (no args needed)
+$ nebi diff
+--- local
++++ my-project:v1.0
+No differences.
+
+# Push a new tag using origin's workspace name
+$ nebi push :v2.0
+Using workspace "my-project" from origin
+Pushing my-project:v2.0...
+Pushed my-project:v2.0 (version 2)
+
+# Pull re-fetches from origin (no args needed)
+$ nebi pull
+Using origin my-project:v2.0 from server "work"
+pixi.toml already exists in /home/alice/my-project. Overwrite? [y/N] y
+Pulled my-project:v2.0 (version 2) -> /home/alice/my-project
+
+# If someone else force-pushed the same tag, you'll see a warning
+$ nebi pull
+Using origin my-project:v2.0 from server "work"
+Note: my-project:v2.0 has changed on server since last sync
+pixi.toml already exists in /home/alice/my-project. Overwrite? [y/N] y
+Pulled my-project:v2.0 (version 2) -> /home/alice/my-project
+```
+
+---
+
+## Workflow 7: Publish to an OCI Registry
 
 Publish a server-hosted workspace version to an OCI registry for distribution.
 
@@ -220,14 +267,15 @@ $ nebi publish my-project:v1.0 --registry ghcr myorg/myenv:latest
 | Group | Command | Description |
 |-------|---------|-------------|
 | **Workspace** | `nebi init` | Track current directory as a workspace |
+| | `nebi status` | Show workspace sync status |
 | | `nebi workspace list [-s server]` | List local, global, or server workspaces |
 | | `nebi workspace tags <name> -s server` | List version tags on a server |
 | | `nebi workspace promote <name>` | Copy current workspace to a global workspace |
 | | `nebi workspace remove <name>` | Remove a workspace from tracking |
 | | `nebi shell [name-or-path] [-e env]` | Activate a pixi shell |
-| **Sync** | `nebi push <name>:<tag> [-s server]` | Push specs to a server |
-| | `nebi pull <name>[:<tag>] [-s server]` | Pull specs from a server |
-| | `nebi diff <ref-a> [ref-b] [-s server]` | Compare workspace specs |
+| **Sync** | `nebi push [<name>:]<tag> [-s server]` | Push specs to a server (name from origin if omitted) |
+| | `nebi pull [<name>[:<tag>]] [-s server]` | Pull specs from a server (origin if omitted) |
+| | `nebi diff [<ref-a>] [ref-b] [-s server]` | Compare workspace specs (origin if omitted) |
 | | `nebi publish <name>:<tag> [-s server]` | Publish to an OCI registry |
 | **Server** | `nebi server add <name> <url>` | Register a server |
 | | `nebi server list` | List registered servers |

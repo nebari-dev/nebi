@@ -133,9 +133,38 @@ type runResult struct {
 	Stderr   string
 }
 
+// resetFlags resets all package-level flag variables to their zero values
+// to prevent state leaking between in-process CLI invocations.
+func resetFlags() {
+	// diff.go
+	diffLock = false
+	diffServer = ""
+	// pull.go
+	pullServer = ""
+	pullOutput = "."
+	pullGlobal = ""
+	pullForce = false
+	// push.go
+	pushServer = ""
+	pushForce = false
+	// workspace.go
+	wsListServer = ""
+	wsTagsServer = ""
+	wsRemoveServer = ""
+	// login.go
+	loginToken = ""
+	// registry.go
+	regListServer = ""
+	// shell.go
+	shellPixiEnv = ""
+}
+
 // runCLI executes a CLI command in-process and captures output.
 func runCLI(t *testing.T, workDir string, args ...string) runResult {
 	t.Helper()
+
+	// Reset all flag variables to prevent state leaking between invocations
+	resetFlags()
 
 	// Save and restore working directory
 	origDir, _ := os.Getwd()
@@ -194,15 +223,19 @@ func writePixiFiles(t *testing.T, dir, toml, lock string) {
 
 // setupLocalStore configures the localstore to use test-specific directories
 // and pre-registers the e2e server with credentials.
+// Each test gets its own data dir to avoid shared state between tests.
 func setupLocalStore(t *testing.T) {
 	t.Helper()
 
+	// Create a fresh data dir for each test to avoid shared state
+	dataDir := t.TempDir()
+
 	// Point localstore at test dirs
-	os.Setenv("NEBI_DATA_DIR", e2eEnv.dataDir)
+	os.Setenv("NEBI_DATA_DIR", dataDir)
 	os.Setenv("NEBI_CONFIG_DIR", e2eEnv.configDir)
 
 	// Register server in index
-	store := localstore.NewStoreWithDir(e2eEnv.dataDir)
+	store := localstore.NewStoreWithDir(dataDir)
 	idx, _ := store.LoadIndex()
 	idx.Servers["e2e"] = e2eEnv.serverURL
 	store.SaveIndex(idx)
@@ -216,7 +249,7 @@ func setupLocalStore(t *testing.T) {
 			},
 		},
 	}
-	localstore.SaveCredentialsTo(filepath.Join(e2eEnv.dataDir, "credentials.json"), creds)
+	localstore.SaveCredentialsTo(filepath.Join(dataDir, "credentials.json"), creds)
 
 	// Set default server in config
 	cfg := &localstore.Config{DefaultServer: "e2e"}
@@ -273,17 +306,18 @@ func TestE2E_DiffLocalDir(t *testing.T) {
 	if !strings.Contains(res.Stdout, "project-a") || !strings.Contains(res.Stdout, "project-b") {
 		t.Errorf("expected pixi.toml diff output, got: %s", res.Stdout)
 	}
-	if strings.Contains(res.Stdout, "pixi.lock") {
-		t.Errorf("should not show lock diff without --lock, got: %s", res.Stdout)
+	// Without --lock, a hint about lock changes may appear but not full lock details
+	if strings.Contains(res.Stdout, "no package changes") || strings.Contains(res.Stdout, "packages:") {
+		t.Errorf("should not show full lock diff without --lock, got: %s", res.Stdout)
 	}
 
-	// With --lock, should also show lock diff
+	// With --lock, should also show lock diff section
 	res = runCLI(t, dir1, "diff", dir2, "--lock")
 	if res.ExitCode != 0 {
 		t.Fatalf("diff --lock failed: %s %s", res.Stdout, res.Stderr)
 	}
-	if !strings.Contains(res.Stdout, "extra") {
-		t.Errorf("expected lock diff with --lock, got: %s", res.Stdout)
+	if !strings.Contains(res.Stdout, "pixi.lock") {
+		t.Errorf("expected pixi.lock section with --lock, got: %s", res.Stdout)
 	}
 
 	// Two explicit directory args (run from unrelated dir)
@@ -670,9 +704,8 @@ func TestE2E_WorkspaceRemove(t *testing.T) {
 		t.Errorf("removed workspace still in list: %s", res.Stdout)
 	}
 
-	// Remove local workspace (should keep files)
-	baseName := filepath.Base(dir)
-	res = runCLI(t, dir, "workspace", "remove", baseName)
+	// Remove local workspace by path (should keep files)
+	res = runCLI(t, dir, "workspace", "remove", dir)
 	if res.ExitCode != 0 {
 		t.Fatalf("remove local failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -722,10 +755,17 @@ func TestE2E_WorkspaceRemoveServer(t *testing.T) {
 		t.Errorf("expected 'Deleted' message, got stderr: %s", res.Stderr)
 	}
 
-	// Verify it's gone from the server
-	res = runCLI(t, srcDir, "workspace", "list", "-s", "e2e")
-	if res.ExitCode != 0 {
-		t.Fatalf("workspace list failed: %s %s", res.Stdout, res.Stderr)
+	// Wait for async deletion to complete, then verify it's gone
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		res = runCLI(t, srcDir, "workspace", "list", "-s", "e2e")
+		if res.ExitCode != 0 {
+			t.Fatalf("workspace list failed: %s %s", res.Stdout, res.Stderr)
+		}
+		if !strings.Contains(res.Stdout, wsName) {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 	if strings.Contains(res.Stdout, wsName) {
 		t.Errorf("workspace still on server after remove: %s", res.Stdout)
@@ -904,7 +944,7 @@ func TestE2E_WorkspacePublishNoRegistry(t *testing.T) {
 func TestE2E_DiffByWorkspaceName(t *testing.T) {
 	setupLocalStore(t)
 
-	// Create and init a workspace
+	// Create and init a workspace, then promote to global so it can be found by name
 	dir := t.TempDir()
 	toml := "[project]\nname = \"diff-name-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
 	writePixiFiles(t, dir, toml, "version: 6\n")
@@ -914,18 +954,439 @@ func TestE2E_DiffByWorkspaceName(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
+	res = runCLI(t, dir, "workspace", "promote", "diff-name-ws")
+	if res.ExitCode != 0 {
+		t.Fatalf("promote failed: %s %s", res.Stdout, res.Stderr)
+	}
+
 	// Create a second directory with different content
 	dir2 := t.TempDir()
 	toml2 := "[project]\nname = \"diff-name-other\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
 	writePixiFiles(t, dir2, toml2, "version: 6\n")
 
-	// Diff using workspace name vs directory path
-	baseName := filepath.Base(dir)
-	res = runCLI(t, dir2, "diff", baseName)
+	// Diff using global workspace name vs current directory
+	res = runCLI(t, dir2, "diff", "diff-name-ws")
 	if res.ExitCode != 0 {
 		t.Fatalf("diff by name failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
 	if !strings.Contains(res.Stdout, "diff-name-test") && !strings.Contains(res.Stdout, "diff-name-other") {
 		t.Errorf("expected diff output with project names, got: %s", res.Stdout)
+	}
+}
+
+// --- Origin Tracking Tests ---
+
+func TestE2E_PushSavesOrigin(t *testing.T) {
+	setupLocalStore(t)
+
+	wsName := "e2e-origin-push"
+	tag := "v1.0"
+
+	dir := t.TempDir()
+	toml := "[project]\nname = \"origin-push\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\n"
+	writePixiFiles(t, dir, toml, lock)
+
+	// Init so the workspace is tracked
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Push
+	res = runCLI(t, dir, "push", wsName+":"+tag, "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Verify origin was saved by checking status
+	res = runCLI(t, dir, "status")
+	if res.ExitCode != 0 {
+		t.Fatalf("status failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, wsName+":"+tag) {
+		t.Errorf("expected origin %s:%s in status output, got: %s", wsName, tag, res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "push") {
+		t.Errorf("expected 'push' action in status output, got: %s", res.Stdout)
+	}
+}
+
+func TestE2E_PushColonTagShorthand(t *testing.T) {
+	setupLocalStore(t)
+
+	wsName := "e2e-colon-tag"
+
+	dir := t.TempDir()
+	toml := "[project]\nname = \"colon-tag\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\n"
+	writePixiFiles(t, dir, toml, lock)
+
+	// Init and push to establish origin
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	res = runCLI(t, dir, "push", wsName+":v1", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push v1 failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Push with :tag shorthand (should reuse workspace name from origin)
+	res = runCLI(t, dir, "push", ":v2", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push :v2 failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "Using workspace") {
+		t.Errorf("expected 'Using workspace' message, got stderr: %s", res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "Pushed "+wsName+":v2") {
+		t.Errorf("expected 'Pushed %s:v2', got stderr: %s", wsName, res.Stderr)
+	}
+}
+
+func TestE2E_PushColonTagNoOrigin(t *testing.T) {
+	setupLocalStore(t)
+
+	dir := t.TempDir()
+	writePixiFiles(t, dir,
+		"[project]\nname = \"no-origin\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+		"version: 6\n",
+	)
+
+	// Init but don't push (no origin)
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Push with :tag should fail — no origin
+	res = runCLI(t, dir, "push", ":v1", "-s", "e2e")
+	if res.ExitCode == 0 {
+		t.Fatal("expected non-zero exit when no origin set for :tag shorthand")
+	}
+}
+
+func TestE2E_PullNoArgs(t *testing.T) {
+	setupLocalStore(t)
+
+	wsName := "e2e-pull-noarg"
+	tag := "v1.0"
+
+	dir := t.TempDir()
+	toml := "[project]\nname = \"pull-noarg\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\n"
+	writePixiFiles(t, dir, toml, lock)
+
+	// Init and push to establish origin
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	res = runCLI(t, dir, "push", wsName+":"+tag, "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Pull with no args and --force (to skip overwrite prompt since stdin is not a tty)
+	res = runCLI(t, dir, "pull", "--force")
+	if res.ExitCode != 0 {
+		t.Fatalf("pull (no args) failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "Using origin") {
+		t.Errorf("expected 'Using origin' message, got stderr: %s", res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, wsName+":"+tag) {
+		t.Errorf("expected origin ref in output, got stderr: %s", res.Stderr)
+	}
+}
+
+func TestE2E_PullNoArgsNoOrigin(t *testing.T) {
+	setupLocalStore(t)
+
+	dir := t.TempDir()
+	writePixiFiles(t, dir,
+		"[project]\nname = \"no-origin-pull\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+		"version: 6\n",
+	)
+
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Pull with no args and no origin should fail
+	res = runCLI(t, dir, "pull")
+	if res.ExitCode == 0 {
+		t.Fatal("expected non-zero exit when no origin set for no-arg pull")
+	}
+}
+
+func TestE2E_PullOverwritePromptDefaultsNo(t *testing.T) {
+	setupLocalStore(t)
+
+	wsName := "e2e-pull-prompt"
+	tag := "v1.0"
+
+	dir := t.TempDir()
+	toml := "[project]\nname = \"prompt-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\n"
+	writePixiFiles(t, dir, toml, lock)
+
+	// Init and push
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	res = runCLI(t, dir, "push", wsName+":"+tag, "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Pull into same dir WITHOUT --force (stdin is closed/empty, so prompt defaults to N → abort)
+	res = runCLI(t, dir, "pull", wsName+":"+tag, "-s", "e2e")
+	// Should exit 0 because abort is not an error — it prints "Aborted." and returns nil
+	if !strings.Contains(res.Stderr, "Aborted") {
+		t.Errorf("expected 'Aborted' when overwrite prompt defaults to no, got stderr: %s", res.Stderr)
+	}
+}
+
+func TestE2E_PullForceSkipsPrompt(t *testing.T) {
+	setupLocalStore(t)
+
+	wsName := "e2e-pull-force"
+	tag := "v1.0"
+
+	dir := t.TempDir()
+	toml := "[project]\nname = \"force-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\n"
+	writePixiFiles(t, dir, toml, lock)
+
+	// Init and push
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	res = runCLI(t, dir, "push", wsName+":"+tag, "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Pull with --force should succeed without prompt
+	res = runCLI(t, dir, "pull", wsName+":"+tag, "-s", "e2e", "--force")
+	if res.ExitCode != 0 {
+		t.Fatalf("pull --force failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "Pulled") {
+		t.Errorf("expected 'Pulled' message, got stderr: %s", res.Stderr)
+	}
+}
+
+func TestE2E_DiffNoArgs(t *testing.T) {
+	setupLocalStore(t)
+
+	wsName := "e2e-diff-noarg"
+	tag := "v1.0"
+
+	dir := t.TempDir()
+	toml := "[project]\nname = \"diff-noarg\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\n"
+	writePixiFiles(t, dir, toml, lock)
+
+	// Init and push to establish origin
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	res = runCLI(t, dir, "push", wsName+":"+tag, "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Diff with no args should compare local vs origin (no changes expected)
+	res = runCLI(t, dir, "diff")
+	if res.ExitCode != 0 {
+		t.Fatalf("diff (no args) failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "No differences") {
+		t.Errorf("expected 'No differences' for identical specs, got stderr: %s stdout: %s", res.Stderr, res.Stdout)
+	}
+
+	// Modify local pixi.toml and diff again — should show changes
+	modifiedToml := toml + "\n[dependencies]\nnumpy = \"*\"\n"
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte(modifiedToml), 0644)
+
+	res = runCLI(t, dir, "diff")
+	if res.ExitCode != 0 {
+		t.Fatalf("diff (no args, with changes) failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, "numpy") {
+		t.Errorf("expected diff to show numpy change, got stdout: %s", res.Stdout)
+	}
+}
+
+func TestE2E_DiffNoArgsNoOrigin(t *testing.T) {
+	setupLocalStore(t)
+
+	dir := t.TempDir()
+	writePixiFiles(t, dir,
+		"[project]\nname = \"no-origin-diff\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+		"version: 6\n",
+	)
+
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Diff with no args and no origin should fail
+	res = runCLI(t, dir, "diff")
+	if res.ExitCode == 0 {
+		t.Fatal("expected non-zero exit when no origin set for no-arg diff")
+	}
+}
+
+func TestE2E_Status(t *testing.T) {
+	setupLocalStore(t)
+
+	dir := t.TempDir()
+	toml := "[project]\nname = \"status-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\n"
+	writePixiFiles(t, dir, toml, lock)
+
+	// Status before init — should say not tracked
+	res := runCLI(t, dir, "status")
+	if res.ExitCode != 0 {
+		t.Fatalf("status failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "Not a tracked workspace") {
+		t.Errorf("expected 'Not a tracked workspace', got stderr: %s stdout: %s", res.Stderr, res.Stdout)
+	}
+
+	// Init
+	res = runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Status after init (no origin)
+	res = runCLI(t, dir, "status")
+	if res.ExitCode != 0 {
+		t.Fatalf("status failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, "Workspace:") {
+		t.Errorf("expected 'Workspace:' in status, got: %s", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "No origins") {
+		t.Errorf("expected 'No origins' in status, got: %s", res.Stdout)
+	}
+
+	// Push to establish origin
+	wsName := "e2e-status-ws"
+	res = runCLI(t, dir, "push", wsName+":v1", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Status with origin
+	res = runCLI(t, dir, "status")
+	if res.ExitCode != 0 {
+		t.Fatalf("status failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, "Origins:") {
+		t.Errorf("expected 'Origins:' section, got: %s", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, wsName+":v1") {
+		t.Errorf("expected origin ref in status, got: %s", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "In sync") {
+		t.Errorf("expected 'In sync' status, got: %s", res.Stdout)
+	}
+}
+
+func TestE2E_StatusLocalModification(t *testing.T) {
+	setupLocalStore(t)
+
+	dir := t.TempDir()
+	toml := "[project]\nname = \"status-mod\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\n"
+	writePixiFiles(t, dir, toml, lock)
+
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Push
+	wsName := "e2e-status-mod"
+	res = runCLI(t, dir, "push", wsName+":v1", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Modify local pixi.toml
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte(toml+"\n[dependencies]\nnumpy = \"*\"\n"), 0644)
+
+	// Status should show local modification
+	res = runCLI(t, dir, "status")
+	if res.ExitCode != 0 {
+		t.Fatalf("status failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, "pixi.toml modified locally") {
+		t.Errorf("expected 'pixi.toml modified locally', got: %s", res.Stdout)
+	}
+}
+
+func TestE2E_PullSavesOrigin(t *testing.T) {
+	setupLocalStore(t)
+
+	wsName := "e2e-origin-pull"
+	tag := "v1.0"
+
+	// Push from one directory
+	srcDir := t.TempDir()
+	toml := "[project]\nname = \"origin-pull\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\n"
+	writePixiFiles(t, srcDir, toml, lock)
+
+	res := runCLI(t, srcDir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	res = runCLI(t, srcDir, "push", wsName+":"+tag, "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Pull to a new tracked directory
+	dstDir := t.TempDir()
+	// Init the destination first so it's a tracked workspace
+	writePixiFiles(t, dstDir, "placeholder", "placeholder")
+	res = runCLI(t, dstDir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init dst failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	res = runCLI(t, dstDir, "pull", wsName+":"+tag, "-s", "e2e", "--force")
+	if res.ExitCode != 0 {
+		t.Fatalf("pull failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Status should show the pull origin
+	res = runCLI(t, dstDir, "status")
+	if res.ExitCode != 0 {
+		t.Fatalf("status failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, wsName+":"+tag) {
+		t.Errorf("expected origin ref after pull, got: %s", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "pull") {
+		t.Errorf("expected 'pull' action in status, got: %s", res.Stdout)
 	}
 }

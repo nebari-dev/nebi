@@ -37,6 +37,7 @@ func init() {
 	initCmd.GroupID = "workspace"
 	workspaceCmd.GroupID = "workspace"
 	shellCmd.GroupID = "workspace"
+	runCmd.GroupID = "workspace"
 	statusCmd.GroupID = "workspace"
 
 	pushCmd.GroupID = "sync"
@@ -59,6 +60,7 @@ func init() {
 	rootCmd.AddCommand(pushCmd)
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(shellCmd)
+	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(publishCmd)
 	rootCmd.AddCommand(registryCmd)
 	rootCmd.AddCommand(serveCmd)

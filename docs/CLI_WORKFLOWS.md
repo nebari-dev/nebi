@@ -162,9 +162,11 @@ $ nebi diff data-science ml-pipeline
 
 ---
 
-## Workflow 5: Global Workspaces and Shell
+## Workflow 5: Global Workspaces, Shell, and Run
 
 Global workspaces live in `~/.local/share/nebi/` and can be activated by name from anywhere.
+
+Both `nebi shell` and `nebi run` auto-initialize untracked pixi directories (equivalent to running `nebi init` first). All arguments after the optional workspace name are passed through directly to `pixi shell` or `pixi run`.
 
 ```bash
 # Promote the current tracked workspace to a global workspace
@@ -180,16 +182,30 @@ $ nebi workspace list
 # Open a pixi shell in a global workspace
 $ nebi shell data-science
 
-# Open a shell in a specific pixi environment
+# Open a shell in a specific pixi environment (args pass through to pixi)
 $ nebi shell data-science -e jupyter
 
-# Open a shell in the current directory's workspace
+# Open a shell in the current directory's workspace (auto-initializes if needed)
 $ nebi shell
+
+# Run a pixi task in the current directory (auto-initializes if needed)
+$ nebi run my-task
+
+# Run a task in a global workspace
+$ nebi run data-science my-task
+
+# Run with a specific pixi environment
+$ nebi run -e dev my-task
+
+# Run a task in a local directory
+$ nebi run ./my-project my-task
 
 # Remove a global workspace
 $ nebi workspace remove data-science
 Removed workspace "data-science"
 ```
+
+> **Note**: `--manifest-path` is not supported by `nebi shell` or `nebi run` since nebi manages workspace resolution. Use `pixi shell` or `pixi run` directly if you need `--manifest-path`.
 
 ---
 
@@ -272,7 +288,8 @@ $ nebi publish my-project:v1.0 --registry ghcr myorg/myenv:latest
 | | `nebi workspace tags <name> -s server` | List version tags on a server |
 | | `nebi workspace promote <name>` | Copy current workspace to a global workspace |
 | | `nebi workspace remove <name>` | Remove a workspace from tracking |
-| | `nebi shell [name-or-path] [-e env]` | Activate a pixi shell |
+| | `nebi shell [name-or-path] [pixi-args...]` | Activate a pixi shell (auto-initializes) |
+| | `nebi run [name-or-path] [pixi-args...]` | Run a command or task via pixi (auto-initializes) |
 | **Sync** | `nebi push [<name>:]<tag> [-s server]` | Push specs to a server (name from origin if omitted) |
 | | `nebi pull [<name>[:<tag>]] [-s server]` | Pull specs from a server (origin if omitted) |
 | | `nebi diff [<ref-a>] [ref-b] [-s server]` | Compare workspace specs (origin if omitted) |

@@ -200,8 +200,6 @@ func resetFlags() {
 	loginToken = ""
 	// registry.go
 	regListServer = ""
-	// shell.go
-	shellPixiEnv = ""
 }
 
 // runCLI executes a CLI command in-process and captures output.
@@ -1699,5 +1697,95 @@ func TestE2E_MultiServerStatusSyncPerServer(t *testing.T) {
 	}
 	if !strings.Contains(output, "e2e-multi-sync:v1") {
 		t.Errorf("expected e2e2 origin still at v1, got: %s", output)
+	}
+}
+
+func TestE2E_ShellAutoInit(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("[project]\nname = \"auto-init-test\"\n"), 0644)
+
+	// shell will fail because pixi isn't available in test, but ensureInit should run first
+	res := runCLI(t, dir, "shell")
+
+	// The workspace should be tracked even if pixi exec fails
+	res2 := runCLI(t, dir, "workspace", "list")
+	if res2.ExitCode != 0 {
+		t.Fatalf("workspace list failed: %s", res2.Stderr)
+	}
+	// Check either stdout or stderr for tracking message
+	combined := res.Stdout + res.Stderr + res2.Stdout
+	if !strings.Contains(combined, "auto-init-test") {
+		t.Errorf("expected workspace to be tracked after shell auto-init, got stdout: %s, stderr: %s", res2.Stdout, res.Stderr)
+	}
+}
+
+func TestE2E_RunAutoInit(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("[project]\nname = \"run-init-test\"\n"), 0644)
+
+	// run will fail because pixi isn't available, but ensureInit should run
+	_ = runCLI(t, dir, "run", "some-task")
+
+	res := runCLI(t, dir, "workspace", "list")
+	if res.ExitCode != 0 {
+		t.Fatalf("workspace list failed: %s", res.Stderr)
+	}
+	wsName := filepath.Base(dir)
+	if !strings.Contains(res.Stdout, wsName) {
+		t.Errorf("expected workspace %q tracked after run auto-init, got: %s", wsName, res.Stdout)
+	}
+}
+
+func TestE2E_ShellRejectsManifestPath(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("[project]\nname = \"test\"\n"), 0644)
+
+	res := runCLI(t, dir, "shell", "--manifest-path", "/some/path")
+	if res.ExitCode == 0 {
+		t.Error("expected shell to reject --manifest-path")
+	}
+	combined := res.Stdout + res.Stderr
+	if !strings.Contains(combined, "--manifest-path cannot be used") {
+		t.Errorf("expected manifest-path error, got: %s", combined)
+	}
+}
+
+func TestE2E_RunRejectsManifestPath(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("[project]\nname = \"test\"\n"), 0644)
+
+	res := runCLI(t, dir, "run", "--manifest-path=/some/path", "task")
+	if res.ExitCode == 0 {
+		t.Error("expected run to reject --manifest-path")
+	}
+	combined := res.Stdout + res.Stderr
+	if !strings.Contains(combined, "--manifest-path cannot be used") {
+		t.Errorf("expected manifest-path error, got: %s", combined)
+	}
+}
+
+func TestE2E_ShellNoPixiToml(t *testing.T) {
+	dir := t.TempDir()
+
+	res := runCLI(t, dir, "shell")
+	if res.ExitCode == 0 {
+		t.Error("expected shell to fail without pixi.toml")
+	}
+	combined := res.Stdout + res.Stderr
+	if !strings.Contains(combined, "pixi.toml") {
+		t.Errorf("expected pixi.toml error, got: %s", combined)
+	}
+}
+
+func TestE2E_RunNoPixiToml(t *testing.T) {
+	dir := t.TempDir()
+
+	res := runCLI(t, dir, "run", "task")
+	if res.ExitCode == 0 {
+		t.Error("expected run to fail without pixi.toml")
+	}
+	combined := res.Stdout + res.Stderr
+	if !strings.Contains(combined, "pixi.toml") {
+		t.Errorf("expected pixi.toml error, got: %s", combined)
 	}
 }

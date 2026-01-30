@@ -61,3 +61,46 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(os.Stderr, "Workspace '%s' initialized (%s)\n", name, cwd)
 	return nil
 }
+
+// ensureInit registers dir as a tracked workspace if not already tracked.
+// No-op if already tracked. Prints a message to stderr on new registration.
+func ensureInit(dir string) error {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("resolving path: %w", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(absDir, "pixi.toml")); err != nil {
+		return fmt.Errorf("no pixi.toml found in %s", absDir)
+	}
+
+	store, err := localstore.NewStore()
+	if err != nil {
+		return err
+	}
+
+	idx, err := store.LoadIndex()
+	if err != nil {
+		return err
+	}
+
+	if _, exists := idx.Workspaces[absDir]; exists {
+		return nil
+	}
+
+	id := uuid.New().String()
+	name := filepath.Base(absDir)
+
+	idx.Workspaces[absDir] = &localstore.Workspace{
+		ID:   id,
+		Name: name,
+		Path: absDir,
+	}
+
+	if err := store.SaveIndex(idx); err != nil {
+		return fmt.Errorf("saving index: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Tracking workspace '%s' at %s\n", name, absDir)
+	return nil
+}

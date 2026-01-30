@@ -31,6 +31,8 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(workspaceCmd)
+	rootCmd.AddCommand(diffCmd)
+	rootCmd.AddCommand(commitCmd)
 }
 
 func main() {

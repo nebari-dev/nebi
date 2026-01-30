@@ -144,20 +144,34 @@ nebi workspace prune
 | `stale`    | Directory no longer exists (pruneable)       |
 | `unknown`  | Cannot determine (no .nebi metadata)         |
 
-## 10. Shell Activation
+## 10. Shell and Run
+
+`nebi shell` and `nebi run` wrap `pixi shell` and `pixi run` with workspace
+lookup and auto-initialization. All arguments pass through directly to pixi.
+The `--manifest-path` flag is not supported; use `pixi shell`/`pixi run` directly if needed.
 
 ```bash
-# Activate shell in current workspace (auto-detects from .nebi metadata)
+# Shell into current directory (auto-initializes if not tracked)
 nebi shell
 
-# Activate a specific workspace:tag (pulls if needed)
-nebi shell demo-workspace:v1.0
+# Shell into a global workspace by name
+nebi shell my-datascience
 
-# Specify a pixi environment
-nebi shell demo-workspace:v1.0 -e default
+# All args pass through to pixi shell
+nebi shell my-datascience -e default
+
+# Run a pixi task in the current directory (auto-initializes)
+nebi run my-task
+
+# Run a task in a global workspace
+nebi run my-datascience my-task
+
+# Run in a local directory
+nebi run ./some-project my-task
+
+# Args pass through to pixi run
+nebi run -e dev my-task
 ```
-
-Shell activation will warn you if the workspace has been modified or has missing files.
 
 ## 11. Push with Drift Awareness
 
@@ -210,4 +224,3 @@ nebi logout
 | `--global`   | pull          | Pull to central storage          |
 | `--force`    | pull          | Overwrite existing files         |
 | `--local`    | workspace list| Show locally-pulled workspaces   |
-| `-e`/`--env` | shell         | Pixi environment name            |

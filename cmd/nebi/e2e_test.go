@@ -25,34 +25,69 @@ import (
 
 // e2eEnv holds the test environment state.
 var e2eEnv struct {
-	serverURL string
-	token     string
-	dataDir   string
-	configDir string
+	serverURL  string
+	token      string
+	server2URL string
+	token2     string
+	dataDir    string
+	configDir  string
+}
+
+// findFreePort returns a free TCP port on localhost.
+func findFreePort() (int, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+	return port, nil
+}
+
+// waitForHealth polls the health endpoint until it responds 200 or the deadline is reached.
+func waitForHealth(url string, serverErr <-chan error, w io.Writer) {
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(url)
+		if err == nil && resp.StatusCode == 200 {
+			resp.Body.Close()
+			return
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+		select {
+		case err := <-serverErr:
+			fmt.Fprintf(w, "E2E: server exited early: %v\n", err)
+			os.Exit(1)
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
 
 func TestMain(m *testing.M) {
-	// Find a free port
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	port1, err := findFreePort()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "E2E: failed to find free port: %v\n", err)
 		os.Exit(1)
 	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
+	port2, err := findFreePort()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "E2E: failed to find free port for server 2: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Create temp dirs
 	dbDir, _ := os.MkdirTemp("", "nebi-e2e-db-*")
 	defer os.RemoveAll(dbDir)
-	dbPath := filepath.Join(dbDir, "e2e.db")
+	dbPath1 := filepath.Join(dbDir, "e2e1.db")
+	dbPath2 := filepath.Join(dbDir, "e2e2.db")
 
 	e2eEnv.dataDir, _ = os.MkdirTemp("", "nebi-e2e-data-*")
 	e2eEnv.configDir, _ = os.MkdirTemp("", "nebi-e2e-config-*")
 
-	// Set server env vars
-	os.Setenv("NEBI_SERVER_PORT", fmt.Sprintf("%d", port))
+	// Common env vars
 	os.Setenv("NEBI_DATABASE_DRIVER", "sqlite")
-	os.Setenv("NEBI_DATABASE_DSN", dbPath)
 	os.Setenv("NEBI_QUEUE_TYPE", "memory")
 	os.Setenv("NEBI_AUTH_JWT_SECRET", "e2e-test-secret")
 	os.Setenv("NEBI_SERVER_MODE", "test")
@@ -70,53 +105,63 @@ func TestMain(m *testing.M) {
 	log.SetOutput(io.Discard)
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-	// Start server
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	serverErr := make(chan error, 1)
+	// --- Start server 1 ---
+	os.Setenv("NEBI_SERVER_PORT", fmt.Sprintf("%d", port1))
+	os.Setenv("NEBI_DATABASE_DSN", dbPath1)
+
+	server1Err := make(chan error, 1)
 	go func() {
-		serverErr <- server.Run(ctx, server.Config{
-			Port:    port,
+		server1Err <- server.Run(ctx, server.Config{
+			Port:    port1,
 			Mode:    "both",
 			Version: "e2e-test",
 		})
 	}()
 
-	// Wait for health endpoint
-	e2eEnv.serverURL = fmt.Sprintf("http://127.0.0.1:%d", port)
-	healthURL := e2eEnv.serverURL + "/api/v1/health"
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		resp, err := http.Get(healthURL)
-		if err == nil && resp.StatusCode == 200 {
-			resp.Body.Close()
-			break
-		}
-		if resp != nil {
-			resp.Body.Close()
-		}
-		select {
-		case err := <-serverErr:
-			fmt.Fprintf(origStderr, "E2E: server exited early: %v\n", err)
-			os.Exit(1)
-		case <-time.After(100 * time.Millisecond):
-		}
-	}
+	e2eEnv.serverURL = fmt.Sprintf("http://127.0.0.1:%d", port1)
+	waitForHealth(e2eEnv.serverURL+"/api/v1/health", server1Err, origStderr)
+
+	// --- Start server 2 (change DSN env before config.Load reads it) ---
+	os.Setenv("NEBI_SERVER_PORT", fmt.Sprintf("%d", port2))
+	os.Setenv("NEBI_DATABASE_DSN", dbPath2)
+
+	server2Err := make(chan error, 1)
+	go func() {
+		server2Err <- server.Run(ctx, server.Config{
+			Port:    port2,
+			Mode:    "both",
+			Version: "e2e-test-2",
+		})
+	}()
+
+	e2eEnv.server2URL = fmt.Sprintf("http://127.0.0.1:%d", port2)
+	waitForHealth(e2eEnv.server2URL+"/api/v1/health", server2Err, origStderr)
 
 	// Restore stdout/stderr for test output
 	os.Stdout = origStdout
 	os.Stderr = origStderr
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-	// Login to get a token
-	client := cliclient.NewWithoutAuth(e2eEnv.serverURL)
-	loginResp, err := client.Login(context.Background(), "admin", "adminpass")
+	// Login to server 1
+	client1 := cliclient.NewWithoutAuth(e2eEnv.serverURL)
+	loginResp1, err := client1.Login(context.Background(), "admin", "adminpass")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "E2E: login failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "E2E: login to server 1 failed: %v\n", err)
 		os.Exit(1)
 	}
-	e2eEnv.token = loginResp.Token
+	e2eEnv.token = loginResp1.Token
+
+	// Login to server 2
+	client2 := cliclient.NewWithoutAuth(e2eEnv.server2URL)
+	loginResp2, err := client2.Login(context.Background(), "admin", "adminpass")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "E2E: login to server 2 failed: %v\n", err)
+		os.Exit(1)
+	}
+	e2eEnv.token2 = loginResp2.Token
 
 	code := m.Run()
 
@@ -252,6 +297,40 @@ func setupLocalStore(t *testing.T) {
 	localstore.SaveCredentialsTo(filepath.Join(dataDir, "credentials.json"), creds)
 
 	// Set default server in config
+	cfg := &localstore.Config{DefaultServer: "e2e"}
+	localstore.SaveConfig(cfg)
+}
+
+// setupLocalStoreTwoServers configures the localstore with both e2e servers.
+// "e2e" is the default server (server 1), "e2e2" is server 2.
+func setupLocalStoreTwoServers(t *testing.T) {
+	t.Helper()
+
+	dataDir := t.TempDir()
+
+	os.Setenv("NEBI_DATA_DIR", dataDir)
+	os.Setenv("NEBI_CONFIG_DIR", e2eEnv.configDir)
+
+	store := localstore.NewStoreWithDir(dataDir)
+	idx, _ := store.LoadIndex()
+	idx.Servers["e2e"] = e2eEnv.serverURL
+	idx.Servers["e2e2"] = e2eEnv.server2URL
+	store.SaveIndex(idx)
+
+	creds := &localstore.Credentials{
+		Servers: map[string]*localstore.ServerCredential{
+			e2eEnv.serverURL: {
+				Token:    e2eEnv.token,
+				Username: "admin",
+			},
+			e2eEnv.server2URL: {
+				Token:    e2eEnv.token2,
+				Username: "admin",
+			},
+		},
+	}
+	localstore.SaveCredentialsTo(filepath.Join(dataDir, "credentials.json"), creds)
+
 	cfg := &localstore.Config{DefaultServer: "e2e"}
 	localstore.SaveConfig(cfg)
 }
@@ -1388,5 +1467,237 @@ func TestE2E_PullSavesOrigin(t *testing.T) {
 	}
 	if !strings.Contains(res.Stdout, "pull") {
 		t.Errorf("expected 'pull' action in status, got: %s", res.Stdout)
+	}
+}
+
+// --- Multi-Server E2E Tests ---
+
+func TestE2E_MultiServerPushBothOriginsInStatus(t *testing.T) {
+	setupLocalStoreTwoServers(t)
+
+	wsName := "e2e-multi-origins"
+	dir := t.TempDir()
+	toml := "[project]\nname = \"multi-origins\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\n"
+	writePixiFiles(t, dir, toml, lock)
+
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Push to server 1
+	res = runCLI(t, dir, "push", wsName+":v1", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push to e2e failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Push to server 2
+	res = runCLI(t, dir, "push", wsName+":v1", "-s", "e2e2")
+	if res.ExitCode != 0 {
+		t.Fatalf("push to e2e2 failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Status should show both origins
+	res = runCLI(t, dir, "status")
+	if res.ExitCode != 0 {
+		t.Fatalf("status failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, "e2e") {
+		t.Errorf("expected 'e2e' origin in status, got: %s", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "e2e2") {
+		t.Errorf("expected 'e2e2' origin in status, got: %s", res.Stdout)
+	}
+}
+
+func TestE2E_MultiServerPullPreservesOtherOrigin(t *testing.T) {
+	setupLocalStoreTwoServers(t)
+
+	dir := t.TempDir()
+	toml := "[project]\nname = \"multi-pull\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\n"
+	writePixiFiles(t, dir, toml, lock)
+
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Push to both servers
+	res = runCLI(t, dir, "push", "e2e-multi-pull:v1", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push to e2e failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	res = runCLI(t, dir, "push", "e2e-multi-pull:v2", "-s", "e2e2")
+	if res.ExitCode != 0 {
+		t.Fatalf("push to e2e2 failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Pull from server 2 (should update e2e2 origin but preserve e2e origin)
+	res = runCLI(t, dir, "pull", "e2e-multi-pull:v2", "-s", "e2e2", "--force")
+	if res.ExitCode != 0 {
+		t.Fatalf("pull from e2e2 failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Status should show both origins
+	res = runCLI(t, dir, "status")
+	if res.ExitCode != 0 {
+		t.Fatalf("status failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, "e2e") {
+		t.Errorf("expected 'e2e' origin preserved after pull from e2e2, got: %s", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "e2e2") {
+		t.Errorf("expected 'e2e2' origin in status, got: %s", res.Stdout)
+	}
+	// e2e origin should still show push action
+	// e2e2 origin should show pull action (most recent action on that server)
+}
+
+func TestE2E_MultiServerDiffNoArgsUsesDefaultServer(t *testing.T) {
+	setupLocalStoreTwoServers(t)
+
+	dir := t.TempDir()
+	toml := "[project]\nname = \"multi-diff\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\n"
+	writePixiFiles(t, dir, toml, lock)
+
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Push to both servers
+	res = runCLI(t, dir, "push", "e2e-multi-diff:v1", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push to e2e failed: %s %s", res.Stdout, res.Stderr)
+	}
+	res = runCLI(t, dir, "push", "e2e-multi-diff:v1", "-s", "e2e2")
+	if res.ExitCode != 0 {
+		t.Fatalf("push to e2e2 failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Modify local pixi.toml
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte(toml+"\n[dependencies]\nnumpy = \"*\"\n"), 0644)
+
+	// Diff with no args should use default server (e2e)
+	res = runCLI(t, dir, "diff")
+	if res.ExitCode != 0 {
+		t.Fatalf("diff failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	// Should show differences since we modified locally
+	combined := res.Stdout + res.Stderr
+	if !strings.Contains(combined, "numpy") {
+		t.Errorf("expected diff to show numpy change, got stdout: %s\nstderr: %s", res.Stdout, res.Stderr)
+	}
+}
+
+func TestE2E_MultiServerColonTagShorthand(t *testing.T) {
+	setupLocalStoreTwoServers(t)
+
+	dir := t.TempDir()
+	toml := "[project]\nname = \"multi-colon\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\n"
+	writePixiFiles(t, dir, toml, lock)
+
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Push different workspace names to each server
+	res = runCLI(t, dir, "push", "ws-alpha:v1", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push ws-alpha to e2e failed: %s %s", res.Stdout, res.Stderr)
+	}
+	res = runCLI(t, dir, "push", "ws-beta:v1", "-s", "e2e2")
+	if res.ExitCode != 0 {
+		t.Fatalf("push ws-beta to e2e2 failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// :v2 on e2e should reuse ws-alpha
+	res = runCLI(t, dir, "push", ":v2", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push :v2 to e2e failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "ws-alpha") {
+		t.Errorf("expected 'ws-alpha' from e2e origin, got stderr: %s", res.Stderr)
+	}
+
+	// :v2 on e2e2 should reuse ws-beta
+	res = runCLI(t, dir, "push", ":v2", "-s", "e2e2")
+	if res.ExitCode != 0 {
+		t.Fatalf("push :v2 to e2e2 failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "ws-beta") {
+		t.Errorf("expected 'ws-beta' from e2e2 origin, got stderr: %s", res.Stderr)
+	}
+}
+
+func TestE2E_MultiServerStatusSyncPerServer(t *testing.T) {
+	setupLocalStoreTwoServers(t)
+
+	dir := t.TempDir()
+	toml := "[project]\nname = \"multi-sync\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\n"
+	writePixiFiles(t, dir, toml, lock)
+
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Push v1 to both servers
+	res = runCLI(t, dir, "push", "e2e-multi-sync:v1", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push to e2e failed: %s %s", res.Stdout, res.Stderr)
+	}
+	res = runCLI(t, dir, "push", "e2e-multi-sync:v1", "-s", "e2e2")
+	if res.ExitCode != 0 {
+		t.Fatalf("push to e2e2 failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Both should be in sync initially
+	res = runCLI(t, dir, "status")
+	if res.ExitCode != 0 {
+		t.Fatalf("status failed: %s %s", res.Stdout, res.Stderr)
+	}
+	output := res.Stdout
+	if !strings.Contains(output, "e2e") || !strings.Contains(output, "e2e2") {
+		t.Errorf("expected both origins in status, got: %s", output)
+	}
+
+	// Modify local pixi.toml — now both origins are stale
+	modifiedToml := toml + "\n[dependencies]\nscipy = \"*\"\n"
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte(modifiedToml), 0644)
+
+	// Status should report local modification
+	res = runCLI(t, dir, "status")
+	if res.ExitCode != 0 {
+		t.Fatalf("status failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, "pixi.toml modified locally") {
+		t.Errorf("expected 'pixi.toml modified locally' after edit, got: %s", res.Stdout)
+	}
+
+	// Push updated version only to e2e — e2e origin hash now matches local
+	res = runCLI(t, dir, "push", "e2e-multi-sync:v2", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push v2 to e2e failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Verify e2e origin updated to v2, e2e2 still at v1
+	res = runCLI(t, dir, "status")
+	if res.ExitCode != 0 {
+		t.Fatalf("status failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	output = res.Stdout
+	if !strings.Contains(output, "e2e-multi-sync:v2") {
+		t.Errorf("expected e2e origin at v2, got: %s", output)
+	}
+	if !strings.Contains(output, "e2e-multi-sync:v1") {
+		t.Errorf("expected e2e2 origin still at v1, got: %s", output)
 	}
 }

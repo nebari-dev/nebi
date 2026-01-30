@@ -4,10 +4,26 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/nebari-dev/nebi/internal/localstore"
 )
+
+// resolveServerFlag returns the server argument, falling back to the default server from config.
+func resolveServerFlag(serverArg string) (string, error) {
+	if serverArg != "" {
+		return serverArg, nil
+	}
+	cfg, err := localstore.LoadConfig()
+	if err != nil {
+		return "", fmt.Errorf("loading config: %w", err)
+	}
+	if cfg.DefaultServer == "" {
+		return "", fmt.Errorf("no server specified; use -s <server> or set a default with 'nebi server add <name> <url>'")
+	}
+	return cfg.DefaultServer, nil
+}
 
 // getAuthenticatedClient resolves a server name or URL, loads credentials, and returns an authenticated API client.
 func getAuthenticatedClient(serverArg string) (*cliclient.Client, error) {
@@ -52,4 +68,23 @@ func parseEnvRef(ref string) (string, string) {
 		return ref[:idx], ref[idx+1:]
 	}
 	return ref, ""
+}
+
+// waitForEnvReady polls until the environment reaches ready state or timeout.
+func waitForEnvReady(client *cliclient.Client, ctx context.Context, envID string, timeout time.Duration) (*cliclient.Environment, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		env, err := client.GetEnvironment(ctx, envID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get environment status: %w", err)
+		}
+		switch env.Status {
+		case "ready":
+			return env, nil
+		case "failed", "error":
+			return nil, fmt.Errorf("environment setup failed")
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("timeout waiting for environment to be ready")
 }

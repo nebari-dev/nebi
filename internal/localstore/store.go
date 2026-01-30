@@ -7,10 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 )
 
 // Store manages the local nebi index and snapshots.
 type Store struct {
+	mu      sync.Mutex
 	dataDir string
 }
 
@@ -40,6 +42,9 @@ func (s *Store) IndexPath() string {
 
 // LoadIndex reads the index from disk. Returns an empty index if the file doesn't exist.
 func (s *Store) LoadIndex() (*Index, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	data, err := os.ReadFile(s.IndexPath())
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -66,6 +71,9 @@ func (s *Store) LoadIndex() (*Index, error) {
 
 // SaveIndex writes the index to disk, creating directories as needed.
 func (s *Store) SaveIndex(idx *Index) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if err := os.MkdirAll(s.dataDir, 0755); err != nil {
 		return fmt.Errorf("creating data directory: %w", err)
 	}
@@ -81,13 +89,12 @@ func (s *Store) SaveIndex(idx *Index) error {
 	return nil
 }
 
-// SnapshotDir returns the snapshot directory for a given workspace ID.
-func (s *Store) SnapshotDir(workspaceID string) string {
-	return filepath.Join(s.dataDir, "snapshots", workspaceID)
-}
-
 // defaultDataDir returns ~/.local/share/nebi/ on Linux, platform equivalent elsewhere.
+// Can be overridden with NEBI_DATA_DIR env var (for testing).
 func defaultDataDir() (string, error) {
+	if dir := os.Getenv("NEBI_DATA_DIR"); dir != "" {
+		return dir, nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err

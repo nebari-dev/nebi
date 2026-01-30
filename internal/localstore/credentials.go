@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 )
 
 // ServerCredential stores auth info for a single nebi server.
@@ -20,30 +19,9 @@ type Credentials struct {
 	Servers map[string]*ServerCredential `json:"servers"`
 }
 
-// ConfigDir returns the config directory (~/.config/nebi/ or platform equivalent).
-func ConfigDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-
-	switch runtime.GOOS {
-	case "darwin":
-		return filepath.Join(home, "Library", "Preferences", "nebi"), nil
-	case "windows":
-		appData := os.Getenv("APPDATA")
-		if appData != "" {
-			return filepath.Join(appData, "nebi"), nil
-		}
-		return filepath.Join(home, "AppData", "Roaming", "nebi"), nil
-	default:
-		return filepath.Join(home, ".config", "nebi"), nil
-	}
-}
-
-// CredentialsPath returns the path to credentials.json.
+// CredentialsPath returns the path to credentials.json in the data directory.
 func CredentialsPath() (string, error) {
-	dir, err := ConfigDir()
+	dir, err := defaultDataDir()
 	if err != nil {
 		return "", err
 	}
@@ -81,9 +59,13 @@ func SaveCredentials(creds *Credentials) error {
 	if err != nil {
 		return err
 	}
+	return SaveCredentialsTo(path, creds)
+}
 
+// SaveCredentialsTo writes credentials to a specific path.
+func SaveCredentialsTo(path string, creds *Credentials) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return fmt.Errorf("creating config directory: %w", err)
+		return fmt.Errorf("creating data directory: %w", err)
 	}
 
 	data, err := json.MarshalIndent(creds, "", "  ")

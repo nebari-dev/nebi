@@ -18,9 +18,8 @@ var rootCmd = &cobra.Command{
 
 Local commands:
   nebi init               Register current directory as a tracked workspace
-  nebi workspace list     List tracked workspaces with status
-  nebi diff               Show changes since last commit
-  nebi commit             Snapshot current spec files
+  nebi workspace list     List tracked workspaces
+  nebi diff               Compare local files against a server version or directory
 
 Server commands:
   nebi login              Authenticate with a server
@@ -35,7 +34,6 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(workspaceCmd)
 	rootCmd.AddCommand(diffCmd)
-	rootCmd.AddCommand(commitCmd)
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(serverCmd)
 	rootCmd.AddCommand(pushCmd)

@@ -14,7 +14,7 @@ import (
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Register current directory as a tracked workspace",
-	Long:  `Registers the current directory as a nebi-tracked pixi workspace and snapshots the spec files (pixi.toml, pixi.lock).`,
+	Long:  `Registers the current directory as a nebi-tracked pixi workspace.`,
 	Args:  cobra.NoArgs,
 	RunE:  runInit,
 }
@@ -56,11 +56,6 @@ func runInit(cmd *cobra.Command, args []string) error {
 		Path:      cwd,
 		CreatedAt: now,
 		UpdatedAt: now,
-	}
-
-	// Snapshot current spec files
-	if err := store.SaveSnapshot(id, cwd); err != nil {
-		return fmt.Errorf("saving snapshot: %w", err)
 	}
 
 	if err := store.SaveIndex(idx); err != nil {

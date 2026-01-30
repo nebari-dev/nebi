@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
+	"github.com/nebari-dev/nebi/internal/localstore"
 	"github.com/spf13/cobra"
 )
 
@@ -19,13 +20,17 @@ var diffCmd = &cobra.Command{
 	Use:   "diff <ref-a> [ref-b] [--lock]",
 	Short: "Compare workspace specifications between two sources",
 	Long: `Compare pixi.toml (and pixi.lock with --lock) between two references.
-Each reference can be a local directory or a server workspace.
+Each reference can be:
+  - A path (contains a slash): ./dir, /tmp/project, foo/bar
+  - A global workspace name (bare word): data-science
+  - A server ref (contains a colon): myworkspace:v1
 
 If only one ref is given, it is compared against the current directory.
 
 Examples:
   nebi diff ./other-project                    # other dir vs cwd
   nebi diff ./project-a ./project-b            # two local dirs
+  nebi diff data-science                       # global workspace vs cwd
   nebi diff myworkspace:v1 -s work             # server version vs cwd
   nebi diff myworkspace:v1 myworkspace:v2 -s work  # two server versions
   nebi diff myworkspace:v1 ./local-dir -s work # server vs local dir
@@ -94,11 +99,27 @@ func runDiff(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// resolveSource resolves a ref (directory or workspace:tag) into a diffSource.
+// resolveSource resolves a ref (directory, workspace name, or workspace:tag) into a diffSource.
 func resolveSource(ref, defaultLabel string) (*diffSource, error) {
-	if isLocalDir(ref) {
+	// 1. Local directory path (must contain a slash, e.g. ./foo, /tmp/foo, foo/bar)
+	if isPath(ref) {
 		return resolveLocalSource(ref, defaultLabel)
 	}
+
+	// 2. Global workspace name (check index before assuming server ref)
+	if !strings.Contains(ref, ":") {
+		store, err := localstore.NewStore()
+		if err == nil {
+			idx, err := store.LoadIndex()
+			if err == nil {
+				if ws := findGlobalWorkspaceByName(idx, ref); ws != nil {
+					return resolveLocalSource(ws.Path, ref)
+				}
+			}
+		}
+	}
+
+	// 3. Server ref (workspace:tag)
 	return resolveServerSource(ref, defaultLabel)
 }
 
@@ -206,16 +227,9 @@ func resolveVersionNumber(client *cliclient.Client, ctx context.Context, envID, 
 	return latest.VersionNumber, nil
 }
 
-// isLocalDir returns true if ref looks like a local path.
-func isLocalDir(ref string) bool {
-	if strings.HasPrefix(ref, ".") || strings.HasPrefix(ref, "/") {
-		return true
-	}
-	info, err := os.Stat(ref)
-	if err == nil && info.IsDir() && !strings.Contains(ref, ":") {
-		return true
-	}
-	return false
+// isPath returns true if ref looks like a filesystem path (contains a path separator).
+func isPath(ref string) bool {
+	return strings.Contains(ref, "/") || strings.Contains(ref, string(filepath.Separator))
 }
 
 // diffStrings diffs two strings using the system diff command.

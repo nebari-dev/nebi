@@ -2022,7 +2022,13 @@ const docTemplate = `{
         "handlers.EnvironmentTagResponse": {
             "type": "object",
             "properties": {
+                "created_at": {
+                    "type": "string"
+                },
                 "tag": {
+                    "type": "string"
+                },
+                "updated_at": {
                     "type": "string"
                 },
                 "version_number": {

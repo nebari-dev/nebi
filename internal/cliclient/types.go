@@ -137,4 +137,6 @@ type PushResponse struct {
 type EnvironmentTag struct {
 	Tag           string `json:"tag"`
 	VersionNumber int    `json:"version_number"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
 }

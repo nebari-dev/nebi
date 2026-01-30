@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/google/uuid"
@@ -24,9 +25,20 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("getting working directory: %w", err)
 	}
 
-	// Verify pixi.toml exists
+	// Run pixi init if no pixi.toml exists
 	if _, err := os.Stat(filepath.Join(cwd, "pixi.toml")); err != nil {
-		return fmt.Errorf("pixi.toml not found in current directory; not a pixi workspace")
+		pixiPath, err := exec.LookPath("pixi")
+		if err != nil {
+			return fmt.Errorf("pixi not found on PATH; install pixi first")
+		}
+		fmt.Fprintf(os.Stderr, "No pixi.toml found; running pixi init...\n")
+		c := exec.Command(pixiPath, "init")
+		c.Dir = cwd
+		c.Stdout = os.Stdout
+		c.Stderr = os.Stderr
+		if err := c.Run(); err != nil {
+			return fmt.Errorf("pixi init failed: %w", err)
+		}
 	}
 
 	store, err := localstore.NewStore()

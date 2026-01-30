@@ -208,7 +208,7 @@ queue:
 ### Workspace Commands
 
 ```bash
-# Track a pixi workspace
+# Track a pixi workspace (runs pixi init if no pixi.toml exists)
 cd my-project
 nebi init
 

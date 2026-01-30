@@ -2,7 +2,6 @@ package localstore
 
 import (
 	"testing"
-	"time"
 )
 
 func TestIndexRoundTrip(t *testing.T) {
@@ -19,13 +18,10 @@ func TestIndexRoundTrip(t *testing.T) {
 	}
 
 	// Save and reload
-	now := time.Now().Truncate(time.Second)
 	idx.Workspaces["/home/user/project"] = &Workspace{
-		ID:        "abc-123",
-		Name:      "project",
-		Path:      "/home/user/project",
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:   "abc-123",
+		Name: "project",
+		Path: "/home/user/project",
 	}
 
 	if err := store.SaveIndex(idx); err != nil {

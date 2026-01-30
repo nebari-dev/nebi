@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/localstore"
@@ -48,14 +47,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// Create workspace entry
 	id := uuid.New().String()
 	name := filepath.Base(cwd)
-	now := time.Now()
 
 	idx.Workspaces[cwd] = &localstore.Workspace{
-		ID:        id,
-		Name:      name,
-		Path:      cwd,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:   id,
+		Name: name,
+		Path: cwd,
 	}
 
 	if err := store.SaveIndex(idx); err != nil {

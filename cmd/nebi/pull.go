@@ -138,7 +138,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		origin, _ := lookupOrigin(server)
 		if origin != nil {
-			serverTomlHash := localstore.ContentHash(pixiToml)
+			serverTomlHash, _ := localstore.TomlContentHash(pixiToml)
 			if origin.TomlHash != "" && origin.TomlHash != serverTomlHash {
 				fmt.Fprintf(os.Stderr, "Note: %s:%s has changed on server since last sync\n", envName, tag)
 			}

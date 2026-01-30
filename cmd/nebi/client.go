@@ -140,11 +140,16 @@ func saveOrigin(server, name, tag, action, tomlContent, lockContent string) erro
 		ws.Origins = make(map[string]*localstore.Origin)
 	}
 
+	tomlHash, err := localstore.TomlContentHash(tomlContent)
+	if err != nil {
+		return fmt.Errorf("hashing pixi.toml: %w", err)
+	}
+
 	ws.Origins[server] = &localstore.Origin{
 		Name:      name,
 		Tag:       tag,
 		Action:    action,
-		TomlHash:  localstore.ContentHash(tomlContent),
+		TomlHash:  tomlHash,
 		LockHash:  localstore.ContentHash(lockContent),
 		Timestamp: time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 	}

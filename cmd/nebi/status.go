@@ -66,7 +66,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// Check local file modifications against stored hashes
 	localToml, _ := os.ReadFile(filepath.Join(cwd, "pixi.toml"))
 	localLock, _ := os.ReadFile(filepath.Join(cwd, "pixi.lock"))
-	localTomlHash := localstore.ContentHash(string(localToml))
+	localTomlHash, err := localstore.TomlContentHash(string(localToml))
+	if err != nil {
+		return fmt.Errorf("hashing local pixi.toml: %w", err)
+	}
 	localLockHash := localstore.ContentHash(string(localLock))
 
 	// Use first origin's hashes as reference for local modification detection
@@ -135,7 +138,10 @@ func checkServerOrigin(serverName string, origin *localstore.Origin) string {
 		return fmt.Sprintf("Server %q is not reachable", serverName)
 	}
 
-	serverHash := localstore.ContentHash(toml)
+	serverHash, err := localstore.TomlContentHash(toml)
+	if err != nil {
+		return fmt.Sprintf("Failed to hash server pixi.toml: %v", err)
+	}
 	if origin.TomlHash != "" && origin.TomlHash != serverHash {
 		return fmt.Sprintf("%s:%s has changed on server since last sync", origin.Name, origin.Tag)
 	}

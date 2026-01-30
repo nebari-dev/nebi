@@ -43,7 +43,10 @@ func (s *Store) LoadIndex() (*Index, error) {
 	data, err := os.ReadFile(s.IndexPath())
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return &Index{Workspaces: make(map[string]*Workspace)}, nil
+			return &Index{
+				Workspaces: make(map[string]*Workspace),
+				Servers:    make(map[string]string),
+			}, nil
 		}
 		return nil, fmt.Errorf("reading index: %w", err)
 	}
@@ -54,6 +57,9 @@ func (s *Store) LoadIndex() (*Index, error) {
 	}
 	if idx.Workspaces == nil {
 		idx.Workspaces = make(map[string]*Workspace)
+	}
+	if idx.Servers == nil {
+		idx.Servers = make(map[string]string)
 	}
 	return &idx, nil
 }

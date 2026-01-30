@@ -120,16 +120,38 @@ $ nebi workspace tags my-project -s work
 Compare workspace specs between local directories, server versions, or any combination.
 
 ```bash
-# Compare two local directories
-$ nebi diff ./project-a ./project-b
-
 # Compare two server versions
 $ nebi diff my-project:v1.0 my-project:v2.0
-  + scipy = ">=1.11"
-  + matplotlib = ">=3.8"
+--- my-project:v1.0
++++ my-project:v2.0
+@@ pixi.toml @@
+ [dependencies]
++matplotlib = ">=3.8"
++scipy = ">=1.11"
 
-# Also compare lockfiles
+@@ pixi.lock (changed) @@
+  12 packages changed, 12 added
+[Use --lock for full lock file details]
+
+# With --lock to see package-level lock diff
 $ nebi diff my-project:v1.0 my-project:v2.0 --lock
+--- my-project:v1.0
++++ my-project:v2.0
+@@ pixi.toml @@
+ [dependencies]
++matplotlib = ">=3.8"
++scipy = ">=1.11"
+
+@@ pixi.lock @@
++matplotlib 3.8.5
++scipy 1.11.4
+-numpy 1.26.4
++numpy 1.26.5
+
+2 packages added, 1 package updated
+
+# Compare two local directories
+$ nebi diff ./project-a ./project-b
 
 # Compare local directory against a server version
 $ nebi diff ./my-project my-project:v1.0 -s work

@@ -239,6 +239,9 @@ nebi pull myworkspace:v1.0 --global data-science -s work
 nebi workspace promote data-science     # copy current workspace to global
 nebi workspace list                     # shows local and global workspaces
 nebi shell data-science                 # open pixi shell in a workspace by name
+nebi shell data-science -e dev          # args pass through to pixi shell
+nebi run my-task                        # run a pixi task (auto-initializes workspace)
+nebi run data-science my-task           # run a task in a global workspace
 nebi workspace remove data-science      # remove a workspace from tracking
 nebi workspace remove myenv -s work    # remove a workspace from a server
 nebi workspace prune                   # clean up workspaces with missing paths

@@ -23,7 +23,7 @@ var (
 // @name Authorization
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Start the Nebi server",
+	Short: "Run a Nebi server instance (for admins/operators)",
 	Long: `Start the Nebi server with API and/or worker components.
 
 Examples:

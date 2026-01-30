@@ -11,7 +11,7 @@ import (
 
 var serverCmd = &cobra.Command{
 	Use:   "server",
-	Short: "Manage nebi servers",
+	Short: "Manage remote server connections",
 }
 
 var serverAddCmd = &cobra.Command{

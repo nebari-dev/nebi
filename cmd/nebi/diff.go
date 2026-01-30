@@ -17,7 +17,7 @@ var diffServer string
 
 var diffCmd = &cobra.Command{
 	Use:   "diff <ref-a> [ref-b] [--lock]",
-	Short: "Compare pixi files between two sources",
+	Short: "Compare workspace specifications between two sources",
 	Long: `Compare pixi.toml (and pixi.lock with --lock) between two references.
 Each reference can be a local directory or a server workspace.
 
@@ -42,9 +42,9 @@ func init() {
 
 // diffSource represents a resolved source of pixi files for diffing.
 type diffSource struct {
-	label string            // label prefix for diff output (e.g. "a", "b", "server")
-	toml  string            // pixi.toml content
-	lock  string            // pixi.lock content (may be empty)
+	label string // label prefix for diff output (e.g. "a", "b", "server")
+	toml  string // pixi.toml content
+	lock  string // pixi.lock content (may be empty)
 }
 
 func runDiff(cmd *cobra.Command, args []string) error {

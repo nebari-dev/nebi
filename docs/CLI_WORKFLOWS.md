@@ -225,10 +225,10 @@ $ nebi publish my-project:v1.0 --registry ghcr myorg/myenv:latest
 | | `nebi workspace promote <name>` | Copy current workspace to a global workspace |
 | | `nebi workspace remove <name>` | Remove a workspace from tracking |
 | | `nebi shell [name-or-path] [-e env]` | Activate a pixi shell |
-| **Sync** | `nebi push <ws>:<tag> [-s server]` | Push specs to a server |
-| | `nebi pull <ws>[:<tag>] [-s server]` | Pull specs from a server |
+| **Sync** | `nebi push <workspace>:<tag> [-s server]` | Push specs to a server |
+| | `nebi pull <workspace>[:<tag>] [-s server]` | Pull specs from a server |
 | | `nebi diff <ref-a> [ref-b] [-s server]` | Compare workspace specs |
-| | `nebi publish <ws>:<tag> [-s server]` | Publish to an OCI registry |
+| | `nebi publish <workspace>:<tag> [-s server]` | Publish to an OCI registry |
 | **Server** | `nebi server add <name> <url>` | Register a server |
 | | `nebi server list` | List registered servers |
 | | `nebi server set-default <name>` | Set the default server |

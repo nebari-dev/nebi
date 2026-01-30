@@ -266,18 +266,26 @@ run nebi diff my-datascience promoted-ws || true
 pause
 
 # =============================================================================
-# 10. Shell activation
+# 10. Shell and Run
 # =============================================================================
-section "10. Shell activation"
+section "10. Shell and Run"
 
-echo "To activate an interactive shell in a workspace:"
+echo "nebi shell and nebi run wrap pixi shell/run with workspace lookup"
+echo "and auto-initialization. All args pass through to pixi."
 echo ""
-echo -e "  ${YELLOW}nebi shell${NC}                          # current directory"
+echo "Shell examples:"
+echo -e "  ${YELLOW}nebi shell${NC}                          # current directory (auto-initializes)"
 echo -e "  ${YELLOW}nebi shell my-datascience${NC}            # global workspace by name"
 echo -e "  ${YELLOW}nebi shell ./some-project${NC}            # local directory by path"
-echo -e "  ${YELLOW}nebi shell my-datascience -e dev${NC}     # specific pixi environment"
+echo -e "  ${YELLOW}nebi shell my-datascience -e dev${NC}     # args pass through to pixi shell"
 echo ""
-echo "(Skipping actual shell activation in demo)"
+echo "Run examples:"
+echo -e "  ${YELLOW}nebi run my-task${NC}                     # run a pixi task (auto-initializes)"
+echo -e "  ${YELLOW}nebi run my-datascience my-task${NC}      # run a task in a global workspace"
+echo -e "  ${YELLOW}nebi run ./some-project my-task${NC}      # run a task in a local directory"
+echo -e "  ${YELLOW}nebi run -e dev my-task${NC}              # args pass through to pixi run"
+echo ""
+echo "(Skipping actual shell/run activation in demo)"
 
 pause
 

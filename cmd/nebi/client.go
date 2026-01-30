@@ -92,6 +92,15 @@ func parseEnvRef(ref string) (string, string) {
 	return ref, ""
 }
 
+// formatTimestamp parses an ISO 8601 timestamp and returns a human-friendly format.
+func formatTimestamp(ts string) string {
+	t, err := time.Parse("2006-01-02T15:04:05Z", ts)
+	if err != nil {
+		return ts
+	}
+	return t.Format("2006-01-02 15:04")
+}
+
 // waitForEnvReady polls until the environment reaches ready state or timeout.
 func waitForEnvReady(client *cliclient.Client, ctx context.Context, envID string, timeout time.Duration) (*cliclient.Environment, error) {
 	deadline := time.Now().Add(timeout)

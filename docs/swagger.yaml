@@ -82,7 +82,11 @@ definitions:
     type: object
   handlers.EnvironmentTagResponse:
     properties:
+      created_at:
+        type: string
       tag:
+        type: string
+      updated_at:
         type: string
       version_number:
         type: integer

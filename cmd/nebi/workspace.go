@@ -156,9 +156,14 @@ func runWorkspaceTags(cmd *cobra.Command, args []string) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "TAG\tVERSION")
+	fmt.Fprintln(w, "TAG\tVERSION\tCREATED\tUPDATED")
 	for _, t := range tags {
-		fmt.Fprintf(w, "%s\t%d\n", t.Tag, t.VersionNumber)
+		created := formatTimestamp(t.CreatedAt)
+		updated := ""
+		if t.UpdatedAt != t.CreatedAt {
+			updated = formatTimestamp(t.UpdatedAt)
+		}
+		fmt.Fprintf(w, "%s\t%d\t%s\t%s\n", t.Tag, t.VersionNumber, created, updated)
 	}
 	return w.Flush()
 }

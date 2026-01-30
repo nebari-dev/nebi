@@ -1212,6 +1212,8 @@ func (h *EnvironmentHandler) ListTags(c *gin.Context) {
 		response[i] = EnvironmentTagResponse{
 			Tag:           t.Tag,
 			VersionNumber: t.VersionNumber,
+			CreatedAt:     t.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			UpdatedAt:     t.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 		}
 	}
 
@@ -1236,6 +1238,8 @@ type PushVersionResponse struct {
 type EnvironmentTagResponse struct {
 	Tag           string `json:"tag"`
 	VersionNumber int    `json:"version_number"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 // Helper function to get user ID from context

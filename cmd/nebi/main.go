@@ -14,7 +14,7 @@ var Version = "dev"
 var rootCmd = &cobra.Command{
 	Use:   "nebi",
 	Short: "Nebi - Local-first environment management for Pixi",
-	Long: `Nebi manages Pixi workspaces locally and syncs them to remote servers.`,
+	Long:  `Nebi manages Pixi workspaces locally and syncs them to remote servers.`,
 	Example: `  # Track a workspace and push it to a server
   nebi init
   nebi server add work https://nebi.company.com
@@ -23,10 +23,7 @@ var rootCmd = &cobra.Command{
 
   # Compare specs between directories or server versions
   nebi diff ./project-a ./project-b
-  nebi diff myworkspace:v1 myworkspace:v2 -s work
-
-  # Run a server instance (admins only)
-  nebi serve --port 8460`,
+  nebi diff myworkspace:v1 myworkspace:v2 -s work`,
 }
 
 func init() {
@@ -44,6 +41,7 @@ func init() {
 	pushCmd.GroupID = "sync"
 	pullCmd.GroupID = "sync"
 	diffCmd.GroupID = "sync"
+	publishCmd.GroupID = "sync"
 
 	loginCmd.GroupID = "server"
 	serverCmd.GroupID = "server"
@@ -59,6 +57,7 @@ func init() {
 	rootCmd.AddCommand(pushCmd)
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(shellCmd)
+	rootCmd.AddCommand(publishCmd)
 	rootCmd.AddCommand(registryCmd)
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(versionCmd)

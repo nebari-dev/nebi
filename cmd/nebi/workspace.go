@@ -88,7 +88,6 @@ func init() {
 	workspaceCmd.AddCommand(workspaceTagsCmd)
 	workspaceCmd.AddCommand(workspacePromoteCmd)
 	workspaceCmd.AddCommand(workspaceRemoveCmd)
-	workspaceCmd.AddCommand(workspacePublishCmd)
 }
 
 func runWorkspaceList(cmd *cobra.Command, args []string) error {

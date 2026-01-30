@@ -14,7 +14,7 @@ var (
 	publishRegistry string
 )
 
-var workspacePublishCmd = &cobra.Command{
+var publishCmd = &cobra.Command{
 	Use:   "publish <workspace>:<tag> [<repo>:<oci-tag>]",
 	Short: "Publish a workspace version to an OCI registry",
 	Long: `Publish a workspace version from the server to an OCI registry.
@@ -26,16 +26,16 @@ The optional second argument specifies the OCI repository and tag.
 If omitted, the workspace name and tag are used as defaults.
 
 Examples:
-  nebi workspace publish myworkspace:v1.0 -s work
-  nebi workspace publish myworkspace:v1.0 -s work myorg/myenv:latest
-  nebi workspace publish myworkspace:v1.0 -s work --registry ghcr myorg/myenv:latest`,
+  nebi publish myworkspace:v1.0 -s work
+  nebi publish myworkspace:v1.0 -s work myorg/myenv:latest
+  nebi publish myworkspace:v1.0 -s work --registry ghcr myorg/myenv:latest`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: runWorkspacePublish,
 }
 
 func init() {
-	workspacePublishCmd.Flags().StringVarP(&publishServer, "server", "s", "", "Server name or URL (uses default if not set)")
-	workspacePublishCmd.Flags().StringVar(&publishRegistry, "registry", "", "Registry name or ID (uses server default if not set)")
+	publishCmd.Flags().StringVarP(&publishServer, "server", "s", "", "Server name or URL (uses default if not set)")
+	publishCmd.Flags().StringVar(&publishRegistry, "registry", "", "Registry name or ID (uses server default if not set)")
 }
 
 func runWorkspacePublish(cmd *cobra.Command, args []string) error {

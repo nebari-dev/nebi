@@ -64,21 +64,41 @@ Examples:
 	RunE: runWorkspacePromote,
 }
 
+var wsRemoveServer string
+
 var workspaceRemoveCmd = &cobra.Command{
-	Use:   "remove <name>",
-	Short: "Remove a workspace from tracking",
-	Long: `Remove a workspace from the local index.
+	Use:     "remove <name>",
+	Aliases: []string{"rm"},
+	Short:   "Remove a workspace from tracking",
+	Long: `Remove a workspace from the local index or from a server.
 
-For global workspaces, the stored files are also deleted.
-For local workspaces, only the tracking entry is removed; project files are untouched.
+Without -s, removes from the local index:
+  - For global workspaces, the stored files are also deleted.
+  - For local workspaces, only the tracking entry is removed; project files are untouched.
+  - A bare name refers to a global workspace; use a path (with a slash) for a local workspace.
 
-A bare name refers to a global workspace; use a path (with a slash) for a local workspace.
+With -s, deletes the workspace from the specified server.
 
 Examples:
-  nebi workspace remove data-science   # remove global workspace by name
-  nebi workspace remove ./my-project   # remove local workspace by path`,
+  nebi workspace remove data-science        # remove global workspace by name
+  nebi workspace remove ./my-project        # remove local workspace by path
+  nebi workspace remove myenv -s work       # delete workspace from server`,
 	Args: cobra.ExactArgs(1),
 	RunE: runWorkspaceRemove,
+}
+
+var workspacePruneCmd = &cobra.Command{
+	Use:   "prune",
+	Short: "Remove workspaces whose paths no longer exist",
+	Long: `Remove all tracked workspaces whose directories are missing from disk.
+
+For global workspaces with missing paths, the index entry is removed.
+For local workspaces, the tracking entry is removed; no files are affected.
+
+Examples:
+  nebi workspace prune`,
+	Args: cobra.NoArgs,
+	RunE: runWorkspacePrune,
 }
 
 func init() {
@@ -87,7 +107,9 @@ func init() {
 	workspaceCmd.AddCommand(workspaceListCmd)
 	workspaceCmd.AddCommand(workspaceTagsCmd)
 	workspaceCmd.AddCommand(workspacePromoteCmd)
+	workspaceRemoveCmd.Flags().StringVarP(&wsRemoveServer, "server", "s", "", "Remove workspace from a server instead of locally")
 	workspaceCmd.AddCommand(workspaceRemoveCmd)
+	workspaceCmd.AddCommand(workspacePruneCmd)
 }
 
 func runWorkspaceList(cmd *cobra.Command, args []string) error {
@@ -115,14 +137,26 @@ func runWorkspaceListLocal() error {
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "NAME\tTYPE\tPATH")
+	var missing int
 	for _, ws := range idx.Workspaces {
 		wsType := "local"
 		if ws.Global {
 			wsType = "global"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\n", ws.Name, wsType, ws.Path)
+		path := ws.Path
+		if _, err := os.Stat(ws.Path); os.IsNotExist(err) {
+			path += " (missing)"
+			missing++
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\n", ws.Name, wsType, path)
 	}
-	return w.Flush()
+	if err := w.Flush(); err != nil {
+		return err
+	}
+	if missing > 0 {
+		fmt.Fprintf(os.Stderr, "\n%d workspace(s) have missing paths. Run 'nebi workspace prune' to clean up.\n", missing)
+	}
+	return nil
 }
 
 func runWorkspaceTags(cmd *cobra.Command, args []string) error {
@@ -276,8 +310,39 @@ func runWorkspacePromote(cmd *cobra.Command, args []string) error {
 }
 
 func runWorkspaceRemove(cmd *cobra.Command, args []string) error {
-	arg := args[0]
+	if wsRemoveServer != "" {
+		return runWorkspaceRemoveServer(args[0])
+	}
+	return runWorkspaceRemoveLocal(args[0])
+}
 
+func runWorkspaceRemoveServer(name string) error {
+	server, err := resolveServerFlag(wsRemoveServer)
+	if err != nil {
+		return err
+	}
+
+	client, err := getAuthenticatedClient(server)
+	if err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	env, err := findEnvByName(client, ctx, name)
+	if err != nil {
+		return err
+	}
+
+	if err := client.DeleteEnvironment(ctx, env.ID); err != nil {
+		return fmt.Errorf("deleting workspace: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Deleted workspace %q from server %q\n", name, server)
+	return nil
+}
+
+func runWorkspaceRemoveLocal(arg string) error {
 	store, err := localstore.NewStore()
 	if err != nil {
 		return err
@@ -328,5 +393,40 @@ func runWorkspaceRemove(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Fprintf(os.Stderr, "Removed workspace %q (project files untouched)\n", arg)
 	}
+	return nil
+}
+
+func runWorkspacePrune(cmd *cobra.Command, args []string) error {
+	store, err := localstore.NewStore()
+	if err != nil {
+		return err
+	}
+
+	idx, err := store.LoadIndex()
+	if err != nil {
+		return err
+	}
+
+	var pruned []string
+	for path, ws := range idx.Workspaces {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			delete(idx.Workspaces, path)
+			pruned = append(pruned, ws.Name)
+		}
+	}
+
+	if len(pruned) == 0 {
+		fmt.Fprintln(os.Stderr, "Nothing to prune.")
+		return nil
+	}
+
+	if err := store.SaveIndex(idx); err != nil {
+		return fmt.Errorf("saving index: %w", err)
+	}
+
+	for _, name := range pruned {
+		fmt.Fprintf(os.Stderr, "Pruned %q\n", name)
+	}
+	fmt.Fprintf(os.Stderr, "Removed %d missing workspace(s).\n", len(pruned))
 	return nil
 }

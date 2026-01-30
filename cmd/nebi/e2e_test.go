@@ -686,6 +686,161 @@ func TestE2E_WorkspaceRemove(t *testing.T) {
 	}
 }
 
+func TestE2E_WorkspaceRemoveServer(t *testing.T) {
+	setupLocalStore(t)
+
+	wsName := "e2e-remove-server"
+	tag := "v1.0"
+
+	// Push a workspace to the server
+	srcDir := t.TempDir()
+	writePixiFiles(t, srcDir,
+		"[project]\nname = \"remove-server-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+		"version: 6\n",
+	)
+
+	res := runCLI(t, srcDir, "push", wsName+":"+tag, "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Verify it exists on the server
+	res = runCLI(t, srcDir, "workspace", "list", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("workspace list failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, wsName) {
+		t.Fatalf("expected %s in server workspace list, got: %s", wsName, res.Stdout)
+	}
+
+	// Remove from server
+	res = runCLI(t, srcDir, "workspace", "remove", wsName, "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("workspace remove -s failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "Deleted") {
+		t.Errorf("expected 'Deleted' message, got stderr: %s", res.Stderr)
+	}
+
+	// Verify it's gone from the server
+	res = runCLI(t, srcDir, "workspace", "list", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("workspace list failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if strings.Contains(res.Stdout, wsName) {
+		t.Errorf("workspace still on server after remove: %s", res.Stdout)
+	}
+}
+
+func TestE2E_WorkspaceRemoveAlias(t *testing.T) {
+	setupLocalStore(t)
+
+	// Create and init a workspace, then promote it
+	dir := t.TempDir()
+	writePixiFiles(t, dir,
+		"[project]\nname = \"alias-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+		"version: 6\n",
+	)
+
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	res = runCLI(t, dir, "workspace", "promote", "alias-rm-test")
+	if res.ExitCode != 0 {
+		t.Fatalf("promote failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Use 'rm' alias to remove
+	res = runCLI(t, dir, "workspace", "rm", "alias-rm-test")
+	if res.ExitCode != 0 {
+		t.Fatalf("workspace rm (alias) failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Verify it's gone
+	res = runCLI(t, dir, "workspace", "list")
+	if strings.Contains(res.Stdout, "alias-rm-test") {
+		t.Errorf("workspace still in list after rm: %s", res.Stdout)
+	}
+}
+
+func TestE2E_WorkspacePrune(t *testing.T) {
+	setupLocalStore(t)
+
+	// Create and init a workspace
+	dir := t.TempDir()
+	writePixiFiles(t, dir,
+		"[project]\nname = \"prune-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+		"version: 6\n",
+	)
+
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Create a second workspace
+	dir2 := t.TempDir()
+	writePixiFiles(t, dir2,
+		"[project]\nname = \"prune-test-2\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+		"version: 6\n",
+	)
+
+	res = runCLI(t, dir2, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Delete one directory to simulate a missing workspace
+	os.RemoveAll(dir2)
+
+	// Workspace list should show (missing)
+	res = runCLI(t, dir, "workspace", "list")
+	if res.ExitCode != 0 {
+		t.Fatalf("workspace list failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, "(missing)") {
+		t.Errorf("expected (missing) indicator in list, got: %s", res.Stdout)
+	}
+	if !strings.Contains(res.Stderr, "prune") {
+		t.Errorf("expected prune hint in stderr, got: %s", res.Stderr)
+	}
+
+	// Prune should remove the missing workspace
+	res = runCLI(t, dir, "workspace", "prune")
+	if res.ExitCode != 0 {
+		t.Fatalf("workspace prune failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "Pruned") {
+		t.Errorf("expected 'Pruned' message, got stderr: %s", res.Stderr)
+	}
+
+	// List should no longer show the missing workspace
+	res = runCLI(t, dir, "workspace", "list")
+	if res.ExitCode != 0 {
+		t.Fatalf("workspace list failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if strings.Contains(res.Stdout, "(missing)") {
+		t.Errorf("missing workspace still in list after prune: %s", res.Stdout)
+	}
+}
+
+func TestE2E_WorkspacePruneNoop(t *testing.T) {
+	setupLocalStore(t)
+
+	dir := t.TempDir()
+
+	// Prune with nothing to prune
+	res := runCLI(t, dir, "workspace", "prune")
+	if res.ExitCode != 0 {
+		t.Fatalf("workspace prune failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "Nothing to prune") {
+		t.Errorf("expected 'Nothing to prune' message, got stderr: %s", res.Stderr)
+	}
+}
+
 func TestE2E_RegistryListEmpty(t *testing.T) {
 	setupLocalStore(t)
 

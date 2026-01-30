@@ -48,6 +48,36 @@ pause() {
 }
 
 # =============================================================================
+# Pre-flight cleanup
+# =============================================================================
+cleanup_existing() {
+    local found=0
+    if nebi workspace list 2>/dev/null | grep -q "my-datascience\|promoted-ws"; then
+        found=1
+    fi
+    if nebi server list 2>/dev/null | grep -q "demo"; then
+        found=1
+    fi
+
+    if [ "$found" -eq 1 ]; then
+        echo -e "${YELLOW}Found artifacts from a previous demo run.${NC}"
+        echo -n "Remove them before continuing? [y/N] "
+        read -r answer
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+            nebi workspace remove my-datascience 2>/dev/null || true
+            nebi workspace remove promoted-ws 2>/dev/null || true
+            nebi server remove demo 2>/dev/null || true
+            echo -e "${GREEN}Cleaned up previous demo artifacts.${NC}"
+        else
+            echo "Continuing without cleanup."
+        fi
+        echo ""
+    fi
+}
+
+cleanup_existing
+
+# =============================================================================
 # Setup
 # =============================================================================
 section "Setup: Creating a demo pixi workspace"
@@ -277,42 +307,13 @@ pause
 section "12. Cleanup"
 
 echo "Removing global workspaces..."
-run nebi workspace remove my-datascience
-run nebi workspace remove promoted-ws
+run nebi workspace remove my-datascience || true
+run nebi workspace remove promoted-ws || true
 
 echo "Removing server..."
-run nebi server remove demo
+run nebi server remove demo || true
 
 echo "Cleaning up temporary directories..."
 rm -rf "$DEMO_DIR" "$PULL_DIR"
 
-echo "Done."
-
-# =============================================================================
-# Summary
-# =============================================================================
-section "Demo Complete!"
-
-echo "Commands demonstrated:"
-echo ""
-echo "  Workspace Commands:"
-echo "    nebi init                              Track current directory"
-echo "    nebi workspace list [-s server]        List workspaces"
-echo "    nebi workspace tags <name> -s server   List tags on server"
-echo "    nebi workspace promote <name>          Copy to global workspace"
-echo "    nebi workspace remove <name>           Remove from tracking"
-echo "    nebi shell [name-or-path] [-e env]     Activate pixi shell"
-echo ""
-echo "  Sync Commands:"
-echo "    nebi push <ws>:<tag> -s server         Push specs to server"
-echo "    nebi pull <ws>[:<tag>] -s server       Pull specs from server"
-echo "    nebi diff <ref-a> [ref-b] [-s server]  Compare specs"
-echo "    nebi publish <ws>:<tag> -s server      Publish to OCI registry"
-echo ""
-echo "  Server Commands:"
-echo "    nebi server add <name> <url>           Register a server"
-echo "    nebi server list                       List servers"
-echo "    nebi server remove <name>              Remove a server"
-echo "    nebi login <server>                    Authenticate"
-echo "    nebi registry list -s server           List OCI registries"
-echo ""
+echo -e "${GREEN}Done. All demo artifacts removed.${NC}"

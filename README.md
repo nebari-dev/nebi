@@ -212,17 +212,23 @@ queue:
 cd my-project
 nebi init
 
+# Check sync status
+nebi status
+
 # List tracked workspaces
 nebi workspace list
 
 # Compare pixi specs between directories or server versions
+nebi diff                                # local vs last pushed/pulled origin
 nebi diff ./project-a ./project-b
 nebi diff ./project-a ./project-b --lock    # also compare pixi.lock
 nebi diff myworkspace:v1 myworkspace:v2 -s work
 
 # Push/pull versioned specs
 nebi push myworkspace:v1.0 -s work
+nebi push :v2.0                          # reuse workspace name from origin
 nebi pull myworkspace:v1.0 -s work
+nebi pull                                # re-pull from last origin
 
 # List workspaces and tags on a server
 nebi workspace list -s work

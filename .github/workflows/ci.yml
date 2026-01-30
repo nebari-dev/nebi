@@ -64,8 +64,8 @@ jobs:
       - name: Build
         run: make build
 
-      - name: Run tests
-        run: go test -v -race -coverprofile=coverage.out $(go list ./... | grep -v /scripts)
+      - name: Run tests (unit + e2e)
+        run: go test -tags=e2e -v -race -coverprofile=coverage.out $(go list ./... | grep -v /scripts)
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4

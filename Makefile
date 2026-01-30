@@ -78,9 +78,9 @@ migrate: ## Run database migrations
 	@echo "Running migrations..."
 	@go run cmd/nebi/main.go serve
 
-test: ## Run tests
+test: ## Run tests (unit + e2e)
 	@echo "Running tests..."
-	@go test -v ./...
+	@go test -tags=e2e -v ./...
 
 clean: ## Clean build artifacts
 	@echo "Cleaning..."

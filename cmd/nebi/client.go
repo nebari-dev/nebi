@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -80,7 +81,75 @@ func validateWorkspaceName(name string) error {
 	if name == "" {
 		return fmt.Errorf("workspace name must not be empty")
 	}
+	if name == "." || name == ".." {
+		return fmt.Errorf("workspace name %q is reserved and cannot be used", name)
+	}
 	return nil
+}
+
+// lookupOrigin returns the origin for the current working directory and the given server.
+// Returns nil (no error) if no origin is set.
+func lookupOrigin(server string) (*localstore.Origin, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("getting working directory: %w", err)
+	}
+
+	store, err := localstore.NewStore()
+	if err != nil {
+		return nil, err
+	}
+
+	idx, err := store.LoadIndex()
+	if err != nil {
+		return nil, err
+	}
+
+	ws, exists := idx.Workspaces[cwd]
+	if !exists || ws.Origins == nil {
+		return nil, nil
+	}
+
+	return ws.Origins[server], nil
+}
+
+// saveOrigin records a push/pull origin for the current working directory.
+func saveOrigin(server, name, tag, action, tomlContent, lockContent string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("getting working directory: %w", err)
+	}
+
+	store, err := localstore.NewStore()
+	if err != nil {
+		return err
+	}
+
+	idx, err := store.LoadIndex()
+	if err != nil {
+		return err
+	}
+
+	ws, exists := idx.Workspaces[cwd]
+	if !exists {
+		// Not a tracked workspace — nothing to save
+		return nil
+	}
+
+	if ws.Origins == nil {
+		ws.Origins = make(map[string]*localstore.Origin)
+	}
+
+	ws.Origins[server] = &localstore.Origin{
+		Name:      name,
+		Tag:       tag,
+		Action:    action,
+		TomlHash:  localstore.ContentHash(tomlContent),
+		LockHash:  localstore.ContentHash(lockContent),
+		Timestamp: time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+	}
+
+	return store.SaveIndex(idx)
 }
 
 // parseEnvRef parses a reference in the format env:tag.

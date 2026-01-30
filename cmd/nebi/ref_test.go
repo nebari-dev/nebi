@@ -15,8 +15,8 @@ func TestIsPath(t *testing.T) {
 		{"../bar", true},
 		{"/tmp/project", true},
 		{"foo/bar", true},
-		{".", false},  // no slash
-		{"..", false}, // no slash
+		{".", true},  // current directory
+		{"..", true}, // parent directory
 
 		// Names (no slash)
 		{"data-science", false},
@@ -62,6 +62,10 @@ func TestValidateWorkspaceName(t *testing.T) {
 
 		// Invalid: empty
 		{"", true},
+
+		// Invalid: reserved names (path-like)
+		{".", true},
+		{"..", true},
 	}
 
 	for _, tt := range tests {

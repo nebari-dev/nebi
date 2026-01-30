@@ -25,9 +25,13 @@ Each reference can be:
   - A global workspace name (bare word): data-science
   - A server ref (contains a colon): myworkspace:v1
 
+If no refs are given, compares the current directory against the last
+pushed/pulled origin on the target server.
+
 If only one ref is given, it is compared against the current directory.
 
 Examples:
+  nebi diff                                    # local vs origin on server
   nebi diff ./other-project                    # other dir vs cwd
   nebi diff ./project-a ./project-b            # two local dirs
   nebi diff data-science                       # global workspace vs cwd
@@ -36,7 +40,7 @@ Examples:
   nebi diff myworkspace:v1 ./local-dir -s work # server vs local dir
 
 Use --lock to also compare pixi.lock files.`,
-	Args: cobra.RangeArgs(1, 2),
+	Args: cobra.RangeArgs(0, 2),
 	RunE: runDiff,
 }
 
@@ -53,9 +57,29 @@ type diffSource struct {
 }
 
 func runDiff(cmd *cobra.Command, args []string) error {
-	refA := args[0]
-	refB := "."
-	if len(args) == 2 {
+	var refA, refB string
+
+	switch len(args) {
+	case 0:
+		// No args — diff local vs origin on server
+		server, err := resolveServerFlag(diffServer)
+		if err != nil {
+			return err
+		}
+		origin, err := lookupOrigin(server)
+		if err != nil {
+			return err
+		}
+		if origin == nil {
+			return fmt.Errorf("no origin set; use 'nebi diff <ref>' or push/pull first")
+		}
+		refA = "."
+		refB = origin.Name + ":" + origin.Tag
+	case 1:
+		refA = args[0]
+		refB = "."
+	default:
+		refA = args[0]
 		refB = args[1]
 	}
 
@@ -249,7 +273,7 @@ func resolveVersionNumber(client *cliclient.Client, ctx context.Context, envID, 
 	return latest.VersionNumber, nil
 }
 
-// isPath returns true if ref looks like a filesystem path (contains a path separator).
+// isPath returns true if ref looks like a filesystem path (contains a path separator or is "." or "..").
 func isPath(ref string) bool {
-	return strings.Contains(ref, "/") || strings.Contains(ref, string(filepath.Separator))
+	return ref == "." || ref == ".." || strings.Contains(ref, "/") || strings.Contains(ref, string(filepath.Separator))
 }

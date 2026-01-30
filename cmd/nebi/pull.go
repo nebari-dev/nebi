@@ -18,7 +18,7 @@ var pullForce bool
 
 var pullCmd = &cobra.Command{
 	Use:   "pull <workspace>[:<tag>]",
-	Short: "Pull workspace spec files from a server",
+	Short: "Pull workspace spec files from a nebi server",
 	Long: `Pull pixi.toml and pixi.lock from a nebi server.
 
 If no tag is specified, the latest version is pulled.

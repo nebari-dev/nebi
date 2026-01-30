@@ -545,3 +545,172 @@ func TestE2E_LoginWithToken(t *testing.T) {
 		t.Errorf("expected 'Logged in' message, got stderr: %s", res.Stderr)
 	}
 }
+
+func TestE2E_PullGlobal(t *testing.T) {
+	setupLocalStore(t)
+
+	wsName := "e2e-pull-global"
+	tag := "v1.0"
+
+	// Push a workspace to the server first
+	srcDir := t.TempDir()
+	toml := "[project]\nname = \"global-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\npackages: []\n"
+	writePixiFiles(t, srcDir, toml, lock)
+
+	res := runCLI(t, srcDir, "push", wsName+":"+tag, "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Pull as global workspace
+	tmpDir := t.TempDir()
+	res = runCLI(t, tmpDir, "pull", wsName+":"+tag, "--global", "my-global-env", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("pull --global failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "global workspace") {
+		t.Errorf("expected 'global workspace' in output, got stderr: %s", res.Stderr)
+	}
+
+	// Workspace list should show it as global
+	res = runCLI(t, tmpDir, "workspace", "list")
+	if res.ExitCode != 0 {
+		t.Fatalf("workspace list failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, "my-global-env") {
+		t.Errorf("expected 'my-global-env' in workspace list, got: %s", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "global") {
+		t.Errorf("expected 'global' type in workspace list, got: %s", res.Stdout)
+	}
+
+	// Pulling same name without --force should fail
+	res = runCLI(t, tmpDir, "pull", wsName+":"+tag, "--global", "my-global-env", "-s", "e2e")
+	if res.ExitCode == 0 {
+		t.Fatal("expected non-zero exit when global workspace already exists without --force")
+	}
+
+	// With --force should succeed
+	res = runCLI(t, tmpDir, "pull", wsName+":"+tag, "--global", "my-global-env", "--force", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("pull --global --force failed: %s %s", res.Stdout, res.Stderr)
+	}
+}
+
+func TestE2E_WorkspacePromote(t *testing.T) {
+	setupLocalStore(t)
+
+	// Create and init a local workspace
+	dir := t.TempDir()
+	toml := "[project]\nname = \"promote-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\n"
+	writePixiFiles(t, dir, toml, lock)
+
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Promote to global
+	res = runCLI(t, dir, "workspace", "promote", "promoted-env")
+	if res.ExitCode != 0 {
+		t.Fatalf("promote failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "promoted-env") {
+		t.Errorf("expected 'promoted-env' in output, got stderr: %s", res.Stderr)
+	}
+
+	// Should show up in workspace list as global
+	res = runCLI(t, dir, "workspace", "list")
+	if res.ExitCode != 0 {
+		t.Fatalf("workspace list failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, "promoted-env") || !strings.Contains(res.Stdout, "global") {
+		t.Errorf("expected promoted-env as global in list, got: %s", res.Stdout)
+	}
+
+	// Promoting with same name should fail
+	res = runCLI(t, dir, "workspace", "promote", "promoted-env")
+	if res.ExitCode == 0 {
+		t.Fatal("expected non-zero exit when name already exists")
+	}
+}
+
+func TestE2E_WorkspaceRemove(t *testing.T) {
+	setupLocalStore(t)
+
+	// Create and init a local workspace
+	dir := t.TempDir()
+	writePixiFiles(t, dir,
+		"[project]\nname = \"remove-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+		"version: 6\n",
+	)
+
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Promote to global
+	res = runCLI(t, dir, "workspace", "promote", "to-remove")
+	if res.ExitCode != 0 {
+		t.Fatalf("promote failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Remove the global workspace
+	res = runCLI(t, dir, "workspace", "remove", "to-remove")
+	if res.ExitCode != 0 {
+		t.Fatalf("remove failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Should no longer appear in list
+	res = runCLI(t, dir, "workspace", "list")
+	if strings.Contains(res.Stdout, "to-remove") {
+		t.Errorf("removed workspace still in list: %s", res.Stdout)
+	}
+
+	// Remove local workspace (should keep files)
+	baseName := filepath.Base(dir)
+	res = runCLI(t, dir, "workspace", "remove", baseName)
+	if res.ExitCode != 0 {
+		t.Fatalf("remove local failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "untouched") {
+		t.Errorf("expected 'untouched' message for local remove, got: %s", res.Stderr)
+	}
+
+	// pixi.toml should still exist
+	if _, err := os.Stat(filepath.Join(dir, "pixi.toml")); err != nil {
+		t.Error("pixi.toml was deleted for local workspace remove")
+	}
+}
+
+func TestE2E_DiffByWorkspaceName(t *testing.T) {
+	setupLocalStore(t)
+
+	// Create and init a workspace
+	dir := t.TempDir()
+	toml := "[project]\nname = \"diff-name-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	writePixiFiles(t, dir, toml, "version: 6\n")
+
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Create a second directory with different content
+	dir2 := t.TempDir()
+	toml2 := "[project]\nname = \"diff-name-other\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	writePixiFiles(t, dir2, toml2, "version: 6\n")
+
+	// Diff using workspace name vs directory path
+	baseName := filepath.Base(dir)
+	res = runCLI(t, dir2, "diff", baseName)
+	if res.ExitCode != 0 {
+		t.Fatalf("diff by name failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, "diff-name-test") && !strings.Contains(res.Stdout, "diff-name-other") {
+		t.Errorf("expected diff output with project names, got: %s", res.Stdout)
+	}
+}

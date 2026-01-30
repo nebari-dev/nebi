@@ -2,9 +2,10 @@ package localstore
 
 // Workspace represents a tracked pixi workspace in the local index.
 type Workspace struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Path string `json:"path"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Global bool   `json:"global,omitempty"`
 }
 
 // Index is the top-level structure stored in index.json.

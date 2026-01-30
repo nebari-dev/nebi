@@ -227,6 +227,17 @@ nebi pull myworkspace:v1.0 -s work
 # List workspaces and tags on a server
 nebi workspace list -s work
 nebi workspace tags myworkspace -s work
+
+# Global workspaces (stored centrally by nebi)
+nebi pull myworkspace:v1.0 --global data-science -s work
+nebi workspace promote data-science     # copy current workspace to global
+nebi workspace list                     # shows local and global workspaces
+nebi activate data-science              # open pixi shell in a workspace by name
+nebi workspace remove data-science      # remove a workspace from tracking
+
+# Diff using workspace names
+nebi diff data-science ./my-project
+nebi diff data-science ml-pipeline
 ```
 
 ### Connection Commands
@@ -248,7 +259,7 @@ nebi serve --port 8080 --mode server
 ### Configuration
 
 Nebi stores data in platform-standard directories:
-- **Data** (`~/.local/share/nebi/`): index, credentials
+- **Data** (`~/.local/share/nebi/`): index, credentials, global workspace environments
 - **Config** (`~/.config/nebi/config.yaml`): default server and user preferences
 
 The first server added with `nebi server add` automatically becomes the default, so `-s` can be omitted on commands like `push`, `pull`, `diff`, and `workspace tags`.

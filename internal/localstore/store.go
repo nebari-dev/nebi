@@ -89,6 +89,11 @@ func (s *Store) SaveIndex(idx *Index) error {
 	return nil
 }
 
+// GlobalEnvDir returns the directory for a global environment identified by its UUID.
+func (s *Store) GlobalEnvDir(id string) string {
+	return filepath.Join(s.dataDir, "environments", id)
+}
+
 // defaultDataDir returns ~/.local/share/nebi/ on Linux, platform equivalent elsewhere.
 // Can be overridden with NEBI_DATA_DIR env var (for testing).
 func defaultDataDir() (string, error) {

@@ -118,3 +118,23 @@ type UpdateRegistryRequest struct {
 	Password  *string `json:"password,omitempty"`
 	IsDefault *bool   `json:"is_default,omitempty"`
 }
+
+// PushRequest represents a request to push a version to the server.
+type PushRequest struct {
+	Tag      string `json:"tag"`
+	PixiToml string `json:"pixi_toml"`
+	PixiLock string `json:"pixi_lock,omitempty"`
+	Force    bool   `json:"force,omitempty"`
+}
+
+// PushResponse represents the response from pushing a version.
+type PushResponse struct {
+	VersionNumber int    `json:"version_number"`
+	Tag           string `json:"tag"`
+}
+
+// EnvironmentTag represents a server-side tag pointing to a version.
+type EnvironmentTag struct {
+	Tag           string `json:"tag"`
+	VersionNumber int    `json:"version_number"`
+}

@@ -23,6 +23,9 @@ Local commands:
   nebi commit             Snapshot current spec files
 
 Server commands:
+  nebi login              Authenticate with a server
+  nebi push               Push spec files to a server
+  nebi pull               Pull spec files from a server
   nebi serve              Start the Nebi server`,
 }
 
@@ -35,6 +38,8 @@ func init() {
 	rootCmd.AddCommand(commitCmd)
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(serverCmd)
+	rootCmd.AddCommand(pushCmd)
+	rootCmd.AddCommand(pullCmd)
 }
 
 func main() {

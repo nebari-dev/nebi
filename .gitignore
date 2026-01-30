@@ -64,3 +64,6 @@ dist/
 # Go workspace (machine-specific)
 go.work
 go.work.sum
+
+# Claude
+CLAUDE.md

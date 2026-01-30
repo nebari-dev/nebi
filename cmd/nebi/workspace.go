@@ -55,7 +55,7 @@ var workspacePromoteCmd = &cobra.Command{
 from the current tracked workspace directory.
 
 The global workspace is stored in nebi's data directory and can be
-referenced by name in commands like diff and activate.
+referenced by name in commands like diff and shell.
 
 Examples:
   cd my-project
@@ -88,6 +88,7 @@ func init() {
 	workspaceCmd.AddCommand(workspaceTagsCmd)
 	workspaceCmd.AddCommand(workspacePromoteCmd)
 	workspaceCmd.AddCommand(workspaceRemoveCmd)
+	workspaceCmd.AddCommand(workspacePublishCmd)
 }
 
 func runWorkspaceList(cmd *cobra.Command, args []string) error {

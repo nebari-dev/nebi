@@ -66,13 +66,27 @@ func runServerAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("server '%s' already exists; remove it first", name)
 	}
 
+	isFirst := len(idx.Servers) == 0
 	idx.Servers[name] = url
 
 	if err := store.SaveIndex(idx); err != nil {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, "Server '%s' added: %s\n", name, url)
+	// Auto-set as default if this is the first server
+	if isFirst {
+		cfg, err := localstore.LoadConfig()
+		if err != nil {
+			return err
+		}
+		cfg.DefaultServer = name
+		if err := localstore.SaveConfig(cfg); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Server '%s' added: %s (set as default)\n", name, url)
+	} else {
+		fmt.Fprintf(os.Stderr, "Server '%s' added: %s\n", name, url)
+	}
 	return nil
 }
 
@@ -92,10 +106,20 @@ func runServerList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	cfg, _ := localstore.LoadConfig()
+	defaultServer := ""
+	if cfg != nil {
+		defaultServer = cfg.DefaultServer
+	}
+
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tURL")
+	fmt.Fprintln(w, "NAME\tURL\tDEFAULT")
 	for name, url := range idx.Servers {
-		fmt.Fprintf(w, "%s\t%s\n", name, url)
+		def := ""
+		if name == defaultServer {
+			def = "*"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\n", name, url, def)
 	}
 	return w.Flush()
 }
@@ -121,6 +145,13 @@ func runServerRemove(cmd *cobra.Command, args []string) error {
 
 	if err := store.SaveIndex(idx); err != nil {
 		return err
+	}
+
+	// Clear default if we just removed it
+	cfg, _ := localstore.LoadConfig()
+	if cfg != nil && cfg.DefaultServer == name {
+		cfg.DefaultServer = ""
+		_ = localstore.SaveConfig(cfg)
 	}
 
 	fmt.Fprintf(os.Stderr, "Server '%s' removed\n", name)

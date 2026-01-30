@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/spf13/cobra"
@@ -27,9 +28,8 @@ Examples:
 }
 
 func init() {
-	pushCmd.Flags().StringVarP(&pushServer, "server", "s", "", "Server name or URL (required)")
+	pushCmd.Flags().StringVarP(&pushServer, "server", "s", "", "Server name or URL (uses default if not set)")
 	pushCmd.Flags().BoolVar(&pushForce, "force", false, "Overwrite existing tag on server")
-	_ = pushCmd.MarkFlagRequired("server")
 }
 
 func runPush(cmd *cobra.Command, args []string) error {
@@ -49,7 +49,12 @@ func runPush(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(os.Stderr, "Warning: pixi.lock not found. Run 'pixi install' to generate it.")
 	}
 
-	client, err := getAuthenticatedClient(pushServer)
+	server, err := resolveServerFlag(pushServer)
+	if err != nil {
+		return err
+	}
+
+	client, err := getAuthenticatedClient(server)
 	if err != nil {
 		return err
 	}
@@ -71,7 +76,11 @@ func runPush(cmd *cobra.Command, args []string) error {
 		if createErr != nil {
 			return fmt.Errorf("failed to create environment %q: %w", envName, createErr)
 		}
-		env = newEnv
+		// Wait for environment to be ready (server runs pixi install)
+		env, err = waitForEnvReady(client, ctx, newEnv.ID, 60*time.Second)
+		if err != nil {
+			return fmt.Errorf("environment %q failed to become ready: %w", envName, err)
+		}
 		fmt.Fprintf(os.Stderr, "Created environment %q\n", envName)
 	}
 

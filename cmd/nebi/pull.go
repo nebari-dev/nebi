@@ -28,15 +28,19 @@ Examples:
 }
 
 func init() {
-	pullCmd.Flags().StringVarP(&pullServer, "server", "s", "", "Server name or URL (required)")
+	pullCmd.Flags().StringVarP(&pullServer, "server", "s", "", "Server name or URL (uses default if not set)")
 	pullCmd.Flags().StringVarP(&pullOutput, "output", "o", ".", "Output directory")
-	_ = pullCmd.MarkFlagRequired("server")
 }
 
 func runPull(cmd *cobra.Command, args []string) error {
 	envName, tag := parseEnvRef(args[0])
 
-	client, err := getAuthenticatedClient(pullServer)
+	server, err := resolveServerFlag(pullServer)
+	if err != nil {
+		return err
+	}
+
+	client, err := getAuthenticatedClient(server)
 	if err != nil {
 		return err
 	}

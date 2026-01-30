@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
+	"github.com/nebari-dev/nebi/internal/diff"
 	"github.com/nebari-dev/nebi/internal/localstore"
 	"github.com/spf13/cobra"
 )
@@ -69,26 +69,46 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("resolving %s: %w", refB, err)
 	}
 
-	files := []string{"pixi.toml"}
-	if diffLock {
-		files = append(files, "pixi.lock")
+	hasOutput := false
+
+	// Semantic TOML diff
+	tomlDiff, err := diff.CompareToml([]byte(srcA.toml), []byte(srcB.toml))
+	if err != nil {
+		return fmt.Errorf("comparing pixi.toml: %w", err)
 	}
 
-	hasOutput := false
-	for _, name := range files {
-		var contentA, contentB string
-		if name == "pixi.toml" {
-			contentA, contentB = srcA.toml, srcB.toml
-		} else {
-			contentA, contentB = srcA.lock, srcB.lock
-		}
+	if tomlDiff.HasChanges() {
+		fmt.Print(diff.FormatUnifiedDiff(tomlDiff, srcA.label, srcB.label))
+		hasOutput = true
+	}
 
-		diff, err := diffStrings(contentA, contentB, srcA.label+"/"+name, srcB.label+"/"+name)
-		if err != nil {
-			return err
-		}
-		if diff != "" {
-			fmt.Print(diff)
+	// Lock file diff
+	if srcA.lock != srcB.lock {
+		lockSummary, _ := diff.CompareLock([]byte(srcA.lock), []byte(srcB.lock))
+		if diffLock && lockSummary != nil {
+			fmt.Println()
+			fmt.Print(diff.FormatLockDiffText(lockSummary))
+			hasOutput = true
+		} else {
+			fmt.Println()
+			fmt.Println("@@ pixi.lock (changed) @@")
+			if lockSummary != nil {
+				total := lockSummary.PackagesAdded + lockSummary.PackagesRemoved + lockSummary.PackagesUpdated
+				if total > 0 {
+					fmt.Printf("  %d packages changed", total)
+					if lockSummary.PackagesAdded > 0 {
+						fmt.Printf(", %d added", lockSummary.PackagesAdded)
+					}
+					if lockSummary.PackagesRemoved > 0 {
+						fmt.Printf(", %d removed", lockSummary.PackagesRemoved)
+					}
+					if lockSummary.PackagesUpdated > 0 {
+						fmt.Printf(", %d updated", lockSummary.PackagesUpdated)
+					}
+					fmt.Println()
+				}
+			}
+			fmt.Println("[Use --lock for full lock file details]")
 			hasOutput = true
 		}
 	}
@@ -232,40 +252,3 @@ func isPath(ref string) bool {
 	return strings.Contains(ref, "/") || strings.Contains(ref, string(filepath.Separator))
 }
 
-// diffStrings diffs two strings using the system diff command.
-func diffStrings(a, b, labelA, labelB string) (string, error) {
-	tmpA, err := writeTempFile(a)
-	if err != nil {
-		return "", err
-	}
-	defer os.Remove(tmpA)
-
-	tmpB, err := writeTempFile(b)
-	if err != nil {
-		return "", err
-	}
-	defer os.Remove(tmpB)
-
-	out, err := exec.Command("diff", "-u", "--label", labelA, "--label", labelB, tmpA, tmpB).Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-			return string(out), nil
-		}
-		return "", fmt.Errorf("running diff: %w", err)
-	}
-	return "", nil
-}
-
-func writeTempFile(content string) (string, error) {
-	f, err := os.CreateTemp("", "nebi-diff-*")
-	if err != nil {
-		return "", fmt.Errorf("creating temp file: %w", err)
-	}
-	if _, err := f.WriteString(content); err != nil {
-		f.Close()
-		os.Remove(f.Name())
-		return "", fmt.Errorf("writing temp file: %w", err)
-	}
-	f.Close()
-	return f.Name(), nil
-}

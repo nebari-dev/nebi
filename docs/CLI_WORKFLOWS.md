@@ -34,20 +34,18 @@ Default server set to 'staging'
 
 ## Workflow 1: Track a Workspace Locally
 
-Start by creating a pixi project, then register it with nebi.
+Initialize a workspace with nebi. If no `pixi.toml` exists, `nebi init` runs `pixi init` automatically.
 
 ```bash
-# Create a new pixi workspace
+# Create and track a new workspace (runs pixi init if needed)
 $ mkdir my-project && cd my-project
-$ pixi init
+$ nebi init
+No pixi.toml found; running pixi init...
 ✔ Created pixi.toml
+Workspace "my-project" tracked at /home/alice/my-project
 
 # Add some dependencies
 $ pixi add python numpy pandas
-
-# Register with nebi
-$ nebi init
-Workspace "my-project" tracked at /home/alice/my-project
 
 # See tracked workspaces
 $ nebi workspace list
@@ -282,7 +280,7 @@ $ nebi publish my-project:v1.0 --registry ghcr myorg/myenv:latest
 
 | Group | Command | Description |
 |-------|---------|-------------|
-| **Workspace** | `nebi init` | Track current directory as a workspace |
+| **Workspace** | `nebi init` | Track current directory as a workspace (runs `pixi init` if needed) |
 | | `nebi status` | Show workspace sync status |
 | | `nebi workspace list [-s server]` | List local, global, or server workspaces |
 | | `nebi workspace tags <name> -s server` | List version tags on a server |

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/nebari-dev/nebi/internal/api/handlers"
 	"github.com/nebari-dev/nebi/internal/api/middleware"
 	"github.com/nebari-dev/nebi/internal/auth"
@@ -16,7 +17,6 @@ import (
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/nebari-dev/nebi/internal/web"
-	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/gorm"
@@ -121,7 +121,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			env.POST("/share", envHandler.ShareEnvironment)
 			env.DELETE("/share/:user_id", envHandler.UnshareEnvironment)
 
-			// Publishing operations (require write permission)
+			// Tags (read permission)
+			env.GET("/tags", middleware.RequireEnvironmentAccess("read"), envHandler.ListTags)
+
+			// Push and publish operations (require write permission)
+			env.POST("/push", middleware.RequireEnvironmentAccess("write"), envHandler.PushVersion)
 			env.POST("/publish", middleware.RequireEnvironmentAccess("write"), envHandler.PublishEnvironment)
 			env.GET("/publications", middleware.RequireEnvironmentAccess("read"), envHandler.ListPublications)
 		}

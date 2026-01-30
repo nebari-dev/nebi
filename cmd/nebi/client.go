@@ -61,6 +61,28 @@ func findEnvByName(client *cliclient.Client, ctx context.Context, name string) (
 	return nil, fmt.Errorf("environment %q not found on server", name)
 }
 
+// findGlobalWorkspaceByName looks up a global workspace by name in the local index.
+func findGlobalWorkspaceByName(idx *localstore.Index, name string) *localstore.Workspace {
+	for _, ws := range idx.Workspaces {
+		if ws.Name == name && ws.Global {
+			return ws
+		}
+	}
+	return nil
+}
+
+// validateWorkspaceName checks that a workspace name doesn't contain path separators or colons,
+// which would make it ambiguous with paths or server refs.
+func validateWorkspaceName(name string) error {
+	if strings.ContainsAny(name, `/\:`) {
+		return fmt.Errorf("workspace name %q must not contain '/', '\\', or ':'", name)
+	}
+	if name == "" {
+		return fmt.Errorf("workspace name must not be empty")
+	}
+	return nil
+}
+
 // parseEnvRef parses a reference in the format env:tag.
 // Returns (env, tag) where tag may be empty if not specified.
 func parseEnvRef(ref string) (string, string) {

@@ -3,10 +3,10 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/rbac"
 )
 
 // RequireAdmin ensures the user is an admin

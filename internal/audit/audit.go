@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/models"
 	"gorm.io/gorm"
 )
 

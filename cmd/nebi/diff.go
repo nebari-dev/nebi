@@ -253,4 +253,3 @@ func resolveVersionNumber(client *cliclient.Client, ctx context.Context, envID, 
 func isPath(ref string) bool {
 	return strings.Contains(ref, "/") || strings.Contains(ref, string(filepath.Separator))
 }
-

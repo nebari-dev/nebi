@@ -10,6 +10,6 @@ type Workspace struct {
 
 // Index is the top-level structure stored in index.json.
 type Index struct {
-	Workspaces map[string]*Workspace `json:"workspaces"`          // keyed by absolute path
-	Servers    map[string]string     `json:"servers,omitempty"`   // name -> server URL (global)
+	Workspaces map[string]*Workspace `json:"workspaces"`        // keyed by absolute path
+	Servers    map[string]string     `json:"servers,omitempty"` // name -> server URL (global)
 }

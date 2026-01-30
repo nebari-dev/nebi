@@ -234,6 +234,8 @@ nebi workspace promote data-science     # copy current workspace to global
 nebi workspace list                     # shows local and global workspaces
 nebi shell data-science                 # open pixi shell in a workspace by name
 nebi workspace remove data-science      # remove a workspace from tracking
+nebi workspace remove myenv -s work    # remove a workspace from a server
+nebi workspace prune                   # clean up workspaces with missing paths
 
 # Diff using workspace names
 nebi diff data-science ./my-project

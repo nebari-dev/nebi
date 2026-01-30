@@ -59,12 +59,12 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		refB = args[1]
 	}
 
-	srcA, err := resolveSource(refA, "a")
+	srcA, err := resolveSource(refA, "")
 	if err != nil {
 		return fmt.Errorf("resolving %s: %w", refA, err)
 	}
 
-	srcB, err := resolveSource(refB, "b")
+	srcB, err := resolveSource(refB, "")
 	if err != nil {
 		return fmt.Errorf("resolving %s: %w", refB, err)
 	}
@@ -140,7 +140,7 @@ func resolveSource(ref, defaultLabel string) (*diffSource, error) {
 	}
 
 	// 3. Server ref (workspace:tag)
-	return resolveServerSource(ref, defaultLabel)
+	return resolveServerSource(ref)
 }
 
 func resolveLocalSource(dir, defaultLabel string) (*diffSource, error) {
@@ -150,8 +150,10 @@ func resolveLocalSource(dir, defaultLabel string) (*diffSource, error) {
 	}
 
 	label := defaultLabel
-	if dir == "." {
+	if dir == "." && label == "" {
 		label = "local"
+	} else if label == "" {
+		label = dir
 	}
 
 	toml, err := os.ReadFile(filepath.Join(absDir, "pixi.toml"))
@@ -172,7 +174,7 @@ func resolveLocalSource(dir, defaultLabel string) (*diffSource, error) {
 	}, nil
 }
 
-func resolveServerSource(ref, defaultLabel string) (*diffSource, error) {
+func resolveServerSource(ref string) (*diffSource, error) {
 	envName, tag := parseEnvRef(ref)
 
 	server, err := resolveServerFlag(diffServer)

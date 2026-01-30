@@ -15,7 +15,7 @@ var pushForce bool
 
 var pushCmd = &cobra.Command{
 	Use:   "push <workspace>:<tag>",
-	Short: "Push workspace spec files to a server",
+	Short: "Push workspace spec files to a nebi server",
 	Long: `Push pixi.toml and pixi.lock from the current directory to a nebi server.
 
 If the workspace doesn't exist on the server, it will be created automatically.

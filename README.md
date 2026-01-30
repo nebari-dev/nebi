@@ -205,9 +205,7 @@ queue:
 
 ## CLI Usage
 
-The `nebi` binary includes both the local CLI and optional server:
-
-### Local Commands (no server needed)
+### Workspace Commands
 
 ```bash
 # Track a pixi workspace
@@ -217,17 +215,10 @@ nebi init
 # List tracked workspaces
 nebi workspace list
 
-# Compare pixi specs between two directories
+# Compare pixi specs between directories or server versions
 nebi diff ./project-a ./project-b
 nebi diff ./project-a ./project-b --lock    # also compare pixi.lock
-```
-
-### Server Commands
-
-```bash
-# Register and authenticate with a server
-nebi server add work https://nebi.company.com
-nebi login work
+nebi diff myworkspace:v1 myworkspace:v2 -s work
 
 # Push/pull versioned specs
 nebi push myworkspace:v1.0 -s work
@@ -236,12 +227,20 @@ nebi pull myworkspace:v1.0 -s work
 # List workspaces and tags on a server
 nebi workspace list -s work
 nebi workspace tags myworkspace -s work
+```
 
-# Diff local files against a server version
-nebi diff myworkspace:v1.0 -s work
-nebi diff myworkspace:v1 myworkspace:v2 -s work
+### Connection Commands
 
-# Start the server
+```bash
+# Register and authenticate with a server
+nebi server add work https://nebi.company.com
+nebi login work
+```
+
+### Admin Commands
+
+```bash
+# Run a server instance
 nebi serve
 nebi serve --port 8080 --mode server
 ```

@@ -33,6 +33,8 @@ func init() {
 	rootCmd.AddCommand(workspaceCmd)
 	rootCmd.AddCommand(diffCmd)
 	rootCmd.AddCommand(commitCmd)
+	rootCmd.AddCommand(loginCmd)
+	rootCmd.AddCommand(serverCmd)
 }
 
 func main() {

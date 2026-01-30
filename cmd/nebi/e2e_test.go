@@ -686,6 +686,66 @@ func TestE2E_WorkspaceRemove(t *testing.T) {
 	}
 }
 
+func TestE2E_RegistryListEmpty(t *testing.T) {
+	setupLocalStore(t)
+
+	dir := t.TempDir()
+
+	// No registries configured, should get empty message
+	res := runCLI(t, dir, "registry", "list", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("registry list failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "No registries") {
+		t.Errorf("expected 'No registries' message, got stderr: %s", res.Stderr)
+	}
+}
+
+func TestE2E_WorkspacePublishRequiresTag(t *testing.T) {
+	setupLocalStore(t)
+
+	dir := t.TempDir()
+
+	res := runCLI(t, dir, "workspace", "publish", "some-ws", "-s", "e2e")
+	if res.ExitCode == 0 {
+		t.Fatal("expected non-zero exit when tag is missing")
+	}
+}
+
+func TestE2E_WorkspacePublishNotFound(t *testing.T) {
+	setupLocalStore(t)
+
+	dir := t.TempDir()
+
+	res := runCLI(t, dir, "workspace", "publish", "nonexistent:v1", "-s", "e2e")
+	if res.ExitCode == 0 {
+		t.Fatal("expected non-zero exit for nonexistent workspace")
+	}
+}
+
+func TestE2E_WorkspacePublishNoRegistry(t *testing.T) {
+	setupLocalStore(t)
+
+	// Push a workspace first
+	wsName := "e2e-publish-noreg"
+	srcDir := t.TempDir()
+	writePixiFiles(t, srcDir,
+		"[project]\nname = \"publish-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+		"version: 6\n",
+	)
+
+	res := runCLI(t, srcDir, "push", wsName+":v1", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Publish should fail because no registry is configured
+	res = runCLI(t, srcDir, "workspace", "publish", wsName+":v1", "-s", "e2e")
+	if res.ExitCode == 0 {
+		t.Fatal("expected non-zero exit when no registry configured")
+	}
+}
+
 func TestE2E_DiffByWorkspaceName(t *testing.T) {
 	setupLocalStore(t)
 

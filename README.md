@@ -232,12 +232,17 @@ nebi workspace tags myworkspace -s work
 nebi pull myworkspace:v1.0 --global data-science -s work
 nebi workspace promote data-science     # copy current workspace to global
 nebi workspace list                     # shows local and global workspaces
-nebi activate data-science              # open pixi shell in a workspace by name
+nebi shell data-science                 # open pixi shell in a workspace by name
 nebi workspace remove data-science      # remove a workspace from tracking
 
 # Diff using workspace names
 nebi diff data-science ./my-project
 nebi diff data-science ml-pipeline
+
+# Publish a workspace version to an OCI registry
+nebi workspace publish myworkspace:v1.0 -s work
+nebi workspace publish myworkspace:v1.0 -s work myorg/myenv:latest
+nebi workspace publish myworkspace:v1.0 -s work --registry ghcr myorg/myenv:latest
 ```
 
 ### Connection Commands
@@ -246,6 +251,9 @@ nebi diff data-science ml-pipeline
 # Register and authenticate with a server
 nebi server add work https://nebi.company.com
 nebi login work
+
+# List OCI registries on a server
+nebi registry list -s work
 ```
 
 ### Admin Commands

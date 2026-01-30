@@ -42,10 +42,18 @@ var serverRemoveCmd = &cobra.Command{
 	RunE:    runServerRemove,
 }
 
+var serverDefaultCmd = &cobra.Command{
+	Use:   "set-default <name>",
+	Short: "Set the default server",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runServerDefault,
+}
+
 func init() {
 	serverCmd.AddCommand(serverAddCmd)
 	serverCmd.AddCommand(serverListCmd)
 	serverCmd.AddCommand(serverRemoveCmd)
+	serverCmd.AddCommand(serverDefaultCmd)
 }
 
 func runServerAdd(cmd *cobra.Command, args []string) error {
@@ -155,6 +163,36 @@ func runServerRemove(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "Server '%s' removed\n", name)
+	return nil
+}
+
+func runServerDefault(cmd *cobra.Command, args []string) error {
+	name := args[0]
+
+	store, err := localstore.NewStore()
+	if err != nil {
+		return err
+	}
+
+	idx, err := store.LoadIndex()
+	if err != nil {
+		return err
+	}
+
+	if _, exists := idx.Servers[name]; !exists {
+		return fmt.Errorf("server '%s' not found; run 'nebi server list' to see available servers", name)
+	}
+
+	cfg, err := localstore.LoadConfig()
+	if err != nil {
+		return err
+	}
+	cfg.DefaultServer = name
+	if err := localstore.SaveConfig(cfg); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "Default server set to '%s'\n", name)
 	return nil
 }
 

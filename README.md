@@ -252,6 +252,9 @@ nebi workspace publish myworkspace:v1.0 -s work --registry ghcr myorg/myenv:late
 nebi server add work https://nebi.company.com
 nebi login work
 
+# Change the default server
+nebi server set-default work
+
 # List OCI registries on a server
 nebi registry list -s work
 ```

@@ -1839,3 +1839,49 @@ func TestE2E_PullAutoTracksWorkspace(t *testing.T) {
 		t.Errorf("expected 'pull' action in status output, got: %s", res.Stdout)
 	}
 }
+
+func TestE2E_PullWithoutTagResolvesTag(t *testing.T) {
+	setupLocalStore(t)
+
+	wsName := "e2e-pull-resolve-tag"
+
+	// Push two tagged versions
+	srcDir := t.TempDir()
+	toml1 := "[project]\nname = \"resolve-tag\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock1 := "version: 6\n"
+	writePixiFiles(t, srcDir, toml1, lock1)
+
+	res := runCLI(t, srcDir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	res = runCLI(t, srcDir, "push", wsName+":v1.0", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push v1.0 failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	toml2 := toml1 + "\n[dependencies]\nnumpy = \"*\"\n"
+	os.WriteFile(filepath.Join(srcDir, "pixi.toml"), []byte(toml2), 0644)
+
+	res = runCLI(t, srcDir, "push", wsName+":v2.0", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push v2.0 failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Pull WITHOUT a tag — should resolve to latest version and find its tag
+	dstDir := t.TempDir()
+	res = runCLI(t, dstDir, "pull", wsName, "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("pull failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Status should show the resolved tag (v2.0), not an empty tag
+	res = runCLI(t, dstDir, "status")
+	if res.ExitCode != 0 {
+		t.Fatalf("status failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, wsName+":v2.0") {
+		t.Errorf("expected resolved tag v2.0 in status output, got: %s", res.Stdout)
+	}
+}

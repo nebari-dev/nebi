@@ -187,6 +187,13 @@ func runPull(cmd *cobra.Command, args []string) error {
 
 	absOutput, _ := filepath.Abs(outputDir)
 
+	// Auto-track the workspace so status and origin tracking work
+	if pullGlobal == "" {
+		if err := ensureInit(outputDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to auto-track workspace: %v\n", err)
+		}
+	}
+
 	refStr := envName
 	if tag != "" {
 		refStr = envName + ":" + tag

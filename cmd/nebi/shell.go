@@ -5,164 +5,125 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
+	"github.com/nebari-dev/nebi/internal/localstore"
 	"github.com/spf13/cobra"
 )
 
-var shellPixiEnv string
-
 var shellCmd = &cobra.Command{
-	Use:   "shell <workspace>[:<tag>]",
-	Short: "Activate workspace shell",
-	Long: `Activate a workspace shell using pixi shell.
+	Use:   "shell [workspace-name] [pixi-args...]",
+	Short: "Activate environment shell via pixi",
+	Long: `Activate an interactive shell in a pixi workspace.
 
-The workspace is pulled from the server and cached locally.
+With no arguments, activates the current directory (auto-initializes if needed).
+A bare name that matches a global workspace uses that workspace.
+A path (with a slash) uses that local directory.
+All arguments are passed through to pixi shell.
+
+The --manifest-path flag is not supported; use pixi shell directly.
 
 Examples:
-  # Shell into latest version
-  nebi shell myworkspace
-
-  # Shell into specific tag
-  nebi shell myworkspace:v1.0.0
-
-  # Shell into specific pixi environment
-  nebi shell myworkspace:v1.0.0 -e dev`,
-	Args: cobra.ExactArgs(1),
-	Run:  runShell,
+  nebi shell                       # shell in current directory
+  nebi shell data-science          # shell into a global workspace by name
+  nebi shell ./my-project          # shell into a local directory
+  nebi shell data-science -e dev   # shell with a specific pixi environment`,
+	DisableFlagParsing: true,
+	RunE:               runShell,
 }
 
-func init() {
-	shellCmd.Flags().StringVarP(&shellPixiEnv, "env", "e", "", "Pixi environment name")
-}
+func runShell(cmd *cobra.Command, args []string) error {
+	if err := rejectManifestPath(args, "shell"); err != nil {
+		return err
+	}
 
-func runShell(cmd *cobra.Command, args []string) {
-	// Parse workspace:tag format
-	workspaceName, tag, err := parseWorkspaceRef(args[0])
+	dir, pixiArgs, isGlobal, err := resolveWorkspaceArgs(args)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
-	client := mustGetClient()
-	ctx := mustGetAuthContext()
+	if !isGlobal {
+		if err := ensureInit(dir); err != nil {
+			return err
+		}
+	}
 
-	// Find workspace by name
-	env, err := findWorkspaceByName(client, ctx, workspaceName)
+	if _, err := os.Stat(filepath.Join(dir, "pixi.toml")); err != nil {
+		return fmt.Errorf("no pixi.toml found in %s", dir)
+	}
+
+	pixiPath, err := exec.LookPath("pixi")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("pixi not found in PATH; install it from https://pixi.sh")
 	}
 
-	// Create cache directory for this workspace (include tag in path if specified)
-	cacheName := workspaceName
-	if tag != "" {
-		cacheName = workspaceName + "-" + tag
-	}
-	cacheDir, err := getWorkspaceCacheDir(cacheName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to create cache directory: %v\n", err)
-		os.Exit(1)
-	}
+	fullArgs := append([]string{"shell"}, pixiArgs...)
+	c := exec.Command(pixiPath, fullArgs...)
+	c.Dir = dir
+	c.Stdin = os.Stdin
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
 
-	// Get versions to find the latest
-	versions, err := client.GetEnvironmentVersions(ctx, env.ID)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to get versions: %v\n", err)
-		os.Exit(1)
-	}
-
-	if len(versions) == 0 {
-		fmt.Fprintf(os.Stderr, "Error: Workspace %q has no versions\n", workspaceName)
-		os.Exit(1)
-	}
-
-	// Use the latest version
-	latestVersion := versions[0]
-	for _, v := range versions {
-		if v.VersionNumber > latestVersion.VersionNumber {
-			latestVersion = v
-		}
-	}
-	versionNumber := latestVersion.VersionNumber
-
-	// Check if we need to update the cached files
-	pixiTomlPath := filepath.Join(cacheDir, "pixi.toml")
-	pixiLockPath := filepath.Join(cacheDir, "pixi.lock")
-
-	needsUpdate := true
-	if _, err := os.Stat(pixiTomlPath); err == nil {
-		// Files exist, could add version checking here
-		needsUpdate = false
-	}
-
-	refStr := workspaceName
-	if tag != "" {
-		refStr = workspaceName + ":" + tag
-	}
-
-	if needsUpdate {
-		fmt.Printf("Pulling %s (version %d)...\n", refStr, versionNumber)
-
-		// Get pixi.toml
-		pixiToml, err := client.GetVersionPixiToml(ctx, env.ID, versionNumber)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Failed to get pixi.toml: %v\n", err)
-			os.Exit(1)
-		}
-
-		// Get pixi.lock
-		pixiLock, err := client.GetVersionPixiLock(ctx, env.ID, versionNumber)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Failed to get pixi.lock: %v\n", err)
-			os.Exit(1)
-		}
-
-		// Write files
-		if err := os.WriteFile(pixiTomlPath, []byte(pixiToml), 0644); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Failed to write pixi.toml: %v\n", err)
-			os.Exit(1)
-		}
-
-		if err := os.WriteFile(pixiLockPath, []byte(pixiLock), 0644); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Failed to write pixi.lock: %v\n", err)
-			os.Exit(1)
-		}
-	}
-
-	// Run pixi shell
-	fmt.Printf("Starting shell for %s...\n", refStr)
-
-	pixiArgs := []string{"shell"}
-	if shellPixiEnv != "" {
-		pixiArgs = append(pixiArgs, "-e", shellPixiEnv)
-	}
-
-	pixiCmd := exec.Command("pixi", pixiArgs...)
-	pixiCmd.Dir = cacheDir
-	pixiCmd.Stdin = os.Stdin
-	pixiCmd.Stdout = os.Stdout
-	pixiCmd.Stderr = os.Stderr
-
-	if err := pixiCmd.Run(); err != nil {
+	if err := c.Run(); err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			os.Exit(exitErr.ExitCode())
+			return fmt.Errorf("pixi shell exited with code %d", exitErr.ExitCode())
 		}
-		fmt.Fprintf(os.Stderr, "Error: Failed to start pixi shell: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to start pixi shell: %w", err)
 	}
+	return nil
 }
 
-// getWorkspaceCacheDir returns the cache directory for a workspace.
-func getWorkspaceCacheDir(workspaceName string) (string, error) {
-	cacheDir, err := os.UserCacheDir()
+// resolveWorkspaceArgs parses args for shell/run commands.
+// Returns: resolved directory, remaining pixi args, whether it's a global workspace, error.
+func resolveWorkspaceArgs(args []string) (dir string, pixiArgs []string, isGlobal bool, err error) {
+	if len(args) == 0 {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", nil, false, fmt.Errorf("getting working directory: %w", err)
+		}
+		return cwd, nil, false, nil
+	}
+
+	first := args[0]
+	rest := args[1:]
+
+	// Path — contains a slash
+	if strings.Contains(first, "/") || strings.Contains(first, string(filepath.Separator)) {
+		absDir, err := filepath.Abs(first)
+		if err != nil {
+			return "", nil, false, fmt.Errorf("resolving path: %w", err)
+		}
+		return absDir, rest, false, nil
+	}
+
+	// Check if first arg is a global workspace name
+	store, err := localstore.NewStore()
 	if err != nil {
-		return "", err
+		return "", nil, false, err
+	}
+	idx, err := store.LoadIndex()
+	if err != nil {
+		return "", nil, false, err
+	}
+	ws := findGlobalWorkspaceByName(idx, first)
+	if ws != nil {
+		return ws.Path, rest, true, nil
 	}
 
-	workspaceDir := filepath.Join(cacheDir, "nebi", "workspaces", workspaceName)
-	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
-		return "", err
+	// Not a workspace — all args are pixi args, use cwd
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", nil, false, fmt.Errorf("getting working directory: %w", err)
 	}
+	return cwd, args, false, nil
+}
 
-	return workspaceDir, nil
+// rejectManifestPath scans args for --manifest-path and returns an error if found.
+func rejectManifestPath(args []string, cmdName string) error {
+	for _, a := range args {
+		if a == "--manifest-path" || strings.HasPrefix(a, "--manifest-path=") {
+			return fmt.Errorf("--manifest-path cannot be used with nebi %s; use pixi %s directly", cmdName, cmdName)
+		}
+	}
+	return nil
 }

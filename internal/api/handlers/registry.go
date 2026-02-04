@@ -3,9 +3,9 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/models"
 	"gorm.io/gorm"
 )
 

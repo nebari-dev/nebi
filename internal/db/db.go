@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -109,6 +109,7 @@ func Migrate(db *gorm.DB) error {
 		&models.EnvironmentVersion{},
 		&models.OCIRegistry{},
 		&models.Publication{},
+		&models.EnvironmentTag{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)

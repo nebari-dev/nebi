@@ -34,16 +34,17 @@
 
 ## What is Nebi?
 
-Nebi is a REST API and web UI for managing [Pixi](https://prefix.dev/) environments in multi-user settings. It handles environment creation, package installation, and job execution with proper isolation and access control.
+Nebi is a server and CLI for managing [Pixi](https://prefix.dev/) environments in multi-user settings. The server handles environment creation, versioning, and access control, while the local-first CLI lets you track workspaces, push/pull versioned specs, and diff environments across machines or teams.
 
-> **Note**: [UV](https://github.com/astral-sh/uv) support is planned for a future release and is currently in the roadmap.
+> **Note**: [UV](https://github.com/astral-sh/uv) support is planned for a future release.
 
 **Key features:**
-- Async job queue for package operations
-- Role-based access control (RBAC)
-- PostgreSQL + Valkey backend
-- Kubernetes-native with separate API/worker deployments
-- Real-time log streaming
+- Server with async job queue, RBAC, and PostgreSQL/Valkey backend
+- Kubernetes-native deployment with separate API/worker pods
+- Local-first CLI for workspace tracking (no server required for basic use)
+- Push/pull versioned `pixi.toml` and `pixi.lock` to shared servers
+- Diff specs between local directories or server versions
+- Multi-server support with named servers and default server config
 
 ## Quick Start
 
@@ -204,29 +205,86 @@ queue:
 
 ## CLI Usage
 
-The `nebi` binary includes both the server and CLI commands:
+### Workspace Commands
 
 ```bash
-# Start the server
-nebi serve
-nebi serve --port 8080 --mode server  # API only, custom port
+# Track a pixi workspace (runs pixi init if no pixi.toml exists)
+cd my-project
+nebi init
 
-# Login to a server
-nebi login http://localhost:8460
+# Check sync status
+nebi status
 
-# Manage registries
-nebi registry add ds-team ghcr.io/myorg/data-science --default
-nebi registry list
-
-# Manage workspaces
+# List tracked workspaces
 nebi workspace list
-nebi workspace info myworkspace
 
-# Push/pull environments
-nebi push myworkspace:v1.0.0
-nebi pull myworkspace:v1.0.0
-nebi shell myworkspace
+# Compare pixi specs between directories or server versions
+nebi diff                                # local vs last pushed/pulled origin
+nebi diff ./project-a ./project-b
+nebi diff ./project-a ./project-b --lock    # also compare pixi.lock
+nebi diff myworkspace:v1 myworkspace:v2 -s work
+
+# Push/pull versioned specs
+nebi push myworkspace:v1.0 -s work
+nebi push :v2.0                          # reuse workspace name from origin
+nebi pull myworkspace:v1.0 -s work
+nebi pull                                # re-pull from last origin
+
+# List workspaces and tags on a server
+nebi workspace list -s work
+nebi workspace tags myworkspace -s work
+
+# Global workspaces (stored centrally by nebi)
+nebi pull myworkspace:v1.0 --global data-science -s work
+nebi workspace promote data-science     # copy current workspace to global
+nebi workspace list                     # shows local and global workspaces
+nebi shell data-science                 # open pixi shell in a workspace by name
+nebi shell data-science -e dev          # args pass through to pixi shell
+nebi run my-task                        # run a pixi task (auto-initializes workspace)
+nebi run data-science my-task           # run a task in a global workspace
+nebi workspace remove data-science      # remove a workspace from tracking
+nebi workspace remove myenv -s work    # remove a workspace from a server
+nebi workspace prune                   # clean up workspaces with missing paths
+
+# Diff using workspace names
+nebi diff data-science ./my-project
+nebi diff data-science ml-pipeline
+
+# Publish a workspace version to an OCI registry
+nebi workspace publish myworkspace:v1.0 -s work
+nebi workspace publish myworkspace:v1.0 -s work myorg/myenv:latest
+nebi workspace publish myworkspace:v1.0 -s work --registry ghcr myorg/myenv:latest
 ```
+
+### Connection Commands
+
+```bash
+# Register and authenticate with a server
+nebi server add work https://nebi.company.com
+nebi login work
+
+# Change the default server
+nebi server set-default work
+
+# List OCI registries on a server
+nebi registry list -s work
+```
+
+### Admin Commands
+
+```bash
+# Run a server instance
+nebi serve
+nebi serve --port 8080 --mode server
+```
+
+### Configuration
+
+Nebi stores data in platform-standard directories:
+- **Data** (`~/.local/share/nebi/`): index, credentials, global workspace environments
+- **Config** (`~/.config/nebi/config.yaml`): default server and user preferences
+
+The first server added with `nebi server add` automatically becomes the default, so `-s` can be omitted on commands like `push`, `pull`, `diff`, and `workspace tags`.
 
 ## Development
 
@@ -246,7 +304,8 @@ nebi/
 ├── internal/
 │   ├── api/              # HTTP handlers and routing
 │   ├── auth/             # Authentication (JWT, basic auth)
-│   ├── cliclient/        # Lightweight HTTP client for CLI
+│   ├── cliclient/        # HTTP client for CLI-to-server communication
+│   ├── localstore/       # Local index, config, and credentials
 │   ├── db/               # Database models and migrations
 │   ├── executor/         # Job execution (local/docker/k8s)
 │   ├── queue/            # Job queue (memory/valkey)

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/aktech/darb/internal/pkgmgr"
+	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -338,6 +338,10 @@ func (p *PixiManager) List(ctx context.Context, opts pkgmgr.ListOptions) ([]pkgm
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		// pixi list returns an error when no packages are installed; treat as empty list
+		if strings.Contains(stderr.String(), "No packages found") {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("pixi list failed: %w, stderr: %s", err, stderr.String())
 	}
 

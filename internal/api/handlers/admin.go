@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/aktech/darb/internal/audit"
-	"github.com/aktech/darb/internal/models"
-	"github.com/aktech/darb/internal/rbac"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/audit"
+	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/rbac"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -332,7 +332,7 @@ func (h *AdminHandler) ListPermissions(c *gin.Context) {
 // @Summary Revoke a permission
 // @Tags admin
 // @Security BearerAuth
-// @Param id path int true "Permission ID"
+// @Param id path string true "Permission ID"
 // @Success 204
 // @Router /admin/permissions/{id} [delete]
 func (h *AdminHandler) RevokePermission(c *gin.Context) {

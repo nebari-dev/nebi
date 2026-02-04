@@ -73,8 +73,8 @@ postgres:
     repository: postgres
     tag: "18"
     pullPolicy: IfNotPresent
-  database: darb
-  user: darb
+  database: nebi
+  user: nebi
   password: "testpassword123"
   storage: 5Gi
   storageClassName: "local-path"
@@ -109,7 +109,7 @@ valkey:
 admin:
   username: "admin"
   password: "admin123"
-  email: "admin@darb.local"
+  email: "admin@nebi.local"
 
 ## Health probes - faster for development
 livenessProbe:

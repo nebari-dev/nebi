@@ -80,6 +80,17 @@ definitions:
       total_disk_usage_formatted:
         type: string
     type: object
+  handlers.EnvironmentTagResponse:
+    properties:
+      created_at:
+        type: string
+      tag:
+        type: string
+      updated_at:
+        type: string
+      version_number:
+        type: integer
+    type: object
   handlers.ErrorResponse:
     properties:
       error:
@@ -139,6 +150,8 @@ definitions:
         type: string
       tag:
         type: string
+      version_number:
+        type: integer
     type: object
   handlers.PublishRequest:
     properties:
@@ -154,6 +167,27 @@ definitions:
     - registry_id
     - repository
     - tag
+    type: object
+  handlers.PushVersionRequest:
+    properties:
+      force:
+        type: boolean
+      pixi_lock:
+        type: string
+      pixi_toml:
+        type: string
+      tag:
+        type: string
+    required:
+    - pixi_toml
+    - tag
+    type: object
+  handlers.PushVersionResponse:
+    properties:
+      tag:
+        type: string
+      version_number:
+        type: integer
     type: object
   handlers.RegistryResponse:
     properties:
@@ -435,7 +469,7 @@ host: localhost:8460
 info:
   contact: {}
   description: Multi-User Environment Management System API
-  title: Darb API
+  title: Nebi API
   version: "1.0"
 paths:
   /admin/audit-logs:
@@ -522,7 +556,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       responses:
         "204":
           description: No Content
@@ -549,6 +583,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: List all OCI registries
       tags:
       - admin
@@ -578,6 +614,8 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Create a new OCI registry
       tags:
       - admin
@@ -601,6 +639,8 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Delete a registry
       tags:
       - admin
@@ -625,6 +665,8 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Get a registry by ID
       tags:
       - admin
@@ -659,6 +701,8 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Update a registry
       tags:
       - admin
@@ -936,7 +980,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       responses:
         "204":
           description: No Content
@@ -963,7 +1007,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -1017,7 +1061,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -1052,7 +1096,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       - description: Packages to install
         in: body
         name: packages
@@ -1096,7 +1140,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       - description: Package name
         in: path
         name: package
@@ -1137,7 +1181,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -1230,6 +1274,51 @@ paths:
       summary: Publish environment to OCI registry
       tags:
       - environments
+  /environments/{id}/push:
+    post:
+      consumes:
+      - application/json
+      description: Create a new environment version and assign a tag
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Push request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.PushVersionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/handlers.PushVersionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Push a new version to the server
+      tags:
+      - environments
   /environments/{id}/rollback:
     post:
       consumes:
@@ -1305,6 +1394,28 @@ paths:
       security:
       - BearerAuth: []
       summary: Revoke user access to environment (owner only)
+      tags:
+      - environments
+  /environments/{id}/tags:
+    get:
+      parameters:
+      - description: Environment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.EnvironmentTagResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List tags for an environment
       tags:
       - environments
   /environments/{id}/versions:
@@ -1448,7 +1559,7 @@ paths:
         in: path
         name: id
         required: true
-        type: integer
+        type: string
       produces:
       - application/json
       responses:
@@ -1520,12 +1631,14 @@ paths:
             items:
               $ref: '#/definitions/handlers.RegistryResponse'
             type: array
+      security:
+      - BearerAuth: []
       summary: List available registries (public info only)
       tags:
       - registries
   /version:
     get:
-      description: Returns version information about the Darb server
+      description: Returns version information about the Nebi server
       produces:
       - application/json
       responses:

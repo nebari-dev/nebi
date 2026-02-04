@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/aktech/darb/internal/pkgmgr"
+	"github.com/nebari-dev/nebi/internal/pkgmgr"
 )
 
 // TestPixiAvailable checks if pixi is available in PATH
@@ -48,7 +48,7 @@ func TestInit(t *testing.T) {
 	}
 
 	// Create temporary directory for test environment
-	tmpDir, err := os.MkdirTemp("", "darb-pixi-test-*")
+	tmpDir, err := os.MkdirTemp("", "nebi-pixi-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestInstallAndList(t *testing.T) {
 	}
 
 	// Create temporary directory for test environment
-	tmpDir, err := os.MkdirTemp("", "darb-pixi-test-*")
+	tmpDir, err := os.MkdirTemp("", "nebi-pixi-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestGetManifest(t *testing.T) {
 	}
 
 	// Create temporary directory for test environment
-	tmpDir, err := os.MkdirTemp("", "darb-pixi-test-*")
+	tmpDir, err := os.MkdirTemp("", "nebi-pixi-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestRemove(t *testing.T) {
 	}
 
 	// Create temporary directory for test environment
-	tmpDir, err := os.MkdirTemp("", "darb-pixi-test-*")
+	tmpDir, err := os.MkdirTemp("", "nebi-pixi-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}

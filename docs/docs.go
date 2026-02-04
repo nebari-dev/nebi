@@ -156,7 +156,7 @@ const docTemplate = `{
                 "summary": "Revoke a permission",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Permission ID",
                         "name": "id",
                         "in": "path",
@@ -172,6 +172,11 @@ const docTemplate = `{
         },
         "/admin/registries": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Get list of all configured OCI registries (admin only)",
                 "consumes": [
                     "application/json"
@@ -202,6 +207,11 @@ const docTemplate = `{
                 }
             },
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Add a new OCI registry configuration (admin only)",
                 "consumes": [
                     "application/json"
@@ -248,6 +258,11 @@ const docTemplate = `{
         },
         "/admin/registries/{id}": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Get details of a specific OCI registry (admin only)",
                 "consumes": [
                     "application/json"
@@ -284,6 +299,11 @@ const docTemplate = `{
                 }
             },
             "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Update OCI registry details (admin only)",
                 "consumes": [
                     "application/json"
@@ -335,6 +355,11 @@ const docTemplate = `{
                 }
             },
             "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Delete an OCI registry configuration (admin only)",
                 "consumes": [
                     "application/json"
@@ -810,7 +835,7 @@ const docTemplate = `{
                 "summary": "Get an environment by ID",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -856,7 +881,7 @@ const docTemplate = `{
                 "summary": "Delete an environment",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -940,7 +965,7 @@ const docTemplate = `{
                 "summary": "List packages in an environment",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -995,7 +1020,7 @@ const docTemplate = `{
                 "summary": "Install packages in an environment",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -1064,7 +1089,7 @@ const docTemplate = `{
                 "summary": "Remove packages from an environment",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -1128,7 +1153,7 @@ const docTemplate = `{
                 "summary": "Get pixi.toml content for an environment",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Environment ID",
                         "name": "id",
                         "in": "path",
@@ -1270,6 +1295,76 @@ const docTemplate = `{
                 }
             }
         },
+        "/environments/{id}/push": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new environment version and assign a tag",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "environments"
+                ],
+                "summary": "Push a new version to the server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Environment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Push request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.PushVersionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.PushVersionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/environments/{id}/rollback": {
             "post": {
                 "security": [
@@ -1390,6 +1485,42 @@ const docTemplate = `{
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/environments/{id}/tags": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "environments"
+                ],
+                "summary": "List tags for an environment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Environment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handlers.EnvironmentTagResponse"
+                            }
+                        }
                     }
                 }
             }
@@ -1625,7 +1756,7 @@ const docTemplate = `{
                 "summary": "Get a job by ID",
                 "parameters": [
                     {
-                        "type": "integer",
+                        "type": "string",
                         "description": "Job ID",
                         "name": "id",
                         "in": "path",
@@ -1713,6 +1844,11 @@ const docTemplate = `{
         },
         "/registries": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Get list of registries for users to select from (no credentials exposed)",
                 "consumes": [
                     "application/json"
@@ -1739,7 +1875,7 @@ const docTemplate = `{
         },
         "/version": {
             "get": {
-                "description": "Returns version information about the Darb server",
+                "description": "Returns version information about the Nebi server",
                 "produces": [
                     "application/json"
                 ],
@@ -1883,6 +2019,23 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.EnvironmentTagResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "tag": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "version_number": {
+                    "type": "integer"
+                }
+            }
+        },
         "handlers.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -1972,6 +2125,9 @@ const docTemplate = `{
                 },
                 "tag": {
                     "type": "string"
+                },
+                "version_number": {
+                    "type": "integer"
                 }
             }
         },
@@ -1993,6 +2149,38 @@ const docTemplate = `{
                 "tag": {
                     "description": "e.g., \"v1.0.0\"",
                     "type": "string"
+                }
+            }
+        },
+        "handlers.PushVersionRequest": {
+            "type": "object",
+            "required": [
+                "pixi_toml",
+                "tag"
+            ],
+            "properties": {
+                "force": {
+                    "type": "boolean"
+                },
+                "pixi_lock": {
+                    "type": "string"
+                },
+                "pixi_toml": {
+                    "type": "string"
+                },
+                "tag": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.PushVersionResponse": {
+            "type": "object",
+            "properties": {
+                "tag": {
+                    "type": "string"
+                },
+                "version_number": {
+                    "type": "integer"
                 }
             }
         },
@@ -2412,7 +2600,7 @@ var SwaggerInfo = &swag.Spec{
 	Host:             "localhost:8460",
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
-	Title:            "Darb API",
+	Title:            "Nebi API",
 	Description:      "Multi-User Environment Management System API",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,

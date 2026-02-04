@@ -7,10 +7,10 @@ server:
 
 database:
   driver: sqlite  # or "postgres"
-  dsn: ./darb.db
+  dsn: ./nebi.db
   # For PostgreSQL:
   # driver: postgres
-  # dsn: "host=localhost user=darb password=secret dbname=darb port=5432 sslmode=disable"
+  # dsn: "host=localhost user=nebi password=secret dbname=nebi port=5432 sslmode=disable"
   # max_idle_conns: 10
   # max_open_conns: 100
   # conn_max_lifetime: 60
@@ -44,5 +44,5 @@ storage:
   environments_dir: ./data/environments
 
 # Environment variables can override any setting above
-# Example: DARB_AUTH_OIDC_CLIENT_ID=your-id
-# Format: DARB_<SECTION>_<KEY> (dots become underscores)
+# Example: NEBI_AUTH_OIDC_CLIENT_ID=your-id
+# Format: NEBI_<SECTION>_<KEY> (dots become underscores)

@@ -10,13 +10,13 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/aktech/darb/internal/api"
-	"github.com/aktech/darb/internal/config"
-	"github.com/aktech/darb/internal/db"
-	"github.com/aktech/darb/internal/executor"
-	"github.com/aktech/darb/internal/models"
-	"github.com/aktech/darb/internal/queue"
-	"github.com/aktech/darb/internal/worker"
+	"github.com/nebari-dev/nebi/internal/api"
+	"github.com/nebari-dev/nebi/internal/config"
+	"github.com/nebari-dev/nebi/internal/db"
+	"github.com/nebari-dev/nebi/internal/executor"
+	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/queue"
+	"github.com/nebari-dev/nebi/internal/worker"
 	"gorm.io/gorm"
 )
 

@@ -6,15 +6,15 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/aktech/darb/internal/audit"
-	"github.com/aktech/darb/internal/executor"
-	"github.com/aktech/darb/internal/models"
-	"github.com/aktech/darb/internal/oci"
-	"github.com/aktech/darb/internal/queue"
-	"github.com/aktech/darb/internal/rbac"
-	"github.com/aktech/darb/internal/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/audit"
+	"github.com/nebari-dev/nebi/internal/executor"
+	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/oci"
+	"github.com/nebari-dev/nebi/internal/queue"
+	"github.com/nebari-dev/nebi/internal/rbac"
+	"github.com/nebari-dev/nebi/internal/utils"
 	"gorm.io/gorm"
 )
 
@@ -153,7 +153,7 @@ func (h *EnvironmentHandler) CreateEnvironment(c *gin.Context) {
 // @Tags environments
 // @Security BearerAuth
 // @Produce json
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Success 200 {object} models.Environment
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -183,7 +183,7 @@ func (h *EnvironmentHandler) GetEnvironment(c *gin.Context) {
 // @Summary Delete an environment
 // @Tags environments
 // @Security BearerAuth
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Success 204
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -235,7 +235,7 @@ func (h *EnvironmentHandler) DeleteEnvironment(c *gin.Context) {
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Param packages body InstallPackagesRequest true "Packages to install"
 // @Success 202 {object} models.Job
 // @Failure 400 {object} ErrorResponse
@@ -298,7 +298,7 @@ func (h *EnvironmentHandler) InstallPackages(c *gin.Context) {
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Param package path string true "Package name"
 // @Success 202 {object} models.Job
 // @Failure 400 {object} ErrorResponse
@@ -355,7 +355,7 @@ func (h *EnvironmentHandler) RemovePackages(c *gin.Context) {
 // @Tags environments
 // @Security BearerAuth
 // @Produce json
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Success 200 {array} models.Package
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -385,7 +385,7 @@ func (h *EnvironmentHandler) ListPackages(c *gin.Context) {
 // @Tags environments
 // @Security BearerAuth
 // @Produce json
-// @Param id path int true "Environment ID"
+// @Param id path string true "Environment ID"
 // @Success 200 {object} PixiTomlResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -905,14 +905,15 @@ type PublishRequest struct {
 }
 
 type PublicationResponse struct {
-	ID           uuid.UUID `json:"id"`
-	RegistryName string    `json:"registry_name"`
-	RegistryURL  string    `json:"registry_url"`
-	Repository   string    `json:"repository"`
-	Tag          string    `json:"tag"`
-	Digest       string    `json:"digest"`
-	PublishedBy  string    `json:"published_by"`
-	PublishedAt  string    `json:"published_at"`
+	ID            uuid.UUID `json:"id"`
+	VersionNumber int       `json:"version_number"`
+	RegistryName  string    `json:"registry_name"`
+	RegistryURL   string    `json:"registry_url"`
+	Repository    string    `json:"repository"`
+	Tag           string    `json:"tag"`
+	Digest        string    `json:"digest"`
+	PublishedBy   string    `json:"published_by"`
+	PublishedAt   string    `json:"published_at"`
 }
 
 // PublishEnvironment godoc
@@ -952,6 +953,13 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 		return
 	}
 
+	// Get the latest version number for this environment
+	var latestVersion models.EnvironmentVersion
+	if err := h.db.Where("environment_id = ?", envID).Order("version_number DESC").First(&latestVersion).Error; err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Environment has no versions to publish"})
+		return
+	}
+
 	// Get registry
 	var registry models.OCIRegistry
 	if err := h.db.Where("id = ?", req.RegistryID).First(&registry).Error; err != nil {
@@ -981,6 +989,7 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 	// Create publication record
 	publication := models.Publication{
 		EnvironmentID: env.ID,
+		VersionNumber: latestVersion.VersionNumber,
 		RegistryID:    registry.ID,
 		Repository:    req.Repository,
 		Tag:           req.Tag,
@@ -997,14 +1006,15 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 	h.db.Preload("Registry").Preload("PublishedByUser").First(&publication, publication.ID)
 
 	response := PublicationResponse{
-		ID:           publication.ID,
-		RegistryName: publication.Registry.Name,
-		RegistryURL:  publication.Registry.URL,
-		Repository:   publication.Repository,
-		Tag:          publication.Tag,
-		Digest:       publication.Digest,
-		PublishedBy:  publication.PublishedByUser.Username,
-		PublishedAt:  publication.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:            publication.ID,
+		VersionNumber: publication.VersionNumber,
+		RegistryName:  publication.Registry.Name,
+		RegistryURL:   publication.Registry.URL,
+		Repository:    publication.Repository,
+		Tag:           publication.Tag,
+		Digest:        publication.Digest,
+		PublishedBy:   publication.PublishedByUser.Username,
+		PublishedAt:   publication.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
 
 	// Audit log
@@ -1051,18 +1061,185 @@ func (h *EnvironmentHandler) ListPublications(c *gin.Context) {
 	response := make([]PublicationResponse, len(publications))
 	for i, pub := range publications {
 		response[i] = PublicationResponse{
-			ID:           pub.ID,
-			RegistryName: pub.Registry.Name,
-			RegistryURL:  pub.Registry.URL,
-			Repository:   pub.Repository,
-			Tag:          pub.Tag,
-			Digest:       pub.Digest,
-			PublishedBy:  pub.PublishedByUser.Username,
-			PublishedAt:  pub.CreatedAt.Format("2006-01-02 15:04:05"),
+			ID:            pub.ID,
+			VersionNumber: pub.VersionNumber,
+			RegistryName:  pub.Registry.Name,
+			RegistryURL:   pub.Registry.URL,
+			Repository:    pub.Repository,
+			Tag:           pub.Tag,
+			Digest:        pub.Digest,
+			PublishedBy:   pub.PublishedByUser.Username,
+			PublishedAt:   pub.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// PushVersion godoc
+// @Summary Push a new version to the server
+// @Description Create a new environment version and assign a tag
+// @Tags environments
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path string true "Environment ID"
+// @Param request body PushVersionRequest true "Push request"
+// @Success 201 {object} PushVersionResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /environments/{id}/push [post]
+func (h *EnvironmentHandler) PushVersion(c *gin.Context) {
+	envID := c.Param("id")
+	userID := getUserID(c)
+
+	var req PushVersionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	var env models.Environment
+	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+		return
+	}
+
+	if env.Status != models.EnvStatusReady {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Environment must be in ready state to push"})
+		return
+	}
+
+	// Write files to env path (for future publish operations)
+	envPath := h.executor.GetEnvironmentPath(&env)
+	if err := os.MkdirAll(envPath, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create environment directory"})
+		return
+	}
+
+	if err := os.WriteFile(filepath.Join(envPath, "pixi.toml"), []byte(req.PixiToml), 0644); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to write pixi.toml"})
+		return
+	}
+
+	if req.PixiLock != "" {
+		if err := os.WriteFile(filepath.Join(envPath, "pixi.lock"), []byte(req.PixiLock), 0644); err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to write pixi.lock"})
+			return
+		}
+	}
+
+	// Create version record
+	newVersion := models.EnvironmentVersion{
+		EnvironmentID:   env.ID,
+		ManifestContent: req.PixiToml,
+		LockFileContent: req.PixiLock,
+		PackageMetadata: "[]",
+		CreatedBy:       userID,
+		Description:     fmt.Sprintf("Pushed as %s:%s", env.Name, req.Tag),
+	}
+	if err := h.db.Create(&newVersion).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create version record"})
+		return
+	}
+
+	// Check if tag already exists
+	var existingTag models.EnvironmentTag
+	result := h.db.Where("environment_id = ? AND tag = ?", env.ID, req.Tag).First(&existingTag)
+	if result.Error == nil {
+		if !req.Force {
+			c.JSON(http.StatusConflict, ErrorResponse{
+				Error: fmt.Sprintf("tag %q already exists at version %d; use --force to reassign", req.Tag, existingTag.VersionNumber),
+			})
+			return
+		}
+		oldVersion := existingTag.VersionNumber
+		existingTag.VersionNumber = newVersion.VersionNumber
+		if err := h.db.Save(&existingTag).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update tag"})
+			return
+		}
+		audit.Log(h.db, userID, audit.ActionReassignTag, audit.ResourceEnvironment, env.ID, map[string]interface{}{
+			"tag":         req.Tag,
+			"old_version": oldVersion,
+			"new_version": newVersion.VersionNumber,
+		})
+	} else {
+		newTag := models.EnvironmentTag{
+			EnvironmentID: env.ID,
+			Tag:           req.Tag,
+			VersionNumber: newVersion.VersionNumber,
+			CreatedBy:     userID,
+		}
+		if err := h.db.Create(&newTag).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create tag"})
+			return
+		}
+	}
+
+	audit.Log(h.db, userID, audit.ActionPush, audit.ResourceEnvironment, env.ID, map[string]interface{}{
+		"tag":     req.Tag,
+		"version": newVersion.VersionNumber,
+	})
+
+	c.JSON(http.StatusCreated, PushVersionResponse{
+		VersionNumber: newVersion.VersionNumber,
+		Tag:           req.Tag,
+	})
+}
+
+// ListTags godoc
+// @Summary List tags for an environment
+// @Tags environments
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "Environment ID"
+// @Success 200 {array} EnvironmentTagResponse
+// @Router /environments/{id}/tags [get]
+func (h *EnvironmentHandler) ListTags(c *gin.Context) {
+	envID := c.Param("id")
+
+	var tags []models.EnvironmentTag
+	if err := h.db.Where("environment_id = ?", envID).Order("created_at DESC").Find(&tags).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to list tags"})
+		return
+	}
+
+	response := make([]EnvironmentTagResponse, len(tags))
+	for i, t := range tags {
+		response[i] = EnvironmentTagResponse{
+			Tag:           t.Tag,
+			VersionNumber: t.VersionNumber,
+			CreatedAt:     t.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			UpdatedAt:     t.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// PushVersionRequest is the request body for pushing a new version.
+type PushVersionRequest struct {
+	Tag      string `json:"tag" binding:"required"`
+	PixiToml string `json:"pixi_toml" binding:"required"`
+	PixiLock string `json:"pixi_lock"`
+	Force    bool   `json:"force"`
+}
+
+// PushVersionResponse is returned after a successful push.
+type PushVersionResponse struct {
+	VersionNumber int    `json:"version_number"`
+	Tag           string `json:"tag"`
+}
+
+// EnvironmentTagResponse represents a tag in API responses.
+type EnvironmentTagResponse struct {
+	Tag           string `json:"tag"`
+	VersionNumber int    `json:"version_number"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 // Helper function to get user ID from context

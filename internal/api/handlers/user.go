@@ -3,8 +3,8 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/aktech/darb/internal/auth"
 	"github.com/gin-gonic/gin"
+	"github.com/nebari-dev/nebi/internal/auth"
 )
 
 // GetCurrentUser godoc

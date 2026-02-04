@@ -3,9 +3,9 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/aktech/darb/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/models"
 	"gorm.io/gorm"
 )
 
@@ -50,6 +50,7 @@ type RegistryResponse struct {
 // @Summary List all OCI registries
 // @Description Get list of all configured OCI registries (admin only)
 // @Tags admin
+// @Security BearerAuth
 // @Accept json
 // @Produce json
 // @Success 200 {array} RegistryResponse
@@ -81,6 +82,7 @@ func (h *RegistryHandler) ListRegistries(c *gin.Context) {
 // @Summary Create a new OCI registry
 // @Description Add a new OCI registry configuration (admin only)
 // @Tags admin
+// @Security BearerAuth
 // @Accept json
 // @Produce json
 // @Param registry body CreateRegistryRequest true "Registry details"
@@ -136,6 +138,7 @@ func (h *RegistryHandler) CreateRegistry(c *gin.Context) {
 // @Summary Get a registry by ID
 // @Description Get details of a specific OCI registry (admin only)
 // @Tags admin
+// @Security BearerAuth
 // @Accept json
 // @Produce json
 // @Param id path string true "Registry ID"
@@ -165,6 +168,7 @@ func (h *RegistryHandler) GetRegistry(c *gin.Context) {
 // @Summary Update a registry
 // @Description Update OCI registry details (admin only)
 // @Tags admin
+// @Security BearerAuth
 // @Accept json
 // @Produce json
 // @Param id path string true "Registry ID"
@@ -228,6 +232,7 @@ func (h *RegistryHandler) UpdateRegistry(c *gin.Context) {
 // @Summary Delete a registry
 // @Description Delete an OCI registry configuration (admin only)
 // @Tags admin
+// @Security BearerAuth
 // @Accept json
 // @Produce json
 // @Param id path string true "Registry ID"
@@ -255,6 +260,7 @@ func (h *RegistryHandler) DeleteRegistry(c *gin.Context) {
 // @Summary List available registries (public info only)
 // @Description Get list of registries for users to select from (no credentials exposed)
 // @Tags registries
+// @Security BearerAuth
 // @Accept json
 // @Produce json
 // @Success 200 {array} RegistryResponse

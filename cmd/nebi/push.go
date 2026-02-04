@@ -117,6 +117,11 @@ func runPush(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(os.Stderr, "Pushed %s:%s (version %d)\n", envName, tag, resp.VersionNumber)
 
+	// Auto-track the workspace so status and origin tracking work
+	if err := ensureInit("."); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to auto-track workspace: %v\n", err)
+	}
+
 	// Save origin
 	if saveErr := saveOrigin(server, envName, tag, "push", string(pixiToml), string(pixiLock)); saveErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save origin: %v\n", saveErr)

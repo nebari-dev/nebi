@@ -21,13 +21,15 @@ A bare name that matches a global workspace uses that workspace.
 A path (with a slash) uses that local directory.
 All arguments are passed through to pixi shell.
 
-The --manifest-path flag is not supported; use pixi shell directly.
+The --manifest-path flag is managed by nebi; use pixi shell directly if you need custom manifest paths.
+
+Global workspaces activate via --manifest-path so you stay in your current directory.
 
 Examples:
   nebi shell                       # shell in current directory
-  nebi shell data-science          # shell into a global workspace by name
+  nebi shell data-science          # activate a global workspace (stays in cwd)
   nebi shell ./my-project          # shell into a local directory
-  nebi shell data-science -e dev   # shell with a specific pixi environment`,
+  nebi shell data-science -e dev   # activate with a specific pixi environment`,
 	DisableFlagParsing: true,
 	RunE:               runShell,
 }
@@ -57,9 +59,15 @@ func runShell(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("pixi not found in PATH; install it from https://pixi.sh")
 	}
 
-	fullArgs := append([]string{"shell"}, pixiArgs...)
+	fullArgs := []string{"shell"}
+	if isGlobal {
+		fullArgs = append(fullArgs, "--manifest-path", filepath.Join(dir, "pixi.toml"))
+	}
+	fullArgs = append(fullArgs, pixiArgs...)
 	c := exec.Command(pixiPath, fullArgs...)
-	c.Dir = dir
+	if !isGlobal {
+		c.Dir = dir
+	}
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr

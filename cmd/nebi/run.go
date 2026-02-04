@@ -19,11 +19,13 @@ If the first argument matches a global workspace name, runs in that workspace.
 A path (with a slash) uses that local directory.
 All arguments are passed through to pixi run.
 
-The --manifest-path flag is not supported; use pixi run directly.
+The --manifest-path flag is managed by nebi; use pixi run directly if you need custom manifest paths.
+
+Global workspaces run via --manifest-path so you stay in your current directory.
 
 Examples:
   nebi run my-task                    # run a pixi task in the current directory
-  nebi run data-science my-task       # run a task in a global workspace
+  nebi run data-science my-task       # run a task in a global workspace (stays in cwd)
   nebi run ./my-project my-task       # run a task in a local directory
   nebi run -e dev my-task             # run with a specific pixi environment`,
 	DisableFlagParsing: true,
@@ -55,9 +57,15 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("pixi not found in PATH; install it from https://pixi.sh")
 	}
 
-	fullArgs := append([]string{"run"}, pixiArgs...)
+	fullArgs := []string{"run"}
+	if isGlobal {
+		fullArgs = append(fullArgs, "--manifest-path", filepath.Join(dir, "pixi.toml"))
+	}
+	fullArgs = append(fullArgs, pixiArgs...)
 	c := exec.Command(pixiPath, fullArgs...)
-	c.Dir = dir
+	if !isGlobal {
+		c.Dir = dir
+	}
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr

@@ -55,7 +55,7 @@ var workspacePromoteCmd = &cobra.Command{
 from the current tracked workspace directory.
 
 The global workspace is stored in nebi's data directory and can be
-referenced by name in commands like diff and shell.
+referenced by name in commands like shell, run, and diff.
 
 Examples:
   cd my-project

@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/models"
 	"gorm.io/gorm"
 )
 
@@ -41,6 +41,8 @@ const (
 	ActionInstallPackage     = "install_package"
 	ActionRemovePackage      = "remove_package"
 	ActionPublishEnvironment = "publish_environment"
+	ActionPush               = "push"
+	ActionReassignTag        = "reassign_tag"
 	ActionLogin              = "login"
 	ActionLoginFailed        = "login_failed"
 )

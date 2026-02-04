@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/models"
 	"golang.org/x/oauth2"
 	"gorm.io/gorm"
 )

@@ -13,50 +13,58 @@ var Version = "dev"
 
 var rootCmd = &cobra.Command{
 	Use:   "nebi",
-	Short: "Nebi - Environment management with OCI registry support",
-	Long: `Nebi is a CLI and server for managing Pixi environments and pushing/pulling them to OCI registries.
+	Short: "Nebi - Local-first environment management for Pixi",
+	Long:  `Nebi manages Pixi workspaces locally and syncs them to remote servers.`,
+	Example: `  # Track a workspace and push it to a server
+  nebi init
+  nebi server add work https://nebi.company.com
+  nebi login work
+  nebi push myworkspace:v1.0
 
-Server commands:
-  nebi serve              Start the Nebi server
-
-Client commands:
-  nebi login <url>        Login to a Nebi server
-  nebi logout             Logout from the server
-
-  nebi registry add       Add an OCI registry
-  nebi registry list      List registries
-  nebi registry remove    Remove a registry
-  nebi registry set-default  Set default registry
-
-  nebi workspace list     List workspaces
-  nebi workspace info     Show workspace details
-  nebi workspace delete   Delete a workspace
-  nebi workspace tags     List published tags
-
-  nebi push <ws>:<tag>    Push workspace to registry
-  nebi pull <ws>[:<tag>]  Pull workspace from server
-  nebi shell <ws>         Activate workspace shell
-
-Examples:
-  # Start the server
-  nebi serve --port 8460
-
-  # Login and push a workspace
-  nebi login https://nebi.company.com
-  nebi registry add ds-team ghcr.io/myorg/data-science --default
-  nebi push myworkspace:v1.0.0`,
+  # Compare specs between directories or server versions
+  nebi diff ./project-a ./project-b
+  nebi diff myworkspace:v1 myworkspace:v2 -s work`,
 }
 
 func init() {
-	rootCmd.AddCommand(serveCmd)
-	rootCmd.AddCommand(versionCmd)
-	rootCmd.AddCommand(loginCmd)
-	rootCmd.AddCommand(logoutCmd)
-	rootCmd.AddCommand(registryCmd)
+	rootCmd.AddGroup(
+		&cobra.Group{ID: "workspace", Title: "Workspace Commands:"},
+		&cobra.Group{ID: "sync", Title: "Sync Commands:"},
+		&cobra.Group{ID: "server", Title: "Server Commands:"},
+		&cobra.Group{ID: "admin", Title: "Admin Commands:"},
+	)
+
+	initCmd.GroupID = "workspace"
+	workspaceCmd.GroupID = "workspace"
+	shellCmd.GroupID = "workspace"
+	runCmd.GroupID = "workspace"
+	statusCmd.GroupID = "workspace"
+
+	pushCmd.GroupID = "sync"
+	pullCmd.GroupID = "sync"
+	diffCmd.GroupID = "sync"
+	publishCmd.GroupID = "sync"
+
+	loginCmd.GroupID = "server"
+	serverCmd.GroupID = "server"
+	registryCmd.GroupID = "server"
+
+	serveCmd.GroupID = "admin"
+
+	rootCmd.AddCommand(initCmd)
+	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(workspaceCmd)
+	rootCmd.AddCommand(diffCmd)
+	rootCmd.AddCommand(loginCmd)
+	rootCmd.AddCommand(serverCmd)
 	rootCmd.AddCommand(pushCmd)
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(shellCmd)
+	rootCmd.AddCommand(runCmd)
+	rootCmd.AddCommand(publishCmd)
+	rootCmd.AddCommand(registryCmd)
+	rootCmd.AddCommand(serveCmd)
+	rootCmd.AddCommand(versionCmd)
 }
 
 func main() {

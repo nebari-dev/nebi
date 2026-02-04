@@ -73,7 +73,7 @@ func (c *Client) GetEnvironmentVersions(ctx context.Context, envID string) ([]En
 
 // GetVersionPixiToml returns the pixi.toml for a specific version.
 func (c *Client) GetVersionPixiToml(ctx context.Context, envID string, version int32) (string, error) {
-	content, _, err := c.GetText(ctx, fmt.Sprintf("/environments/%s/versions/%d/pixi.toml", envID, version))
+	content, _, err := c.GetText(ctx, fmt.Sprintf("/environments/%s/versions/%d/pixi-toml", envID, version))
 	if err != nil {
 		return "", err
 	}
@@ -82,11 +82,31 @@ func (c *Client) GetVersionPixiToml(ctx context.Context, envID string, version i
 
 // GetVersionPixiLock returns the pixi.lock for a specific version.
 func (c *Client) GetVersionPixiLock(ctx context.Context, envID string, version int32) (string, error) {
-	content, _, err := c.GetText(ctx, fmt.Sprintf("/environments/%s/versions/%d/pixi.lock", envID, version))
+	content, _, err := c.GetText(ctx, fmt.Sprintf("/environments/%s/versions/%d/pixi-lock", envID, version))
 	if err != nil {
 		return "", err
 	}
 	return content, nil
+}
+
+// GetEnvironmentTags returns server-side tags for an environment.
+func (c *Client) GetEnvironmentTags(ctx context.Context, envID string) ([]EnvironmentTag, error) {
+	var tags []EnvironmentTag
+	_, err := c.Get(ctx, fmt.Sprintf("/environments/%s/tags", envID), &tags)
+	if err != nil {
+		return nil, err
+	}
+	return tags, nil
+}
+
+// PushVersion pushes a new version to the server with a tag.
+func (c *Client) PushVersion(ctx context.Context, envID string, req PushRequest) (*PushResponse, error) {
+	var resp PushResponse
+	_, err := c.Post(ctx, fmt.Sprintf("/environments/%s/push", envID), req, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 // PublishEnvironment publishes an environment to a registry.

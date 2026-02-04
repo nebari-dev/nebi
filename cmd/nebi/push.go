@@ -4,179 +4,123 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/spf13/cobra"
 )
 
-var pushRegistry string
+var pushServer string
+var pushForce bool
 
 var pushCmd = &cobra.Command{
-	Use:   "push <workspace>:<tag>",
-	Short: "Push workspace to registry",
-	Long: `Push a workspace to an OCI registry with a tag.
+	Use:   "push [<workspace>:]<tag>",
+	Short: "Push workspace spec files to a nebi server",
+	Long: `Push pixi.toml and pixi.lock from the current directory to a nebi server.
 
-Looks for pixi.toml and pixi.lock in the current directory.
 If the workspace doesn't exist on the server, it will be created automatically.
 
-Examples:
-  # Push with tag
-  nebi push myworkspace:v1.0.0 -r ds-team
+If the workspace name is omitted (e.g. "nebi push :v2"), the name from the
+last push/pull origin for the target server is used.
 
-  # Push using default registry
-  nebi push myworkspace:v1.0.0`,
+Examples:
+  nebi push myworkspace:v1.0 -s work
+  nebi push :v2.0                          # reuse workspace name from origin
+  nebi push myworkspace:v2.0 --force`,
 	Args: cobra.ExactArgs(1),
-	Run:  runPush,
+	RunE: runPush,
 }
 
 func init() {
-	pushCmd.Flags().StringVarP(&pushRegistry, "registry", "r", "", "Named registry (optional if default set)")
+	pushCmd.Flags().StringVarP(&pushServer, "server", "s", "", "Server name or URL (uses default if not set)")
+	pushCmd.Flags().BoolVar(&pushForce, "force", false, "Overwrite existing tag on server")
 }
 
-func runPush(cmd *cobra.Command, args []string) {
-	// Parse workspace:tag format
-	workspaceName, tag, err := parseWorkspaceRef(args[0])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		fmt.Fprintln(os.Stderr, "Usage: nebi push <workspace>:<tag>")
-		os.Exit(1)
-	}
-
+func runPush(cmd *cobra.Command, args []string) error {
+	envName, tag := parseEnvRef(args[0])
 	if tag == "" {
-		fmt.Fprintf(os.Stderr, "Error: tag is required\n")
-		fmt.Fprintln(os.Stderr, "Usage: nebi push <workspace>:<tag>")
-		os.Exit(1)
+		return fmt.Errorf("tag is required; usage: nebi push [<workspace>:]<tag>")
 	}
 
-	// Check for local pixi.toml
-	pixiTomlContent, err := os.ReadFile("pixi.toml")
+	server, err := resolveServerFlag(pushServer)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: pixi.toml not found in current directory\n")
-		fmt.Fprintln(os.Stderr, "Run 'pixi init' to create a pixi project first")
-		os.Exit(1)
+		return err
 	}
 
-	// Check for local pixi.lock (optional but recommended)
-	if _, err := os.Stat("pixi.lock"); os.IsNotExist(err) {
+	// If workspace name omitted, resolve from origin
+	if envName == "" {
+		origin, err := lookupOrigin(server)
+		if err != nil {
+			return err
+		}
+		if origin == nil {
+			return fmt.Errorf("no origin set for server %q; specify a workspace name: nebi push <workspace>:<tag>", server)
+		}
+		envName = origin.Name
+		fmt.Fprintf(os.Stderr, "Using workspace %q from origin\n", envName)
+	}
+
+	// Read local spec files
+	pixiToml, err := os.ReadFile("pixi.toml")
+	if err != nil {
+		return fmt.Errorf("pixi.toml not found in current directory; run 'pixi init' first")
+	}
+
+	pixiLock, _ := os.ReadFile("pixi.lock")
+	if len(pixiLock) == 0 {
 		fmt.Fprintln(os.Stderr, "Warning: pixi.lock not found. Run 'pixi install' to generate it.")
 	}
 
-	client := mustGetClient()
-	ctx := mustGetAuthContext()
-
-	// Try to find workspace by name, create if not found
-	env, err := findWorkspaceByName(client, ctx, workspaceName)
+	client, err := getAuthenticatedClient(server)
 	if err != nil {
-		// Workspace doesn't exist, create it
-		fmt.Printf("Creating workspace %q...\n", workspaceName)
-		pixiTomlStr := string(pixiTomlContent)
+		return err
+	}
+
+	ctx := context.Background()
+
+	// Find or create environment
+	env, err := findEnvByName(client, ctx, envName)
+	if err != nil {
+		// Environment doesn't exist — create it
+		fmt.Fprintf(os.Stderr, "Creating environment %q...\n", envName)
+		pixiTomlStr := string(pixiToml)
 		pkgMgr := "pixi"
-		createReq := cliclient.CreateEnvironmentRequest{
-			Name:           workspaceName,
+		newEnv, createErr := client.CreateEnvironment(ctx, cliclient.CreateEnvironmentRequest{
+			Name:           envName,
 			PackageManager: &pkgMgr,
 			PixiToml:       &pixiTomlStr,
-		}
-
-		newEnv, createErr := client.CreateEnvironment(ctx, createReq)
+		})
 		if createErr != nil {
-			fmt.Fprintf(os.Stderr, "Error: Failed to create workspace %q: %v\n", workspaceName, createErr)
-			os.Exit(1)
+			return fmt.Errorf("failed to create environment %q: %w", envName, createErr)
 		}
-		fmt.Printf("Created workspace %q\n", workspaceName)
-
-		// Wait for environment to be ready
+		// Wait for environment to be ready (server runs pixi install)
 		env, err = waitForEnvReady(client, ctx, newEnv.ID, 60*time.Second)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("environment %q failed to become ready: %w", envName, err)
 		}
+		fmt.Fprintf(os.Stderr, "Created environment %q\n", envName)
 	}
 
-	// Find registry
-	var registry *cliclient.Registry
-	if pushRegistry != "" {
-		registry, err = findRegistryByName(client, ctx, pushRegistry)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-	} else {
-		// Find default registry
-		registry, err = findDefaultRegistry(client, ctx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			fmt.Fprintln(os.Stderr, "Hint: Set a default registry with 'nebi registry set-default <name>' or specify one with -r")
-			os.Exit(1)
-		}
+	// Push version
+	req := cliclient.PushRequest{
+		Tag:      tag,
+		PixiToml: string(pixiToml),
+		PixiLock: string(pixiLock),
+		Force:    pushForce,
 	}
 
-	// Use workspace name as repository
-	repository := workspaceName
-
-	req := cliclient.PublishRequest{
-		RegistryID: registry.ID,
-		Repository: repository,
-		Tag:        tag,
-	}
-
-	fmt.Printf("Pushing %s:%s to %s...\n", repository, tag, registry.Name)
-	resp, err := client.PublishEnvironment(ctx, env.ID, req)
+	fmt.Fprintf(os.Stderr, "Pushing %s:%s...\n", envName, tag)
+	resp, err := client.PushVersion(ctx, env.ID, req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to push %s:%s: %v\n", repository, tag, err)
-		os.Exit(1)
+		return fmt.Errorf("failed to push %s:%s: %w", envName, tag, err)
 	}
 
-	fmt.Printf("Pushed %s:%s\n", repository, tag)
-	if resp.Digest != "" {
-		fmt.Printf("  Digest: %s\n", resp.Digest)
-	}
-	fmt.Printf("\nSuccessfully pushed to %s\n", registry.Name)
-}
+	fmt.Fprintf(os.Stderr, "Pushed %s:%s (version %d)\n", envName, tag, resp.VersionNumber)
 
-// parseWorkspaceRef parses a reference in the format workspace:tag or workspace@digest.
-// Returns (workspace, tag, error) for tag references.
-// Returns (workspace, "", error) for digest references (digest is in tag field with @ prefix).
-func parseWorkspaceRef(ref string) (workspace string, tag string, err error) {
-	// Check for digest reference first (workspace@sha256:...)
-	if idx := strings.Index(ref, "@"); idx != -1 {
-		return ref[:idx], ref[idx:], nil // Return @sha256:... as the "tag"
+	// Save origin
+	if saveErr := saveOrigin(server, envName, tag, "push", string(pixiToml), string(pixiLock)); saveErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to save origin: %v\n", saveErr)
 	}
 
-	// Check for tag reference (workspace:tag)
-	if idx := strings.LastIndex(ref, ":"); idx != -1 {
-		return ref[:idx], ref[idx+1:], nil
-	}
-
-	// No tag or digest specified
-	return ref, "", nil
-}
-
-// waitForEnvReady polls until the environment is ready or timeout.
-func waitForEnvReady(client *cliclient.Client, ctx context.Context, envID string, timeout time.Duration) (*cliclient.Environment, error) {
-	deadline := time.Now().Add(timeout)
-	fmt.Print("Waiting for environment to be ready")
-
-	for time.Now().Before(deadline) {
-		env, err := client.GetEnvironment(ctx, envID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get environment status: %v", err)
-		}
-
-		switch env.Status {
-		case "ready":
-			fmt.Println(" done")
-			return env, nil
-		case "failed", "error":
-			fmt.Println(" failed")
-			return nil, fmt.Errorf("environment setup failed")
-		default:
-			fmt.Print(".")
-			time.Sleep(500 * time.Millisecond)
-		}
-	}
-
-	fmt.Println(" timeout")
-	return nil, fmt.Errorf("timeout waiting for environment to be ready")
+	return nil
 }

@@ -1,118 +1,111 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"strings"
-	"syscall"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
+	"github.com/nebari-dev/nebi/internal/localstore"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
 
+var loginToken string
+
 var loginCmd = &cobra.Command{
-	Use:   "login <url>",
-	Short: "Login to Nebi server",
-	Long: `Login to a Nebi server to enable server mode.
+	Use:   "login <server-url-or-remote-name>",
+	Short: "Authenticate with a nebi server",
+	Long: `Authenticates with a nebi server and stores the credential.
+Accepts a URL or a configured server name.
 
-Example:
+Examples:
   nebi login https://nebi.company.com
-  nebi login http://localhost:8460`,
+  nebi login work
+  nebi login work --token <api-token>`,
 	Args: cobra.ExactArgs(1),
-	Run:  runLogin,
+	RunE: runLogin,
 }
 
-var logoutCmd = &cobra.Command{
-	Use:   "logout",
-	Short: "Logout from server",
-	Long:  `Logout from the Nebi server and clear stored credentials.`,
-	Args:  cobra.NoArgs,
-	Run:   runLogout,
+func init() {
+	loginCmd.Flags().StringVar(&loginToken, "token", "", "API token (skip interactive login)")
 }
 
-func runLogin(cmd *cobra.Command, args []string) {
-	serverURL := args[0]
-
-	// Normalize URL
-	if !strings.HasPrefix(serverURL, "http://") && !strings.HasPrefix(serverURL, "https://") {
-		serverURL = "https://" + serverURL
+// resolveServerURL resolves a server name to its URL, or returns the argument as-is if it looks like a URL.
+func resolveServerURL(arg string) (string, error) {
+	if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
+		return strings.TrimRight(arg, "/"), nil
 	}
-	serverURL = strings.TrimSuffix(serverURL, "/")
 
-	// Prompt for credentials
-	reader := bufio.NewReader(os.Stdin)
-
-	fmt.Print("Username: ")
-	username, err := reader.ReadString('\n')
+	// Treat as server name
+	store, err := localstore.NewStore()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading username: %v\n", err)
-		os.Exit(1)
+		return "", err
 	}
-	username = strings.TrimSpace(username)
-
-	fmt.Print("Password: ")
-	passwordBytes, err := term.ReadPassword(int(syscall.Stdin))
+	idx, err := store.LoadIndex()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "\nError reading password: %v\n", err)
-		os.Exit(1)
+		return "", err
 	}
-	fmt.Println() // newline after password
-	password := string(passwordBytes)
+	url, ok := idx.Servers[arg]
+	if !ok {
+		return "", fmt.Errorf("'%s' is not a configured server; run 'nebi server add %s <url>' first", arg, arg)
+	}
+	return strings.TrimRight(url, "/"), nil
+}
 
-	// Create API client for this server (without auth for login)
-	client := cliclient.NewWithoutAuth(serverURL)
-
-	// Attempt login
-	resp, err := client.Login(context.Background(), username, password)
+func runLogin(cmd *cobra.Command, args []string) error {
+	serverURL, err := resolveServerURL(args[0])
 	if err != nil {
-		if cliclient.IsUnauthorized(err) {
-			fmt.Fprintln(os.Stderr, "Error: Invalid username or password")
-		} else {
-			fmt.Fprintf(os.Stderr, "Error: Could not connect to server: %v\n", err)
+		return err
+	}
+
+	var token string
+	var username string
+
+	if loginToken != "" {
+		// Token-based login — just store it
+		token = loginToken
+		username = "(token)"
+	} else {
+		// Interactive username/password login
+		fmt.Print("Username: ")
+		var user string
+		if _, err := fmt.Scanln(&user); err != nil {
+			return fmt.Errorf("reading username: %w", err)
 		}
-		os.Exit(1)
+
+		fmt.Print("Password: ")
+		passBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		if err != nil {
+			return fmt.Errorf("reading password: %w", err)
+		}
+
+		client := cliclient.NewWithoutAuth(serverURL)
+		resp, err := client.Login(context.Background(), user, string(passBytes))
+		if err != nil {
+			return fmt.Errorf("login failed: %w", err)
+		}
+
+		token = resp.Token
+		username = user
 	}
 
-	// Save config
-	cfg := &CLIConfig{
-		ServerURL: serverURL,
-		Token:     resp.Token,
-	}
-
-	if err := saveConfig(cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "Error saving config: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Logged in as %s (%s)\n", resp.User.Username, resp.User.Email)
-
-	configPath, _ := getConfigPath()
-	fmt.Printf("Credentials saved to %s\n", configPath)
-}
-
-func runLogout(cmd *cobra.Command, args []string) {
-	cfg, err := loadConfig()
+	creds, err := localstore.LoadCredentials()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
-	if cfg.ServerURL == "" && cfg.Token == "" {
-		fmt.Println("Not logged in")
-		return
+	creds.Servers[serverURL] = &localstore.ServerCredential{
+		Token:    token,
+		Username: username,
 	}
 
-	// Clear config
-	cfg.ServerURL = ""
-	cfg.Token = ""
-
-	if err := saveConfig(cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "Error saving config: %v\n", err)
-		os.Exit(1)
+	if err := localstore.SaveCredentials(creds); err != nil {
+		return err
 	}
 
-	fmt.Println("Logged out successfully")
+	fmt.Fprintf(os.Stderr, "Logged in to %s as %s\n", serverURL, username)
+	return nil
 }

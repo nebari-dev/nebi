@@ -121,6 +121,22 @@ func runPull(cmd *cobra.Command, args []string) error {
 			}
 		}
 		versionNumber = latest.VersionNumber
+
+		// Resolve tag for this version so the origin records what was actually pulled
+		tags, err := client.GetEnvironmentTags(ctx, env.ID)
+		if err == nil {
+			var bestTag string
+			var bestTime string
+			for _, t := range tags {
+				if int32(t.VersionNumber) == versionNumber {
+					if bestTag == "" || t.CreatedAt > bestTime {
+						bestTag = t.Tag
+						bestTime = t.CreatedAt
+					}
+				}
+			}
+			tag = bestTag
+		}
 	}
 
 	// Download spec files

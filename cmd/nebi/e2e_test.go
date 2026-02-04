@@ -1840,6 +1840,45 @@ func TestE2E_PullAutoTracksWorkspace(t *testing.T) {
 	}
 }
 
+func TestE2E_PushAutoTracksWorkspace(t *testing.T) {
+	setupLocalStore(t)
+
+	wsName := "e2e-push-autotrack"
+	tag := "v1.0"
+
+	// Create a workspace directory with pixi files but do NOT run nebi init
+	dir := t.TempDir()
+	toml := "[project]\nname = \"autotrack-push\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\npackages: []\n"
+	writePixiFiles(t, dir, toml, lock)
+
+	// Push from the untracked directory — should auto-track
+	res := runCLI(t, dir, "push", wsName+":"+tag, "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Status should recognize the workspace (not say "Not a tracked workspace")
+	res = runCLI(t, dir, "status")
+	if res.ExitCode != 0 {
+		t.Fatalf("status failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if strings.Contains(res.Stderr, "Not a tracked workspace") {
+		t.Error("push from untracked directory should auto-track the workspace, but status says 'Not a tracked workspace'")
+	}
+	if !strings.Contains(res.Stdout, "Workspace:") {
+		t.Errorf("expected 'Workspace:' in status output, got stdout: %s stderr: %s", res.Stdout, res.Stderr)
+	}
+
+	// Origin should also be saved
+	if !strings.Contains(res.Stdout, wsName+":"+tag) {
+		t.Errorf("expected origin %s:%s in status output, got: %s", wsName, tag, res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "push") {
+		t.Errorf("expected 'push' action in status output, got: %s", res.Stdout)
+	}
+}
+
 func TestE2E_PullWithoutTagResolvesTag(t *testing.T) {
 	setupLocalStore(t)
 

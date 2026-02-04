@@ -1,47 +1,50 @@
-# Darb
+# Nebi
 
-<p align="center">
-  <img src="assets/darb-high-resolution-logo.png" alt="Darb" width="500"/>
-</p>
+<div align="center">
+  <table><tr><td bgcolor="white" style="padding: 20px;">
+    <img src="assets/nebi-logo.png" alt="Nebi" width="500"/>
+  </td></tr></table>
+</div>
 
 <p align="center">
   Multi-user environment management for Pixi (UV support coming soon)
 </p>
 
 <p align="center">
-  <a href="https://github.com/aktech/darb/actions/workflows/ci.yml">
-    <img src="https://github.com/aktech/darb/actions/workflows/ci.yml/badge.svg" alt="CI">
+  <a href="https://github.com/nebari-dev/nebi/actions/workflows/ci.yml">
+    <img src="https://github.com/nebari-dev/nebi/actions/workflows/ci.yml/badge.svg" alt="CI">
   </a>
-  <a href="https://github.com/aktech/darb/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/aktech/darb" alt="License">
+  <a href="https://github.com/nebari-dev/nebi/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/nebari-dev/nebi" alt="License">
   </a>
-  <a href="https://github.com/aktech/darb/releases">
-    <img src="https://img.shields.io/github/v/release/aktech/darb?include_prereleases" alt="Release">
+  <a href="https://github.com/nebari-dev/nebi/releases">
+    <img src="https://img.shields.io/github/v/release/nebari-dev/nebi?include_prereleases" alt="Release">
   </a>
-  <a href="https://github.com/aktech/darb/issues">
-    <img src="https://img.shields.io/github/issues/aktech/darb" alt="Issues">
+  <a href="https://github.com/nebari-dev/nebi/issues">
+    <img src="https://img.shields.io/github/issues/nebari-dev/nebi" alt="Issues">
   </a>
-  <a href="https://github.com/aktech/darb/pulls">
-    <img src="https://img.shields.io/github/issues-pr/aktech/darb" alt="Pull Requests">
+  <a href="https://github.com/nebari-dev/nebi/pulls">
+    <img src="https://img.shields.io/github/issues-pr/nebari-dev/nebi" alt="Pull Requests">
   </a>
 </p>
 
 ---
 
-> **⚠️ Alpha Software**: Darb is currently in alpha. APIs and features may change without notice. Not recommended for production use.
+> **⚠️ Alpha Software**: Nebi is currently in alpha. APIs and features may change without notice. Not recommended for production use.
 
-## What is Darb?
+## What is Nebi?
 
-Darb is a REST API and web UI for managing [Pixi](https://prefix.dev/) environments in multi-user settings. It handles environment creation, package installation, and job execution with proper isolation and access control.
+Nebi is a server and CLI for managing [Pixi](https://prefix.dev/) environments in multi-user settings. The server handles environment creation, versioning, and access control, while the local-first CLI lets you track workspaces, push/pull versioned specs, and diff environments across machines or teams.
 
-> **Note**: [UV](https://github.com/astral-sh/uv) support is planned for a future release and is currently in the roadmap.
+> **Note**: [UV](https://github.com/astral-sh/uv) support is planned for a future release.
 
 **Key features:**
-- Async job queue for package operations
-- Role-based access control (RBAC)
-- PostgreSQL + Valkey backend
-- Kubernetes-native with separate API/worker deployments
-- Real-time log streaming
+- Server with async job queue, RBAC, and PostgreSQL/Valkey backend
+- Kubernetes-native deployment with separate API/worker pods
+- Local-first CLI for workspace tracking (no server required for basic use)
+- Push/pull versioned `pixi.toml` and `pixi.lock` to shared servers
+- Diff specs between local directories or server versions
+- Multi-server support with named servers and default server config
 
 ## Quick Start
 
@@ -73,40 +76,16 @@ This will start:
 
 ```bash
 # Build and import to k3d
-docker build -t darb:latest .
-k3d image import darb:latest -c darb-dev
+docker build -t nebi:latest .
+k3d image import nebi:latest -c nebi-dev
 
 # Deploy
-helm install darb ./chart -n darb --create-namespace \
+helm install nebi ./chart -n nebi --create-namespace \
   -f chart/values-dev.yaml
 
 # Access
 curl http://localhost:8460/api/v1/health
 ```
-
-### Fly.io Deployment
-
-Deploy to fly.io using GitHub Actions:
-
-```bash
-# Generate a deploy token for CI/CD
-flyctl tokens create deploy --name github-actions-darb
-
-# Set GitHub secrets
-gh secret set FLY_API_TOKEN --body "<token-from-above>"
-gh secret set JWT_SECRET --body "$(openssl rand -base64 32)"
-gh secret set ADMIN_USERNAME --body "admin"
-gh secret set ADMIN_PASSWORD --body "$(openssl rand -base64 24)"
-
-# Deploy via GitHub Actions
-gh workflow run deploy.yml
-```
-
-The deployment workflow will:
-- Create the fly.io app (if it doesn't exist)
-- Create a 1GB volume for SQLite database
-- Set required secrets
-- Build and deploy the Docker image
 
 ## Architecture
 
@@ -171,30 +150,32 @@ curl -X POST http://localhost:8460/api/v1/environments/{id}/packages \
 
 ### Environment Variables
 
+> **Note**: Environment variables currently use the `NEBI_` prefix. This will be renamed to `NEBI_` in a future release.
+
 ```bash
 # Server configuration
-DARB_SERVER_PORT=8460
-DARB_SERVER_MODE=development
+NEBI_SERVER_PORT=8460
+NEBI_SERVER_MODE=development
 
 # Database configuration
-DARB_DATABASE_DRIVER=postgres
-DARB_DATABASE_DSN="postgres://user:pass@host:5432/darb"
+NEBI_DATABASE_DRIVER=postgres
+NEBI_DATABASE_DSN="postgres://user:pass@host:5432/nebi"
 
 # Queue configuration
-DARB_QUEUE_TYPE=valkey
-DARB_QUEUE_VALKEY_ADDR=valkey:6379
+NEBI_QUEUE_TYPE=valkey
+NEBI_QUEUE_VALKEY_ADDR=valkey:6379
 
 # Authentication
-DARB_AUTH_JWT_SECRET=<secret>
+NEBI_AUTH_JWT_SECRET=<secret>
 
 # Logging
-DARB_LOG_LEVEL=info
-DARB_LOG_FORMAT=json
+NEBI_LOG_LEVEL=info
+NEBI_LOG_FORMAT=json
 
 # Admin user bootstrap (creates admin user on first startup if no users exist)
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin123
-ADMIN_EMAIL=admin@darb.local  # Optional, defaults to <username>@darb.local
+ADMIN_EMAIL=admin@nebi.local  # Optional, defaults to <username>@nebi.local
 ```
 
 ### Helm Values
@@ -222,15 +203,88 @@ queue:
   type: valkey
 ```
 
-## Scaling
+## CLI Usage
+
+### Workspace Commands
 
 ```bash
-# Scale workers based on job queue depth
-kubectl scale deployment darb-worker -n darb --replicas=5
+# Track a pixi workspace (runs pixi init if no pixi.toml exists)
+cd my-project
+nebi init
 
-# Scale API for HTTP traffic
-kubectl scale deployment darb-api -n darb --replicas=3
+# Check sync status
+nebi status
+
+# List tracked workspaces
+nebi workspace list
+
+# Compare pixi specs between directories or server versions
+nebi diff                                # local vs last pushed/pulled origin
+nebi diff ./project-a ./project-b
+nebi diff ./project-a ./project-b --lock    # also compare pixi.lock
+nebi diff myworkspace:v1 myworkspace:v2 -s work
+
+# Push/pull versioned specs
+nebi push myworkspace:v1.0 -s work
+nebi push :v2.0                          # reuse workspace name from origin
+nebi pull myworkspace:v1.0 -s work
+nebi pull                                # re-pull from last origin
+
+# List workspaces and tags on a server
+nebi workspace list -s work
+nebi workspace tags myworkspace -s work
+
+# Global workspaces (stored centrally by nebi)
+nebi pull myworkspace:v1.0 --global data-science -s work
+nebi workspace promote data-science     # copy current workspace to global
+nebi workspace list                     # shows local and global workspaces
+nebi shell data-science                 # open pixi shell in a workspace by name
+nebi shell data-science -e dev          # args pass through to pixi shell
+nebi run my-task                        # run a pixi task (auto-initializes workspace)
+nebi run data-science my-task           # run a task in a global workspace
+nebi workspace remove data-science      # remove a workspace from tracking
+nebi workspace remove myenv -s work    # remove a workspace from a server
+nebi workspace prune                   # clean up workspaces with missing paths
+
+# Diff using workspace names
+nebi diff data-science ./my-project
+nebi diff data-science ml-pipeline
+
+# Publish a workspace version to an OCI registry
+nebi workspace publish myworkspace:v1.0 -s work
+nebi workspace publish myworkspace:v1.0 -s work myorg/myenv:latest
+nebi workspace publish myworkspace:v1.0 -s work --registry ghcr myorg/myenv:latest
 ```
+
+### Connection Commands
+
+```bash
+# Register and authenticate with a server
+nebi server add work https://nebi.company.com
+nebi login work
+
+# Change the default server
+nebi server set-default work
+
+# List OCI registries on a server
+nebi registry list -s work
+```
+
+### Admin Commands
+
+```bash
+# Run a server instance
+nebi serve
+nebi serve --port 8080 --mode server
+```
+
+### Configuration
+
+Nebi stores data in platform-standard directories:
+- **Data** (`~/.local/share/nebi/`): index, credentials, global workspace environments
+- **Config** (`~/.config/nebi/config.yaml`): default server and user preferences
+
+The first server added with `nebi server add` automatically becomes the default, so `-s` can be omitted on commands like `push`, `pull`, `diff`, and `workspace tags`.
 
 ## Development
 
@@ -245,20 +299,20 @@ make swagger        # Generate API docs
 ## Project Structure
 
 ```
-darb/
-├── cmd/server/           # Application entry point
+nebi/
+├── cmd/nebi/             # Unified CLI + server entry point
 ├── internal/
 │   ├── api/              # HTTP handlers and routing
 │   ├── auth/             # Authentication (JWT, basic auth)
+│   ├── cliclient/        # HTTP client for CLI-to-server communication
+│   ├── localstore/       # Local index, config, and credentials
 │   ├── db/               # Database models and migrations
 │   ├── executor/         # Job execution (local/docker/k8s)
 │   ├── queue/            # Job queue (memory/valkey)
+│   ├── server/           # Server initialization logic
 │   ├── worker/           # Background job processor
-│   └── packagemanager/   # Pixi/UV abstractions
+│   └── pkgmgr/           # Pixi/UV abstractions
 ├── chart/                # Helm chart for Kubernetes
 └── frontend/             # React web UI
 ```
 
-## License
-
-MIT

@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aktech/darb/internal/models"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/models"
 )
 
 // MemoryQueue implements an in-memory job queue

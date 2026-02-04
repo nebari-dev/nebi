@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/aktech/darb/internal/models"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/models"
 )
 
 // ErrJobNotFound is returned when a job is not found

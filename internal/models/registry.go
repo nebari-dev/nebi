@@ -26,6 +26,7 @@ type Publication struct {
 	ID              uuid.UUID   `gorm:"type:uuid;primary_key" json:"id"`
 	EnvironmentID   uuid.UUID   `gorm:"type:uuid;index;not null" json:"environment_id"`
 	Environment     Environment `gorm:"foreignKey:EnvironmentID" json:"environment,omitempty"`
+	VersionNumber   int         `gorm:"not null" json:"version_number"` // Which version was published
 	RegistryID      uuid.UUID   `gorm:"type:uuid;index;not null" json:"registry_id"`
 	Registry        OCIRegistry `gorm:"foreignKey:RegistryID" json:"registry,omitempty"`
 	Repository      string      `gorm:"not null" json:"repository"` // e.g., "myorg/myenv"

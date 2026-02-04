@@ -64,7 +64,7 @@ config:
 admin:
   username: "admin"
   password: "admin123"
-  email: "admin@darb.local"
+  email: "admin@nebi.local"
 
 ## Health probes - faster for development
 livenessProbe:

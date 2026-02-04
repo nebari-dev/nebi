@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/aktech/darb/internal/logstream"
-	"github.com/aktech/darb/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/logstream"
+	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"
 )
@@ -63,7 +63,7 @@ func (h *JobHandler) ListJobs(c *gin.Context) {
 // @Tags jobs
 // @Security BearerAuth
 // @Produce json
-// @Param id path int true "Job ID"
+// @Param id path string true "Job ID"
 // @Success 200 {object} models.Job
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse

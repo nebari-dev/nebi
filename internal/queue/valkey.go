@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/aktech/darb/internal/models"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"
 )
@@ -18,7 +18,7 @@ import (
 type ValkeyQueue struct {
 	client valkey.Client
 	db     *gorm.DB
-	key    string // Queue key: "darb:jobs"
+	key    string // Queue key: "nebi:jobs"
 }
 
 // NewValkeyQueue creates a new Valkey-backed queue
@@ -48,7 +48,7 @@ func NewValkeyQueue(addr string, db *gorm.DB) (*ValkeyQueue, error) {
 	q := &ValkeyQueue{
 		client: client,
 		db:     db,
-		key:    "darb:jobs",
+		key:    "nebi:jobs",
 	}
 
 	slog.Info("Initialized Valkey job queue",

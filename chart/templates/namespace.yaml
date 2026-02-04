@@ -3,4 +3,4 @@ kind: Namespace
 metadata:
   name: {{ .Release.Namespace }}
   labels:
-    {{- include "darb.labels" . | nindent 4 }}
+    {{- include "nebi.labels" . | nindent 4 }}

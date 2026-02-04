@@ -1,6 +1,7 @@
 # Binaries
 bin/
 darb
+darb-server
 *.exe
 *.dll
 *.so
@@ -59,3 +60,11 @@ frontend/node_modules/
 .env
 dist/
 .env.prod
+
+# Go workspace (machine-specific)
+go.work
+go.work.sum
+
+# Claude
+CLAUDE.md
+.claude/

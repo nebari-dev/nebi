@@ -1,9 +1,9 @@
-# k3d cluster configuration for Darb development
+# k3d cluster configuration for Nebi development
 # Usage: k3d cluster create -c k3d-config.yaml
 apiVersion: k3d.io/v1alpha5
 kind: Simple
 metadata:
-  name: darb-dev
+  name: nebi-dev
 
 servers: 1
 agents: 0
@@ -12,7 +12,7 @@ ports:
   - port: 6551:6443  # API server port
     nodeFilters:
       - server:0
-  - port: 8460:30080 # Darb web UI (maps to NodePort 30080)
+  - port: 8460:30080 # Nebi web UI (maps to NodePort 30080)
     nodeFilters:
       - server:0
 

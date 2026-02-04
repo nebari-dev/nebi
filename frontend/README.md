@@ -1,6 +1,6 @@
-# Darb Frontend
+# Nebi Frontend
 
-Modern React frontend for the Darb environment management system.
+Modern React frontend for the Nebi environment management system.
 
 ## Tech Stack
 
@@ -66,7 +66,7 @@ frontend/
 
 - Node.js 18+ (or compatible version)
 - npm or yarn
-- Darb backend running on `http://localhost:8460`
+- Nebi backend running on `http://localhost:8460`
 
 ### Installation
 
@@ -157,7 +157,7 @@ Jobs auto-refresh every 2 seconds for real-time updates.
 
 ## API Integration
 
-The frontend communicates with the Darb backend via REST API:
+The frontend communicates with the Nebi backend via REST API:
 
 - **Authentication:** JWT tokens stored in localStorage
 - **Auto-refresh:** React Query polls every 2 seconds for updates
@@ -245,4 +245,4 @@ Visual indicators for:
 
 ## License
 
-Same as parent Darb project
+Same as parent Nebi project

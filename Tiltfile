@@ -99,7 +99,7 @@ Once ready:
   • Tilt UI:      http://localhost:10350
   • API:          http://localhost:8460/api/v1/health
   • Swagger:      http://localhost:8460/docs
-  • PostgreSQL:   localhost:5432 (nebi/testpassword123)
+  • PostgreSQL:   localhost:5432 (nebi/<password from values>)
   • Valkey:       localhost:6379
 
 💡 Tips:

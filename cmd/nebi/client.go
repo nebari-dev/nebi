@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -10,6 +11,9 @@ import (
 	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/nebari-dev/nebi/internal/localstore"
 )
+
+// ErrEnvNotFound is returned when an environment name is not found on the server.
+var ErrEnvNotFound = errors.New("environment not found on server")
 
 // resolveServerFlag returns the server argument, falling back to the default server from config.
 func resolveServerFlag(serverArg string) (string, error) {
@@ -59,7 +63,7 @@ func findEnvByName(client *cliclient.Client, ctx context.Context, name string) (
 		}
 	}
 
-	return nil, fmt.Errorf("environment %q not found on server", name)
+	return nil, fmt.Errorf("%w: %q", ErrEnvNotFound, name)
 }
 
 // findGlobalWorkspaceByName looks up a global workspace by name in the local index.

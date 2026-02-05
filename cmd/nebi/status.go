@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -125,6 +126,9 @@ func checkServerOrigin(serverName string, origin *localstore.Origin) string {
 	ctx := context.Background()
 	env, err := findEnvByName(client, ctx, origin.Name)
 	if err != nil {
+		if errors.Is(err, ErrEnvNotFound) {
+			return fmt.Sprintf("Workspace %q not found on server", origin.Name)
+		}
 		return fmt.Sprintf("Server %q is not reachable", serverName)
 	}
 

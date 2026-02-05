@@ -121,6 +121,22 @@ func runPull(cmd *cobra.Command, args []string) error {
 			}
 		}
 		versionNumber = latest.VersionNumber
+
+		// Resolve tag for this version so the origin records what was actually pulled
+		tags, err := client.GetEnvironmentTags(ctx, env.ID)
+		if err == nil {
+			var bestTag string
+			var bestTime string
+			for _, t := range tags {
+				if int32(t.VersionNumber) == versionNumber {
+					if bestTag == "" || t.CreatedAt > bestTime {
+						bestTag = t.Tag
+						bestTime = t.CreatedAt
+					}
+				}
+			}
+			tag = bestTag
+		}
 	}
 
 	// Download spec files
@@ -186,6 +202,13 @@ func runPull(cmd *cobra.Command, args []string) error {
 	}
 
 	absOutput, _ := filepath.Abs(outputDir)
+
+	// Auto-track the workspace so status and origin tracking work
+	if pullGlobal == "" {
+		if err := ensureInit(outputDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to auto-track workspace: %v\n", err)
+		}
+	}
 
 	refStr := envName
 	if tag != "" {

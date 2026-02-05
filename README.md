@@ -28,7 +28,7 @@
 
 ---
 
-> **⚠️ Alpha Software**: Nebi is currently in alpha. APIs and features may change without notice. Not recommended for production use.
+> **⚠️ Alpha Software**: Nebi is currently in alpha. APIs, UI, CLI and available features may change without notice. Not recommended for production use.
 
 ## What is Nebi?
 
@@ -54,7 +54,7 @@ make install-tools
 
 # Run with hot reload (frontend + backend)
 # Frontend dependencies will be automatically installed if needed
-ADMIN_USERNAME=admin ADMIN_PASSWORD=admin123 make dev
+ADMIN_USERNAME=admin ADMIN_PASSWORD=<your-password> make dev
 ```
 
 This will start:
@@ -62,9 +62,8 @@ This will start:
 - **Backend API** at http://localhost:8460 (with hot reload)
 - **API docs** at http://localhost:8460/docs
 
-**Default Admin Credentials:**
-- Username: `admin`
-- Password: `admin123`
+**Admin Credentials:**
+Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables to create the admin user on first startup.
 
 > **Note**: The admin user is automatically created on first startup when `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables are set. If you start the server without these variables, no admin user will be created and you won't be able to log in.
 
@@ -118,7 +117,7 @@ curl http://localhost:8460/api/v1/health
 # Login
 curl -X POST http://localhost:8460/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}'
+  -d '{"username":"admin","password":"<your-password>"}'
 
 # Returns JWT token
 export TOKEN="<your-token>"
@@ -172,8 +171,8 @@ NEBI_LOG_FORMAT=json
 
 # Admin user bootstrap (creates admin user on first startup if no users exist)
 ADMIN_USERNAME=admin
-ADMIN_PASSWORD=admin123
-ADMIN_EMAIL=admin@nebi.local  # Optional, defaults to <username>@nebi.local
+ADMIN_PASSWORD=<your-secure-password>
+ADMIN_EMAIL=admin@example.com  # Optional, defaults to <username>@nebi.local
 ```
 
 ### Helm Values

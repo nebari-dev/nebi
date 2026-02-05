@@ -1789,3 +1789,138 @@ func TestE2E_RunNoPixiToml(t *testing.T) {
 		t.Errorf("expected pixi.toml error, got: %s", combined)
 	}
 }
+
+func TestE2E_PullAutoTracksWorkspace(t *testing.T) {
+	setupLocalStore(t)
+
+	wsName := "e2e-pull-autotrack"
+	tag := "v1.0"
+
+	// Push a workspace from a source directory
+	srcDir := t.TempDir()
+	toml := "[project]\nname = \"autotrack-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\npackages: []\n"
+	writePixiFiles(t, srcDir, toml, lock)
+
+	res := runCLI(t, srcDir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	res = runCLI(t, srcDir, "push", wsName+":"+tag, "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Pull into a fresh, untracked directory (no nebi init)
+	dstDir := t.TempDir()
+	res = runCLI(t, dstDir, "pull", wsName+":"+tag, "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("pull failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Status should recognize the workspace (not say "Not a tracked workspace")
+	res = runCLI(t, dstDir, "status")
+	if res.ExitCode != 0 {
+		t.Fatalf("status failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if strings.Contains(res.Stderr, "Not a tracked workspace") {
+		t.Error("pull into untracked directory should auto-track the workspace, but status says 'Not a tracked workspace'")
+	}
+	if !strings.Contains(res.Stdout, "Workspace:") {
+		t.Errorf("expected 'Workspace:' in status output, got stdout: %s stderr: %s", res.Stdout, res.Stderr)
+	}
+
+	// Origin should also be saved
+	if !strings.Contains(res.Stdout, wsName+":"+tag) {
+		t.Errorf("expected origin %s:%s in status output, got: %s", wsName, tag, res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "pull") {
+		t.Errorf("expected 'pull' action in status output, got: %s", res.Stdout)
+	}
+}
+
+func TestE2E_PushAutoTracksWorkspace(t *testing.T) {
+	setupLocalStore(t)
+
+	wsName := "e2e-push-autotrack"
+	tag := "v1.0"
+
+	// Create a workspace directory with pixi files but do NOT run nebi init
+	dir := t.TempDir()
+	toml := "[project]\nname = \"autotrack-push\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock := "version: 6\npackages: []\n"
+	writePixiFiles(t, dir, toml, lock)
+
+	// Push from the untracked directory — should auto-track
+	res := runCLI(t, dir, "push", wsName+":"+tag, "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Status should recognize the workspace (not say "Not a tracked workspace")
+	res = runCLI(t, dir, "status")
+	if res.ExitCode != 0 {
+		t.Fatalf("status failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if strings.Contains(res.Stderr, "Not a tracked workspace") {
+		t.Error("push from untracked directory should auto-track the workspace, but status says 'Not a tracked workspace'")
+	}
+	if !strings.Contains(res.Stdout, "Workspace:") {
+		t.Errorf("expected 'Workspace:' in status output, got stdout: %s stderr: %s", res.Stdout, res.Stderr)
+	}
+
+	// Origin should also be saved
+	if !strings.Contains(res.Stdout, wsName+":"+tag) {
+		t.Errorf("expected origin %s:%s in status output, got: %s", wsName, tag, res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "push") {
+		t.Errorf("expected 'push' action in status output, got: %s", res.Stdout)
+	}
+}
+
+func TestE2E_PullWithoutTagResolvesTag(t *testing.T) {
+	setupLocalStore(t)
+
+	wsName := "e2e-pull-resolve-tag"
+
+	// Push two tagged versions
+	srcDir := t.TempDir()
+	toml1 := "[project]\nname = \"resolve-tag\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	lock1 := "version: 6\n"
+	writePixiFiles(t, srcDir, toml1, lock1)
+
+	res := runCLI(t, srcDir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	res = runCLI(t, srcDir, "push", wsName+":v1.0", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push v1.0 failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	toml2 := toml1 + "\n[dependencies]\nnumpy = \"*\"\n"
+	os.WriteFile(filepath.Join(srcDir, "pixi.toml"), []byte(toml2), 0644)
+
+	res = runCLI(t, srcDir, "push", wsName+":v2.0", "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("push v2.0 failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	// Pull WITHOUT a tag — should resolve to latest version and find its tag
+	dstDir := t.TempDir()
+	res = runCLI(t, dstDir, "pull", wsName, "-s", "e2e")
+	if res.ExitCode != 0 {
+		t.Fatalf("pull failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Status should show the resolved tag (v2.0), not an empty tag
+	res = runCLI(t, dstDir, "status")
+	if res.ExitCode != 0 {
+		t.Fatalf("status failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, wsName+":v2.0") {
+		t.Errorf("expected resolved tag v2.0 in status output, got: %s", res.Stdout)
+	}
+}

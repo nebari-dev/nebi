@@ -1,0 +1,21 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Nebi",
+  "outputfilename": "Nebi",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "wailsjsdir": "./frontend/wailsjs",
+  "author": {
+    "name": "OpenTeams",
+    "email": "info@openteams.com"
+  },
+  "info": {
+    "companyName": "OpenTeams",
+    "productName": "Nebi",
+    "productVersion": "0.1.0",
+    "copyright": "Copyright 2026 OpenTeams",
+    "comments": "Environment Manager"
+  }
+}

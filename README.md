@@ -1,9 +1,7 @@
 # Nebi
 
 <div align="center">
-  <table><tr><td bgcolor="white" style="padding: 20px;">
-    <img src="assets/nebi-logo.png" alt="Nebi" width="500"/>
-  </td></tr></table>
+  <img src="assets/nebi-icon-solid.jpg" alt="Nebi" width="400"/>
 </div>
 
 <p align="center">

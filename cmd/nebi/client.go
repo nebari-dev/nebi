@@ -25,7 +25,7 @@ func resolveServerFlag(serverArg string) (string, error) {
 		return "", fmt.Errorf("loading config: %w", err)
 	}
 	if cfg.DefaultServer == "" {
-		return "", fmt.Errorf("no server specified; use -s <server> or set a default with 'nebi server add <name> <url>'")
+		return "", fmt.Errorf("no server specified; use -s <server> or set a default with 'nebi server set-default <name>'")
 	}
 	return cfg.DefaultServer, nil
 }

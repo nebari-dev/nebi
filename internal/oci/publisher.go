@@ -113,11 +113,41 @@ func PublishEnvironment(ctx context.Context, envPath string, opts PublishOptions
 		},
 	}
 
-	// Copy the entire graph (manifest + all layers) from file store to remote
-	copyGraphOpts := oras.DefaultCopyGraphOptions
-	copyGraphOpts.Concurrency = 1 // Sequential upload
-	if err = oras.CopyGraph(ctx, fs, repo, manifestDesc, copyGraphOpts); err != nil {
-		return "", fmt.Errorf("failed to push to registry: %w", err)
+	// Push blobs and manifest directly to avoid existence check issues with new repos
+	// Push config blob
+	configReader, err := fs.Fetch(ctx, configDesc)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch config: %w", err)
+	}
+	if err := repo.Push(ctx, configDesc, configReader); err != nil {
+		return "", fmt.Errorf("failed to push config to registry: %w", err)
+	}
+
+	// Push pixi.toml blob
+	tomlReader, err := fs.Fetch(ctx, tomlDesc)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch pixi.toml: %w", err)
+	}
+	if err := repo.Push(ctx, tomlDesc, tomlReader); err != nil {
+		return "", fmt.Errorf("failed to push pixi.toml to registry: %w", err)
+	}
+
+	// Push pixi.lock blob
+	lockReader, err := fs.Fetch(ctx, lockDesc)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch pixi.lock: %w", err)
+	}
+	if err := repo.Push(ctx, lockDesc, lockReader); err != nil {
+		return "", fmt.Errorf("failed to push pixi.lock to registry: %w", err)
+	}
+
+	// Push manifest
+	manifestReader, err := fs.Fetch(ctx, manifestDesc)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch manifest: %w", err)
+	}
+	if err := repo.Push(ctx, manifestDesc, manifestReader); err != nil {
+		return "", fmt.Errorf("failed to push manifest to registry: %w", err)
 	}
 
 	// Tag the manifest in the remote repository

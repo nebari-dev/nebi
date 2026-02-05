@@ -61,7 +61,7 @@ func runDiff(cmd *cobra.Command, args []string) error {
 
 	switch len(args) {
 	case 0:
-		// No args — diff local vs origin on server
+		// No args — diff origin vs local (origin is baseline, local shows changes)
 		server, err := resolveServerFlag(diffServer)
 		if err != nil {
 			return err
@@ -73,11 +73,11 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		if origin == nil {
 			return fmt.Errorf("no origin set; use 'nebi diff <ref>' or push/pull first")
 		}
-		refA = "."
-		refB = origin.Name + ":" + origin.Tag
-	case 1:
-		refA = args[0]
+		refA = origin.Name + ":" + origin.Tag
 		refB = "."
+	case 1:
+		refA = "."
+		refB = args[0]
 	default:
 		refA = args[0]
 		refB = args[1]

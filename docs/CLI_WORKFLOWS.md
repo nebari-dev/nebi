@@ -228,8 +228,8 @@ Origins:
 
 # Diff against origin (no args needed)
 $ nebi diff
---- local
-+++ my-project:v1.0
+--- my-project:v1.0
++++ local
 No differences.
 
 # Push a new tag using origin's workspace name

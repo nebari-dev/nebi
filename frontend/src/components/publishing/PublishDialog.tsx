@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { usePublicRegistries, usePublishEnvironment } from '@/hooks/useRegistries';
-import { useEnvironmentTags } from '@/hooks/useEnvironments';
+import { usePublicRegistries, usePublishEnvironment, usePublications } from '@/hooks/useRegistries';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,7 +36,7 @@ const suggestNextTag = (existingTags: string[]): string => {
 
 export const PublishDialog = ({ open, onOpenChange, environmentId, environmentName }: PublishDialogProps) => {
   const { data: registries, isLoading: registriesLoading } = usePublicRegistries();
-  const { data: tags, isLoading: tagsLoading } = useEnvironmentTags(environmentId);
+  const { data: publications, isLoading: publicationsLoading } = usePublications(environmentId);
   const publishMutation = usePublishEnvironment();
 
   const [selectedRegistry, setSelectedRegistry] = useState('');
@@ -59,7 +58,7 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
 
   // Auto-populate all fields when dialog opens and data is loaded
   useEffect(() => {
-    if (open && !hasAutoPopulated && registries && tags) {
+    if (open && !hasAutoPopulated && registries && publications) {
       // Auto-select default registry
       if (defaultRegistry) {
         setSelectedRegistry(defaultRegistry.id);
@@ -75,13 +74,13 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
         }
       }
 
-      // Auto-populate tag based on existing tags
-      const existingTagNames = tags.map(t => t.tag);
+      // Auto-populate tag based on existing publications
+      const existingTagNames = publications.map(p => p.tag);
       setTag(suggestNextTag(existingTagNames));
 
       setHasAutoPopulated(true);
     }
-  }, [open, hasAutoPopulated, registries, tags, defaultRegistry, environmentName]);
+  }, [open, hasAutoPopulated, registries, publications, defaultRegistry, environmentName]);
 
   // Update repository when registry selection changes (after initial auto-populate)
   useEffect(() => {
@@ -146,7 +145,7 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
     }
   };
 
-  const isLoading = registriesLoading || tagsLoading;
+  const isLoading = registriesLoading || publicationsLoading;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -232,8 +231,8 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
                   />
                   <p className="text-xs text-muted-foreground">
                     Version tag for this publication
-                    {tags && tags.length > 0 && (
-                      <> (existing: {tags.slice(0, 3).map(t => t.tag).join(', ')}{tags.length > 3 ? '...' : ''})</>
+                    {publications && publications.length > 0 && (
+                      <> (existing: {publications.slice(0, 3).map(p => p.tag).join(', ')}{publications.length > 3 ? '...' : ''})</>
                     )}
                   </p>
                 </div>

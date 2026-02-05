@@ -12,6 +12,17 @@ interface PublishDialogProps {
   environmentName: string;
 }
 
+// Helper function to normalize repository name for OCI compatibility
+// OCI repos must be lowercase, alphanumeric with hyphens/underscores/periods
+const normalizeRepoName = (name: string): string => {
+  return name
+    .toLowerCase()
+    .replace(/\s+/g, '-')           // Replace spaces with hyphens
+    .replace(/[^a-z0-9._-]/g, '')   // Remove invalid characters
+    .replace(/-+/g, '-')            // Replace multiple hyphens with single
+    .replace(/^-|-$/g, '');         // Remove leading/trailing hyphens
+};
+
 // Helper function to suggest next version tag
 const suggestNextTag = (existingTags: string[]): string => {
   if (existingTags.length === 0) {
@@ -66,11 +77,12 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
         // Auto-populate repository based on default registry's default_repository
         // Append first 8 chars of environment ID to avoid collisions
         const envIdSuffix = environmentId.slice(0, 8);
+        const normalizedName = normalizeRepoName(environmentName);
         if (defaultRegistry.default_repository) {
           const baseRepo = defaultRegistry.default_repository.replace(/\/$/, '');
-          setRepository(`${baseRepo}/${environmentName}-${envIdSuffix}`);
+          setRepository(`${baseRepo}/${normalizedName}-${envIdSuffix}`);
         } else {
-          setRepository(`${environmentName}-${envIdSuffix}`);
+          setRepository(`${normalizedName}-${envIdSuffix}`);
         }
       }
 
@@ -86,11 +98,12 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
   useEffect(() => {
     if (hasAutoPopulated && selectedRegistryObj) {
       const envIdSuffix = environmentId.slice(0, 8);
+      const normalizedName = normalizeRepoName(environmentName);
       if (selectedRegistryObj.default_repository) {
         const baseRepo = selectedRegistryObj.default_repository.replace(/\/$/, '');
-        setRepository(`${baseRepo}/${environmentName}-${envIdSuffix}`);
+        setRepository(`${baseRepo}/${normalizedName}-${envIdSuffix}`);
       } else {
-        setRepository(`${environmentName}-${envIdSuffix}`);
+        setRepository(`${normalizedName}-${envIdSuffix}`);
       }
     }
   }, [selectedRegistryObj, hasAutoPopulated, environmentName, environmentId]);

@@ -98,12 +98,12 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	dbPath := fmt.Sprintf("%s/nebi.db", dataDir)
-	os.Setenv("DARB_DATABASE_DSN", dbPath)
+	os.Setenv("NEBI_DATABASE_DSN", dbPath)
 	logToFile(fmt.Sprintf("Using database: %s", dbPath))
 
 	// Set storage directory to app data dir (fixes read-only file system error)
 	storageDir := filepath.Join(dataDir, "environments")
-	os.Setenv("DARB_STORAGE_ENVIRONMENTS_DIR", storageDir)
+	os.Setenv("NEBI_STORAGE_ENVIRONMENTS_DIR", storageDir)
 	logToFile(fmt.Sprintf("Using storage: %s", storageDir))
 
 	// Load config

@@ -40,3 +40,11 @@ export const useDeleteEnvironment = () => {
     },
   });
 };
+
+export const useEnvironmentTags = (id: string) => {
+  return useQuery({
+    queryKey: ['environments', id, 'tags'],
+    queryFn: () => environmentsApi.listTags(id),
+    enabled: !!id,
+  });
+};

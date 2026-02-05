@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { Environment, CreateEnvironmentRequest, EnvironmentVersion, RollbackRequest, Job } from '@/types';
+import type { Environment, CreateEnvironmentRequest, EnvironmentVersion, RollbackRequest, Job, EnvironmentTag } from '@/types';
 
 export const environmentsApi = {
   list: async (): Promise<Environment[]> => {
@@ -53,6 +53,11 @@ export const environmentsApi = {
 
   rollback: async (id: string, req: RollbackRequest): Promise<Job> => {
     const { data } = await apiClient.post(`/environments/${id}/rollback`, req);
+    return data;
+  },
+
+  listTags: async (id: string): Promise<EnvironmentTag[]> => {
+    const { data } = await apiClient.get(`/environments/${id}/tags`);
     return data;
   },
 };

@@ -16,7 +16,7 @@ import { ShareButton } from '@/components/sharing/ShareButton';
 import { PublishButton } from '@/components/publishing/PublishButton';
 import { RoleBadge } from '@/components/sharing/RoleBadge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
-import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check, ExternalLink } from 'lucide-react';
 
 const statusColors = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -133,7 +133,7 @@ export const EnvironmentDetail = () => {
           <Badge className={statusColors[environment.status]}>
             {environment.status}
           </Badge>
-          <PublishButton environmentId={envId} environmentStatus={environment.status} />
+          <PublishButton environmentId={envId} environmentName={environment.name} environmentStatus={environment.status} />
           {isOwner && <ShareButton environmentId={envId} />}
         </div>
       </div>
@@ -393,9 +393,15 @@ export const EnvironmentDetail = () => {
                       <div className="flex items-start justify-between">
                         <div className="flex-1 space-y-2">
                           <div className="flex items-center gap-2">
-                            <span className="font-medium text-lg">
+                            <a
+                              href={`https://${pub.registry_url}/repository/${pub.repository}?tab=tags`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium text-lg hover:underline text-primary flex items-center gap-1"
+                            >
                               {pub.repository}:{pub.tag}
-                            </span>
+                              <ExternalLink className="h-4 w-4" />
+                            </a>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                             <div>

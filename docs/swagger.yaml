@@ -44,6 +44,8 @@ definitions:
     type: object
   handlers.CreateRegistryRequest:
     properties:
+      default_repository:
+        type: string
       is_default:
         type: boolean
       name:
@@ -193,6 +195,8 @@ definitions:
     properties:
       created_at:
         type: string
+      default_repository:
+        type: string
       id:
         type: string
       is_default:
@@ -224,6 +228,8 @@ definitions:
     type: object
   handlers.UpdateRegistryRequest:
     properties:
+      default_repository:
+        type: string
       is_default:
         type: boolean
       name:

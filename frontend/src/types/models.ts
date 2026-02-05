@@ -127,6 +127,7 @@ export interface OCIRegistry {
   url: string;
   username: string;
   is_default: boolean;
+  default_repository: string;
   created_at: string;
 }
 
@@ -136,6 +137,7 @@ export interface CreateRegistryRequest {
   username?: string;
   password?: string;
   is_default?: boolean;
+  default_repository?: string;
 }
 
 export interface UpdateRegistryRequest {
@@ -144,6 +146,15 @@ export interface UpdateRegistryRequest {
   username?: string;
   password?: string;
   is_default?: boolean;
+  default_repository?: string;
+}
+
+// Environment Tag types
+export interface EnvironmentTag {
+  tag: string;
+  version_number: number;
+  created_at: string;
+  updated_at: string;
 }
 
 // Publication types

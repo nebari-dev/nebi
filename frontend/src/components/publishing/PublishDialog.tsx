@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { usePublicRegistries, usePublishEnvironment } from '@/hooks/useRegistries';
+import { useEnvironmentTags } from '@/hooks/useEnvironments';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,10 +10,34 @@ interface PublishDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   environmentId: string;
+  environmentName: string;
 }
 
-export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDialogProps) => {
+// Helper function to suggest next version tag
+const suggestNextTag = (existingTags: string[]): string => {
+  if (existingTags.length === 0) {
+    return 'v1';
+  }
+
+  // Extract version numbers from tags like "v1", "v2", "v10", etc.
+  const versionNumbers = existingTags
+    .map(tag => {
+      const match = tag.match(/^v(\d+)$/);
+      return match ? parseInt(match[1], 10) : null;
+    })
+    .filter((n): n is number => n !== null);
+
+  if (versionNumbers.length === 0) {
+    return 'v1';
+  }
+
+  const maxVersion = Math.max(...versionNumbers);
+  return `v${maxVersion + 1}`;
+};
+
+export const PublishDialog = ({ open, onOpenChange, environmentId, environmentName }: PublishDialogProps) => {
   const { data: registries, isLoading: registriesLoading } = usePublicRegistries();
+  const { data: tags, isLoading: tagsLoading } = useEnvironmentTags(environmentId);
   const publishMutation = usePublishEnvironment();
 
   const [selectedRegistry, setSelectedRegistry] = useState('');
@@ -20,6 +45,68 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
   const [tag, setTag] = useState('');
   const [error, setError] = useState('');
   const [publishSuccess, setPublishSuccess] = useState(false);
+  const [hasAutoPopulated, setHasAutoPopulated] = useState(false);
+
+  // Find default registry
+  const defaultRegistry = useMemo(() => {
+    return registries?.find(r => r.is_default);
+  }, [registries]);
+
+  // Get selected registry object
+  const selectedRegistryObj = useMemo(() => {
+    return registries?.find(r => r.id === selectedRegistry);
+  }, [registries, selectedRegistry]);
+
+  // Auto-populate all fields when dialog opens and data is loaded
+  useEffect(() => {
+    if (open && !hasAutoPopulated && registries && tags) {
+      // Auto-select default registry
+      if (defaultRegistry) {
+        setSelectedRegistry(defaultRegistry.id);
+
+        // Auto-populate repository based on default registry's default_repository
+        // Append first 8 chars of environment ID to avoid collisions
+        const envIdSuffix = environmentId.slice(0, 8);
+        if (defaultRegistry.default_repository) {
+          const baseRepo = defaultRegistry.default_repository.replace(/\/$/, '');
+          setRepository(`${baseRepo}/${environmentName}-${envIdSuffix}`);
+        } else {
+          setRepository(`${environmentName}-${envIdSuffix}`);
+        }
+      }
+
+      // Auto-populate tag based on existing tags
+      const existingTagNames = tags.map(t => t.tag);
+      setTag(suggestNextTag(existingTagNames));
+
+      setHasAutoPopulated(true);
+    }
+  }, [open, hasAutoPopulated, registries, tags, defaultRegistry, environmentName]);
+
+  // Update repository when registry selection changes (after initial auto-populate)
+  useEffect(() => {
+    if (hasAutoPopulated && selectedRegistryObj) {
+      const envIdSuffix = environmentId.slice(0, 8);
+      if (selectedRegistryObj.default_repository) {
+        const baseRepo = selectedRegistryObj.default_repository.replace(/\/$/, '');
+        setRepository(`${baseRepo}/${environmentName}-${envIdSuffix}`);
+      } else {
+        setRepository(`${environmentName}-${envIdSuffix}`);
+      }
+    }
+  }, [selectedRegistryObj, hasAutoPopulated, environmentName, environmentId]);
+
+  // Reset form when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setSelectedRegistry('');
+      setRepository('');
+      setTag('');
+      setError('');
+      setPublishSuccess(false);
+      setHasAutoPopulated(false);
+    }
+  }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,10 +129,6 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
       setPublishSuccess(true);
       setTimeout(() => {
         onOpenChange(false);
-        setPublishSuccess(false);
-        setSelectedRegistry('');
-        setRepository('');
-        setTag('');
         // Refresh the page to show the new publication in the Publications tab
         window.location.reload();
       }, 2000);
@@ -60,10 +143,10 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
   const handleClose = () => {
     if (!publishMutation.isPending) {
       onOpenChange(false);
-      setError('');
-      setPublishSuccess(false);
     }
   };
+
+  const isLoading = registriesLoading || tagsLoading;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -89,7 +172,7 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-            {registriesLoading ? (
+            {isLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
@@ -118,6 +201,7 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
                     {registries?.map((registry) => (
                       <option key={registry.id} value={registry.id}>
                         {registry.name} ({registry.url})
+                        {registry.is_default ? ' (Default)' : ''}
                       </option>
                     ))}
                   </select>
@@ -148,6 +232,9 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
                   />
                   <p className="text-xs text-muted-foreground">
                     Version tag for this publication
+                    {tags && tags.length > 0 && (
+                      <> (existing: {tags.slice(0, 3).map(t => t.tag).join(', ')}{tags.length > 3 ? '...' : ''})</>
+                    )}
                   </p>
                 </div>
 

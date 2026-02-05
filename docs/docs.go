@@ -1969,6 +1969,9 @@ const docTemplate = `{
                 "url"
             ],
             "properties": {
+                "default_repository": {
+                    "type": "string"
+                },
                 "is_default": {
                     "type": "boolean"
                 },
@@ -2190,6 +2193,9 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
+                "default_repository": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -2237,6 +2243,9 @@ const docTemplate = `{
         "handlers.UpdateRegistryRequest": {
             "type": "object",
             "properties": {
+                "default_repository": {
+                    "type": "string"
+                },
                 "is_default": {
                     "type": "boolean"
                 },

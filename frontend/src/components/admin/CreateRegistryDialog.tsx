@@ -11,6 +11,7 @@ export const CreateRegistryDialog = () => {
   const [url, setUrl] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [defaultRepository, setDefaultRepository] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [error, setError] = useState('');
 
@@ -26,6 +27,7 @@ export const CreateRegistryDialog = () => {
         url,
         username: username || undefined,
         password: password || undefined,
+        default_repository: defaultRepository || undefined,
         is_default: isDefault,
       });
       setOpen(false);
@@ -33,6 +35,7 @@ export const CreateRegistryDialog = () => {
       setUrl('');
       setUsername('');
       setPassword('');
+      setDefaultRepository('');
       setIsDefault(false);
       setError('');
     } catch (err) {
@@ -101,6 +104,21 @@ export const CreateRegistryDialog = () => {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Personal access token or password"
             />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              Default Repository <span className="text-muted-foreground">(optional)</span>
+            </label>
+            <Input
+              type="text"
+              value={defaultRepository}
+              onChange={(e) => setDefaultRepository(e.target.value)}
+              placeholder="e.g., myorg/environments"
+            />
+            <p className="text-xs text-muted-foreground">
+              Base path for repositories. Environment name will be appended when publishing.
+            </p>
           </div>
 
           {error && (

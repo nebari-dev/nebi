@@ -1963,6 +1963,9 @@
                 "url"
             ],
             "properties": {
+                "default_repository": {
+                    "type": "string"
+                },
                 "is_default": {
                     "type": "boolean"
                 },
@@ -2184,6 +2187,9 @@
                 "created_at": {
                     "type": "string"
                 },
+                "default_repository": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -2231,6 +2237,9 @@
         "handlers.UpdateRegistryRequest": {
             "type": "object",
             "properties": {
+                "default_repository": {
+                    "type": "string"
+                },
                 "is_default": {
                     "type": "boolean"
                 },

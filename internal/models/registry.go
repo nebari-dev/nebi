@@ -9,16 +9,17 @@ import (
 
 // OCIRegistry represents an OCI-compliant container registry
 type OCIRegistry struct {
-	ID        uuid.UUID  `gorm:"type:uuid;primary_key" json:"id"`
-	Name      string     `gorm:"uniqueIndex;not null" json:"name"` // e.g., "GitHub Container Registry"
-	URL       string     `gorm:"not null" json:"url"`              // e.g., "ghcr.io"
-	Username  string     `json:"username"`
-	Password  string     `json:"-"` // encrypted, never exposed in JSON
-	IsDefault bool       `gorm:"default:false" json:"is_default"`
-	CreatedBy uuid.UUID  `gorm:"type:uuid" json:"created_by"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
-	DeletedAt *time.Time `gorm:"index" json:"-"`
+	ID                uuid.UUID  `gorm:"type:uuid;primary_key" json:"id"`
+	Name              string     `gorm:"uniqueIndex;not null" json:"name"` // e.g., "GitHub Container Registry"
+	URL               string     `gorm:"not null" json:"url"`              // e.g., "ghcr.io"
+	Username          string     `json:"username"`
+	Password          string     `json:"-"` // encrypted, never exposed in JSON
+	IsDefault         bool       `gorm:"default:false" json:"is_default"`
+	DefaultRepository string     `json:"default_repository"` // e.g., "myorg/environments" - base path for repositories
+	CreatedBy         uuid.UUID  `gorm:"type:uuid" json:"created_by"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	DeletedAt         *time.Time `gorm:"index" json:"-"`
 }
 
 // Publication tracks when and where an environment was published

@@ -5,10 +5,11 @@ import { Upload } from 'lucide-react';
 
 interface PublishButtonProps {
   environmentId: string;
+  environmentName: string;
   environmentStatus: string;
 }
 
-export const PublishButton = ({ environmentId, environmentStatus }: PublishButtonProps) => {
+export const PublishButton = ({ environmentId, environmentName, environmentStatus }: PublishButtonProps) => {
   const [open, setOpen] = useState(false);
 
   return (
@@ -23,7 +24,7 @@ export const PublishButton = ({ environmentId, environmentStatus }: PublishButto
         <Upload className="h-4 w-4 mr-2" />
         Publish
       </Button>
-      <PublishDialog open={open} onOpenChange={setOpen} environmentId={environmentId} />
+      <PublishDialog open={open} onOpenChange={setOpen} environmentId={environmentId} environmentName={environmentName} />
     </>
   );
 };

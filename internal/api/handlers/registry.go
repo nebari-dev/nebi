@@ -22,28 +22,31 @@ func NewRegistryHandler(db *gorm.DB) *RegistryHandler {
 // Request/Response types
 
 type CreateRegistryRequest struct {
-	Name      string `json:"name" binding:"required"`
-	URL       string `json:"url" binding:"required"`
-	Username  string `json:"username"`
-	Password  string `json:"password"`
-	IsDefault bool   `json:"is_default"`
+	Name              string `json:"name" binding:"required"`
+	URL               string `json:"url" binding:"required"`
+	Username          string `json:"username"`
+	Password          string `json:"password"`
+	IsDefault         bool   `json:"is_default"`
+	DefaultRepository string `json:"default_repository"`
 }
 
 type UpdateRegistryRequest struct {
-	Name      *string `json:"name"`
-	URL       *string `json:"url"`
-	Username  *string `json:"username"`
-	Password  *string `json:"password"`
-	IsDefault *bool   `json:"is_default"`
+	Name              *string `json:"name"`
+	URL               *string `json:"url"`
+	Username          *string `json:"username"`
+	Password          *string `json:"password"`
+	IsDefault         *bool   `json:"is_default"`
+	DefaultRepository *string `json:"default_repository"`
 }
 
 type RegistryResponse struct {
-	ID        uuid.UUID `json:"id"`
-	Name      string    `json:"name"`
-	URL       string    `json:"url"`
-	Username  string    `json:"username"`
-	IsDefault bool      `json:"is_default"`
-	CreatedAt string    `json:"created_at"`
+	ID                uuid.UUID `json:"id"`
+	Name              string    `json:"name"`
+	URL               string    `json:"url"`
+	Username          string    `json:"username"`
+	IsDefault         bool      `json:"is_default"`
+	DefaultRepository string    `json:"default_repository"`
+	CreatedAt         string    `json:"created_at"`
 }
 
 // ListRegistries godoc
@@ -66,12 +69,13 @@ func (h *RegistryHandler) ListRegistries(c *gin.Context) {
 	response := make([]RegistryResponse, len(registries))
 	for i, reg := range registries {
 		response[i] = RegistryResponse{
-			ID:        reg.ID,
-			Name:      reg.Name,
-			URL:       reg.URL,
-			Username:  reg.Username,
-			IsDefault: reg.IsDefault,
-			CreatedAt: reg.CreatedAt.Format("2006-01-02 15:04:05"),
+			ID:                reg.ID,
+			Name:              reg.Name,
+			URL:               reg.URL,
+			Username:          reg.Username,
+			IsDefault:         reg.IsDefault,
+			DefaultRepository: reg.DefaultRepository,
+			CreatedAt:         reg.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
 	}
 
@@ -111,12 +115,13 @@ func (h *RegistryHandler) CreateRegistry(c *gin.Context) {
 	}
 
 	registry := models.OCIRegistry{
-		Name:      req.Name,
-		URL:       req.URL,
-		Username:  req.Username,
-		Password:  req.Password, // TODO: Encrypt password
-		IsDefault: req.IsDefault,
-		CreatedBy: userID,
+		Name:              req.Name,
+		URL:               req.URL,
+		Username:          req.Username,
+		Password:          req.Password, // TODO: Encrypt password
+		IsDefault:         req.IsDefault,
+		DefaultRepository: req.DefaultRepository,
+		CreatedBy:         userID,
 	}
 
 	if err := h.db.Create(&registry).Error; err != nil {
@@ -125,12 +130,13 @@ func (h *RegistryHandler) CreateRegistry(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, RegistryResponse{
-		ID:        registry.ID,
-		Name:      registry.Name,
-		URL:       registry.URL,
-		Username:  registry.Username,
-		IsDefault: registry.IsDefault,
-		CreatedAt: registry.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:                registry.ID,
+		Name:              registry.Name,
+		URL:               registry.URL,
+		Username:          registry.Username,
+		IsDefault:         registry.IsDefault,
+		DefaultRepository: registry.DefaultRepository,
+		CreatedAt:         registry.CreatedAt.Format("2006-01-02 15:04:05"),
 	})
 }
 
@@ -155,12 +161,13 @@ func (h *RegistryHandler) GetRegistry(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, RegistryResponse{
-		ID:        registry.ID,
-		Name:      registry.Name,
-		URL:       registry.URL,
-		Username:  registry.Username,
-		IsDefault: registry.IsDefault,
-		CreatedAt: registry.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:                registry.ID,
+		Name:              registry.Name,
+		URL:               registry.URL,
+		Username:          registry.Username,
+		IsDefault:         registry.IsDefault,
+		DefaultRepository: registry.DefaultRepository,
+		CreatedAt:         registry.CreatedAt.Format("2006-01-02 15:04:05"),
 	})
 }
 
@@ -212,6 +219,9 @@ func (h *RegistryHandler) UpdateRegistry(c *gin.Context) {
 		}
 		registry.IsDefault = *req.IsDefault
 	}
+	if req.DefaultRepository != nil {
+		registry.DefaultRepository = *req.DefaultRepository
+	}
 
 	if err := h.db.Save(&registry).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update registry"})
@@ -219,12 +229,13 @@ func (h *RegistryHandler) UpdateRegistry(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, RegistryResponse{
-		ID:        registry.ID,
-		Name:      registry.Name,
-		URL:       registry.URL,
-		Username:  registry.Username,
-		IsDefault: registry.IsDefault,
-		CreatedAt: registry.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:                registry.ID,
+		Name:              registry.Name,
+		URL:               registry.URL,
+		Username:          registry.Username,
+		IsDefault:         registry.IsDefault,
+		DefaultRepository: registry.DefaultRepository,
+		CreatedAt:         registry.CreatedAt.Format("2006-01-02 15:04:05"),
 	})
 }
 
@@ -275,12 +286,13 @@ func (h *RegistryHandler) ListPublicRegistries(c *gin.Context) {
 	response := make([]RegistryResponse, len(registries))
 	for i, reg := range registries {
 		response[i] = RegistryResponse{
-			ID:        reg.ID,
-			Name:      reg.Name,
-			URL:       reg.URL,
-			Username:  "", // Don't expose username to regular users
-			IsDefault: reg.IsDefault,
-			CreatedAt: reg.CreatedAt.Format("2006-01-02 15:04:05"),
+			ID:                reg.ID,
+			Name:              reg.Name,
+			URL:               reg.URL,
+			Username:          "", // Don't expose username to regular users
+			IsDefault:         reg.IsDefault,
+			DefaultRepository: reg.DefaultRepository,
+			CreatedAt:         reg.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
 	}
 

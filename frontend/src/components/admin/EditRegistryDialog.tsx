@@ -17,6 +17,7 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
   const [url, setUrl] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [defaultRepository, setDefaultRepository] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [error, setError] = useState('');
 
@@ -29,6 +30,7 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
       setUrl(registry.url);
       setUsername(registry.username || '');
       setPassword(''); // Don't pre-fill password for security
+      setDefaultRepository(registry.default_repository || '');
       setIsDefault(registry.is_default);
     }
   }, [registry]);
@@ -45,6 +47,7 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
           url,
           username: username || undefined,
           password: password || undefined, // Only update if provided
+          default_repository: defaultRepository || undefined,
           is_default: isDefault,
         },
       });
@@ -110,6 +113,21 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Leave blank to keep current password"
             />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              Default Repository <span className="text-muted-foreground">(optional)</span>
+            </label>
+            <Input
+              type="text"
+              value={defaultRepository}
+              onChange={(e) => setDefaultRepository(e.target.value)}
+              placeholder="e.g., myorg/environments"
+            />
+            <p className="text-xs text-muted-foreground">
+              Base path for repositories. Environment name will be appended when publishing.
+            </p>
           </div>
 
           {error && (

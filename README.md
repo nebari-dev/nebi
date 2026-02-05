@@ -38,7 +38,6 @@ Nebi is a server and CLI for managing [Pixi](https://prefix.dev/) environments i
 
 **Key features:**
 - Server with async job queue, RBAC, and PostgreSQL/Valkey backend
-- Kubernetes-native deployment with separate API/worker pods
 - Local-first CLI for workspace tracking (no server required for basic use)
 - Push/pull versioned `pixi.toml` and `pixi.lock` to shared servers
 - Diff specs between local directories or server versions
@@ -69,45 +68,29 @@ Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables to create the ad
 
 > **Tip**: Access the app at http://localhost:8461 for the best development experience with instant hot reload of frontend changes!
 
-### Kubernetes Deployment
+### CLI Quick Start
 
 ```bash
-# Build and import to k3d
-docker build -t nebi:latest .
-k3d image import nebi:latest -c nebi-dev
+# Install nebi CLI (download from releases or build from source)
+go install github.com/nebari-dev/nebi/cmd/nebi@latest
 
-# Deploy
-helm install nebi ./chart -n nebi --create-namespace \
-  -f chart/values-dev.yaml
+# Add a server and authenticate
+nebi server add work https://nebi.company.com
+nebi login work
 
-# Access
-curl http://localhost:8460/api/v1/health
+# Track a pixi workspace
+cd my-project
+nebi init
+
+# Push your environment to the server
+nebi push myworkspace:v1.0
+
+# Pull an environment on another machine
+nebi pull myworkspace:v1.0
+
+# Check sync status anytime
+nebi status
 ```
-
-## Architecture
-
-```
-┌─────────────┐      ┌──────────────┐
-│  API Pod    │      │ Worker Pod   │
-│             │      │              │
-│ HTTP :8460  │      │ Processes    │
-│ Enqueues ───┼──┐   │ pixi/uv jobs │
-└─────────────┘  │   └──────────────┘
-                 │
-          ┌──────▼──────┐
-          │   Valkey    │
-          │   (Queue)   │
-          └──────┬──────┘
-                 │
-          ┌──────▼──────┐
-          │ PostgreSQL  │
-          └─────────────┘
-```
-
-- **API**: Handles HTTP requests, enqueues jobs
-- **Worker**: Processes jobs asynchronously
-- **Valkey**: Job queue
-- **PostgreSQL**: Persistent storage
 
 ## API Usage
 
@@ -147,8 +130,6 @@ curl -X POST http://localhost:8460/api/v1/environments/{id}/packages \
 
 ### Environment Variables
 
-> **Note**: Environment variables currently use the `NEBI_` prefix. This will be renamed to `NEBI_` in a future release.
-
 ```bash
 # Server configuration
 NEBI_SERVER_PORT=8460
@@ -173,31 +154,6 @@ NEBI_LOG_FORMAT=json
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=<your-secure-password>
 ADMIN_EMAIL=admin@example.com  # Optional, defaults to <username>@nebi.local
-```
-
-### Helm Values
-
-See `chart/values.yaml` for production and `chart/values-dev.yaml` for development.
-
-**Key settings:**
-```yaml
-deployment:
-  api:
-    replicas: 2
-    resources:
-      limits:
-        memory: 512Mi
-  worker:
-    replicas: 2
-    resources:
-      limits:
-        memory: 2Gi
-
-database:
-  driver: postgres
-
-queue:
-  type: valkey
 ```
 
 ## CLI Usage
@@ -341,12 +297,11 @@ nebi/
 │   ├── cliclient/        # HTTP client for CLI-to-server communication
 │   ├── localstore/       # Local index, config, and credentials
 │   ├── db/               # Database models and migrations
-│   ├── executor/         # Job execution (local/docker/k8s)
+│   ├── executor/         # Job execution (local/docker)
 │   ├── queue/            # Job queue (memory/valkey)
 │   ├── server/           # Server initialization logic
 │   ├── worker/           # Background job processor
 │   └── pkgmgr/           # Pixi/UV abstractions
-├── chart/                # Helm chart for Kubernetes
 └── frontend/             # React web UI
 ```
 

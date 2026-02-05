@@ -45,7 +45,7 @@ const buildPixiToml = (packages: Package[], envName: string): string => {
     })
     .join('\n');
 
-  return `[project]
+  return `[workspace]
 name = "${envName}"
 channels = ["conda-forge"]
 platforms = ["osx-arm64", "linux-64", "win-64"]

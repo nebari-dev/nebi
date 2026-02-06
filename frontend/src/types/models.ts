@@ -33,6 +33,8 @@ export interface CreateWorkspaceRequest {
   name: string;
   package_manager?: string;
   pixi_toml?: string;
+  path?: string;
+  source?: 'local' | 'managed';
 }
 
 export type JobType = 'create' | 'delete' | 'install' | 'remove' | 'update';
@@ -222,4 +224,10 @@ export interface RemoteWorkspaceTag {
   version_number: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface CreateRemoteWorkspaceRequest {
+  name: string;
+  package_manager?: string;
+  pixi_toml?: string;
 }

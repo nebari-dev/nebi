@@ -206,12 +206,15 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			remote.GET("/server", remoteHandler.GetServer)
 			remote.DELETE("/server", remoteHandler.DisconnectServer)
 
-			// Remote workspace proxy (read-only)
+			// Remote workspace proxy
 			remote.GET("/workspaces", remoteHandler.ListWorkspaces)
+			remote.POST("/workspaces", remoteHandler.CreateWorkspace)
 			remote.GET("/workspaces/:id", remoteHandler.GetWorkspace)
+			remote.DELETE("/workspaces/:id", remoteHandler.DeleteWorkspace)
 			remote.GET("/workspaces/:id/versions", remoteHandler.ListVersions)
 			remote.GET("/workspaces/:id/tags", remoteHandler.ListTags)
 			remote.GET("/workspaces/:id/pixi-toml", remoteHandler.GetPixiToml)
+			remote.POST("/workspaces/:id/push", remoteHandler.PushVersion)
 			remote.GET("/workspaces/:id/versions/:version/pixi-toml", remoteHandler.GetVersionPixiToml)
 			remote.GET("/workspaces/:id/versions/:version/pixi-lock", remoteHandler.GetVersionPixiLock)
 		}

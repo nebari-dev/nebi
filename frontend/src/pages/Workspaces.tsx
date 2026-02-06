@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWorkspaces, useCreateWorkspace, useDeleteWorkspace } from '@/hooks/useWorkspaces';
-import { useRemoteServer, useRemoteWorkspaces } from '@/hooks/useRemote';
+import { useRemoteServer, useRemoteWorkspaces, useCreateRemoteWorkspace, useDeleteRemoteWorkspace } from '@/hooks/useRemote';
 import { useModeStore } from '@/store/modeStore';
 import { workspacesApi } from '@/api/workspaces';
 import { useAuthStore } from '@/store/authStore';
@@ -17,6 +17,21 @@ interface Package {
   name: string;
   version: string;
 }
+
+type UnifiedWorkspace = {
+  id: string;
+  name: string;
+  status: string;
+  package_manager: string;
+  created_at: string;
+  location: 'local' | 'remote';
+  // Local-only fields
+  source?: 'local' | 'managed';
+  path?: string;
+  owner_id?: string;
+  owner?: { id: string; username: string; email: string };
+  size_formatted?: string;
+};
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -62,15 +77,18 @@ export const Workspaces = () => {
   const { data: workspaces, isLoading } = useWorkspaces();
   const createMutation = useCreateWorkspace();
   const deleteMutation = useDeleteWorkspace();
+  const createRemoteMutation = useCreateRemoteWorkspace();
+  const deleteRemoteMutation = useDeleteRemoteWorkspace();
   const currentUser = useAuthStore((state) => state.user);
   const isLocal = useModeStore((state) => state.mode === 'local');
   const { data: serverStatus } = useRemoteServer();
   const isRemoteConnected = isLocal && serverStatus?.status === 'connected';
   const { data: remoteWorkspaces, isLoading: remoteLoading } = useRemoteWorkspaces(isRemoteConnected);
-  const [activeTab, setActiveTab] = useState<'local' | 'server'>('local');
 
   const [showCreate, setShowCreate] = useState(false);
+  const [createTarget, setCreateTarget] = useState<'local' | 'server'>('local');
   const [newWsName, setNewWsName] = useState('');
+  const [localPath, setLocalPath] = useState('');
   const [pixiToml, setPixiToml] = useState(DEFAULT_PIXI_TOML);
   const [createMode, setCreateMode] = useState<'ui' | 'toml'>('ui');
   const [packages, setPackages] = useState<Package[]>([{ name: 'python', version: '>=3.11' }]);
@@ -82,8 +100,47 @@ export const Workspaces = () => {
   const [editWsName, setEditWsName] = useState('');
   const [editPixiToml, setEditPixiToml] = useState('');
   const [loadingEdit, setLoadingEdit] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string; location: 'local' | 'remote' } | null>(null);
   const [error, setError] = useState('');
+
+  // Merge local and remote workspaces into a single list
+  const unifiedWorkspaces = useMemo<UnifiedWorkspace[]>(() => {
+    const items: UnifiedWorkspace[] = [];
+
+    if (workspaces) {
+      for (const ws of workspaces) {
+        items.push({
+          id: ws.id,
+          name: ws.name,
+          status: ws.status,
+          package_manager: ws.package_manager,
+          created_at: ws.created_at,
+          location: 'local',
+          source: ws.source,
+          path: ws.path,
+          owner_id: ws.owner_id,
+          owner: ws.owner,
+          size_formatted: ws.size_formatted,
+        });
+      }
+    }
+
+    if (isRemoteConnected && remoteWorkspaces) {
+      for (const ws of remoteWorkspaces) {
+        items.push({
+          id: ws.id,
+          name: ws.name,
+          status: ws.status,
+          package_manager: ws.package_manager,
+          created_at: ws.created_at,
+          location: 'remote',
+          owner: ws.owner,
+        });
+      }
+    }
+
+    return items;
+  }, [workspaces, remoteWorkspaces, isRemoteConnected]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,26 +148,35 @@ export const Workspaces = () => {
 
     setError('');
     try {
-      // Build pixi.toml based on mode
       const tomlContent = createMode === 'ui'
         ? buildPixiToml(packages, newWsName)
         : pixiToml;
 
-      // Create workspace with custom pixi.toml content
-      await createMutation.mutateAsync({
-        name: newWsName,
-        package_manager: 'pixi',
-        pixi_toml: tomlContent
-      });
+      if (createTarget === 'server' && isRemoteConnected) {
+        await createRemoteMutation.mutateAsync({
+          name: newWsName,
+          package_manager: 'pixi',
+          pixi_toml: tomlContent,
+        });
+      } else {
+        await createMutation.mutateAsync({
+          name: newWsName,
+          package_manager: 'pixi',
+          pixi_toml: tomlContent,
+          ...(localPath.trim() ? { path: localPath.trim(), source: 'local' as const } : {}),
+        });
+      }
 
       // Reset form
       setNewWsName('');
+      setLocalPath('');
       setPixiToml(DEFAULT_PIXI_TOML);
       setPackages([{ name: 'python', version: '>=3.11' }]);
       setShowCreate(false);
 
-      // Redirect to jobs page to see the creation progress
-      navigate('/jobs');
+      if (createTarget === 'local' || !isRemoteConnected) {
+        navigate('/jobs');
+      }
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
       const errorMessage = error?.response?.data?.error || 'Failed to create workspace. Please try again.';
@@ -130,7 +196,6 @@ export const Workspaces = () => {
   };
 
   const handleModeSwitch = (mode: 'ui' | 'toml') => {
-    // When switching to TOML mode, populate with current packages
     if (mode === 'toml' && createMode === 'ui') {
       setPixiToml(buildPixiToml(packages, newWsName || 'my-project'));
     }
@@ -142,7 +207,11 @@ export const Workspaces = () => {
 
     setError('');
     try {
-      await deleteMutation.mutateAsync(confirmDelete.id);
+      if (confirmDelete.location === 'remote') {
+        await deleteRemoteMutation.mutateAsync(confirmDelete.id);
+      } else {
+        await deleteMutation.mutateAsync(confirmDelete.id);
+      }
       setConfirmDelete(null);
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
@@ -176,7 +245,6 @@ export const Workspaces = () => {
 
     setError('');
     try {
-      // Delete the old workspace and create a new one with updated content
       await deleteMutation.mutateAsync(editWsId);
 
       await createMutation.mutateAsync({
@@ -190,7 +258,6 @@ export const Workspaces = () => {
       setEditWsName('');
       setEditPixiToml('');
 
-      // Redirect to jobs page to see the progress
       navigate('/jobs');
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
@@ -199,13 +266,141 @@ export const Workspaces = () => {
     }
   };
 
-  if (isLoading) {
+  const isCreatePending = createMutation.isPending || createRemoteMutation.isPending;
+  const isDeletePending = deleteMutation.isPending || deleteRemoteMutation.isPending;
+
+  if (isLoading || (isRemoteConnected && remoteLoading)) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
+
+  // Render the package list / TOML form (shared between create targets)
+  const renderCreateForm = () => (
+    <>
+      {/* UI / TOML Mode Toggle */}
+      <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
+        <Button
+          type="button"
+          variant={createMode === 'ui' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => handleModeSwitch('ui')}
+          className="gap-2"
+        >
+          <Plus className="h-4 w-4" />
+          UI Mode
+        </Button>
+        <Button
+          type="button"
+          variant={createMode === 'toml' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => handleModeSwitch('toml')}
+          className="gap-2"
+        >
+          <FileCode className="h-4 w-4" />
+          TOML Mode
+        </Button>
+      </div>
+
+      {createMode === 'ui' ? (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Packages</label>
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-muted/50 border-b">
+                  <tr>
+                    <th className="text-left p-3 text-sm font-medium">Name</th>
+                    <th className="text-left p-3 text-sm font-medium">Version Constraint</th>
+                    <th className="w-16"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {packages.map((pkg, index) => (
+                    <tr key={index} className="hover:bg-muted/30">
+                      <td className="p-3">
+                        <span className="font-mono text-sm">{pkg.name}</span>
+                      </td>
+                      <td className="p-3">
+                        <span className="font-mono text-sm text-muted-foreground">
+                          {pkg.version || '-'}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemovePackageFromList(index)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Add Package Form */}
+          <div className="flex gap-2">
+            <Input
+              placeholder="Package name (e.g., numpy)"
+              value={newPackageName}
+              onChange={(e) => setNewPackageName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddPackage();
+                }
+              }}
+            />
+            <Input
+              placeholder="Version (e.g., >=1.24.0)"
+              value={newPackageVersion}
+              onChange={(e) => setNewPackageVersion(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddPackage();
+                }
+              }}
+              className="w-64"
+            />
+            <Button
+              type="button"
+              onClick={handleAddPackage}
+              disabled={!newPackageName.trim()}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Package
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Add packages with optional version constraints (e.g., {'>'}=1.24.0, ~=2.0.0, 3.11.*)
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <label className="text-sm font-medium">pixi.toml Configuration</label>
+          <Textarea
+            placeholder="Enter your pixi.toml content"
+            value={pixiToml}
+            onChange={(e) => setPixiToml(e.target.value)}
+            rows={12}
+            required
+            className="font-mono text-sm"
+          />
+          <p className="text-xs text-muted-foreground">
+            Define your project dependencies and configuration in TOML format
+          </p>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <div className="space-y-6">
@@ -214,102 +409,16 @@ export const Workspaces = () => {
           <h1 className="text-3xl font-bold">Workspaces</h1>
           <p className="text-muted-foreground">Manage your development workspaces</p>
         </div>
-        {activeTab === 'local' && (
-          <Button onClick={() => {
-            setShowCreate(!showCreate);
-            setError('');
-          }}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Workspace
-          </Button>
-        )}
+        <Button onClick={() => {
+          setShowCreate(!showCreate);
+          setCreateTarget('local');
+          setError('');
+        }}>
+          <Plus className="h-4 w-4 mr-2" />
+          New Workspace
+        </Button>
       </div>
 
-      {/* Local/Server tabs - only shown in local mode when connected to remote */}
-      {isRemoteConnected && (
-        <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
-          <Button
-            variant={activeTab === 'local' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setActiveTab('local')}
-            className="gap-2"
-          >
-            <Monitor className="h-4 w-4" />
-            Local
-          </Button>
-          <Button
-            variant={activeTab === 'server' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setActiveTab('server')}
-            className="gap-2"
-          >
-            <Cloud className="h-4 w-4" />
-            Server
-          </Button>
-        </div>
-      )}
-
-      {activeTab === 'server' && isRemoteConnected ? (
-        /* Remote server workspaces tab */
-        <Card>
-          <CardContent className="p-0">
-            {remoteLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="border-b bg-muted/50">
-                    <tr>
-                      <th className="text-left p-4 font-medium">Name</th>
-                      <th className="text-left p-4 font-medium">Status</th>
-                      <th className="text-left p-4 font-medium">Owner</th>
-                      <th className="text-left p-4 font-medium">Package Manager</th>
-                      <th className="text-left p-4 font-medium">Created</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {remoteWorkspaces?.map((ws) => (
-                      <tr
-                        key={ws.id}
-                        className="border-b last:border-0 hover:bg-muted/50 cursor-pointer transition-colors"
-                        onClick={() => navigate(`/remote/workspaces/${ws.id}`)}
-                      >
-                        <td className="p-4 font-medium">
-                          <div className="flex items-center gap-2">
-                            {ws.name}
-                            <Badge className="bg-purple-500/10 text-purple-500 border-purple-500/20 gap-1 text-xs">
-                              <Cloud className="h-3 w-3" />
-                              Remote
-                            </Badge>
-                          </div>
-                        </td>
-                        <td className="p-4">
-                          <Badge className={statusColors[ws.status] || 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'}>
-                            {ws.status}
-                          </Badge>
-                        </td>
-                        <td className="p-4 text-sm text-muted-foreground">
-                          {ws.owner?.username || '-'}
-                        </td>
-                        <td className="p-4">
-                          <span className="font-mono text-sm">{ws.package_manager}</span>
-                        </td>
-                        <td className="p-4 text-sm text-muted-foreground">
-                          {new Date(ws.created_at).toLocaleDateString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ) : (
-      /* Local workspaces tab (default) */
-      <>
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded">
           {error}
@@ -332,6 +441,32 @@ export const Workspaces = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreate} className="space-y-4">
+              {/* Local/Server target tabs — only in local mode when connected */}
+              {isLocal && isRemoteConnected && (
+                <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
+                  <Button
+                    type="button"
+                    variant={createTarget === 'local' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setCreateTarget('local')}
+                    className="gap-2"
+                  >
+                    <Monitor className="h-4 w-4" />
+                    Local
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={createTarget === 'server' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setCreateTarget('server')}
+                    className="gap-2"
+                  >
+                    <Cloud className="h-4 w-4" />
+                    Server
+                  </Button>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="text-sm font-medium">Workspace Name</label>
                 <Input
@@ -343,138 +478,37 @@ export const Workspaces = () => {
                 />
               </div>
 
-              {/* Mode Toggle */}
-              <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
-                <Button
-                  type="button"
-                  variant={createMode === 'ui' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => handleModeSwitch('ui')}
-                  className="gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  UI Mode
-                </Button>
-                <Button
-                  type="button"
-                  variant={createMode === 'toml' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => handleModeSwitch('toml')}
-                  className="gap-2"
-                >
-                  <FileCode className="h-4 w-4" />
-                  TOML Mode
-                </Button>
-              </div>
-
-              {createMode === 'ui' ? (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Packages</label>
-                    <div className="border rounded-lg overflow-hidden">
-                      <table className="w-full">
-                        <thead className="bg-muted/50 border-b">
-                          <tr>
-                            <th className="text-left p-3 text-sm font-medium">Name</th>
-                            <th className="text-left p-3 text-sm font-medium">Version Constraint</th>
-                            <th className="w-16"></th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                          {packages.map((pkg, index) => (
-                            <tr key={index} className="hover:bg-muted/30">
-                              <td className="p-3">
-                                <span className="font-mono text-sm">{pkg.name}</span>
-                              </td>
-                              <td className="p-3">
-                                <span className="font-mono text-sm text-muted-foreground">
-                                  {pkg.version || '-'}
-                                </span>
-                              </td>
-                              <td className="p-3">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleRemovePackageFromList(index)}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Add Package Form */}
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Package name (e.g., numpy)"
-                      value={newPackageName}
-                      onChange={(e) => setNewPackageName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddPackage();
-                        }
-                      }}
-                    />
-                    <Input
-                      placeholder="Version (e.g., >=1.24.0)"
-                      value={newPackageVersion}
-                      onChange={(e) => setNewPackageVersion(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddPackage();
-                        }
-                      }}
-                      className="w-64"
-                    />
-                    <Button
-                      type="button"
-                      onClick={handleAddPackage}
-                      disabled={!newPackageName.trim()}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Package
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Add packages with optional version constraints (e.g., {'>'}=1.24.0, ~=2.0.0, 3.11.*)
-                  </p>
-                </div>
-              ) : (
+              {/* Path field — only for local target in local mode */}
+              {createTarget === 'local' && isLocal && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">pixi.toml Configuration</label>
-                  <Textarea
-                    placeholder="Enter your pixi.toml content"
-                    value={pixiToml}
-                    onChange={(e) => setPixiToml(e.target.value)}
-                    rows={12}
-                    required
-                    className="font-mono text-sm"
+                  <label className="text-sm font-medium">Path (optional)</label>
+                  <Input
+                    placeholder="e.g., /home/user/projects/my-project (leave empty for global workspace)"
+                    value={localPath}
+                    onChange={(e) => setLocalPath(e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Define your project dependencies and configuration in TOML format
+                    Specify a local directory path for this workspace. Leave empty to create a global (managed) workspace.
                   </p>
                 </div>
               )}
+
+              {renderCreateForm()}
 
               <div className="flex gap-2 justify-end">
                 <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? (
+                <Button type="submit" disabled={isCreatePending}>
+                  {isCreatePending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Creating...
                     </>
                   ) : (
-                    'Create Workspace'
+                    createTarget === 'server' && isRemoteConnected
+                      ? 'Create on Server'
+                      : 'Create Workspace'
                   )}
                 </Button>
               </div>
@@ -558,36 +592,46 @@ export const Workspaces = () => {
                 </tr>
               </thead>
               <tbody>
-                {workspaces?.map((ws) => (
+                {unifiedWorkspaces.map((ws) => (
                   <tr
-                    key={ws.id}
+                    key={`${ws.location}-${ws.id}`}
                     className="border-b last:border-0 hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => navigate(`/workspaces/${ws.id}`)}
+                    onClick={() =>
+                      ws.location === 'remote'
+                        ? navigate(`/remote/workspaces/${ws.id}`)
+                        : navigate(`/workspaces/${ws.id}`)
+                    }
                   >
                     <td className="p-4 font-medium">
                       <div className="flex items-center gap-2">
                         {ws.name}
-                        {ws.source === 'local' && (
+                        {ws.location === 'local' && (
                           <Badge variant="outline" className="bg-cyan-500/10 text-cyan-500 border-cyan-500/20 gap-1 text-xs">
                             <HardDrive className="h-3 w-3" />
                             Local
                           </Badge>
                         )}
-                        {ws.owner_id !== currentUser?.id && ws.owner && (
+                        {ws.location === 'remote' && (
+                          <Badge className="bg-purple-500/10 text-purple-500 border-purple-500/20 gap-1 text-xs">
+                            <Cloud className="h-3 w-3" />
+                            Remote
+                          </Badge>
+                        )}
+                        {ws.location === 'local' && ws.owner_id !== currentUser?.id && ws.owner && (
                           <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20">
                             <Users className="h-3 w-3 mr-1" />
                             {ws.owner.username}
                           </Badge>
                         )}
                       </div>
-                      {ws.source === 'local' && ws.path && (
+                      {ws.location === 'local' && ws.path && (
                         <div className="text-xs text-muted-foreground font-normal mt-0.5 font-mono truncate max-w-xs" title={ws.path}>
                           {ws.path}
                         </div>
                       )}
                     </td>
                     <td className="p-4">
-                      <Badge className={statusColors[ws.status]}>
+                      <Badge className={statusColors[ws.status] || 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'}>
                         {ws.status}
                       </Badge>
                     </td>
@@ -595,39 +639,39 @@ export const Workspaces = () => {
                       <span className="font-mono text-sm">{ws.package_manager}</span>
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">
-                      {ws.size_formatted || '-'}
+                      {ws.location === 'local' ? (ws.size_formatted || '-') : '-'}
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">
                       {new Date(ws.created_at).toLocaleDateString()}
                     </td>
                     <td className="p-4">
                       <div className="flex justify-end gap-2">
-                        {ws.source !== 'local' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEdit(ws.id, ws.name);
-                          }}
-                          disabled={loadingEdit || (ws.status !== 'ready' && ws.status !== 'failed')}
-                          title={
-                            ws.status === 'pending' || ws.status === 'creating' || ws.status === 'deleting'
-                              ? 'Cannot edit while workspace is being processed'
-                              : 'Edit pixi.toml'
-                          }
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
+                        {ws.location === 'local' && ws.source !== 'local' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEdit(ws.id, ws.name);
+                            }}
+                            disabled={loadingEdit || (ws.status !== 'ready' && ws.status !== 'failed')}
+                            title={
+                              ws.status === 'pending' || ws.status === 'creating' || ws.status === 'deleting'
+                                ? 'Cannot edit while workspace is being processed'
+                                : 'Edit pixi.toml'
+                            }
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
                         )}
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setConfirmDelete({ id: ws.id, name: ws.name });
+                            setConfirmDelete({ id: ws.id, name: ws.name, location: ws.location });
                           }}
-                          disabled={deleteMutation.isPending}
+                          disabled={isDeletePending}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -641,7 +685,7 @@ export const Workspaces = () => {
         </CardContent>
       </Card>
 
-      {workspaces?.length === 0 && !showCreate && (
+      {unifiedWorkspaces.length === 0 && !showCreate && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">No workspaces yet. Create your first one!</p>
         </div>
@@ -652,13 +696,11 @@ export const Workspaces = () => {
         onOpenChange={(open) => !open && setConfirmDelete(null)}
         onConfirm={handleDelete}
         title="Delete Workspace"
-        description={`Are you sure you want to delete "${confirmDelete?.name}"? This action cannot be undone. All data associated with this workspace will be permanently removed.`}
+        description={`Are you sure you want to delete "${confirmDelete?.name}"${confirmDelete?.location === 'remote' ? ' from the remote server' : ''}? This action cannot be undone. All data associated with this workspace will be permanently removed.`}
         confirmText="Delete"
         cancelText="Cancel"
         variant="destructive"
       />
-      </>
-      )}
     </div>
   );
 };

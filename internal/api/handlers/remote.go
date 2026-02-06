@@ -268,3 +268,68 @@ func (h *RemoteHandler) GetVersionPixiLock(c *gin.Context) {
 
 	c.String(http.StatusOK, content)
 }
+
+// CreateWorkspace creates a workspace on the remote server.
+// POST /api/v1/remote/workspaces
+func (h *RemoteHandler) CreateWorkspace(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Not connected to a remote server"})
+		return
+	}
+
+	var req cliclient.CreateWorkspaceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ws, err := client.CreateWorkspace(c.Request.Context(), req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to create remote workspace: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, ws)
+}
+
+// DeleteWorkspace deletes a workspace on the remote server.
+// DELETE /api/v1/remote/workspaces/:id
+func (h *RemoteHandler) DeleteWorkspace(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Not connected to a remote server"})
+		return
+	}
+
+	if err := client.DeleteWorkspace(c.Request.Context(), c.Param("id")); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to delete remote workspace: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+}
+
+// PushVersion pushes a new version to a remote workspace.
+// POST /api/v1/remote/workspaces/:id/push
+func (h *RemoteHandler) PushVersion(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Not connected to a remote server"})
+		return
+	}
+
+	var req cliclient.PushRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp, err := client.PushVersion(c.Request.Context(), c.Param("id"), req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to push version: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}

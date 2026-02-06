@@ -70,7 +70,11 @@ definitions:
         type: string
       package_manager:
         type: string
+      path:
+        type: string
       pixi_toml:
+        type: string
+      source:
         type: string
     required:
     - name

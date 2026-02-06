@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useRemoteWorkspace, useRemoteVersions, useRemoteTags } from '@/hooks/useRemote';
+import { useRemoteWorkspace, useRemoteVersions, useRemoteTags, useDeleteRemoteWorkspace } from '@/hooks/useRemote';
 import { remoteApi } from '@/api/remote';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { ArrowLeft, Loader2, Copy, Check, Cloud } from 'lucide-react';
+import { ArrowLeft, Loader2, Copy, Check, Cloud, Trash2 } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -25,10 +26,12 @@ export const RemoteEnvironmentDetail = () => {
   const { data: versions, isLoading: versionsLoading } = useRemoteVersions(wsId);
   const { data: tags } = useRemoteTags(wsId);
 
+  const deleteMutation = useDeleteRemoteWorkspace();
   const [activeTab, setActiveTab] = useState('overview');
   const [pixiToml, setPixiToml] = useState<string>('');
   const [loadingToml, setLoadingToml] = useState(false);
   const [copiedToml, setCopiedToml] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const loadPixiToml = async () => {
     if (pixiToml) return;
@@ -75,11 +78,25 @@ export const RemoteEnvironmentDetail = () => {
               Remote
             </Badge>
           </div>
-          <p className="text-muted-foreground">Read-only view from remote server</p>
+          <p className="text-muted-foreground">Remote workspace on server</p>
         </div>
         <Badge className={statusColors[workspace.status] || statusColors.ready}>
           {workspace.status}
         </Badge>
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => setShowDeleteConfirm(true)}
+          disabled={deleteMutation.isPending}
+          className="gap-2"
+        >
+          {deleteMutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="h-4 w-4" />
+          )}
+          Delete
+        </Button>
       </div>
 
       <Tabs value={activeTab} onValueChange={(tab) => {
@@ -272,6 +289,20 @@ export const RemoteEnvironmentDetail = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        onConfirm={async () => {
+          await deleteMutation.mutateAsync(wsId);
+          navigate('/workspaces');
+        }}
+        title="Delete Remote Workspace"
+        description={`Are you sure you want to delete "${workspace.name}" from the remote server? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 };

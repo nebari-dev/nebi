@@ -2065,7 +2065,13 @@ const docTemplate = `{
                 "package_manager": {
                     "type": "string"
                 },
+                "path": {
+                    "type": "string"
+                },
                 "pixi_toml": {
+                    "type": "string"
+                },
+                "source": {
                     "type": "string"
                 }
             }

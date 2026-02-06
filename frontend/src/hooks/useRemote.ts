@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { remoteApi } from '@/api/remote';
-import type { ConnectServerRequest } from '@/types';
+import type { ConnectServerRequest, CreateRemoteWorkspaceRequest } from '@/types';
 
 export const useRemoteServer = () => {
   return useQuery({
@@ -62,5 +62,27 @@ export const useRemoteTags = (wsId: string) => {
     queryKey: ['remote', 'workspaces', wsId, 'tags'],
     queryFn: () => remoteApi.listTags(wsId),
     enabled: !!wsId,
+  });
+};
+
+export const useCreateRemoteWorkspace = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (req: CreateRemoteWorkspaceRequest) => remoteApi.createWorkspace(req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['remote', 'workspaces'] });
+    },
+  });
+};
+
+export const useDeleteRemoteWorkspace = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => remoteApi.deleteWorkspace(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['remote', 'workspaces'] });
+    },
   });
 };

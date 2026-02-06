@@ -107,12 +107,24 @@ func (h *WorkspaceHandler) CreateWorkspace(c *gin.Context) {
 		packageManager = "pixi"
 	}
 
+	// Determine source: "local" if a path is provided, else "managed"
+	source := req.Source
+	if source == "" {
+		if req.Path != "" {
+			source = "local"
+		} else {
+			source = "managed"
+		}
+	}
+
 	// Create workspace record
 	ws := models.Workspace{
 		Name:           req.Name,
 		OwnerID:        userID,
 		Status:         models.WsStatusPending,
 		PackageManager: packageManager,
+		Source:         source,
+		Path:           req.Path,
 	}
 
 	if err := h.db.Create(&ws).Error; err != nil {
@@ -522,6 +534,8 @@ type CreateWorkspaceRequest struct {
 	Name           string `json:"name" binding:"required"`
 	PackageManager string `json:"package_manager"`
 	PixiToml       string `json:"pixi_toml"`
+	Path           string `json:"path"`
+	Source         string `json:"source"`
 }
 
 type PixiTomlResponse struct {

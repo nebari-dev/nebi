@@ -5,6 +5,7 @@ import type {
   RemoteWorkspace,
   RemoteWorkspaceVersion,
   RemoteWorkspaceTag,
+  CreateRemoteWorkspaceRequest,
 } from '@/types';
 
 export const remoteApi = {
@@ -61,5 +62,14 @@ export const remoteApi = {
       responseType: 'text',
     });
     return data;
+  },
+
+  createWorkspace: async (req: CreateRemoteWorkspaceRequest): Promise<RemoteWorkspace> => {
+    const { data } = await apiClient.post('/remote/workspaces', req);
+    return data;
+  },
+
+  deleteWorkspace: async (id: string): Promise<void> => {
+    await apiClient.delete(`/remote/workspaces/${id}`);
   },
 };

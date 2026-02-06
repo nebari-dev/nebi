@@ -27,9 +27,22 @@ type Workspace struct {
 	Status         WorkspaceStatus `gorm:"not null;default:'pending'" json:"status"`
 	PackageManager string          `gorm:"not null" json:"package_manager"` // "pixi" or "uv"
 	SizeBytes      int64           `gorm:"default:0" json:"size_bytes"`
+	Path           string          `gorm:"" json:"path,omitempty"`
+	Source         string          `gorm:"default:'managed'" json:"source"`         // "local", "managed"
+	IsGlobal       bool            `gorm:"default:false" json:"is_global,omitempty"`
+	OriginName     string          `json:"origin_name,omitempty"`
+	OriginTag      string          `json:"origin_tag,omitempty"`
+	OriginAction   string          `json:"origin_action,omitempty"`
+	OriginTomlHash string          `json:"origin_toml_hash,omitempty"`
+	OriginLockHash string          `json:"origin_lock_hash,omitempty"`
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`
 	DeletedAt      gorm.DeletedAt  `gorm:"index" json:"-"`
+}
+
+// TableName ensures GORM uses the "workspaces" table
+func (Workspace) TableName() string {
+	return "workspaces"
 }
 
 // BeforeCreate hook to generate UUID

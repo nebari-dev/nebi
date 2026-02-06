@@ -56,8 +56,13 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	var oidcAuth *auth.OIDCAuthenticator
 
 	if localMode {
-		authenticator = auth.NewLocalAuthenticator(db)
-		logger.Info("Running in local mode — authentication bypassed")
+		localAuth, err := auth.NewLocalAuthenticator(db)
+		if err != nil {
+			logger.Error("Failed to initialize local authenticator", "error", err)
+			panic(err)
+		}
+		authenticator = localAuth
+		logger.Info("Running in local mode — authentication bypassed", "user", auth.LocalUsername())
 	} else {
 		if cfg.Auth.Type == "basic" {
 			authenticator = auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)

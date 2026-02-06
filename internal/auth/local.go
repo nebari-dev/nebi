@@ -2,47 +2,55 @@ package auth
 
 import (
 	"errors"
-	"net/http"
+	"fmt"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nebari-dev/nebi/internal/models"
 	"gorm.io/gorm"
 )
 
+const localUsername = "local-user"
+
 // LocalAuthenticator provides a no-op authenticator for local/desktop mode.
-// It automatically injects the first admin user into every request context
-// without checking credentials.
+// It ensures a well-known "local-user" exists in the database and injects
+// that user into every request context without checking credentials.
 type LocalAuthenticator struct {
-	db *gorm.DB
+	user *models.User
 }
 
-// NewLocalAuthenticator creates a new local authenticator.
-func NewLocalAuthenticator(db *gorm.DB) *LocalAuthenticator {
-	return &LocalAuthenticator{db: db}
-}
-
-// Login returns the first user with a dummy token (no password check).
-func (a *LocalAuthenticator) Login(username, password string) (*LoginResponse, error) {
+// NewLocalAuthenticator finds or creates the well-known local-user and
+// returns an authenticator that always uses that user.
+func NewLocalAuthenticator(db *gorm.DB) (*LocalAuthenticator, error) {
 	var user models.User
-	if err := a.db.First(&user).Error; err != nil {
-		return nil, errors.New("no users in database")
+	err := db.Where("username = ?", localUsername).First(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		user = models.User{
+			Username:     localUsername,
+			Email:        localUsername + "@nebi.local",
+			PasswordHash: "-", // no password; local mode never checks credentials
+		}
+		if err := db.Create(&user).Error; err != nil {
+			return nil, fmt.Errorf("failed to create local-user: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to look up local-user: %w", err)
 	}
+
+	return &LocalAuthenticator{user: &user}, nil
+}
+
+// Login returns the local-user with a dummy token (no password check).
+func (a *LocalAuthenticator) Login(_, _ string) (*LoginResponse, error) {
 	return &LoginResponse{
 		Token: "local-mode-token",
-		User:  &user,
+		User:  a.user,
 	}, nil
 }
 
-// Middleware injects the first admin user into the context without checking credentials.
+// Middleware injects the local-user into the context without checking credentials.
 func (a *LocalAuthenticator) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var user models.User
-		if err := a.db.First(&user).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "no users configured"})
-			c.Abort()
-			return
-		}
-		c.Set(UserContextKey, &user)
+		c.Set(UserContextKey, a.user)
 		c.Next()
 	}
 }
@@ -58,4 +66,15 @@ func (a *LocalAuthenticator) GetUserFromContext(c *gin.Context) (*models.User, e
 		return nil, errors.New("invalid user in context")
 	}
 	return user, nil
+}
+
+// User returns the local-user for use outside the HTTP request path
+// (e.g. granting RBAC roles at startup).
+func (a *LocalAuthenticator) User() *models.User {
+	return a.user
+}
+
+// LocalUsername is the well-known username used in local mode.
+func LocalUsername() string {
+	return localUsername
 }

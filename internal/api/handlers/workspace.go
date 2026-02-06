@@ -22,10 +22,11 @@ type WorkspaceHandler struct {
 	db       *gorm.DB
 	queue    queue.Queue
 	executor executor.Executor
+	isLocal  bool
 }
 
-func NewWorkspaceHandler(db *gorm.DB, q queue.Queue, exec executor.Executor) *WorkspaceHandler {
-	return &WorkspaceHandler{db: db, queue: q, executor: exec}
+func NewWorkspaceHandler(db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool) *WorkspaceHandler {
+	return &WorkspaceHandler{db: db, queue: q, executor: exec, isLocal: isLocal}
 }
 
 // ListWorkspaces godoc
@@ -38,29 +39,37 @@ func NewWorkspaceHandler(db *gorm.DB, q queue.Queue, exec executor.Executor) *Wo
 // @Failure 500 {object} ErrorResponse
 // @Router /workspaces [get]
 func (h *WorkspaceHandler) ListWorkspaces(c *gin.Context) {
-	userID := getUserID(c)
-
 	var workspaces []models.Workspace
 
-	// Get workspaces where user is owner
-	query := h.db.Where("owner_id = ?", userID)
+	if h.isLocal {
+		// In local mode, return all workspaces (no ownership filtering)
+		if err := h.db.Preload("Owner").Order("created_at DESC").Find(&workspaces).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch workspaces"})
+			return
+		}
+	} else {
+		userID := getUserID(c)
 
-	// OR where user has permissions
-	var permissions []models.Permission
-	h.db.Where("user_id = ?", userID).Find(&permissions)
+		// Get workspaces where user is owner
+		query := h.db.Where("owner_id = ?", userID)
 
-	wsIDs := []uuid.UUID{}
-	for _, p := range permissions {
-		wsIDs = append(wsIDs, p.WorkspaceID)
-	}
+		// OR where user has permissions
+		var permissions []models.Permission
+		h.db.Where("user_id = ?", userID).Find(&permissions)
 
-	if len(wsIDs) > 0 {
-		query = query.Or("id IN ?", wsIDs)
-	}
+		wsIDs := []uuid.UUID{}
+		for _, p := range permissions {
+			wsIDs = append(wsIDs, p.WorkspaceID)
+		}
 
-	if err := query.Preload("Owner").Order("created_at DESC").Find(&workspaces).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch workspaces"})
-		return
+		if len(wsIDs) > 0 {
+			query = query.Or("id IN ?", wsIDs)
+		}
+
+		if err := query.Preload("Owner").Order("created_at DESC").Find(&workspaces).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch workspaces"})
+			return
+		}
 	}
 
 	// Enrich with size information
@@ -90,6 +99,26 @@ func (h *WorkspaceHandler) CreateWorkspace(c *gin.Context) {
 		return
 	}
 
+	// Validate source field
+	if req.Source != "" && req.Source != "managed" && req.Source != "local" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "source must be 'managed' or 'local'"})
+		return
+	}
+
+	// Reject source=local in team mode
+	if req.Source == "local" && !h.isLocal {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "source 'local' is not allowed in team mode"})
+		return
+	}
+
+	// Require absolute path for local workspaces
+	if req.Source == "local" {
+		if req.Path == "" || !filepath.IsAbs(req.Path) {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "local workspaces require an absolute path"})
+			return
+		}
+	}
+
 	// Default to pixi if not specified
 	packageManager := req.PackageManager
 	if packageManager == "" {
@@ -102,6 +131,8 @@ func (h *WorkspaceHandler) CreateWorkspace(c *gin.Context) {
 		OwnerID:        userID,
 		Status:         models.WsStatusPending,
 		PackageManager: packageManager,
+		Source:         req.Source,
+		Path:           req.Path,
 	}
 
 	if err := h.db.Create(&ws).Error; err != nil {
@@ -422,6 +453,8 @@ type CreateWorkspaceRequest struct {
 	Name           string `json:"name" binding:"required"`
 	PackageManager string `json:"package_manager"`
 	PixiToml       string `json:"pixi_toml"`
+	Source         string `json:"source"`
+	Path           string `json:"path"`
 }
 
 type PixiTomlResponse struct {
@@ -1240,6 +1273,50 @@ type WorkspaceTagResponse struct {
 	VersionNumber int    `json:"version_number"`
 	CreatedAt     string `json:"created_at"`
 	UpdatedAt     string `json:"updated_at"`
+}
+
+// SavePixiToml godoc
+// @Summary Save pixi.toml content for a workspace
+// @Tags workspaces
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path string true "Workspace ID"
+// @Param request body SavePixiTomlRequest true "pixi.toml content"
+// @Success 200 {object} PixiTomlResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /workspaces/{id}/pixi-toml [put]
+func (h *WorkspaceHandler) SavePixiToml(c *gin.Context) {
+	wsID := c.Param("id")
+
+	var req SavePixiTomlRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	var ws models.Workspace
+	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
+		return
+	}
+
+	wsPath := h.executor.GetWorkspacePath(&ws)
+	pixiTomlPath := filepath.Join(wsPath, "pixi.toml")
+
+	if err := os.WriteFile(pixiTomlPath, []byte(req.Content), 0644); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to write pixi.toml"})
+		return
+	}
+
+	c.JSON(http.StatusOK, PixiTomlResponse{Content: req.Content})
+}
+
+// SavePixiTomlRequest is the request body for saving pixi.toml.
+type SavePixiTomlRequest struct {
+	Content string `json:"content" binding:"required"`
 }
 
 // Helper function to get user ID from context

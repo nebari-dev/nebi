@@ -102,7 +102,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	}
 
 	// Initialize handlers
-	wsHandler := handlers.NewWorkspaceHandler(db, q, exec)
+	wsHandler := handlers.NewWorkspaceHandler(db, q, exec, cfg.IsLocalMode())
 	jobHandler := handlers.NewJobHandler(db, logBroker, valkeyClient)
 
 	// Protected routes (require authentication)
@@ -132,6 +132,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			ws.GET("/versions/:version/pixi-toml", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.DownloadManifestFile)
 
 			// Write operations (require write permission)
+			ws.PUT("/pixi-toml", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.SavePixiToml)
 			ws.DELETE("", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.DeleteWorkspace)
 			ws.POST("/packages", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.InstallPackages)
 			ws.DELETE("/packages/:package", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.RemovePackages)

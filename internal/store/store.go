@@ -119,3 +119,14 @@ type Credentials struct {
 }
 
 func (Credentials) TableName() string { return "store_credentials" }
+
+// MigrateServerDB creates store tables on an external DB (used by local-mode server).
+func MigrateServerDB(db *gorm.DB) error {
+	if err := db.AutoMigrate(&Config{}, &Credentials{}); err != nil {
+		return fmt.Errorf("migrating store tables: %w", err)
+	}
+	// Seed singleton rows using GORM (dialect-agnostic)
+	db.Where(Config{ID: 1}).FirstOrCreate(&Config{ID: 1})
+	db.Where(Credentials{ID: 1}).FirstOrCreate(&Credentials{ID: 1})
+	return nil
+}

@@ -50,14 +50,14 @@ func GetEnforcer() *casbin.Enforcer {
 	return enforcer
 }
 
-// CanReadEnvironment checks if user can read an environment
-func CanReadEnvironment(userID uuid.UUID, envID uuid.UUID) (bool, error) {
-	return enforcer.Enforce(userID.String(), fmt.Sprintf("env:%s", envID.String()), "read")
+// CanReadWorkspace checks if user can read a workspace
+func CanReadWorkspace(userID uuid.UUID, wsID uuid.UUID) (bool, error) {
+	return enforcer.Enforce(userID.String(), fmt.Sprintf("ws:%s", wsID.String()), "read")
 }
 
-// CanWriteEnvironment checks if user can write to an environment
-func CanWriteEnvironment(userID uuid.UUID, envID uuid.UUID) (bool, error) {
-	return enforcer.Enforce(userID.String(), fmt.Sprintf("env:%s", envID.String()), "write")
+// CanWriteWorkspace checks if user can write to a workspace
+func CanWriteWorkspace(userID uuid.UUID, wsID uuid.UUID) (bool, error) {
+	return enforcer.Enforce(userID.String(), fmt.Sprintf("ws:%s", wsID.String()), "write")
 }
 
 // IsAdmin checks if user has admin privileges
@@ -65,8 +65,8 @@ func IsAdmin(userID uuid.UUID) (bool, error) {
 	return enforcer.Enforce(userID.String(), "admin", "admin")
 }
 
-// GrantEnvironmentAccess grants access to an environment
-func GrantEnvironmentAccess(userID uuid.UUID, envID uuid.UUID, role string) error {
+// GrantWorkspaceAccess grants access to a workspace
+func GrantWorkspaceAccess(userID uuid.UUID, wsID uuid.UUID, role string) error {
 	var action string
 	switch role {
 	case "owner", "editor":
@@ -77,7 +77,7 @@ func GrantEnvironmentAccess(userID uuid.UUID, envID uuid.UUID, role string) erro
 		return fmt.Errorf("invalid role: %s", role)
 	}
 
-	_, err := enforcer.AddPolicy(userID.String(), fmt.Sprintf("env:%s", envID.String()), action)
+	_, err := enforcer.AddPolicy(userID.String(), fmt.Sprintf("ws:%s", wsID.String()), action)
 	if err != nil {
 		return err
 	}
@@ -85,9 +85,9 @@ func GrantEnvironmentAccess(userID uuid.UUID, envID uuid.UUID, role string) erro
 	return enforcer.SavePolicy()
 }
 
-// RevokeEnvironmentAccess revokes access to an environment
-func RevokeEnvironmentAccess(userID uuid.UUID, envID uuid.UUID) error {
-	obj := fmt.Sprintf("env:%s", envID.String())
+// RevokeWorkspaceAccess revokes access to a workspace
+func RevokeWorkspaceAccess(userID uuid.UUID, wsID uuid.UUID) error {
+	obj := fmt.Sprintf("ws:%s", wsID.String())
 
 	// Remove both read and write permissions
 	enforcer.RemovePolicy(userID.String(), obj, "read")
@@ -134,22 +134,22 @@ func GetAllAdminUserIDs() (map[uuid.UUID]bool, error) {
 	return adminUserIDs, nil
 }
 
-// GetUserEnvironments returns all environment IDs that a user has access to
-func GetUserEnvironments(userID uuid.UUID) ([]uuid.UUID, error) {
+// GetUserWorkspaces returns all workspace IDs that a user has access to
+func GetUserWorkspaces(userID uuid.UUID) ([]uuid.UUID, error) {
 	policies, err := enforcer.GetFilteredPolicy(0, userID.String())
 	if err != nil {
 		return nil, err
 	}
 
-	envIDs := make([]uuid.UUID, 0)
+	wsIDs := make([]uuid.UUID, 0)
 	for _, policy := range policies {
-		if len(policy) >= 2 && len(policy[1]) > 4 && policy[1][:4] == "env:" {
-			envIDStr := policy[1][4:] // Remove "env:" prefix
-			if envID, err := uuid.Parse(envIDStr); err == nil {
-				envIDs = append(envIDs, envID)
+		if len(policy) >= 2 && len(policy[1]) > 3 && policy[1][:3] == "ws:" {
+			wsIDStr := policy[1][3:] // Remove "ws:" prefix
+			if wsID, err := uuid.Parse(wsIDStr); err == nil {
+				wsIDs = append(wsIDs, wsID)
 			}
 		}
 	}
 
-	return envIDs, nil
+	return wsIDs, nil
 }

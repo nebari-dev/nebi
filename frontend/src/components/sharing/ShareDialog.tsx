@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useCollaborators, useShareEnvironment, useUnshareEnvironment } from '@/hooks/useAdmin';
+import { useCollaborators, useShareWorkspace, useUnshareWorkspace } from '@/hooks/useAdmin';
 import { useUsers } from '@/hooks/useAdmin';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -28,8 +28,8 @@ export const ShareDialog = ({ open, onOpenChange, environmentId }: ShareDialogPr
 
   const { data: collaborators, isLoading: collaboratorsLoading } = useCollaborators(environmentId, open);
   const { data: allUsers } = useUsers();
-  const shareMutation = useShareEnvironment(environmentId);
-  const unshareMutation = useUnshareEnvironment(environmentId);
+  const shareMutation = useShareWorkspace(environmentId);
+  const unshareMutation = useUnshareWorkspace(environmentId);
 
   const availableUsers = allUsers?.filter(
     (user) => !collaborators?.some((c) => c.user_id === user.id)
@@ -50,7 +50,7 @@ export const ShareDialog = ({ open, onOpenChange, environmentId }: ShareDialogPr
       setSelectedRole('viewer');
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage = error?.response?.data?.error || 'Failed to share environment. Please try again.';
+      const errorMessage = error?.response?.data?.error || 'Failed to share workspace. Please try again.';
       setError(errorMessage);
     }
   };
@@ -74,9 +74,9 @@ export const ShareDialog = ({ open, onOpenChange, environmentId }: ShareDialogPr
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Share Environment</DialogTitle>
+          <DialogTitle>Share Workspace</DialogTitle>
           <DialogDescription>
-            Manage who has access to this environment
+            Manage who has access to this workspace
           </DialogDescription>
         </DialogHeader>
 
@@ -184,7 +184,7 @@ export const ShareDialog = ({ open, onOpenChange, environmentId }: ShareDialogPr
         onOpenChange={(open) => !open && setConfirmRemove(null)}
         onConfirm={handleUnshare}
         title="Remove Collaborator"
-        description={`Are you sure you want to remove ${confirmRemove?.username} from this environment? They will lose access immediately.`}
+        description={`Are you sure you want to remove ${confirmRemove?.username} from this workspace? They will lose access immediately.`}
         confirmText="Remove"
         cancelText="Cancel"
         variant="destructive"

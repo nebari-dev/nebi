@@ -124,20 +124,20 @@ func checkServerOrigin(serverName string, origin *localstore.Origin) string {
 	client := cliclient.New(serverURL, cred.Token)
 
 	ctx := context.Background()
-	env, err := findEnvByName(client, ctx, origin.Name)
+	ws, err := findWsByName(client, ctx, origin.Name)
 	if err != nil {
-		if errors.Is(err, ErrEnvNotFound) {
+		if errors.Is(err, ErrWsNotFound) {
 			return fmt.Sprintf("Workspace %q not found on server", origin.Name)
 		}
 		return fmt.Sprintf("Server %q is not reachable", serverName)
 	}
 
-	versionNumber, err := resolveVersionNumber(client, ctx, env.ID, origin.Name, origin.Tag)
+	versionNumber, err := resolveVersionNumber(client, ctx, ws.ID, origin.Name, origin.Tag)
 	if err != nil {
 		return fmt.Sprintf("Tag %q not found on server", origin.Tag)
 	}
 
-	toml, err := client.GetVersionPixiToml(ctx, env.ID, versionNumber)
+	toml, err := client.GetVersionPixiToml(ctx, ws.ID, versionNumber)
 	if err != nil {
 		return fmt.Sprintf("Server %q is not reachable", serverName)
 	}

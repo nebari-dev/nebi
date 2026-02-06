@@ -39,16 +39,16 @@ func init() {
 }
 
 func runWorkspacePublish(cmd *cobra.Command, args []string) error {
-	envName, tag := parseEnvRef(args[0])
+	wsName, tag := parseWsRef(args[0])
 	if tag == "" {
 		return fmt.Errorf("tag is required; usage: nebi workspace publish <workspace>:<tag>")
 	}
 
 	// Parse optional repo:oci-tag from second positional arg
-	repo := envName
+	repo := wsName
 	ociTag := tag
 	if len(args) == 2 {
-		r, t := parseEnvRef(args[1])
+		r, t := parseWsRef(args[1])
 		repo = r
 		if t != "" {
 			ociTag = t
@@ -67,8 +67,8 @@ func runWorkspacePublish(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	// Find environment on server
-	env, err := findEnvByName(client, ctx, envName)
+	// Find workspace on server
+	ws, err := findWsByName(client, ctx, wsName)
 	if err != nil {
 		return err
 	}
@@ -85,8 +85,8 @@ func runWorkspacePublish(cmd *cobra.Command, args []string) error {
 		Tag:        ociTag,
 	}
 
-	fmt.Fprintf(os.Stderr, "Publishing %s:%s to %s:%s...\n", envName, tag, repo, ociTag)
-	resp, err := client.PublishEnvironment(ctx, env.ID, req)
+	fmt.Fprintf(os.Stderr, "Publishing %s:%s to %s:%s...\n", wsName, tag, repo, ociTag)
+	resp, err := client.PublishWorkspace(ctx, ws.ID, req)
 	if err != nil {
 		return fmt.Errorf("failed to publish: %w", err)
 	}

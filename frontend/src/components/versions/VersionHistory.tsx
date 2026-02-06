@@ -5,8 +5,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Loader2, Clock, RotateCcw, FileCode, FileText, ChevronRight, Eye } from 'lucide-react';
-import type { EnvironmentVersion } from '@/types';
-import { environmentsApi } from '@/api/environments';
+import type { WorkspaceVersion } from '@/types';
+import { workspacesApi } from '@/api/workspaces';
 
 interface VersionHistoryProps {
   environmentId: string;
@@ -19,7 +19,7 @@ export const VersionHistory = ({ environmentId, environmentStatus }: VersionHist
   const downloadLock = useDownloadLockFile();
   const downloadManifest = useDownloadManifest();
 
-  const [confirmRollback, setConfirmRollback] = useState<EnvironmentVersion | null>(null);
+  const [confirmRollback, setConfirmRollback] = useState<WorkspaceVersion | null>(null);
   const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
 
   const handleRollback = async () => {
@@ -29,17 +29,17 @@ export const VersionHistory = ({ environmentId, environmentStatus }: VersionHist
     }
   };
 
-  const handleDownloadLock = (version: EnvironmentVersion) => {
+  const handleDownloadLock = (version: WorkspaceVersion) => {
     downloadLock.mutate({ environmentId, versionNumber: version.version_number });
   };
 
-  const handleDownloadManifest = (version: EnvironmentVersion) => {
+  const handleDownloadManifest = (version: WorkspaceVersion) => {
     downloadManifest.mutate({ environmentId, versionNumber: version.version_number });
   };
 
-  const handleViewLock = async (version: EnvironmentVersion) => {
+  const handleViewLock = async (version: WorkspaceVersion) => {
     try {
-      const content = await environmentsApi.downloadLockFile(environmentId, version.version_number);
+      const content = await workspacesApi.downloadLockFile(environmentId, version.version_number);
       const blob = new Blob([content], { type: 'text/plain' });
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
@@ -49,9 +49,9 @@ export const VersionHistory = ({ environmentId, environmentStatus }: VersionHist
     }
   };
 
-  const handleViewManifest = async (version: EnvironmentVersion) => {
+  const handleViewManifest = async (version: WorkspaceVersion) => {
     try {
-      const content = await environmentsApi.downloadManifest(environmentId, version.version_number);
+      const content = await workspacesApi.downloadManifest(environmentId, version.version_number);
       const blob = new Blob([content], { type: 'text/plain' });
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
@@ -232,7 +232,7 @@ export const VersionHistory = ({ environmentId, environmentStatus }: VersionHist
 
                             {!isLatest && environmentStatus !== 'ready' && (
                               <p className="text-xs text-muted-foreground">
-                                Environment must be ready to perform rollback
+                                Workspace must be ready to perform rollback
                               </p>
                             )}
                           </div>
@@ -251,10 +251,10 @@ export const VersionHistory = ({ environmentId, environmentStatus }: VersionHist
         open={!!confirmRollback}
         onOpenChange={(open) => !open && setConfirmRollback(null)}
         onConfirm={handleRollback}
-        title="Rollback Environment"
+        title="Rollback Workspace"
         description={
           confirmRollback
-            ? `Are you sure you want to rollback to version ${confirmRollback.version_number}? This will restore the environment to its state at that version and create a new version snapshot.`
+            ? `Are you sure you want to rollback to version ${confirmRollback.version_number}? This will restore the workspace to its state at that version and create a new version snapshot.`
             : ''
         }
         confirmText="Rollback"

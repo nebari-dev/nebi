@@ -199,7 +199,7 @@ func resolveLocalSource(dir, defaultLabel string) (*diffSource, error) {
 }
 
 func resolveServerSource(ref string) (*diffSource, error) {
-	envName, tag := parseEnvRef(ref)
+	wsName, tag := parseWsRef(ref)
 
 	server, err := resolveServerFlag(diffServer)
 	if err != nil {
@@ -213,26 +213,26 @@ func resolveServerSource(ref string) (*diffSource, error) {
 
 	ctx := context.Background()
 
-	env, err := findEnvByName(client, ctx, envName)
+	ws, err := findWsByName(client, ctx, wsName)
 	if err != nil {
 		return nil, err
 	}
 
-	versionNumber, err := resolveVersionNumber(client, ctx, env.ID, envName, tag)
+	versionNumber, err := resolveVersionNumber(client, ctx, ws.ID, wsName, tag)
 	if err != nil {
 		return nil, err
 	}
 
-	toml, err := client.GetVersionPixiToml(ctx, env.ID, versionNumber)
+	toml, err := client.GetVersionPixiToml(ctx, ws.ID, versionNumber)
 	if err != nil {
 		return nil, fmt.Errorf("fetching pixi.toml: %w", err)
 	}
 
-	lock, _ := client.GetVersionPixiLock(ctx, env.ID, versionNumber)
+	lock, _ := client.GetVersionPixiLock(ctx, ws.ID, versionNumber)
 
-	label := envName
+	label := wsName
 	if tag != "" {
-		label = envName + ":" + tag
+		label = wsName + ":" + tag
 	}
 
 	return &diffSource{
@@ -243,9 +243,9 @@ func resolveServerSource(ref string) (*diffSource, error) {
 }
 
 // resolveVersionNumber resolves a tag or latest version to a version number.
-func resolveVersionNumber(client *cliclient.Client, ctx context.Context, envID, envName, tag string) (int32, error) {
+func resolveVersionNumber(client *cliclient.Client, ctx context.Context, wsID, wsName, tag string) (int32, error) {
 	if tag != "" {
-		tags, err := client.GetEnvironmentTags(ctx, envID)
+		tags, err := client.GetWorkspaceTags(ctx, wsID)
 		if err != nil {
 			return 0, fmt.Errorf("getting tags: %w", err)
 		}
@@ -254,15 +254,15 @@ func resolveVersionNumber(client *cliclient.Client, ctx context.Context, envID, 
 				return int32(t.VersionNumber), nil
 			}
 		}
-		return 0, fmt.Errorf("tag %q not found for environment %q", tag, envName)
+		return 0, fmt.Errorf("tag %q not found for workspace %q", tag, wsName)
 	}
 
-	versions, err := client.GetEnvironmentVersions(ctx, envID)
+	versions, err := client.GetWorkspaceVersions(ctx, wsID)
 	if err != nil {
 		return 0, fmt.Errorf("getting versions: %w", err)
 	}
 	if len(versions) == 0 {
-		return 0, fmt.Errorf("environment %q has no versions", envName)
+		return 0, fmt.Errorf("workspace %q has no versions", wsName)
 	}
 	latest := versions[0]
 	for _, v := range versions {

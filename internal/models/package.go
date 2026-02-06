@@ -7,11 +7,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// Package represents an installed package in an environment
+// Package represents an installed package in a workspace
 type Package struct {
-	ID            uuid.UUID      `gorm:"type:text;primary_key" json:"id"`
-	EnvironmentID uuid.UUID      `gorm:"type:text;not null;index" json:"environment_id"`
-	Environment   Environment    `gorm:"foreignKey:EnvironmentID" json:"environment,omitempty"`
+	ID          uuid.UUID      `gorm:"type:text;primary_key" json:"id"`
+	WorkspaceID uuid.UUID      `gorm:"type:text;not null;index" json:"workspace_id"`
+	Workspace   Workspace      `gorm:"foreignKey:WorkspaceID" json:"workspace,omitempty"`
 	Name          string         `gorm:"not null" json:"name"`
 	Version       string         `json:"version"`
 	InstalledAt   time.Time      `json:"installed_at"`

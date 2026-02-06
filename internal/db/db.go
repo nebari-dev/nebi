@@ -100,16 +100,16 @@ func Migrate(db *gorm.DB) error {
 	err := db.AutoMigrate(
 		&models.User{},
 		&models.Role{},
-		&models.Environment{},
+		&models.Workspace{},
 		&models.Job{},
 		&models.Permission{},
 		&models.Template{},
 		&models.Package{},
 		&models.AuditLog{},
-		&models.EnvironmentVersion{},
+		&models.WorkspaceVersion{},
 		&models.OCIRegistry{},
 		&models.Publication{},
-		&models.EnvironmentTag{},
+		&models.WorkspaceTag{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
@@ -127,9 +127,9 @@ func Migrate(db *gorm.DB) error {
 func seedDefaultRoles(db *gorm.DB) error {
 	defaultRoles := []models.Role{
 		{Name: "admin", Description: "Full system access including user management"},
-		{Name: "owner", Description: "Full access to owned environments"},
-		{Name: "editor", Description: "Can modify environments but not delete"},
-		{Name: "viewer", Description: "Read-only access to environments"},
+		{Name: "owner", Description: "Full access to owned workspaces"},
+		{Name: "editor", Description: "Can modify workspaces but not delete"},
+		{Name: "viewer", Description: "Read-only access to workspaces"},
 	}
 
 	for _, role := range defaultRoles {

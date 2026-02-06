@@ -8,14 +8,14 @@ export interface User {
   updated_at: string;
 }
 
-export type EnvironmentStatus = 'pending' | 'creating' | 'ready' | 'failed' | 'deleting';
+export type WorkspaceStatus = 'pending' | 'creating' | 'ready' | 'failed' | 'deleting';
 
-export interface Environment {
+export interface Workspace {
   id: string; // UUID
   name: string;
   owner_id: string; // UUID
   owner?: User; // Optional owner details
-  status: EnvironmentStatus;
+  status: WorkspaceStatus;
   package_manager: string;
   created_at: string;
   updated_at: string;
@@ -23,7 +23,7 @@ export interface Environment {
   size_formatted: string;
 }
 
-export interface CreateEnvironmentRequest {
+export interface CreateWorkspaceRequest {
   name: string;
   package_manager?: string;
   pixi_toml?: string;
@@ -34,7 +34,7 @@ export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 export interface Job {
   id: string; // UUID
-  environment_id: string; // UUID
+  workspace_id: string; // UUID
   type: JobType;
   status: JobStatus;
   logs: string;
@@ -47,7 +47,7 @@ export interface Job {
 
 export interface Package {
   id: string; // UUID
-  environment_id: string; // UUID
+  workspace_id: string; // UUID
   name: string;
   version?: string;
   installed_at: string;
@@ -93,14 +93,14 @@ export interface Collaborator {
   is_owner: boolean;
 }
 
-export interface ShareEnvironmentRequest {
+export interface ShareWorkspaceRequest {
   user_id: string;
   role: 'editor' | 'viewer';
 }
 
-export interface EnvironmentVersion {
+export interface WorkspaceVersion {
   id: string; // UUID
-  environment_id: string; // UUID
+  workspace_id: string; // UUID
   version_number: number;
   lock_file_content?: string; // Not included in list view
   manifest_content?: string; // Not included in list view
@@ -149,8 +149,8 @@ export interface UpdateRegistryRequest {
   default_repository?: string;
 }
 
-// Environment Tag types
-export interface EnvironmentTag {
+// Workspace Tag types
+export interface WorkspaceTag {
   tag: string;
   version_number: number;
   created_at: string;

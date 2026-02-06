@@ -191,8 +191,8 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	logToFile("startEmbeddedServer: server stopped")
 }
 
-// Environment represents a simplified environment for the frontend
-type Environment struct {
+// WailsWorkspace represents a simplified workspace for the Wails frontend
+type WailsWorkspace struct {
 	ID             string `json:"id"`
 	Name           string `json:"name"`
 	Status         string `json:"status"`
@@ -200,80 +200,80 @@ type Environment struct {
 	CreatedAt      string `json:"createdAt"`
 }
 
-// ListEnvironments returns all environments
-func (a *App) ListEnvironments() ([]Environment, error) {
+// ListWorkspaces returns all workspaces
+func (a *App) ListWorkspaces() ([]WailsWorkspace, error) {
 	if a.db == nil {
 		return nil, fmt.Errorf("database not connected")
 	}
 
-	var envs []models.Environment
-	if err := a.db.Order("created_at DESC").Find(&envs).Error; err != nil {
+	var workspaces []models.Workspace
+	if err := a.db.Order("created_at DESC").Find(&workspaces).Error; err != nil {
 		return nil, err
 	}
 
-	result := make([]Environment, len(envs))
-	for i, env := range envs {
-		result[i] = Environment{
-			ID:             env.ID.String(),
-			Name:           env.Name,
-			Status:         string(env.Status),
-			PackageManager: env.PackageManager,
-			CreatedAt:      env.CreatedAt.Format("2006-01-02 15:04:05"),
+	result := make([]WailsWorkspace, len(workspaces))
+	for i, ws := range workspaces {
+		result[i] = WailsWorkspace{
+			ID:             ws.ID.String(),
+			Name:           ws.Name,
+			Status:         string(ws.Status),
+			PackageManager: ws.PackageManager,
+			CreatedAt:      ws.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
 	}
 	return result, nil
 }
 
-// CreateEnvironment creates a new environment
-func (a *App) CreateEnvironment(name string, pixiToml string) (*Environment, error) {
+// CreateWorkspace creates a new workspace
+func (a *App) CreateWorkspace(name string, pixiToml string) (*WailsWorkspace, error) {
 	if a.db == nil {
 		return nil, fmt.Errorf("database not connected")
 	}
 
-	env := models.Environment{
+	ws := models.Workspace{
 		Name:           name,
-		Status:         models.EnvStatusPending,
+		Status:         models.WsStatusPending,
 		PackageManager: "pixi",
 	}
 
-	if err := a.db.Create(&env).Error; err != nil {
+	if err := a.db.Create(&ws).Error; err != nil {
 		return nil, err
 	}
 
-	return &Environment{
-		ID:             env.ID.String(),
-		Name:           env.Name,
-		Status:         string(env.Status),
-		PackageManager: env.PackageManager,
-		CreatedAt:      env.CreatedAt.Format("2006-01-02 15:04:05"),
+	return &WailsWorkspace{
+		ID:             ws.ID.String(),
+		Name:           ws.Name,
+		Status:         string(ws.Status),
+		PackageManager: ws.PackageManager,
+		CreatedAt:      ws.CreatedAt.Format("2006-01-02 15:04:05"),
 	}, nil
 }
 
-// DeleteEnvironment deletes an environment by ID
-func (a *App) DeleteEnvironment(id string) error {
+// DeleteWorkspace deletes a workspace by ID
+func (a *App) DeleteWorkspace(id string) error {
 	if a.db == nil {
 		return fmt.Errorf("database not connected")
 	}
 
-	return a.db.Where("id = ?", id).Delete(&models.Environment{}).Error
+	return a.db.Where("id = ?", id).Delete(&models.Workspace{}).Error
 }
 
-// GetEnvironment gets a single environment by ID
-func (a *App) GetEnvironment(id string) (*Environment, error) {
+// GetWorkspace gets a single workspace by ID
+func (a *App) GetWorkspace(id string) (*WailsWorkspace, error) {
 	if a.db == nil {
 		return nil, fmt.Errorf("database not connected")
 	}
 
-	var env models.Environment
-	if err := a.db.Where("id = ?", id).First(&env).Error; err != nil {
+	var ws models.Workspace
+	if err := a.db.Where("id = ?", id).First(&ws).Error; err != nil {
 		return nil, err
 	}
 
-	return &Environment{
-		ID:             env.ID.String(),
-		Name:           env.Name,
-		Status:         string(env.Status),
-		PackageManager: env.PackageManager,
-		CreatedAt:      env.CreatedAt.Format("2006-01-02 15:04:05"),
+	return &WailsWorkspace{
+		ID:             ws.ID.String(),
+		Name:           ws.Name,
+		Status:         string(ws.Status),
+		PackageManager: ws.PackageManager,
+		CreatedAt:      ws.CreatedAt.Format("2006-01-02 15:04:05"),
 	}, nil
 }

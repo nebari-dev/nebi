@@ -64,26 +64,26 @@ export const useDeleteRegistry = () => {
   });
 };
 
-// Mutation hook for publishing environment
-export const usePublishEnvironment = () => {
+// Mutation hook for publishing workspace
+export const usePublishWorkspace = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ environmentId, data }: { environmentId: string; data: PublishRequest }) =>
-      registriesApi.publish(environmentId, data),
+    mutationFn: ({ workspaceId, data }: { workspaceId: string; data: PublishRequest }) =>
+      registriesApi.publish(workspaceId, data),
     onSuccess: (_, variables) => {
-      // Invalidate publications for this environment and jobs list
-      queryClient.invalidateQueries({ queryKey: ['publications', variables.environmentId] });
+      // Invalidate publications for this workspace and jobs list
+      queryClient.invalidateQueries({ queryKey: ['publications', variables.workspaceId] });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
   });
 };
 
-// Query hook for environment publications
-export const usePublications = (environmentId: string) => {
+// Query hook for workspace publications
+export const usePublications = (workspaceId: string) => {
   return useQuery({
-    queryKey: ['publications', environmentId],
-    queryFn: () => registriesApi.listPublications(environmentId),
-    enabled: !!environmentId,
+    queryKey: ['publications', workspaceId],
+    queryFn: () => registriesApi.listPublications(workspaceId),
+    enabled: !!workspaceId,
   });
 };

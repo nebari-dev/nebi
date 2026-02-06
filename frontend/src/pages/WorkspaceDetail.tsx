@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useEnvironment } from '@/hooks/useEnvironments';
+import { useWorkspace } from '@/hooks/useWorkspaces';
 import { usePackages, useInstallPackages, useRemovePackage } from '@/hooks/usePackages';
 import { useCollaborators } from '@/hooks/useAdmin';
 import { usePublications } from '@/hooks/useRegistries';
-import { environmentsApi } from '@/api/environments';
+import { workspacesApi } from '@/api/workspaces';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +18,7 @@ import { RoleBadge } from '@/components/sharing/RoleBadge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
 import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check, ExternalLink } from 'lucide-react';
 
-const statusColors = {
+const statusColors: Record<string, string> = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
   creating: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
   ready: 'bg-green-500/10 text-green-500 border-green-500/20',
@@ -26,17 +26,17 @@ const statusColors = {
   deleting: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
 };
 
-export const EnvironmentDetail = () => {
+export const WorkspaceDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const envId = id || '';
+  const wsId = id || '';
 
-  const { data: environment, isLoading: envLoading } = useEnvironment(envId);
-  const { data: packages, isLoading: packagesLoading } = usePackages(envId);
-  const { data: collaborators } = useCollaborators(envId);
-  const { data: publications, isLoading: publicationsLoading } = usePublications(envId);
-  const installMutation = useInstallPackages(envId);
-  const removeMutation = useRemovePackage(envId);
+  const { data: workspace, isLoading: wsLoading } = useWorkspace(wsId);
+  const { data: packages, isLoading: packagesLoading } = usePackages(wsId);
+  const { data: collaborators } = useCollaborators(wsId);
+  const { data: publications, isLoading: publicationsLoading } = usePublications(wsId);
+  const installMutation = useInstallPackages(wsId);
+  const removeMutation = useRemovePackage(wsId);
   const currentUser = useAuthStore((state) => state.user);
 
   const [activeTab, setActiveTab] = useState('packages');
@@ -48,19 +48,19 @@ export const EnvironmentDetail = () => {
   const [loadingToml, setLoadingToml] = useState(false);
   const [copiedToml, setCopiedToml] = useState(false);
 
-  const isOwner = environment?.owner_id === currentUser?.id;
+  const isOwner = workspace?.owner_id === currentUser?.id;
 
   // Load pixi.toml when switching to that tab
   useEffect(() => {
-    if (activeTab === 'toml' && !pixiToml && environment?.status === 'ready') {
+    if (activeTab === 'toml' && !pixiToml && workspace?.status === 'ready') {
       loadPixiToml();
     }
-  }, [activeTab, environment?.status]);
+  }, [activeTab, workspace?.status]);
 
   const loadPixiToml = async () => {
     setLoadingToml(true);
     try {
-      const { content } = await environmentsApi.getPixiToml(envId);
+      const { content } = await workspacesApi.getPixiToml(wsId);
       setPixiToml(content);
     } catch {
       setError('Failed to load pixi.toml');
@@ -107,7 +107,7 @@ export const EnvironmentDetail = () => {
     }
   };
 
-  if (envLoading) {
+  if (wsLoading) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -115,26 +115,26 @@ export const EnvironmentDetail = () => {
     );
   }
 
-  if (!environment) {
-    return <div>Environment not found</div>;
+  if (!workspace) {
+    return <div>Workspace not found</div>;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/environments')}>
+        <Button variant="ghost" size="icon" onClick={() => navigate('/workspaces')}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
-          <h1 className="text-3xl font-bold">{environment.name}</h1>
-          <p className="text-muted-foreground">Environment details and packages</p>
+          <h1 className="text-3xl font-bold">{workspace.name}</h1>
+          <p className="text-muted-foreground">Workspace details and packages</p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge className={statusColors[environment.status]}>
-            {environment.status}
+          <Badge className={statusColors[workspace.status]}>
+            {workspace.status}
           </Badge>
-          <PublishButton environmentId={envId} environmentName={environment.name} environmentStatus={environment.status} />
-          {isOwner && <ShareButton environmentId={envId} />}
+          <PublishButton environmentId={wsId} environmentName={workspace.name} environmentStatus={workspace.status} />
+          {isOwner && <ShareButton environmentId={wsId} />}
         </div>
       </div>
 
@@ -158,33 +158,33 @@ export const EnvironmentDetail = () => {
         <TabsContent value="overview">
           <Card>
             <CardHeader>
-              <CardTitle>Environment Info</CardTitle>
+              <CardTitle>Workspace Info</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Name:</span>
-                <span className="font-medium">{environment.name}</span>
+                <span className="font-medium">{workspace.name}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Owner:</span>
                 <span className="font-medium">
-                  {environment.owner?.username || (isOwner ? 'You' : 'Unknown')}
+                  {workspace.owner?.username || (isOwner ? 'You' : 'Unknown')}
                   {isOwner && <span className="ml-2 text-xs text-muted-foreground">(you)</span>}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Status:</span>
-                <Badge className={statusColors[environment.status]}>
-                  {environment.status}
+                <Badge className={statusColors[workspace.status]}>
+                  {workspace.status}
                 </Badge>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Package Manager:</span>
-                <span className="font-medium font-mono text-sm">{environment.package_manager}</span>
+                <span className="font-medium font-mono text-sm">{workspace.package_manager}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Size:</span>
-                <span className="font-medium">{environment.size_formatted || 'Calculating...'}</span>
+                <span className="font-medium">{workspace.size_formatted || 'Calculating...'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Packages:</span>
@@ -196,15 +196,15 @@ export const EnvironmentDetail = () => {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Created:</span>
-                <span>{new Date(environment.created_at).toLocaleString()}</span>
+                <span>{new Date(workspace.created_at).toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Last Updated:</span>
-                <span>{new Date(environment.updated_at).toLocaleString()}</span>
+                <span>{new Date(workspace.updated_at).toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">ID:</span>
-                <span className="font-mono text-xs text-muted-foreground">{environment.id}</span>
+                <span className="font-mono text-xs text-muted-foreground">{workspace.id}</span>
               </div>
             </CardContent>
           </Card>
@@ -219,7 +219,7 @@ export const EnvironmentDetail = () => {
                   setShowInstall(!showInstall);
                   setError('');
                 }}
-                disabled={environment.status !== 'ready'}
+                disabled={workspace.status !== 'ready'}
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Install Package
@@ -298,7 +298,7 @@ export const EnvironmentDetail = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => setConfirmRemovePackage(pkg.name)}
-                            disabled={removeMutation.isPending || environment.status !== 'ready'}
+                            disabled={removeMutation.isPending || workspace.status !== 'ready'}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -348,9 +348,9 @@ export const EnvironmentDetail = () => {
               </div>
             </CardHeader>
             <CardContent>
-              {environment.status !== 'ready' ? (
+              {workspace.status !== 'ready' ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  Environment must be ready to view pixi.toml
+                  Workspace must be ready to view pixi.toml
                 </div>
               ) : loadingToml ? (
                 <div className="flex items-center justify-center py-12">
@@ -370,7 +370,7 @@ export const EnvironmentDetail = () => {
         </TabsContent>
 
         <TabsContent value="versions">
-          <VersionHistory environmentId={envId} environmentStatus={environment.status} />
+          <VersionHistory environmentId={wsId} environmentStatus={workspace.status} />
         </TabsContent>
 
         <TabsContent value="publications">
@@ -434,7 +434,7 @@ export const EnvironmentDetail = () => {
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-8">
-                  No publications yet. Click the "Publish" button to publish this environment to an OCI registry.
+                  No publications yet. Click the "Publish" button to publish this workspace to an OCI registry.
                 </p>
               )}
             </CardContent>
@@ -476,7 +476,7 @@ export const EnvironmentDetail = () => {
         onOpenChange={(open) => !open && setConfirmRemovePackage(null)}
         onConfirm={handleRemove}
         title="Remove Package"
-        description={`Are you sure you want to remove the package "${confirmRemovePackage}"? This will uninstall it from the environment.`}
+        description={`Are you sure you want to remove the package "${confirmRemovePackage}"? This will uninstall it from the workspace.`}
         confirmText="Remove"
         cancelText="Cancel"
         variant="destructive"

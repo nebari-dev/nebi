@@ -31,8 +31,8 @@ func RequireAdmin() gin.HandlerFunc {
 	}
 }
 
-// RequireEnvironmentAccess checks if user can access an environment
-func RequireEnvironmentAccess(action string) gin.HandlerFunc {
+// RequireWorkspaceAccess checks if user can access a workspace
+func RequireWorkspaceAccess(action string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
 		if !exists {
@@ -41,10 +41,10 @@ func RequireEnvironmentAccess(action string) gin.HandlerFunc {
 			return
 		}
 
-		envIDStr := c.Param("id")
-		envID, err := uuid.Parse(envIDStr)
+		wsIDStr := c.Param("id")
+		wsID, err := uuid.Parse(wsIDStr)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid environment ID"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid workspace ID"})
 			c.Abort()
 			return
 		}
@@ -53,9 +53,9 @@ func RequireEnvironmentAccess(action string) gin.HandlerFunc {
 
 		var hasAccess bool
 		if action == "read" {
-			hasAccess, err = rbac.CanReadEnvironment(userID, envID)
+			hasAccess, err = rbac.CanReadWorkspace(userID, wsID)
 		} else if action == "write" {
-			hasAccess, err = rbac.CanWriteEnvironment(userID, envID)
+			hasAccess, err = rbac.CanWriteWorkspace(userID, wsID)
 		}
 
 		if err != nil || !hasAccess {

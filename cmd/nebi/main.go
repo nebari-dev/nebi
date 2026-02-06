@@ -13,7 +13,7 @@ var Version = "dev"
 
 var rootCmd = &cobra.Command{
 	Use:   "nebi",
-	Short: "Nebi - Local-first environment management for Pixi",
+	Short: "Nebi - Local-first workspace management for Pixi",
 	Long:  `Nebi manages Pixi workspaces locally and syncs them to remote servers.`,
 	Example: `  # Track a workspace and push it to a server
   nebi init

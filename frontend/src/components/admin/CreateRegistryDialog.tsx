@@ -114,10 +114,10 @@ export const CreateRegistryDialog = () => {
               type="text"
               value={defaultRepository}
               onChange={(e) => setDefaultRepository(e.target.value)}
-              placeholder="e.g., myorg/environments"
+              placeholder="e.g., myorg/workspaces"
             />
             <p className="text-xs text-muted-foreground">
-              Base path for repositories. Environment name will be appended when publishing.
+              Base path for repositories. Workspace name will be appended when publishing.
             </p>
           </div>
 

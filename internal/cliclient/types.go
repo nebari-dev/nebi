@@ -24,8 +24,8 @@ type User struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// Environment represents an environment/workspace.
-type Environment struct {
+// Workspace represents a workspace.
+type Workspace struct {
 	ID             string    `json:"id"`
 	Name           string    `json:"name"`
 	Status         string    `json:"status"`
@@ -36,29 +36,29 @@ type Environment struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
-// CreateEnvironmentRequest represents a request to create an environment.
-type CreateEnvironmentRequest struct {
+// CreateWorkspaceRequest represents a request to create a workspace.
+type CreateWorkspaceRequest struct {
 	Name           string  `json:"name"`
 	PackageManager *string `json:"package_manager,omitempty"`
 	PixiToml       *string `json:"pixi_toml,omitempty"`
 }
 
-// Package represents a package in an environment.
+// Package represents a package in a workspace.
 type Package struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Version   string `json:"version,omitempty"`
 	Channel   string `json:"channel,omitempty"`
 	Source    string `json:"source,omitempty"`
-	EnvID     string `json:"environment_id"`
+	WsID      string `json:"workspace_id"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
 
-// Publication represents a published version of an environment.
+// Publication represents a published version of a workspace.
 type Publication struct {
 	ID            string `json:"id"`
-	EnvID         string `json:"environment_id"`
+	WsID          string `json:"workspace_id"`
 	VersionNumber int    `json:"version_number"`
 	RegistryID    string `json:"registry_id"`
 	RegistryName  string `json:"registry_name"`
@@ -68,24 +68,24 @@ type Publication struct {
 	PublishedAt   string `json:"published_at"`
 }
 
-// PublishRequest represents a request to publish an environment.
+// PublishRequest represents a request to publish a workspace.
 type PublishRequest struct {
 	RegistryID string `json:"registry_id"`
 	Repository string `json:"repository"`
 	Tag        string `json:"tag"`
 }
 
-// PublishResponse represents the response from publishing an environment.
+// PublishResponse represents the response from publishing a workspace.
 type PublishResponse struct {
 	Digest     string `json:"digest"`
 	Repository string `json:"repository"`
 	Tag        string `json:"tag"`
 }
 
-// EnvironmentVersion represents a version of an environment.
-type EnvironmentVersion struct {
+// WorkspaceVersion represents a version of a workspace.
+type WorkspaceVersion struct {
 	ID            string `json:"id"`
-	EnvID         string `json:"environment_id"`
+	WsID          string `json:"workspace_id"`
 	VersionNumber int32  `json:"version_number"`
 	CreatedAt     string `json:"created_at"`
 }
@@ -133,8 +133,8 @@ type PushResponse struct {
 	Tag           string `json:"tag"`
 }
 
-// EnvironmentTag represents a server-side tag pointing to a version.
-type EnvironmentTag struct {
+// WorkspaceTag represents a server-side tag pointing to a version.
+type WorkspaceTag struct {
 	Tag           string `json:"tag"`
 	VersionNumber int    `json:"version_number"`
 	CreatedAt     string `json:"created_at"`

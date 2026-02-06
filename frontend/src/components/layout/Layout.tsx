@@ -28,14 +28,14 @@ export const Layout = () => {
                 className="h-10 w-auto"
               />
               <nav className="flex gap-1">
-                <NavLink to="/environments">
+                <NavLink to="/workspaces">
                   {({ isActive }) => (
                     <Button
                       variant={isActive ? 'secondary' : 'ghost'}
                       className="gap-2"
                     >
                       <Boxes className="h-4 w-4" />
-                      Environments
+                      Workspaces
                     </Button>
                   )}
                 </NavLink>

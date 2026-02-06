@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useUsers, useAuditLogs, useDashboardStats } from '@/hooks/useAdmin';
-import { useEnvironments } from '@/hooks/useEnvironments';
+import { useWorkspaces } from '@/hooks/useWorkspaces';
 import { useJobs } from '@/hooks/useJobs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,14 +24,14 @@ const StatCard = ({ title, value, icon: Icon }: { title: string; value: number |
 
 export const AdminDashboard = () => {
   const { data: users, isLoading: usersLoading } = useUsers();
-  const { data: environments, isLoading: envsLoading } = useEnvironments();
+  const { data: workspaces, isLoading: wsLoading } = useWorkspaces();
   const { data: jobs, isLoading: jobsLoading } = useJobs();
   const { data: auditLogs, isLoading: logsLoading } = useAuditLogs();
   const { data: dashboardStats, isLoading: statsLoading } = useDashboardStats();
 
   const activeJobs = jobs?.filter(job => job.status === 'running' || job.status === 'pending').length || 0;
 
-  if (usersLoading || envsLoading || jobsLoading || logsLoading || statsLoading) {
+  if (usersLoading || wsLoading || jobsLoading || logsLoading || statsLoading) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -48,7 +48,7 @@ export const AdminDashboard = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard title="Total Users" value={users?.length || 0} icon={Users} />
-        <StatCard title="Environments" value={environments?.length || 0} icon={Boxes} />
+        <StatCard title="Workspaces" value={workspaces?.length || 0} icon={Boxes} />
         <StatCard title="Active Jobs" value={activeJobs} icon={ListTodo} />
         <StatCard title="Audit Logs" value={auditLogs?.length || 0} icon={Activity} />
         <StatCard title="Disk Usage" value={dashboardStats?.total_disk_usage_formatted || 'Calculating...'} icon={HardDrive} />

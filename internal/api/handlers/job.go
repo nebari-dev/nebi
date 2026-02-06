@@ -31,7 +31,7 @@ func NewJobHandler(db *gorm.DB, broker *logstream.LogBroker, valkeyClient interf
 }
 
 // ListJobs godoc
-// @Summary List all jobs for user's environments
+// @Summary List all jobs for user's workspaces
 // @Tags jobs
 // @Security BearerAuth
 // @Produce json
@@ -45,8 +45,8 @@ func (h *JobHandler) ListJobs(c *gin.Context) {
 	var jobs []models.Job
 	err := h.db.
 		Select("jobs.*").
-		Joins("JOIN environments ON environments.id = jobs.environment_id").
-		Where("environments.owner_id = ?", userID).
+		Joins("JOIN workspaces ON workspaces.id = jobs.workspace_id").
+		Where("workspaces.owner_id = ?", userID).
 		Order("jobs.created_at DESC").
 		Find(&jobs).Error
 
@@ -76,8 +76,8 @@ func (h *JobHandler) GetJob(c *gin.Context) {
 	var job models.Job
 	err := h.db.
 		Select("jobs.*").
-		Joins("JOIN environments ON environments.id = jobs.environment_id").
-		Where("jobs.id = ? AND environments.owner_id = ?", jobID, userID).
+		Joins("JOIN workspaces ON workspaces.id = jobs.workspace_id").
+		Where("jobs.id = ? AND workspaces.owner_id = ?", jobID, userID).
 		First(&job).Error
 
 	if err != nil {
@@ -119,8 +119,8 @@ func (h *JobHandler) StreamJobLogs(c *gin.Context) {
 	var job models.Job
 	err = h.db.
 		Select("jobs.*").
-		Joins("JOIN environments ON environments.id = jobs.environment_id").
-		Where("jobs.id = ? AND environments.owner_id = ?", jobUUID, userID).
+		Joins("JOIN workspaces ON workspaces.id = jobs.workspace_id").
+		Where("jobs.id = ? AND workspaces.owner_id = ?", jobUUID, userID).
 		First(&job).Error
 
 	if err != nil {

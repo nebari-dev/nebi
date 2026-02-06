@@ -33,8 +33,8 @@ const (
 // Job represents a background task
 type Job struct {
 	ID            uuid.UUID              `gorm:"type:text;primary_key" json:"id"`
-	EnvironmentID uuid.UUID              `gorm:"type:text;index" json:"environment_id"`
-	Environment   Environment            `gorm:"foreignKey:EnvironmentID" json:"environment,omitempty"`
+	WorkspaceID uuid.UUID              `gorm:"type:text;index" json:"workspace_id"`
+	Workspace   Workspace              `gorm:"foreignKey:WorkspaceID" json:"workspace,omitempty"`
 	Type          JobType                `gorm:"not null" json:"type"`
 	Status        JobStatus              `gorm:"not null;default:'pending'" json:"status"`
 	Logs          string                 `gorm:"type:text" json:"logs"`

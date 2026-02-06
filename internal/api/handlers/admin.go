@@ -245,7 +245,7 @@ func (h *AdminHandler) ListRoles(c *gin.Context) {
 }
 
 // GrantPermission godoc
-// @Summary Grant environment access to a user
+// @Summary Grant workspace access to a user
 // @Tags admin
 // @Security BearerAuth
 // @Accept json
@@ -269,10 +269,10 @@ func (h *AdminHandler) GrantPermission(c *gin.Context) {
 		return
 	}
 
-	// Verify environment exists
-	var env models.Environment
-	if err := h.db.First(&env, "id = ?", req.EnvironmentID).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+	// Verify workspace exists
+	var ws models.Workspace
+	if err := h.db.First(&ws, "id = ?", req.WorkspaceID).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
 		return
 	}
 
@@ -285,9 +285,9 @@ func (h *AdminHandler) GrantPermission(c *gin.Context) {
 
 	// Create permission record
 	permission := models.Permission{
-		UserID:        req.UserID,
-		EnvironmentID: req.EnvironmentID,
-		RoleID:        req.RoleID,
+		UserID:      req.UserID,
+		WorkspaceID: req.WorkspaceID,
+		RoleID:      req.RoleID,
 	}
 
 	if err := h.db.Create(&permission).Error; err != nil {
@@ -296,7 +296,7 @@ func (h *AdminHandler) GrantPermission(c *gin.Context) {
 	}
 
 	// Grant in RBAC
-	if err := rbac.GrantEnvironmentAccess(user.ID, env.ID, role.Name); err != nil {
+	if err := rbac.GrantWorkspaceAccess(user.ID, ws.ID, role.Name); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to grant RBAC permission"})
 		return
 	}
@@ -304,7 +304,7 @@ func (h *AdminHandler) GrantPermission(c *gin.Context) {
 	// Audit log
 	audit.LogAction(h.db, adminUser.ID, audit.ActionGrantPermission, "permission:"+string(rune(permission.ID)), map[string]interface{}{
 		"user_id":        req.UserID,
-		"environment_id": req.EnvironmentID,
+		"workspace_id": req.WorkspaceID,
 		"role":           role.Name,
 	})
 
@@ -320,7 +320,7 @@ func (h *AdminHandler) GrantPermission(c *gin.Context) {
 // @Router /admin/permissions [get]
 func (h *AdminHandler) ListPermissions(c *gin.Context) {
 	var permissions []models.Permission
-	if err := h.db.Preload("User").Preload("Environment").Preload("Role").Find(&permissions).Error; err != nil {
+	if err := h.db.Preload("User").Preload("Workspace").Preload("Role").Find(&permissions).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch permissions"})
 		return
 	}
@@ -340,13 +340,13 @@ func (h *AdminHandler) RevokePermission(c *gin.Context) {
 	permissionID := c.Param("id")
 
 	var permission models.Permission
-	if err := h.db.Preload("User").Preload("Environment").First(&permission, permissionID).Error; err != nil {
+	if err := h.db.Preload("User").Preload("Workspace").First(&permission, permissionID).Error; err != nil {
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Permission not found"})
 		return
 	}
 
 	// Revoke from RBAC
-	if err := rbac.RevokeEnvironmentAccess(permission.UserID, permission.EnvironmentID); err != nil {
+	if err := rbac.RevokeWorkspaceAccess(permission.UserID, permission.WorkspaceID); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to revoke RBAC permission"})
 		return
 	}
@@ -360,7 +360,7 @@ func (h *AdminHandler) RevokePermission(c *gin.Context) {
 	// Audit log
 	audit.LogAction(h.db, adminUser.ID, audit.ActionRevokePermission, "permission:"+permissionID, map[string]interface{}{
 		"user_id":        permission.UserID,
-		"environment_id": permission.EnvironmentID,
+		"workspace_id": permission.WorkspaceID,
 	})
 
 	c.Status(http.StatusNoContent)
@@ -407,7 +407,7 @@ func (h *AdminHandler) GetDashboardStats(c *gin.Context) {
 	var totalDiskUsage struct {
 		TotalBytes int64
 	}
-	h.db.Model(&models.Environment{}).
+	h.db.Model(&models.Workspace{}).
 		Select("COALESCE(SUM(size_bytes), 0) as total_bytes").
 		Scan(&totalDiskUsage)
 
@@ -431,9 +431,9 @@ type CreateUserRequest struct {
 }
 
 type GrantPermissionRequest struct {
-	UserID        uuid.UUID `json:"user_id" binding:"required"`
-	EnvironmentID uuid.UUID `json:"environment_id" binding:"required"`
-	RoleID        uint      `json:"role_id" binding:"required"`
+	UserID      uuid.UUID `json:"user_id" binding:"required"`
+	WorkspaceID uuid.UUID `json:"workspace_id" binding:"required"`
+	RoleID      uint      `json:"role_id" binding:"required"`
 }
 
 type UserWithAdminStatus struct {

@@ -19,7 +19,7 @@ export const PublishButton = ({ environmentId, environmentName, environmentStatu
         size="sm"
         onClick={() => setOpen(true)}
         disabled={environmentStatus !== 'ready'}
-        title={environmentStatus !== 'ready' ? 'Environment must be ready to publish' : 'Publish to OCI Registry'}
+        title={environmentStatus !== 'ready' ? 'Workspace must be ready to publish' : 'Publish to OCI Registry'}
       >
         <Upload className="h-4 w-4 mr-2" />
         Publish

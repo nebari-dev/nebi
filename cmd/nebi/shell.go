@@ -13,7 +13,7 @@ import (
 
 var shellCmd = &cobra.Command{
 	Use:   "shell [workspace-name] [pixi-args...]",
-	Short: "Activate environment shell via pixi",
+	Short: "Activate workspace shell via pixi",
 	Long: `Activate an interactive shell in a pixi workspace.
 
 With no arguments, activates the current directory (auto-initializes if needed).

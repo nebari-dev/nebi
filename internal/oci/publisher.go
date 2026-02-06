@@ -24,7 +24,7 @@ const (
 	MediaTypePixiLock = "application/vnd.pixi.lock.v1+yaml"
 )
 
-// PublishOptions contains options for publishing an environment
+// PublishOptions contains options for publishing a workspace
 type PublishOptions struct {
 	Repository   string // Full repository path (e.g., "ghcr.io/myorg/myenv")
 	Tag          string // Tag for the manifest (e.g., "v1.0.0")
@@ -33,8 +33,8 @@ type PublishOptions struct {
 	RegistryHost string // Registry hostname (e.g., "ghcr.io")
 }
 
-// PublishEnvironment publishes pixi.toml and pixi.lock to an OCI registry
-func PublishEnvironment(ctx context.Context, envPath string, opts PublishOptions) (string, error) {
+// PublishWorkspace publishes pixi.toml and pixi.lock to an OCI registry
+func PublishWorkspace(ctx context.Context, envPath string, opts PublishOptions) (string, error) {
 	// Validate that pixi files exist
 	pixiTomlPath := filepath.Join(envPath, "pixi.toml")
 	pixiLockPath := filepath.Join(envPath, "pixi.lock")

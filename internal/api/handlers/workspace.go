@@ -18,73 +18,73 @@ import (
 	"gorm.io/gorm"
 )
 
-type EnvironmentHandler struct {
+type WorkspaceHandler struct {
 	db       *gorm.DB
 	queue    queue.Queue
 	executor executor.Executor
 }
 
-func NewEnvironmentHandler(db *gorm.DB, q queue.Queue, exec executor.Executor) *EnvironmentHandler {
-	return &EnvironmentHandler{db: db, queue: q, executor: exec}
+func NewWorkspaceHandler(db *gorm.DB, q queue.Queue, exec executor.Executor) *WorkspaceHandler {
+	return &WorkspaceHandler{db: db, queue: q, executor: exec}
 }
 
-// ListEnvironments godoc
-// @Summary List all environments for the current user
-// @Tags environments
+// ListWorkspaces godoc
+// @Summary List all workspaces for the current user
+// @Tags workspaces
 // @Security BearerAuth
 // @Produce json
-// @Success 200 {array} models.Environment
+// @Success 200 {array} models.Workspace
 // @Failure 401 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /environments [get]
-func (h *EnvironmentHandler) ListEnvironments(c *gin.Context) {
+// @Router /workspaces [get]
+func (h *WorkspaceHandler) ListWorkspaces(c *gin.Context) {
 	userID := getUserID(c)
 
-	var environments []models.Environment
+	var workspaces []models.Workspace
 
-	// Get environments where user is owner
+	// Get workspaces where user is owner
 	query := h.db.Where("owner_id = ?", userID)
 
 	// OR where user has permissions
 	var permissions []models.Permission
 	h.db.Where("user_id = ?", userID).Find(&permissions)
 
-	envIDs := []uuid.UUID{}
+	wsIDs := []uuid.UUID{}
 	for _, p := range permissions {
-		envIDs = append(envIDs, p.EnvironmentID)
+		wsIDs = append(wsIDs, p.WorkspaceID)
 	}
 
-	if len(envIDs) > 0 {
-		query = query.Or("id IN ?", envIDs)
+	if len(wsIDs) > 0 {
+		query = query.Or("id IN ?", wsIDs)
 	}
 
-	if err := query.Preload("Owner").Order("created_at DESC").Find(&environments).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch environments"})
+	if err := query.Preload("Owner").Order("created_at DESC").Find(&workspaces).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch workspaces"})
 		return
 	}
 
 	// Enrich with size information
-	enriched := h.enrichEnvironmentsWithSize(environments)
+	enriched := h.enrichWorkspacesWithSize(workspaces)
 
 	c.JSON(http.StatusOK, enriched)
 }
 
-// CreateEnvironment godoc
-// @Summary Create a new environment
-// @Tags environments
+// CreateWorkspace godoc
+// @Summary Create a new workspace
+// @Tags workspaces
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param environment body CreateEnvironmentRequest true "Environment details"
-// @Success 201 {object} models.Environment
+// @Param workspace body CreateWorkspaceRequest true "Workspace details"
+// @Success 201 {object} models.Workspace
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /environments [post]
-func (h *EnvironmentHandler) CreateEnvironment(c *gin.Context) {
+// @Router /workspaces [post]
+func (h *WorkspaceHandler) CreateWorkspace(c *gin.Context) {
 	userID := getUserID(c)
 
-	var req CreateEnvironmentRequest
+	var req CreateWorkspaceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
@@ -96,16 +96,16 @@ func (h *EnvironmentHandler) CreateEnvironment(c *gin.Context) {
 		packageManager = "pixi"
 	}
 
-	// Create environment record
-	env := models.Environment{
+	// Create workspace record
+	ws := models.Workspace{
 		Name:           req.Name,
 		OwnerID:        userID,
-		Status:         models.EnvStatusPending,
+		Status:         models.WsStatusPending,
 		PackageManager: packageManager,
 	}
 
-	if err := h.db.Create(&env).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create environment"})
+	if err := h.db.Create(&ws).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create workspace"})
 		return
 	}
 
@@ -117,7 +117,7 @@ func (h *EnvironmentHandler) CreateEnvironment(c *gin.Context) {
 
 	job := &models.Job{
 		Type:          models.JobTypeCreate,
-		EnvironmentID: env.ID,
+		WorkspaceID: ws.ID,
 		Status:        models.JobStatusPending,
 		Metadata:      metadata,
 	}
@@ -133,81 +133,81 @@ func (h *EnvironmentHandler) CreateEnvironment(c *gin.Context) {
 	}
 
 	// Grant owner access automatically
-	if err := rbac.GrantEnvironmentAccess(userID, env.ID, "owner"); err != nil {
+	if err := rbac.GrantWorkspaceAccess(userID, ws.ID, "owner"); err != nil {
 		// Log error but don't fail
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to grant owner access"})
 		return
 	}
 
 	// Audit log
-	audit.LogAction(h.db, userID, audit.ActionCreateEnvironment, fmt.Sprintf("env:%s", env.ID.String()), map[string]interface{}{
-		"name":            env.Name,
-		"package_manager": env.PackageManager,
+	audit.LogAction(h.db, userID, audit.ActionCreateWorkspace, fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
+		"name":            ws.Name,
+		"package_manager": ws.PackageManager,
 	})
 
-	c.JSON(http.StatusCreated, env)
+	c.JSON(http.StatusCreated, ws)
 }
 
-// GetEnvironment godoc
-// @Summary Get an environment by ID
-// @Tags environments
+// GetWorkspace godoc
+// @Summary Get a workspace by ID
+// @Tags workspaces
 // @Security BearerAuth
 // @Produce json
-// @Param id path string true "Environment ID"
-// @Success 200 {object} models.Environment
+// @Param id path string true "Workspace ID"
+// @Success 200 {object} models.Workspace
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /environments/{id} [get]
-func (h *EnvironmentHandler) GetEnvironment(c *gin.Context) {
-	envID := c.Param("id")
+// @Router /workspaces/{id} [get]
+func (h *WorkspaceHandler) GetWorkspace(c *gin.Context) {
+	wsID := c.Param("id")
 
-	var env models.Environment
+	var ws models.Workspace
 	// Note: RBAC middleware already checked access, so just fetch by ID
-	if err := h.db.Preload("Owner").Where("id = ?", envID).First(&env).Error; err != nil {
+	if err := h.db.Preload("Owner").Where("id = ?", wsID).First(&ws).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch environment"})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch workspace"})
 		return
 	}
 
 	// Enrich with size information
-	enriched := h.enrichEnvironmentWithSize(&env)
+	enriched := h.enrichWorkspaceWithSize(&ws)
 
 	c.JSON(http.StatusOK, enriched)
 }
 
-// DeleteEnvironment godoc
-// @Summary Delete an environment
-// @Tags environments
+// DeleteWorkspace godoc
+// @Summary Delete an workspace
+// @Tags workspaces
 // @Security BearerAuth
-// @Param id path string true "Environment ID"
+// @Param id path string true "Workspace ID"
 // @Success 204
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /environments/{id} [delete]
-func (h *EnvironmentHandler) DeleteEnvironment(c *gin.Context) {
+// @Router /workspaces/{id} [delete]
+func (h *WorkspaceHandler) DeleteWorkspace(c *gin.Context) {
 	userID := getUserID(c)
-	envID := c.Param("id")
+	wsID := c.Param("id")
 
-	var env models.Environment
+	var ws models.Workspace
 	// Note: RBAC middleware already checked write access
-	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
+	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch environment"})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch workspace"})
 		return
 	}
 
 	// Queue deletion job
 	job := &models.Job{
 		Type:          models.JobTypeDelete,
-		EnvironmentID: env.ID,
+		WorkspaceID: ws.ID,
 		Status:        models.JobStatusPending,
 	}
 
@@ -222,30 +222,30 @@ func (h *EnvironmentHandler) DeleteEnvironment(c *gin.Context) {
 	}
 
 	// Audit log
-	audit.LogAction(h.db, userID, audit.ActionDeleteEnvironment, fmt.Sprintf("env:%s", env.ID.String()), map[string]interface{}{
-		"name": env.Name,
+	audit.LogAction(h.db, userID, audit.ActionDeleteWorkspace, fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
+		"name": ws.Name,
 	})
 
 	c.Status(http.StatusNoContent)
 }
 
 // InstallPackages godoc
-// @Summary Install packages in an environment
-// @Tags environments
+// @Summary Install packages in an workspace
+// @Tags workspaces
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param id path string true "Environment ID"
+// @Param id path string true "Workspace ID"
 // @Param packages body InstallPackagesRequest true "Packages to install"
 // @Success 202 {object} models.Job
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /environments/{id}/packages [post]
-func (h *EnvironmentHandler) InstallPackages(c *gin.Context) {
+// @Router /workspaces/{id}/packages [post]
+func (h *WorkspaceHandler) InstallPackages(c *gin.Context) {
 	userID := getUserID(c)
-	envID := c.Param("id")
+	wsID := c.Param("id")
 
 	var req InstallPackagesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -253,23 +253,23 @@ func (h *EnvironmentHandler) InstallPackages(c *gin.Context) {
 		return
 	}
 
-	var env models.Environment
+	var ws models.Workspace
 	// Note: RBAC middleware already checked write access
-	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
 		return
 	}
 
-	// Check if environment is ready
-	if env.Status != models.EnvStatusReady {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Environment is not ready"})
+	// Check if workspace is ready
+	if ws.Status != models.WsStatusReady {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Workspace is not ready"})
 		return
 	}
 
 	// Queue install job
 	job := &models.Job{
 		Type:          models.JobTypeInstall,
-		EnvironmentID: env.ID,
+		WorkspaceID: ws.ID,
 		Status:        models.JobStatusPending,
 		Metadata:      map[string]interface{}{"packages": req.Packages},
 	}
@@ -285,7 +285,7 @@ func (h *EnvironmentHandler) InstallPackages(c *gin.Context) {
 	}
 
 	// Audit log
-	audit.LogAction(h.db, userID, audit.ActionInstallPackage, fmt.Sprintf("env:%s", env.ID.String()), map[string]interface{}{
+	audit.LogAction(h.db, userID, audit.ActionInstallPackage, fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
 		"packages": req.Packages,
 	})
 
@@ -293,41 +293,41 @@ func (h *EnvironmentHandler) InstallPackages(c *gin.Context) {
 }
 
 // RemovePackages godoc
-// @Summary Remove packages from an environment
-// @Tags environments
+// @Summary Remove packages from an workspace
+// @Tags workspaces
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param id path string true "Environment ID"
+// @Param id path string true "Workspace ID"
 // @Param package path string true "Package name"
 // @Success 202 {object} models.Job
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /environments/{id}/packages/{package} [delete]
-func (h *EnvironmentHandler) RemovePackages(c *gin.Context) {
+// @Router /workspaces/{id}/packages/{package} [delete]
+func (h *WorkspaceHandler) RemovePackages(c *gin.Context) {
 	userID := getUserID(c)
-	envID := c.Param("id")
+	wsID := c.Param("id")
 	packageName := c.Param("package")
 
-	var env models.Environment
+	var ws models.Workspace
 	// Note: RBAC middleware already checked write access
-	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
 		return
 	}
 
-	// Check if environment is ready
-	if env.Status != models.EnvStatusReady {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Environment is not ready"})
+	// Check if workspace is ready
+	if ws.Status != models.WsStatusReady {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Workspace is not ready"})
 		return
 	}
 
 	// Queue remove job
 	job := &models.Job{
 		Type:          models.JobTypeRemove,
-		EnvironmentID: env.ID,
+		WorkspaceID: ws.ID,
 		Status:        models.JobStatusPending,
 		Metadata:      map[string]interface{}{"packages": []string{packageName}},
 	}
@@ -343,7 +343,7 @@ func (h *EnvironmentHandler) RemovePackages(c *gin.Context) {
 	}
 
 	// Audit log
-	audit.LogAction(h.db, userID, audit.ActionRemovePackage, fmt.Sprintf("env:%s", env.ID.String()), map[string]interface{}{
+	audit.LogAction(h.db, userID, audit.ActionRemovePackage, fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
 		"package": packageName,
 	})
 
@@ -351,28 +351,28 @@ func (h *EnvironmentHandler) RemovePackages(c *gin.Context) {
 }
 
 // ListPackages godoc
-// @Summary List packages in an environment
-// @Tags environments
+// @Summary List packages in an workspace
+// @Tags workspaces
 // @Security BearerAuth
 // @Produce json
-// @Param id path string true "Environment ID"
+// @Param id path string true "Workspace ID"
 // @Success 200 {array} models.Package
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /environments/{id}/packages [get]
-func (h *EnvironmentHandler) ListPackages(c *gin.Context) {
-	envID := c.Param("id")
+// @Router /workspaces/{id}/packages [get]
+func (h *WorkspaceHandler) ListPackages(c *gin.Context) {
+	wsID := c.Param("id")
 
-	var env models.Environment
+	var ws models.Workspace
 	// Note: RBAC middleware already checked read access
-	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
 		return
 	}
 
 	var packages []models.Package
-	if err := h.db.Where("environment_id = ?", env.ID).Find(&packages).Error; err != nil {
+	if err := h.db.Where("workspace_id = ?", ws.ID).Find(&packages).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch packages"})
 		return
 	}
@@ -381,29 +381,29 @@ func (h *EnvironmentHandler) ListPackages(c *gin.Context) {
 }
 
 // GetPixiToml godoc
-// @Summary Get pixi.toml content for an environment
-// @Tags environments
+// @Summary Get pixi.toml content for an workspace
+// @Tags workspaces
 // @Security BearerAuth
 // @Produce json
-// @Param id path string true "Environment ID"
+// @Param id path string true "Workspace ID"
 // @Success 200 {object} PixiTomlResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /environments/{id}/pixi-toml [get]
-func (h *EnvironmentHandler) GetPixiToml(c *gin.Context) {
-	envID := c.Param("id")
+// @Router /workspaces/{id}/pixi-toml [get]
+func (h *WorkspaceHandler) GetPixiToml(c *gin.Context) {
+	wsID := c.Param("id")
 
-	var env models.Environment
+	var ws models.Workspace
 	// Note: RBAC middleware already checked read access
-	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
 		return
 	}
 
-	// Get environment path using executor
-	envPath := h.executor.GetEnvironmentPath(&env)
-	pixiTomlPath := filepath.Join(envPath, "pixi.toml")
+	// Get workspace path using executor
+	wsPath := h.executor.GetWorkspacePath(&ws)
+	pixiTomlPath := filepath.Join(wsPath, "pixi.toml")
 
 	// Read pixi.toml file
 	content, err := os.ReadFile(pixiTomlPath)
@@ -418,7 +418,7 @@ func (h *EnvironmentHandler) GetPixiToml(c *gin.Context) {
 }
 
 // Request types
-type CreateEnvironmentRequest struct {
+type CreateWorkspaceRequest struct {
 	Name           string `json:"name" binding:"required"`
 	PackageManager string `json:"package_manager"`
 	PixiToml       string `json:"pixi_toml"`
@@ -432,66 +432,66 @@ type InstallPackagesRequest struct {
 	Packages []string `json:"packages" binding:"required"`
 }
 
-// EnvironmentResponse includes environment data with formatted size
-type EnvironmentResponse struct {
-	models.Environment
+// WorkspaceResponse includes workspace data with formatted size
+type WorkspaceResponse struct {
+	models.Workspace
 	SizeFormatted string `json:"size_formatted"`
 }
 
-// enrichEnvironmentWithSize adds formatted size to an environment
-func (h *EnvironmentHandler) enrichEnvironmentWithSize(env *models.Environment) EnvironmentResponse {
-	return EnvironmentResponse{
-		Environment:   *env,
-		SizeFormatted: utils.FormatBytes(env.SizeBytes),
+// enrichWorkspaceWithSize adds formatted size to a workspace
+func (h *WorkspaceHandler) enrichWorkspaceWithSize(ws *models.Workspace) WorkspaceResponse {
+	return WorkspaceResponse{
+		Workspace:     *ws,
+		SizeFormatted: utils.FormatBytes(ws.SizeBytes),
 	}
 }
 
-// enrichEnvironmentsWithSize adds formatted size to multiple environments
-func (h *EnvironmentHandler) enrichEnvironmentsWithSize(envs []models.Environment) []EnvironmentResponse {
-	result := make([]EnvironmentResponse, len(envs))
-	for i, env := range envs {
-		result[i] = h.enrichEnvironmentWithSize(&env)
+// enrichWorkspacesWithSize adds formatted size to multiple workspaces
+func (h *WorkspaceHandler) enrichWorkspacesWithSize(workspaces []models.Workspace) []WorkspaceResponse {
+	result := make([]WorkspaceResponse, len(workspaces))
+	for i, ws := range workspaces {
+		result[i] = h.enrichWorkspaceWithSize(&ws)
 	}
 	return result
 }
 
-// ShareEnvironment godoc
-// @Summary Share environment with another user (owner only)
-// @Tags environments
+// ShareWorkspace godoc
+// @Summary Share workspace with another user (owner only)
+// @Tags workspaces
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param id path string true "Environment ID"
-// @Param share body ShareEnvironmentRequest true "Share details"
+// @Param id path string true "Workspace ID"
+// @Param share body ShareWorkspaceRequest true "Share details"
 // @Success 201 {object} models.Permission
-// @Router /environments/{id}/share [post]
-func (h *EnvironmentHandler) ShareEnvironment(c *gin.Context) {
+// @Router /workspaces/{id}/share [post]
+func (h *WorkspaceHandler) ShareWorkspace(c *gin.Context) {
 	ownerID := getUserID(c)
-	envID := c.Param("id")
+	wsID := c.Param("id")
 
-	var req ShareEnvironmentRequest
+	var req ShareWorkspaceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	// Parse environment ID
-	envUUID, err := uuid.Parse(envID)
+	// Parse workspace ID
+	wsUUID, err := uuid.Parse(wsID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid environment ID"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid workspace ID"})
 		return
 	}
 
-	// Get environment and check ownership
-	var env models.Environment
-	if err := h.db.Where("id = ?", envUUID).First(&env).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+	// Get workspace and check ownership
+	var ws models.Workspace
+	if err := h.db.Where("id = ?", wsUUID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
 		return
 	}
 
 	// Check if user is the owner
-	if env.OwnerID != ownerID {
-		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Only the owner can share this environment"})
+	if ws.OwnerID != ownerID {
+		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Only the owner can share this workspace"})
 		return
 	}
 
@@ -518,7 +518,7 @@ func (h *EnvironmentHandler) ShareEnvironment(c *gin.Context) {
 	// Create permission record
 	permission := models.Permission{
 		UserID:        req.UserID,
-		EnvironmentID: envUUID,
+		WorkspaceID: wsUUID,
 		RoleID:        role.ID,
 	}
 
@@ -528,13 +528,13 @@ func (h *EnvironmentHandler) ShareEnvironment(c *gin.Context) {
 	}
 
 	// Grant in RBAC
-	if err := rbac.GrantEnvironmentAccess(req.UserID, envUUID, req.Role); err != nil {
+	if err := rbac.GrantWorkspaceAccess(req.UserID, wsUUID, req.Role); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to grant RBAC permission"})
 		return
 	}
 
 	// Audit log
-	audit.LogAction(h.db, ownerID, audit.ActionGrantPermission, fmt.Sprintf("env:%s", envUUID.String()), map[string]interface{}{
+	audit.LogAction(h.db, ownerID, audit.ActionGrantPermission, fmt.Sprintf("ws:%s", wsUUID.String()), map[string]interface{}{
 		"target_user_id": req.UserID,
 		"role":           req.Role,
 	})
@@ -542,23 +542,23 @@ func (h *EnvironmentHandler) ShareEnvironment(c *gin.Context) {
 	c.JSON(http.StatusCreated, permission)
 }
 
-// UnshareEnvironment godoc
-// @Summary Revoke user access to environment (owner only)
-// @Tags environments
+// UnshareWorkspace godoc
+// @Summary Revoke user access to workspace (owner only)
+// @Tags workspaces
 // @Security BearerAuth
-// @Param id path string true "Environment ID"
+// @Param id path string true "Workspace ID"
 // @Param user_id path string true "User ID to revoke"
 // @Success 204
-// @Router /environments/{id}/share/{user_id} [delete]
-func (h *EnvironmentHandler) UnshareEnvironment(c *gin.Context) {
+// @Router /workspaces/{id}/share/{user_id} [delete]
+func (h *WorkspaceHandler) UnshareWorkspace(c *gin.Context) {
 	ownerID := getUserID(c)
-	envID := c.Param("id")
+	wsID := c.Param("id")
 	targetUserID := c.Param("user_id")
 
 	// Parse UUIDs
-	envUUID, err := uuid.Parse(envID)
+	wsUUID, err := uuid.Parse(wsID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid environment ID"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid workspace ID"})
 		return
 	}
 
@@ -568,16 +568,16 @@ func (h *EnvironmentHandler) UnshareEnvironment(c *gin.Context) {
 		return
 	}
 
-	// Get environment and check ownership
-	var env models.Environment
-	if err := h.db.Where("id = ?", envUUID).First(&env).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+	// Get workspace and check ownership
+	var ws models.Workspace
+	if err := h.db.Where("id = ?", wsUUID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
 		return
 	}
 
 	// Check if user is the owner
-	if env.OwnerID != ownerID {
-		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Only the owner can unshare this environment"})
+	if ws.OwnerID != ownerID {
+		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Only the owner can unshare this workspace"})
 		return
 	}
 
@@ -589,13 +589,13 @@ func (h *EnvironmentHandler) UnshareEnvironment(c *gin.Context) {
 
 	// Find and delete permission
 	var permission models.Permission
-	if err := h.db.Where("user_id = ? AND environment_id = ?", targetUUID, envUUID).First(&permission).Error; err != nil {
+	if err := h.db.Where("user_id = ? AND workspace_id = ?", targetUUID, wsUUID).First(&permission).Error; err != nil {
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Permission not found"})
 		return
 	}
 
 	// Revoke from RBAC
-	if err := rbac.RevokeEnvironmentAccess(targetUUID, envUUID); err != nil {
+	if err := rbac.RevokeWorkspaceAccess(targetUUID, wsUUID); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to revoke RBAC permission"})
 		return
 	}
@@ -607,7 +607,7 @@ func (h *EnvironmentHandler) UnshareEnvironment(c *gin.Context) {
 	}
 
 	// Audit log
-	audit.LogAction(h.db, ownerID, audit.ActionRevokePermission, fmt.Sprintf("env:%s", envUUID.String()), map[string]interface{}{
+	audit.LogAction(h.db, ownerID, audit.ActionRevokePermission, fmt.Sprintf("ws:%s", wsUUID.String()), map[string]interface{}{
 		"target_user_id": targetUUID,
 	})
 
@@ -615,33 +615,33 @@ func (h *EnvironmentHandler) UnshareEnvironment(c *gin.Context) {
 }
 
 // ListCollaborators godoc
-// @Summary List all users with access to environment
-// @Tags environments
+// @Summary List all users with access to workspace
+// @Tags workspaces
 // @Security BearerAuth
 // @Produce json
-// @Param id path string true "Environment ID"
+// @Param id path string true "Workspace ID"
 // @Success 200 {array} CollaboratorResponse
-// @Router /environments/{id}/collaborators [get]
-func (h *EnvironmentHandler) ListCollaborators(c *gin.Context) {
-	envID := c.Param("id")
+// @Router /workspaces/{id}/collaborators [get]
+func (h *WorkspaceHandler) ListCollaborators(c *gin.Context) {
+	wsID := c.Param("id")
 
-	// Parse environment ID
-	envUUID, err := uuid.Parse(envID)
+	// Parse workspace ID
+	wsUUID, err := uuid.Parse(wsID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid environment ID"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid workspace ID"})
 		return
 	}
 
 	// Note: RBAC middleware already checked read access
-	var env models.Environment
-	if err := h.db.Where("id = ?", envUUID).First(&env).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+	var ws models.Workspace
+	if err := h.db.Where("id = ?", wsUUID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
 		return
 	}
 
-	// Get all permissions for this environment
+	// Get all permissions for this workspace
 	var permissions []models.Permission
-	if err := h.db.Preload("User").Preload("Role").Where("environment_id = ?", envUUID).Find(&permissions).Error; err != nil {
+	if err := h.db.Preload("User").Preload("Role").Where("workspace_id = ?", wsUUID).Find(&permissions).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch collaborators"})
 		return
 	}
@@ -650,9 +650,9 @@ func (h *EnvironmentHandler) ListCollaborators(c *gin.Context) {
 	var owner models.User
 	collaborators := []CollaboratorResponse{}
 
-	if err := h.db.First(&owner, "id = ?", env.OwnerID).Error; err == nil {
+	if err := h.db.First(&owner, "id = ?", ws.OwnerID).Error; err == nil {
 		collaborators = append(collaborators, CollaboratorResponse{
-			UserID:   env.OwnerID,
+			UserID:   ws.OwnerID,
 			Username: owner.Username,
 			Email:    owner.Email,
 			Role:     "owner",
@@ -662,7 +662,7 @@ func (h *EnvironmentHandler) ListCollaborators(c *gin.Context) {
 
 	// Add other collaborators (excluding owner if they have a permission record)
 	for _, perm := range permissions {
-		if perm.UserID != env.OwnerID {
+		if perm.UserID != ws.OwnerID {
 			collaborators = append(collaborators, CollaboratorResponse{
 				UserID:   perm.UserID,
 				Username: perm.User.Username,
@@ -677,7 +677,7 @@ func (h *EnvironmentHandler) ListCollaborators(c *gin.Context) {
 }
 
 // Request/Response types
-type ShareEnvironmentRequest struct {
+type ShareWorkspaceRequest struct {
 	UserID uuid.UUID `json:"user_id" binding:"required"`
 	Role   string    `json:"role" binding:"required"` // "viewer" or "editor"
 }
@@ -691,21 +691,21 @@ type CollaboratorResponse struct {
 }
 
 // ListVersions godoc
-// @Summary List all versions for an environment
-// @Tags environments
+// @Summary List all versions for an workspace
+// @Tags workspaces
 // @Security BearerAuth
 // @Produce json
-// @Param id path string true "Environment ID"
-// @Success 200 {array} models.EnvironmentVersion
-// @Router /environments/{id}/versions [get]
-func (h *EnvironmentHandler) ListVersions(c *gin.Context) {
-	envID := c.Param("id")
+// @Param id path string true "Workspace ID"
+// @Success 200 {array} models.WorkspaceVersion
+// @Router /workspaces/{id}/versions [get]
+func (h *WorkspaceHandler) ListVersions(c *gin.Context) {
+	wsID := c.Param("id")
 
-	var versions []models.EnvironmentVersion
+	var versions []models.WorkspaceVersion
 	// Exclude large file contents from list view for performance
 	err := h.db.
-		Select("id", "environment_id", "version_number", "job_id", "created_by", "description", "created_at").
-		Where("environment_id = ?", envID).
+		Select("id", "workspace_id", "version_number", "job_id", "created_by", "description", "created_at").
+		Where("workspace_id = ?", wsID).
 		Order("version_number DESC").
 		Find(&versions).Error
 
@@ -719,20 +719,20 @@ func (h *EnvironmentHandler) ListVersions(c *gin.Context) {
 
 // GetVersion godoc
 // @Summary Get a specific version with full details
-// @Tags environments
+// @Tags workspaces
 // @Security BearerAuth
 // @Produce json
-// @Param id path string true "Environment ID"
+// @Param id path string true "Workspace ID"
 // @Param version path int true "Version number"
-// @Success 200 {object} models.EnvironmentVersion
-// @Router /environments/{id}/versions/{version} [get]
-func (h *EnvironmentHandler) GetVersion(c *gin.Context) {
-	envID := c.Param("id")
+// @Success 200 {object} models.WorkspaceVersion
+// @Router /workspaces/{id}/versions/{version} [get]
+func (h *WorkspaceHandler) GetVersion(c *gin.Context) {
+	wsID := c.Param("id")
 	versionNum := c.Param("version")
 
-	var version models.EnvironmentVersion
+	var version models.WorkspaceVersion
 	err := h.db.
-		Where("environment_id = ? AND version_number = ?", envID, versionNum).
+		Where("workspace_id = ? AND version_number = ?", wsID, versionNum).
 		First(&version).Error
 
 	if err != nil {
@@ -749,21 +749,21 @@ func (h *EnvironmentHandler) GetVersion(c *gin.Context) {
 
 // DownloadLockFile godoc
 // @Summary Download pixi.lock for a specific version
-// @Tags environments
+// @Tags workspaces
 // @Security BearerAuth
 // @Produce text/plain
-// @Param id path string true "Environment ID"
+// @Param id path string true "Workspace ID"
 // @Param version path int true "Version number"
 // @Success 200 {string} string "pixi.lock content"
-// @Router /environments/{id}/versions/{version}/pixi-lock [get]
-func (h *EnvironmentHandler) DownloadLockFile(c *gin.Context) {
-	envID := c.Param("id")
+// @Router /workspaces/{id}/versions/{version}/pixi-lock [get]
+func (h *WorkspaceHandler) DownloadLockFile(c *gin.Context) {
+	wsID := c.Param("id")
 	versionNum := c.Param("version")
 
-	var version models.EnvironmentVersion
+	var version models.WorkspaceVersion
 	err := h.db.
 		Select("lock_file_content").
-		Where("environment_id = ? AND version_number = ?", envID, versionNum).
+		Where("workspace_id = ? AND version_number = ?", wsID, versionNum).
 		First(&version).Error
 
 	if err != nil {
@@ -783,21 +783,21 @@ func (h *EnvironmentHandler) DownloadLockFile(c *gin.Context) {
 
 // DownloadManifestFile godoc
 // @Summary Download pixi.toml for a specific version
-// @Tags environments
+// @Tags workspaces
 // @Security BearerAuth
 // @Produce text/plain
-// @Param id path string true "Environment ID"
+// @Param id path string true "Workspace ID"
 // @Param version path int true "Version number"
 // @Success 200 {string} string "pixi.toml content"
-// @Router /environments/{id}/versions/{version}/pixi-toml [get]
-func (h *EnvironmentHandler) DownloadManifestFile(c *gin.Context) {
-	envID := c.Param("id")
+// @Router /workspaces/{id}/versions/{version}/pixi-toml [get]
+func (h *WorkspaceHandler) DownloadManifestFile(c *gin.Context) {
+	wsID := c.Param("id")
 	versionNum := c.Param("version")
 
-	var version models.EnvironmentVersion
+	var version models.WorkspaceVersion
 	err := h.db.
 		Select("manifest_content").
-		Where("environment_id = ? AND version_number = ?", envID, versionNum).
+		Where("workspace_id = ? AND version_number = ?", wsID, versionNum).
 		First(&version).Error
 
 	if err != nil {
@@ -815,18 +815,18 @@ func (h *EnvironmentHandler) DownloadManifestFile(c *gin.Context) {
 }
 
 // RollbackToVersion godoc
-// @Summary Rollback environment to a previous version
-// @Tags environments
+// @Summary Rollback workspace to a previous version
+// @Tags workspaces
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param id path string true "Environment ID"
+// @Param id path string true "Workspace ID"
 // @Param request body RollbackRequest true "Rollback request"
 // @Success 202 {object} models.Job
-// @Router /environments/{id}/rollback [post]
-func (h *EnvironmentHandler) RollbackToVersion(c *gin.Context) {
+// @Router /workspaces/{id}/rollback [post]
+func (h *WorkspaceHandler) RollbackToVersion(c *gin.Context) {
 	userID := getUserID(c)
-	envID := c.Param("id")
+	wsID := c.Param("id")
 
 	var req RollbackRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -834,23 +834,23 @@ func (h *EnvironmentHandler) RollbackToVersion(c *gin.Context) {
 		return
 	}
 
-	// Verify environment exists
-	var env models.Environment
-	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+	// Verify workspace exists
+	var ws models.Workspace
+	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
 		return
 	}
 
-	// Check environment is ready
-	if env.Status != models.EnvStatusReady {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Environment is not ready"})
+	// Check workspace is ready
+	if ws.Status != models.WsStatusReady {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Workspace is not ready"})
 		return
 	}
 
 	// Verify version exists
-	var version models.EnvironmentVersion
+	var version models.WorkspaceVersion
 	err := h.db.
-		Where("environment_id = ? AND version_number = ?", envID, req.VersionNumber).
+		Where("workspace_id = ? AND version_number = ?", wsID, req.VersionNumber).
 		First(&version).Error
 
 	if err != nil {
@@ -865,7 +865,7 @@ func (h *EnvironmentHandler) RollbackToVersion(c *gin.Context) {
 	// Create rollback job
 	job := &models.Job{
 		Type:          models.JobTypeRollback,
-		EnvironmentID: env.ID,
+		WorkspaceID: ws.ID,
 		Status:        models.JobStatusPending,
 		Metadata: map[string]interface{}{
 			"version_id":     version.ID.String(),
@@ -885,7 +885,7 @@ func (h *EnvironmentHandler) RollbackToVersion(c *gin.Context) {
 	}
 
 	// Audit log
-	audit.LogAction(h.db, userID, "rollback_environment", fmt.Sprintf("env:%s", env.ID.String()), map[string]interface{}{
+	audit.LogAction(h.db, userID, "rollback_workspace", fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
 		"version_number": req.VersionNumber,
 	})
 
@@ -916,22 +916,22 @@ type PublicationResponse struct {
 	PublishedAt   string    `json:"published_at"`
 }
 
-// PublishEnvironment godoc
-// @Summary Publish environment to OCI registry
+// PublishWorkspace godoc
+// @Summary Publish workspace to OCI registry
 // @Description Publish pixi.toml and pixi.lock to an OCI registry
-// @Tags environments
+// @Tags workspaces
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param id path string true "Environment ID"
+// @Param id path string true "Workspace ID"
 // @Param request body PublishRequest true "Publish request"
 // @Success 201 {object} PublicationResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /environments/{id}/publish [post]
-func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
-	envID := c.Param("id")
+// @Router /workspaces/{id}/publish [post]
+func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
+	wsID := c.Param("id")
 	userID := getUserID(c)
 
 	var req PublishRequest
@@ -940,23 +940,23 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 		return
 	}
 
-	// Get environment
-	var env models.Environment
-	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+	// Get workspace
+	var ws models.Workspace
+	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
 		return
 	}
 
-	// Check if environment is ready
-	if env.Status != models.EnvStatusReady {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Environment must be in ready state to publish"})
+	// Check if workspace is ready
+	if ws.Status != models.WsStatusReady {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Workspace must be in ready state to publish"})
 		return
 	}
 
-	// Get the latest version number for this environment
-	var latestVersion models.EnvironmentVersion
-	if err := h.db.Where("environment_id = ?", envID).Order("version_number DESC").First(&latestVersion).Error; err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Environment has no versions to publish"})
+	// Get the latest version number for this workspace
+	var latestVersion models.WorkspaceVersion
+	if err := h.db.Where("workspace_id = ?", wsID).Order("version_number DESC").First(&latestVersion).Error; err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Workspace has no versions to publish"})
 		return
 	}
 
@@ -971,9 +971,9 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 	fullRepo := fmt.Sprintf("%s/%s", registry.URL, req.Repository)
 
 	// Publish using OCI package
-	envPath := h.executor.GetEnvironmentPath(&env)
+	wsPath := h.executor.GetWorkspacePath(&ws)
 
-	digest, err := oci.PublishEnvironment(c.Request.Context(), envPath, oci.PublishOptions{
+	digest, err := oci.PublishWorkspace(c.Request.Context(), wsPath, oci.PublishOptions{
 		Repository:   fullRepo,
 		Tag:          req.Tag,
 		Username:     registry.Username,
@@ -988,7 +988,7 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 
 	// Create publication record
 	publication := models.Publication{
-		EnvironmentID: env.ID,
+		WorkspaceID: ws.ID,
 		VersionNumber: latestVersion.VersionNumber,
 		RegistryID:    registry.ID,
 		Repository:    req.Repository,
@@ -1018,7 +1018,7 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 	}
 
 	// Audit log
-	audit.Log(h.db, userID, audit.ActionPublishEnvironment, audit.ResourceEnvironment, env.ID, map[string]interface{}{
+	audit.Log(h.db, userID, audit.ActionPublishWorkspace, audit.ResourceWorkspace, ws.ID, map[string]interface{}{
 		"registry":   registry.Name,
 		"repository": req.Repository,
 		"tag":        req.Tag,
@@ -1028,28 +1028,28 @@ func (h *EnvironmentHandler) PublishEnvironment(c *gin.Context) {
 }
 
 // ListPublications godoc
-// @Summary List publications for an environment
-// @Description Get all publications (registry pushes) for an environment
-// @Tags environments
+// @Summary List publications for an workspace
+// @Description Get all publications (registry pushes) for an workspace
+// @Tags workspaces
 // @Security BearerAuth
 // @Produce json
-// @Param id path string true "Environment ID"
+// @Param id path string true "Workspace ID"
 // @Success 200 {array} PublicationResponse
 // @Failure 404 {object} ErrorResponse
-// @Router /environments/{id}/publications [get]
-func (h *EnvironmentHandler) ListPublications(c *gin.Context) {
-	envID := c.Param("id")
+// @Router /workspaces/{id}/publications [get]
+func (h *WorkspaceHandler) ListPublications(c *gin.Context) {
+	wsID := c.Param("id")
 
-	// Check environment exists
-	var env models.Environment
-	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+	// Check workspace exists
+	var ws models.Workspace
+	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
 		return
 	}
 
 	// Get publications
 	var publications []models.Publication
-	if err := h.db.Where("environment_id = ?", envID).
+	if err := h.db.Where("workspace_id = ?", wsID).
 		Preload("Registry").
 		Preload("PublishedByUser").
 		Order("created_at DESC").
@@ -1078,21 +1078,21 @@ func (h *EnvironmentHandler) ListPublications(c *gin.Context) {
 
 // PushVersion godoc
 // @Summary Push a new version to the server
-// @Description Create a new environment version and assign a tag
-// @Tags environments
+// @Description Create a new workspace version and assign a tag
+// @Tags workspaces
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param id path string true "Environment ID"
+// @Param id path string true "Workspace ID"
 // @Param request body PushVersionRequest true "Push request"
 // @Success 201 {object} PushVersionResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /environments/{id}/push [post]
-func (h *EnvironmentHandler) PushVersion(c *gin.Context) {
-	envID := c.Param("id")
+// @Router /workspaces/{id}/push [post]
+func (h *WorkspaceHandler) PushVersion(c *gin.Context) {
+	wsID := c.Param("id")
 	userID := getUserID(c)
 
 	var req PushVersionRequest
@@ -1101,44 +1101,44 @@ func (h *EnvironmentHandler) PushVersion(c *gin.Context) {
 		return
 	}
 
-	var env models.Environment
-	if err := h.db.Where("id = ?", envID).First(&env).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Environment not found"})
+	var ws models.Workspace
+	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
 		return
 	}
 
-	if env.Status != models.EnvStatusReady {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Environment must be in ready state to push"})
+	if ws.Status != models.WsStatusReady {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Workspace must be in ready state to push"})
 		return
 	}
 
 	// Write files to env path (for future publish operations)
-	envPath := h.executor.GetEnvironmentPath(&env)
-	if err := os.MkdirAll(envPath, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create environment directory"})
+	wsPath := h.executor.GetWorkspacePath(&ws)
+	if err := os.MkdirAll(wsPath, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create workspace directory"})
 		return
 	}
 
-	if err := os.WriteFile(filepath.Join(envPath, "pixi.toml"), []byte(req.PixiToml), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte(req.PixiToml), 0644); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to write pixi.toml"})
 		return
 	}
 
 	if req.PixiLock != "" {
-		if err := os.WriteFile(filepath.Join(envPath, "pixi.lock"), []byte(req.PixiLock), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(wsPath, "pixi.lock"), []byte(req.PixiLock), 0644); err != nil {
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to write pixi.lock"})
 			return
 		}
 	}
 
 	// Create version record
-	newVersion := models.EnvironmentVersion{
-		EnvironmentID:   env.ID,
+	newVersion := models.WorkspaceVersion{
+		WorkspaceID:   ws.ID,
 		ManifestContent: req.PixiToml,
 		LockFileContent: req.PixiLock,
 		PackageMetadata: "[]",
 		CreatedBy:       userID,
-		Description:     fmt.Sprintf("Pushed as %s:%s", env.Name, req.Tag),
+		Description:     fmt.Sprintf("Pushed as %s:%s", ws.Name, req.Tag),
 	}
 	if err := h.db.Create(&newVersion).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create version record"})
@@ -1146,8 +1146,8 @@ func (h *EnvironmentHandler) PushVersion(c *gin.Context) {
 	}
 
 	// Check if tag already exists
-	var existingTag models.EnvironmentTag
-	result := h.db.Where("environment_id = ? AND tag = ?", env.ID, req.Tag).First(&existingTag)
+	var existingTag models.WorkspaceTag
+	result := h.db.Where("workspace_id = ? AND tag = ?", ws.ID, req.Tag).First(&existingTag)
 	if result.Error == nil {
 		if !req.Force {
 			c.JSON(http.StatusConflict, ErrorResponse{
@@ -1161,14 +1161,14 @@ func (h *EnvironmentHandler) PushVersion(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update tag"})
 			return
 		}
-		audit.Log(h.db, userID, audit.ActionReassignTag, audit.ResourceEnvironment, env.ID, map[string]interface{}{
+		audit.Log(h.db, userID, audit.ActionReassignTag, audit.ResourceWorkspace, ws.ID, map[string]interface{}{
 			"tag":         req.Tag,
 			"old_version": oldVersion,
 			"new_version": newVersion.VersionNumber,
 		})
 	} else {
-		newTag := models.EnvironmentTag{
-			EnvironmentID: env.ID,
+		newTag := models.WorkspaceTag{
+			WorkspaceID: ws.ID,
 			Tag:           req.Tag,
 			VersionNumber: newVersion.VersionNumber,
 			CreatedBy:     userID,
@@ -1179,7 +1179,7 @@ func (h *EnvironmentHandler) PushVersion(c *gin.Context) {
 		}
 	}
 
-	audit.Log(h.db, userID, audit.ActionPush, audit.ResourceEnvironment, env.ID, map[string]interface{}{
+	audit.Log(h.db, userID, audit.ActionPush, audit.ResourceWorkspace, ws.ID, map[string]interface{}{
 		"tag":     req.Tag,
 		"version": newVersion.VersionNumber,
 	})
@@ -1191,25 +1191,25 @@ func (h *EnvironmentHandler) PushVersion(c *gin.Context) {
 }
 
 // ListTags godoc
-// @Summary List tags for an environment
-// @Tags environments
+// @Summary List tags for an workspace
+// @Tags workspaces
 // @Security BearerAuth
 // @Produce json
-// @Param id path string true "Environment ID"
-// @Success 200 {array} EnvironmentTagResponse
-// @Router /environments/{id}/tags [get]
-func (h *EnvironmentHandler) ListTags(c *gin.Context) {
-	envID := c.Param("id")
+// @Param id path string true "Workspace ID"
+// @Success 200 {array} WorkspaceTagResponse
+// @Router /workspaces/{id}/tags [get]
+func (h *WorkspaceHandler) ListTags(c *gin.Context) {
+	wsID := c.Param("id")
 
-	var tags []models.EnvironmentTag
-	if err := h.db.Where("environment_id = ?", envID).Order("created_at DESC").Find(&tags).Error; err != nil {
+	var tags []models.WorkspaceTag
+	if err := h.db.Where("workspace_id = ?", wsID).Order("created_at DESC").Find(&tags).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to list tags"})
 		return
 	}
 
-	response := make([]EnvironmentTagResponse, len(tags))
+	response := make([]WorkspaceTagResponse, len(tags))
 	for i, t := range tags {
-		response[i] = EnvironmentTagResponse{
+		response[i] = WorkspaceTagResponse{
 			Tag:           t.Tag,
 			VersionNumber: t.VersionNumber,
 			CreatedAt:     t.CreatedAt.Format("2006-01-02T15:04:05Z"),
@@ -1234,8 +1234,8 @@ type PushVersionResponse struct {
 	Tag           string `json:"tag"`
 }
 
-// EnvironmentTagResponse represents a tag in API responses.
-type EnvironmentTagResponse struct {
+// WorkspaceTagResponse represents a tag in API responses.
+type WorkspaceTagResponse struct {
 	Tag           string `json:"tag"`
 	VersionNumber int    `json:"version_number"`
 	CreatedAt     string `json:"created_at"`

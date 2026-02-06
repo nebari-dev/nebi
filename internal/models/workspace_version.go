@@ -7,14 +7,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// EnvironmentVersion represents a snapshot of environment files at a point in time
-type EnvironmentVersion struct {
-	ID            uuid.UUID    `gorm:"type:text;primary_key" json:"id"`
-	EnvironmentID uuid.UUID    `gorm:"type:text;not null;index:idx_env_version" json:"environment_id"`
-	Environment   *Environment `gorm:"foreignKey:EnvironmentID" json:"environment,omitempty"`
+// WorkspaceVersion represents a snapshot of workspace files at a point in time
+type WorkspaceVersion struct {
+	ID          uuid.UUID  `gorm:"type:text;primary_key" json:"id"`
+	WorkspaceID uuid.UUID  `gorm:"type:text;not null;index:idx_ws_version" json:"workspace_id"`
+	Workspace   *Workspace `gorm:"foreignKey:WorkspaceID" json:"workspace,omitempty"`
 
 	// Version tracking
-	VersionNumber int `gorm:"not null;index:idx_env_version" json:"version_number"` // Auto-incrementing per environment
+	VersionNumber int `gorm:"not null;index:idx_ws_version" json:"version_number"` // Auto-incrementing per workspace
 
 	// File contents (stored as TEXT in database)
 	LockFileContent string `gorm:"type:text;not null" json:"lock_file_content"` // pixi.lock content
@@ -34,25 +34,25 @@ type EnvironmentVersion struct {
 }
 
 // BeforeCreate hook to generate UUID and version number
-func (ev *EnvironmentVersion) BeforeCreate(tx *gorm.DB) error {
-	if ev.ID == uuid.Nil {
-		ev.ID = uuid.New()
+func (wv *WorkspaceVersion) BeforeCreate(tx *gorm.DB) error {
+	if wv.ID == uuid.Nil {
+		wv.ID = uuid.New()
 	}
 
-	// Auto-increment version number for this environment
-	if ev.VersionNumber == 0 {
+	// Auto-increment version number for this workspace
+	if wv.VersionNumber == 0 {
 		var maxVersion struct {
 			MaxVersion *int
 		}
-		tx.Model(&EnvironmentVersion{}).
+		tx.Model(&WorkspaceVersion{}).
 			Select("MAX(version_number) as max_version").
-			Where("environment_id = ?", ev.EnvironmentID).
+			Where("workspace_id = ?", wv.WorkspaceID).
 			Scan(&maxVersion)
 
 		if maxVersion.MaxVersion == nil {
-			ev.VersionNumber = 1
+			wv.VersionNumber = 1
 		} else {
-			ev.VersionNumber = *maxVersion.MaxVersion + 1
+			wv.VersionNumber = *maxVersion.MaxVersion + 1
 		}
 	}
 

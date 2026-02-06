@@ -26,7 +26,7 @@ var workspaceListCmd = &cobra.Command{
 	Aliases: []string{"ls"},
 	Short:   "List workspaces (local or on a server)",
 	Long: `List tracked workspaces. Without -s, lists local workspaces.
-With -s, lists environments on the specified server.
+With -s, lists workspaces on the specified server.
 
 Examples:
   nebi workspace list              # local workspaces
@@ -174,12 +174,12 @@ func runWorkspaceTags(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	env, err := findEnvByName(client, ctx, wsName)
+	ws, err := findWsByName(client, ctx, wsName)
 	if err != nil {
 		return err
 	}
 
-	tags, err := client.GetEnvironmentTags(ctx, env.ID)
+	tags, err := client.GetWorkspaceTags(ctx, ws.ID)
 	if err != nil {
 		return fmt.Errorf("getting tags: %w", err)
 	}
@@ -209,25 +209,25 @@ func runWorkspaceListServer() error {
 	}
 
 	ctx := context.Background()
-	envs, err := client.ListEnvironments(ctx)
+	workspaces, err := client.ListWorkspaces(ctx)
 	if err != nil {
-		return fmt.Errorf("listing environments: %w", err)
+		return fmt.Errorf("listing workspaces: %w", err)
 	}
 
-	if len(envs) == 0 {
+	if len(workspaces) == 0 {
 		fmt.Fprintln(os.Stderr, "No workspaces on server.")
 		return nil
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "NAME\tSTATUS\tOWNER\tUPDATED")
-	for _, env := range envs {
+	for _, ws := range workspaces {
 		owner := "-"
-		if env.Owner != nil {
-			owner = env.Owner.Username
+		if ws.Owner != nil {
+			owner = ws.Owner.Username
 		}
-		updated := env.UpdatedAt.Format("2006-01-02 15:04")
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", env.Name, env.Status, owner, updated)
+		updated := ws.UpdatedAt.Format("2006-01-02 15:04")
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", ws.Name, ws.Status, owner, updated)
 	}
 	return w.Flush()
 }
@@ -278,26 +278,26 @@ func runWorkspacePromote(cmd *cobra.Command, args []string) error {
 
 	// Create global workspace
 	id := uuid.New().String()
-	envDir := store.GlobalEnvDir(id)
+	wsDir := store.GlobalEnvDir(id)
 
-	if err := os.MkdirAll(envDir, 0755); err != nil {
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
 		return fmt.Errorf("creating global workspace directory: %w", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(envDir, "pixi.toml"), toml, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(wsDir, "pixi.toml"), toml, 0644); err != nil {
 		return fmt.Errorf("writing pixi.toml: %w", err)
 	}
 
 	if lock != nil {
-		if err := os.WriteFile(filepath.Join(envDir, "pixi.lock"), lock, 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(wsDir, "pixi.lock"), lock, 0644); err != nil {
 			return fmt.Errorf("writing pixi.lock: %w", err)
 		}
 	}
 
-	idx.Workspaces[envDir] = &localstore.Workspace{
+	idx.Workspaces[wsDir] = &localstore.Workspace{
 		ID:     id,
 		Name:   name,
-		Path:   envDir,
+		Path:   wsDir,
 		Global: true,
 	}
 
@@ -329,12 +329,12 @@ func runWorkspaceRemoveServer(name string) error {
 
 	ctx := context.Background()
 
-	env, err := findEnvByName(client, ctx, name)
+	ws, err := findWsByName(client, ctx, name)
 	if err != nil {
 		return err
 	}
 
-	if err := client.DeleteEnvironment(ctx, env.ID); err != nil {
+	if err := client.DeleteWorkspace(ctx, ws.ID); err != nil {
 		return fmt.Errorf("deleting workspace: %w", err)
 	}
 

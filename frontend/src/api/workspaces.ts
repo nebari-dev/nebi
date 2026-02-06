@@ -60,4 +60,9 @@ export const workspacesApi = {
     const { data } = await apiClient.get(`/workspaces/${id}/tags`);
     return data;
   },
+
+  savePixiToml: async (id: string, content: string): Promise<{ content: string }> => {
+    const { data } = await apiClient.put(`/workspaces/${id}/pixi-toml`, { content });
+    return data;
+  },
 };

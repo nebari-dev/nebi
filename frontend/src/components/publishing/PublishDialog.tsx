@@ -12,17 +12,6 @@ interface PublishDialogProps {
   workspaceName: string;
 }
 
-// Helper function to normalize repository name for OCI compatibility
-// OCI repos must be lowercase, alphanumeric with hyphens/underscores/periods
-const normalizeRepoName = (name: string): string => {
-  return name
-    .toLowerCase()
-    .replace(/\s+/g, '-')           // Replace spaces with hyphens
-    .replace(/[^a-z0-9._-]/g, '')   // Remove invalid characters
-    .replace(/-+/g, '-')            // Replace multiple hyphens with single
-    .replace(/^-|-$/g, '');         // Remove leading/trailing hyphens
-};
-
 // Helper function to suggest next version tag
 const suggestNextTag = (existingTags: string[]): string => {
   if (existingTags.length === 0) {

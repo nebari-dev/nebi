@@ -6,8 +6,10 @@ import { useCollaborators } from '@/hooks/useAdmin';
 import { usePublications } from '@/hooks/useRegistries';
 import { workspacesApi } from '@/api/workspaces';
 import { useAuthStore } from '@/store/authStore';
+import { useModeStore } from '@/store/modeStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -16,7 +18,7 @@ import { ShareButton } from '@/components/sharing/ShareButton';
 import { PublishButton } from '@/components/publishing/PublishButton';
 import { RoleBadge } from '@/components/sharing/RoleBadge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
-import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check, ExternalLink, Save } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -38,6 +40,7 @@ export const WorkspaceDetail = () => {
   const installMutation = useInstallPackages(wsId);
   const removeMutation = useRemovePackage(wsId);
   const currentUser = useAuthStore((state) => state.user);
+  const isLocalMode = useModeStore((s) => s.isLocalMode());
 
   const [activeTab, setActiveTab] = useState('packages');
   const [showInstall, setShowInstall] = useState(false);
@@ -47,6 +50,9 @@ export const WorkspaceDetail = () => {
   const [pixiToml, setPixiToml] = useState<string>('');
   const [loadingToml, setLoadingToml] = useState(false);
   const [copiedToml, setCopiedToml] = useState(false);
+  const [editingToml, setEditingToml] = useState(false);
+  const [editTomlContent, setEditTomlContent] = useState('');
+  const [savingToml, setSavingToml] = useState(false);
 
   const isOwner = workspace?.owner_id === currentUser?.id;
 
@@ -73,6 +79,27 @@ export const WorkspaceDetail = () => {
     await navigator.clipboard.writeText(pixiToml);
     setCopiedToml(true);
     setTimeout(() => setCopiedToml(false), 2000);
+  };
+
+  const handleEditToml = () => {
+    setEditTomlContent(pixiToml);
+    setEditingToml(true);
+  };
+
+  const handleSaveToml = async () => {
+    setSavingToml(true);
+    setError('');
+    try {
+      await workspacesApi.savePixiToml(wsId, editTomlContent);
+      setPixiToml(editTomlContent);
+      setEditingToml(false);
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } };
+      const errorMessage = error?.response?.data?.error || 'Failed to save pixi.toml. Please try again.';
+      setError(errorMessage);
+    } finally {
+      setSavingToml(false);
+    }
   };
 
   const handleInstall = async (e: React.FormEvent) => {
@@ -133,8 +160,12 @@ export const WorkspaceDetail = () => {
           <Badge className={statusColors[workspace.status]}>
             {workspace.status}
           </Badge>
-          <PublishButton environmentId={wsId} environmentName={workspace.name} environmentStatus={workspace.status} />
-          {isOwner && <ShareButton environmentId={wsId} />}
+          {!isLocalMode && (
+            <>
+              <PublishButton environmentId={wsId} environmentName={workspace.name} environmentStatus={workspace.status} />
+              {isOwner && <ShareButton environmentId={wsId} />}
+            </>
+          )}
         </div>
       </div>
 
@@ -147,12 +178,16 @@ export const WorkspaceDetail = () => {
           <TabsTrigger value="packages">Packages</TabsTrigger>
           <TabsTrigger value="toml">pixi.toml</TabsTrigger>
           <TabsTrigger value="versions">Version History</TabsTrigger>
-          <TabsTrigger value="publications">
-            Publications ({publications?.length || 0})
-          </TabsTrigger>
-          <TabsTrigger value="collaborators">
-            Collaborators ({collaborators?.length || 0})
-          </TabsTrigger>
+          {!isLocalMode && (
+            <TabsTrigger value="publications">
+              Publications ({publications?.length || 0})
+            </TabsTrigger>
+          )}
+          {!isLocalMode && (
+            <TabsTrigger value="collaborators">
+              Collaborators ({collaborators?.length || 0})
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="overview">
@@ -325,26 +360,39 @@ export const WorkspaceDetail = () => {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>pixi.toml Configuration</CardTitle>
-                {pixiToml && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCopyToml}
-                    className="gap-2"
-                  >
-                    {copiedToml ? (
-                      <>
-                        <Check className="h-4 w-4" />
-                        Copied
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="h-4 w-4" />
-                        Copy
-                      </>
-                    )}
-                  </Button>
-                )}
+                <div className="flex items-center gap-2">
+                  {isLocalMode && pixiToml && !editingToml && workspace.status === 'ready' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleEditToml}
+                      className="gap-2"
+                    >
+                      <Save className="h-4 w-4" />
+                      Edit
+                    </Button>
+                  )}
+                  {pixiToml && !editingToml && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCopyToml}
+                      className="gap-2"
+                    >
+                      {copiedToml ? (
+                        <>
+                          <Check className="h-4 w-4" />
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-4 w-4" />
+                          Copy
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -355,6 +403,40 @@ export const WorkspaceDetail = () => {
               ) : loadingToml ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : editingToml ? (
+                <div className="space-y-4">
+                  <Textarea
+                    value={editTomlContent}
+                    onChange={(e) => setEditTomlContent(e.target.value)}
+                    rows={16}
+                    className="font-mono text-sm"
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      variant="outline"
+                      onClick={() => setEditingToml(false)}
+                      disabled={savingToml}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleSaveToml}
+                      disabled={savingToml}
+                    >
+                      {savingToml ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="mr-2 h-4 w-4" />
+                          Save pixi.toml
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               ) : pixiToml ? (
                 <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto font-mono text-sm whitespace-pre">
@@ -373,102 +455,106 @@ export const WorkspaceDetail = () => {
           <VersionHistory environmentId={wsId} environmentStatus={workspace.status} />
         </TabsContent>
 
-        <TabsContent value="publications">
-          <Card>
-            <CardHeader>
-              <CardTitle>Publications</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {publicationsLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : publications && publications.length > 0 ? (
-                <div className="space-y-3">
-                  {publications.map((pub) => (
-                    <div
-                      key={pub.id}
-                      className="p-4 rounded-lg border"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <a
-                              href={`https://${pub.registry_url}/repository/${pub.repository}?tab=tags`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-medium text-lg hover:underline text-primary flex items-center gap-1"
-                            >
-                              {pub.repository}:{pub.tag}
-                              <ExternalLink className="h-4 w-4" />
-                            </a>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                            <div>
-                              <span className="text-muted-foreground">Registry:</span>
-                              <span className="ml-2 font-medium">{pub.registry_name}</span>
+        {!isLocalMode && (
+          <TabsContent value="publications">
+            <Card>
+              <CardHeader>
+                <CardTitle>Publications</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {publicationsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : publications && publications.length > 0 ? (
+                  <div className="space-y-3">
+                    {publications.map((pub) => (
+                      <div
+                        key={pub.id}
+                        className="p-4 rounded-lg border"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <a
+                                href={`https://${pub.registry_url}/repository/${pub.repository}?tab=tags`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-medium text-lg hover:underline text-primary flex items-center gap-1"
+                              >
+                                {pub.repository}:{pub.tag}
+                                <ExternalLink className="h-4 w-4" />
+                              </a>
                             </div>
-                            <div>
-                              <span className="text-muted-foreground">URL:</span>
-                              <span className="ml-2 font-mono text-xs">{pub.registry_url}</span>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                              <div>
+                                <span className="text-muted-foreground">Registry:</span>
+                                <span className="ml-2 font-medium">{pub.registry_name}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">URL:</span>
+                                <span className="ml-2 font-mono text-xs">{pub.registry_url}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Published by:</span>
+                                <span className="ml-2 font-medium">{pub.published_by}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Published:</span>
+                                <span className="ml-2">{new Date(pub.published_at).toLocaleString()}</span>
+                              </div>
                             </div>
-                            <div>
-                              <span className="text-muted-foreground">Published by:</span>
-                              <span className="ml-2 font-medium">{pub.published_by}</span>
+                            <div className="pt-2">
+                              <span className="text-muted-foreground text-sm">Digest:</span>
+                              <code className="ml-2 text-xs font-mono bg-muted px-2 py-1 rounded">
+                                {pub.digest}
+                              </code>
                             </div>
-                            <div>
-                              <span className="text-muted-foreground">Published:</span>
-                              <span className="ml-2">{new Date(pub.published_at).toLocaleString()}</span>
-                            </div>
-                          </div>
-                          <div className="pt-2">
-                            <span className="text-muted-foreground text-sm">Digest:</span>
-                            <code className="ml-2 text-xs font-mono bg-muted px-2 py-1 rounded">
-                              {pub.digest}
-                            </code>
                           </div>
                         </div>
                       </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-8">
+                    No publications yet. Click the "Publish" button to publish this workspace to an OCI registry.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {!isLocalMode && (
+          <TabsContent value="collaborators">
+            <Card>
+              <CardHeader>
+                <CardTitle>Collaborators</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {collaborators?.map((collab) => (
+                    <div
+                      key={collab.user_id}
+                      className="flex justify-between items-center p-3 rounded-lg border"
+                    >
+                      <div className="flex-1">
+                        <div className="font-medium">{collab.username}</div>
+                        <div className="text-sm text-muted-foreground">{collab.email}</div>
+                      </div>
+                      <RoleBadge role={collab.role} />
                     </div>
                   ))}
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No publications yet. Click the "Publish" button to publish this workspace to an OCI registry.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="collaborators">
-          <Card>
-            <CardHeader>
-              <CardTitle>Collaborators</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {collaborators?.map((collab) => (
-                  <div
-                    key={collab.user_id}
-                    className="flex justify-between items-center p-3 rounded-lg border"
-                  >
-                    <div className="flex-1">
-                      <div className="font-medium">{collab.username}</div>
-                      <div className="text-sm text-muted-foreground">{collab.email}</div>
-                    </div>
-                    <RoleBadge role={collab.role} />
-                  </div>
-                ))}
-              </div>
-              {(!collaborators || collaborators.length === 0) && (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No collaborators yet
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                {(!collaborators || collaborators.length === 0) && (
+                  <p className="text-sm text-muted-foreground text-center py-8">
+                    No collaborators yet
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       <ConfirmDialog

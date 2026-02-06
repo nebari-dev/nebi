@@ -1,15 +1,18 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWorkspaces, useCreateWorkspace, useDeleteWorkspace } from '@/hooks/useWorkspaces';
+import { useRemoteWorkspaces } from '@/hooks/useRemote';
+import { useServerStatus } from '@/hooks/useRemote';
 import { workspacesApi } from '@/api/workspaces';
 import { useAuthStore } from '@/store/authStore';
+import { useModeStore } from '@/store/modeStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Loader2, Plus, Trash2, X, Edit, Users, FileCode } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Edit, Users, FileCode, Cloud, Monitor } from 'lucide-react';
 
 interface Package {
   name: string;
@@ -55,12 +58,46 @@ ${dependenciesLines || 'python = ">=3.11"'}
 `;
 };
 
+interface DisplayWorkspace {
+  id: string;
+  name: string;
+  status: string;
+  package_manager: string;
+  size_formatted?: string;
+  created_at: string;
+  owner_id?: string;
+  owner?: { id?: string; username: string };
+  source: 'local' | 'remote';
+}
+
 export const Workspaces = () => {
   const navigate = useNavigate();
   const { data: workspaces, isLoading } = useWorkspaces();
   const createMutation = useCreateWorkspace();
   const deleteMutation = useDeleteWorkspace();
   const currentUser = useAuthStore((state) => state.user);
+  const isLocalMode = useModeStore((s) => s.isLocalMode());
+  const { data: serverStatus } = useServerStatus();
+  const { data: remoteWorkspaces } = useRemoteWorkspaces();
+
+  // Merge local and remote workspaces for display
+  const showRemote = isLocalMode && !!serverStatus?.connected;
+  const allWorkspaces: DisplayWorkspace[] = [
+    ...(workspaces?.map((ws) => ({ ...ws, source: 'local' as const })) || []),
+    ...(showRemote && remoteWorkspaces
+      ? remoteWorkspaces.map((ws: any) => ({
+          id: ws.id,
+          name: ws.name,
+          status: ws.status || 'unknown',
+          package_manager: ws.package_manager || 'pixi',
+          size_formatted: ws.size_formatted,
+          created_at: ws.created_at,
+          owner_id: ws.owner_id,
+          owner: ws.owner,
+          source: 'remote' as const,
+        }))
+      : []),
+  ];
 
   const [showCreate, setShowCreate] = useState(false);
   const [newWsName, setNewWsName] = useState('');
@@ -464,16 +501,33 @@ export const Workspaces = () => {
                 </tr>
               </thead>
               <tbody>
-                {workspaces?.map((ws) => (
+                {allWorkspaces.map((ws) => (
                   <tr
-                    key={ws.id}
+                    key={`${ws.source}-${ws.id}`}
                     className="border-b last:border-0 hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => navigate(`/workspaces/${ws.id}`)}
+                    onClick={() =>
+                      ws.source === 'remote'
+                        ? navigate(`/remote/workspaces/${ws.id}`)
+                        : navigate(`/workspaces/${ws.id}`)
+                    }
                   >
                     <td className="p-4 font-medium">
                       <div className="flex items-center gap-2">
                         {ws.name}
-                        {ws.owner_id !== currentUser?.id && ws.owner && (
+                        {showRemote && (
+                          ws.source === 'local' ? (
+                            <Badge variant="outline" className="bg-slate-500/10 text-slate-500 border-slate-500/20">
+                              <Monitor className="h-3 w-3 mr-1" />
+                              Local
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-purple-500/10 text-purple-500 border-purple-500/20">
+                              <Cloud className="h-3 w-3 mr-1" />
+                              Remote
+                            </Badge>
+                          )
+                        )}
+                        {ws.source === 'local' && ws.owner_id !== currentUser?.id && ws.owner && (
                           <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20">
                             <Users className="h-3 w-3 mr-1" />
                             {ws.owner.username}
@@ -482,7 +536,7 @@ export const Workspaces = () => {
                       </div>
                     </td>
                     <td className="p-4">
-                      <Badge className={statusColors[ws.status]}>
+                      <Badge className={statusColors[ws.status] || 'bg-gray-500/10 text-gray-500 border-gray-500/20'}>
                         {ws.status}
                       </Badge>
                     </td>
@@ -493,38 +547,44 @@ export const Workspaces = () => {
                       {ws.size_formatted || '-'}
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">
-                      {new Date(ws.created_at).toLocaleDateString()}
+                      {ws.created_at ? new Date(ws.created_at).toLocaleDateString() : '-'}
                     </td>
                     <td className="p-4">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEdit(ws.id, ws.name);
-                          }}
-                          disabled={loadingEdit || (ws.status !== 'ready' && ws.status !== 'failed')}
-                          title={
-                            ws.status === 'pending' || ws.status === 'creating' || ws.status === 'deleting'
-                              ? 'Cannot edit while workspace is being processed'
-                              : 'Edit pixi.toml'
-                          }
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setConfirmDelete({ id: ws.id, name: ws.name });
-                          }}
-                          disabled={deleteMutation.isPending}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      {ws.source === 'local' ? (
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEdit(ws.id, ws.name);
+                            }}
+                            disabled={loadingEdit || (ws.status !== 'ready' && ws.status !== 'failed')}
+                            title={
+                              ws.status === 'pending' || ws.status === 'creating' || ws.status === 'deleting'
+                                ? 'Cannot edit while workspace is being processed'
+                                : 'Edit pixi.toml'
+                            }
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDelete({ id: ws.id, name: ws.name });
+                            }}
+                            disabled={deleteMutation.isPending}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex justify-end">
+                          <span className="text-xs text-muted-foreground">read-only</span>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -534,7 +594,7 @@ export const Workspaces = () => {
         </CardContent>
       </Card>
 
-      {workspaces?.length === 0 && !showCreate && (
+      {allWorkspaces.length === 0 && !showCreate && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">No workspaces yet. Create your first one!</p>
         </div>

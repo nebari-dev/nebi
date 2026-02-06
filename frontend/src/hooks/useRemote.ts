@@ -32,3 +32,13 @@ export const useDisconnectServer = () => {
     },
   });
 };
+
+export const useRemoteWorkspaces = () => {
+  const isLocal = useModeStore((s) => s.mode === 'local');
+  const { data: serverStatus } = useServerStatus();
+  return useQuery({
+    queryKey: ['remote', 'workspaces'],
+    queryFn: remoteApi.listWorkspaces,
+    enabled: isLocal && !!serverStatus?.connected,
+  });
+};

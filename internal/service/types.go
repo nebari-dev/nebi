@@ -22,11 +22,3 @@ type PushResult struct {
 	VersionNumber int
 	Tag           string
 }
-
-// TagResponse represents a tag in service responses.
-type TagResponse struct {
-	Tag           string
-	VersionNumber int
-	CreatedAt     string
-	UpdatedAt     string
-}

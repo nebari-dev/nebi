@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -46,6 +47,7 @@ func handleServiceError(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, ErrorResponse{Error: conflictErr.Message})
 		return
 	}
+	slog.Error("unhandled service error", "error", err)
 	c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Internal server error"})
 }
 
@@ -360,8 +362,8 @@ func (h *WorkspaceHandler) ListTags(c *gin.Context) {
 		response[i] = WorkspaceTagResponse{
 			Tag:           t.Tag,
 			VersionNumber: t.VersionNumber,
-			CreatedAt:     t.CreatedAt,
-			UpdatedAt:     t.UpdatedAt,
+			CreatedAt:     t.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			UpdatedAt:     t.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 		}
 	}
 

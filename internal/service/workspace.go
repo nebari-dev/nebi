@@ -181,7 +181,10 @@ func (s *WorkspaceService) GetPixiToml(wsID string) (string, error) {
 	wsPath := s.executor.GetWorkspacePath(&ws)
 	content, err := os.ReadFile(filepath.Join(wsPath, "pixi.toml"))
 	if err != nil {
-		return "", ErrNotFound
+		if os.IsNotExist(err) {
+			return "", ErrNotFound
+		}
+		return "", fmt.Errorf("read pixi.toml: %w", err)
 	}
 	return string(content), nil
 }
@@ -218,6 +221,18 @@ func (s *WorkspaceService) PushVersion(ctx context.Context, wsID string, req Pus
 		return nil, &ValidationError{Message: "Workspace must be in ready state to push"}
 	}
 
+	// Check tag conflict before any side effects (file writes, version creation)
+	var existingTag models.WorkspaceTag
+	tagExists := false
+	if err := s.db.Where("workspace_id = ? AND tag = ?", ws.ID, req.Tag).First(&existingTag).Error; err == nil {
+		tagExists = true
+		if !req.Force {
+			return nil, &ConflictError{
+				Message: fmt.Sprintf("tag %q already exists at version %d; use --force to reassign", req.Tag, existingTag.VersionNumber),
+			}
+		}
+	}
+
 	// Write files to workspace path
 	wsPath := s.executor.GetWorkspacePath(&ws)
 	if err := os.MkdirAll(wsPath, 0755); err != nil {
@@ -246,15 +261,7 @@ func (s *WorkspaceService) PushVersion(ctx context.Context, wsID string, req Pus
 	}
 
 	// Handle tag
-	var existingTag models.WorkspaceTag
-	result := s.db.Where("workspace_id = ? AND tag = ?", ws.ID, req.Tag).First(&existingTag)
-	if result.Error == nil {
-		// Tag exists
-		if !req.Force {
-			return nil, &ConflictError{
-				Message: fmt.Sprintf("tag %q already exists at version %d; use --force to reassign", req.Tag, existingTag.VersionNumber),
-			}
-		}
+	if tagExists {
 		oldVersion := existingTag.VersionNumber
 		existingTag.VersionNumber = newVersion.VersionNumber
 		if err := s.db.Save(&existingTag).Error; err != nil {
@@ -349,20 +356,10 @@ func (s *WorkspaceService) GetVersionFile(wsID string, versionNum string, field 
 }
 
 // ListTags returns tags for a workspace, ordered by creation time descending.
-func (s *WorkspaceService) ListTags(wsID string) ([]TagResponse, error) {
+func (s *WorkspaceService) ListTags(wsID string) ([]models.WorkspaceTag, error) {
 	var tags []models.WorkspaceTag
 	if err := s.db.Where("workspace_id = ?", wsID).Order("created_at DESC").Find(&tags).Error; err != nil {
 		return nil, err
 	}
-
-	result := make([]TagResponse, len(tags))
-	for i, t := range tags {
-		result[i] = TagResponse{
-			Tag:           t.Tag,
-			VersionNumber: t.VersionNumber,
-			CreatedAt:     t.CreatedAt.Format("2006-01-02T15:04:05Z"),
-			UpdatedAt:     t.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-		}
-	}
-	return result, nil
+	return tags, nil
 }

@@ -318,9 +318,9 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 		for _, pkgName := range packages {
 			pkg := models.Package{
 				WorkspaceID: ws.ID,
-				Name:          pkgName,
-				Version:       "", // TODO: Extract version from pixi
-				InstalledAt:   time.Now(),
+				Name:        pkgName,
+				Version:     "", // TODO: Extract version from pixi
+				InstalledAt: time.Now(),
 			}
 			w.db.Create(&pkg)
 		}
@@ -505,8 +505,8 @@ func (w *Worker) syncPackagesFromWorkspace(ctx context.Context, ws *models.Works
 	for _, pkg := range pkgs {
 		dbPkg := models.Package{
 			WorkspaceID: ws.ID,
-			Name:          pkg.Name,
-			Version:       pkg.Version,
+			Name:        pkg.Name,
+			Version:     pkg.Version,
 		}
 		if err := w.db.Create(&dbPkg).Error; err != nil {
 			w.logger.Error("Failed to save package", "package", pkg.Name, "error", err)
@@ -578,7 +578,7 @@ func (w *Worker) createVersionSnapshot(ctx context.Context, ws *models.Workspace
 
 	// Create version record
 	version := models.WorkspaceVersion{
-		WorkspaceID:   ws.ID,
+		WorkspaceID:     ws.ID,
 		LockFileContent: string(lockContent),
 		ManifestContent: string(manifestContent),
 		PackageMetadata: string(packageMetadata),

@@ -116,10 +116,10 @@ func (h *WorkspaceHandler) CreateWorkspace(c *gin.Context) {
 	}
 
 	job := &models.Job{
-		Type:          models.JobTypeCreate,
+		Type:        models.JobTypeCreate,
 		WorkspaceID: ws.ID,
-		Status:        models.JobStatusPending,
-		Metadata:      metadata,
+		Status:      models.JobStatusPending,
+		Metadata:    metadata,
 	}
 
 	if err := h.db.Create(job).Error; err != nil {
@@ -206,9 +206,9 @@ func (h *WorkspaceHandler) DeleteWorkspace(c *gin.Context) {
 
 	// Queue deletion job
 	job := &models.Job{
-		Type:          models.JobTypeDelete,
+		Type:        models.JobTypeDelete,
 		WorkspaceID: ws.ID,
-		Status:        models.JobStatusPending,
+		Status:      models.JobStatusPending,
 	}
 
 	if err := h.db.Create(job).Error; err != nil {
@@ -268,10 +268,10 @@ func (h *WorkspaceHandler) InstallPackages(c *gin.Context) {
 
 	// Queue install job
 	job := &models.Job{
-		Type:          models.JobTypeInstall,
+		Type:        models.JobTypeInstall,
 		WorkspaceID: ws.ID,
-		Status:        models.JobStatusPending,
-		Metadata:      map[string]interface{}{"packages": req.Packages},
+		Status:      models.JobStatusPending,
+		Metadata:    map[string]interface{}{"packages": req.Packages},
 	}
 
 	if err := h.db.Create(job).Error; err != nil {
@@ -326,10 +326,10 @@ func (h *WorkspaceHandler) RemovePackages(c *gin.Context) {
 
 	// Queue remove job
 	job := &models.Job{
-		Type:          models.JobTypeRemove,
+		Type:        models.JobTypeRemove,
 		WorkspaceID: ws.ID,
-		Status:        models.JobStatusPending,
-		Metadata:      map[string]interface{}{"packages": []string{packageName}},
+		Status:      models.JobStatusPending,
+		Metadata:    map[string]interface{}{"packages": []string{packageName}},
 	}
 
 	if err := h.db.Create(job).Error; err != nil {
@@ -517,9 +517,9 @@ func (h *WorkspaceHandler) ShareWorkspace(c *gin.Context) {
 
 	// Create permission record
 	permission := models.Permission{
-		UserID:        req.UserID,
+		UserID:      req.UserID,
 		WorkspaceID: wsUUID,
-		RoleID:        role.ID,
+		RoleID:      role.ID,
 	}
 
 	if err := h.db.Create(&permission).Error; err != nil {
@@ -864,9 +864,9 @@ func (h *WorkspaceHandler) RollbackToVersion(c *gin.Context) {
 
 	// Create rollback job
 	job := &models.Job{
-		Type:          models.JobTypeRollback,
+		Type:        models.JobTypeRollback,
 		WorkspaceID: ws.ID,
-		Status:        models.JobStatusPending,
+		Status:      models.JobStatusPending,
 		Metadata: map[string]interface{}{
 			"version_id":     version.ID.String(),
 			"version_number": version.VersionNumber,
@@ -988,7 +988,7 @@ func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
 
 	// Create publication record
 	publication := models.Publication{
-		WorkspaceID: ws.ID,
+		WorkspaceID:   ws.ID,
 		VersionNumber: latestVersion.VersionNumber,
 		RegistryID:    registry.ID,
 		Repository:    req.Repository,
@@ -1133,7 +1133,7 @@ func (h *WorkspaceHandler) PushVersion(c *gin.Context) {
 
 	// Create version record
 	newVersion := models.WorkspaceVersion{
-		WorkspaceID:   ws.ID,
+		WorkspaceID:     ws.ID,
 		ManifestContent: req.PixiToml,
 		LockFileContent: req.PixiLock,
 		PackageMetadata: "[]",
@@ -1168,7 +1168,7 @@ func (h *WorkspaceHandler) PushVersion(c *gin.Context) {
 		})
 	} else {
 		newTag := models.WorkspaceTag{
-			WorkspaceID: ws.ID,
+			WorkspaceID:   ws.ID,
 			Tag:           req.Tag,
 			VersionNumber: newVersion.VersionNumber,
 			CreatedBy:     userID,

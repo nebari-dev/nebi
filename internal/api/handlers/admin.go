@@ -303,9 +303,9 @@ func (h *AdminHandler) GrantPermission(c *gin.Context) {
 
 	// Audit log
 	audit.LogAction(h.db, adminUser.ID, audit.ActionGrantPermission, "permission:"+string(rune(permission.ID)), map[string]interface{}{
-		"user_id":        req.UserID,
+		"user_id":      req.UserID,
 		"workspace_id": req.WorkspaceID,
-		"role":           role.Name,
+		"role":         role.Name,
 	})
 
 	c.JSON(http.StatusCreated, permission)
@@ -359,7 +359,7 @@ func (h *AdminHandler) RevokePermission(c *gin.Context) {
 
 	// Audit log
 	audit.LogAction(h.db, adminUser.ID, audit.ActionRevokePermission, "permission:"+permissionID, map[string]interface{}{
-		"user_id":        permission.UserID,
+		"user_id":      permission.UserID,
 		"workspace_id": permission.WorkspaceID,
 	})
 

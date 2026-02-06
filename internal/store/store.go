@@ -7,7 +7,6 @@ import (
 	"runtime"
 
 	"github.com/glebarez/sqlite"
-	"github.com/nebari-dev/nebi/internal/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -45,7 +44,7 @@ func Open(dataDir string) (*Store, error) {
 	db.Exec("PRAGMA journal_mode=WAL")
 
 	// AutoMigrate workspace + config/credentials tables
-	if err := db.AutoMigrate(&models.Workspace{}, &Config{}, &Credentials{}); err != nil {
+	if err := db.AutoMigrate(&LocalWorkspace{}, &Config{}, &Credentials{}); err != nil {
 		return nil, fmt.Errorf("migrating schema: %w", err)
 	}
 

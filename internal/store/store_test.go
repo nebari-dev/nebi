@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/nebari-dev/nebi/internal/models"
 )
 
 func testStore(t *testing.T) *Store {
@@ -31,7 +30,7 @@ func TestWorkspaceRoundTrip(t *testing.T) {
 	}
 
 	// Create
-	ws := &models.Workspace{
+	ws := &LocalWorkspace{
 		Name: "project",
 		Path: "/home/user/project",
 	}
@@ -92,7 +91,7 @@ func TestGlobalWorkspace(t *testing.T) {
 	s := testStore(t)
 
 	wsDir := s.GlobalWorkspaceDir("test-uuid-123")
-	ws := &models.Workspace{
+	ws := &LocalWorkspace{
 		Name:     "data-science",
 		Path:     wsDir,
 		IsGlobal: true,
@@ -116,7 +115,7 @@ func TestGlobalWorkspace(t *testing.T) {
 func TestOriginFields(t *testing.T) {
 	s := testStore(t)
 
-	ws := &models.Workspace{
+	ws := &LocalWorkspace{
 		Name:           "project",
 		Path:           "/home/user/project",
 		OriginName:     "my-env",
@@ -197,14 +196,14 @@ func TestGlobalWorkspaceDir(t *testing.T) {
 func TestDefaults(t *testing.T) {
 	s := testStore(t)
 
-	ws := &models.Workspace{
+	ws := &LocalWorkspace{
 		Name: "test",
 		Path: "/tmp/test",
 	}
 	s.CreateWorkspace(ws)
 
 	got, _ := s.GetWorkspace(ws.ID)
-	if got.Status != models.WsStatusReady {
+	if got.Status != "ready" {
 		t.Errorf("expected status 'ready', got %q", got.Status)
 	}
 	if got.Source != "local" {

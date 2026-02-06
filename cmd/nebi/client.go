@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
-	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/store"
 )
 
@@ -76,7 +75,7 @@ func validateWorkspaceName(name string) error {
 
 // lookupOrigin returns the origin fields for the current working directory workspace.
 // Returns nil (no error) if no workspace is tracked or no origin is set.
-func lookupOrigin() (*models.Workspace, error) {
+func lookupOrigin() (*store.LocalWorkspace, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("getting working directory: %w", err)

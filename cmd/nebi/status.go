@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
-	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -102,7 +101,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func checkServerOrigin(s *store.Store, serverURL string, ws *models.Workspace) string {
+func checkServerOrigin(s *store.Store, serverURL string, ws *store.LocalWorkspace) string {
 	creds, err := s.LoadCredentials()
 	if err != nil || creds.Token == "" {
 		return "Not logged in"

@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -238,7 +237,7 @@ func setupGlobalWorkspace(name string, force bool) (string, error) {
 	}
 
 	wsDir := s.GlobalWorkspaceDir(name)
-	ws := &models.Workspace{
+	ws := &store.LocalWorkspace{
 		Name:     name,
 		Path:     wsDir,
 		IsGlobal: true,

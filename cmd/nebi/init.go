@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -57,7 +56,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	name := filepath.Base(cwd)
-	ws := &models.Workspace{
+	ws := &store.LocalWorkspace{
 		Name: name,
 		Path: cwd,
 	}
@@ -95,7 +94,7 @@ func ensureInit(dir string) error {
 	}
 
 	name := filepath.Base(absDir)
-	ws := &models.Workspace{
+	ws := &store.LocalWorkspace{
 		Name: name,
 		Path: absDir,
 	}

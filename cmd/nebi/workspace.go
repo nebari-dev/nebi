@@ -8,7 +8,6 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -290,7 +289,7 @@ func runWorkspacePromote(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	ws := &models.Workspace{
+	ws := &store.LocalWorkspace{
 		Name:     name,
 		Path:     wsDir,
 		IsGlobal: true,
@@ -338,7 +337,7 @@ func runWorkspaceRemoveLocal(arg string) error {
 	}
 	defer s.Close()
 
-	var ws *models.Workspace
+	var ws *store.LocalWorkspace
 	if strings.Contains(arg, "/") || strings.Contains(arg, string(filepath.Separator)) {
 		absPath, err := filepath.Abs(arg)
 		if err != nil {

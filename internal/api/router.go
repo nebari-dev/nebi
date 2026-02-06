@@ -16,6 +16,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/logstream"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
+	"github.com/nebari-dev/nebi/internal/service"
 	"github.com/nebari-dev/nebi/internal/web"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -101,8 +102,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		}
 	}
 
-	// Initialize handlers
-	wsHandler := handlers.NewWorkspaceHandler(db, q, exec, cfg.IsLocalMode())
+	// Initialize service and handlers
+	svc := service.New(db, q, exec, localMode)
+	wsHandler := handlers.NewWorkspaceHandler(svc, db, q, exec, localMode)
 	jobHandler := handlers.NewJobHandler(db, logBroker, valkeyClient)
 
 	// Protected routes (require authentication)

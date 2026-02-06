@@ -35,8 +35,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		gin.SetMode(gin.ReleaseMode)
 	}
 
+	localMode := cfg.IsLocalMode()
+
 	// Set handler-level mode for /version endpoint
-	if cfg.IsLocalMode() {
+	if localMode {
 		handlers.Mode = "local"
 	} else {
 		handlers.Mode = "team"
@@ -49,19 +51,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	router.Use(loggingMiddleware())
 	router.Use(corsMiddleware())
 
-	// In local mode, inject is_local_mode into every request context
-	if cfg.IsLocalMode() {
-		router.Use(func(c *gin.Context) {
-			c.Set("is_local_mode", true)
-			c.Next()
-		})
-	}
-
 	// Initialize authenticator based on mode
 	var authenticator auth.Authenticator
 	var oidcAuth *auth.OIDCAuthenticator
 
-	if cfg.IsLocalMode() {
+	if localMode {
 		authenticator = auth.NewLocalAuthenticator(db)
 		logger.Info("Running in local mode — authentication bypassed")
 	} else {
@@ -121,34 +115,34 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		ws := protected.Group("/workspaces/:id")
 		{
 			// Read operations (require read permission)
-			ws.GET("", middleware.RequireWorkspaceAccess("read"), wsHandler.GetWorkspace)
-			ws.GET("/packages", middleware.RequireWorkspaceAccess("read"), wsHandler.ListPackages)
-			ws.GET("/pixi-toml", middleware.RequireWorkspaceAccess("read"), wsHandler.GetPixiToml)
-			ws.GET("/collaborators", middleware.RequireWorkspaceAccess("read"), wsHandler.ListCollaborators)
+			ws.GET("", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.GetWorkspace)
+			ws.GET("/packages", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.ListPackages)
+			ws.GET("/pixi-toml", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.GetPixiToml)
+			ws.GET("/collaborators", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.ListCollaborators)
 
 			// Version operations (read permission)
-			ws.GET("/versions", middleware.RequireWorkspaceAccess("read"), wsHandler.ListVersions)
-			ws.GET("/versions/:version", middleware.RequireWorkspaceAccess("read"), wsHandler.GetVersion)
-			ws.GET("/versions/:version/pixi-lock", middleware.RequireWorkspaceAccess("read"), wsHandler.DownloadLockFile)
-			ws.GET("/versions/:version/pixi-toml", middleware.RequireWorkspaceAccess("read"), wsHandler.DownloadManifestFile)
+			ws.GET("/versions", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.ListVersions)
+			ws.GET("/versions/:version", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.GetVersion)
+			ws.GET("/versions/:version/pixi-lock", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.DownloadLockFile)
+			ws.GET("/versions/:version/pixi-toml", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.DownloadManifestFile)
 
 			// Write operations (require write permission)
-			ws.DELETE("", middleware.RequireWorkspaceAccess("write"), wsHandler.DeleteWorkspace)
-			ws.POST("/packages", middleware.RequireWorkspaceAccess("write"), wsHandler.InstallPackages)
-			ws.DELETE("/packages/:package", middleware.RequireWorkspaceAccess("write"), wsHandler.RemovePackages)
-			ws.POST("/rollback", middleware.RequireWorkspaceAccess("write"), wsHandler.RollbackToVersion)
+			ws.DELETE("", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.DeleteWorkspace)
+			ws.POST("/packages", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.InstallPackages)
+			ws.DELETE("/packages/:package", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.RemovePackages)
+			ws.POST("/rollback", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.RollbackToVersion)
 
 			// Sharing operations (owner only - checked in handler)
 			ws.POST("/share", wsHandler.ShareWorkspace)
 			ws.DELETE("/share/:user_id", wsHandler.UnshareWorkspace)
 
 			// Tags (read permission)
-			ws.GET("/tags", middleware.RequireWorkspaceAccess("read"), wsHandler.ListTags)
+			ws.GET("/tags", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.ListTags)
 
 			// Push and publish operations (require write permission)
-			ws.POST("/push", middleware.RequireWorkspaceAccess("write"), wsHandler.PushVersion)
-			ws.POST("/publish", middleware.RequireWorkspaceAccess("write"), wsHandler.PublishWorkspace)
-			ws.GET("/publications", middleware.RequireWorkspaceAccess("read"), wsHandler.ListPublications)
+			ws.POST("/push", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.PushVersion)
+			ws.POST("/publish", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.PublishWorkspace)
+			ws.GET("/publications", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.ListPublications)
 		}
 
 		// Job endpoints
@@ -167,7 +161,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		// Admin endpoints (require admin role)
 		adminHandler := handlers.NewAdminHandler(db)
 		admin := protected.Group("/admin")
-		admin.Use(middleware.RequireAdmin())
+		admin.Use(middleware.RequireAdmin(localMode))
 		{
 			// User management
 			admin.GET("/users", adminHandler.ListUsers)

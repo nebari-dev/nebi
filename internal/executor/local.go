@@ -55,8 +55,12 @@ func normalizeEnvName(name string) string {
 }
 
 // GetWorkspacePath returns the filesystem path for a workspace
-// Format: {baseDir}/{normalized-name}-{uuid}
+// For source=="local" workspaces with a path set, returns that path directly.
+// Otherwise: {baseDir}/{normalized-name}-{uuid}
 func (e *LocalExecutor) GetWorkspacePath(ws *models.Workspace) string {
+	if ws.Source == "local" && ws.Path != "" {
+		return ws.Path
+	}
 	normalizedName := normalizeEnvName(ws.Name)
 	dirName := fmt.Sprintf("%s-%s", normalizedName, ws.ID.String())
 	return filepath.Join(e.baseDir, dirName)

@@ -9,6 +9,7 @@ import (
 
 // Config holds all application configuration
 type Config struct {
+	Mode           string               `mapstructure:"mode"` // "local" or "team" (default: "team")
 	Server         ServerConfig         `mapstructure:"server"`
 	Database       DatabaseConfig       `mapstructure:"database"`
 	Auth           AuthConfig           `mapstructure:"auth"`
@@ -16,6 +17,11 @@ type Config struct {
 	Log            LogConfig            `mapstructure:"log"`
 	PackageManager PackageManagerConfig `mapstructure:"package_manager"`
 	Storage        StorageConfig        `mapstructure:"storage"`
+}
+
+// IsLocalMode returns true when the server is running in local/desktop mode.
+func (c *Config) IsLocalMode() bool {
+	return c.Mode == "local"
 }
 
 // ServerConfig holds HTTP server configuration
@@ -64,7 +70,7 @@ type PackageManagerConfig struct {
 
 // StorageConfig holds storage configuration
 type StorageConfig struct {
-	EnvironmentsDir string `mapstructure:"environments_dir"` // Directory where environments are stored
+	WorkspacesDir string `mapstructure:"workspaces_dir"` // Directory where workspaces are stored
 }
 
 // Load reads configuration from file and environment variables
@@ -72,6 +78,7 @@ func Load() (*Config, error) {
 	v := viper.New()
 
 	// Set defaults for local development
+	v.SetDefault("mode", "team")
 	v.SetDefault("server.port", 8460)
 	v.SetDefault("server.mode", "development")
 	v.SetDefault("database.driver", "sqlite")
@@ -90,7 +97,7 @@ func Load() (*Config, error) {
 	v.SetDefault("log.format", "text")
 	v.SetDefault("log.level", "info")
 	v.SetDefault("package_manager.default_type", "pixi")
-	v.SetDefault("storage.environments_dir", "./data/environments")
+	v.SetDefault("storage.workspaces_dir", "./data/workspaces")
 
 	// Read from config file if exists
 	v.SetConfigName("config")
@@ -113,6 +120,14 @@ func Load() (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
+	}
+
+	// Validate mode
+	switch cfg.Mode {
+	case "", "team", "local":
+		// valid — empty defaults to "team" via IsLocalMode()
+	default:
+		return nil, fmt.Errorf("invalid mode %q: must be \"local\" or \"team\"", cfg.Mode)
 	}
 
 	return &cfg, nil

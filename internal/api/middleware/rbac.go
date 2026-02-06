@@ -9,9 +9,15 @@ import (
 	"github.com/nebari-dev/nebi/internal/rbac"
 )
 
-// RequireAdmin ensures the user is an admin
-func RequireAdmin() gin.HandlerFunc {
+// RequireAdmin ensures the user is an admin.
+// When localMode is true the check is unconditionally skipped.
+func RequireAdmin(localMode bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if localMode {
+			c.Next()
+			return
+		}
+
 		user, exists := c.Get("user")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -31,9 +37,15 @@ func RequireAdmin() gin.HandlerFunc {
 	}
 }
 
-// RequireWorkspaceAccess checks if user can access a workspace
-func RequireWorkspaceAccess(action string) gin.HandlerFunc {
+// RequireWorkspaceAccess checks if user can access a workspace.
+// When localMode is true the check is unconditionally skipped.
+func RequireWorkspaceAccess(action string, localMode bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if localMode {
+			c.Next()
+			return
+		}
+
 		user, exists := c.Get("user")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})

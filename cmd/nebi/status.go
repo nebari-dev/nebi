@@ -8,19 +8,19 @@ import (
 	"path/filepath"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
-	"github.com/nebari-dev/nebi/internal/localstore"
+	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
 )
 
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show workspace sync status",
-	Long: `Show the current workspace's tracking info and sync status with servers.
+	Long: `Show the current workspace's tracking info and sync status with the server.
 
-Displays the workspace name, type, path, and origin info for each server
-that has been pushed to or pulled from.
+Displays the workspace name, type, path, and origin info for the
+last push/pull operation.
 
-If a server is reachable, checks whether the local files or server version
+If the server is reachable, checks whether the local files or server version
 have changed since the last sync.
 
 Examples:
@@ -35,120 +35,106 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("getting working directory: %w", err)
 	}
 
-	store, err := localstore.NewStore()
+	s, err := store.New()
 	if err != nil {
 		return err
 	}
+	defer s.Close()
 
-	idx, err := store.LoadIndex()
+	ws, err := s.FindWorkspaceByPath(cwd)
 	if err != nil {
 		return err
 	}
-
-	ws, exists := idx.Workspaces[cwd]
-	if !exists {
+	if ws == nil {
 		fmt.Fprintln(os.Stderr, "Not a tracked workspace. Run 'nebi init'.")
 		return nil
 	}
 
 	wsType := "local"
-	if ws.Global {
+	if ws.IsGlobal {
 		wsType = "global"
 	}
 	fmt.Fprintf(os.Stdout, "Workspace: %s\n", ws.Name)
 	fmt.Fprintf(os.Stdout, "Type:      %s\n", wsType)
 	fmt.Fprintf(os.Stdout, "Path:      %s\n", ws.Path)
 
-	if len(ws.Origins) == 0 {
-		fmt.Fprintln(os.Stdout, "\nNo origins. Push or pull to set an origin.")
+	serverURL, _ := s.LoadServerURL()
+	if serverURL != "" {
+		fmt.Fprintf(os.Stdout, "Server:    %s\n", serverURL)
+	} else {
+		fmt.Fprintln(os.Stdout, "Server:    (not configured)")
+	}
+
+	if ws.OriginName == "" {
+		fmt.Fprintln(os.Stdout, "\nNo origin. Push or pull to set an origin.")
 		return nil
 	}
 
 	// Check local file modifications against stored hashes
 	localToml, _ := os.ReadFile(filepath.Join(cwd, "pixi.toml"))
 	localLock, _ := os.ReadFile(filepath.Join(cwd, "pixi.lock"))
-	localTomlHash, err := localstore.TomlContentHash(string(localToml))
+	localTomlHash, err := store.TomlContentHash(string(localToml))
 	if err != nil {
 		return fmt.Errorf("hashing local pixi.toml: %w", err)
 	}
-	localLockHash := localstore.ContentHash(string(localLock))
-
-	// Use first origin's hashes as reference for local modification detection
-	var refOrigin *localstore.Origin
-	for _, o := range ws.Origins {
-		refOrigin = o
-		break
-	}
+	localLockHash := store.ContentHash(string(localLock))
 
 	fmt.Fprintln(os.Stdout)
-	if refOrigin != nil {
-		if refOrigin.TomlHash != "" && refOrigin.TomlHash != localTomlHash {
-			fmt.Fprintln(os.Stdout, "pixi.toml modified locally")
-		}
-		if refOrigin.LockHash != "" && refOrigin.LockHash != localLockHash {
-			fmt.Fprintln(os.Stdout, "pixi.lock modified locally")
-		}
+
+	if ws.OriginTomlHash != "" && ws.OriginTomlHash != localTomlHash {
+		fmt.Fprintln(os.Stdout, "pixi.toml modified locally")
+	}
+	if ws.OriginLockHash != "" && ws.OriginLockHash != localLockHash {
+		fmt.Fprintln(os.Stdout, "pixi.lock modified locally")
 	}
 
-	fmt.Fprintln(os.Stdout, "\nOrigins:")
-	for serverName, origin := range ws.Origins {
-		fmt.Fprintf(os.Stdout, "  %s → %s:%s (%s, %s)\n", serverName, origin.Name, origin.Tag, origin.Action, origin.Timestamp)
+	fmt.Fprintln(os.Stdout, "\nOrigin:")
+	fmt.Fprintf(os.Stdout, "  %s:%s (%s)\n", ws.OriginName, ws.OriginTag, ws.OriginAction)
 
-		// Try to check server status
-		serverStatus := checkServerOrigin(serverName, origin)
+	if serverURL != "" {
+		serverStatus := checkServerOrigin(s, serverURL, ws)
 		if serverStatus != "" {
-			fmt.Fprintf(os.Stdout, "    %s\n", serverStatus)
+			fmt.Fprintf(os.Stdout, "  %s\n", serverStatus)
 		}
 	}
 
 	return nil
 }
 
-// checkServerOrigin attempts to reach the server and compare the origin hash.
-func checkServerOrigin(serverName string, origin *localstore.Origin) string {
-	serverURL, err := resolveServerURL(serverName)
-	if err != nil {
-		return fmt.Sprintf("Server %q is not reachable", serverName)
-	}
-
-	creds, err := localstore.LoadCredentials()
-	if err != nil {
-		return fmt.Sprintf("Server %q is not reachable", serverName)
-	}
-
-	cred, ok := creds.Servers[serverURL]
-	if !ok {
+func checkServerOrigin(s *store.Store, serverURL string, ws *store.LocalWorkspace) string {
+	creds, err := s.LoadCredentials()
+	if err != nil || creds.Token == "" {
 		return "Not logged in"
 	}
 
-	client := cliclient.New(serverURL, cred.Token)
-
+	client := cliclient.New(serverURL, creds.Token)
 	ctx := context.Background()
-	ws, err := findWsByName(client, ctx, origin.Name)
+
+	serverWs, err := findWsByName(client, ctx, ws.OriginName)
 	if err != nil {
 		if errors.Is(err, ErrWsNotFound) {
-			return fmt.Sprintf("Workspace %q not found on server", origin.Name)
+			return fmt.Sprintf("Workspace %q not found on server", ws.OriginName)
 		}
-		return fmt.Sprintf("Server %q is not reachable", serverName)
+		return "Server not reachable"
 	}
 
-	versionNumber, err := resolveVersionNumber(client, ctx, ws.ID, origin.Name, origin.Tag)
+	versionNumber, err := resolveVersionNumber(client, ctx, serverWs.ID, ws.OriginName, ws.OriginTag)
 	if err != nil {
-		return fmt.Sprintf("Tag %q not found on server", origin.Tag)
+		return fmt.Sprintf("Tag %q not found on server", ws.OriginTag)
 	}
 
-	toml, err := client.GetVersionPixiToml(ctx, ws.ID, versionNumber)
+	toml, err := client.GetVersionPixiToml(ctx, serverWs.ID, versionNumber)
 	if err != nil {
-		return fmt.Sprintf("Server %q is not reachable", serverName)
+		return "Server not reachable"
 	}
 
-	serverHash, err := localstore.TomlContentHash(toml)
+	serverHash, err := store.TomlContentHash(toml)
 	if err != nil {
 		return fmt.Sprintf("Failed to hash server pixi.toml: %v", err)
 	}
-	if origin.TomlHash != "" && origin.TomlHash != serverHash {
-		return fmt.Sprintf("%s:%s has changed on server since last sync", origin.Name, origin.Tag)
+	if ws.OriginTomlHash != "" && ws.OriginTomlHash != serverHash {
+		return fmt.Sprintf("%s:%s has changed on server since last sync", ws.OriginName, ws.OriginTag)
 	}
 
-	return fmt.Sprintf("In sync with %s:%s", origin.Name, origin.Tag)
+	return fmt.Sprintf("In sync with %s:%s", ws.OriginName, ws.OriginTag)
 }

@@ -32,6 +32,11 @@ type Workspace struct {
 	DeletedAt      gorm.DeletedAt  `gorm:"index" json:"-"`
 }
 
+// TableName ensures GORM uses the "workspaces" table
+func (Workspace) TableName() string {
+	return "workspaces"
+}
+
 // BeforeCreate hook to generate UUID
 func (w *Workspace) BeforeCreate(tx *gorm.DB) error {
 	if w.ID == uuid.Nil {

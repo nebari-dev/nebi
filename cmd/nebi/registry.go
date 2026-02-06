@@ -11,36 +11,27 @@ import (
 
 var registryCmd = &cobra.Command{
 	Use:   "registry",
-	Short: "Manage OCI registries on a server",
+	Short: "Manage OCI registries on the server",
 }
-
-var regListServer string
 
 var registryListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
-	Short:   "List registries on a server",
-	Long: `List OCI registries configured on a nebi server.
+	Short:   "List registries on the server",
+	Long: `List OCI registries configured on the nebi server.
 
 Examples:
-  nebi registry list -s work
   nebi registry list`,
 	Args: cobra.NoArgs,
 	RunE: runRegistryList,
 }
 
 func init() {
-	registryListCmd.Flags().StringVarP(&regListServer, "server", "s", "", "Server name or URL (uses default if not set)")
 	registryCmd.AddCommand(registryListCmd)
 }
 
 func runRegistryList(cmd *cobra.Command, args []string) error {
-	server, err := resolveServerFlag(regListServer)
-	if err != nil {
-		return err
-	}
-
-	client, err := getAuthenticatedClient(server)
+	client, err := getAuthenticatedClient()
 	if err != nil {
 		return err
 	}

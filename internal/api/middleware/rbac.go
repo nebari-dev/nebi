@@ -12,6 +12,12 @@ import (
 // RequireAdmin ensures the user is an admin
 func RequireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Bypass in local mode
+		if isLocal, _ := c.Get("is_local_mode"); isLocal == true {
+			c.Next()
+			return
+		}
+
 		user, exists := c.Get("user")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -34,6 +40,12 @@ func RequireAdmin() gin.HandlerFunc {
 // RequireWorkspaceAccess checks if user can access a workspace
 func RequireWorkspaceAccess(action string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Bypass in local mode
+		if isLocal, _ := c.Get("is_local_mode"); isLocal == true {
+			c.Next()
+			return
+		}
+
 		user, exists := c.Get("user")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})

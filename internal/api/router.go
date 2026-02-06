@@ -35,6 +35,13 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		gin.SetMode(gin.ReleaseMode)
 	}
 
+	// Set handler-level mode for /version endpoint
+	if cfg.IsLocalMode() {
+		handlers.Mode = "local"
+	} else {
+		handlers.Mode = "team"
+	}
+
 	router := gin.New()
 
 	// Middleware
@@ -42,28 +49,42 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	router.Use(loggingMiddleware())
 	router.Use(corsMiddleware())
 
-	// Initialize authenticator
-	var authenticator auth.Authenticator
-	var oidcAuth *auth.OIDCAuthenticator
-	if cfg.Auth.Type == "basic" {
-		authenticator = auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
+	// In local mode, inject is_local_mode into every request context
+	if cfg.IsLocalMode() {
+		router.Use(func(c *gin.Context) {
+			c.Set("is_local_mode", true)
+			c.Next()
+		})
 	}
 
-	// Initialize OIDC if configured
-	if cfg.Auth.OIDCIssuerURL != "" && cfg.Auth.OIDCClientID != "" {
-		oidcCfg := auth.OIDCConfig{
-			IssuerURL:    cfg.Auth.OIDCIssuerURL,
-			ClientID:     cfg.Auth.OIDCClientID,
-			ClientSecret: cfg.Auth.OIDCClientSecret,
-			RedirectURL:  cfg.Auth.OIDCRedirectURL,
+	// Initialize authenticator based on mode
+	var authenticator auth.Authenticator
+	var oidcAuth *auth.OIDCAuthenticator
+
+	if cfg.IsLocalMode() {
+		authenticator = auth.NewLocalAuthenticator(db)
+		logger.Info("Running in local mode — authentication bypassed")
+	} else {
+		if cfg.Auth.Type == "basic" {
+			authenticator = auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
 		}
-		var err error
-		// Use context.Background() for initialization
-		oidcAuth, err = auth.NewOIDCAuthenticator(nil, oidcCfg, db, cfg.Auth.JWTSecret)
-		if err != nil {
-			logger.Error("Failed to initialize OIDC authenticator", "error", err)
-		} else {
-			logger.Info("OIDC authentication enabled", "issuer", cfg.Auth.OIDCIssuerURL)
+
+		// Initialize OIDC if configured
+		if cfg.Auth.OIDCIssuerURL != "" && cfg.Auth.OIDCClientID != "" {
+			oidcCfg := auth.OIDCConfig{
+				IssuerURL:    cfg.Auth.OIDCIssuerURL,
+				ClientID:     cfg.Auth.OIDCClientID,
+				ClientSecret: cfg.Auth.OIDCClientSecret,
+				RedirectURL:  cfg.Auth.OIDCRedirectURL,
+			}
+			var err error
+			// Use context.Background() for initialization
+			oidcAuth, err = auth.NewOIDCAuthenticator(nil, oidcCfg, db, cfg.Auth.JWTSecret)
+			if err != nil {
+				logger.Error("Failed to initialize OIDC authenticator", "error", err)
+			} else {
+				logger.Info("OIDC authentication enabled", "issuer", cfg.Auth.OIDCIssuerURL)
+			}
 		}
 	}
 
@@ -74,7 +95,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		public.GET("/version", handlers.GetVersion)
 		public.POST("/auth/login", handlers.Login(authenticator))
 
-		// OIDC routes (if enabled)
+		// OIDC routes (if enabled, team mode only)
 		if oidcAuth != nil {
 			public.GET("/auth/oidc/login", handlers.OIDCLogin(oidcAuth))
 			public.GET("/auth/oidc/callback", handlers.OIDCCallback(oidcAuth))
@@ -250,7 +271,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		logger.Info("Embedded frontend loaded and will be served")
 	}
 
-	slog.Info("API router initialized", "mode", cfg.Server.Mode)
+	slog.Info("API router initialized", "mode", cfg.Server.Mode, "app_mode", cfg.Mode)
 	return router
 }
 

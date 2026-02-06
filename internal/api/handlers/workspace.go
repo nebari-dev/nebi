@@ -25,12 +25,8 @@ type WorkspaceHandler struct {
 	isLocal  bool
 }
 
-func NewWorkspaceHandler(db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal ...bool) *WorkspaceHandler {
-	local := false
-	if len(isLocal) > 0 {
-		local = isLocal[0]
-	}
-	return &WorkspaceHandler{db: db, queue: q, executor: exec, isLocal: local}
+func NewWorkspaceHandler(db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool) *WorkspaceHandler {
+	return &WorkspaceHandler{db: db, queue: q, executor: exec, isLocal: isLocal}
 }
 
 // ListWorkspaces godoc
@@ -101,6 +97,26 @@ func (h *WorkspaceHandler) CreateWorkspace(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
+	}
+
+	// Validate source field
+	if req.Source != "" && req.Source != "managed" && req.Source != "local" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "source must be 'managed' or 'local'"})
+		return
+	}
+
+	// Reject source=local in team mode
+	if req.Source == "local" && !h.isLocal {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "source 'local' is not allowed in team mode"})
+		return
+	}
+
+	// Require absolute path for local workspaces
+	if req.Source == "local" {
+		if req.Path == "" || !filepath.IsAbs(req.Path) {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "local workspaces require an absolute path"})
+			return
+		}
 	}
 
 	// Default to pixi if not specified
@@ -1268,6 +1284,9 @@ type WorkspaceTagResponse struct {
 // @Param id path string true "Workspace ID"
 // @Param request body SavePixiTomlRequest true "pixi.toml content"
 // @Success 200 {object} PixiTomlResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /workspaces/{id}/pixi-toml [put]
 func (h *WorkspaceHandler) SavePixiToml(c *gin.Context) {
 	wsID := c.Param("id")

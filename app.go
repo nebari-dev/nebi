@@ -16,6 +16,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/queue"
+	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/nebari-dev/nebi/internal/worker"
 	"gorm.io/gorm"
 )
@@ -127,6 +128,11 @@ func (a *App) startup(ctx context.Context) {
 	// Run migrations
 	if err := db.Migrate(database); err != nil {
 		logToFile(fmt.Sprintf("Error running migrations: %v", err))
+		return
+	}
+	// Desktop app is always local mode — migrate store tables
+	if err := store.MigrateServerDB(database); err != nil {
+		logToFile(fmt.Sprintf("Error migrating store tables: %v", err))
 		return
 	}
 	logToFile("Migrations complete")

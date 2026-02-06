@@ -19,6 +19,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/logger"
 	"github.com/nebari-dev/nebi/internal/logstream"
 	"github.com/nebari-dev/nebi/internal/queue"
+	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/nebari-dev/nebi/internal/worker"
 
 	"github.com/valkey-io/valkey-go"
@@ -64,6 +65,11 @@ func Run(ctx context.Context, cfg Config) error {
 	// Run migrations
 	if err := db.Migrate(database); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+	if appCfg.IsLocalMode() {
+		if err := store.MigrateServerDB(database); err != nil {
+			return fmt.Errorf("failed to migrate store tables: %w", err)
+		}
 	}
 	slog.Info("Database migrations completed")
 

@@ -8,7 +8,6 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/store"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -111,9 +110,6 @@ func Migrate(db *gorm.DB) error {
 		&models.OCIRegistry{},
 		&models.Publication{},
 		&models.WorkspaceTag{},
-		// Store tables (used by remote proxy in local mode)
-		&store.Config{},
-		&store.Credentials{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
@@ -123,10 +119,6 @@ func Migrate(db *gorm.DB) error {
 	if err := seedDefaultRoles(db); err != nil {
 		return fmt.Errorf("failed to seed default roles: %w", err)
 	}
-
-	// Seed singleton config/credentials rows for store tables
-	db.Exec("INSERT OR IGNORE INTO store_config (id) VALUES (1)")
-	db.Exec("INSERT OR IGNORE INTO store_credentials (id) VALUES (1)")
 
 	return nil
 }

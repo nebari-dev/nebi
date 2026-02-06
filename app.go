@@ -31,10 +31,10 @@ func getAppDataDir() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		baseDir = filepath.Join(homeDir, "Library", "Application Support", "Nebi")
+		baseDir = filepath.Join(homeDir, "Library", "Application Support", "nebi")
 	case "windows":
 		// Windows: %APPDATA%\Nebi
-		baseDir = filepath.Join(os.Getenv("APPDATA"), "Nebi")
+		baseDir = filepath.Join(os.Getenv("APPDATA"), "nebi")
 	default:
 		// Linux: ~/.local/share/nebi
 		homeDir, err := os.UserHomeDir()

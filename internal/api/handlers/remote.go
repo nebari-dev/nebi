@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nebari-dev/nebi/internal/cliclient"
-	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/store"
 	"gorm.io/gorm"
 )
 
@@ -44,24 +44,24 @@ func (h *RemoteHandler) ConnectServer(c *gin.Context) {
 		return
 	}
 
-	// Delete any existing remote server connection (only one at a time)
-	h.db.Where("1 = 1").Delete(&models.RemoteServer{})
-
-	// Store the new connection
-	server := models.RemoteServer{
-		URL:      req.URL,
-		Token:    loginResp.Token,
-		Username: req.Username,
-	}
-	if err := h.db.Create(&server).Error; err != nil {
+	// Save URL to store_config singleton
+	if err := h.db.Model(&store.Config{}).Where("id = 1").Update("server_url", req.URL).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save remote connection"})
 		return
 	}
 
+	// Save token and username to store_credentials singleton
+	if err := h.db.Model(&store.Credentials{}).Where("id = 1").Updates(map[string]interface{}{
+		"token":    loginResp.Token,
+		"username": req.Username,
+	}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save remote credentials"})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"id":       server.ID,
-		"url":      server.URL,
-		"username": server.Username,
+		"url":      req.URL,
+		"username": req.Username,
 		"status":   "connected",
 	})
 }
@@ -69,16 +69,20 @@ func (h *RemoteHandler) ConnectServer(c *gin.Context) {
 // GetServer returns the current remote server connection status.
 // GET /api/v1/remote/server
 func (h *RemoteHandler) GetServer(c *gin.Context) {
-	var server models.RemoteServer
-	if err := h.db.First(&server).Error; err != nil {
+	var cfg store.Config
+	h.db.First(&cfg, 1)
+
+	if cfg.ServerURL == "" {
 		c.JSON(http.StatusOK, gin.H{"status": "disconnected"})
 		return
 	}
 
+	var creds store.Credentials
+	h.db.First(&creds, 1)
+
 	c.JSON(http.StatusOK, gin.H{
-		"id":       server.ID,
-		"url":      server.URL,
-		"username": server.Username,
+		"url":      cfg.ServerURL,
+		"username": creds.Username,
 		"status":   "connected",
 	})
 }
@@ -86,17 +90,25 @@ func (h *RemoteHandler) GetServer(c *gin.Context) {
 // DisconnectServer removes the remote server connection.
 // DELETE /api/v1/remote/server
 func (h *RemoteHandler) DisconnectServer(c *gin.Context) {
-	h.db.Where("1 = 1").Delete(&models.RemoteServer{})
+	h.db.Model(&store.Config{}).Where("id = 1").Update("server_url", "")
+	h.db.Model(&store.Credentials{}).Where("id = 1").Updates(map[string]interface{}{
+		"token":    "",
+		"username": "",
+	})
 	c.JSON(http.StatusOK, gin.H{"status": "disconnected"})
 }
 
 // getClient returns a cliclient configured for the stored remote server.
 func (h *RemoteHandler) getClient() (*cliclient.Client, error) {
-	var server models.RemoteServer
-	if err := h.db.First(&server).Error; err != nil {
+	var cfg store.Config
+	if err := h.db.First(&cfg, 1).Error; err != nil {
 		return nil, err
 	}
-	return cliclient.New(server.URL, server.Token), nil
+	var creds store.Credentials
+	if err := h.db.First(&creds, 1).Error; err != nil {
+		return nil, err
+	}
+	return cliclient.New(cfg.ServerURL, creds.Token), nil
 }
 
 // ListWorkspaces proxies workspace listing from the remote server.

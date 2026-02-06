@@ -25,7 +25,7 @@ type LocalExecutor struct {
 
 // NewLocalExecutor creates a new local executor
 func NewLocalExecutor(cfg *config.Config) (*LocalExecutor, error) {
-	baseDir := cfg.Storage.EnvironmentsDir
+	baseDir := cfg.Storage.WorkspacesDir
 
 	// Create base directory if it doesn't exist
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
@@ -38,7 +38,7 @@ func NewLocalExecutor(cfg *config.Config) (*LocalExecutor, error) {
 	}, nil
 }
 
-// normalizeEnvName converts environment name to a filesystem-safe format
+// normalizeEnvName converts workspace name to a filesystem-safe format
 func normalizeEnvName(name string) string {
 	// Convert to lowercase
 	name = strings.ToLower(name)
@@ -54,9 +54,13 @@ func normalizeEnvName(name string) string {
 	return name
 }
 
-// GetWorkspacePath returns the filesystem path for a workspace
-// Format: {baseDir}/{normalized-name}-{uuid}
+// GetWorkspacePath returns the filesystem path for a workspace.
+// For local (CLI-created) workspaces, returns ws.Path directly.
+// For managed (server-created) workspaces, uses {baseDir}/{normalized-name}-{uuid}.
 func (e *LocalExecutor) GetWorkspacePath(ws *models.Workspace) string {
+	if ws.Source == "local" && ws.Path != "" {
+		return ws.Path
+	}
 	normalizedName := normalizeEnvName(ws.Name)
 	dirName := fmt.Sprintf("%s-%s", normalizedName, ws.ID.String())
 	return filepath.Join(e.baseDir, dirName)
@@ -66,7 +70,7 @@ func (e *LocalExecutor) GetWorkspacePath(ws *models.Workspace) string {
 func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer, pixiToml ...string) error {
 	envPath := e.GetWorkspacePath(ws)
 
-	fmt.Fprintf(logWriter, "Creating environment at: %s\n", envPath)
+	fmt.Fprintf(logWriter, "Creating workspace at: %s\n", envPath)
 
 	// Create package manager instance
 	pmType := ws.PackageManager
@@ -127,9 +131,9 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 		}
 		fmt.Fprintf(logWriter, "Pixi environment installed successfully\n")
 	} else {
-		// Initialize environment with default configuration
+		// Initialize workspace with default configuration
 		// Note: For pixi, the Name parameter is used as the project name in pixi.toml
-		// The environment is created in EnvPath directory itself
+		// The workspace is created in EnvPath directory itself
 		opts := pkgmgr.InitOptions{
 			EnvPath:   envPath,
 			Name:      ws.Name,
@@ -142,7 +146,7 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 		}
 	}
 
-	fmt.Fprintf(logWriter, "Environment created successfully\n")
+	fmt.Fprintf(logWriter, "Workspace created successfully\n")
 	return nil
 }
 

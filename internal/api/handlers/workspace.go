@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,6 +14,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/oci"
+	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/nebari-dev/nebi/internal/utils"
@@ -22,10 +25,11 @@ type WorkspaceHandler struct {
 	db       *gorm.DB
 	queue    queue.Queue
 	executor executor.Executor
+	isLocal  bool
 }
 
-func NewWorkspaceHandler(db *gorm.DB, q queue.Queue, exec executor.Executor) *WorkspaceHandler {
-	return &WorkspaceHandler{db: db, queue: q, executor: exec}
+func NewWorkspaceHandler(db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool) *WorkspaceHandler {
+	return &WorkspaceHandler{db: db, queue: q, executor: exec, isLocal: isLocal}
 }
 
 // ListWorkspaces godoc
@@ -38,29 +42,36 @@ func NewWorkspaceHandler(db *gorm.DB, q queue.Queue, exec executor.Executor) *Wo
 // @Failure 500 {object} ErrorResponse
 // @Router /workspaces [get]
 func (h *WorkspaceHandler) ListWorkspaces(c *gin.Context) {
-	userID := getUserID(c)
-
 	var workspaces []models.Workspace
 
-	// Get workspaces where user is owner
-	query := h.db.Where("owner_id = ?", userID)
+	if h.isLocal {
+		// Local/desktop mode: show all workspaces (CLI + managed)
+		if err := h.db.Order("created_at DESC").Find(&workspaces).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch workspaces"})
+			return
+		}
+	} else {
+		// Team mode: filter by owner + permissions
+		userID := getUserID(c)
 
-	// OR where user has permissions
-	var permissions []models.Permission
-	h.db.Where("user_id = ?", userID).Find(&permissions)
+		query := h.db.Where("owner_id = ?", userID)
 
-	wsIDs := []uuid.UUID{}
-	for _, p := range permissions {
-		wsIDs = append(wsIDs, p.WorkspaceID)
-	}
+		var permissions []models.Permission
+		h.db.Where("user_id = ?", userID).Find(&permissions)
 
-	if len(wsIDs) > 0 {
-		query = query.Or("id IN ?", wsIDs)
-	}
+		wsIDs := []uuid.UUID{}
+		for _, p := range permissions {
+			wsIDs = append(wsIDs, p.WorkspaceID)
+		}
 
-	if err := query.Preload("Owner").Order("created_at DESC").Find(&workspaces).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch workspaces"})
-		return
+		if len(wsIDs) > 0 {
+			query = query.Or("id IN ?", wsIDs)
+		}
+
+		if err := query.Preload("Owner").Order("created_at DESC").Find(&workspaces).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch workspaces"})
+			return
+		}
 	}
 
 	// Enrich with size information
@@ -116,10 +127,10 @@ func (h *WorkspaceHandler) CreateWorkspace(c *gin.Context) {
 	}
 
 	job := &models.Job{
-		Type:        models.JobTypeCreate,
-		WorkspaceID: ws.ID,
-		Status:      models.JobStatusPending,
-		Metadata:    metadata,
+		Type:          models.JobTypeCreate,
+		WorkspaceID:   ws.ID,
+		Status:        models.JobStatusPending,
+		Metadata:      metadata,
 	}
 
 	if err := h.db.Create(job).Error; err != nil {
@@ -180,7 +191,7 @@ func (h *WorkspaceHandler) GetWorkspace(c *gin.Context) {
 }
 
 // DeleteWorkspace godoc
-// @Summary Delete an workspace
+// @Summary Delete a workspace
 // @Tags workspaces
 // @Security BearerAuth
 // @Param id path string true "Workspace ID"
@@ -206,9 +217,9 @@ func (h *WorkspaceHandler) DeleteWorkspace(c *gin.Context) {
 
 	// Queue deletion job
 	job := &models.Job{
-		Type:        models.JobTypeDelete,
-		WorkspaceID: ws.ID,
-		Status:      models.JobStatusPending,
+		Type:          models.JobTypeDelete,
+		WorkspaceID:   ws.ID,
+		Status:        models.JobStatusPending,
 	}
 
 	if err := h.db.Create(job).Error; err != nil {
@@ -230,7 +241,7 @@ func (h *WorkspaceHandler) DeleteWorkspace(c *gin.Context) {
 }
 
 // InstallPackages godoc
-// @Summary Install packages in an workspace
+// @Summary Install packages in a workspace
 // @Tags workspaces
 // @Security BearerAuth
 // @Accept json
@@ -268,10 +279,10 @@ func (h *WorkspaceHandler) InstallPackages(c *gin.Context) {
 
 	// Queue install job
 	job := &models.Job{
-		Type:        models.JobTypeInstall,
-		WorkspaceID: ws.ID,
-		Status:      models.JobStatusPending,
-		Metadata:    map[string]interface{}{"packages": req.Packages},
+		Type:          models.JobTypeInstall,
+		WorkspaceID:   ws.ID,
+		Status:        models.JobStatusPending,
+		Metadata:      map[string]interface{}{"packages": req.Packages},
 	}
 
 	if err := h.db.Create(job).Error; err != nil {
@@ -293,7 +304,7 @@ func (h *WorkspaceHandler) InstallPackages(c *gin.Context) {
 }
 
 // RemovePackages godoc
-// @Summary Remove packages from an workspace
+// @Summary Remove packages from a workspace
 // @Tags workspaces
 // @Security BearerAuth
 // @Accept json
@@ -326,10 +337,10 @@ func (h *WorkspaceHandler) RemovePackages(c *gin.Context) {
 
 	// Queue remove job
 	job := &models.Job{
-		Type:        models.JobTypeRemove,
-		WorkspaceID: ws.ID,
-		Status:      models.JobStatusPending,
-		Metadata:    map[string]interface{}{"packages": []string{packageName}},
+		Type:          models.JobTypeRemove,
+		WorkspaceID:   ws.ID,
+		Status:        models.JobStatusPending,
+		Metadata:      map[string]interface{}{"packages": []string{packageName}},
 	}
 
 	if err := h.db.Create(job).Error; err != nil {
@@ -351,7 +362,7 @@ func (h *WorkspaceHandler) RemovePackages(c *gin.Context) {
 }
 
 // ListPackages godoc
-// @Summary List packages in an workspace
+// @Summary List packages in a workspace
 // @Tags workspaces
 // @Security BearerAuth
 // @Produce json
@@ -377,11 +388,56 @@ func (h *WorkspaceHandler) ListPackages(c *gin.Context) {
 		return
 	}
 
+	// Auto-sync: if local workspace has 0 packages in DB, populate from disk
+	if len(packages) == 0 && ws.Source == "local" && ws.Status == models.WsStatusReady {
+		if synced := h.syncPackagesFromDisk(&ws); synced != nil {
+			packages = synced
+		}
+	}
+
 	c.JSON(http.StatusOK, packages)
 }
 
+// syncPackagesFromDisk runs pixi list and populates the DB for a local workspace.
+func (h *WorkspaceHandler) syncPackagesFromDisk(ws *models.Workspace) []models.Package {
+	wsPath := h.executor.GetWorkspacePath(ws)
+
+	pmType := ws.PackageManager
+	if pmType == "" {
+		pmType = "pixi"
+	}
+
+	pm, err := pkgmgr.New(pmType)
+	if err != nil {
+		slog.Warn("syncPackagesFromDisk: failed to create package manager", "error", err)
+		return nil
+	}
+
+	listed, err := pm.List(context.Background(), pkgmgr.ListOptions{EnvPath: wsPath})
+	if err != nil {
+		slog.Warn("syncPackagesFromDisk: failed to list packages", "error", err, "path", wsPath)
+		return nil
+	}
+
+	var result []models.Package
+	for _, p := range listed {
+		pkg := models.Package{
+			WorkspaceID: ws.ID,
+			Name:        p.Name,
+			Version:     p.Version,
+		}
+		if err := h.db.Create(&pkg).Error; err != nil {
+			slog.Warn("syncPackagesFromDisk: failed to save package", "error", err, "name", p.Name)
+			continue
+		}
+		result = append(result, pkg)
+	}
+
+	return result
+}
+
 // GetPixiToml godoc
-// @Summary Get pixi.toml content for an workspace
+// @Summary Get pixi.toml content for a workspace
 // @Tags workspaces
 // @Security BearerAuth
 // @Produce json
@@ -417,6 +473,50 @@ func (h *WorkspaceHandler) GetPixiToml(c *gin.Context) {
 	})
 }
 
+// SavePixiToml godoc
+// @Summary Save pixi.toml content for a local workspace
+// @Tags workspaces
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path string true "Workspace ID"
+// @Param body body SavePixiTomlRequest true "pixi.toml content"
+// @Success 200 {object} PixiTomlResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /workspaces/{id}/pixi-toml [put]
+func (h *WorkspaceHandler) SavePixiToml(c *gin.Context) {
+	wsID := c.Param("id")
+
+	var req SavePixiTomlRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	var ws models.Workspace
+	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
+		return
+	}
+
+	if ws.Source != "local" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Can only save pixi.toml for local workspaces"})
+		return
+	}
+
+	wsPath := h.executor.GetWorkspacePath(&ws)
+	pixiTomlPath := filepath.Join(wsPath, "pixi.toml")
+
+	if err := os.WriteFile(pixiTomlPath, []byte(req.Content), 0644); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to write pixi.toml"})
+		return
+	}
+
+	c.JSON(http.StatusOK, PixiTomlResponse{Content: req.Content})
+}
+
 // Request types
 type CreateWorkspaceRequest struct {
 	Name           string `json:"name" binding:"required"`
@@ -426,6 +526,10 @@ type CreateWorkspaceRequest struct {
 
 type PixiTomlResponse struct {
 	Content string `json:"content"`
+}
+
+type SavePixiTomlRequest struct {
+	Content string `json:"content" binding:"required"`
 }
 
 type InstallPackagesRequest struct {
@@ -447,10 +551,10 @@ func (h *WorkspaceHandler) enrichWorkspaceWithSize(ws *models.Workspace) Workspa
 }
 
 // enrichWorkspacesWithSize adds formatted size to multiple workspaces
-func (h *WorkspaceHandler) enrichWorkspacesWithSize(workspaces []models.Workspace) []WorkspaceResponse {
-	result := make([]WorkspaceResponse, len(workspaces))
-	for i, ws := range workspaces {
-		result[i] = h.enrichWorkspaceWithSize(&ws)
+func (h *WorkspaceHandler) enrichWorkspacesWithSize(wss []models.Workspace) []WorkspaceResponse {
+	result := make([]WorkspaceResponse, len(wss))
+	for i, w := range wss {
+		result[i] = h.enrichWorkspaceWithSize(&w)
 	}
 	return result
 }
@@ -691,7 +795,7 @@ type CollaboratorResponse struct {
 }
 
 // ListVersions godoc
-// @Summary List all versions for an workspace
+// @Summary List all versions for a workspace
 // @Tags workspaces
 // @Security BearerAuth
 // @Produce json
@@ -864,9 +968,9 @@ func (h *WorkspaceHandler) RollbackToVersion(c *gin.Context) {
 
 	// Create rollback job
 	job := &models.Job{
-		Type:        models.JobTypeRollback,
-		WorkspaceID: ws.ID,
-		Status:      models.JobStatusPending,
+		Type:          models.JobTypeRollback,
+		WorkspaceID:   ws.ID,
+		Status:        models.JobStatusPending,
 		Metadata: map[string]interface{}{
 			"version_id":     version.ID.String(),
 			"version_number": version.VersionNumber,
@@ -1028,8 +1132,8 @@ func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
 }
 
 // ListPublications godoc
-// @Summary List publications for an workspace
-// @Description Get all publications (registry pushes) for an workspace
+// @Summary List publications for a workspace
+// @Description Get all publications (registry pushes) for a workspace
 // @Tags workspaces
 // @Security BearerAuth
 // @Produce json
@@ -1112,7 +1216,7 @@ func (h *WorkspaceHandler) PushVersion(c *gin.Context) {
 		return
 	}
 
-	// Write files to env path (for future publish operations)
+	// Write files to workspace path (for future publish operations)
 	wsPath := h.executor.GetWorkspacePath(&ws)
 	if err := os.MkdirAll(wsPath, 0755); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create workspace directory"})
@@ -1191,7 +1295,7 @@ func (h *WorkspaceHandler) PushVersion(c *gin.Context) {
 }
 
 // ListTags godoc
-// @Summary List tags for an workspace
+// @Summary List tags for a workspace
 // @Tags workspaces
 // @Security BearerAuth
 // @Produce json

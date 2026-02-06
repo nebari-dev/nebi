@@ -35,6 +35,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		gin.SetMode(gin.ReleaseMode)
 	}
 
+	// Set handler-level mode for version endpoint
+	handlers.Mode = cfg.Mode
+
 	router := gin.New()
 
 	// Middleware
@@ -45,25 +48,33 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	// Initialize authenticator
 	var authenticator auth.Authenticator
 	var oidcAuth *auth.OIDCAuthenticator
-	if cfg.Auth.Type == "basic" {
-		authenticator = auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
-	}
 
-	// Initialize OIDC if configured
-	if cfg.Auth.OIDCIssuerURL != "" && cfg.Auth.OIDCClientID != "" {
-		oidcCfg := auth.OIDCConfig{
-			IssuerURL:    cfg.Auth.OIDCIssuerURL,
-			ClientID:     cfg.Auth.OIDCClientID,
-			ClientSecret: cfg.Auth.OIDCClientSecret,
-			RedirectURL:  cfg.Auth.OIDCRedirectURL,
+	if cfg.IsLocalMode() {
+		// Local mode: bypass authentication entirely
+		authenticator = auth.NewLocalAuthenticator(db)
+		logger.Info("Running in local mode - authentication bypassed")
+	} else {
+		// Team mode: use configured authentication
+		if cfg.Auth.Type == "basic" {
+			authenticator = auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
 		}
-		var err error
-		// Use context.Background() for initialization
-		oidcAuth, err = auth.NewOIDCAuthenticator(nil, oidcCfg, db, cfg.Auth.JWTSecret)
-		if err != nil {
-			logger.Error("Failed to initialize OIDC authenticator", "error", err)
-		} else {
-			logger.Info("OIDC authentication enabled", "issuer", cfg.Auth.OIDCIssuerURL)
+
+		// Initialize OIDC if configured
+		if cfg.Auth.OIDCIssuerURL != "" && cfg.Auth.OIDCClientID != "" {
+			oidcCfg := auth.OIDCConfig{
+				IssuerURL:    cfg.Auth.OIDCIssuerURL,
+				ClientID:     cfg.Auth.OIDCClientID,
+				ClientSecret: cfg.Auth.OIDCClientSecret,
+				RedirectURL:  cfg.Auth.OIDCRedirectURL,
+			}
+			var err error
+			// Use context.Background() for initialization
+			oidcAuth, err = auth.NewOIDCAuthenticator(nil, oidcCfg, db, cfg.Auth.JWTSecret)
+			if err != nil {
+				logger.Error("Failed to initialize OIDC authenticator", "error", err)
+			} else {
+				logger.Info("OIDC authentication enabled", "issuer", cfg.Auth.OIDCIssuerURL)
+			}
 		}
 	}
 
@@ -82,12 +93,18 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	}
 
 	// Initialize handlers
-	wsHandler := handlers.NewWorkspaceHandler(db, q, exec)
+	wsHandler := handlers.NewWorkspaceHandler(db, q, exec, cfg.IsLocalMode())
 	jobHandler := handlers.NewJobHandler(db, logBroker, valkeyClient)
 
 	// Protected routes (require authentication)
 	protected := router.Group("/api/v1")
 	protected.Use(authenticator.Middleware())
+	if cfg.IsLocalMode() {
+		protected.Use(func(c *gin.Context) {
+			c.Set("is_local_mode", true)
+			c.Next()
+		})
+	}
 	{
 		// User info
 		protected.GET("/auth/me", handlers.GetCurrentUser(authenticator))
@@ -103,6 +120,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			ws.GET("", middleware.RequireWorkspaceAccess("read"), wsHandler.GetWorkspace)
 			ws.GET("/packages", middleware.RequireWorkspaceAccess("read"), wsHandler.ListPackages)
 			ws.GET("/pixi-toml", middleware.RequireWorkspaceAccess("read"), wsHandler.GetPixiToml)
+			ws.PUT("/pixi-toml", middleware.RequireWorkspaceAccess("write"), wsHandler.SavePixiToml)
 			ws.GET("/collaborators", middleware.RequireWorkspaceAccess("read"), wsHandler.ListCollaborators)
 
 			// Version operations (read permission)
@@ -176,6 +194,28 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			admin.PUT("/registries/:id", registryHandler.UpdateRegistry)
 			admin.DELETE("/registries/:id", registryHandler.DeleteRegistry)
 		}
+	}
+
+	// Remote server proxy routes (local/desktop mode only)
+	if cfg.IsLocalMode() {
+		remoteHandler := handlers.NewRemoteHandler(db)
+		remote := protected.Group("/remote")
+		{
+			// Remote server connection management
+			remote.POST("/server", remoteHandler.ConnectServer)
+			remote.GET("/server", remoteHandler.GetServer)
+			remote.DELETE("/server", remoteHandler.DisconnectServer)
+
+			// Remote workspace proxy (read-only)
+			remote.GET("/workspaces", remoteHandler.ListWorkspaces)
+			remote.GET("/workspaces/:id", remoteHandler.GetWorkspace)
+			remote.GET("/workspaces/:id/versions", remoteHandler.ListVersions)
+			remote.GET("/workspaces/:id/tags", remoteHandler.ListTags)
+			remote.GET("/workspaces/:id/pixi-toml", remoteHandler.GetPixiToml)
+			remote.GET("/workspaces/:id/versions/:version/pixi-toml", remoteHandler.GetVersionPixiToml)
+			remote.GET("/workspaces/:id/versions/:version/pixi-lock", remoteHandler.GetVersionPixiLock)
+		}
+		logger.Info("Remote server proxy routes registered (local mode)")
 	}
 
 	// Swagger documentation

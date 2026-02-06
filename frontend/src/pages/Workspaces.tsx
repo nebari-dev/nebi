@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWorkspaces, useCreateWorkspace, useDeleteWorkspace } from '@/hooks/useWorkspaces';
+import { useRemoteServer, useRemoteWorkspaces } from '@/hooks/useRemote';
+import { useModeStore } from '@/store/modeStore';
 import { workspacesApi } from '@/api/workspaces';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
@@ -9,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Loader2, Plus, Trash2, X, Edit, Users, FileCode } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Edit, Users, FileCode, Cloud, Monitor, HardDrive } from 'lucide-react';
 
 interface Package {
   name: string;
@@ -61,6 +63,11 @@ export const Workspaces = () => {
   const createMutation = useCreateWorkspace();
   const deleteMutation = useDeleteWorkspace();
   const currentUser = useAuthStore((state) => state.user);
+  const isLocal = useModeStore((state) => state.mode === 'local');
+  const { data: serverStatus } = useRemoteServer();
+  const isRemoteConnected = isLocal && serverStatus?.status === 'connected';
+  const { data: remoteWorkspaces, isLoading: remoteLoading } = useRemoteWorkspaces(isRemoteConnected);
+  const [activeTab, setActiveTab] = useState<'local' | 'server'>('local');
 
   const [showCreate, setShowCreate] = useState(false);
   const [newWsName, setNewWsName] = useState('');
@@ -207,15 +214,102 @@ export const Workspaces = () => {
           <h1 className="text-3xl font-bold">Workspaces</h1>
           <p className="text-muted-foreground">Manage your development workspaces</p>
         </div>
-        <Button onClick={() => {
-          setShowCreate(!showCreate);
-          setError('');
-        }}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Workspace
-        </Button>
+        {activeTab === 'local' && (
+          <Button onClick={() => {
+            setShowCreate(!showCreate);
+            setError('');
+          }}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Workspace
+          </Button>
+        )}
       </div>
 
+      {/* Local/Server tabs - only shown in local mode when connected to remote */}
+      {isRemoteConnected && (
+        <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
+          <Button
+            variant={activeTab === 'local' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setActiveTab('local')}
+            className="gap-2"
+          >
+            <Monitor className="h-4 w-4" />
+            Local
+          </Button>
+          <Button
+            variant={activeTab === 'server' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setActiveTab('server')}
+            className="gap-2"
+          >
+            <Cloud className="h-4 w-4" />
+            Server
+          </Button>
+        </div>
+      )}
+
+      {activeTab === 'server' && isRemoteConnected ? (
+        /* Remote server workspaces tab */
+        <Card>
+          <CardContent className="p-0">
+            {remoteLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="border-b bg-muted/50">
+                    <tr>
+                      <th className="text-left p-4 font-medium">Name</th>
+                      <th className="text-left p-4 font-medium">Status</th>
+                      <th className="text-left p-4 font-medium">Owner</th>
+                      <th className="text-left p-4 font-medium">Package Manager</th>
+                      <th className="text-left p-4 font-medium">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {remoteWorkspaces?.map((ws) => (
+                      <tr
+                        key={ws.id}
+                        className="border-b last:border-0 hover:bg-muted/50 cursor-pointer transition-colors"
+                        onClick={() => navigate(`/remote/workspaces/${ws.id}`)}
+                      >
+                        <td className="p-4 font-medium">
+                          <div className="flex items-center gap-2">
+                            {ws.name}
+                            <Badge className="bg-purple-500/10 text-purple-500 border-purple-500/20 gap-1 text-xs">
+                              <Cloud className="h-3 w-3" />
+                              Remote
+                            </Badge>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <Badge className={statusColors[ws.status] || 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'}>
+                            {ws.status}
+                          </Badge>
+                        </td>
+                        <td className="p-4 text-sm text-muted-foreground">
+                          {ws.owner?.username || '-'}
+                        </td>
+                        <td className="p-4">
+                          <span className="font-mono text-sm">{ws.package_manager}</span>
+                        </td>
+                        <td className="p-4 text-sm text-muted-foreground">
+                          {new Date(ws.created_at).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+      /* Local workspaces tab (default) */
+      <>
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded">
           {error}
@@ -473,6 +567,12 @@ export const Workspaces = () => {
                     <td className="p-4 font-medium">
                       <div className="flex items-center gap-2">
                         {ws.name}
+                        {ws.source === 'local' && (
+                          <Badge variant="outline" className="bg-cyan-500/10 text-cyan-500 border-cyan-500/20 gap-1 text-xs">
+                            <HardDrive className="h-3 w-3" />
+                            Local
+                          </Badge>
+                        )}
                         {ws.owner_id !== currentUser?.id && ws.owner && (
                           <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20">
                             <Users className="h-3 w-3 mr-1" />
@@ -480,6 +580,11 @@ export const Workspaces = () => {
                           </Badge>
                         )}
                       </div>
+                      {ws.source === 'local' && ws.path && (
+                        <div className="text-xs text-muted-foreground font-normal mt-0.5 font-mono truncate max-w-xs" title={ws.path}>
+                          {ws.path}
+                        </div>
+                      )}
                     </td>
                     <td className="p-4">
                       <Badge className={statusColors[ws.status]}>
@@ -497,6 +602,7 @@ export const Workspaces = () => {
                     </td>
                     <td className="p-4">
                       <div className="flex justify-end gap-2">
+                        {ws.source !== 'local' && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -513,6 +619,7 @@ export const Workspaces = () => {
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="sm"
@@ -550,6 +657,8 @@ export const Workspaces = () => {
         cancelText="Cancel"
         variant="destructive"
       />
+      </>
+      )}
     </div>
   );
 };

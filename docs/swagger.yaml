@@ -204,6 +204,13 @@ definitions:
     required:
     - version_number
     type: object
+  handlers.SavePixiTomlRequest:
+    properties:
+      content:
+        type: string
+    required:
+    - content
+    type: object
   handlers.ShareWorkspaceRequest:
     properties:
       role:
@@ -404,7 +411,19 @@ definitions:
         type: string
       id:
         type: string
+      is_global:
+        type: boolean
       name:
+        type: string
+      origin_action:
+        type: string
+      origin_lock_hash:
+        type: string
+      origin_name:
+        type: string
+      origin_tag:
+        type: string
+      origin_toml_hash:
         type: string
       owner:
         $ref: '#/definitions/models.User'
@@ -413,8 +432,13 @@ definitions:
       package_manager:
         description: '"pixi" or "uv"'
         type: string
+      path:
+        type: string
       size_bytes:
         type: integer
+      source:
+        description: '"local", "managed"'
+        type: string
       status:
         $ref: '#/definitions/models.WorkspaceStatus'
       updated_at:
@@ -474,7 +498,7 @@ definitions:
 host: localhost:8460
 info:
   contact: {}
-  description: Multi-User Workspace Management System API
+  description: Multi-User Environment Management System API
   title: Nebi API
   version: "1.0"
 paths:
@@ -1051,8 +1075,7 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties:
-              type: string
+            additionalProperties: true
             type: object
       summary: Get version information
       tags:
@@ -1140,7 +1163,7 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Delete an workspace
+      summary: Delete a workspace
       tags:
       - workspaces
     get:
@@ -1227,7 +1250,7 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: List packages in an workspace
+      summary: List packages in a workspace
       tags:
       - workspaces
     post:
@@ -1270,7 +1293,7 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Install packages in an workspace
+      summary: Install packages in a workspace
       tags:
       - workspaces
   /workspaces/{id}/packages/{package}:
@@ -1313,7 +1336,7 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Remove packages from an workspace
+      summary: Remove packages from a workspace
       tags:
       - workspaces
   /workspaces/{id}/pixi-toml:
@@ -1345,12 +1368,51 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Get pixi.toml content for an workspace
+      summary: Get pixi.toml content for a workspace
+      tags:
+      - workspaces
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: pixi.toml content
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.SavePixiTomlRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.PixiTomlResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Save pixi.toml content for a local workspace
       tags:
       - workspaces
   /workspaces/{id}/publications:
     get:
-      description: Get all publications (registry pushes) for an workspace
+      description: Get all publications (registry pushes) for a workspace
       parameters:
       - description: Workspace ID
         in: path
@@ -1372,7 +1434,7 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: List publications for an workspace
+      summary: List publications for a workspace
       tags:
       - workspaces
   /workspaces/{id}/publish:
@@ -1557,7 +1619,7 @@ paths:
             type: array
       security:
       - BearerAuth: []
-      summary: List tags for an workspace
+      summary: List tags for a workspace
       tags:
       - workspaces
   /workspaces/{id}/versions:
@@ -1579,7 +1641,7 @@ paths:
             type: array
       security:
       - BearerAuth: []
-      summary: List all versions for an workspace
+      summary: List all versions for a workspace
       tags:
       - workspaces
   /workspaces/{id}/versions/{version}:

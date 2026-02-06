@@ -4,10 +4,10 @@ import { ShareDialog } from './ShareDialog';
 import { Users } from 'lucide-react';
 
 interface ShareButtonProps {
-  environmentId: string;
+  workspaceId: string;
 }
 
-export const ShareButton = ({ environmentId }: ShareButtonProps) => {
+export const ShareButton = ({ workspaceId }: ShareButtonProps) => {
   const [open, setOpen] = useState(false);
 
   return (
@@ -16,7 +16,7 @@ export const ShareButton = ({ environmentId }: ShareButtonProps) => {
         <Users className="h-4 w-4 mr-2" />
         Share
       </Button>
-      <ShareDialog open={open} onOpenChange={setOpen} environmentId={environmentId} />
+      <ShareDialog open={open} onOpenChange={setOpen} workspaceId={workspaceId} />
     </>
   );
 };

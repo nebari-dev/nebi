@@ -8,8 +8,8 @@ import { Loader2, Upload, AlertCircle } from 'lucide-react';
 interface PublishDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  environmentId: string;
-  environmentName: string;
+  workspaceId: string;
+  workspaceName: string;
 }
 
 // Helper function to normalize repository name for OCI compatibility
@@ -45,9 +45,9 @@ const suggestNextTag = (existingTags: string[]): string => {
   return `v${maxVersion + 1}`;
 };
 
-export const PublishDialog = ({ open, onOpenChange, environmentId, environmentName }: PublishDialogProps) => {
+export const PublishDialog = ({ open, onOpenChange, workspaceId, workspaceName }: PublishDialogProps) => {
   const { data: registries, isLoading: registriesLoading } = usePublicRegistries();
-  const { data: publications, isLoading: publicationsLoading } = usePublications(environmentId);
+  const { data: publications, isLoading: publicationsLoading } = usePublications(workspaceId);
   const publishMutation = usePublishWorkspace();
 
   const [selectedRegistry, setSelectedRegistry] = useState('');
@@ -76,13 +76,12 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
 
         // Auto-populate repository based on default registry's default_repository
         // Append first 8 chars of workspace ID to avoid collisions
-        const envIdSuffix = environmentId.slice(0, 8);
-        const normalizedName = normalizeRepoName(environmentName);
+        const wsIdSuffix = workspaceId.slice(0, 8);
         if (defaultRegistry.default_repository) {
           const baseRepo = defaultRegistry.default_repository.replace(/\/$/, '');
-          setRepository(`${baseRepo}/${normalizedName}-${envIdSuffix}`);
+          setRepository(`${baseRepo}/${workspaceName}-${wsIdSuffix}`);
         } else {
-          setRepository(`${normalizedName}-${envIdSuffix}`);
+          setRepository(`${workspaceName}-${wsIdSuffix}`);
         }
       }
 
@@ -92,21 +91,20 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
 
       setHasAutoPopulated(true);
     }
-  }, [open, hasAutoPopulated, registries, publications, defaultRegistry, environmentName]);
+  }, [open, hasAutoPopulated, registries, publications, defaultRegistry, workspaceName]);
 
   // Update repository when registry selection changes (after initial auto-populate)
   useEffect(() => {
     if (hasAutoPopulated && selectedRegistryObj) {
-      const envIdSuffix = environmentId.slice(0, 8);
-      const normalizedName = normalizeRepoName(environmentName);
+      const wsIdSuffix = workspaceId.slice(0, 8);
       if (selectedRegistryObj.default_repository) {
         const baseRepo = selectedRegistryObj.default_repository.replace(/\/$/, '');
-        setRepository(`${baseRepo}/${normalizedName}-${envIdSuffix}`);
+        setRepository(`${baseRepo}/${workspaceName}-${wsIdSuffix}`);
       } else {
-        setRepository(`${normalizedName}-${envIdSuffix}`);
+        setRepository(`${workspaceName}-${wsIdSuffix}`);
       }
     }
-  }, [selectedRegistryObj, hasAutoPopulated, environmentName, environmentId]);
+  }, [selectedRegistryObj, hasAutoPopulated, workspaceName, workspaceId]);
 
   // Reset form when dialog closes
   useEffect(() => {
@@ -131,7 +129,7 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
 
     try {
       await publishMutation.mutateAsync({
-        workspaceId: environmentId,
+        workspaceId,
         data: {
           registry_id: selectedRegistry,
           repository: repository.trim(),
@@ -225,7 +223,7 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
                     type="text"
                     value={repository}
                     onChange={(e) => setRepository(e.target.value)}
-                    placeholder="e.g., myorg/myenv or username/project"
+                    placeholder="e.g., myorg/myws or username/project"
                     required
                   />
                   <p className="text-xs text-muted-foreground">

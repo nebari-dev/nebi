@@ -17,20 +17,19 @@ var rootCmd = &cobra.Command{
 	Long:  `Nebi manages Pixi workspaces locally and syncs them to remote servers.`,
 	Example: `  # Track a workspace and push it to a server
   nebi init
-  nebi server add work https://nebi.company.com
-  nebi login work
+  nebi login https://nebi.company.com
   nebi push myworkspace:v1.0
 
   # Compare specs between directories or server versions
   nebi diff ./project-a ./project-b
-  nebi diff myworkspace:v1 myworkspace:v2 -s work`,
+  nebi diff myworkspace:v1 myworkspace:v2`,
 }
 
 func init() {
 	rootCmd.AddGroup(
 		&cobra.Group{ID: "workspace", Title: "Workspace Commands:"},
 		&cobra.Group{ID: "sync", Title: "Sync Commands:"},
-		&cobra.Group{ID: "server", Title: "Server Commands:"},
+		&cobra.Group{ID: "connection", Title: "Connection Commands:"},
 		&cobra.Group{ID: "admin", Title: "Admin Commands:"},
 	)
 
@@ -45,9 +44,8 @@ func init() {
 	diffCmd.GroupID = "sync"
 	publishCmd.GroupID = "sync"
 
-	loginCmd.GroupID = "server"
-	serverCmd.GroupID = "server"
-	registryCmd.GroupID = "server"
+	loginCmd.GroupID = "connection"
+	registryCmd.GroupID = "connection"
 
 	serveCmd.GroupID = "admin"
 
@@ -56,7 +54,6 @@ func init() {
 	rootCmd.AddCommand(workspaceCmd)
 	rootCmd.AddCommand(diffCmd)
 	rootCmd.AddCommand(loginCmd)
-	rootCmd.AddCommand(serverCmd)
 	rootCmd.AddCommand(pushCmd)
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(shellCmd)

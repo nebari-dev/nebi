@@ -2,34 +2,34 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { packagesApi } from '@/api/packages';
 import type { InstallPackagesRequest } from '@/types';
 
-export const usePackages = (environmentId: string) => {
+export const usePackages = (workspaceId: string) => {
   return useQuery({
-    queryKey: ['packages', environmentId],
-    queryFn: () => packagesApi.list(environmentId),
-    enabled: !!environmentId,
+    queryKey: ['packages', workspaceId],
+    queryFn: () => packagesApi.list(workspaceId),
+    enabled: !!workspaceId,
     refetchInterval: 2000,
   });
 };
 
-export const useInstallPackages = (environmentId: string) => {
+export const useInstallPackages = (workspaceId: string) => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: InstallPackagesRequest) => packagesApi.install(environmentId, data),
+    mutationFn: (data: InstallPackagesRequest) => packagesApi.install(workspaceId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['packages', environmentId] });
+      queryClient.invalidateQueries({ queryKey: ['packages', workspaceId] });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
   });
 };
 
-export const useRemovePackage = (environmentId: string) => {
+export const useRemovePackage = (workspaceId: string) => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (packageName: string) => packagesApi.remove(environmentId, packageName),
+    mutationFn: (packageName: string) => packagesApi.remove(workspaceId, packageName),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['packages', environmentId] });
+      queryClient.invalidateQueries({ queryKey: ['packages', workspaceId] });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
   });

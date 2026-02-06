@@ -2,16 +2,16 @@ import { apiClient } from './client';
 import type { Package, InstallPackagesRequest } from '@/types';
 
 export const packagesApi = {
-  list: async (environmentId: string): Promise<Package[]> => {
-    const { data } = await apiClient.get(`/workspaces/${environmentId}/packages`);
+  list: async (workspaceId: string): Promise<Package[]> => {
+    const { data } = await apiClient.get(`/workspaces/${workspaceId}/packages`);
     return data;
   },
 
-  install: async (environmentId: string, req: InstallPackagesRequest): Promise<void> => {
-    await apiClient.post(`/workspaces/${environmentId}/packages`, req);
+  install: async (workspaceId: string, req: InstallPackagesRequest): Promise<void> => {
+    await apiClient.post(`/workspaces/${workspaceId}/packages`, req);
   },
 
-  remove: async (environmentId: string, packageName: string): Promise<void> => {
-    await apiClient.delete(`/workspaces/${environmentId}/packages/${packageName}`);
+  remove: async (workspaceId: string, packageName: string): Promise<void> => {
+    await apiClient.delete(`/workspaces/${workspaceId}/packages/${packageName}`);
   },
 };

@@ -9,13 +9,13 @@ import type { WorkspaceVersion } from '@/types';
 import { workspacesApi } from '@/api/workspaces';
 
 interface VersionHistoryProps {
-  environmentId: string;
-  environmentStatus: string;
+  workspaceId: string;
+  workspaceStatus: string;
 }
 
-export const VersionHistory = ({ environmentId, environmentStatus }: VersionHistoryProps) => {
-  const { data: versions, isLoading } = useVersions(environmentId);
-  const rollbackMutation = useRollback(environmentId);
+export const VersionHistory = ({ workspaceId, workspaceStatus }: VersionHistoryProps) => {
+  const { data: versions, isLoading } = useVersions(workspaceId);
+  const rollbackMutation = useRollback(workspaceId);
   const downloadLock = useDownloadLockFile();
   const downloadManifest = useDownloadManifest();
 
@@ -30,16 +30,16 @@ export const VersionHistory = ({ environmentId, environmentStatus }: VersionHist
   };
 
   const handleDownloadLock = (version: WorkspaceVersion) => {
-    downloadLock.mutate({ environmentId, versionNumber: version.version_number });
+    downloadLock.mutate({ workspaceId, versionNumber: version.version_number });
   };
 
   const handleDownloadManifest = (version: WorkspaceVersion) => {
-    downloadManifest.mutate({ environmentId, versionNumber: version.version_number });
+    downloadManifest.mutate({ workspaceId, versionNumber: version.version_number });
   };
 
   const handleViewLock = async (version: WorkspaceVersion) => {
     try {
-      const content = await workspacesApi.downloadLockFile(environmentId, version.version_number);
+      const content = await workspacesApi.downloadLockFile(workspaceId, version.version_number);
       const blob = new Blob([content], { type: 'text/plain' });
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
@@ -51,7 +51,7 @@ export const VersionHistory = ({ environmentId, environmentStatus }: VersionHist
 
   const handleViewManifest = async (version: WorkspaceVersion) => {
     try {
-      const content = await workspacesApi.downloadManifest(environmentId, version.version_number);
+      const content = await workspacesApi.downloadManifest(workspaceId, version.version_number);
       const blob = new Blob([content], { type: 'text/plain' });
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
@@ -96,7 +96,7 @@ export const VersionHistory = ({ environmentId, environmentStatus }: VersionHist
           <div>
             <h2 className="text-2xl font-bold">Version History</h2>
             <p className="text-muted-foreground text-sm mt-1">
-              {versions.length} version{versions.length !== 1 ? 's' : ''} • Roll back to any previous state
+              {versions.length} version{versions.length !== 1 ? 's' : ''} -- Roll back to any previous state
             </p>
           </div>
         </div>
@@ -221,7 +221,7 @@ export const VersionHistory = ({ environmentId, environmentStatus }: VersionHist
                                   size="sm"
                                   onClick={() => setConfirmRollback(version)}
                                   disabled={
-                                    rollbackMutation.isPending || environmentStatus !== 'ready'
+                                    rollbackMutation.isPending || workspaceStatus !== 'ready'
                                   }
                                 >
                                   <RotateCcw className="h-4 w-4 mr-2" />
@@ -230,7 +230,7 @@ export const VersionHistory = ({ environmentId, environmentStatus }: VersionHist
                               )}
                             </div>
 
-                            {!isLatest && environmentStatus !== 'ready' && (
+                            {!isLatest && workspaceStatus !== 'ready' && (
                               <p className="text-xs text-muted-foreground">
                                 Workspace must be ready to perform rollback
                               </p>

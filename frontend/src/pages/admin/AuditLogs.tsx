@@ -15,6 +15,11 @@ const ACTION_COLORS: Record<string, string> = {
   revoke_admin: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
   share_workspace: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20',
   unshare_workspace: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+  create_workspace: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
+  delete_workspace: 'bg-red-500/10 text-red-500 border-red-500/20',
+  install_package: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20',
+  remove_package: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+  publish_workspace: 'bg-teal-500/10 text-teal-500 border-teal-500/20',
 };
 
 export const AuditLogs = () => {
@@ -68,6 +73,11 @@ export const AuditLogs = () => {
           <option value="revoke_admin">Revoke Admin</option>
           <option value="share_workspace">Share Workspace</option>
           <option value="unshare_workspace">Unshare Workspace</option>
+          <option value="create_workspace">Create Workspace</option>
+          <option value="delete_workspace">Delete Workspace</option>
+          <option value="install_package">Install Package</option>
+          <option value="remove_package">Remove Package</option>
+          <option value="publish_workspace">Publish Workspace</option>
         </Select>
       </div>
 

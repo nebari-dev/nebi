@@ -933,9 +933,7 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -1093,7 +1091,7 @@ const docTemplate = `{
                 "tags": [
                     "workspaces"
                 ],
-                "summary": "Delete an workspace",
+                "summary": "Delete a workspace",
                 "parameters": [
                     {
                         "type": "string",
@@ -1177,7 +1175,7 @@ const docTemplate = `{
                 "tags": [
                     "workspaces"
                 ],
-                "summary": "List packages in an workspace",
+                "summary": "List packages in a workspace",
                 "parameters": [
                     {
                         "type": "string",
@@ -1232,7 +1230,7 @@ const docTemplate = `{
                 "tags": [
                     "workspaces"
                 ],
-                "summary": "Install packages in an workspace",
+                "summary": "Install packages in a workspace",
                 "parameters": [
                     {
                         "type": "string",
@@ -1301,7 +1299,7 @@ const docTemplate = `{
                 "tags": [
                     "workspaces"
                 ],
-                "summary": "Remove packages from an workspace",
+                "summary": "Remove packages from a workspace",
                 "parameters": [
                     {
                         "type": "string",
@@ -1365,7 +1363,7 @@ const docTemplate = `{
                 "tags": [
                     "workspaces"
                 ],
-                "summary": "Get pixi.toml content for an workspace",
+                "summary": "Get pixi.toml content for a workspace",
                 "parameters": [
                     {
                         "type": "string",
@@ -1401,6 +1399,67 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workspaces"
+                ],
+                "summary": "Save pixi.toml content for a local workspace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "pixi.toml content",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SavePixiTomlRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.PixiTomlResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
             }
         },
         "/workspaces/{id}/publications": {
@@ -1410,14 +1469,14 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get all publications (registry pushes) for an workspace",
+                "description": "Get all publications (registry pushes) for a workspace",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "workspaces"
                 ],
-                "summary": "List publications for an workspace",
+                "summary": "List publications for a workspace",
                 "parameters": [
                     {
                         "type": "string",
@@ -1717,7 +1776,7 @@ const docTemplate = `{
                 "tags": [
                     "workspaces"
                 ],
-                "summary": "List tags for an workspace",
+                "summary": "List tags for a workspace",
                 "parameters": [
                     {
                         "type": "string",
@@ -1753,7 +1812,7 @@ const docTemplate = `{
                 "tags": [
                     "workspaces"
                 ],
-                "summary": "List all versions for an workspace",
+                "summary": "List all versions for a workspace",
                 "parameters": [
                     {
                         "type": "string",
@@ -2207,6 +2266,17 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.SavePixiTomlRequest": {
+            "type": "object",
+            "required": [
+                "content"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string"
+                }
+            }
+        },
         "handlers.ShareWorkspaceRequest": {
             "type": "object",
             "required": [
@@ -2500,7 +2570,25 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "is_global": {
+                    "type": "boolean"
+                },
                 "name": {
+                    "type": "string"
+                },
+                "origin_action": {
+                    "type": "string"
+                },
+                "origin_lock_hash": {
+                    "type": "string"
+                },
+                "origin_name": {
+                    "type": "string"
+                },
+                "origin_tag": {
+                    "type": "string"
+                },
+                "origin_toml_hash": {
                     "type": "string"
                 },
                 "owner": {
@@ -2513,8 +2601,15 @@ const docTemplate = `{
                     "description": "\"pixi\" or \"uv\"",
                     "type": "string"
                 },
+                "path": {
+                    "type": "string"
+                },
                 "size_bytes": {
                     "type": "integer"
+                },
+                "source": {
+                    "description": "\"local\", \"managed\"",
+                    "type": "string"
                 },
                 "status": {
                     "$ref": "#/definitions/models.WorkspaceStatus"
@@ -2610,7 +2705,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
 	Title:            "Nebi API",
-	Description:      "Multi-User Workspace Management System API",
+	Description:      "Multi-User Environment Management System API",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

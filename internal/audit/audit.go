@@ -29,29 +29,29 @@ func LogAction(db *gorm.DB, userID uuid.UUID, action, resource string, details i
 
 // Audit actions constants
 const (
-	ActionCreateUser         = "create_user"
-	ActionUpdateUser         = "update_user"
-	ActionDeleteUser         = "delete_user"
-	ActionMakeAdmin          = "make_admin"
-	ActionRevokeAdmin        = "revoke_admin"
-	ActionGrantPermission    = "grant_permission"
-	ActionRevokePermission   = "revoke_permission"
-	ActionCreateEnvironment  = "create_environment"
-	ActionDeleteEnvironment  = "delete_environment"
-	ActionInstallPackage     = "install_package"
-	ActionRemovePackage      = "remove_package"
-	ActionPublishEnvironment = "publish_environment"
-	ActionPush               = "push"
-	ActionReassignTag        = "reassign_tag"
-	ActionLogin              = "login"
-	ActionLoginFailed        = "login_failed"
+	ActionCreateUser       = "create_user"
+	ActionUpdateUser       = "update_user"
+	ActionDeleteUser       = "delete_user"
+	ActionMakeAdmin        = "make_admin"
+	ActionRevokeAdmin      = "revoke_admin"
+	ActionGrantPermission  = "grant_permission"
+	ActionRevokePermission = "revoke_permission"
+	ActionCreateWorkspace  = "create_workspace"
+	ActionDeleteWorkspace  = "delete_workspace"
+	ActionInstallPackage   = "install_package"
+	ActionRemovePackage    = "remove_package"
+	ActionPublishWorkspace = "publish_workspace"
+	ActionPush             = "push"
+	ActionReassignTag      = "reassign_tag"
+	ActionLogin            = "login"
+	ActionLoginFailed      = "login_failed"
 )
 
 // Resource types
 const (
-	ResourceUser        = "user"
-	ResourceEnvironment = "environment"
-	ResourcePermission  = "permission"
+	ResourceUser       = "user"
+	ResourceWorkspace  = "workspace"
+	ResourcePermission = "permission"
 )
 
 // Log is a convenience function for logging with resource ID

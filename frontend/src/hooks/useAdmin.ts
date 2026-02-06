@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi } from '@/api/admin';
-import type { CreateUserRequest, ShareEnvironmentRequest } from '@/types/models';
+import type { CreateUserRequest, ShareWorkspaceRequest } from '@/types/models';
 
 // Check if current user is admin
 export const useIsAdmin = () => {
@@ -73,24 +73,24 @@ export const useCollaborators = (environmentId: string, enabled = true) => {
   });
 };
 
-export const useShareEnvironment = (environmentId: string) => {
+export const useShareWorkspace = (workspaceId: string) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: ShareEnvironmentRequest) =>
-      adminApi.shareEnvironment(environmentId, data),
+    mutationFn: (data: ShareWorkspaceRequest) =>
+      adminApi.shareWorkspace(workspaceId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['collaborators', environmentId] });
+      queryClient.invalidateQueries({ queryKey: ['collaborators', workspaceId] });
     },
   });
 };
 
-export const useUnshareEnvironment = (environmentId: string) => {
+export const useUnshareWorkspace = (workspaceId: string) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (userId: string) =>
-      adminApi.unshareEnvironment(environmentId, userId),
+      adminApi.unshareWorkspace(workspaceId, userId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['collaborators', environmentId] });
+      queryClient.invalidateQueries({ queryKey: ['collaborators', workspaceId] });
     },
   });
 };

@@ -31,17 +31,6 @@ definitions:
       username:
         type: string
     type: object
-  handlers.CreateEnvironmentRequest:
-    properties:
-      name:
-        type: string
-      package_manager:
-        type: string
-      pixi_toml:
-        type: string
-    required:
-    - name
-    type: object
   handlers.CreateRegistryRequest:
     properties:
       default_repository:
@@ -75,23 +64,23 @@ definitions:
     - password
     - username
     type: object
+  handlers.CreateWorkspaceRequest:
+    properties:
+      name:
+        type: string
+      package_manager:
+        type: string
+      pixi_toml:
+        type: string
+    required:
+    - name
+    type: object
   handlers.DashboardStatsResponse:
     properties:
       total_disk_usage_bytes:
         type: integer
       total_disk_usage_formatted:
         type: string
-    type: object
-  handlers.EnvironmentTagResponse:
-    properties:
-      created_at:
-        type: string
-      tag:
-        type: string
-      updated_at:
-        type: string
-      version_number:
-        type: integer
     type: object
   handlers.ErrorResponse:
     properties:
@@ -100,16 +89,16 @@ definitions:
     type: object
   handlers.GrantPermissionRequest:
     properties:
-      environment_id:
-        type: string
       role_id:
         type: integer
       user_id:
         type: string
+      workspace_id:
+        type: string
     required:
-    - environment_id
     - role_id
     - user_id
+    - workspace_id
     type: object
   handlers.HealthResponse:
     properties:
@@ -215,7 +204,7 @@ definitions:
     required:
     - version_number
     type: object
-  handlers.ShareEnvironmentRequest:
+  handlers.ShareWorkspaceRequest:
     properties:
       role:
         description: '"viewer" or "editor"'
@@ -258,10 +247,21 @@ definitions:
       username:
         type: string
     type: object
+  handlers.WorkspaceTagResponse:
+    properties:
+      created_at:
+        type: string
+      tag:
+        type: string
+      updated_at:
+        type: string
+      version_number:
+        type: integer
+    type: object
   models.AuditLog:
     properties:
       action:
-        description: e.g., "create_environment", "grant_permission"
+        description: e.g., "create_workspace", "grant_permission"
         type: string
       details_json:
         description: Additional context in JSON
@@ -269,7 +269,7 @@ definitions:
       id:
         type: integer
       resource:
-        description: e.g., "environment:123", "user:456"
+        description: e.g., "workspace:123", "user:456"
         type: string
       timestamp:
         type: string
@@ -278,88 +278,11 @@ definitions:
       user_id:
         type: string
     type: object
-  models.Environment:
-    properties:
-      created_at:
-        type: string
-      id:
-        type: string
-      name:
-        type: string
-      owner:
-        $ref: '#/definitions/models.User'
-      owner_id:
-        type: string
-      package_manager:
-        description: '"pixi" or "uv"'
-        type: string
-      size_bytes:
-        type: integer
-      status:
-        $ref: '#/definitions/models.EnvironmentStatus'
-      updated_at:
-        type: string
-    type: object
-  models.EnvironmentStatus:
-    enum:
-    - pending
-    - creating
-    - ready
-    - failed
-    - deleting
-    type: string
-    x-enum-varnames:
-    - EnvStatusPending
-    - EnvStatusCreating
-    - EnvStatusReady
-    - EnvStatusFailed
-    - EnvStatusDeleting
-  models.EnvironmentVersion:
-    properties:
-      created_at:
-        description: Timestamps
-        type: string
-      created_by:
-        description: User who triggered the change
-        type: string
-      created_by_user:
-        $ref: '#/definitions/models.User'
-      description:
-        description: Optional description of changes
-        type: string
-      environment:
-        $ref: '#/definitions/models.Environment'
-      environment_id:
-        type: string
-      id:
-        type: string
-      job:
-        $ref: '#/definitions/models.Job'
-      job_id:
-        description: Context
-        type: string
-      lock_file_content:
-        description: File contents (stored as TEXT in database)
-        type: string
-      manifest_content:
-        description: pixi.toml content
-        type: string
-      package_metadata:
-        description: JSON of package list
-        type: string
-      version_number:
-        description: Version tracking
-        type: integer
-    type: object
   models.Job:
     properties:
       completed_at:
         type: string
       created_at:
-        type: string
-      environment:
-        $ref: '#/definitions/models.Environment'
-      environment_id:
         type: string
       error:
         type: string
@@ -376,6 +299,10 @@ definitions:
         $ref: '#/definitions/models.JobStatus'
       type:
         $ref: '#/definitions/models.JobType'
+      workspace:
+        $ref: '#/definitions/models.Workspace'
+      workspace_id:
+        type: string
     type: object
   models.JobStatus:
     enum:
@@ -409,10 +336,6 @@ definitions:
     - JobTypeRollback
   models.Package:
     properties:
-      environment:
-        $ref: '#/definitions/models.Environment'
-      environment_id:
-        type: string
       id:
         type: string
       installed_at:
@@ -421,14 +344,14 @@ definitions:
         type: string
       version:
         type: string
+      workspace:
+        $ref: '#/definitions/models.Workspace'
+      workspace_id:
+        type: string
     type: object
   models.Permission:
     properties:
       created_at:
-        type: string
-      environment:
-        $ref: '#/definitions/models.Environment'
-      environment_id:
         type: string
       id:
         type: integer
@@ -441,6 +364,10 @@ definitions:
       user:
         $ref: '#/definitions/models.User'
       user_id:
+        type: string
+      workspace:
+        $ref: '#/definitions/models.Workspace'
+      workspace_id:
         type: string
     type: object
   models.Role:
@@ -471,10 +398,83 @@ definitions:
       username:
         type: string
     type: object
+  models.Workspace:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      owner:
+        $ref: '#/definitions/models.User'
+      owner_id:
+        type: string
+      package_manager:
+        description: '"pixi" or "uv"'
+        type: string
+      size_bytes:
+        type: integer
+      status:
+        $ref: '#/definitions/models.WorkspaceStatus'
+      updated_at:
+        type: string
+    type: object
+  models.WorkspaceStatus:
+    enum:
+    - pending
+    - creating
+    - ready
+    - failed
+    - deleting
+    type: string
+    x-enum-varnames:
+    - WsStatusPending
+    - WsStatusCreating
+    - WsStatusReady
+    - WsStatusFailed
+    - WsStatusDeleting
+  models.WorkspaceVersion:
+    properties:
+      created_at:
+        description: Timestamps
+        type: string
+      created_by:
+        description: User who triggered the change
+        type: string
+      created_by_user:
+        $ref: '#/definitions/models.User'
+      description:
+        description: Optional description of changes
+        type: string
+      id:
+        type: string
+      job:
+        $ref: '#/definitions/models.Job'
+      job_id:
+        description: Context
+        type: string
+      lock_file_content:
+        description: File contents (stored as TEXT in database)
+        type: string
+      manifest_content:
+        description: pixi.toml content
+        type: string
+      package_metadata:
+        description: JSON of package list
+        type: string
+      version_number:
+        description: Version tracking
+        type: integer
+      workspace:
+        $ref: '#/definitions/models.Workspace'
+      workspace_id:
+        type: string
+    type: object
 host: localhost:8460
 info:
   contact: {}
-  description: Multi-User Environment Management System API
+  description: Multi-User Workspace Management System API
   title: Nebi API
   version: "1.0"
 paths:
@@ -552,7 +552,7 @@ paths:
             $ref: '#/definitions/models.Permission'
       security:
       - BearerAuth: []
-      summary: Grant environment access to a user
+      summary: Grant workspace access to a user
       tags:
       - admin
   /admin/permissions/{id}:
@@ -921,606 +921,6 @@ paths:
       summary: Initiate OIDC login
       tags:
       - auth
-  /environments:
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/models.Environment'
-            type: array
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: List all environments for the current user
-      tags:
-      - environments
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Environment details
-        in: body
-        name: environment
-        required: true
-        schema:
-          $ref: '#/definitions/handlers.CreateEnvironmentRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/models.Environment'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Create a new environment
-      tags:
-      - environments
-  /environments/{id}:
-    delete:
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      responses:
-        "204":
-          description: No Content
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Delete an environment
-      tags:
-      - environments
-    get:
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.Environment'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Get an environment by ID
-      tags:
-      - environments
-  /environments/{id}/collaborators:
-    get:
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/handlers.CollaboratorResponse'
-            type: array
-      security:
-      - BearerAuth: []
-      summary: List all users with access to environment
-      tags:
-      - environments
-  /environments/{id}/packages:
-    get:
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/models.Package'
-            type: array
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: List packages in an environment
-      tags:
-      - environments
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Packages to install
-        in: body
-        name: packages
-        required: true
-        schema:
-          $ref: '#/definitions/handlers.InstallPackagesRequest'
-      produces:
-      - application/json
-      responses:
-        "202":
-          description: Accepted
-          schema:
-            $ref: '#/definitions/models.Job'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Install packages in an environment
-      tags:
-      - environments
-  /environments/{id}/packages/{package}:
-    delete:
-      consumes:
-      - application/json
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Package name
-        in: path
-        name: package
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "202":
-          description: Accepted
-          schema:
-            $ref: '#/definitions/models.Job'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Remove packages from an environment
-      tags:
-      - environments
-  /environments/{id}/pixi-toml:
-    get:
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/handlers.PixiTomlResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Get pixi.toml content for an environment
-      tags:
-      - environments
-  /environments/{id}/publications:
-    get:
-      description: Get all publications (registry pushes) for an environment
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/handlers.PublicationResponse'
-            type: array
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: List publications for an environment
-      tags:
-      - environments
-  /environments/{id}/publish:
-    post:
-      consumes:
-      - application/json
-      description: Publish pixi.toml and pixi.lock to an OCI registry
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Publish request
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/handlers.PublishRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/handlers.PublicationResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Publish environment to OCI registry
-      tags:
-      - environments
-  /environments/{id}/push:
-    post:
-      consumes:
-      - application/json
-      description: Create a new environment version and assign a tag
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Push request
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/handlers.PushVersionRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/handlers.PushVersionResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Push a new version to the server
-      tags:
-      - environments
-  /environments/{id}/rollback:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Rollback request
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/handlers.RollbackRequest'
-      produces:
-      - application/json
-      responses:
-        "202":
-          description: Accepted
-          schema:
-            $ref: '#/definitions/models.Job'
-      security:
-      - BearerAuth: []
-      summary: Rollback environment to a previous version
-      tags:
-      - environments
-  /environments/{id}/share:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Share details
-        in: body
-        name: share
-        required: true
-        schema:
-          $ref: '#/definitions/handlers.ShareEnvironmentRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/models.Permission'
-      security:
-      - BearerAuth: []
-      summary: Share environment with another user (owner only)
-      tags:
-      - environments
-  /environments/{id}/share/{user_id}:
-    delete:
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: User ID to revoke
-        in: path
-        name: user_id
-        required: true
-        type: string
-      responses:
-        "204":
-          description: No Content
-      security:
-      - BearerAuth: []
-      summary: Revoke user access to environment (owner only)
-      tags:
-      - environments
-  /environments/{id}/tags:
-    get:
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/handlers.EnvironmentTagResponse'
-            type: array
-      security:
-      - BearerAuth: []
-      summary: List tags for an environment
-      tags:
-      - environments
-  /environments/{id}/versions:
-    get:
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/models.EnvironmentVersion'
-            type: array
-      security:
-      - BearerAuth: []
-      summary: List all versions for an environment
-      tags:
-      - environments
-  /environments/{id}/versions/{version}:
-    get:
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Version number
-        in: path
-        name: version
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.EnvironmentVersion'
-      security:
-      - BearerAuth: []
-      summary: Get a specific version with full details
-      tags:
-      - environments
-  /environments/{id}/versions/{version}/pixi-lock:
-    get:
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Version number
-        in: path
-        name: version
-        required: true
-        type: integer
-      produces:
-      - text/plain
-      responses:
-        "200":
-          description: pixi.lock content
-          schema:
-            type: string
-      security:
-      - BearerAuth: []
-      summary: Download pixi.lock for a specific version
-      tags:
-      - environments
-  /environments/{id}/versions/{version}/pixi-toml:
-    get:
-      parameters:
-      - description: Environment ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Version number
-        in: path
-        name: version
-        required: true
-        type: integer
-      produces:
-      - text/plain
-      responses:
-        "200":
-          description: pixi.toml content
-          schema:
-            type: string
-      security:
-      - BearerAuth: []
-      summary: Download pixi.toml for a specific version
-      tags:
-      - environments
   /health:
     get:
       description: Returns the health status of the service
@@ -1555,7 +955,7 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: List all jobs for user's environments
+      summary: List all jobs for user's workspaces
       tags:
       - jobs
   /jobs/{id}:
@@ -1657,6 +1057,606 @@ paths:
       summary: Get version information
       tags:
       - system
+  /workspaces:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Workspace'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List all workspaces for the current user
+      tags:
+      - workspaces
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Workspace details
+        in: body
+        name: workspace
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateWorkspaceRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Workspace'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a new workspace
+      tags:
+      - workspaces
+  /workspaces/{id}:
+    delete:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete an workspace
+      tags:
+      - workspaces
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Workspace'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a workspace by ID
+      tags:
+      - workspaces
+  /workspaces/{id}/collaborators:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.CollaboratorResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List all users with access to workspace
+      tags:
+      - workspaces
+  /workspaces/{id}/packages:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Package'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List packages in an workspace
+      tags:
+      - workspaces
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Packages to install
+        in: body
+        name: packages
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.InstallPackagesRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/models.Job'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Install packages in an workspace
+      tags:
+      - workspaces
+  /workspaces/{id}/packages/{package}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Package name
+        in: path
+        name: package
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/models.Job'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove packages from an workspace
+      tags:
+      - workspaces
+  /workspaces/{id}/pixi-toml:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.PixiTomlResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get pixi.toml content for an workspace
+      tags:
+      - workspaces
+  /workspaces/{id}/publications:
+    get:
+      description: Get all publications (registry pushes) for an workspace
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.PublicationResponse'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List publications for an workspace
+      tags:
+      - workspaces
+  /workspaces/{id}/publish:
+    post:
+      consumes:
+      - application/json
+      description: Publish pixi.toml and pixi.lock to an OCI registry
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Publish request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.PublishRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/handlers.PublicationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Publish workspace to OCI registry
+      tags:
+      - workspaces
+  /workspaces/{id}/push:
+    post:
+      consumes:
+      - application/json
+      description: Create a new workspace version and assign a tag
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Push request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.PushVersionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/handlers.PushVersionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Push a new version to the server
+      tags:
+      - workspaces
+  /workspaces/{id}/rollback:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Rollback request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.RollbackRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/models.Job'
+      security:
+      - BearerAuth: []
+      summary: Rollback workspace to a previous version
+      tags:
+      - workspaces
+  /workspaces/{id}/share:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Share details
+        in: body
+        name: share
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.ShareWorkspaceRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Permission'
+      security:
+      - BearerAuth: []
+      summary: Share workspace with another user (owner only)
+      tags:
+      - workspaces
+  /workspaces/{id}/share/{user_id}:
+    delete:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: User ID to revoke
+        in: path
+        name: user_id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Revoke user access to workspace (owner only)
+      tags:
+      - workspaces
+  /workspaces/{id}/tags:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.WorkspaceTagResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List tags for an workspace
+      tags:
+      - workspaces
+  /workspaces/{id}/versions:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.WorkspaceVersion'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List all versions for an workspace
+      tags:
+      - workspaces
+  /workspaces/{id}/versions/{version}:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Version number
+        in: path
+        name: version
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.WorkspaceVersion'
+      security:
+      - BearerAuth: []
+      summary: Get a specific version with full details
+      tags:
+      - workspaces
+  /workspaces/{id}/versions/{version}/pixi-lock:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Version number
+        in: path
+        name: version
+        required: true
+        type: integer
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: pixi.lock content
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Download pixi.lock for a specific version
+      tags:
+      - workspaces
+  /workspaces/{id}/versions/{version}/pixi-toml:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Version number
+        in: path
+        name: version
+        required: true
+        type: integer
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: pixi.toml content
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Download pixi.toml for a specific version
+      tags:
+      - workspaces
 securityDefinitions:
   BearerAuth:
     in: header

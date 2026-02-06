@@ -37,7 +37,7 @@ func init() {
 }
 
 func runPush(cmd *cobra.Command, args []string) error {
-	envName, tag := parseEnvRef(args[0])
+	wsName, tag := parseWsRef(args[0])
 	if tag == "" {
 		return fmt.Errorf("tag is required; usage: nebi push [<workspace>:]<tag>")
 	}
@@ -48,7 +48,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 	}
 
 	// If workspace name omitted, resolve from origin
-	if envName == "" {
+	if wsName == "" {
 		origin, err := lookupOrigin(server)
 		if err != nil {
 			return err
@@ -56,8 +56,8 @@ func runPush(cmd *cobra.Command, args []string) error {
 		if origin == nil {
 			return fmt.Errorf("no origin set for server %q; specify a workspace name: nebi push <workspace>:<tag>", server)
 		}
-		envName = origin.Name
-		fmt.Fprintf(os.Stderr, "Using workspace %q from origin\n", envName)
+		wsName = origin.Name
+		fmt.Fprintf(os.Stderr, "Using workspace %q from origin\n", wsName)
 	}
 
 	// Read local spec files
@@ -78,27 +78,27 @@ func runPush(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	// Find or create environment
-	env, err := findEnvByName(client, ctx, envName)
+	// Find or create workspace
+	ws, err := findWsByName(client, ctx, wsName)
 	if err != nil {
-		// Environment doesn't exist — create it
-		fmt.Fprintf(os.Stderr, "Creating environment %q...\n", envName)
+		// Workspace doesn't exist — create it
+		fmt.Fprintf(os.Stderr, "Creating workspace %q...\n", wsName)
 		pixiTomlStr := string(pixiToml)
 		pkgMgr := "pixi"
-		newEnv, createErr := client.CreateEnvironment(ctx, cliclient.CreateEnvironmentRequest{
-			Name:           envName,
+		newWs, createErr := client.CreateWorkspace(ctx, cliclient.CreateWorkspaceRequest{
+			Name:           wsName,
 			PackageManager: &pkgMgr,
 			PixiToml:       &pixiTomlStr,
 		})
 		if createErr != nil {
-			return fmt.Errorf("failed to create environment %q: %w", envName, createErr)
+			return fmt.Errorf("failed to create workspace %q: %w", wsName, createErr)
 		}
-		// Wait for environment to be ready (server runs pixi install)
-		env, err = waitForEnvReady(client, ctx, newEnv.ID, 60*time.Second)
+		// Wait for workspace to be ready (server runs pixi install)
+		ws, err = waitForWsReady(client, ctx, newWs.ID, 60*time.Second)
 		if err != nil {
-			return fmt.Errorf("environment %q failed to become ready: %w", envName, err)
+			return fmt.Errorf("workspace %q failed to become ready: %w", wsName, err)
 		}
-		fmt.Fprintf(os.Stderr, "Created environment %q\n", envName)
+		fmt.Fprintf(os.Stderr, "Created workspace %q\n", wsName)
 	}
 
 	// Push version
@@ -109,13 +109,13 @@ func runPush(cmd *cobra.Command, args []string) error {
 		Force:    pushForce,
 	}
 
-	fmt.Fprintf(os.Stderr, "Pushing %s:%s...\n", envName, tag)
-	resp, err := client.PushVersion(ctx, env.ID, req)
+	fmt.Fprintf(os.Stderr, "Pushing %s:%s...\n", wsName, tag)
+	resp, err := client.PushVersion(ctx, ws.ID, req)
 	if err != nil {
-		return fmt.Errorf("failed to push %s:%s: %w", envName, tag, err)
+		return fmt.Errorf("failed to push %s:%s: %w", wsName, tag, err)
 	}
 
-	fmt.Fprintf(os.Stderr, "Pushed %s:%s (version %d)\n", envName, tag, resp.VersionNumber)
+	fmt.Fprintf(os.Stderr, "Pushed %s:%s (version %d)\n", wsName, tag, resp.VersionNumber)
 
 	// Auto-track the workspace so status and origin tracking work
 	if err := ensureInit("."); err != nil {
@@ -123,7 +123,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 	}
 
 	// Save origin
-	if saveErr := saveOrigin(server, envName, tag, "push", string(pixiToml), string(pixiLock)); saveErr != nil {
+	if saveErr := saveOrigin(server, wsName, tag, "push", string(pixiToml), string(pixiLock)); saveErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save origin: %v\n", saveErr)
 	}
 

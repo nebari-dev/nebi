@@ -13,8 +13,8 @@ const ACTION_COLORS: Record<string, string> = {
   revoke_permission: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
   make_admin: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
   revoke_admin: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
-  share_environment: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20',
-  unshare_environment: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+  share_workspace: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20',
+  unshare_workspace: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
 };
 
 export const AuditLogs = () => {
@@ -66,8 +66,8 @@ export const AuditLogs = () => {
           <option value="revoke_permission">Revoke Permission</option>
           <option value="make_admin">Make Admin</option>
           <option value="revoke_admin">Revoke Admin</option>
-          <option value="share_environment">Share Environment</option>
-          <option value="unshare_environment">Unshare Environment</option>
+          <option value="share_workspace">Share Workspace</option>
+          <option value="unshare_workspace">Unshare Workspace</option>
         </Select>
       </div>
 

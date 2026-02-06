@@ -19,7 +19,7 @@ import (
 
 // LocalExecutor runs operations on the local machine
 type LocalExecutor struct {
-	baseDir string // Base directory for environments (e.g., /var/lib/nebi/environments)
+	baseDir string // Base directory for workspaces (e.g., /var/lib/nebi/environments)
 	config  *config.Config
 }
 
@@ -54,22 +54,22 @@ func normalizeEnvName(name string) string {
 	return name
 }
 
-// GetEnvironmentPath returns the filesystem path for an environment
+// GetWorkspacePath returns the filesystem path for a workspace
 // Format: {baseDir}/{normalized-name}-{uuid}
-func (e *LocalExecutor) GetEnvironmentPath(env *models.Environment) string {
-	normalizedName := normalizeEnvName(env.Name)
-	dirName := fmt.Sprintf("%s-%s", normalizedName, env.ID.String())
+func (e *LocalExecutor) GetWorkspacePath(ws *models.Workspace) string {
+	normalizedName := normalizeEnvName(ws.Name)
+	dirName := fmt.Sprintf("%s-%s", normalizedName, ws.ID.String())
 	return filepath.Join(e.baseDir, dirName)
 }
 
-// CreateEnvironment creates a new environment on the local filesystem
-func (e *LocalExecutor) CreateEnvironment(ctx context.Context, env *models.Environment, logWriter io.Writer, pixiToml ...string) error {
-	envPath := e.GetEnvironmentPath(env)
+// CreateWorkspace creates a new workspace on the local filesystem
+func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer, pixiToml ...string) error {
+	envPath := e.GetWorkspacePath(ws)
 
 	fmt.Fprintf(logWriter, "Creating environment at: %s\n", envPath)
 
 	// Create package manager instance
-	pmType := env.PackageManager
+	pmType := ws.PackageManager
 	if pmType == "" {
 		pmType = e.config.PackageManager.DefaultType
 	}
@@ -132,7 +132,7 @@ func (e *LocalExecutor) CreateEnvironment(ctx context.Context, env *models.Envir
 		// The environment is created in EnvPath directory itself
 		opts := pkgmgr.InitOptions{
 			EnvPath:   envPath,
-			Name:      env.Name,
+			Name:      ws.Name,
 			Channels:  []string{"conda-forge"}, // Default channel for pixi
 			LogWriter: logWriter,
 		}
@@ -146,14 +146,14 @@ func (e *LocalExecutor) CreateEnvironment(ctx context.Context, env *models.Envir
 	return nil
 }
 
-// InstallPackages installs packages in an environment
-func (e *LocalExecutor) InstallPackages(ctx context.Context, env *models.Environment, packages []string, logWriter io.Writer) error {
-	envPath := e.GetEnvironmentPath(env)
+// InstallPackages installs packages in a workspace
+func (e *LocalExecutor) InstallPackages(ctx context.Context, ws *models.Workspace, packages []string, logWriter io.Writer) error {
+	envPath := e.GetWorkspacePath(ws)
 
 	fmt.Fprintf(logWriter, "Installing packages: %v\n", packages)
 
 	// Get package manager
-	pmType := env.PackageManager
+	pmType := ws.PackageManager
 	if pmType == "" {
 		pmType = e.config.PackageManager.DefaultType
 	}
@@ -177,14 +177,14 @@ func (e *LocalExecutor) InstallPackages(ctx context.Context, env *models.Environ
 	return nil
 }
 
-// RemovePackages removes packages from an environment
-func (e *LocalExecutor) RemovePackages(ctx context.Context, env *models.Environment, packages []string, logWriter io.Writer) error {
-	envPath := e.GetEnvironmentPath(env)
+// RemovePackages removes packages from a workspace
+func (e *LocalExecutor) RemovePackages(ctx context.Context, ws *models.Workspace, packages []string, logWriter io.Writer) error {
+	envPath := e.GetWorkspacePath(ws)
 
 	fmt.Fprintf(logWriter, "Removing packages: %v\n", packages)
 
 	// Get package manager
-	pmType := env.PackageManager
+	pmType := ws.PackageManager
 	if pmType == "" {
 		pmType = e.config.PackageManager.DefaultType
 	}
@@ -208,16 +208,16 @@ func (e *LocalExecutor) RemovePackages(ctx context.Context, env *models.Environm
 	return nil
 }
 
-// DeleteEnvironment removes an environment from the filesystem
-func (e *LocalExecutor) DeleteEnvironment(ctx context.Context, env *models.Environment, logWriter io.Writer) error {
-	envPath := e.GetEnvironmentPath(env)
+// DeleteWorkspace removes a workspace from the filesystem
+func (e *LocalExecutor) DeleteWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error {
+	envPath := e.GetWorkspacePath(ws)
 
-	fmt.Fprintf(logWriter, "Deleting environment at: %s\n", envPath)
+	fmt.Fprintf(logWriter, "Deleting workspace at: %s\n", envPath)
 
 	if err := os.RemoveAll(envPath); err != nil {
-		return fmt.Errorf("failed to delete environment: %w", err)
+		return fmt.Errorf("failed to delete workspace: %w", err)
 	}
 
-	fmt.Fprintf(logWriter, "Environment deleted successfully\n")
+	fmt.Fprintf(logWriter, "Workspace deleted successfully\n")
 	return nil
 }

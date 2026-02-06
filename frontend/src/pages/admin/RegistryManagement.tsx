@@ -45,7 +45,7 @@ export const RegistryManagement = () => {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">OCI Registry Management</h1>
-          <p className="text-muted-foreground">Manage OCI registries for environment publishing</p>
+          <p className="text-muted-foreground">Manage OCI registries for workspace publishing</p>
         </div>
         <CreateRegistryDialog />
       </div>
@@ -136,7 +136,7 @@ export const RegistryManagement = () => {
       {registries?.length === 0 && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">
-            No registries configured. Add your first registry to start publishing environments.
+            No registries configured. Add your first registry to start publishing workspaces.
           </p>
         </div>
       )}

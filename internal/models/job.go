@@ -32,18 +32,18 @@ const (
 
 // Job represents a background task
 type Job struct {
-	ID            uuid.UUID              `gorm:"type:text;primary_key" json:"id"`
-	EnvironmentID uuid.UUID              `gorm:"type:text;index" json:"environment_id"`
-	Environment   Environment            `gorm:"foreignKey:EnvironmentID" json:"environment,omitempty"`
-	Type          JobType                `gorm:"not null" json:"type"`
-	Status        JobStatus              `gorm:"not null;default:'pending'" json:"status"`
-	Logs          string                 `gorm:"type:text" json:"logs"`
-	Error         string                 `gorm:"type:text" json:"error,omitempty"`
-	Metadata      map[string]interface{} `gorm:"serializer:json" json:"metadata,omitempty"`
-	CreatedAt     time.Time              `json:"created_at"`
-	StartedAt     *time.Time             `json:"started_at,omitempty"`
-	CompletedAt   *time.Time             `json:"completed_at,omitempty"`
-	DeletedAt     gorm.DeletedAt         `gorm:"index" json:"-"`
+	ID          uuid.UUID              `gorm:"type:text;primary_key" json:"id"`
+	WorkspaceID uuid.UUID              `gorm:"type:text;index" json:"workspace_id"`
+	Workspace   Workspace              `gorm:"foreignKey:WorkspaceID" json:"workspace,omitempty"`
+	Type        JobType                `gorm:"not null" json:"type"`
+	Status      JobStatus              `gorm:"not null;default:'pending'" json:"status"`
+	Logs        string                 `gorm:"type:text" json:"logs"`
+	Error       string                 `gorm:"type:text" json:"error,omitempty"`
+	Metadata    map[string]interface{} `gorm:"serializer:json" json:"metadata,omitempty"`
+	CreatedAt   time.Time              `json:"created_at"`
+	StartedAt   *time.Time             `json:"started_at,omitempty"`
+	CompletedAt *time.Time             `json:"completed_at,omitempty"`
+	DeletedAt   gorm.DeletedAt         `gorm:"index" json:"-"`
 }
 
 // BeforeCreate hook to generate UUID

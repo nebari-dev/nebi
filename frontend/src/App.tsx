@@ -3,8 +3,8 @@ import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient';
 import { useAuthStore } from './store/authStore';
 import { Login } from './pages/Login';
-import { Environments } from './pages/Environments';
-import { EnvironmentDetail } from './pages/EnvironmentDetail';
+import { Workspaces } from './pages/Workspaces';
+import { WorkspaceDetail } from './pages/WorkspaceDetail';
 import { Jobs } from './pages/Jobs';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { UserManagement } from './pages/admin/UserManagement';
@@ -42,7 +42,7 @@ const AdminRoute = () => {
   }
 
   if (!isAdmin) {
-    return <Navigate to="/environments" replace />;
+    return <Navigate to="/workspaces" replace />;
   }
 
   return <Outlet />;
@@ -62,9 +62,9 @@ function App() {
               </PrivateRoute>
             }
           >
-            <Route index element={<Navigate to="/environments" replace />} />
-            <Route path="environments" element={<Environments />} />
-            <Route path="environments/:id" element={<EnvironmentDetail />} />
+            <Route index element={<Navigate to="/workspaces" replace />} />
+            <Route path="workspaces" element={<Workspaces />} />
+            <Route path="workspaces/:id" element={<WorkspaceDetail />} />
             <Route path="jobs" element={<Jobs />} />
 
             <Route element={<AdminRoute />}>

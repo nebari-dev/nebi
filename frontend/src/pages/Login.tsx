@@ -77,7 +77,7 @@ export const Login = () => {
             />
           </div>
           <p className="text-center text-muted-foreground text-base">
-            Environment Management System
+            Workspace Management System
           </p>
         </div>
         <div className="px-8 pb-8">

@@ -7,20 +7,20 @@ import (
 	"github.com/nebari-dev/nebi/internal/models"
 )
 
-// Executor interface for running environment operations
+// Executor interface for running workspace operations
 type Executor interface {
-	// CreateEnvironment creates a new environment with optional pixi.toml content
-	CreateEnvironment(ctx context.Context, env *models.Environment, logWriter io.Writer, pixiToml ...string) error
+	// CreateWorkspace creates a new workspace with optional pixi.toml content
+	CreateWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer, pixiToml ...string) error
 
-	// InstallPackages installs packages in an environment
-	InstallPackages(ctx context.Context, env *models.Environment, packages []string, logWriter io.Writer) error
+	// InstallPackages installs packages in a workspace
+	InstallPackages(ctx context.Context, ws *models.Workspace, packages []string, logWriter io.Writer) error
 
-	// RemovePackages removes packages from an environment
-	RemovePackages(ctx context.Context, env *models.Environment, packages []string, logWriter io.Writer) error
+	// RemovePackages removes packages from a workspace
+	RemovePackages(ctx context.Context, ws *models.Workspace, packages []string, logWriter io.Writer) error
 
-	// DeleteEnvironment removes an environment
-	DeleteEnvironment(ctx context.Context, env *models.Environment, logWriter io.Writer) error
+	// DeleteWorkspace removes a workspace
+	DeleteWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error
 
-	// GetEnvironmentPath returns the filesystem path for an environment
-	GetEnvironmentPath(env *models.Environment) string
+	// GetWorkspacePath returns the filesystem path for a workspace
+	GetWorkspacePath(ws *models.Workspace) string
 }

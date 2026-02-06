@@ -12,8 +12,8 @@ import (
 	"github.com/nebari-dev/nebi/internal/localstore"
 )
 
-// ErrEnvNotFound is returned when an environment name is not found on the server.
-var ErrEnvNotFound = errors.New("environment not found on server")
+// ErrWsNotFound is returned when a workspace name is not found on the server.
+var ErrWsNotFound = errors.New("workspace not found on server")
 
 // resolveServerFlag returns the server argument, falling back to the default server from config.
 func resolveServerFlag(serverArg string) (string, error) {
@@ -50,20 +50,20 @@ func getAuthenticatedClient(serverArg string) (*cliclient.Client, error) {
 	return cliclient.New(serverURL, cred.Token), nil
 }
 
-// findEnvByName searches for an environment by name on the server.
-func findEnvByName(client *cliclient.Client, ctx context.Context, name string) (*cliclient.Environment, error) {
-	envs, err := client.ListEnvironments(ctx)
+// findWsByName searches for a workspace by name on the server.
+func findWsByName(client *cliclient.Client, ctx context.Context, name string) (*cliclient.Workspace, error) {
+	workspaces, err := client.ListWorkspaces(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("listing environments: %w", err)
+		return nil, fmt.Errorf("listing workspaces: %w", err)
 	}
 
-	for i := range envs {
-		if envs[i].Name == name {
-			return &envs[i], nil
+	for i := range workspaces {
+		if workspaces[i].Name == name {
+			return &workspaces[i], nil
 		}
 	}
 
-	return nil, fmt.Errorf("%w: %q", ErrEnvNotFound, name)
+	return nil, fmt.Errorf("%w: %q", ErrWsNotFound, name)
 }
 
 // findGlobalWorkspaceByName looks up a global workspace by name in the local index.
@@ -161,9 +161,9 @@ func saveOrigin(server, name, tag, action, tomlContent, lockContent string) erro
 	return store.SaveIndex(idx)
 }
 
-// parseEnvRef parses a reference in the format env:tag.
-// Returns (env, tag) where tag may be empty if not specified.
-func parseEnvRef(ref string) (string, string) {
+// parseWsRef parses a reference in the format workspace:tag.
+// Returns (workspace, tag) where tag may be empty if not specified.
+func parseWsRef(ref string) (string, string) {
 	if idx := strings.LastIndex(ref, ":"); idx != -1 {
 		return ref[:idx], ref[idx+1:]
 	}
@@ -179,21 +179,21 @@ func formatTimestamp(ts string) string {
 	return t.Format("2006-01-02 15:04")
 }
 
-// waitForEnvReady polls until the environment reaches ready state or timeout.
-func waitForEnvReady(client *cliclient.Client, ctx context.Context, envID string, timeout time.Duration) (*cliclient.Environment, error) {
+// waitForWsReady polls until the workspace reaches ready state or timeout.
+func waitForWsReady(client *cliclient.Client, ctx context.Context, wsID string, timeout time.Duration) (*cliclient.Workspace, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		env, err := client.GetEnvironment(ctx, envID)
+		ws, err := client.GetWorkspace(ctx, wsID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get environment status: %w", err)
+			return nil, fmt.Errorf("failed to get workspace status: %w", err)
 		}
-		switch env.Status {
+		switch ws.Status {
 		case "ready":
-			return env, nil
+			return ws, nil
 		case "failed", "error":
-			return nil, fmt.Errorf("environment setup failed")
+			return nil, fmt.Errorf("workspace setup failed")
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	return nil, fmt.Errorf("timeout waiting for environment to be ready")
+	return nil, fmt.Errorf("timeout waiting for workspace to be ready")
 }

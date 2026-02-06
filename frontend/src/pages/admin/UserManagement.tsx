@@ -181,7 +181,7 @@ export const UserManagement = () => {
             ? confirmAction.currentIsAdmin
               ? `Are you sure you want to revoke admin access for ${confirmAction.username}? They will lose all admin privileges.`
               : `Are you sure you want to grant admin access to ${confirmAction.username}? They will have full system access.`
-            : `Are you sure you want to delete ${confirmAction?.username}? This action cannot be undone. All their environments and data will be permanently removed.`
+            : `Are you sure you want to delete ${confirmAction?.username}? This action cannot be undone. All their workspaces and data will be permanently removed.`
         }
         confirmText={confirmAction?.type === 'delete' ? 'Delete' : 'Confirm'}
         cancelText="Cancel"

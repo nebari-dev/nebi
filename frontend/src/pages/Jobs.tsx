@@ -85,8 +85,8 @@ const JobCard = ({ job, isFirst }: { job: Job; isFirst: boolean }) => {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="text-muted-foreground">Environment ID:</span>
-              <span className="ml-2 font-medium">{job.environment_id}</span>
+              <span className="text-muted-foreground">Workspace ID:</span>
+              <span className="ml-2 font-medium">{job.workspace_id}</span>
             </div>
             <div>
               <span className="text-muted-foreground">Created:</span>

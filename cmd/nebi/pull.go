@@ -55,9 +55,9 @@ func runPull(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	var envName, tag string
+	var wsName, tag string
 	if len(args) == 1 {
-		envName, tag = parseEnvRef(args[0])
+		wsName, tag = parseWsRef(args[0])
 	} else {
 		// No args — resolve from origin
 		origin, err := lookupOrigin(server)
@@ -67,9 +67,9 @@ func runPull(cmd *cobra.Command, args []string) error {
 		if origin == nil {
 			return fmt.Errorf("no origin set for server %q; specify a workspace: nebi pull <workspace>[:<tag>]", server)
 		}
-		envName = origin.Name
+		wsName = origin.Name
 		tag = origin.Tag
-		fmt.Fprintf(os.Stderr, "Using origin %s:%s from server %q\n", envName, tag, server)
+		fmt.Fprintf(os.Stderr, "Using origin %s:%s from server %q\n", wsName, tag, server)
 	}
 
 	client, err := getAuthenticatedClient(server)
@@ -79,8 +79,8 @@ func runPull(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	// Find environment by name
-	env, err := findEnvByName(client, ctx, envName)
+	// Find workspace by name
+	ws, err := findWsByName(client, ctx, wsName)
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 
 	if tag != "" {
 		// Look up tag
-		tags, err := client.GetEnvironmentTags(ctx, env.ID)
+		tags, err := client.GetWorkspaceTags(ctx, ws.ID)
 		if err != nil {
 			return fmt.Errorf("failed to get tags: %w", err)
 		}
@@ -103,16 +103,16 @@ func runPull(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if !found {
-			return fmt.Errorf("tag %q not found for environment %q", tag, envName)
+			return fmt.Errorf("tag %q not found for workspace %q", tag, wsName)
 		}
 	} else {
 		// Use latest version (highest version number)
-		versions, err := client.GetEnvironmentVersions(ctx, env.ID)
+		versions, err := client.GetWorkspaceVersions(ctx, ws.ID)
 		if err != nil {
 			return fmt.Errorf("failed to get versions: %w", err)
 		}
 		if len(versions) == 0 {
-			return fmt.Errorf("environment %q has no versions", envName)
+			return fmt.Errorf("workspace %q has no versions", wsName)
 		}
 		latest := versions[0]
 		for _, v := range versions {
@@ -123,7 +123,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 		versionNumber = latest.VersionNumber
 
 		// Resolve tag for this version so the origin records what was actually pulled
-		tags, err := client.GetEnvironmentTags(ctx, env.ID)
+		tags, err := client.GetWorkspaceTags(ctx, ws.ID)
 		if err == nil {
 			var bestTag string
 			var bestTime string
@@ -140,12 +140,12 @@ func runPull(cmd *cobra.Command, args []string) error {
 	}
 
 	// Download spec files
-	pixiToml, err := client.GetVersionPixiToml(ctx, env.ID, versionNumber)
+	pixiToml, err := client.GetVersionPixiToml(ctx, ws.ID, versionNumber)
 	if err != nil {
 		return fmt.Errorf("failed to get pixi.toml: %w", err)
 	}
 
-	pixiLock, err := client.GetVersionPixiLock(ctx, env.ID, versionNumber)
+	pixiLock, err := client.GetVersionPixiLock(ctx, ws.ID, versionNumber)
 	if err != nil {
 		return fmt.Errorf("failed to get pixi.lock: %w", err)
 	}
@@ -156,7 +156,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 		if origin != nil {
 			serverTomlHash, _ := localstore.TomlContentHash(pixiToml)
 			if origin.TomlHash != "" && origin.TomlHash != serverTomlHash {
-				fmt.Fprintf(os.Stderr, "Note: %s:%s has changed on server since last sync\n", envName, tag)
+				fmt.Fprintf(os.Stderr, "Note: %s:%s has changed on server since last sync\n", wsName, tag)
 			}
 		}
 	}
@@ -210,9 +210,9 @@ func runPull(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	refStr := envName
+	refStr := wsName
 	if tag != "" {
-		refStr = envName + ":" + tag
+		refStr = wsName + ":" + tag
 	}
 
 	if pullGlobal != "" {
@@ -222,7 +222,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 	}
 
 	// Save origin
-	if saveErr := saveOrigin(server, envName, tag, "pull", pixiToml, pixiLock); saveErr != nil {
+	if saveErr := saveOrigin(server, wsName, tag, "pull", pixiToml, pixiLock); saveErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save origin: %v\n", saveErr)
 	}
 
@@ -265,12 +265,12 @@ func setupGlobalWorkspace(name string, force bool) (string, error) {
 
 	// Create new global workspace
 	id := uuid.New().String()
-	envDir := store.GlobalEnvDir(id)
+	wsDir := store.GlobalEnvDir(id)
 
-	idx.Workspaces[envDir] = &localstore.Workspace{
+	idx.Workspaces[wsDir] = &localstore.Workspace{
 		ID:     id,
 		Name:   name,
-		Path:   envDir,
+		Path:   wsDir,
 		Global: true,
 	}
 
@@ -278,5 +278,5 @@ func setupGlobalWorkspace(name string, force bool) (string, error) {
 		return "", fmt.Errorf("saving index: %w", err)
 	}
 
-	return envDir, nil
+	return wsDir, nil
 }

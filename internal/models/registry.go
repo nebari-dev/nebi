@@ -15,18 +15,18 @@ type OCIRegistry struct {
 	Username          string     `json:"username"`
 	Password          string     `json:"-"` // encrypted, never exposed in JSON
 	IsDefault         bool       `gorm:"default:false" json:"is_default"`
-	DefaultRepository string     `json:"default_repository"` // e.g., "myorg/environments" - base path for repositories
+	DefaultRepository string     `json:"default_repository"` // e.g., "myorg/workspaces" - base path for repositories
 	CreatedBy         uuid.UUID  `gorm:"type:uuid" json:"created_by"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
 	DeletedAt         *time.Time `gorm:"index" json:"-"`
 }
 
-// Publication tracks when and where an environment was published
+// Publication tracks when and where a workspace was published
 type Publication struct {
 	ID              uuid.UUID   `gorm:"type:uuid;primary_key" json:"id"`
-	EnvironmentID   uuid.UUID   `gorm:"type:uuid;index;not null" json:"environment_id"`
-	Environment     Environment `gorm:"foreignKey:EnvironmentID" json:"environment,omitempty"`
+	WorkspaceID     uuid.UUID   `gorm:"type:uuid;index;not null" json:"workspace_id"`
+	Workspace       Workspace   `gorm:"foreignKey:WorkspaceID" json:"workspace,omitempty"`
 	VersionNumber   int         `gorm:"not null" json:"version_number"` // Which version was published
 	RegistryID      uuid.UUID   `gorm:"type:uuid;index;not null" json:"registry_id"`
 	Registry        OCIRegistry `gorm:"foreignKey:RegistryID" json:"registry,omitempty"`

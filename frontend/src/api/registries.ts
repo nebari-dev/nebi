@@ -33,14 +33,14 @@ export const registriesApi = {
     await apiClient.delete(`/admin/registries/${id}`);
   },
 
-  // Publishing endpoints (require write permission on environment)
-  publish: async (environmentId: string, req: PublishRequest): Promise<Job> => {
-    const { data } = await apiClient.post(`/environments/${environmentId}/publish`, req);
+  // Publishing endpoints (require write permission on workspace)
+  publish: async (workspaceId: string, req: PublishRequest): Promise<Job> => {
+    const { data } = await apiClient.post(`/workspaces/${workspaceId}/publish`, req);
     return data;
   },
 
-  listPublications: async (environmentId: string): Promise<Publication[]> => {
-    const { data } = await apiClient.get(`/environments/${environmentId}/publications`);
+  listPublications: async (workspaceId: string): Promise<Publication[]> => {
+    const { data } = await apiClient.get(`/workspaces/${workspaceId}/publications`);
     return data;
   },
 };

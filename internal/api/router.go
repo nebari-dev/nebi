@@ -82,7 +82,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	}
 
 	// Initialize handlers
-	envHandler := handlers.NewEnvironmentHandler(db, q, exec)
+	wsHandler := handlers.NewWorkspaceHandler(db, q, exec)
 	jobHandler := handlers.NewJobHandler(db, logBroker, valkeyClient)
 
 	// Protected routes (require authentication)
@@ -92,42 +92,42 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		// User info
 		protected.GET("/auth/me", handlers.GetCurrentUser(authenticator))
 
-		// Environment endpoints
-		protected.GET("/environments", envHandler.ListEnvironments)
-		protected.POST("/environments", envHandler.CreateEnvironment)
+		// Workspace endpoints
+		protected.GET("/workspaces", wsHandler.ListWorkspaces)
+		protected.POST("/workspaces", wsHandler.CreateWorkspace)
 
-		// Per-environment operations with RBAC permission checks
-		env := protected.Group("/environments/:id")
+		// Per-workspace operations with RBAC permission checks
+		ws := protected.Group("/workspaces/:id")
 		{
 			// Read operations (require read permission)
-			env.GET("", middleware.RequireEnvironmentAccess("read"), envHandler.GetEnvironment)
-			env.GET("/packages", middleware.RequireEnvironmentAccess("read"), envHandler.ListPackages)
-			env.GET("/pixi-toml", middleware.RequireEnvironmentAccess("read"), envHandler.GetPixiToml)
-			env.GET("/collaborators", middleware.RequireEnvironmentAccess("read"), envHandler.ListCollaborators)
+			ws.GET("", middleware.RequireWorkspaceAccess("read"), wsHandler.GetWorkspace)
+			ws.GET("/packages", middleware.RequireWorkspaceAccess("read"), wsHandler.ListPackages)
+			ws.GET("/pixi-toml", middleware.RequireWorkspaceAccess("read"), wsHandler.GetPixiToml)
+			ws.GET("/collaborators", middleware.RequireWorkspaceAccess("read"), wsHandler.ListCollaborators)
 
 			// Version operations (read permission)
-			env.GET("/versions", middleware.RequireEnvironmentAccess("read"), envHandler.ListVersions)
-			env.GET("/versions/:version", middleware.RequireEnvironmentAccess("read"), envHandler.GetVersion)
-			env.GET("/versions/:version/pixi-lock", middleware.RequireEnvironmentAccess("read"), envHandler.DownloadLockFile)
-			env.GET("/versions/:version/pixi-toml", middleware.RequireEnvironmentAccess("read"), envHandler.DownloadManifestFile)
+			ws.GET("/versions", middleware.RequireWorkspaceAccess("read"), wsHandler.ListVersions)
+			ws.GET("/versions/:version", middleware.RequireWorkspaceAccess("read"), wsHandler.GetVersion)
+			ws.GET("/versions/:version/pixi-lock", middleware.RequireWorkspaceAccess("read"), wsHandler.DownloadLockFile)
+			ws.GET("/versions/:version/pixi-toml", middleware.RequireWorkspaceAccess("read"), wsHandler.DownloadManifestFile)
 
 			// Write operations (require write permission)
-			env.DELETE("", middleware.RequireEnvironmentAccess("write"), envHandler.DeleteEnvironment)
-			env.POST("/packages", middleware.RequireEnvironmentAccess("write"), envHandler.InstallPackages)
-			env.DELETE("/packages/:package", middleware.RequireEnvironmentAccess("write"), envHandler.RemovePackages)
-			env.POST("/rollback", middleware.RequireEnvironmentAccess("write"), envHandler.RollbackToVersion)
+			ws.DELETE("", middleware.RequireWorkspaceAccess("write"), wsHandler.DeleteWorkspace)
+			ws.POST("/packages", middleware.RequireWorkspaceAccess("write"), wsHandler.InstallPackages)
+			ws.DELETE("/packages/:package", middleware.RequireWorkspaceAccess("write"), wsHandler.RemovePackages)
+			ws.POST("/rollback", middleware.RequireWorkspaceAccess("write"), wsHandler.RollbackToVersion)
 
 			// Sharing operations (owner only - checked in handler)
-			env.POST("/share", envHandler.ShareEnvironment)
-			env.DELETE("/share/:user_id", envHandler.UnshareEnvironment)
+			ws.POST("/share", wsHandler.ShareWorkspace)
+			ws.DELETE("/share/:user_id", wsHandler.UnshareWorkspace)
 
 			// Tags (read permission)
-			env.GET("/tags", middleware.RequireEnvironmentAccess("read"), envHandler.ListTags)
+			ws.GET("/tags", middleware.RequireWorkspaceAccess("read"), wsHandler.ListTags)
 
 			// Push and publish operations (require write permission)
-			env.POST("/push", middleware.RequireEnvironmentAccess("write"), envHandler.PushVersion)
-			env.POST("/publish", middleware.RequireEnvironmentAccess("write"), envHandler.PublishEnvironment)
-			env.GET("/publications", middleware.RequireEnvironmentAccess("read"), envHandler.ListPublications)
+			ws.POST("/push", middleware.RequireWorkspaceAccess("write"), wsHandler.PushVersion)
+			ws.POST("/publish", middleware.RequireWorkspaceAccess("write"), wsHandler.PublishWorkspace)
+			ws.GET("/publications", middleware.RequireWorkspaceAccess("read"), wsHandler.ListPublications)
 		}
 
 		// Job endpoints

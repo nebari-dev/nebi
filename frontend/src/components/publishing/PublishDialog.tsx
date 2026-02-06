@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { usePublicRegistries, usePublishEnvironment, usePublications } from '@/hooks/useRegistries';
+import { usePublicRegistries, usePublishWorkspace, usePublications } from '@/hooks/useRegistries';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,7 +48,7 @@ const suggestNextTag = (existingTags: string[]): string => {
 export const PublishDialog = ({ open, onOpenChange, environmentId, environmentName }: PublishDialogProps) => {
   const { data: registries, isLoading: registriesLoading } = usePublicRegistries();
   const { data: publications, isLoading: publicationsLoading } = usePublications(environmentId);
-  const publishMutation = usePublishEnvironment();
+  const publishMutation = usePublishWorkspace();
 
   const [selectedRegistry, setSelectedRegistry] = useState('');
   const [repository, setRepository] = useState('');
@@ -75,7 +75,7 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
         setSelectedRegistry(defaultRegistry.id);
 
         // Auto-populate repository based on default registry's default_repository
-        // Append first 8 chars of environment ID to avoid collisions
+        // Append first 8 chars of workspace ID to avoid collisions
         const envIdSuffix = environmentId.slice(0, 8);
         const normalizedName = normalizeRepoName(environmentName);
         if (defaultRegistry.default_repository) {
@@ -131,7 +131,7 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
 
     try {
       await publishMutation.mutateAsync({
-        environmentId,
+        workspaceId: environmentId,
         data: {
           registry_id: selectedRegistry,
           repository: repository.trim(),
@@ -146,7 +146,7 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
       }, 2000);
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage = error?.response?.data?.error || 'Failed to publish environment. Please try again.';
+      const errorMessage = error?.response?.data?.error || 'Failed to publish workspace. Please try again.';
       setError(errorMessage);
       console.error('Failed to publish:', err);
     }
@@ -164,9 +164,9 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Publish Environment to OCI Registry</DialogTitle>
+          <DialogTitle>Publish Workspace to OCI Registry</DialogTitle>
           <DialogDescription>
-            Publish the environment's pixi.toml and pixi.lock files as an OCI artifact.
+            Publish the workspace's pixi.toml and pixi.lock files as an OCI artifact.
           </DialogDescription>
         </DialogHeader>
 

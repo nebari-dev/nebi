@@ -32,10 +32,10 @@ func getAppDataDir() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		baseDir = filepath.Join(homeDir, "Library", "Application Support", "Nebi")
+		baseDir = filepath.Join(homeDir, "Library", "Application Support", "nebi")
 	case "windows":
 		// Windows: %APPDATA%\Nebi
-		baseDir = filepath.Join(os.Getenv("APPDATA"), "Nebi")
+		baseDir = filepath.Join(os.Getenv("APPDATA"), "nebi")
 	default:
 		// Linux: ~/.local/share/nebi
 		homeDir, err := os.UserHomeDir()
@@ -103,9 +103,12 @@ func (a *App) startup(ctx context.Context) {
 	logToFile(fmt.Sprintf("Using database: %s", dbPath))
 
 	// Set storage directory to app data dir (fixes read-only file system error)
-	storageDir := filepath.Join(dataDir, "environments")
-	os.Setenv("NEBI_STORAGE_ENVIRONMENTS_DIR", storageDir)
+	storageDir := filepath.Join(dataDir, "workspaces")
+	os.Setenv("NEBI_STORAGE_DIR", storageDir)
 	logToFile(fmt.Sprintf("Using storage: %s", storageDir))
+
+	// Ensure desktop app runs in local mode
+	os.Setenv("NEBI_MODE", "local")
 
 	// Load config
 	cfg, err := config.Load()

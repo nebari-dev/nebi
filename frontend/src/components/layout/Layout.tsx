@@ -1,15 +1,21 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
+import { useModeStore } from '@/store/modeStore';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import { Button } from '@/components/ui/button';
-import { LogOut, Boxes, ListTodo, Shield } from 'lucide-react';
+import { LogOut, Boxes, ListTodo, Shield, Settings } from 'lucide-react';
 import { useState } from 'react';
 
 export const Layout = () => {
   const { user, clearAuth } = useAuthStore();
   const navigate = useNavigate();
   const { data: isAdmin } = useIsAdmin();
+  const mode = useModeStore((state) => state.mode);
+  const features = useModeStore((state) => state.features);
   const [avatarError, setAvatarError] = useState(false);
+
+  const isLocal = mode === 'local';
+  const showAdmin = !isLocal && isAdmin && features.userManagement;
 
   const handleLogout = () => {
     clearAuth();
@@ -50,7 +56,20 @@ export const Layout = () => {
                     </Button>
                   )}
                 </NavLink>
-                {isAdmin && (
+                {isLocal && (
+                  <NavLink to="/settings">
+                    {({ isActive }) => (
+                      <Button
+                        variant={isActive ? 'secondary' : 'ghost'}
+                        className="gap-2"
+                      >
+                        <Settings className="h-4 w-4" />
+                        Settings
+                      </Button>
+                    )}
+                  </NavLink>
+                )}
+                {showAdmin && (
                   <NavLink to="/admin">
                     {({ isActive }) => (
                       <Button
@@ -65,30 +84,32 @@ export const Layout = () => {
                 )}
               </nav>
             </div>
-            <div className="flex items-center gap-4">
-              {user?.avatar_url && !avatarError ? (
-                <img
-                  src={user.avatar_url}
-                  alt={user.username}
-                  className="h-8 w-8 rounded-full"
-                  referrerPolicy="no-referrer-when-downgrade"
-                  crossOrigin="anonymous"
-                  onError={() => setAvatarError(true)}
-                />
-              ) : (
-                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  <span className="text-sm font-medium text-primary">
-                    {user?.username?.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-              )}
-              <span className="text-sm font-medium text-foreground">
-                {user?.username}
-              </span>
-              <Button variant="ghost" size="icon" onClick={handleLogout}>
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </div>
+            {!isLocal && (
+              <div className="flex items-center gap-4">
+                {user?.avatar_url && !avatarError ? (
+                  <img
+                    src={user.avatar_url}
+                    alt={user.username}
+                    className="h-8 w-8 rounded-full"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    crossOrigin="anonymous"
+                    onError={() => setAvatarError(true)}
+                  />
+                ) : (
+                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                    <span className="text-sm font-medium text-primary">
+                      {user?.username?.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                )}
+                <span className="text-sm font-medium text-foreground">
+                  {user?.username}
+                </span>
+                <Button variant="ghost" size="icon" onClick={handleLogout}>
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </header>

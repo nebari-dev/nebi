@@ -19,18 +19,16 @@ import (
 	"time"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
-	"github.com/nebari-dev/nebi/internal/localstore"
 	"github.com/nebari-dev/nebi/internal/server"
+	"github.com/nebari-dev/nebi/internal/store"
 )
 
 // e2eEnv holds the test environment state.
 var e2eEnv struct {
-	serverURL  string
-	token      string
-	server2URL string
-	token2     string
-	dataDir    string
-	configDir  string
+	serverURL string
+	token     string
+	dataDir   string
+	configDir string
 }
 
 // findFreePort returns a free TCP port on localhost.
@@ -66,22 +64,16 @@ func waitForHealth(url string, serverErr <-chan error, w io.Writer) {
 }
 
 func TestMain(m *testing.M) {
-	port1, err := findFreePort()
+	port, err := findFreePort()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "E2E: failed to find free port: %v\n", err)
-		os.Exit(1)
-	}
-	port2, err := findFreePort()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "E2E: failed to find free port for server 2: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Create temp dirs
 	dbDir, _ := os.MkdirTemp("", "nebi-e2e-db-*")
 	defer os.RemoveAll(dbDir)
-	dbPath1 := filepath.Join(dbDir, "e2e1.db")
-	dbPath2 := filepath.Join(dbDir, "e2e2.db")
+	dbPath := filepath.Join(dbDir, "e2e.db")
 
 	e2eEnv.dataDir, _ = os.MkdirTemp("", "nebi-e2e-data-*")
 	e2eEnv.configDir, _ = os.MkdirTemp("", "nebi-e2e-config-*")
@@ -108,60 +100,34 @@ func TestMain(m *testing.M) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// --- Start server 1 ---
-	os.Setenv("NEBI_SERVER_PORT", fmt.Sprintf("%d", port1))
-	os.Setenv("NEBI_DATABASE_DSN", dbPath1)
+	os.Setenv("NEBI_SERVER_PORT", fmt.Sprintf("%d", port))
+	os.Setenv("NEBI_DATABASE_DSN", dbPath)
 
-	server1Err := make(chan error, 1)
+	serverErr := make(chan error, 1)
 	go func() {
-		server1Err <- server.Run(ctx, server.Config{
-			Port:    port1,
+		serverErr <- server.Run(ctx, server.Config{
+			Port:    port,
 			Mode:    "both",
 			Version: "e2e-test",
 		})
 	}()
 
-	e2eEnv.serverURL = fmt.Sprintf("http://127.0.0.1:%d", port1)
-	waitForHealth(e2eEnv.serverURL+"/api/v1/health", server1Err, origStderr)
-
-	// --- Start server 2 (change DSN env before config.Load reads it) ---
-	os.Setenv("NEBI_SERVER_PORT", fmt.Sprintf("%d", port2))
-	os.Setenv("NEBI_DATABASE_DSN", dbPath2)
-
-	server2Err := make(chan error, 1)
-	go func() {
-		server2Err <- server.Run(ctx, server.Config{
-			Port:    port2,
-			Mode:    "both",
-			Version: "e2e-test-2",
-		})
-	}()
-
-	e2eEnv.server2URL = fmt.Sprintf("http://127.0.0.1:%d", port2)
-	waitForHealth(e2eEnv.server2URL+"/api/v1/health", server2Err, origStderr)
+	e2eEnv.serverURL = fmt.Sprintf("http://127.0.0.1:%d", port)
+	waitForHealth(e2eEnv.serverURL+"/api/v1/health", serverErr, origStderr)
 
 	// Restore stdout/stderr for test output
 	os.Stdout = origStdout
 	os.Stderr = origStderr
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-	// Login to server 1
-	client1 := cliclient.NewWithoutAuth(e2eEnv.serverURL)
-	loginResp1, err := client1.Login(context.Background(), "admin", "adminpass")
+	// Login to server
+	client := cliclient.NewWithoutAuth(e2eEnv.serverURL)
+	loginResp, err := client.Login(context.Background(), "admin", "adminpass")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "E2E: login to server 1 failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "E2E: login failed: %v\n", err)
 		os.Exit(1)
 	}
-	e2eEnv.token = loginResp1.Token
-
-	// Login to server 2
-	client2 := cliclient.NewWithoutAuth(e2eEnv.server2URL)
-	loginResp2, err := client2.Login(context.Background(), "admin", "adminpass")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "E2E: login to server 2 failed: %v\n", err)
-		os.Exit(1)
-	}
-	e2eEnv.token2 = loginResp2.Token
+	e2eEnv.token = loginResp.Token
 
 	code := m.Run()
 
@@ -183,23 +149,19 @@ type runResult struct {
 func resetFlags() {
 	// diff.go
 	diffLock = false
-	diffServer = ""
 	// pull.go
-	pullServer = ""
 	pullOutput = "."
 	pullGlobal = ""
 	pullForce = false
 	// push.go
-	pushServer = ""
 	pushForce = false
 	// workspace.go
-	wsListServer = ""
-	wsTagsServer = ""
-	wsRemoveServer = ""
+	wsListRemote = false
+	wsRemoveRemote = false
 	// login.go
 	loginToken = ""
-	// registry.go
-	regListServer = ""
+	// publish.go
+	publishRegistry = ""
 }
 
 // runCLI executes a CLI command in-process and captures output.
@@ -264,73 +226,30 @@ func writePixiFiles(t *testing.T, dir, toml, lock string) {
 	os.WriteFile(filepath.Join(dir, "pixi.lock"), []byte(lock), 0644)
 }
 
-// setupLocalStore configures the localstore to use test-specific directories
+// setupLocalStore configures the store to use test-specific directories
 // and pre-registers the e2e server with credentials.
 // Each test gets its own data dir to avoid shared state between tests.
 func setupLocalStore(t *testing.T) {
 	t.Helper()
 
-	// Create a fresh data dir for each test to avoid shared state
 	dataDir := t.TempDir()
-
-	// Point localstore at test dirs
 	os.Setenv("NEBI_DATA_DIR", dataDir)
-	os.Setenv("NEBI_CONFIG_DIR", e2eEnv.configDir)
 
-	// Register server in index
-	store := localstore.NewStoreWithDir(dataDir)
-	idx, _ := store.LoadIndex()
-	idx.Servers["e2e"] = e2eEnv.serverURL
-	store.SaveIndex(idx)
-
-	// Store credentials (now in data dir per XDG spec)
-	creds := &localstore.Credentials{
-		Servers: map[string]*localstore.ServerCredential{
-			e2eEnv.serverURL: {
-				Token:    e2eEnv.token,
-				Username: "admin",
-			},
-		},
+	s, err := store.Open(dataDir)
+	if err != nil {
+		t.Fatalf("failed to open store: %v", err)
 	}
-	localstore.SaveCredentialsTo(filepath.Join(dataDir, "credentials.json"), creds)
+	defer s.Close()
 
-	// Set default server in config
-	cfg := &localstore.Config{DefaultServer: "e2e"}
-	localstore.SaveConfig(cfg)
-}
-
-// setupLocalStoreTwoServers configures the localstore with both e2e servers.
-// "e2e" is the default server (server 1), "e2e2" is server 2.
-func setupLocalStoreTwoServers(t *testing.T) {
-	t.Helper()
-
-	dataDir := t.TempDir()
-
-	os.Setenv("NEBI_DATA_DIR", dataDir)
-	os.Setenv("NEBI_CONFIG_DIR", e2eEnv.configDir)
-
-	store := localstore.NewStoreWithDir(dataDir)
-	idx, _ := store.LoadIndex()
-	idx.Servers["e2e"] = e2eEnv.serverURL
-	idx.Servers["e2e2"] = e2eEnv.server2URL
-	store.SaveIndex(idx)
-
-	creds := &localstore.Credentials{
-		Servers: map[string]*localstore.ServerCredential{
-			e2eEnv.serverURL: {
-				Token:    e2eEnv.token,
-				Username: "admin",
-			},
-			e2eEnv.server2URL: {
-				Token:    e2eEnv.token2,
-				Username: "admin",
-			},
-		},
+	if err := s.SaveServerURL(e2eEnv.serverURL); err != nil {
+		t.Fatalf("failed to save server URL: %v", err)
 	}
-	localstore.SaveCredentialsTo(filepath.Join(dataDir, "credentials.json"), creds)
-
-	cfg := &localstore.Config{DefaultServer: "e2e"}
-	localstore.SaveConfig(cfg)
+	if err := s.SaveCredentials(&store.Credentials{
+		Token:    e2eEnv.token,
+		Username: "admin",
+	}); err != nil {
+		t.Fatalf("failed to save credentials: %v", err)
+	}
 }
 
 // --- E2E Tests ---
@@ -420,7 +339,7 @@ func TestE2E_DiffAgainstServer(t *testing.T) {
 	serverLock := "version: 6\npackages: []\n"
 	writePixiFiles(t, srcDir, serverToml, serverLock)
 
-	res := runCLI(t, srcDir, "push", wsName+":"+tag, "-s", "e2e")
+	res := runCLI(t, srcDir, "push", wsName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -430,7 +349,7 @@ func TestE2E_DiffAgainstServer(t *testing.T) {
 	os.WriteFile(filepath.Join(srcDir, "pixi.toml"), []byte(localToml), 0644)
 
 	// Diff against server version
-	res = runCLI(t, srcDir, "diff", wsName+":"+tag, "-s", "e2e")
+	res = runCLI(t, srcDir, "diff", wsName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("diff failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -452,7 +371,7 @@ func TestE2E_PushAndPull(t *testing.T) {
 	writePixiFiles(t, srcDir, toml, lock)
 
 	// Push
-	res := runCLI(t, srcDir, "push", wsName+":"+tag, "-s", "e2e")
+	res := runCLI(t, srcDir, "push", wsName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -462,7 +381,7 @@ func TestE2E_PushAndPull(t *testing.T) {
 
 	// Pull to new directory
 	dstDir := t.TempDir()
-	res = runCLI(t, dstDir, "pull", wsName+":"+tag, "-s", "e2e")
+	res = runCLI(t, dstDir, "pull", wsName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("pull failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -497,7 +416,7 @@ func TestE2E_PushAutoCreatesWorkspace(t *testing.T) {
 		"version: 6\n",
 	)
 
-	res := runCLI(t, dir, "push", wsName+":"+tag, "-s", "e2e")
+	res := runCLI(t, dir, "push", wsName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -515,7 +434,7 @@ func TestE2E_PushRequiresTag(t *testing.T) {
 		"version: 6\n",
 	)
 
-	res := runCLI(t, dir, "push", "some-ws", "-s", "e2e")
+	res := runCLI(t, dir, "push", "some-ws")
 	if res.ExitCode == 0 {
 		t.Fatal("expected non-zero exit when tag is missing")
 	}
@@ -526,7 +445,7 @@ func TestE2E_PushRequiresPixiToml(t *testing.T) {
 
 	dir := t.TempDir() // empty
 
-	res := runCLI(t, dir, "push", "some-ws:v1", "-s", "e2e")
+	res := runCLI(t, dir, "push", "some-ws:v1")
 	if res.ExitCode == 0 {
 		t.Fatal("expected non-zero exit when pixi.toml missing")
 	}
@@ -536,7 +455,7 @@ func TestE2E_PullNotFound(t *testing.T) {
 	setupLocalStore(t)
 
 	dir := t.TempDir()
-	res := runCLI(t, dir, "pull", "nonexistent-ws:v1", "-s", "e2e")
+	res := runCLI(t, dir, "pull", "nonexistent-ws:v1")
 	if res.ExitCode == 0 {
 		t.Fatal("expected non-zero exit for nonexistent workspace")
 	}
@@ -553,14 +472,14 @@ func TestE2E_PullBadTag(t *testing.T) {
 		"[project]\nname = \"badtag\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
 		"version: 6\n",
 	)
-	res := runCLI(t, srcDir, "push", wsName+":v1", "-s", "e2e")
+	res := runCLI(t, srcDir, "push", wsName+":v1")
 	if res.ExitCode != 0 {
 		t.Fatalf("setup push failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Pull nonexistent tag
 	dstDir := t.TempDir()
-	res = runCLI(t, dstDir, "pull", wsName+":nonexistent", "-s", "e2e")
+	res = runCLI(t, dstDir, "pull", wsName+":nonexistent")
 	if res.ExitCode == 0 {
 		t.Fatal("expected non-zero exit for nonexistent tag")
 	}
@@ -578,7 +497,7 @@ func TestE2E_PushMultipleVersions(t *testing.T) {
 	lock1 := "version: 6\npackages:\n  - name: numpy\n    version: \"1.0\"\n"
 	writePixiFiles(t, srcDir, toml1, lock1)
 
-	res := runCLI(t, srcDir, "push", wsName+":v1", "-s", "e2e")
+	res := runCLI(t, srcDir, "push", wsName+":v1")
 	if res.ExitCode != 0 {
 		t.Fatalf("push v1 failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -588,14 +507,14 @@ func TestE2E_PushMultipleVersions(t *testing.T) {
 	lock2 := "version: 6\npackages:\n  - name: scipy\n    version: \"1.12\"\n"
 	writePixiFiles(t, srcDir, toml2, lock2)
 
-	res = runCLI(t, srcDir, "push", wsName+":v2", "-s", "e2e")
+	res = runCLI(t, srcDir, "push", wsName+":v2")
 	if res.ExitCode != 0 {
 		t.Fatalf("push v2 failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Pull v1 and verify
 	dir1 := t.TempDir()
-	res = runCLI(t, dir1, "pull", wsName+":v1", "-s", "e2e")
+	res = runCLI(t, dir1, "pull", wsName+":v1")
 	if res.ExitCode != 0 {
 		t.Fatalf("pull v1 failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -606,7 +525,7 @@ func TestE2E_PushMultipleVersions(t *testing.T) {
 
 	// Pull v2 and verify
 	dir2 := t.TempDir()
-	res = runCLI(t, dir2, "pull", wsName+":v2", "-s", "e2e")
+	res = runCLI(t, dir2, "pull", wsName+":v2")
 	if res.ExitCode != 0 {
 		t.Fatalf("pull v2 failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -616,39 +535,12 @@ func TestE2E_PushMultipleVersions(t *testing.T) {
 	}
 }
 
-func TestE2E_ServerAddListRemove(t *testing.T) {
-	setupLocalStore(t)
-
-	dir := t.TempDir()
-
-	// Add
-	res := runCLI(t, dir, "server", "add", "testsvr", "https://test.example.com")
-	if res.ExitCode != 0 {
-		t.Fatalf("server add failed: %s %s", res.Stdout, res.Stderr)
-	}
-
-	// List
-	res = runCLI(t, dir, "server", "list")
-	if res.ExitCode != 0 {
-		t.Fatalf("server list failed: %s %s", res.Stdout, res.Stderr)
-	}
-	if !strings.Contains(res.Stdout, "testsvr") {
-		t.Errorf("expected 'testsvr' in list, got: %s", res.Stdout)
-	}
-
-	// Remove
-	res = runCLI(t, dir, "server", "remove", "testsvr")
-	if res.ExitCode != 0 {
-		t.Fatalf("server remove failed: %s %s", res.Stdout, res.Stderr)
-	}
-}
-
 func TestE2E_LoginWithToken(t *testing.T) {
 	setupLocalStore(t)
 
 	dir := t.TempDir()
 
-	res := runCLI(t, dir, "login", "e2e", "--token", "fake-token-123")
+	res := runCLI(t, dir, "login", e2eEnv.serverURL, "--token", "fake-token-123")
 	if res.ExitCode != 0 {
 		t.Fatalf("login failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -669,14 +561,14 @@ func TestE2E_PullGlobal(t *testing.T) {
 	lock := "version: 6\npackages: []\n"
 	writePixiFiles(t, srcDir, toml, lock)
 
-	res := runCLI(t, srcDir, "push", wsName+":"+tag, "-s", "e2e")
+	res := runCLI(t, srcDir, "push", wsName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Pull as global workspace
 	tmpDir := t.TempDir()
-	res = runCLI(t, tmpDir, "pull", wsName+":"+tag, "--global", "my-global-env", "-s", "e2e")
+	res = runCLI(t, tmpDir, "pull", wsName+":"+tag, "--global", "my-global-env")
 	if res.ExitCode != 0 {
 		t.Fatalf("pull --global failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -697,13 +589,13 @@ func TestE2E_PullGlobal(t *testing.T) {
 	}
 
 	// Pulling same name without --force should fail
-	res = runCLI(t, tmpDir, "pull", wsName+":"+tag, "--global", "my-global-env", "-s", "e2e")
+	res = runCLI(t, tmpDir, "pull", wsName+":"+tag, "--global", "my-global-env")
 	if res.ExitCode == 0 {
 		t.Fatal("expected non-zero exit when global workspace already exists without --force")
 	}
 
 	// With --force should succeed
-	res = runCLI(t, tmpDir, "pull", wsName+":"+tag, "--global", "my-global-env", "--force", "-s", "e2e")
+	res = runCLI(t, tmpDir, "pull", wsName+":"+tag, "--global", "my-global-env", "--force")
 	if res.ExitCode != 0 {
 		t.Fatalf("pull --global --force failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -809,13 +701,13 @@ func TestE2E_WorkspaceRemoveServer(t *testing.T) {
 		"version: 6\n",
 	)
 
-	res := runCLI(t, srcDir, "push", wsName+":"+tag, "-s", "e2e")
+	res := runCLI(t, srcDir, "push", wsName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Verify it exists on the server
-	res = runCLI(t, srcDir, "workspace", "list", "-s", "e2e")
+	res = runCLI(t, srcDir, "workspace", "list", "--remote")
 	if res.ExitCode != 0 {
 		t.Fatalf("workspace list failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -824,9 +716,9 @@ func TestE2E_WorkspaceRemoveServer(t *testing.T) {
 	}
 
 	// Remove from server
-	res = runCLI(t, srcDir, "workspace", "remove", wsName, "-s", "e2e")
+	res = runCLI(t, srcDir, "workspace", "remove", wsName, "--remote")
 	if res.ExitCode != 0 {
-		t.Fatalf("workspace remove -s failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+		t.Fatalf("workspace remove --remote failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
 	if !strings.Contains(res.Stderr, "Deleted") {
 		t.Errorf("expected 'Deleted' message, got stderr: %s", res.Stderr)
@@ -835,7 +727,7 @@ func TestE2E_WorkspaceRemoveServer(t *testing.T) {
 	// Wait for async deletion to complete, then verify it's gone
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		res = runCLI(t, srcDir, "workspace", "list", "-s", "e2e")
+		res = runCLI(t, srcDir, "workspace", "list", "--remote")
 		if res.ExitCode != 0 {
 			t.Fatalf("workspace list failed: %s %s", res.Stdout, res.Stderr)
 		}
@@ -964,7 +856,7 @@ func TestE2E_RegistryListEmpty(t *testing.T) {
 	dir := t.TempDir()
 
 	// No registries configured, should get empty message
-	res := runCLI(t, dir, "registry", "list", "-s", "e2e")
+	res := runCLI(t, dir, "registry", "list")
 	if res.ExitCode != 0 {
 		t.Fatalf("registry list failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -978,7 +870,7 @@ func TestE2E_WorkspacePublishRequiresTag(t *testing.T) {
 
 	dir := t.TempDir()
 
-	res := runCLI(t, dir, "workspace", "publish", "some-ws", "-s", "e2e")
+	res := runCLI(t, dir, "publish", "some-ws")
 	if res.ExitCode == 0 {
 		t.Fatal("expected non-zero exit when tag is missing")
 	}
@@ -989,7 +881,7 @@ func TestE2E_WorkspacePublishNotFound(t *testing.T) {
 
 	dir := t.TempDir()
 
-	res := runCLI(t, dir, "workspace", "publish", "nonexistent:v1", "-s", "e2e")
+	res := runCLI(t, dir, "publish", "nonexistent:v1")
 	if res.ExitCode == 0 {
 		t.Fatal("expected non-zero exit for nonexistent workspace")
 	}
@@ -1006,13 +898,13 @@ func TestE2E_WorkspacePublishNoRegistry(t *testing.T) {
 		"version: 6\n",
 	)
 
-	res := runCLI(t, srcDir, "push", wsName+":v1", "-s", "e2e")
+	res := runCLI(t, srcDir, "push", wsName+":v1")
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Publish should fail because no registry is configured
-	res = runCLI(t, srcDir, "workspace", "publish", wsName+":v1", "-s", "e2e")
+	res = runCLI(t, srcDir, "publish", wsName+":v1")
 	if res.ExitCode == 0 {
 		t.Fatal("expected non-zero exit when no registry configured")
 	}
@@ -1071,7 +963,7 @@ func TestE2E_PushSavesOrigin(t *testing.T) {
 	}
 
 	// Push
-	res = runCLI(t, dir, "push", wsName+":"+tag, "-s", "e2e")
+	res = runCLI(t, dir, "push", wsName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -1105,13 +997,13 @@ func TestE2E_PushColonTagShorthand(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, dir, "push", wsName+":v1", "-s", "e2e")
+	res = runCLI(t, dir, "push", wsName+":v1")
 	if res.ExitCode != 0 {
 		t.Fatalf("push v1 failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
 
 	// Push with :tag shorthand (should reuse workspace name from origin)
-	res = runCLI(t, dir, "push", ":v2", "-s", "e2e")
+	res = runCLI(t, dir, "push", ":v2")
 	if res.ExitCode != 0 {
 		t.Fatalf("push :v2 failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -1139,7 +1031,7 @@ func TestE2E_PushColonTagNoOrigin(t *testing.T) {
 	}
 
 	// Push with :tag should fail — no origin
-	res = runCLI(t, dir, "push", ":v1", "-s", "e2e")
+	res = runCLI(t, dir, "push", ":v1")
 	if res.ExitCode == 0 {
 		t.Fatal("expected non-zero exit when no origin set for :tag shorthand")
 	}
@@ -1162,7 +1054,7 @@ func TestE2E_PullNoArgs(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, dir, "push", wsName+":"+tag, "-s", "e2e")
+	res = runCLI(t, dir, "push", wsName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -1218,13 +1110,13 @@ func TestE2E_PullOverwritePromptDefaultsNo(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, dir, "push", wsName+":"+tag, "-s", "e2e")
+	res = runCLI(t, dir, "push", wsName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Pull into same dir WITHOUT --force (stdin is closed/empty, so prompt defaults to N → abort)
-	res = runCLI(t, dir, "pull", wsName+":"+tag, "-s", "e2e")
+	res = runCLI(t, dir, "pull", wsName+":"+tag)
 	// Should exit 0 because abort is not an error — it prints "Aborted." and returns nil
 	if !strings.Contains(res.Stderr, "Aborted") {
 		t.Errorf("expected 'Aborted' when overwrite prompt defaults to no, got stderr: %s", res.Stderr)
@@ -1248,13 +1140,13 @@ func TestE2E_PullForceSkipsPrompt(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, dir, "push", wsName+":"+tag, "-s", "e2e")
+	res = runCLI(t, dir, "push", wsName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Pull with --force should succeed without prompt
-	res = runCLI(t, dir, "pull", wsName+":"+tag, "-s", "e2e", "--force")
+	res = runCLI(t, dir, "pull", wsName+":"+tag, "--force")
 	if res.ExitCode != 0 {
 		t.Fatalf("pull --force failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -1280,7 +1172,7 @@ func TestE2E_DiffNoArgs(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, dir, "push", wsName+":"+tag, "-s", "e2e")
+	res = runCLI(t, dir, "push", wsName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -1359,13 +1251,13 @@ func TestE2E_Status(t *testing.T) {
 	if !strings.Contains(res.Stdout, "Workspace:") {
 		t.Errorf("expected 'Workspace:' in status, got: %s", res.Stdout)
 	}
-	if !strings.Contains(res.Stdout, "No origins") {
-		t.Errorf("expected 'No origins' in status, got: %s", res.Stdout)
+	if !strings.Contains(res.Stdout, "No origin") {
+		t.Errorf("expected 'No origin' in status, got: %s", res.Stdout)
 	}
 
 	// Push to establish origin
 	wsName := "e2e-status-ws"
-	res = runCLI(t, dir, "push", wsName+":v1", "-s", "e2e")
+	res = runCLI(t, dir, "push", wsName+":v1")
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -1375,8 +1267,8 @@ func TestE2E_Status(t *testing.T) {
 	if res.ExitCode != 0 {
 		t.Fatalf("status failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
-	if !strings.Contains(res.Stdout, "Origins:") {
-		t.Errorf("expected 'Origins:' section, got: %s", res.Stdout)
+	if !strings.Contains(res.Stdout, "Origin:") {
+		t.Errorf("expected 'Origin:' section, got: %s", res.Stdout)
 	}
 	if !strings.Contains(res.Stdout, wsName+":v1") {
 		t.Errorf("expected origin ref in status, got: %s", res.Stdout)
@@ -1401,7 +1293,7 @@ func TestE2E_StatusLocalModification(t *testing.T) {
 
 	// Push
 	wsName := "e2e-status-mod"
-	res = runCLI(t, dir, "push", wsName+":v1", "-s", "e2e")
+	res = runCLI(t, dir, "push", wsName+":v1")
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -1436,7 +1328,7 @@ func TestE2E_PullSavesOrigin(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, srcDir, "push", wsName+":"+tag, "-s", "e2e")
+	res = runCLI(t, srcDir, "push", wsName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -1450,7 +1342,7 @@ func TestE2E_PullSavesOrigin(t *testing.T) {
 		t.Fatalf("init dst failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, dstDir, "pull", wsName+":"+tag, "-s", "e2e", "--force")
+	res = runCLI(t, dstDir, "pull", wsName+":"+tag, "--force")
 	if res.ExitCode != 0 {
 		t.Fatalf("pull failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -1468,239 +1360,10 @@ func TestE2E_PullSavesOrigin(t *testing.T) {
 	}
 }
 
-// --- Multi-Server E2E Tests ---
-
-func TestE2E_MultiServerPushBothOriginsInStatus(t *testing.T) {
-	setupLocalStoreTwoServers(t)
-
-	wsName := "e2e-multi-origins"
-	dir := t.TempDir()
-	toml := "[project]\nname = \"multi-origins\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
-	lock := "version: 6\n"
-	writePixiFiles(t, dir, toml, lock)
-
-	res := runCLI(t, dir, "init")
-	if res.ExitCode != 0 {
-		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
-	}
-
-	// Push to server 1
-	res = runCLI(t, dir, "push", wsName+":v1", "-s", "e2e")
-	if res.ExitCode != 0 {
-		t.Fatalf("push to e2e failed: %s %s", res.Stdout, res.Stderr)
-	}
-
-	// Push to server 2
-	res = runCLI(t, dir, "push", wsName+":v1", "-s", "e2e2")
-	if res.ExitCode != 0 {
-		t.Fatalf("push to e2e2 failed: %s %s", res.Stdout, res.Stderr)
-	}
-
-	// Status should show both origins
-	res = runCLI(t, dir, "status")
-	if res.ExitCode != 0 {
-		t.Fatalf("status failed: %s %s", res.Stdout, res.Stderr)
-	}
-	if !strings.Contains(res.Stdout, "e2e") {
-		t.Errorf("expected 'e2e' origin in status, got: %s", res.Stdout)
-	}
-	if !strings.Contains(res.Stdout, "e2e2") {
-		t.Errorf("expected 'e2e2' origin in status, got: %s", res.Stdout)
-	}
-}
-
-func TestE2E_MultiServerPullPreservesOtherOrigin(t *testing.T) {
-	setupLocalStoreTwoServers(t)
-
-	dir := t.TempDir()
-	toml := "[project]\nname = \"multi-pull\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
-	lock := "version: 6\n"
-	writePixiFiles(t, dir, toml, lock)
-
-	res := runCLI(t, dir, "init")
-	if res.ExitCode != 0 {
-		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
-	}
-
-	// Push to both servers
-	res = runCLI(t, dir, "push", "e2e-multi-pull:v1", "-s", "e2e")
-	if res.ExitCode != 0 {
-		t.Fatalf("push to e2e failed: %s %s", res.Stdout, res.Stderr)
-	}
-
-	res = runCLI(t, dir, "push", "e2e-multi-pull:v2", "-s", "e2e2")
-	if res.ExitCode != 0 {
-		t.Fatalf("push to e2e2 failed: %s %s", res.Stdout, res.Stderr)
-	}
-
-	// Pull from server 2 (should update e2e2 origin but preserve e2e origin)
-	res = runCLI(t, dir, "pull", "e2e-multi-pull:v2", "-s", "e2e2", "--force")
-	if res.ExitCode != 0 {
-		t.Fatalf("pull from e2e2 failed: %s %s", res.Stdout, res.Stderr)
-	}
-
-	// Status should show both origins
-	res = runCLI(t, dir, "status")
-	if res.ExitCode != 0 {
-		t.Fatalf("status failed: %s %s", res.Stdout, res.Stderr)
-	}
-	if !strings.Contains(res.Stdout, "e2e") {
-		t.Errorf("expected 'e2e' origin preserved after pull from e2e2, got: %s", res.Stdout)
-	}
-	if !strings.Contains(res.Stdout, "e2e2") {
-		t.Errorf("expected 'e2e2' origin in status, got: %s", res.Stdout)
-	}
-	// e2e origin should still show push action
-	// e2e2 origin should show pull action (most recent action on that server)
-}
-
-func TestE2E_MultiServerDiffNoArgsUsesDefaultServer(t *testing.T) {
-	setupLocalStoreTwoServers(t)
-
-	dir := t.TempDir()
-	toml := "[project]\nname = \"multi-diff\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
-	lock := "version: 6\n"
-	writePixiFiles(t, dir, toml, lock)
-
-	res := runCLI(t, dir, "init")
-	if res.ExitCode != 0 {
-		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
-	}
-
-	// Push to both servers
-	res = runCLI(t, dir, "push", "e2e-multi-diff:v1", "-s", "e2e")
-	if res.ExitCode != 0 {
-		t.Fatalf("push to e2e failed: %s %s", res.Stdout, res.Stderr)
-	}
-	res = runCLI(t, dir, "push", "e2e-multi-diff:v1", "-s", "e2e2")
-	if res.ExitCode != 0 {
-		t.Fatalf("push to e2e2 failed: %s %s", res.Stdout, res.Stderr)
-	}
-
-	// Modify local pixi.toml
-	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte(toml+"\n[dependencies]\nnumpy = \"*\"\n"), 0644)
-
-	// Diff with no args should use default server (e2e)
-	res = runCLI(t, dir, "diff")
-	if res.ExitCode != 0 {
-		t.Fatalf("diff failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
-	}
-	// Should show differences since we modified locally
-	combined := res.Stdout + res.Stderr
-	if !strings.Contains(combined, "numpy") {
-		t.Errorf("expected diff to show numpy change, got stdout: %s\nstderr: %s", res.Stdout, res.Stderr)
-	}
-}
-
-func TestE2E_MultiServerColonTagShorthand(t *testing.T) {
-	setupLocalStoreTwoServers(t)
-
-	dir := t.TempDir()
-	toml := "[project]\nname = \"multi-colon\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
-	lock := "version: 6\n"
-	writePixiFiles(t, dir, toml, lock)
-
-	res := runCLI(t, dir, "init")
-	if res.ExitCode != 0 {
-		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
-	}
-
-	// Push different workspace names to each server
-	res = runCLI(t, dir, "push", "ws-alpha:v1", "-s", "e2e")
-	if res.ExitCode != 0 {
-		t.Fatalf("push ws-alpha to e2e failed: %s %s", res.Stdout, res.Stderr)
-	}
-	res = runCLI(t, dir, "push", "ws-beta:v1", "-s", "e2e2")
-	if res.ExitCode != 0 {
-		t.Fatalf("push ws-beta to e2e2 failed: %s %s", res.Stdout, res.Stderr)
-	}
-
-	// :v2 on e2e should reuse ws-alpha
-	res = runCLI(t, dir, "push", ":v2", "-s", "e2e")
-	if res.ExitCode != 0 {
-		t.Fatalf("push :v2 to e2e failed: %s %s", res.Stdout, res.Stderr)
-	}
-	if !strings.Contains(res.Stderr, "ws-alpha") {
-		t.Errorf("expected 'ws-alpha' from e2e origin, got stderr: %s", res.Stderr)
-	}
-
-	// :v2 on e2e2 should reuse ws-beta
-	res = runCLI(t, dir, "push", ":v2", "-s", "e2e2")
-	if res.ExitCode != 0 {
-		t.Fatalf("push :v2 to e2e2 failed: %s %s", res.Stdout, res.Stderr)
-	}
-	if !strings.Contains(res.Stderr, "ws-beta") {
-		t.Errorf("expected 'ws-beta' from e2e2 origin, got stderr: %s", res.Stderr)
-	}
-}
-
-func TestE2E_MultiServerStatusSyncPerServer(t *testing.T) {
-	setupLocalStoreTwoServers(t)
-
-	dir := t.TempDir()
-	toml := "[project]\nname = \"multi-sync\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
-	lock := "version: 6\n"
-	writePixiFiles(t, dir, toml, lock)
-
-	res := runCLI(t, dir, "init")
-	if res.ExitCode != 0 {
-		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
-	}
-
-	// Push v1 to both servers
-	res = runCLI(t, dir, "push", "e2e-multi-sync:v1", "-s", "e2e")
-	if res.ExitCode != 0 {
-		t.Fatalf("push to e2e failed: %s %s", res.Stdout, res.Stderr)
-	}
-	res = runCLI(t, dir, "push", "e2e-multi-sync:v1", "-s", "e2e2")
-	if res.ExitCode != 0 {
-		t.Fatalf("push to e2e2 failed: %s %s", res.Stdout, res.Stderr)
-	}
-
-	// Both should be in sync initially
-	res = runCLI(t, dir, "status")
-	if res.ExitCode != 0 {
-		t.Fatalf("status failed: %s %s", res.Stdout, res.Stderr)
-	}
-	output := res.Stdout
-	if !strings.Contains(output, "e2e") || !strings.Contains(output, "e2e2") {
-		t.Errorf("expected both origins in status, got: %s", output)
-	}
-
-	// Modify local pixi.toml — now both origins are stale
-	modifiedToml := toml + "\n[dependencies]\nscipy = \"*\"\n"
-	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte(modifiedToml), 0644)
-
-	// Status should report local modification
-	res = runCLI(t, dir, "status")
-	if res.ExitCode != 0 {
-		t.Fatalf("status failed: %s %s", res.Stdout, res.Stderr)
-	}
-	if !strings.Contains(res.Stdout, "pixi.toml modified locally") {
-		t.Errorf("expected 'pixi.toml modified locally' after edit, got: %s", res.Stdout)
-	}
-
-	// Push updated version only to e2e — e2e origin hash now matches local
-	res = runCLI(t, dir, "push", "e2e-multi-sync:v2", "-s", "e2e")
-	if res.ExitCode != 0 {
-		t.Fatalf("push v2 to e2e failed: %s %s", res.Stdout, res.Stderr)
-	}
-
-	// Verify e2e origin updated to v2, e2e2 still at v1
-	res = runCLI(t, dir, "status")
-	if res.ExitCode != 0 {
-		t.Fatalf("status failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
-	}
-	output = res.Stdout
-	if !strings.Contains(output, "e2e-multi-sync:v2") {
-		t.Errorf("expected e2e origin at v2, got: %s", output)
-	}
-	if !strings.Contains(output, "e2e-multi-sync:v1") {
-		t.Errorf("expected e2e2 origin still at v1, got: %s", output)
-	}
-}
-
 func TestE2E_ShellAutoInit(t *testing.T) {
+	dataDir := t.TempDir()
+	os.Setenv("NEBI_DATA_DIR", dataDir)
+
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("[project]\nname = \"auto-init-test\"\n"), 0644)
 
@@ -1720,6 +1383,9 @@ func TestE2E_ShellAutoInit(t *testing.T) {
 }
 
 func TestE2E_RunAutoInit(t *testing.T) {
+	dataDir := t.TempDir()
+	os.Setenv("NEBI_DATA_DIR", dataDir)
+
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("[project]\nname = \"run-init-test\"\n"), 0644)
 
@@ -1737,6 +1403,9 @@ func TestE2E_RunAutoInit(t *testing.T) {
 }
 
 func TestE2E_ShellRejectsManifestPath(t *testing.T) {
+	dataDir := t.TempDir()
+	os.Setenv("NEBI_DATA_DIR", dataDir)
+
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("[project]\nname = \"test\"\n"), 0644)
 
@@ -1751,6 +1420,9 @@ func TestE2E_ShellRejectsManifestPath(t *testing.T) {
 }
 
 func TestE2E_RunRejectsManifestPath(t *testing.T) {
+	dataDir := t.TempDir()
+	os.Setenv("NEBI_DATA_DIR", dataDir)
+
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte("[project]\nname = \"test\"\n"), 0644)
 
@@ -1765,6 +1437,9 @@ func TestE2E_RunRejectsManifestPath(t *testing.T) {
 }
 
 func TestE2E_ShellNoPixiToml(t *testing.T) {
+	dataDir := t.TempDir()
+	os.Setenv("NEBI_DATA_DIR", dataDir)
+
 	dir := t.TempDir()
 
 	res := runCLI(t, dir, "shell")
@@ -1778,6 +1453,9 @@ func TestE2E_ShellNoPixiToml(t *testing.T) {
 }
 
 func TestE2E_RunNoPixiToml(t *testing.T) {
+	dataDir := t.TempDir()
+	os.Setenv("NEBI_DATA_DIR", dataDir)
+
 	dir := t.TempDir()
 
 	res := runCLI(t, dir, "run", "task")
@@ -1807,14 +1485,14 @@ func TestE2E_PullAutoTracksWorkspace(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, srcDir, "push", wsName+":"+tag, "-s", "e2e")
+	res = runCLI(t, srcDir, "push", wsName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Pull into a fresh, untracked directory (no nebi init)
 	dstDir := t.TempDir()
-	res = runCLI(t, dstDir, "pull", wsName+":"+tag, "-s", "e2e")
+	res = runCLI(t, dstDir, "pull", wsName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("pull failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -1853,7 +1531,7 @@ func TestE2E_PushAutoTracksWorkspace(t *testing.T) {
 	writePixiFiles(t, dir, toml, lock)
 
 	// Push from the untracked directory — should auto-track
-	res := runCLI(t, dir, "push", wsName+":"+tag, "-s", "e2e")
+	res := runCLI(t, dir, "push", wsName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -1895,7 +1573,7 @@ func TestE2E_PullWithoutTagResolvesTag(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, srcDir, "push", wsName+":v1.0", "-s", "e2e")
+	res = runCLI(t, srcDir, "push", wsName+":v1.0")
 	if res.ExitCode != 0 {
 		t.Fatalf("push v1.0 failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -1903,14 +1581,14 @@ func TestE2E_PullWithoutTagResolvesTag(t *testing.T) {
 	toml2 := toml1 + "\n[dependencies]\nnumpy = \"*\"\n"
 	os.WriteFile(filepath.Join(srcDir, "pixi.toml"), []byte(toml2), 0644)
 
-	res = runCLI(t, srcDir, "push", wsName+":v2.0", "-s", "e2e")
+	res = runCLI(t, srcDir, "push", wsName+":v2.0")
 	if res.ExitCode != 0 {
 		t.Fatalf("push v2.0 failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Pull WITHOUT a tag — should resolve to latest version and find its tag
 	dstDir := t.TempDir()
-	res = runCLI(t, dstDir, "pull", wsName, "-s", "e2e")
+	res = runCLI(t, dstDir, "pull", wsName)
 	if res.ExitCode != 0 {
 		t.Fatalf("pull failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}

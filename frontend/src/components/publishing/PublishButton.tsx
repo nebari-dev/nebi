@@ -4,12 +4,12 @@ import { PublishDialog } from './PublishDialog';
 import { Upload } from 'lucide-react';
 
 interface PublishButtonProps {
-  environmentId: string;
-  environmentName: string;
-  environmentStatus: string;
+  workspaceId: string;
+  workspaceName: string;
+  workspaceStatus: string;
 }
 
-export const PublishButton = ({ environmentId, environmentName, environmentStatus }: PublishButtonProps) => {
+export const PublishButton = ({ workspaceId, workspaceName, workspaceStatus }: PublishButtonProps) => {
   const [open, setOpen] = useState(false);
 
   return (
@@ -18,13 +18,13 @@ export const PublishButton = ({ environmentId, environmentName, environmentStatu
         variant="outline"
         size="sm"
         onClick={() => setOpen(true)}
-        disabled={environmentStatus !== 'ready'}
-        title={environmentStatus !== 'ready' ? 'Workspace must be ready to publish' : 'Publish to OCI Registry'}
+        disabled={workspaceStatus !== 'ready'}
+        title={workspaceStatus !== 'ready' ? 'Workspace must be ready to publish' : 'Publish to OCI Registry'}
       >
         <Upload className="h-4 w-4 mr-2" />
         Publish
       </Button>
-      <PublishDialog open={open} onOpenChange={setOpen} environmentId={environmentId} environmentName={environmentName} />
+      <PublishDialog open={open} onOpenChange={setOpen} workspaceId={workspaceId} workspaceName={workspaceName} />
     </>
   );
 };

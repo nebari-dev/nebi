@@ -9,10 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	publishServer   string
-	publishRegistry string
-)
+var publishRegistry string
 
 var publishCmd = &cobra.Command{
 	Use:   "publish <workspace>:<tag> [<repo>:<oci-tag>]",
@@ -26,22 +23,21 @@ The optional second argument specifies the OCI repository and tag.
 If omitted, the workspace name and tag are used as defaults.
 
 Examples:
-  nebi publish myworkspace:v1.0 -s work
-  nebi publish myworkspace:v1.0 -s work myorg/myenv:latest
-  nebi publish myworkspace:v1.0 -s work --registry ghcr myorg/myenv:latest`,
+  nebi publish myworkspace:v1.0
+  nebi publish myworkspace:v1.0 myorg/myenv:latest
+  nebi publish myworkspace:v1.0 --registry ghcr myorg/myenv:latest`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: runWorkspacePublish,
 }
 
 func init() {
-	publishCmd.Flags().StringVarP(&publishServer, "server", "s", "", "Server name or URL (uses default if not set)")
 	publishCmd.Flags().StringVar(&publishRegistry, "registry", "", "Registry name or ID (uses server default if not set)")
 }
 
 func runWorkspacePublish(cmd *cobra.Command, args []string) error {
 	wsName, tag := parseWsRef(args[0])
 	if tag == "" {
-		return fmt.Errorf("tag is required; usage: nebi workspace publish <workspace>:<tag>")
+		return fmt.Errorf("tag is required; usage: nebi publish <workspace>:<tag>")
 	}
 
 	// Parse optional repo:oci-tag from second positional arg
@@ -55,12 +51,7 @@ func runWorkspacePublish(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	server, err := resolveServerFlag(publishServer)
-	if err != nil {
-		return err
-	}
-
-	client, err := getAuthenticatedClient(server)
+	client, err := getAuthenticatedClient()
 	if err != nil {
 		return err
 	}

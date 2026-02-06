@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
+import { useModeStore } from '@/store/modeStore';
 import { authApi } from '@/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +15,15 @@ export const Login = () => {
   const [searchParams] = useSearchParams();
 
   const setAuth = useAuthStore((state) => state.setAuth);
+  const mode = useModeStore((state) => state.mode);
   const navigate = useNavigate();
+
+  // In local mode, skip login entirely
+  useEffect(() => {
+    if (mode === 'local') {
+      navigate('/workspaces', { replace: true });
+    }
+  }, [mode, navigate]);
 
   // Handle OAuth callback
   useEffect(() => {

@@ -21,12 +21,20 @@ export interface Workspace {
   updated_at: string;
   size_bytes: number;
   size_formatted: string;
+  source?: 'local' | 'managed';
+  path?: string;
+  is_global?: boolean;
+  origin_name?: string;
+  origin_tag?: string;
+  origin_action?: string;
 }
 
 export interface CreateWorkspaceRequest {
   name: string;
   package_manager?: string;
   pixi_toml?: string;
+  path?: string;
+  source?: 'local' | 'managed';
 }
 
 export type JobType = 'create' | 'delete' | 'install' | 'remove' | 'update';
@@ -173,4 +181,53 @@ export interface PublishRequest {
   registry_id: string; // UUID
   repository: string;
   tag: string;
+}
+
+// Remote server types
+export interface RemoteServer {
+  id?: string;
+  url: string;
+  username: string;
+  status: 'connected' | 'disconnected';
+}
+
+export interface ConnectServerRequest {
+  url: string;
+  username: string;
+  password: string;
+}
+
+export interface RemoteWorkspace {
+  id: string;
+  name: string;
+  status: string;
+  package_manager: string;
+  size_bytes: number;
+  owner?: {
+    id: string;
+    username: string;
+    email: string;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RemoteWorkspaceVersion {
+  id: string;
+  workspace_id: string;
+  version_number: number;
+  created_at: string;
+}
+
+export interface RemoteWorkspaceTag {
+  tag: string;
+  version_number: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateRemoteWorkspaceRequest {
+  name: string;
+  package_manager?: string;
+  pixi_toml?: string;
 }

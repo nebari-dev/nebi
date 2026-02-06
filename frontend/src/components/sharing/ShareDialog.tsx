@@ -17,19 +17,19 @@ import { Loader2, X } from 'lucide-react';
 interface ShareDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  environmentId: string;
+  workspaceId: string;
 }
 
-export const ShareDialog = ({ open, onOpenChange, environmentId }: ShareDialogProps) => {
+export const ShareDialog = ({ open, onOpenChange, workspaceId }: ShareDialogProps) => {
   const [selectedUser, setSelectedUser] = useState('');
   const [selectedRole, setSelectedRole] = useState<'editor' | 'viewer'>('viewer');
   const [confirmRemove, setConfirmRemove] = useState<{ userId: string; username: string } | null>(null);
   const [error, setError] = useState('');
 
-  const { data: collaborators, isLoading: collaboratorsLoading } = useCollaborators(environmentId, open);
+  const { data: collaborators, isLoading: collaboratorsLoading } = useCollaborators(workspaceId, open);
   const { data: allUsers } = useUsers();
-  const shareMutation = useShareWorkspace(environmentId);
-  const unshareMutation = useUnshareWorkspace(environmentId);
+  const shareMutation = useShareWorkspace(workspaceId);
+  const unshareMutation = useUnshareWorkspace(workspaceId);
 
   const availableUsers = allUsers?.filter(
     (user) => !collaborators?.some((c) => c.user_id === user.id)

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/nebari-dev/nebi/internal/localstore"
+	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -82,7 +82,6 @@ func runShell(cmd *cobra.Command, args []string) error {
 }
 
 // resolveWorkspaceArgs parses args for shell/run commands.
-// Returns: resolved directory, remaining pixi args, whether it's a global workspace, error.
 func resolveWorkspaceArgs(args []string) (dir string, pixiArgs []string, isGlobal bool, err error) {
 	if len(args) == 0 {
 		cwd, err := os.Getwd()
@@ -105,15 +104,16 @@ func resolveWorkspaceArgs(args []string) (dir string, pixiArgs []string, isGloba
 	}
 
 	// Check if first arg is a global workspace name
-	store, err := localstore.NewStore()
+	s, err := store.New()
 	if err != nil {
 		return "", nil, false, err
 	}
-	idx, err := store.LoadIndex()
+	defer s.Close()
+
+	ws, err := s.FindGlobalWorkspaceByName(first)
 	if err != nil {
 		return "", nil, false, err
 	}
-	ws := findGlobalWorkspaceByName(idx, first)
 	if ws != nil {
 		return ws.Path, rest, true, nil
 	}

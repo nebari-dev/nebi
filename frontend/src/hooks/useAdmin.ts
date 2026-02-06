@@ -65,10 +65,10 @@ export const useAuditLogs = (filters?: { user_id?: string; action?: string }) =>
 };
 
 // Collaborators Hooks
-export const useCollaborators = (environmentId: string, enabled = true) => {
+export const useCollaborators = (workspaceId: string, enabled = true) => {
   return useQuery({
-    queryKey: ['collaborators', environmentId],
-    queryFn: () => adminApi.getCollaborators(environmentId),
+    queryKey: ['collaborators', workspaceId],
+    queryFn: () => adminApi.getCollaborators(workspaceId),
     enabled,
   });
 };

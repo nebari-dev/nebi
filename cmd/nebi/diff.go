@@ -9,12 +9,11 @@ import (
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/nebari-dev/nebi/internal/diff"
-	"github.com/nebari-dev/nebi/internal/localstore"
+	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
 )
 
 var diffLock bool
-var diffServer string
 
 var diffCmd = &cobra.Command{
 	Use:   "diff <ref-a> [ref-b] [--lock]",
@@ -26,18 +25,18 @@ Each reference can be:
   - A server ref (contains a colon): myworkspace:v1
 
 If no refs are given, compares the current directory against the last
-pushed/pulled origin on the target server.
+pushed/pulled origin.
 
 If only one ref is given, it is compared against the current directory.
 
 Examples:
-  nebi diff                                    # local vs origin on server
+  nebi diff                                    # local vs origin
   nebi diff ./other-project                    # other dir vs cwd
   nebi diff ./project-a ./project-b            # two local dirs
   nebi diff data-science                       # global workspace vs cwd
-  nebi diff myworkspace:v1 -s work             # server version vs cwd
-  nebi diff myworkspace:v1 myworkspace:v2 -s work  # two server versions
-  nebi diff myworkspace:v1 ./local-dir -s work # server vs local dir
+  nebi diff myworkspace:v1                     # server version vs cwd
+  nebi diff myworkspace:v1 myworkspace:v2      # two server versions
+  nebi diff myworkspace:v1 ./local-dir         # server vs local dir
 
 Use --lock to also compare pixi.lock files.`,
 	Args: cobra.RangeArgs(0, 2),
@@ -45,7 +44,6 @@ Use --lock to also compare pixi.lock files.`,
 }
 
 func init() {
-	diffCmd.Flags().StringVarP(&diffServer, "server", "s", "", "Server name or URL (uses default if not set)")
 	diffCmd.Flags().BoolVar(&diffLock, "lock", false, "Also diff pixi.lock files")
 }
 
@@ -62,18 +60,14 @@ func runDiff(cmd *cobra.Command, args []string) error {
 	switch len(args) {
 	case 0:
 		// No args — diff origin vs local (origin is baseline, local shows changes)
-		server, err := resolveServerFlag(diffServer)
-		if err != nil {
-			return err
-		}
-		origin, err := lookupOrigin(server)
+		origin, err := lookupOrigin()
 		if err != nil {
 			return err
 		}
 		if origin == nil {
 			return fmt.Errorf("no origin set; use 'nebi diff <ref>' or push/pull first")
 		}
-		refA = origin.Name + ":" + origin.Tag
+		refA = origin.OriginName + ":" + origin.OriginTag
 		refB = "."
 	case 1:
 		refA = "."
@@ -150,15 +144,14 @@ func resolveSource(ref, defaultLabel string) (*diffSource, error) {
 		return resolveLocalSource(ref, defaultLabel)
 	}
 
-	// 2. Global workspace name (check index before assuming server ref)
+	// 2. Global workspace name (check store before assuming server ref)
 	if !strings.Contains(ref, ":") {
-		store, err := localstore.NewStore()
+		s, err := store.New()
 		if err == nil {
-			idx, err := store.LoadIndex()
-			if err == nil {
-				if ws := findGlobalWorkspaceByName(idx, ref); ws != nil {
-					return resolveLocalSource(ws.Path, ref)
-				}
+			defer s.Close()
+			ws, err := s.FindGlobalWorkspaceByName(ref)
+			if err == nil && ws != nil {
+				return resolveLocalSource(ws.Path, ref)
 			}
 		}
 	}
@@ -201,12 +194,7 @@ func resolveLocalSource(dir, defaultLabel string) (*diffSource, error) {
 func resolveServerSource(ref string) (*diffSource, error) {
 	wsName, tag := parseWsRef(ref)
 
-	server, err := resolveServerFlag(diffServer)
-	if err != nil {
-		return nil, err
-	}
-
-	client, err := getAuthenticatedClient(server)
+	client, err := getAuthenticatedClient()
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +261,7 @@ func resolveVersionNumber(client *cliclient.Client, ctx context.Context, wsID, w
 	return latest.VersionNumber, nil
 }
 
-// isPath returns true if ref looks like a filesystem path (contains a path separator or is "." or "..").
+// isPath returns true if ref looks like a filesystem path.
 func isPath(ref string) bool {
 	return ref == "." || ref == ".." || strings.Contains(ref, "/") || strings.Contains(ref, string(filepath.Separator))
 }

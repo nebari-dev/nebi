@@ -9,45 +9,38 @@ import (
 	"time"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
-	"github.com/nebari-dev/nebi/internal/localstore"
+	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/store"
 )
 
 // ErrWsNotFound is returned when a workspace name is not found on the server.
 var ErrWsNotFound = errors.New("workspace not found on server")
 
-// resolveServerFlag returns the server argument, falling back to the default server from config.
-func resolveServerFlag(serverArg string) (string, error) {
-	if serverArg != "" {
-		return serverArg, nil
-	}
-	cfg, err := localstore.LoadConfig()
-	if err != nil {
-		return "", fmt.Errorf("loading config: %w", err)
-	}
-	if cfg.DefaultServer == "" {
-		return "", fmt.Errorf("no server specified; use -s <server> or set a default with 'nebi server set-default <name>'")
-	}
-	return cfg.DefaultServer, nil
-}
-
-// getAuthenticatedClient resolves a server name or URL, loads credentials, and returns an authenticated API client.
-func getAuthenticatedClient(serverArg string) (*cliclient.Client, error) {
-	serverURL, err := resolveServerURL(serverArg)
+// getAuthenticatedClient loads credentials and returns an authenticated API client.
+func getAuthenticatedClient() (*cliclient.Client, error) {
+	s, err := store.New()
 	if err != nil {
 		return nil, err
 	}
+	defer s.Close()
 
-	creds, err := localstore.LoadCredentials()
+	serverURL, err := s.LoadServerURL()
+	if err != nil {
+		return nil, fmt.Errorf("loading server URL: %w", err)
+	}
+	if serverURL == "" {
+		return nil, fmt.Errorf("no server configured; run 'nebi login <server-url>' first")
+	}
+
+	creds, err := s.LoadCredentials()
 	if err != nil {
 		return nil, fmt.Errorf("loading credentials: %w", err)
 	}
-
-	cred, ok := creds.Servers[serverURL]
-	if !ok {
-		return nil, fmt.Errorf("not logged in to %s; run 'nebi login %s' first", serverURL, serverArg)
+	if creds.Token == "" {
+		return nil, fmt.Errorf("not logged in; run 'nebi login <server-url>' first")
 	}
 
-	return cliclient.New(serverURL, cred.Token), nil
+	return cliclient.New(serverURL, creds.Token), nil
 }
 
 // findWsByName searches for a workspace by name on the server.
@@ -66,16 +59,6 @@ func findWsByName(client *cliclient.Client, ctx context.Context, name string) (*
 	return nil, fmt.Errorf("%w: %q", ErrWsNotFound, name)
 }
 
-// findGlobalWorkspaceByName looks up a global workspace by name in the local index.
-func findGlobalWorkspaceByName(idx *localstore.Index, name string) *localstore.Workspace {
-	for _, ws := range idx.Workspaces {
-		if ws.Name == name && ws.Global {
-			return ws
-		}
-	}
-	return nil
-}
-
 // validateWorkspaceName checks that a workspace name doesn't contain path separators or colons,
 // which would make it ambiguous with paths or server refs.
 func validateWorkspaceName(name string) error {
@@ -91,74 +74,64 @@ func validateWorkspaceName(name string) error {
 	return nil
 }
 
-// lookupOrigin returns the origin for the current working directory and the given server.
-// Returns nil (no error) if no origin is set.
-func lookupOrigin(server string) (*localstore.Origin, error) {
+// lookupOrigin returns the origin fields for the current working directory workspace.
+// Returns nil (no error) if no workspace is tracked or no origin is set.
+func lookupOrigin() (*models.Workspace, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("getting working directory: %w", err)
 	}
 
-	store, err := localstore.NewStore()
+	s, err := store.New()
 	if err != nil {
 		return nil, err
 	}
+	defer s.Close()
 
-	idx, err := store.LoadIndex()
+	ws, err := s.FindWorkspaceByPath(cwd)
 	if err != nil {
 		return nil, err
 	}
-
-	ws, exists := idx.Workspaces[cwd]
-	if !exists || ws.Origins == nil {
+	if ws == nil || ws.OriginName == "" {
 		return nil, nil
 	}
 
-	return ws.Origins[server], nil
+	return ws, nil
 }
 
 // saveOrigin records a push/pull origin for the current working directory.
-func saveOrigin(server, name, tag, action, tomlContent, lockContent string) error {
+func saveOrigin(name, tag, action, tomlContent, lockContent string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting working directory: %w", err)
 	}
 
-	store, err := localstore.NewStore()
+	s, err := store.New()
 	if err != nil {
 		return err
 	}
+	defer s.Close()
 
-	idx, err := store.LoadIndex()
+	ws, err := s.FindWorkspaceByPath(cwd)
 	if err != nil {
 		return err
 	}
-
-	ws, exists := idx.Workspaces[cwd]
-	if !exists {
-		// Not a tracked workspace — nothing to save
+	if ws == nil {
 		return nil
 	}
 
-	if ws.Origins == nil {
-		ws.Origins = make(map[string]*localstore.Origin)
-	}
-
-	tomlHash, err := localstore.TomlContentHash(tomlContent)
+	tomlHash, err := store.TomlContentHash(tomlContent)
 	if err != nil {
 		return fmt.Errorf("hashing pixi.toml: %w", err)
 	}
 
-	ws.Origins[server] = &localstore.Origin{
-		Name:      name,
-		Tag:       tag,
-		Action:    action,
-		TomlHash:  tomlHash,
-		LockHash:  localstore.ContentHash(lockContent),
-		Timestamp: time.Now().UTC().Format("2006-01-02T15:04:05Z"),
-	}
+	ws.OriginName = name
+	ws.OriginTag = tag
+	ws.OriginAction = action
+	ws.OriginTomlHash = tomlHash
+	ws.OriginLockHash = store.ContentHash(lockContent)
 
-	return store.SaveIndex(idx)
+	return s.SaveWorkspace(ws)
 }
 
 // parseWsRef parses a reference in the format workspace:tag.

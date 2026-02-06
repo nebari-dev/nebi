@@ -6,8 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/google/uuid"
-	"github.com/nebari-dev/nebi/internal/localstore"
+	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -41,33 +41,28 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	store, err := localstore.NewStore()
+	s, err := store.New()
 	if err != nil {
 		return err
 	}
-
-	idx, err := store.LoadIndex()
-	if err != nil {
-		return err
-	}
+	defer s.Close()
 
 	// Check if already tracked
-	if _, exists := idx.Workspaces[cwd]; exists {
+	existing, err := s.FindWorkspaceByPath(cwd)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
 		return fmt.Errorf("workspace already tracked: %s", cwd)
 	}
 
-	// Create workspace entry
-	id := uuid.New().String()
 	name := filepath.Base(cwd)
-
-	idx.Workspaces[cwd] = &localstore.Workspace{
-		ID:   id,
+	ws := &models.Workspace{
 		Name: name,
 		Path: cwd,
 	}
-
-	if err := store.SaveIndex(idx); err != nil {
-		return fmt.Errorf("saving index: %w", err)
+	if err := s.CreateWorkspace(ws); err != nil {
+		return fmt.Errorf("saving workspace: %w", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "Workspace '%s' initialized (%s)\n", name, cwd)
@@ -75,7 +70,6 @@ func runInit(cmd *cobra.Command, args []string) error {
 }
 
 // ensureInit registers dir as a tracked workspace if not already tracked.
-// No-op if already tracked. Prints a message to stderr on new registration.
 func ensureInit(dir string) error {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
@@ -86,31 +80,27 @@ func ensureInit(dir string) error {
 		return fmt.Errorf("no pixi.toml found in %s", absDir)
 	}
 
-	store, err := localstore.NewStore()
+	s, err := store.New()
 	if err != nil {
 		return err
 	}
+	defer s.Close()
 
-	idx, err := store.LoadIndex()
+	existing, err := s.FindWorkspaceByPath(absDir)
 	if err != nil {
 		return err
 	}
-
-	if _, exists := idx.Workspaces[absDir]; exists {
+	if existing != nil {
 		return nil
 	}
 
-	id := uuid.New().String()
 	name := filepath.Base(absDir)
-
-	idx.Workspaces[absDir] = &localstore.Workspace{
-		ID:   id,
+	ws := &models.Workspace{
 		Name: name,
 		Path: absDir,
 	}
-
-	if err := store.SaveIndex(idx); err != nil {
-		return fmt.Errorf("saving index: %w", err)
+	if err := s.CreateWorkspace(ws); err != nil {
+		return fmt.Errorf("saving workspace: %w", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "Tracking workspace '%s' at %s\n", name, absDir)

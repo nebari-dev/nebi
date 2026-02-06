@@ -38,10 +38,11 @@ Nebi is a server and CLI for managing [Pixi](https://prefix.dev/) environments i
 
 **Key features:**
 - Server with async job queue, RBAC, and PostgreSQL/Valkey backend
+- Desktop app with local mode (no authentication required)
 - Local-first CLI for workspace tracking (no server required for basic use)
-- Push/pull versioned `pixi.toml` and `pixi.lock` to shared servers
+- Push/pull versioned `pixi.toml` and `pixi.lock` to a shared server
 - Diff specs between local directories or server versions
-- Multi-server support with named servers and default server config
+- SQLite-backed local storage for workspace tracking
 
 ## Quick Start
 
@@ -74,9 +75,8 @@ Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables to create the ad
 # Install nebi CLI (download from releases or build from source)
 go install github.com/nebari-dev/nebi/cmd/nebi@latest
 
-# Add a server and authenticate
-nebi server add work https://nebi.company.com
-nebi login work
+# Connect to a server (sets URL + authenticates)
+nebi login https://nebi.company.com
 
 # Track a pixi workspace
 cd my-project
@@ -175,20 +175,20 @@ nebi workspace list
 nebi diff                                # local vs last pushed/pulled origin
 nebi diff ./project-a ./project-b
 nebi diff ./project-a ./project-b --lock    # also compare pixi.lock
-nebi diff myworkspace:v1 myworkspace:v2 -s work
+nebi diff myworkspace:v1 myworkspace:v2
 
 # Push/pull versioned specs
-nebi push myworkspace:v1.0 -s work
+nebi push myworkspace:v1.0
 nebi push :v2.0                          # reuse workspace name from origin
-nebi pull myworkspace:v1.0 -s work
+nebi pull myworkspace:v1.0
 nebi pull                                # re-pull from last origin
 
-# List workspaces and tags on a server
-nebi workspace list -s work
-nebi workspace tags myworkspace -s work
+# List workspaces and tags on the server
+nebi workspace list --remote
+nebi workspace tags myworkspace
 
 # Global workspaces (stored centrally by nebi)
-nebi pull myworkspace:v1.0 --global data-science -s work
+nebi pull myworkspace:v1.0 --global data-science
 nebi workspace promote data-science     # copy current workspace to global
 nebi workspace list                     # shows local and global workspaces
 nebi shell data-science                 # open pixi shell in a workspace by name
@@ -196,7 +196,7 @@ nebi shell data-science -e dev          # args pass through to pixi shell
 nebi run my-task                        # run a pixi task (auto-initializes workspace)
 nebi run data-science my-task           # run a task in a global workspace
 nebi workspace remove data-science      # remove a workspace from tracking
-nebi workspace remove myenv -s work    # remove a workspace from a server
+nebi workspace remove myenv --remote    # remove a workspace from the server
 nebi workspace prune                   # clean up workspaces with missing paths
 
 # Diff using workspace names
@@ -204,23 +204,19 @@ nebi diff data-science ./my-project
 nebi diff data-science ml-pipeline
 
 # Publish a workspace version to an OCI registry
-nebi workspace publish myworkspace:v1.0 -s work
-nebi workspace publish myworkspace:v1.0 -s work myorg/myenv:latest
-nebi workspace publish myworkspace:v1.0 -s work --registry ghcr myorg/myenv:latest
+nebi publish myworkspace:v1.0
+nebi publish myworkspace:v1.0 myorg/myenv:latest
+nebi publish myworkspace:v1.0 --registry ghcr myorg/myenv:latest
 ```
 
 ### Connection Commands
 
 ```bash
-# Register and authenticate with a server
-nebi server add work https://nebi.company.com
-nebi login work
+# Connect to a server (sets URL + authenticates)
+nebi login https://nebi.company.com
 
-# Change the default server
-nebi server set-default work
-
-# List OCI registries on a server
-nebi registry list -s work
+# List OCI registries on the server
+nebi registry list
 ```
 
 ### Admin Commands
@@ -234,10 +230,9 @@ nebi serve --port 8080 --mode server
 ### Configuration
 
 Nebi stores data in platform-standard directories:
-- **Data** (`~/.local/share/nebi/`): index, credentials, global workspace environments
-- **Config** (`~/.config/nebi/config.yaml`): default server and user preferences
+- **Data** (`~/.local/share/nebi/`): SQLite database (`nebi.db`), global workspace environments
 
-The first server added with `nebi server add` automatically becomes the default, so `-s` can be omitted on commands like `push`, `pull`, `diff`, and `workspace tags`.
+Connect to a server with `nebi login <url>` to set the server URL and authenticate in one step. All commands use the configured server automatically.
 
 ## Development
 

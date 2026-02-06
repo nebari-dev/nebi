@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var pushServer string
 var pushForce bool
 
 var pushCmd = &cobra.Command{
@@ -21,10 +20,10 @@ var pushCmd = &cobra.Command{
 If the workspace doesn't exist on the server, it will be created automatically.
 
 If the workspace name is omitted (e.g. "nebi push :v2"), the name from the
-last push/pull origin for the target server is used.
+last push/pull origin is used.
 
 Examples:
-  nebi push myworkspace:v1.0 -s work
+  nebi push myworkspace:v1.0
   nebi push :v2.0                          # reuse workspace name from origin
   nebi push myworkspace:v2.0 --force`,
 	Args: cobra.ExactArgs(1),
@@ -32,7 +31,6 @@ Examples:
 }
 
 func init() {
-	pushCmd.Flags().StringVarP(&pushServer, "server", "s", "", "Server name or URL (uses default if not set)")
 	pushCmd.Flags().BoolVar(&pushForce, "force", false, "Overwrite existing tag on server")
 }
 
@@ -42,21 +40,16 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("tag is required; usage: nebi push [<workspace>:]<tag>")
 	}
 
-	server, err := resolveServerFlag(pushServer)
-	if err != nil {
-		return err
-	}
-
 	// If workspace name omitted, resolve from origin
 	if wsName == "" {
-		origin, err := lookupOrigin(server)
+		origin, err := lookupOrigin()
 		if err != nil {
 			return err
 		}
 		if origin == nil {
-			return fmt.Errorf("no origin set for server %q; specify a workspace name: nebi push <workspace>:<tag>", server)
+			return fmt.Errorf("no origin set; specify a workspace name: nebi push <workspace>:<tag>")
 		}
-		wsName = origin.Name
+		wsName = origin.OriginName
 		fmt.Fprintf(os.Stderr, "Using workspace %q from origin\n", wsName)
 	}
 
@@ -71,7 +64,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(os.Stderr, "Warning: pixi.lock not found. Run 'pixi install' to generate it.")
 	}
 
-	client, err := getAuthenticatedClient(server)
+	client, err := getAuthenticatedClient()
 	if err != nil {
 		return err
 	}
@@ -123,7 +116,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 	}
 
 	// Save origin
-	if saveErr := saveOrigin(server, wsName, tag, "push", string(pixiToml), string(pixiLock)); saveErr != nil {
+	if saveErr := saveOrigin(wsName, tag, "push", string(pixiToml), string(pixiLock)); saveErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save origin: %v\n", saveErr)
 	}
 

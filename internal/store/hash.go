@@ -1,4 +1,4 @@
-package localstore
+package store
 
 import (
 	"crypto/sha256"

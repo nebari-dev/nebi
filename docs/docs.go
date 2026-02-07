@@ -1401,6 +1401,67 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workspaces"
+                ],
+                "summary": "Save pixi.toml content for a workspace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "pixi.toml content",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SavePixiTomlRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.PixiTomlResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
             }
         },
         "/workspaces/{id}/publications": {
@@ -2006,7 +2067,13 @@ const docTemplate = `{
                 "package_manager": {
                     "type": "string"
                 },
+                "path": {
+                    "type": "string"
+                },
                 "pixi_toml": {
+                    "type": "string"
+                },
+                "source": {
                     "type": "string"
                 }
             }
@@ -2204,6 +2271,17 @@ const docTemplate = `{
             "properties": {
                 "version_number": {
                     "type": "integer"
+                }
+            }
+        },
+        "handlers.SavePixiTomlRequest": {
+            "type": "object",
+            "required": [
+                "content"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string"
                 }
             }
         },
@@ -2513,8 +2591,16 @@ const docTemplate = `{
                     "description": "\"pixi\" or \"uv\"",
                     "type": "string"
                 },
+                "path": {
+                    "description": "filesystem path (local-mode)",
+                    "type": "string"
+                },
                 "size_bytes": {
                     "type": "integer"
+                },
+                "source": {
+                    "description": "\"managed\", \"local\"",
+                    "type": "string"
                 },
                 "status": {
                     "$ref": "#/definitions/models.WorkspaceStatus"

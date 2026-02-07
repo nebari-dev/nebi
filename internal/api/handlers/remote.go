@@ -77,9 +77,9 @@ func (h *RemoteHandler) ConnectServer(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"connected":  true,
-		"server_url": req.URL,
-		"username":   loginResp.User.Username,
+		"status":   "connected",
+		"url":      req.URL,
+		"username": loginResp.User.Username,
 	})
 }
 
@@ -90,10 +90,14 @@ func (h *RemoteHandler) GetServer(c *gin.Context) {
 	var creds store.Credentials
 	h.db.First(&creds)
 
+	status := "disconnected"
+	if cfg.ServerURL != "" && creds.Token != "" {
+		status = "connected"
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"connected":  cfg.ServerURL != "" && creds.Token != "",
-		"server_url": cfg.ServerURL,
-		"username":   creds.Username,
+		"status":   status,
+		"url":      cfg.ServerURL,
+		"username": creds.Username,
 	})
 }
 
@@ -110,7 +114,7 @@ func (h *RemoteHandler) DisconnectServer(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to clear credentials"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"connected": false})
+	c.JSON(http.StatusOK, gin.H{"status": "disconnected"})
 }
 
 // ListWorkspaces proxies workspace listing to the remote server.

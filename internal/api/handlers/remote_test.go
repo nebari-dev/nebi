@@ -71,8 +71,8 @@ func TestGetServer_NoConfig(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	if resp["connected"] != false {
-		t.Errorf("expected connected=false, got %v", resp["connected"])
+	if resp["status"] != "disconnected" {
+		t.Errorf("expected status=disconnected, got %v", resp["status"])
 	}
 }
 
@@ -114,8 +114,8 @@ func TestDisconnectServer(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	if resp["connected"] != false {
-		t.Errorf("expected connected=false, got %v", resp["connected"])
+	if resp["status"] != "disconnected" {
+		t.Errorf("expected status=disconnected, got %v", resp["status"])
 	}
 
 	// Verify DB was cleared
@@ -154,11 +154,11 @@ func TestGetServer_AfterStoreSetup(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	if resp["connected"] != true {
-		t.Errorf("expected connected=true, got %v", resp["connected"])
+	if resp["status"] != "connected" {
+		t.Errorf("expected status=connected, got %v", resp["status"])
 	}
-	if resp["server_url"] != "https://nebi.example.com" {
-		t.Errorf("expected server_url=https://nebi.example.com, got %v", resp["server_url"])
+	if resp["url"] != "https://nebi.example.com" {
+		t.Errorf("expected url=https://nebi.example.com, got %v", resp["url"])
 	}
 	if resp["username"] != "testuser" {
 		t.Errorf("expected username=testuser, got %v", resp["username"])
@@ -214,11 +214,11 @@ func TestConnectServer_WithMockRemote(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	if resp["connected"] != true {
-		t.Errorf("expected connected=true, got %v", resp["connected"])
+	if resp["status"] != "connected" {
+		t.Errorf("expected status=connected, got %v", resp["status"])
 	}
-	if resp["server_url"] != mockServer.URL {
-		t.Errorf("expected server_url=%s, got %v", mockServer.URL, resp["server_url"])
+	if resp["url"] != mockServer.URL {
+		t.Errorf("expected url=%s, got %v", mockServer.URL, resp["url"])
 	}
 	if resp["username"] != "remoteuser" {
 		t.Errorf("expected username=remoteuser, got %v", resp["username"])

@@ -16,7 +16,7 @@ export const remoteApi = {
   },
 
   connectServer: async (req: ConnectServerRequest): Promise<RemoteServer> => {
-    const { data } = await apiClient.post('/remote/server', req);
+    const { data } = await apiClient.post('/remote/connect', req);
     return data;
   },
 

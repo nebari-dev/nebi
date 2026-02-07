@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useServerStatus, useConnectServer, useDisconnectServer } from '@/hooks/useRemote';
+import { useRemoteServer, useConnectServer, useDisconnectServer } from '@/hooks/useRemote';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Settings as SettingsIcon, Loader2, Wifi, WifiOff } from 'lucide-react';
 
 export const Settings = () => {
-  const { data: serverStatus, isLoading } = useServerStatus();
+  const { data: serverStatus, isLoading } = useRemoteServer();
   const connectMutation = useConnectServer();
   const disconnectMutation = useDisconnectServer();
 
@@ -48,7 +48,7 @@ export const Settings = () => {
     );
   }
 
-  const isConnected = serverStatus?.connected ?? false;
+  const isConnected = serverStatus?.status === 'connected';
 
   return (
     <div className="space-y-6">
@@ -92,7 +92,7 @@ export const Settings = () => {
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-muted-foreground w-24">Server URL</span>
-                  <span className="text-sm font-mono">{serverStatus?.server_url}</span>
+                  <span className="text-sm font-mono">{serverStatus?.url}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-muted-foreground w-24">Username</span>

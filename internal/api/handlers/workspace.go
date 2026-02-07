@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/oci"
+	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/nebari-dev/nebi/internal/service"
@@ -520,7 +522,52 @@ func (h *WorkspaceHandler) ListPackages(c *gin.Context) {
 		return
 	}
 
+	// Auto-sync: if local workspace has 0 packages in DB, populate from disk
+	if len(packages) == 0 && ws.Source == "local" && ws.Status == models.WsStatusReady {
+		if synced := h.syncPackagesFromDisk(&ws); synced != nil {
+			packages = synced
+		}
+	}
+
 	c.JSON(http.StatusOK, packages)
+}
+
+// syncPackagesFromDisk runs pixi list and populates the DB for a local workspace.
+func (h *WorkspaceHandler) syncPackagesFromDisk(ws *models.Workspace) []models.Package {
+	wsPath := h.executor.GetWorkspacePath(ws)
+
+	pmType := ws.PackageManager
+	if pmType == "" {
+		pmType = "pixi"
+	}
+
+	pm, err := pkgmgr.New(pmType)
+	if err != nil {
+		slog.Warn("syncPackagesFromDisk: failed to create package manager", "error", err)
+		return nil
+	}
+
+	listed, err := pm.List(context.Background(), pkgmgr.ListOptions{EnvPath: wsPath})
+	if err != nil {
+		slog.Warn("syncPackagesFromDisk: failed to list packages", "error", err, "path", wsPath)
+		return nil
+	}
+
+	var result []models.Package
+	for _, p := range listed {
+		pkg := models.Package{
+			WorkspaceID: ws.ID,
+			Name:        p.Name,
+			Version:     p.Version,
+		}
+		if err := h.db.Create(&pkg).Error; err != nil {
+			slog.Warn("syncPackagesFromDisk: failed to save package", "error", err, "name", p.Name)
+			continue
+		}
+		result = append(result, pkg)
+	}
+
+	return result
 }
 
 // ShareWorkspace godoc

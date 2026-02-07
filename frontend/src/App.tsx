@@ -7,6 +7,7 @@ import { useModeStore } from './store/modeStore';
 import { Login } from './pages/Login';
 import { Workspaces } from './pages/Workspaces';
 import { WorkspaceDetail } from './pages/WorkspaceDetail';
+import { RemoteWorkspaceDetail } from './pages/RemoteWorkspaceDetail';
 import { Jobs } from './pages/Jobs';
 import { Settings } from './pages/Settings';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
@@ -92,6 +93,7 @@ function App() {
               <Route index element={<Navigate to="/workspaces" replace />} />
               <Route path="workspaces" element={<Workspaces />} />
               <Route path="workspaces/:id" element={<WorkspaceDetail />} />
+              <Route path="remote/workspaces/:id" element={<RemoteWorkspaceDetail />} />
               <Route path="jobs" element={<Jobs />} />
               <Route path="settings" element={<Settings />} />
 

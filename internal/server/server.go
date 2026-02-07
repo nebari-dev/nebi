@@ -73,9 +73,11 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	slog.Info("Database migrations completed")
 
-	// Create default admin user if configured
-	if err := db.CreateDefaultAdmin(database); err != nil {
-		return fmt.Errorf("failed to create default admin user: %w", err)
+	// Create default admin user if configured (team mode only)
+	if !appCfg.IsLocalMode() {
+		if err := db.CreateDefaultAdmin(database); err != nil {
+			return fmt.Errorf("failed to create default admin user: %w", err)
+		}
 	}
 
 	// Initialize job queue based on configuration

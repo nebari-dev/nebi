@@ -22,7 +22,7 @@ const (
 type Workspace struct {
 	ID             uuid.UUID       `gorm:"type:text;primary_key" json:"id"`
 	Name           string          `gorm:"not null" json:"name"`
-	OwnerID        uuid.UUID       `gorm:"type:text;not null;index" json:"owner_id"`
+	OwnerID        uuid.UUID       `gorm:"type:text;index" json:"owner_id"`
 	Owner          User            `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
 	Status         WorkspaceStatus `gorm:"not null;default:'pending'" json:"status"`
 	PackageManager string          `gorm:"not null" json:"package_manager"` // "pixi" or "uv"

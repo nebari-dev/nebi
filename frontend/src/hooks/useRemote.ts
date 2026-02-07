@@ -1,20 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { remoteApi } from '@/api/remote';
-import type { ConnectServerRequest } from '@/api/remote';
-import { useModeStore } from '@/store/modeStore';
+import type { ConnectServerRequest, CreateRemoteWorkspaceRequest } from '@/types';
 
-export const useServerStatus = () => {
-  const isLocal = useModeStore((s) => s.mode === 'local');
+export const useRemoteServer = () => {
   return useQuery({
     queryKey: ['remote', 'server'],
     queryFn: remoteApi.getServer,
-    enabled: isLocal,
-    refetchInterval: 30000, // poll every 30s
+    refetchInterval: 10000, // Check connection status every 10s
   });
 };
 
 export const useConnectServer = () => {
   const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: (req: ConnectServerRequest) => remoteApi.connectServer(req),
     onSuccess: () => {
@@ -25,6 +23,7 @@ export const useConnectServer = () => {
 
 export const useDisconnectServer = () => {
   const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: () => remoteApi.disconnectServer(),
     onSuccess: () => {
@@ -33,12 +32,57 @@ export const useDisconnectServer = () => {
   });
 };
 
-export const useRemoteWorkspaces = () => {
-  const isLocal = useModeStore((s) => s.mode === 'local');
-  const { data: serverStatus } = useServerStatus();
+export const useRemoteWorkspaces = (enabled: boolean) => {
   return useQuery({
     queryKey: ['remote', 'workspaces'],
     queryFn: remoteApi.listWorkspaces,
-    enabled: isLocal && !!serverStatus?.connected,
+    enabled,
+    refetchInterval: 5000,
+  });
+};
+
+export const useRemoteWorkspace = (id: string) => {
+  return useQuery({
+    queryKey: ['remote', 'workspaces', id],
+    queryFn: () => remoteApi.getWorkspace(id),
+    enabled: !!id,
+  });
+};
+
+export const useRemoteVersions = (wsId: string) => {
+  return useQuery({
+    queryKey: ['remote', 'workspaces', wsId, 'versions'],
+    queryFn: () => remoteApi.listVersions(wsId),
+    enabled: !!wsId,
+  });
+};
+
+export const useRemoteTags = (wsId: string) => {
+  return useQuery({
+    queryKey: ['remote', 'workspaces', wsId, 'tags'],
+    queryFn: () => remoteApi.listTags(wsId),
+    enabled: !!wsId,
+  });
+};
+
+export const useCreateRemoteWorkspace = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (req: CreateRemoteWorkspaceRequest) => remoteApi.createWorkspace(req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['remote', 'workspaces'] });
+    },
+  });
+};
+
+export const useDeleteRemoteWorkspace = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => remoteApi.deleteWorkspace(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['remote', 'workspaces'] });
+    },
   });
 };

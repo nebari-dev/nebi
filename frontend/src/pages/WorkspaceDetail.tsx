@@ -6,10 +6,8 @@ import { useCollaborators } from '@/hooks/useAdmin';
 import { usePublications } from '@/hooks/useRegistries';
 import { workspacesApi } from '@/api/workspaces';
 import { useAuthStore } from '@/store/authStore';
-import { useModeStore } from '@/store/modeStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -18,7 +16,7 @@ import { ShareButton } from '@/components/sharing/ShareButton';
 import { PublishButton } from '@/components/publishing/PublishButton';
 import { RoleBadge } from '@/components/sharing/RoleBadge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
-import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check, ExternalLink, Save } from 'lucide-react';
+import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check, ExternalLink, Save, HardDrive, Pencil } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -40,19 +38,20 @@ export const WorkspaceDetail = () => {
   const installMutation = useInstallPackages(wsId);
   const removeMutation = useRemovePackage(wsId);
   const currentUser = useAuthStore((state) => state.user);
-  const isLocalMode = useModeStore((s) => s.isLocalMode());
 
-  const [activeTab, setActiveTab] = useState('packages');
+  const [activeTab, setActiveTab] = useState('overview');
   const [showInstall, setShowInstall] = useState(false);
   const [packageInput, setPackageInput] = useState('');
   const [confirmRemovePackage, setConfirmRemovePackage] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [pixiToml, setPixiToml] = useState<string>('');
+  const [editedToml, setEditedToml] = useState<string>('');
+  const [isEditingToml, setIsEditingToml] = useState(false);
+  const [savingToml, setSavingToml] = useState(false);
   const [loadingToml, setLoadingToml] = useState(false);
   const [copiedToml, setCopiedToml] = useState(false);
-  const [editingToml, setEditingToml] = useState(false);
-  const [editTomlContent, setEditTomlContent] = useState('');
-  const [savingToml, setSavingToml] = useState(false);
+
+  const isLocalWs = workspace?.source === 'local';
 
   const isOwner = workspace?.owner_id === currentUser?.id;
 
@@ -79,27 +78,6 @@ export const WorkspaceDetail = () => {
     await navigator.clipboard.writeText(pixiToml);
     setCopiedToml(true);
     setTimeout(() => setCopiedToml(false), 2000);
-  };
-
-  const handleEditToml = () => {
-    setEditTomlContent(pixiToml);
-    setEditingToml(true);
-  };
-
-  const handleSaveToml = async () => {
-    setSavingToml(true);
-    setError('');
-    try {
-      await workspacesApi.savePixiToml(wsId, editTomlContent);
-      setPixiToml(editTomlContent);
-      setEditingToml(false);
-    } catch (err) {
-      const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage = error?.response?.data?.error || 'Failed to save pixi.toml. Please try again.';
-      setError(errorMessage);
-    } finally {
-      setSavingToml(false);
-    }
   };
 
   const handleInstall = async (e: React.FormEvent) => {
@@ -157,15 +135,17 @@ export const WorkspaceDetail = () => {
           <p className="text-muted-foreground">Workspace details and packages</p>
         </div>
         <div className="flex items-center gap-2">
+          {isLocalWs && (
+            <Badge variant="outline" className="bg-cyan-500/10 text-cyan-500 border-cyan-500/20 gap-1">
+              <HardDrive className="h-3 w-3" />
+              Local
+            </Badge>
+          )}
           <Badge className={statusColors[workspace.status]}>
             {workspace.status}
           </Badge>
-          {!isLocalMode && (
-            <>
-              <PublishButton environmentId={wsId} environmentName={workspace.name} environmentStatus={workspace.status} />
-              {isOwner && <ShareButton environmentId={wsId} />}
-            </>
-          )}
+          <PublishButton environmentId={wsId} environmentName={workspace.name} environmentStatus={workspace.status} />
+          {!isLocalWs && isOwner && <ShareButton environmentId={wsId} />}
         </div>
       </div>
 
@@ -178,12 +158,10 @@ export const WorkspaceDetail = () => {
           <TabsTrigger value="packages">Packages</TabsTrigger>
           <TabsTrigger value="toml">pixi.toml</TabsTrigger>
           <TabsTrigger value="versions">Version History</TabsTrigger>
-          {!isLocalMode && (
-            <TabsTrigger value="publications">
-              Publications ({publications?.length || 0})
-            </TabsTrigger>
-          )}
-          {!isLocalMode && (
+          <TabsTrigger value="publications">
+            Publications ({publications?.length || 0})
+          </TabsTrigger>
+          {!isLocalWs && (
             <TabsTrigger value="collaborators">
               Collaborators ({collaborators?.length || 0})
             </TabsTrigger>
@@ -217,6 +195,22 @@ export const WorkspaceDetail = () => {
                 <span className="text-muted-foreground">Package Manager:</span>
                 <span className="font-medium font-mono text-sm">{workspace.package_manager}</span>
               </div>
+              {isLocalWs && workspace.path && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Path:</span>
+                  <span className="font-medium font-mono text-sm truncate max-w-md" title={workspace.path}>{workspace.path}</span>
+                </div>
+              )}
+              {isLocalWs && workspace.origin_name && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Origin:</span>
+                  <span className="font-medium">
+                    {workspace.origin_name}
+                    {workspace.origin_tag && `:${workspace.origin_tag}`}
+                    {workspace.origin_action && ` (${workspace.origin_action})`}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Size:</span>
                 <span className="font-medium">{workspace.size_formatted || 'Calculating...'}</span>
@@ -225,10 +219,12 @@ export const WorkspaceDetail = () => {
                 <span className="text-muted-foreground">Packages:</span>
                 <span className="font-medium">{packages?.length || 0} installed</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Collaborators:</span>
-                <span className="font-medium">{collaborators?.length || 0}</span>
-              </div>
+              {!isLocalWs && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Collaborators:</span>
+                  <span className="font-medium">{collaborators?.length || 0}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Created:</span>
                 <span>{new Date(workspace.created_at).toLocaleString()}</span>
@@ -361,18 +357,56 @@ export const WorkspaceDetail = () => {
               <div className="flex items-center justify-between">
                 <CardTitle>pixi.toml Configuration</CardTitle>
                 <div className="flex items-center gap-2">
-                  {isLocalMode && pixiToml && !editingToml && workspace.status === 'ready' && (
+                  {isLocalWs && pixiToml && !isEditingToml && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={handleEditToml}
+                      onClick={() => {
+                        setEditedToml(pixiToml);
+                        setIsEditingToml(true);
+                      }}
                       className="gap-2"
                     >
-                      <Save className="h-4 w-4" />
+                      <Pencil className="h-4 w-4" />
                       Edit
                     </Button>
                   )}
-                  {pixiToml && !editingToml && (
+                  {isEditingToml && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsEditingToml(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          setSavingToml(true);
+                          try {
+                            await workspacesApi.savePixiToml(wsId, editedToml);
+                            setPixiToml(editedToml);
+                            setIsEditingToml(false);
+                          } catch {
+                            setError('Failed to save pixi.toml');
+                          } finally {
+                            setSavingToml(false);
+                          }
+                        }}
+                        disabled={savingToml}
+                        className="gap-2"
+                      >
+                        {savingToml ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                        Save
+                      </Button>
+                    </>
+                  )}
+                  {pixiToml && !isEditingToml && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -404,40 +438,12 @@ export const WorkspaceDetail = () => {
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
-              ) : editingToml ? (
-                <div className="space-y-4">
-                  <Textarea
-                    value={editTomlContent}
-                    onChange={(e) => setEditTomlContent(e.target.value)}
-                    rows={16}
-                    className="font-mono text-sm"
-                  />
-                  <div className="flex gap-2 justify-end">
-                    <Button
-                      variant="outline"
-                      onClick={() => setEditingToml(false)}
-                      disabled={savingToml}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleSaveToml}
-                      disabled={savingToml}
-                    >
-                      {savingToml ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="mr-2 h-4 w-4" />
-                          Save pixi.toml
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
+              ) : isEditingToml ? (
+                <textarea
+                  className="w-full h-96 bg-slate-900 text-slate-100 p-4 rounded-md font-mono text-sm resize-y border-0 focus:outline-none focus:ring-2 focus:ring-primary"
+                  value={editedToml}
+                  onChange={(e) => setEditedToml(e.target.value)}
+                />
               ) : pixiToml ? (
                 <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto font-mono text-sm whitespace-pre">
                   {pixiToml}
@@ -455,77 +461,75 @@ export const WorkspaceDetail = () => {
           <VersionHistory environmentId={wsId} environmentStatus={workspace.status} />
         </TabsContent>
 
-        {!isLocalMode && (
-          <TabsContent value="publications">
-            <Card>
-              <CardHeader>
-                <CardTitle>Publications</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {publicationsLoading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                ) : publications && publications.length > 0 ? (
-                  <div className="space-y-3">
-                    {publications.map((pub) => (
-                      <div
-                        key={pub.id}
-                        className="p-4 rounded-lg border"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 space-y-2">
-                            <div className="flex items-center gap-2">
-                              <a
-                                href={`https://${pub.registry_url}/repository/${pub.repository}?tab=tags`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="font-medium text-lg hover:underline text-primary flex items-center gap-1"
-                              >
-                                {pub.repository}:{pub.tag}
-                                <ExternalLink className="h-4 w-4" />
-                              </a>
+        <TabsContent value="publications">
+          <Card>
+            <CardHeader>
+              <CardTitle>Publications</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {publicationsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : publications && publications.length > 0 ? (
+                <div className="space-y-3">
+                  {publications.map((pub) => (
+                    <div
+                      key={pub.id}
+                      className="p-4 rounded-lg border"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={`https://${pub.registry_url}/repository/${pub.repository}?tab=tags`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium text-lg hover:underline text-primary flex items-center gap-1"
+                            >
+                              {pub.repository}:{pub.tag}
+                              <ExternalLink className="h-4 w-4" />
+                            </a>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">Registry:</span>
+                              <span className="ml-2 font-medium">{pub.registry_name}</span>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                              <div>
-                                <span className="text-muted-foreground">Registry:</span>
-                                <span className="ml-2 font-medium">{pub.registry_name}</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">URL:</span>
-                                <span className="ml-2 font-mono text-xs">{pub.registry_url}</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">Published by:</span>
-                                <span className="ml-2 font-medium">{pub.published_by}</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">Published:</span>
-                                <span className="ml-2">{new Date(pub.published_at).toLocaleString()}</span>
-                              </div>
+                            <div>
+                              <span className="text-muted-foreground">URL:</span>
+                              <span className="ml-2 font-mono text-xs">{pub.registry_url}</span>
                             </div>
-                            <div className="pt-2">
-                              <span className="text-muted-foreground text-sm">Digest:</span>
-                              <code className="ml-2 text-xs font-mono bg-muted px-2 py-1 rounded">
-                                {pub.digest}
-                              </code>
+                            <div>
+                              <span className="text-muted-foreground">Published by:</span>
+                              <span className="ml-2 font-medium">{pub.published_by}</span>
                             </div>
+                            <div>
+                              <span className="text-muted-foreground">Published:</span>
+                              <span className="ml-2">{new Date(pub.published_at).toLocaleString()}</span>
+                            </div>
+                          </div>
+                          <div className="pt-2">
+                            <span className="text-muted-foreground text-sm">Digest:</span>
+                            <code className="ml-2 text-xs font-mono bg-muted px-2 py-1 rounded">
+                              {pub.digest}
+                            </code>
                           </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-8">
-                    No publications yet. Click the "Publish" button to publish this workspace to an OCI registry.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  No publications yet. Click the "Publish" button to publish this workspace to an OCI registry.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-        {!isLocalMode && (
+        {!isLocalWs && (
           <TabsContent value="collaborators">
             <Card>
               <CardHeader>

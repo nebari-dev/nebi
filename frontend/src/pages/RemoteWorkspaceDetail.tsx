@@ -117,10 +117,10 @@ export const RemoteWorkspaceDetail = () => {
                 <span className="text-muted-foreground">Package Manager:</span>
                 <span className="font-medium font-mono text-sm">{workspace.package_manager || 'pixi'}</span>
               </div>
-              {workspace.size_formatted && (
+              {workspace.size_bytes > 0 && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Size:</span>
-                  <span className="font-medium">{workspace.size_formatted}</span>
+                  <span className="font-medium">{(workspace.size_bytes / 1024 / 1024).toFixed(1)} MB</span>
                 </div>
               )}
               {workspace.owner?.username && (

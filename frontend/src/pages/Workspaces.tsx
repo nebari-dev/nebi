@@ -4,14 +4,13 @@ import { useWorkspaces, useCreateWorkspace, useDeleteWorkspace } from '@/hooks/u
 import { useRemoteServer, useRemoteWorkspaces, useCreateRemoteWorkspace, useDeleteRemoteWorkspace } from '@/hooks/useRemote';
 import { useModeStore } from '@/store/modeStore';
 import { workspacesApi } from '@/api/workspaces';
-import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Loader2, Plus, Trash2, X, Edit, Users, FileCode, Cloud, Monitor, HardDrive } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Edit, FileCode, Cloud, Monitor, HardDrive } from 'lucide-react';
 
 interface Package {
   name: string;
@@ -79,7 +78,6 @@ export const Workspaces = () => {
   const deleteMutation = useDeleteWorkspace();
   const createRemoteMutation = useCreateRemoteWorkspace();
   const deleteRemoteMutation = useDeleteRemoteWorkspace();
-  const currentUser = useAuthStore((state) => state.user);
   const isLocal = useModeStore((state) => state.mode === 'local');
   const { data: serverStatus } = useRemoteServer();
   const isRemoteConnected = isLocal && serverStatus?.status === 'connected';
@@ -605,22 +603,16 @@ export const Workspaces = () => {
                     <td className="p-4 font-medium">
                       <div className="flex items-center gap-2">
                         {ws.name}
-                        {ws.location === 'local' && (
+                        {isLocal && ws.location === 'local' && (
                           <Badge variant="outline" className="bg-cyan-500/10 text-cyan-500 border-cyan-500/20 gap-1 text-xs">
                             <HardDrive className="h-3 w-3" />
                             Local
                           </Badge>
                         )}
-                        {ws.location === 'remote' && (
+                        {isLocal && ws.location === 'remote' && (
                           <Badge className="bg-purple-500/10 text-purple-500 border-purple-500/20 gap-1 text-xs">
                             <Cloud className="h-3 w-3" />
                             Remote
-                          </Badge>
-                        )}
-                        {ws.location === 'local' && ws.owner_id !== currentUser?.id && ws.owner && (
-                          <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20">
-                            <Users className="h-3 w-3 mr-1" />
-                            {ws.owner.username}
                           </Badge>
                         )}
                       </div>

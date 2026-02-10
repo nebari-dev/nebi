@@ -51,7 +51,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	wsType := "local"
-	if ws.IsGlobal {
+	if s.IsGlobalWorkspace(ws) {
 		wsType = "global"
 	}
 	fmt.Fprintf(os.Stdout, "Workspace: %s\n", ws.Name)

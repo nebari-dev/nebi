@@ -140,7 +140,7 @@ func runWorkspaceListLocal() error {
 	var missing int
 	for _, ws := range wss {
 		wsType := "local"
-		if ws.IsGlobal {
+		if s.IsGlobalWorkspace(&ws) {
 			wsType = "global"
 		}
 		path := ws.Path
@@ -293,9 +293,8 @@ func runWorkspacePromote(cmd *cobra.Command, args []string) error {
 	}
 
 	ws := &store.LocalWorkspace{
-		Name:     name,
-		Path:     wsDir,
-		IsGlobal: true,
+		Name: name,
+		Path: wsDir,
 	}
 	if err := s.CreateWorkspace(ws); err != nil {
 		return fmt.Errorf("saving workspace: %w", err)
@@ -383,8 +382,10 @@ func runWorkspaceRemoveLocal(arg string) error {
 		}
 	}
 
+	isGlobal := s.IsGlobalWorkspace(ws)
+
 	// Delete directory for global workspaces
-	if ws.IsGlobal {
+	if isGlobal {
 		if err := os.RemoveAll(ws.Path); err != nil {
 			return fmt.Errorf("removing global workspace directory: %w", err)
 		}
@@ -399,7 +400,7 @@ func runWorkspaceRemoveLocal(arg string) error {
 		return fmt.Errorf("removing workspace: %w", err)
 	}
 
-	if ws.IsGlobal {
+	if isGlobal {
 		fmt.Fprintf(os.Stderr, "Removed global workspace %q\n", displayName)
 	} else {
 		fmt.Fprintf(os.Stderr, "Removed workspace %q (project files untouched)\n", displayName)

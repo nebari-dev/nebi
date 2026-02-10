@@ -23,7 +23,6 @@ export interface Workspace {
   size_formatted: string;
   source?: 'local' | 'managed';
   path?: string;
-  is_global?: boolean;
   origin_name?: string;
   origin_tag?: string;
   origin_action?: string;

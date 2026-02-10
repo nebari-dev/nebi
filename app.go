@@ -93,7 +93,7 @@ func (a *App) startup(ctx context.Context) {
 
 	// Set storage directory to app data dir (fixes read-only file system error)
 	storageDir := filepath.Join(dataDir, "workspaces")
-	os.Setenv("NEBI_STORAGE_DIR", storageDir)
+	os.Setenv("NEBI_STORAGE_WORKSPACES_DIR", storageDir)
 	logToFile(fmt.Sprintf("Using storage: %s", storageDir))
 
 	// Ensure desktop app runs in local mode

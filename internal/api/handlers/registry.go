@@ -26,6 +26,7 @@ type CreateRegistryRequest struct {
 	URL               string `json:"url" binding:"required"`
 	Username          string `json:"username"`
 	Password          string `json:"password"`
+	APIToken          string `json:"api_token"`
 	IsDefault         bool   `json:"is_default"`
 	DefaultRepository string `json:"default_repository"`
 }
@@ -35,6 +36,7 @@ type UpdateRegistryRequest struct {
 	URL               *string `json:"url"`
 	Username          *string `json:"username"`
 	Password          *string `json:"password"`
+	APIToken          *string `json:"api_token"`
 	IsDefault         *bool   `json:"is_default"`
 	DefaultRepository *string `json:"default_repository"`
 }
@@ -44,6 +46,7 @@ type RegistryResponse struct {
 	Name              string    `json:"name"`
 	URL               string    `json:"url"`
 	Username          string    `json:"username"`
+	HasAPIToken       bool      `json:"has_api_token"`
 	IsDefault         bool      `json:"is_default"`
 	DefaultRepository string    `json:"default_repository"`
 	CreatedAt         string    `json:"created_at"`
@@ -73,6 +76,7 @@ func (h *RegistryHandler) ListRegistries(c *gin.Context) {
 			Name:              reg.Name,
 			URL:               reg.URL,
 			Username:          reg.Username,
+			HasAPIToken:       reg.APIToken != "",
 			IsDefault:         reg.IsDefault,
 			DefaultRepository: reg.DefaultRepository,
 			CreatedAt:         reg.CreatedAt.Format("2006-01-02 15:04:05"),
@@ -119,6 +123,7 @@ func (h *RegistryHandler) CreateRegistry(c *gin.Context) {
 		URL:               req.URL,
 		Username:          req.Username,
 		Password:          req.Password, // TODO: Encrypt password
+		APIToken:          req.APIToken,
 		IsDefault:         req.IsDefault,
 		DefaultRepository: req.DefaultRepository,
 		CreatedBy:         userID,
@@ -134,6 +139,7 @@ func (h *RegistryHandler) CreateRegistry(c *gin.Context) {
 		Name:              registry.Name,
 		URL:               registry.URL,
 		Username:          registry.Username,
+		HasAPIToken:       registry.APIToken != "",
 		IsDefault:         registry.IsDefault,
 		DefaultRepository: registry.DefaultRepository,
 		CreatedAt:         registry.CreatedAt.Format("2006-01-02 15:04:05"),
@@ -165,6 +171,7 @@ func (h *RegistryHandler) GetRegistry(c *gin.Context) {
 		Name:              registry.Name,
 		URL:               registry.URL,
 		Username:          registry.Username,
+		HasAPIToken:       registry.APIToken != "",
 		IsDefault:         registry.IsDefault,
 		DefaultRepository: registry.DefaultRepository,
 		CreatedAt:         registry.CreatedAt.Format("2006-01-02 15:04:05"),
@@ -212,6 +219,9 @@ func (h *RegistryHandler) UpdateRegistry(c *gin.Context) {
 	if req.Password != nil {
 		registry.Password = *req.Password // TODO: Encrypt
 	}
+	if req.APIToken != nil {
+		registry.APIToken = *req.APIToken
+	}
 	if req.IsDefault != nil {
 		if *req.IsDefault {
 			// Unset other defaults
@@ -233,6 +243,7 @@ func (h *RegistryHandler) UpdateRegistry(c *gin.Context) {
 		Name:              registry.Name,
 		URL:               registry.URL,
 		Username:          registry.Username,
+		HasAPIToken:       registry.APIToken != "",
 		IsDefault:         registry.IsDefault,
 		DefaultRepository: registry.DefaultRepository,
 		CreatedAt:         registry.CreatedAt.Format("2006-01-02 15:04:05"),
@@ -289,7 +300,8 @@ func (h *RegistryHandler) ListPublicRegistries(c *gin.Context) {
 			ID:                reg.ID,
 			Name:              reg.Name,
 			URL:               reg.URL,
-			Username:          "", // Don't expose username to regular users
+			Username:          "",    // Don't expose username to regular users
+			HasAPIToken:       false, // Don't expose token info to regular users
 			IsDefault:         reg.IsDefault,
 			DefaultRepository: reg.DefaultRepository,
 			CreatedAt:         reg.CreatedAt.Format("2006-01-02 15:04:05"),

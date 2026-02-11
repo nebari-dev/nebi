@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { registriesApi } from '@/api/registries';
-import type { CreateRegistryRequest, UpdateRegistryRequest, PublishRequest } from '@/types';
+import type { CreateRegistryRequest, UpdateRegistryRequest, PublishRequest, ImportEnvironmentRequest } from '@/types';
 
 // Query hook for public registries (all authenticated users)
 export const usePublicRegistries = () => {
@@ -85,5 +85,37 @@ export const usePublications = (workspaceId: string) => {
     queryKey: ['publications', workspaceId],
     queryFn: () => registriesApi.listPublications(workspaceId),
     enabled: !!workspaceId,
+  });
+};
+
+// Query hook for registry repositories (browse)
+export const useRegistryRepositories = (registryId: string, search?: string) => {
+  return useQuery({
+    queryKey: ['registries', registryId, 'repositories', search],
+    queryFn: () => registriesApi.listRepositories(registryId, search),
+    enabled: !!registryId,
+  });
+};
+
+// Query hook for repository tags (browse)
+export const useRepositoryTags = (registryId: string, repo: string) => {
+  return useQuery({
+    queryKey: ['registries', registryId, 'tags', repo],
+    queryFn: () => registriesApi.listTags(registryId, repo),
+    enabled: !!registryId && !!repo,
+  });
+};
+
+// Mutation hook for importing an environment from a registry
+export const useImportEnvironment = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ registryId, data }: { registryId: string; data: ImportEnvironmentRequest }) =>
+      registriesApi.importEnvironment(registryId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
   });
 };

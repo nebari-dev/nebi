@@ -920,8 +920,9 @@ func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
 		return
 	}
 
-	// Build full repository path
-	fullRepo := fmt.Sprintf("%s/%s", registry.URL, req.Repository)
+	// Build full repository path (parse URL to separate host from namespace)
+	host, _ := oci.ParseRegistryURL(registry.URL)
+	fullRepo := fmt.Sprintf("%s/%s", host, req.Repository)
 
 	// Publish using OCI package
 	wsPath := h.executor.GetWorkspacePath(&ws)
@@ -931,7 +932,7 @@ func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
 		Tag:          req.Tag,
 		Username:     registry.Username,
 		Password:     registry.Password,
-		RegistryHost: registry.URL,
+		RegistryHost: host,
 	})
 
 	if err != nil {

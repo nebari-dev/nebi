@@ -11,6 +11,7 @@ export const CreateRegistryDialog = () => {
   const [url, setUrl] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [apiToken, setApiToken] = useState('');
   const [defaultRepository, setDefaultRepository] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [error, setError] = useState('');
@@ -27,6 +28,7 @@ export const CreateRegistryDialog = () => {
         url,
         username: username || undefined,
         password: password || undefined,
+        api_token: apiToken || undefined,
         default_repository: defaultRepository || undefined,
         is_default: isDefault,
       });
@@ -35,6 +37,7 @@ export const CreateRegistryDialog = () => {
       setUrl('');
       setUsername('');
       setPassword('');
+      setApiToken('');
       setDefaultRepository('');
       setIsDefault(false);
       setError('');
@@ -104,6 +107,22 @@ export const CreateRegistryDialog = () => {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Personal access token or password"
             />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              API Token <span className="text-muted-foreground">(optional)</span>
+            </label>
+            <Input
+              type="password"
+              value={apiToken}
+              onChange={(e) => setApiToken(e.target.value)}
+              placeholder="Registry API token for browsing private repos"
+            />
+            <p className="text-xs text-muted-foreground">
+              For Quay.io: generate an OAuth Application Token to list private repositories.
+              This is separate from the push/pull credentials above.
+            </p>
           </div>
 
           <div className="space-y-2">

@@ -9,6 +9,7 @@ import { Workspaces } from './pages/Workspaces';
 import { WorkspaceDetail } from './pages/WorkspaceDetail';
 import { RemoteWorkspaceDetail } from './pages/RemoteWorkspaceDetail';
 import { Jobs } from './pages/Jobs';
+import { Registries } from './pages/Registries';
 import { Settings } from './pages/Settings';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { UserManagement } from './pages/admin/UserManagement';
@@ -96,6 +97,7 @@ function App() {
               <Route path="workspaces/:id" element={<WorkspaceDetail />} />
               <Route path="remote/workspaces/:id" element={<RemoteWorkspaceDetail />} />
               <Route path="jobs" element={<Jobs />} />
+              <Route path="registries" element={<Registries />} />
               <Route path="settings" element={<Settings />} />
 
               <Route element={<AdminRoute />}>

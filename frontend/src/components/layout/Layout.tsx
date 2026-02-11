@@ -52,19 +52,17 @@ export const Layout = () => {
                     </Button>
                   )}
                 </NavLink>
-                {isAdmin && (
-                  <NavLink to="/admin">
-                    {({ isActive }) => (
-                      <Button
-                        variant={isActive ? 'secondary' : 'ghost'}
-                        className="gap-2"
-                      >
-                        <Shield className="h-4 w-4" />
-                        Admin
-                      </Button>
-                    )}
-                  </NavLink>
-                )}
+                <NavLink to="/registries">
+                  {({ isActive }) => (
+                    <Button
+                      variant={isActive ? 'secondary' : 'ghost'}
+                      className="gap-2"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M11.5 20h-6.5a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v5.5" /><path d="M9 17h2" /><path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /><path d="M20.2 20.2l1.8 1.8" /></svg>
+                      Registries
+                    </Button>
+                  )}
+                </NavLink>
                 {isLocalMode && (
                   <NavLink to="/settings">
                     {({ isActive }) => (
@@ -82,6 +80,19 @@ export const Layout = () => {
             </div>
             {!isLocalMode && (
               <div className="flex items-center gap-4">
+                {isAdmin && (
+                  <NavLink to="/admin">
+                    {({ isActive }) => (
+                      <Button
+                        variant={isActive ? 'secondary' : 'ghost'}
+                        className="gap-2"
+                      >
+                        <Shield className="h-4 w-4" />
+                        Admin
+                      </Button>
+                    )}
+                  </NavLink>
+                )}
                 {user?.avatar_url && !avatarError ? (
                   <img
                     src={user.avatar_url}

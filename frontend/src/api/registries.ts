@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { OCIRegistry, CreateRegistryRequest, UpdateRegistryRequest, Publication, PublishRequest, Job } from '@/types';
+import type { OCIRegistry, CreateRegistryRequest, UpdateRegistryRequest, Publication, PublishRequest, Job, RegistryRepository, RegistryTag, ImportEnvironmentRequest, Workspace } from '@/types';
 
 export const registriesApi = {
   // Public endpoints (for all authenticated users)
@@ -41,6 +41,23 @@ export const registriesApi = {
 
   listPublications: async (workspaceId: string): Promise<Publication[]> => {
     const { data } = await apiClient.get(`/workspaces/${workspaceId}/publications`);
+    return data;
+  },
+
+  // Browse endpoints (for all authenticated users)
+  listRepositories: async (registryId: string, search?: string): Promise<{ repositories: RegistryRepository[]; fallback: boolean }> => {
+    const params = search ? { search } : {};
+    const { data } = await apiClient.get(`/registries/${registryId}/repositories`, { params });
+    return data;
+  },
+
+  listTags: async (registryId: string, repo: string): Promise<{ tags: RegistryTag[] }> => {
+    const { data } = await apiClient.get(`/registries/${registryId}/tags`, { params: { repo } });
+    return data;
+  },
+
+  importEnvironment: async (registryId: string, req: ImportEnvironmentRequest): Promise<Workspace> => {
+    const { data } = await apiClient.post(`/registries/${registryId}/import`, req);
     return data;
   },
 };

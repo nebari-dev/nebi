@@ -24,7 +24,7 @@ type LocalExecutor struct {
 
 // NewLocalExecutor creates a new local executor
 func NewLocalExecutor(cfg *config.Config) (*LocalExecutor, error) {
-	baseDir := cfg.Storage.EnvironmentsDir
+	baseDir := cfg.Storage.WorkspacesDir
 
 	// Create base directory if it doesn't exist
 	if err := os.MkdirAll(baseDir, 0755); err != nil {

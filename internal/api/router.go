@@ -35,6 +35,15 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		gin.SetMode(gin.ReleaseMode)
 	}
 
+	localMode := cfg.IsLocalMode()
+
+	// Set handler-level mode for /version endpoint
+	if localMode {
+		handlers.Mode = "local"
+	} else {
+		handlers.Mode = "team"
+	}
+
 	router := gin.New()
 
 	// Middleware
@@ -42,28 +51,39 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	router.Use(loggingMiddleware())
 	router.Use(corsMiddleware())
 
-	// Initialize authenticator
+	// Initialize authenticator based on mode
 	var authenticator auth.Authenticator
 	var oidcAuth *auth.OIDCAuthenticator
-	if cfg.Auth.Type == "basic" {
-		authenticator = auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
-	}
 
-	// Initialize OIDC if configured
-	if cfg.Auth.OIDCIssuerURL != "" && cfg.Auth.OIDCClientID != "" {
-		oidcCfg := auth.OIDCConfig{
-			IssuerURL:    cfg.Auth.OIDCIssuerURL,
-			ClientID:     cfg.Auth.OIDCClientID,
-			ClientSecret: cfg.Auth.OIDCClientSecret,
-			RedirectURL:  cfg.Auth.OIDCRedirectURL,
-		}
-		var err error
-		// Use context.Background() for initialization
-		oidcAuth, err = auth.NewOIDCAuthenticator(nil, oidcCfg, db, cfg.Auth.JWTSecret)
+	if localMode {
+		localAuth, err := auth.NewLocalAuthenticator(db)
 		if err != nil {
-			logger.Error("Failed to initialize OIDC authenticator", "error", err)
-		} else {
-			logger.Info("OIDC authentication enabled", "issuer", cfg.Auth.OIDCIssuerURL)
+			logger.Error("Failed to initialize local authenticator", "error", err)
+			panic(err)
+		}
+		authenticator = localAuth
+		logger.Info("Running in local mode — authentication bypassed", "user", auth.LocalUsername())
+	} else {
+		if cfg.Auth.Type == "basic" {
+			authenticator = auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
+		}
+
+		// Initialize OIDC if configured
+		if cfg.Auth.OIDCIssuerURL != "" && cfg.Auth.OIDCClientID != "" {
+			oidcCfg := auth.OIDCConfig{
+				IssuerURL:    cfg.Auth.OIDCIssuerURL,
+				ClientID:     cfg.Auth.OIDCClientID,
+				ClientSecret: cfg.Auth.OIDCClientSecret,
+				RedirectURL:  cfg.Auth.OIDCRedirectURL,
+			}
+			var err error
+			// Use context.Background() for initialization
+			oidcAuth, err = auth.NewOIDCAuthenticator(nil, oidcCfg, db, cfg.Auth.JWTSecret)
+			if err != nil {
+				logger.Error("Failed to initialize OIDC authenticator", "error", err)
+			} else {
+				logger.Info("OIDC authentication enabled", "issuer", cfg.Auth.OIDCIssuerURL)
+			}
 		}
 	}
 
@@ -74,7 +94,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		public.GET("/version", handlers.GetVersion)
 		public.POST("/auth/login", handlers.Login(authenticator))
 
-		// OIDC routes (if enabled)
+		// OIDC routes (if enabled, team mode only)
 		if oidcAuth != nil {
 			public.GET("/auth/oidc/login", handlers.OIDCLogin(oidcAuth))
 			public.GET("/auth/oidc/callback", handlers.OIDCCallback(oidcAuth))
@@ -100,34 +120,34 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		ws := protected.Group("/workspaces/:id")
 		{
 			// Read operations (require read permission)
-			ws.GET("", middleware.RequireWorkspaceAccess("read"), wsHandler.GetWorkspace)
-			ws.GET("/packages", middleware.RequireWorkspaceAccess("read"), wsHandler.ListPackages)
-			ws.GET("/pixi-toml", middleware.RequireWorkspaceAccess("read"), wsHandler.GetPixiToml)
-			ws.GET("/collaborators", middleware.RequireWorkspaceAccess("read"), wsHandler.ListCollaborators)
+			ws.GET("", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.GetWorkspace)
+			ws.GET("/packages", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.ListPackages)
+			ws.GET("/pixi-toml", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.GetPixiToml)
+			ws.GET("/collaborators", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.ListCollaborators)
 
 			// Version operations (read permission)
-			ws.GET("/versions", middleware.RequireWorkspaceAccess("read"), wsHandler.ListVersions)
-			ws.GET("/versions/:version", middleware.RequireWorkspaceAccess("read"), wsHandler.GetVersion)
-			ws.GET("/versions/:version/pixi-lock", middleware.RequireWorkspaceAccess("read"), wsHandler.DownloadLockFile)
-			ws.GET("/versions/:version/pixi-toml", middleware.RequireWorkspaceAccess("read"), wsHandler.DownloadManifestFile)
+			ws.GET("/versions", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.ListVersions)
+			ws.GET("/versions/:version", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.GetVersion)
+			ws.GET("/versions/:version/pixi-lock", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.DownloadLockFile)
+			ws.GET("/versions/:version/pixi-toml", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.DownloadManifestFile)
 
 			// Write operations (require write permission)
-			ws.DELETE("", middleware.RequireWorkspaceAccess("write"), wsHandler.DeleteWorkspace)
-			ws.POST("/packages", middleware.RequireWorkspaceAccess("write"), wsHandler.InstallPackages)
-			ws.DELETE("/packages/:package", middleware.RequireWorkspaceAccess("write"), wsHandler.RemovePackages)
-			ws.POST("/rollback", middleware.RequireWorkspaceAccess("write"), wsHandler.RollbackToVersion)
+			ws.DELETE("", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.DeleteWorkspace)
+			ws.POST("/packages", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.InstallPackages)
+			ws.DELETE("/packages/:package", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.RemovePackages)
+			ws.POST("/rollback", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.RollbackToVersion)
 
 			// Sharing operations (owner only - checked in handler)
 			ws.POST("/share", wsHandler.ShareWorkspace)
 			ws.DELETE("/share/:user_id", wsHandler.UnshareWorkspace)
 
 			// Tags (read permission)
-			ws.GET("/tags", middleware.RequireWorkspaceAccess("read"), wsHandler.ListTags)
+			ws.GET("/tags", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.ListTags)
 
 			// Push and publish operations (require write permission)
-			ws.POST("/push", middleware.RequireWorkspaceAccess("write"), wsHandler.PushVersion)
-			ws.POST("/publish", middleware.RequireWorkspaceAccess("write"), wsHandler.PublishWorkspace)
-			ws.GET("/publications", middleware.RequireWorkspaceAccess("read"), wsHandler.ListPublications)
+			ws.POST("/push", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.PushVersion)
+			ws.POST("/publish", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.PublishWorkspace)
+			ws.GET("/publications", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.ListPublications)
 		}
 
 		// Job endpoints
@@ -146,7 +166,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		// Admin endpoints (require admin role)
 		adminHandler := handlers.NewAdminHandler(db)
 		admin := protected.Group("/admin")
-		admin.Use(middleware.RequireAdmin())
+		admin.Use(middleware.RequireAdmin(localMode))
 		{
 			// User management
 			admin.GET("/users", adminHandler.ListUsers)
@@ -250,7 +270,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		logger.Info("Embedded frontend loaded and will be served")
 	}
 
-	slog.Info("API router initialized", "mode", cfg.Server.Mode)
+	slog.Info("API router initialized", "mode", cfg.Server.Mode, "app_mode", cfg.Mode)
 	return router
 }
 

@@ -199,6 +199,27 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			admin.PUT("/registries/:id", registryHandler.UpdateRegistry)
 			admin.DELETE("/registries/:id", registryHandler.DeleteRegistry)
 		}
+
+		// Remote proxy endpoints (local mode only)
+		if localMode {
+			remoteHandler := handlers.NewRemoteHandler(db)
+			remote := protected.Group("/remote")
+			{
+				remote.POST("/connect", remoteHandler.ConnectServer)
+				remote.GET("/server", remoteHandler.GetServer)
+				remote.DELETE("/server", remoteHandler.DisconnectServer)
+				remote.GET("/workspaces", remoteHandler.ListWorkspaces)
+				remote.GET("/workspaces/:id", remoteHandler.GetWorkspace)
+				remote.POST("/workspaces", remoteHandler.CreateWorkspace)
+				remote.DELETE("/workspaces/:id", remoteHandler.DeleteWorkspace)
+				remote.GET("/workspaces/:id/versions", remoteHandler.ListVersions)
+				remote.GET("/workspaces/:id/tags", remoteHandler.ListTags)
+				remote.GET("/workspaces/:id/pixi-toml", remoteHandler.GetPixiToml)
+				remote.GET("/workspaces/:id/versions/:version/pixi-toml", remoteHandler.GetVersionPixiToml)
+				remote.GET("/workspaces/:id/versions/:version/pixi-lock", remoteHandler.GetVersionPixiLock)
+				remote.POST("/workspaces/:id/push", remoteHandler.PushVersion)
+			}
+		}
 	}
 
 	// Swagger documentation

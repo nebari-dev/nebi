@@ -1,37 +1,81 @@
 import { Link } from 'react-router-dom';
-import { useUsers, useAuditLogs, useDashboardStats } from '@/hooks/useAdmin';
+import { useUsers, useDashboardStats } from '@/hooks/useAdmin';
 import { useWorkspaces } from '@/hooks/useWorkspaces';
 import { useJobs } from '@/hooks/useJobs';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Loader2, Users, Boxes, Activity, ListTodo, HardDrive, Package } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  Loader2,
+  Users,
+  Boxes,
+  Activity,
+  HardDrive,
+  AlertTriangle,
+  UserPlus,
+  Package,
+} from 'lucide-react';
 
-const StatCard = ({ title, value, icon: Icon }: { title: string; value: number | string; icon: any }) => {
+const StatCard = ({
+  title,
+  value,
+  icon: Icon,
+}: {
+  title: string;
+  value: number | string;
+  icon: React.ElementType;
+}) => {
   return (
     <Card>
       <CardContent className="p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-[#682888]">{title}</p>
-            <p className="text-2xl font-bold mt-2">{value}</p>
+        <div className="flex items-center gap-4">
+          <div className="rounded-lg bg-[#F5EFFE] p-3">
+            <Icon className="h-5 w-5 text-[#9B3DCC]" />
           </div>
-          <Icon className="h-8 w-8 text-[#682888]" />
+          <div>
+            <p className="text-sm text-muted-foreground">{title}</p>
+            <p className="text-2xl font-bold">{value}</p>
+          </div>
         </div>
       </CardContent>
     </Card>
   );
 };
 
+const quickActions = [
+  {
+    title: 'Manage Users',
+    description: 'Add users and manage permissions',
+    icon: UserPlus,
+    to: '/admin/users',
+  },
+  {
+    title: 'Manage Registries',
+    description: 'Configure package registries',
+    icon: Package,
+    to: '/admin/registries',
+  },
+  {
+    title: 'View Audit Logs',
+    description: 'Review system activity and events',
+    icon: Activity,
+    to: '/admin/audit-logs',
+  },
+];
+
 export const AdminDashboard = () => {
   const { data: users, isLoading: usersLoading } = useUsers();
   const { data: workspaces, isLoading: wsLoading } = useWorkspaces();
   const { data: jobs, isLoading: jobsLoading } = useJobs();
-  const { data: auditLogs, isLoading: logsLoading } = useAuditLogs();
   const { data: dashboardStats, isLoading: statsLoading } = useDashboardStats();
 
-  const activeJobs = jobs?.filter(job => job.status === 'running' || job.status === 'pending').length || 0;
+  const activeJobs =
+    jobs?.filter(
+      (job) => job.status === 'running' || job.status === 'pending',
+    ).length || 0;
 
-  if (usersLoading || wsLoading || jobsLoading || logsLoading || statsLoading) {
+  const failedJobs =
+    jobs?.filter((job) => job.status === 'failed').length || 0;
+
+  if (usersLoading || wsLoading || jobsLoading || statsLoading) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -39,73 +83,66 @@ export const AdminDashboard = () => {
     );
   }
 
+  const alerts: string[] = [];
+  if (failedJobs > 0) {
+    alerts.push(`${failedJobs} job${failedJobs > 1 ? 's' : ''} failed recently`);
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        <p className="text-muted-foreground">System overview and management</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* Stat Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Total Users" value={users?.length || 0} icon={Users} />
-        <StatCard title="Workspaces" value={workspaces?.length || 0} icon={Boxes} />
-        <StatCard title="Active Jobs" value={activeJobs} icon={ListTodo} />
-        <StatCard title="Audit Logs" value={auditLogs?.length || 0} icon={Activity} />
-        <StatCard title="Disk Usage" value={dashboardStats?.total_disk_usage_formatted || 'Calculating...'} icon={HardDrive} />
+        <StatCard
+          title="Environments"
+          value={workspaces?.length || 0}
+          icon={Boxes}
+        />
+        <StatCard title="Active Jobs" value={activeJobs} icon={Activity} />
+        <StatCard
+          title="Disk Usage"
+          value={dashboardStats?.total_disk_usage_formatted || 'N/A'}
+          icon={HardDrive}
+        />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {auditLogs?.slice(0, 10).map((log) => (
-              <div
-                key={log.id}
-                className="flex items-center justify-between p-3 rounded-lg border"
-              >
-                <div className="flex-1">
-                  <p className="text-sm font-medium">
-                    {log.user?.username || 'Unknown User'}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {log.action.replace(/_/g, ' ')} - {log.resource}
-                  </p>
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {new Date(log.timestamp).toLocaleString()}
-                </span>
-              </div>
-            ))}
-          </div>
-          {(!auditLogs || auditLogs.length === 0) && (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              No audit logs yet
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      {/* Alert Banner */}
+      {alerts.length > 0 && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="flex items-center gap-3 p-4">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
+            <div>
+              <p className="text-sm font-medium text-amber-800">
+                System Alerts
+              </p>
+              <p className="text-sm text-amber-700">
+                {alerts.join(' \u00B7 ')}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      <div className="flex gap-4">
-        <Link to="/admin/users">
-          <Button variant="outline">
-            <Users className="h-4 w-4 mr-2" />
-            Manage Users
-          </Button>
-        </Link>
-        <Link to="/admin/registries">
-          <Button variant="outline">
-            <Package className="h-4 w-4 mr-2" />
-            Manage Registries
-          </Button>
-        </Link>
-        <Link to="/admin/audit-logs">
-          <Button variant="outline">
-            <Activity className="h-4 w-4 mr-2" />
-            View All Logs
-          </Button>
-        </Link>
+      {/* Quick Actions */}
+      <div>
+        <h3 className="text-lg font-semibold mb-3">Quick Actions</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {quickActions.map(({ title, description, icon: Icon, to }) => (
+            <Link key={title} to={to}>
+              <Card className="h-full transition-colors hover:border-[#9B3DCC]/30 hover:bg-[#F5EFFE]/50">
+                <CardContent className="p-5">
+                  <div className="rounded-lg bg-[#F5EFFE] p-2 w-fit mb-3">
+                    <Icon className="h-4 w-4 text-[#9B3DCC]" />
+                  </div>
+                  <p className="text-sm font-medium">{title}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {description}
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
       </div>
     </div>
   );

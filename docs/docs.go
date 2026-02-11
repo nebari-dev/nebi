@@ -2013,6 +2013,9 @@ const docTemplate = `{
                 "url"
             ],
             "properties": {
+                "api_token": {
+                    "type": "string"
+                },
                 "default_repository": {
                     "type": "string"
                 },
@@ -2246,6 +2249,9 @@ const docTemplate = `{
                 "default_repository": {
                     "type": "string"
                 },
+                "has_api_token": {
+                    "type": "boolean"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -2304,6 +2310,9 @@ const docTemplate = `{
         "handlers.UpdateRegistryRequest": {
             "type": "object",
             "properties": {
+                "api_token": {
+                    "type": "string"
+                },
                 "default_repository": {
                     "type": "string"
                 },

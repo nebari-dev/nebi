@@ -2007,6 +2007,9 @@
                 "url"
             ],
             "properties": {
+                "api_token": {
+                    "type": "string"
+                },
                 "default_repository": {
                     "type": "string"
                 },
@@ -2240,6 +2243,9 @@
                 "default_repository": {
                     "type": "string"
                 },
+                "has_api_token": {
+                    "type": "boolean"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -2298,6 +2304,9 @@
         "handlers.UpdateRegistryRequest": {
             "type": "object",
             "properties": {
+                "api_token": {
+                    "type": "string"
+                },
                 "default_repository": {
                     "type": "string"
                 },

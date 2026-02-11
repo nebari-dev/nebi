@@ -14,6 +14,7 @@ type OCIRegistry struct {
 	URL               string     `gorm:"not null" json:"url"`              // e.g., "ghcr.io"
 	Username          string     `json:"username"`
 	Password          string     `json:"-"` // encrypted, never exposed in JSON
+	APIToken          string     `json:"-"` // API token for registry REST API (e.g. Quay.io), never exposed in JSON
 	IsDefault         bool       `gorm:"default:false" json:"is_default"`
 	DefaultRepository string     `json:"default_repository"` // e.g., "myorg/workspaces" - base path for repositories
 	CreatedBy         uuid.UUID  `gorm:"type:uuid" json:"created_by"`

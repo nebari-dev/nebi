@@ -33,6 +33,8 @@ definitions:
     type: object
   handlers.CreateRegistryRequest:
     properties:
+      api_token:
+        type: string
       default_repository:
         type: string
       is_default:
@@ -190,6 +192,8 @@ definitions:
         type: string
       default_repository:
         type: string
+      has_api_token:
+        type: boolean
       id:
         type: string
       is_default:
@@ -228,6 +232,8 @@ definitions:
     type: object
   handlers.UpdateRegistryRequest:
     properties:
+      api_token:
+        type: string
       default_repository:
         type: string
       is_default:

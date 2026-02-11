@@ -1,22 +1,25 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/models"
 	"gorm.io/gorm"
 )
 
 // RegistryHandler handles OCI registry operations
 type RegistryHandler struct {
-	db *gorm.DB
+	db     *gorm.DB
+	encKey []byte
 }
 
 // NewRegistryHandler creates a new registry handler
-func NewRegistryHandler(db *gorm.DB) *RegistryHandler {
-	return &RegistryHandler{db: db}
+func NewRegistryHandler(db *gorm.DB, encKey []byte) *RegistryHandler {
+	return &RegistryHandler{db: db, encKey: encKey}
 }
 
 // Request/Response types
@@ -71,12 +74,17 @@ func (h *RegistryHandler) ListRegistries(c *gin.Context) {
 
 	response := make([]RegistryResponse, len(registries))
 	for i, reg := range registries {
+		// Decrypt to check HasAPIToken accurately (encrypted values are non-empty but not real tokens)
+		apiToken, err := nebicrypto.DecryptField(reg.APIToken, h.encKey)
+		if err != nil {
+			slog.Error("Failed to decrypt API token", "registry_id", reg.ID, "error", err)
+		}
 		response[i] = RegistryResponse{
 			ID:                reg.ID,
 			Name:              reg.Name,
 			URL:               reg.URL,
 			Username:          reg.Username,
-			HasAPIToken:       reg.APIToken != "",
+			HasAPIToken:       apiToken != "",
 			IsDefault:         reg.IsDefault,
 			DefaultRepository: reg.DefaultRepository,
 			CreatedAt:         reg.CreatedAt.Format("2006-01-02 15:04:05"),
@@ -118,12 +126,23 @@ func (h *RegistryHandler) CreateRegistry(c *gin.Context) {
 		h.db.Model(&models.OCIRegistry{}).Where("is_default = ?", true).Update("is_default", false)
 	}
 
+	encPassword, err := nebicrypto.EncryptField(req.Password, h.encKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to encrypt credentials"})
+		return
+	}
+	encAPIToken, err := nebicrypto.EncryptField(req.APIToken, h.encKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to encrypt credentials"})
+		return
+	}
+
 	registry := models.OCIRegistry{
 		Name:              req.Name,
 		URL:               req.URL,
 		Username:          req.Username,
-		Password:          req.Password, // TODO: Encrypt password
-		APIToken:          req.APIToken,
+		Password:          encPassword,
+		APIToken:          encAPIToken,
 		IsDefault:         req.IsDefault,
 		DefaultRepository: req.DefaultRepository,
 		CreatedBy:         userID,
@@ -139,7 +158,7 @@ func (h *RegistryHandler) CreateRegistry(c *gin.Context) {
 		Name:              registry.Name,
 		URL:               registry.URL,
 		Username:          registry.Username,
-		HasAPIToken:       registry.APIToken != "",
+		HasAPIToken:       req.APIToken != "",
 		IsDefault:         registry.IsDefault,
 		DefaultRepository: registry.DefaultRepository,
 		CreatedAt:         registry.CreatedAt.Format("2006-01-02 15:04:05"),
@@ -166,12 +185,17 @@ func (h *RegistryHandler) GetRegistry(c *gin.Context) {
 		return
 	}
 
+	apiToken, err := nebicrypto.DecryptField(registry.APIToken, h.encKey)
+	if err != nil {
+		slog.Error("Failed to decrypt API token", "registry_id", registry.ID, "error", err)
+	}
+
 	c.JSON(http.StatusOK, RegistryResponse{
 		ID:                registry.ID,
 		Name:              registry.Name,
 		URL:               registry.URL,
 		Username:          registry.Username,
-		HasAPIToken:       registry.APIToken != "",
+		HasAPIToken:       apiToken != "",
 		IsDefault:         registry.IsDefault,
 		DefaultRepository: registry.DefaultRepository,
 		CreatedAt:         registry.CreatedAt.Format("2006-01-02 15:04:05"),
@@ -217,10 +241,20 @@ func (h *RegistryHandler) UpdateRegistry(c *gin.Context) {
 		registry.Username = *req.Username
 	}
 	if req.Password != nil {
-		registry.Password = *req.Password // TODO: Encrypt
+		encPwd, err := nebicrypto.EncryptField(*req.Password, h.encKey)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to encrypt credentials"})
+			return
+		}
+		registry.Password = encPwd
 	}
 	if req.APIToken != nil {
-		registry.APIToken = *req.APIToken
+		encToken, err := nebicrypto.EncryptField(*req.APIToken, h.encKey)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to encrypt credentials"})
+			return
+		}
+		registry.APIToken = encToken
 	}
 	if req.IsDefault != nil {
 		if *req.IsDefault {
@@ -238,12 +272,17 @@ func (h *RegistryHandler) UpdateRegistry(c *gin.Context) {
 		return
 	}
 
+	updatedAPIToken, err := nebicrypto.DecryptField(registry.APIToken, h.encKey)
+	if err != nil {
+		slog.Error("Failed to decrypt API token", "registry_id", registry.ID, "error", err)
+	}
+
 	c.JSON(http.StatusOK, RegistryResponse{
 		ID:                registry.ID,
 		Name:              registry.Name,
 		URL:               registry.URL,
 		Username:          registry.Username,
-		HasAPIToken:       registry.APIToken != "",
+		HasAPIToken:       updatedAPIToken != "",
 		IsDefault:         registry.IsDefault,
 		DefaultRepository: registry.DefaultRepository,
 		CreatedAt:         registry.CreatedAt.Format("2006-01-02 15:04:05"),

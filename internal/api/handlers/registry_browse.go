@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/oci"
 	"github.com/nebari-dev/nebi/internal/service"
@@ -14,13 +15,14 @@ import (
 
 // RegistryBrowseHandler handles browsing and importing from OCI registries
 type RegistryBrowseHandler struct {
-	db  *gorm.DB
-	svc *service.WorkspaceService
+	db     *gorm.DB
+	svc    *service.WorkspaceService
+	encKey []byte
 }
 
 // NewRegistryBrowseHandler creates a new registry browse handler
-func NewRegistryBrowseHandler(db *gorm.DB, svc *service.WorkspaceService) *RegistryBrowseHandler {
-	return &RegistryBrowseHandler{db: db, svc: svc}
+func NewRegistryBrowseHandler(db *gorm.DB, svc *service.WorkspaceService, encKey []byte) *RegistryBrowseHandler {
+	return &RegistryBrowseHandler{db: db, svc: svc, encKey: encKey}
 }
 
 // ImportRequest is the JSON body for the import endpoint
@@ -42,12 +44,18 @@ func (h *RegistryBrowseHandler) ListRepositories(c *gin.Context) {
 		return
 	}
 
+	password, err := nebicrypto.DecryptField(registry.Password, h.encKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to decrypt registry credentials"})
+		return
+	}
+
 	host, namespace := oci.ParseRegistryURL(registry.URL)
 
 	opts := oci.BrowseOptions{
 		RegistryHost: host,
 		Username:     registry.Username,
-		Password:     registry.Password,
+		Password:     password,
 	}
 
 	catalogFailed := false
@@ -64,7 +72,8 @@ func (h *RegistryBrowseHandler) ListRepositories(c *gin.Context) {
 				ns = parts[0]
 			}
 			if ns != "" {
-				quayRepos, quayErr := oci.ListRepositoriesViaQuayAPI(c.Request.Context(), host, ns, registry.APIToken)
+				apiToken, _ := nebicrypto.DecryptField(registry.APIToken, h.encKey)
+				quayRepos, quayErr := oci.ListRepositoriesViaQuayAPI(c.Request.Context(), host, ns, apiToken)
 				if quayErr == nil && len(quayRepos) > 0 {
 					repos = quayRepos
 					catalogFailed = false
@@ -152,12 +161,18 @@ func (h *RegistryBrowseHandler) ListTags(c *gin.Context) {
 		return
 	}
 
+	password, err := nebicrypto.DecryptField(registry.Password, h.encKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to decrypt registry credentials"})
+		return
+	}
+
 	host, _ := oci.ParseRegistryURL(registry.URL)
 	repoRef := fmt.Sprintf("%s/%s", host, repoName)
 	opts := oci.BrowseOptions{
 		RegistryHost: host,
 		Username:     registry.Username,
-		Password:     registry.Password,
+		Password:     password,
 	}
 
 	tags, err := oci.ListTags(c.Request.Context(), repoRef, opts)
@@ -190,12 +205,18 @@ func (h *RegistryBrowseHandler) ImportEnvironment(c *gin.Context) {
 		return
 	}
 
+	password, err := nebicrypto.DecryptField(registry.Password, h.encKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to decrypt registry credentials"})
+		return
+	}
+
 	host, _ := oci.ParseRegistryURL(registry.URL)
 	repoRef := fmt.Sprintf("%s/%s", host, req.Repository)
 	opts := oci.BrowseOptions{
 		RegistryHost: host,
 		Username:     registry.Username,
-		Password:     registry.Password,
+		Password:     password,
 	}
 
 	result, err := oci.PullEnvironment(c.Request.Context(), repoRef, req.Tag, opts)

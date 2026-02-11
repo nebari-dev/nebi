@@ -12,6 +12,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/api/middleware"
 	"github.com/nebari-dev/nebi/internal/auth"
 	"github.com/nebari-dev/nebi/internal/config"
+	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/logstream"
 	"github.com/nebari-dev/nebi/internal/queue"
@@ -102,9 +103,16 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		}
 	}
 
+	// Derive encryption key for credential encryption at rest
+	encKey, err := nebicrypto.DeriveKey(cfg.Auth.JWTSecret)
+	if err != nil {
+		logger.Error("Failed to derive encryption key", "error", err)
+		panic(err)
+	}
+
 	// Initialize service and handlers
 	svc := service.New(db, q, exec, localMode)
-	wsHandler := handlers.NewWorkspaceHandler(svc, db, q, exec, localMode)
+	wsHandler := handlers.NewWorkspaceHandler(svc, db, q, exec, localMode, encKey)
 	jobHandler := handlers.NewJobHandler(db, logBroker, valkeyClient)
 
 	// Protected routes (require authentication)
@@ -163,11 +171,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		protected.POST("/templates", handlers.NotImplemented)
 
 		// OCI Registry endpoints (for users to view available registries)
-		registryHandler := handlers.NewRegistryHandler(db)
+		registryHandler := handlers.NewRegistryHandler(db, encKey)
 		protected.GET("/registries", registryHandler.ListPublicRegistries)
 
 		// Registry browse & import endpoints (for all authenticated users)
-		browseHandler := handlers.NewRegistryBrowseHandler(db, svc)
+		browseHandler := handlers.NewRegistryBrowseHandler(db, svc, encKey)
 		protected.GET("/registries/:id/repositories", browseHandler.ListRepositories)
 		protected.GET("/registries/:id/tags", browseHandler.ListTags)
 		protected.POST("/registries/:id/import", browseHandler.ImportEnvironment)

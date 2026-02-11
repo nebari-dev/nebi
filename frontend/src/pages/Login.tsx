@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
+import { useModeStore } from '@/store/modeStore';
 import { authApi } from '@/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +15,18 @@ export const Login = () => {
   const [searchParams] = useSearchParams();
 
   const setAuth = useAuthStore((state) => state.setAuth);
+  const isLocalMode = useModeStore((s) => s.isLocalMode());
   const navigate = useNavigate();
+
+  // In local mode, redirect straight to workspaces
+  useEffect(() => {
+    if (isLocalMode) {
+      navigate('/workspaces');
+    }
+  }, [isLocalMode, navigate]);
+
+  // Don't render login form in local mode
+  if (isLocalMode) return null;
 
   // Handle OAuth callback
   useEffect(() => {

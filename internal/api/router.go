@@ -166,6 +166,12 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		registryHandler := handlers.NewRegistryHandler(db)
 		protected.GET("/registries", registryHandler.ListPublicRegistries)
 
+		// Registry browse & import endpoints (for all authenticated users)
+		browseHandler := handlers.NewRegistryBrowseHandler(db, svc)
+		protected.GET("/registries/:id/repositories", browseHandler.ListRepositories)
+		protected.GET("/registries/:id/tags", browseHandler.ListTags)
+		protected.POST("/registries/:id/import", browseHandler.ImportEnvironment)
+
 		// Admin endpoints (require admin role)
 		adminHandler := handlers.NewAdminHandler(db)
 		admin := protected.Group("/admin")

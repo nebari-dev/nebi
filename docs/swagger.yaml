@@ -70,7 +70,11 @@ definitions:
         type: string
       package_manager:
         type: string
+      path:
+        type: string
       pixi_toml:
+        type: string
+      source:
         type: string
     required:
     - name
@@ -203,6 +207,13 @@ definitions:
         type: integer
     required:
     - version_number
+    type: object
+  handlers.SavePixiTomlRequest:
+    properties:
+      content:
+        type: string
+    required:
+    - content
     type: object
   handlers.ShareWorkspaceRequest:
     properties:
@@ -413,8 +424,14 @@ definitions:
       package_manager:
         description: '"pixi" or "uv"'
         type: string
+      path:
+        description: filesystem path (local-mode)
+        type: string
       size_bytes:
         type: integer
+      source:
+        description: '"managed", "local"'
+        type: string
       status:
         $ref: '#/definitions/models.WorkspaceStatus'
       updated_at:
@@ -1346,6 +1363,45 @@ paths:
       security:
       - BearerAuth: []
       summary: Get pixi.toml content for an workspace
+      tags:
+      - workspaces
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: pixi.toml content
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.SavePixiTomlRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.PixiTomlResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Save pixi.toml content for a workspace
       tags:
       - workspaces
   /workspaces/{id}/publications:

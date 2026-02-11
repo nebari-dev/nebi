@@ -26,6 +26,15 @@ type LocalExecutor struct {
 func NewLocalExecutor(cfg *config.Config) (*LocalExecutor, error) {
 	baseDir := cfg.Storage.WorkspacesDir
 
+	// Resolve to absolute path so stored paths work from any working directory
+	if !filepath.IsAbs(baseDir) {
+		abs, err := filepath.Abs(baseDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve base directory: %w", err)
+		}
+		baseDir = abs
+	}
+
 	// Create base directory if it doesn't exist
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create base directory: %w", err)

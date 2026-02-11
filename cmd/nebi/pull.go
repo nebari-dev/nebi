@@ -238,9 +238,8 @@ func setupGlobalWorkspace(name string, force bool) (string, error) {
 
 	wsDir := s.GlobalWorkspaceDir(name)
 	ws := &store.LocalWorkspace{
-		Name:     name,
-		Path:     wsDir,
-		IsGlobal: true,
+		Name: name,
+		Path: wsDir,
 	}
 	if err := s.CreateWorkspace(ws); err != nil {
 		return "", fmt.Errorf("saving workspace: %w", err)

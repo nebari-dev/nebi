@@ -64,12 +64,13 @@ Examples:
 var wsRemoveRemote bool
 
 var workspaceRemoveCmd = &cobra.Command{
-	Use:     "remove <name>",
+	Use:     "remove [name|path]",
 	Aliases: []string{"rm"},
 	Short:   "Remove a workspace from tracking",
 	Long: `Remove a workspace from the local index or from the server.
 
 By default removes from the local index:
+  - With no argument or ".", removes the workspace tracked in the current directory.
   - For global workspaces, the stored files are also deleted.
   - For local workspaces, only the tracking entry is removed; project files are untouched.
   - A bare name refers to a global workspace; use a path (with a slash) for a local workspace.
@@ -77,10 +78,12 @@ By default removes from the local index:
 With --remote, deletes the workspace from the configured server.
 
 Examples:
+  nebi workspace remove                     # remove workspace in current directory
+  nebi workspace remove .                   # same as above
   nebi workspace remove data-science        # remove global workspace by name
   nebi workspace remove ./my-project        # remove local workspace by path
   nebi workspace remove myenv --remote      # delete workspace from server`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.MaximumNArgs(1),
 	RunE: runWorkspaceRemove,
 }
 
@@ -137,7 +140,7 @@ func runWorkspaceListLocal() error {
 	var missing int
 	for _, ws := range wss {
 		wsType := "local"
-		if ws.IsGlobal {
+		if s.IsGlobalWorkspace(&ws) {
 			wsType = "global"
 		}
 		path := ws.Path
@@ -290,9 +293,8 @@ func runWorkspacePromote(cmd *cobra.Command, args []string) error {
 	}
 
 	ws := &store.LocalWorkspace{
-		Name:     name,
-		Path:     wsDir,
-		IsGlobal: true,
+		Name: name,
+		Path: wsDir,
 	}
 	if err := s.CreateWorkspace(ws); err != nil {
 		return fmt.Errorf("saving workspace: %w", err)
@@ -303,10 +305,17 @@ func runWorkspacePromote(cmd *cobra.Command, args []string) error {
 }
 
 func runWorkspaceRemove(cmd *cobra.Command, args []string) error {
-	if wsRemoveRemote {
-		return runWorkspaceRemoveServer(args[0])
+	arg := ""
+	if len(args) > 0 {
+		arg = args[0]
 	}
-	return runWorkspaceRemoveLocal(args[0])
+	if wsRemoveRemote {
+		if arg == "" || arg == "." {
+			return fmt.Errorf("--remote requires a workspace name")
+		}
+		return runWorkspaceRemoveServer(arg)
+	}
+	return runWorkspaceRemoveLocal(arg)
 }
 
 func runWorkspaceRemoveServer(name string) error {
@@ -338,7 +347,20 @@ func runWorkspaceRemoveLocal(arg string) error {
 	defer s.Close()
 
 	var ws *store.LocalWorkspace
-	if strings.Contains(arg, "/") || strings.Contains(arg, string(filepath.Separator)) {
+	if arg == "" || arg == "." {
+		// No argument or "." — remove workspace in current directory
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("getting current directory: %w", err)
+		}
+		ws, err = s.FindWorkspaceByPath(cwd)
+		if err != nil {
+			return err
+		}
+		if ws == nil {
+			return fmt.Errorf("no tracked workspace in current directory; run 'nebi workspace list' to see available workspaces")
+		}
+	} else if strings.Contains(arg, "/") || strings.Contains(arg, string(filepath.Separator)) {
 		absPath, err := filepath.Abs(arg)
 		if err != nil {
 			return fmt.Errorf("resolving path: %w", err)
@@ -360,21 +382,28 @@ func runWorkspaceRemoveLocal(arg string) error {
 		}
 	}
 
+	isGlobal := s.IsGlobalWorkspace(ws)
+
 	// Delete directory for global workspaces
-	if ws.IsGlobal {
+	if isGlobal {
 		if err := os.RemoveAll(ws.Path); err != nil {
 			return fmt.Errorf("removing global workspace directory: %w", err)
 		}
+	}
+
+	displayName := ws.Name
+	if arg != "" && arg != "." {
+		displayName = arg
 	}
 
 	if err := s.DeleteWorkspace(ws.ID); err != nil {
 		return fmt.Errorf("removing workspace: %w", err)
 	}
 
-	if ws.IsGlobal {
-		fmt.Fprintf(os.Stderr, "Removed global workspace %q\n", arg)
+	if isGlobal {
+		fmt.Fprintf(os.Stderr, "Removed global workspace %q\n", displayName)
 	} else {
-		fmt.Fprintf(os.Stderr, "Removed workspace %q (project files untouched)\n", arg)
+		fmt.Fprintf(os.Stderr, "Removed workspace %q (project files untouched)\n", displayName)
 	}
 	return nil
 }

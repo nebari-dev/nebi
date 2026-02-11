@@ -92,9 +92,8 @@ func TestGlobalWorkspace(t *testing.T) {
 
 	wsDir := s.GlobalWorkspaceDir("test-uuid-123")
 	ws := &LocalWorkspace{
-		Name:     "data-science",
-		Path:     wsDir,
-		IsGlobal: true,
+		Name: "data-science",
+		Path: wsDir,
 	}
 	if err := s.CreateWorkspace(ws); err != nil {
 		t.Fatal(err)
@@ -107,8 +106,8 @@ func TestGlobalWorkspace(t *testing.T) {
 	if found == nil {
 		t.Fatal("expected to find global workspace")
 	}
-	if !found.IsGlobal {
-		t.Error("expected IsGlobal to be true")
+	if !s.IsGlobalWorkspace(found) {
+		t.Error("expected workspace to be identified as global")
 	}
 }
 

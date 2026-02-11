@@ -272,6 +272,11 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return err
 		}
 
+		// Persist the resolved path so the CLI can find the workspace on disk
+		if ws.Path == "" {
+			ws.Path = w.executor.GetWorkspacePath(&ws)
+		}
+
 		// List installed packages and save to database
 		if err := w.syncPackagesFromWorkspace(ctx, &ws); err != nil {
 			w.logger.Error("Failed to sync packages", "error", err)

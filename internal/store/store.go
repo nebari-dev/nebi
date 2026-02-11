@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -77,6 +78,11 @@ func (s *Store) Close() error {
 // GlobalWorkspaceDir returns the directory for a global workspace identified by its UUID.
 func (s *Store) GlobalWorkspaceDir(id string) string {
 	return filepath.Join(s.dataDir, "workspaces", id)
+}
+
+// IsGlobalWorkspace returns true if the workspace path is inside nebi's managed data directory.
+func (s *Store) IsGlobalWorkspace(ws *LocalWorkspace) bool {
+	return strings.HasPrefix(ws.Path, filepath.Join(s.dataDir, "workspaces"))
 }
 
 // DefaultDataDir returns ~/.local/share/nebi/ on Linux, platform equivalent elsewhere.

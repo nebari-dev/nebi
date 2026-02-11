@@ -16,7 +16,7 @@ import { ShareButton } from '@/components/sharing/ShareButton';
 import { PublishButton } from '@/components/publishing/PublishButton';
 import { RoleBadge } from '@/components/sharing/RoleBadge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
-import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check, ExternalLink, Save, HardDrive, Pencil } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -39,14 +39,19 @@ export const WorkspaceDetail = () => {
   const removeMutation = useRemovePackage(wsId);
   const currentUser = useAuthStore((state) => state.user);
 
-  const [activeTab, setActiveTab] = useState('packages');
+  const [activeTab, setActiveTab] = useState('overview');
   const [showInstall, setShowInstall] = useState(false);
   const [packageInput, setPackageInput] = useState('');
   const [confirmRemovePackage, setConfirmRemovePackage] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [pixiToml, setPixiToml] = useState<string>('');
+  const [editedToml, setEditedToml] = useState<string>('');
+  const [isEditingToml, setIsEditingToml] = useState(false);
+  const [savingToml, setSavingToml] = useState(false);
   const [loadingToml, setLoadingToml] = useState(false);
   const [copiedToml, setCopiedToml] = useState(false);
+
+  const isLocalWs = workspace?.source === 'local';
 
   const isOwner = workspace?.owner_id === currentUser?.id;
 
@@ -130,11 +135,17 @@ export const WorkspaceDetail = () => {
           <p className="text-muted-foreground">Workspace details and packages</p>
         </div>
         <div className="flex items-center gap-2">
+          {isLocalWs && (
+            <Badge variant="outline" className="bg-cyan-500/10 text-cyan-500 border-cyan-500/20 gap-1">
+              <HardDrive className="h-3 w-3" />
+              Local
+            </Badge>
+          )}
           <Badge className={statusColors[workspace.status]}>
             {workspace.status}
           </Badge>
           <PublishButton environmentId={wsId} environmentName={workspace.name} environmentStatus={workspace.status} />
-          {isOwner && <ShareButton environmentId={wsId} />}
+          {!isLocalWs && isOwner && <ShareButton environmentId={wsId} />}
         </div>
       </div>
 
@@ -150,9 +161,11 @@ export const WorkspaceDetail = () => {
           <TabsTrigger value="publications">
             Publications ({publications?.length || 0})
           </TabsTrigger>
-          <TabsTrigger value="collaborators">
-            Collaborators ({collaborators?.length || 0})
-          </TabsTrigger>
+          {!isLocalWs && (
+            <TabsTrigger value="collaborators">
+              Collaborators ({collaborators?.length || 0})
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="overview">
@@ -182,6 +195,22 @@ export const WorkspaceDetail = () => {
                 <span className="text-muted-foreground">Package Manager:</span>
                 <span className="font-medium font-mono text-sm">{workspace.package_manager}</span>
               </div>
+              {isLocalWs && workspace.path && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Path:</span>
+                  <span className="font-medium font-mono text-sm truncate max-w-md" title={workspace.path}>{workspace.path}</span>
+                </div>
+              )}
+              {isLocalWs && workspace.origin_name && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Origin:</span>
+                  <span className="font-medium">
+                    {workspace.origin_name}
+                    {workspace.origin_tag && `:${workspace.origin_tag}`}
+                    {workspace.origin_action && ` (${workspace.origin_action})`}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Size:</span>
                 <span className="font-medium">{workspace.size_formatted || 'Calculating...'}</span>
@@ -190,10 +219,12 @@ export const WorkspaceDetail = () => {
                 <span className="text-muted-foreground">Packages:</span>
                 <span className="font-medium">{packages?.length || 0} installed</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Collaborators:</span>
-                <span className="font-medium">{collaborators?.length || 0}</span>
-              </div>
+              {!isLocalWs && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Collaborators:</span>
+                  <span className="font-medium">{collaborators?.length || 0}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Created:</span>
                 <span>{new Date(workspace.created_at).toLocaleString()}</span>
@@ -325,26 +356,77 @@ export const WorkspaceDetail = () => {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>pixi.toml Configuration</CardTitle>
-                {pixiToml && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCopyToml}
-                    className="gap-2"
-                  >
-                    {copiedToml ? (
-                      <>
-                        <Check className="h-4 w-4" />
-                        Copied
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="h-4 w-4" />
-                        Copy
-                      </>
-                    )}
-                  </Button>
-                )}
+                <div className="flex items-center gap-2">
+                  {isLocalWs && pixiToml && !isEditingToml && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setEditedToml(pixiToml);
+                        setIsEditingToml(true);
+                      }}
+                      className="gap-2"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Edit
+                    </Button>
+                  )}
+                  {isEditingToml && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsEditingToml(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          setSavingToml(true);
+                          try {
+                            await workspacesApi.savePixiToml(wsId, editedToml);
+                            setPixiToml(editedToml);
+                            setIsEditingToml(false);
+                          } catch {
+                            setError('Failed to save pixi.toml');
+                          } finally {
+                            setSavingToml(false);
+                          }
+                        }}
+                        disabled={savingToml}
+                        className="gap-2"
+                      >
+                        {savingToml ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                        Save
+                      </Button>
+                    </>
+                  )}
+                  {pixiToml && !isEditingToml && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCopyToml}
+                      className="gap-2"
+                    >
+                      {copiedToml ? (
+                        <>
+                          <Check className="h-4 w-4" />
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-4 w-4" />
+                          Copy
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -356,6 +438,12 @@ export const WorkspaceDetail = () => {
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
+              ) : isEditingToml ? (
+                <textarea
+                  className="w-full h-96 bg-slate-900 text-slate-100 p-4 rounded-md font-mono text-sm resize-y border-0 focus:outline-none focus:ring-2 focus:ring-primary"
+                  value={editedToml}
+                  onChange={(e) => setEditedToml(e.target.value)}
+                />
               ) : pixiToml ? (
                 <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto font-mono text-sm whitespace-pre">
                   {pixiToml}
@@ -441,34 +529,36 @@ export const WorkspaceDetail = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="collaborators">
-          <Card>
-            <CardHeader>
-              <CardTitle>Collaborators</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {collaborators?.map((collab) => (
-                  <div
-                    key={collab.user_id}
-                    className="flex justify-between items-center p-3 rounded-lg border"
-                  >
-                    <div className="flex-1">
-                      <div className="font-medium">{collab.username}</div>
-                      <div className="text-sm text-muted-foreground">{collab.email}</div>
+        {!isLocalWs && (
+          <TabsContent value="collaborators">
+            <Card>
+              <CardHeader>
+                <CardTitle>Collaborators</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {collaborators?.map((collab) => (
+                    <div
+                      key={collab.user_id}
+                      className="flex justify-between items-center p-3 rounded-lg border"
+                    >
+                      <div className="flex-1">
+                        <div className="font-medium">{collab.username}</div>
+                        <div className="text-sm text-muted-foreground">{collab.email}</div>
+                      </div>
+                      <RoleBadge role={collab.role} />
                     </div>
-                    <RoleBadge role={collab.role} />
-                  </div>
-                ))}
-              </div>
-              {(!collaborators || collaborators.length === 0) && (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No collaborators yet
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                  ))}
+                </div>
+                {(!collaborators || collaborators.length === 0) && (
+                  <p className="text-sm text-muted-foreground text-center py-8">
+                    No collaborators yet
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       <ConfirmDialog

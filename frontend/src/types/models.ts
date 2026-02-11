@@ -133,6 +133,7 @@ export interface OCIRegistry {
   name: string;
   url: string;
   username: string;
+  has_api_token: boolean;
   is_default: boolean;
   default_repository: string;
   created_at: string;
@@ -143,6 +144,7 @@ export interface CreateRegistryRequest {
   url: string;
   username?: string;
   password?: string;
+  api_token?: string;
   is_default?: boolean;
   default_repository?: string;
 }
@@ -152,6 +154,7 @@ export interface UpdateRegistryRequest {
   url?: string;
   username?: string;
   password?: string;
+  api_token?: string;
   is_default?: boolean;
   default_repository?: string;
 }
@@ -229,4 +232,20 @@ export interface CreateRemoteWorkspaceRequest {
   name: string;
   package_manager?: string;
   pixi_toml?: string;
+}
+
+// Registry browse types
+export interface RegistryRepository {
+  name: string;
+  is_public?: boolean;
+}
+
+export interface RegistryTag {
+  name: string;
+}
+
+export interface ImportEnvironmentRequest {
+  repository: string;
+  tag: string;
+  name: string;
 }

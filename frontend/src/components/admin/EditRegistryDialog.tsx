@@ -17,6 +17,7 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
   const [url, setUrl] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [apiToken, setApiToken] = useState('');
   const [defaultRepository, setDefaultRepository] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [error, setError] = useState('');
@@ -30,6 +31,7 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
       setUrl(registry.url);
       setUsername(registry.username || '');
       setPassword(''); // Don't pre-fill password for security
+      setApiToken(''); // Don't pre-fill token for security
       setDefaultRepository(registry.default_repository || '');
       setIsDefault(registry.is_default);
     }
@@ -47,6 +49,7 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
           url,
           username: username || undefined,
           password: password || undefined, // Only update if provided
+          api_token: apiToken || undefined, // Only update if provided
           default_repository: defaultRepository || undefined,
           is_default: isDefault,
         },
@@ -113,6 +116,22 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Leave blank to keep current password"
             />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              API Token <span className="text-muted-foreground">(leave blank to keep current)</span>
+            </label>
+            <Input
+              type="password"
+              value={apiToken}
+              onChange={(e) => setApiToken(e.target.value)}
+              placeholder="Leave blank to keep current token"
+            />
+            <p className="text-xs text-muted-foreground">
+              For Quay.io: an OAuth Application Token to list private repositories.
+              {registry.has_api_token && ' A token is currently configured.'}
+            </p>
           </div>
 
           <div className="space-y-2">

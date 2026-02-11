@@ -19,7 +19,6 @@ import (
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	_ "github.com/nebari-dev/nebi/internal/pkgmgr/pixi" // Register pixi
-	_ "github.com/nebari-dev/nebi/internal/pkgmgr/uv"   // Register uv
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/utils"
 	"github.com/valkey-io/valkey-go"

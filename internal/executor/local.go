@@ -14,7 +14,6 @@ import (
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
-	_ "github.com/nebari-dev/nebi/internal/pkgmgr/uv" // Register uv
 )
 
 // LocalExecutor runs operations on the local machine

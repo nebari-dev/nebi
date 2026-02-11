@@ -5,7 +5,7 @@
 </div>
 
 <p align="center">
-  Multi-user environment management for Pixi (UV support coming soon)
+  Multi-user environment management for Pixi
 </p>
 
 <p align="center">
@@ -33,9 +33,6 @@
 ## What is Nebi?
 
 Nebi is a server and CLI for managing [Pixi](https://prefix.dev/) environments in multi-user settings. The server handles environment creation, versioning, and access control, while the local-first CLI lets you track workspaces, push/pull versioned specs, and diff environments across machines or teams.
-
-> **Note**: [UV](https://github.com/astral-sh/uv) support is planned for a future release.
-
 **Key features:**
 - Server with async job queue, RBAC, and PostgreSQL/Valkey backend
 - Local-first CLI for workspace tracking (no server required for basic use)
@@ -301,7 +298,7 @@ nebi/
 │   ├── queue/            # Job queue (memory/valkey)
 │   ├── server/           # Server initialization logic
 │   ├── worker/           # Background job processor
-│   └── pkgmgr/           # Pixi/UV abstractions
+│   └── pkgmgr/           # Pixi abstractions
 └── frontend/             # React web UI
 ```
 

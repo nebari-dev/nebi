@@ -54,8 +54,12 @@ func normalizeEnvName(name string) string {
 }
 
 // GetWorkspacePath returns the filesystem path for a workspace
-// Format: {baseDir}/{normalized-name}-{uuid}
+// For source=="local" workspaces with a path set, returns that path directly.
+// Otherwise: {baseDir}/{normalized-name}-{uuid}
 func (e *LocalExecutor) GetWorkspacePath(ws *models.Workspace) string {
+	if ws.Source == "local" && ws.Path != "" {
+		return ws.Path
+	}
 	normalizedName := normalizeEnvName(ws.Name)
 	dirName := fmt.Sprintf("%s-%s", normalizedName, ws.ID.String())
 	return filepath.Join(e.baseDir, dirName)
@@ -207,8 +211,15 @@ func (e *LocalExecutor) RemovePackages(ctx context.Context, ws *models.Workspace
 	return nil
 }
 
-// DeleteWorkspace removes a workspace from the filesystem
+// DeleteWorkspace removes a workspace from the filesystem.
+// For source=="local" workspaces the directory belongs to the user, so we
+// only deregister (the caller handles DB cleanup) and never touch the filesystem.
 func (e *LocalExecutor) DeleteWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error {
+	if ws.Source == "local" {
+		fmt.Fprintf(logWriter, "Local workspace %q — skipping filesystem deletion\n", ws.Name)
+		return nil
+	}
+
 	envPath := e.GetWorkspacePath(ws)
 
 	fmt.Fprintf(logWriter, "Deleting workspace at: %s\n", envPath)

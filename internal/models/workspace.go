@@ -26,6 +26,8 @@ type Workspace struct {
 	Owner          User            `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
 	Status         WorkspaceStatus `gorm:"not null;default:'pending'" json:"status"`
 	PackageManager string          `gorm:"not null" json:"package_manager"` // "pixi" or "uv"
+	Source         string          `gorm:"default:'managed'" json:"source"` // "managed", "local"
+	Path           string          `json:"path,omitempty"`                  // filesystem path (local-mode)
 	SizeBytes      int64           `gorm:"default:0" json:"size_bytes"`
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`

@@ -15,6 +15,7 @@ import { UserManagement } from './pages/admin/UserManagement';
 import { AuditLogs } from './pages/admin/AuditLogs';
 import { RegistryManagement } from './pages/admin/RegistryManagement';
 import { Layout } from './components/layout/Layout';
+import { AdminLayout } from './components/layout/AdminLayout';
 import { adminApi } from './api/admin';
 import { Loader2 } from 'lucide-react';
 
@@ -98,10 +99,12 @@ function App() {
               <Route path="settings" element={<Settings />} />
 
               <Route element={<AdminRoute />}>
-                <Route path="admin" element={<AdminDashboard />} />
-                <Route path="admin/users" element={<UserManagement />} />
-                <Route path="admin/audit-logs" element={<AuditLogs />} />
-                <Route path="admin/registries" element={<RegistryManagement />} />
+                <Route element={<AdminLayout />}>
+                  <Route path="admin" element={<AdminDashboard />} />
+                  <Route path="admin/users" element={<UserManagement />} />
+                  <Route path="admin/audit-logs" element={<AuditLogs />} />
+                  <Route path="admin/registries" element={<RegistryManagement />} />
+                </Route>
               </Route>
             </Route>
           </Routes>

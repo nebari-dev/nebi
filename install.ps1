@@ -65,7 +65,13 @@ try {
 
     Write-Info "Downloading $ArchiveName..."
     $ArchivePath = Join-Path $TempDir $ArchiveName
-    Invoke-WebRequest -Uri $DownloadUrl -OutFile $ArchivePath -UseBasicParsing
+    try {
+        Invoke-WebRequest -Uri $DownloadUrl -OutFile $ArchivePath -UseBasicParsing
+    } catch {
+        Write-Info "No Windows binary available for nebi $Version. Skipping installation."
+        $env:NEBI_INSTALL_SKIPPED = "true"
+        return
+    }
 
     # Extract archive
     Write-Info "Extracting archive..."

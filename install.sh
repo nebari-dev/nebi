@@ -118,8 +118,10 @@ ARCHIVE_NAME="nebi_${VERSION_NUM}_${ARCHIVE_OS}_${ARCH_NAME}.tar.gz"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE_NAME}"
 
 info "Downloading ${ARCHIVE_NAME}..."
-$DOWNLOAD_OUT "${TMPDIR}/${ARCHIVE_NAME}" "$DOWNLOAD_URL" || \
-    error "Failed to download ${DOWNLOAD_URL}"
+if ! $DOWNLOAD_OUT "${TMPDIR}/${ARCHIVE_NAME}" "$DOWNLOAD_URL" 2>/dev/null; then
+    info "No binary available for nebi ${VERSION} on ${OS_NAME}/${ARCH_NAME}. Skipping installation."
+    exit 2
+fi
 
 info "Extracting archive..."
 tar -xzf "${TMPDIR}/${ARCHIVE_NAME}" -C "$TMPDIR"

@@ -59,11 +59,30 @@ type App struct {
 	db     *gorm.DB
 	config *config.Config
 	server *http.Server
+	router http.Handler  // Gin router for API requests
+	ready  chan struct{} // closed when router is initialized
 }
 
 // NewApp creates a new App instance
 func NewApp() *App {
-	return &App{}
+	return &App{
+		ready: make(chan struct{}),
+	}
+}
+
+// Handler returns an http.Handler that delegates to the Gin router.
+// This is a separate type (not on App) so Wails doesn't scan http.Request
+// for TypeScript bindings.
+func (a *App) Handler() http.Handler {
+	return &appHandler{app: a}
+}
+
+// appHandler implements http.Handler, delegating to the App's Gin router.
+type appHandler struct{ app *App }
+
+func (h *appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	<-h.app.ready
+	h.app.router.ServeHTTP(w, r)
 }
 
 // logToFile writes a message to the debug log file
@@ -167,9 +186,11 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	// Initialize API router
 	logToFile("startEmbeddedServer: initializing router...")
 	router := api.NewRouter(cfg, database, jobQueue, exec, w.GetBroker(), nil, slog.Default())
+	a.router = router
+	close(a.ready) // signal that router is ready for Wails handler
 	logToFile("startEmbeddedServer: router initialized")
 
-	// Create HTTP server on port 8460
+	// Create HTTP server on port 8460 (fallback for CLI/external access)
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	a.server = &http.Server{
 		Addr:    addr,

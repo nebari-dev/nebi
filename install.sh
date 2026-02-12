@@ -138,8 +138,8 @@ fi
 info "nebi installed to ${INSTALL_DIR}/nebi"
 
 # Verify installation
-if command -v "${INSTALL_DIR}/nebi" >/dev/null 2>&1; then
-    INSTALLED_VERSION="$("${INSTALL_DIR}/nebi" --version 2>/dev/null || true)"
+if [ -x "${INSTALL_DIR}/nebi" ]; then
+    INSTALLED_VERSION="$("${INSTALL_DIR}/nebi" version 2>/dev/null || true)"
     info "Installed: ${INSTALLED_VERSION}"
 fi
 

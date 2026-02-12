@@ -92,7 +92,7 @@ try {
     # Verify installation
     $NebiBin = Join-Path $InstallDir "nebi.exe"
     if (Test-Path $NebiBin) {
-        $InstalledVersion = & $NebiBin --version 2>$null
+        $InstalledVersion = & $NebiBin version 2>$null
         Write-Info "Installed: $InstalledVersion"
     }
 

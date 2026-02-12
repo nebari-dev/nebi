@@ -65,6 +65,20 @@ Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables to create the ad
 
 > **Tip**: Access the app at http://localhost:8461 for the best development experience with instant hot reload of frontend changes!
 
+### Quick Install
+
+**Linux / macOS:**
+```sh
+curl -fsSL https://raw.githubusercontent.com/nebari-dev/nebi/main/install.sh | sh
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/nebari-dev/nebi/main/install.ps1 | iex
+```
+
+See `install.sh --help` or the script source for advanced options (`--version`, `--install-dir`, `--desktop`).
+
 ### CLI Quick Start
 
 ```bash

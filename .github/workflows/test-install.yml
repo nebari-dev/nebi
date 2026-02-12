@@ -1,0 +1,42 @@
+name: Test Install Scripts
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "install.sh"
+      - "install.ps1"
+      - ".github/workflows/test-install.yml"
+
+jobs:
+  test-unix:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run install script
+        run: |
+          chmod +x install.sh
+          ./install.sh --install-dir "$HOME/.local/bin"
+      - name: Verify installation
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          nebi --version
+
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run install script
+        shell: pwsh
+        run: |
+          .\install.ps1 -InstallDir "$env:RUNNER_TEMP\nebi"
+      - name: Verify installation
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:RUNNER_TEMP\nebi;$env:PATH"
+          nebi --version

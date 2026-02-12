@@ -1,0 +1,57 @@
+name: Test Install Scripts
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "install.sh"
+      - "install.ps1"
+      - ".github/workflows/test-install.yml"
+
+jobs:
+  test-unix:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run install script
+        id: install
+        run: |
+          chmod +x install.sh
+          set +e
+          ./install.sh --install-dir "$HOME/.local/bin"
+          CODE=$?
+          set -e
+          if [ "$CODE" -eq 2 ]; then
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+          elif [ "$CODE" -ne 0 ]; then
+            exit $CODE
+          fi
+      - name: Verify installation
+        if: steps.install.outputs.skipped != 'true'
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          nebi version
+
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run install script
+        id: install
+        shell: pwsh
+        run: |
+          .\install.ps1 -InstallDir "$env:RUNNER_TEMP\nebi"
+          if ($env:NEBI_INSTALL_SKIPPED -eq "true") {
+            echo "skipped=true" >> $env:GITHUB_OUTPUT
+          }
+      - name: Verify installation
+        if: steps.install.outputs.skipped != 'true'
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:RUNNER_TEMP\nebi;$env:PATH"
+          nebi version

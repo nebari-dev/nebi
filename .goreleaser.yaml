@@ -26,7 +26,7 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X main.version={{.Version}}
+      - -X main.Version={{.Version}}
       - -X main.commit={{.Commit}}
       - -X main.date={{.Date}}
 

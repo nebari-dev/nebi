@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
+	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/oci"
@@ -27,10 +28,11 @@ type WorkspaceHandler struct {
 	queue    queue.Queue
 	executor executor.Executor
 	isLocal  bool
+	encKey   []byte
 }
 
-func NewWorkspaceHandler(svc *service.WorkspaceService, db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool) *WorkspaceHandler {
-	return &WorkspaceHandler{svc: svc, db: db, queue: q, executor: exec, isLocal: isLocal}
+func NewWorkspaceHandler(svc *service.WorkspaceService, db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool, encKey []byte) *WorkspaceHandler {
+	return &WorkspaceHandler{svc: svc, db: db, queue: q, executor: exec, isLocal: isLocal, encKey: encKey}
 }
 
 // handleServiceError maps service-layer errors to HTTP status codes.
@@ -920,6 +922,13 @@ func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
 		return
 	}
 
+	// Decrypt registry password for OCI push
+	password, err := nebicrypto.DecryptField(registry.Password, h.encKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to decrypt registry credentials"})
+		return
+	}
+
 	// Build full repository path (parse URL to separate host from namespace)
 	host, _ := oci.ParseRegistryURL(registry.URL)
 	fullRepo := fmt.Sprintf("%s/%s", host, req.Repository)
@@ -931,7 +940,7 @@ func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
 		Repository:   fullRepo,
 		Tag:          req.Tag,
 		Username:     registry.Username,
-		Password:     registry.Password,
+		Password:     password,
 		RegistryHost: host,
 	})
 

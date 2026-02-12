@@ -14,6 +14,10 @@ export function GetWorkspace(arg1) {
   return window['go']['main']['App']['GetWorkspace'](arg1);
 }
 
+export function Handler() {
+  return window['go']['main']['App']['Handler']();
+}
+
 export function ListWorkspaces() {
   return window['go']['main']['App']['ListWorkspaces']();
 }

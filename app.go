@@ -59,7 +59,7 @@ type App struct {
 	db     *gorm.DB
 	config *config.Config
 	server *http.Server
-	router http.Handler // Gin router for API requests
+	router http.Handler  // Gin router for API requests
 	ready  chan struct{} // closed when router is initialized
 }
 

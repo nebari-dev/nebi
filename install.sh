@@ -4,13 +4,13 @@
 #
 # Flags:
 #   --version <ver>       Install specific version (e.g. v0.5.0). Default: latest
-#   --install-dir <path>  Install directory. Default: /usr/local/bin
+#   --install-dir <path>  Install directory. Default: ~/.local/bin
 #   --desktop             Also install the desktop app
 
 set -e
 
 REPO="nebari-dev/nebi"
-INSTALL_DIR="/usr/local/bin"
+INSTALL_DIR="$HOME/.local/bin"
 VERSION=""
 DESKTOP=0
 TMPDIR=""
@@ -21,7 +21,7 @@ Usage: install.sh [OPTIONS]
 
 Options:
     --version <ver>       Install specific version (e.g. v0.5.0)
-    --install-dir <path>  Install directory (default: /usr/local/bin)
+    --install-dir <path>  Install directory (default: ~/.local/bin)
     --desktop             Also install the desktop app
     -h, --help            Show this help message
 EOF
@@ -187,3 +187,9 @@ if [ "$DESKTOP" -eq 1 ]; then
 fi
 
 info "Installation complete!"
+
+# Hint about PATH if install dir is not in PATH
+case ":$PATH:" in
+    *":${INSTALL_DIR}:"*) ;;
+    *) printf "\033[1;33mNote:\033[0m %s is not in your PATH. Add it with:\n  export PATH=\"%s:\$PATH\"\n" "$INSTALL_DIR" "$INSTALL_DIR" ;;
+esac

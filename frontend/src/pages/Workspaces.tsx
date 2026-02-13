@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Loader2, Plus, Trash2, X, Edit, FileCode, Cloud, Monitor } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Edit, FileCode } from 'lucide-react';
 
 interface Package {
   name: string;
@@ -452,32 +452,6 @@ export const Workspaces = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreate} className="space-y-4">
-              {/* Local/Server target tabs — only in local mode when connected */}
-              {isLocal && isRemoteConnected && (
-                <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
-                  <Button
-                    type="button"
-                    variant={createTarget === 'local' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setCreateTarget('local')}
-                    className="gap-2"
-                  >
-                    <Monitor className="h-4 w-4" />
-                    Local
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={createTarget === 'server' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setCreateTarget('server')}
-                    className="gap-2"
-                  >
-                    <Cloud className="h-4 w-4" />
-                    Server
-                  </Button>
-                </div>
-              )}
-
               <div className="space-y-2">
                 <label className="text-sm font-medium">Workspace Name</label>
                 <Input

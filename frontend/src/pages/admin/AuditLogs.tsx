@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useAuditLogs } from '@/hooks/useAdmin';
+import { useModeStore } from '@/store/modeStore';
+import { useViewModeStore } from '@/store/viewModeStore';
+import { useRemoteServer, useRemoteAuditLogs } from '@/hooks/useRemote';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -23,9 +26,35 @@ export const AuditLogs = () => {
     action: '',
   });
 
-  const { data: logs, isLoading } = useAuditLogs(
+  // View mode support
+  const isLocalMode = useModeStore((s) => s.isLocalMode());
+  const viewMode = useViewModeStore((state) => state.viewMode);
+  const { data: serverStatus } = useRemoteServer();
+  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
+  const shouldShowRemote = isRemoteConnected && viewMode === 'remote';
+
+  const { data: logs, isLoading: logsLoading } = useAuditLogs(
     filters.user_id || filters.action ? filters : undefined
   );
+
+  const { data: remoteLogs, isLoading: remoteLoading } = useRemoteAuditLogs(
+    shouldShowRemote,
+    filters.user_id || filters.action ? filters : undefined
+  );
+
+  // Show logs based on view mode
+  const displayedLogs = useMemo(() => {
+    if (!isRemoteConnected) {
+      return logs || [];
+    }
+    if (viewMode === 'local') {
+      return logs || [];
+    } else {
+      return remoteLogs || [];
+    }
+  }, [logs, remoteLogs, isRemoteConnected, viewMode]);
+
+  const isLoading = logsLoading || (shouldShowRemote && remoteLoading);
 
   if (isLoading) {
     return (
@@ -85,7 +114,7 @@ export const AuditLogs = () => {
                 </tr>
               </thead>
               <tbody>
-                {logs?.map((log) => (
+                {displayedLogs.map((log) => (
                   <tr key={log.id} className="border-b last:border-0 hover:bg-muted/50">
                     <td className="p-4 text-sm text-muted-foreground whitespace-nowrap">
                       {new Date(log.timestamp).toLocaleString()}
@@ -117,7 +146,7 @@ export const AuditLogs = () => {
         </CardContent>
       </Card>
 
-      {logs?.length === 0 && (
+      {displayedLogs.length === 0 && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">
             {filters.user_id || filters.action

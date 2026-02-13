@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { useRegistries, useDeleteRegistry } from '@/hooks/useRegistries';
 import { CreateRegistryDialog } from '@/components/admin/CreateRegistryDialog';
 import { EditRegistryDialog } from '@/components/admin/EditRegistryDialog';
@@ -11,15 +10,12 @@ import { Loader2, Pencil, Trash2, Star } from 'lucide-react';
 import type { OCIRegistry } from '@/types';
 
 export const RegistryManagement = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
   const { data: registries, isLoading } = useRegistries();
   const deleteRegistryMutation = useDeleteRegistry();
 
   const [editingRegistry, setEditingRegistry] = useState<OCIRegistry | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
   const [error, setError] = useState('');
-
-  const showAddDialog = searchParams.get('add') === 'true';
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
@@ -51,14 +47,7 @@ export const RegistryManagement = () => {
           <h1 className="text-3xl font-bold">OCI Registry Management</h1>
           <p className="text-muted-foreground">Manage OCI registries for workspace publishing</p>
         </div>
-        <CreateRegistryDialog
-          defaultOpen={showAddDialog}
-          onOpenChange={(open) => {
-            if (!open && showAddDialog) {
-              setSearchParams({}, { replace: true });
-            }
-          }}
-        />
+        <CreateRegistryDialog />
       </div>
 
       {error && (

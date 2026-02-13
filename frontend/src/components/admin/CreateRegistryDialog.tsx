@@ -5,13 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus, Loader2 } from 'lucide-react';
 
-interface CreateRegistryDialogProps {
-  defaultOpen?: boolean;
-  onOpenChange?: (open: boolean) => void;
-}
-
-export const CreateRegistryDialog = ({ defaultOpen = false, onOpenChange }: CreateRegistryDialogProps) => {
-  const [open, setOpen] = useState(defaultOpen);
+export const CreateRegistryDialog = () => {
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [username, setUsername] = useState('');
@@ -25,7 +20,6 @@ export const CreateRegistryDialog = ({ defaultOpen = false, onOpenChange }: Crea
 
   const handleOpenChange = (value: boolean) => {
     setOpen(value);
-    onOpenChange?.(value);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

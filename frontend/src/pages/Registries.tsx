@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ArrowLeft, Search, Download, Package, ChevronRight, X, Globe, Lock, Plus } from 'lucide-react';
+import { Loader2, ArrowLeft, Search, Download, Package, ChevronRight, X, Globe, Lock, Settings } from 'lucide-react';
 
 type View = 'registries' | 'repositories' | 'tags';
 
@@ -163,9 +163,9 @@ export const Registries = () => {
           </p>
         </div>
         {view === 'registries' && isAdmin && (
-          <Button onClick={() => navigate('/admin/registries?add=true')}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Registry
+          <Button variant="outline" onClick={() => navigate('/admin/registries')}>
+            <Settings className="h-4 w-4 mr-2" />
+            Manage Registries
           </Button>
         )}
       </div>

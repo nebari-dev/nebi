@@ -33,6 +33,8 @@ Nebi's CLI is organized into command groups: **Workspace**, **Sync**, **Connecti
 |---------|-------------|
 | `nebi login <server-url>` | Authenticate with a server |
 | `nebi registry list` | List available OCI registries |
+| `nebi registry create` | Create a new OCI registry |
+| `nebi registry delete <name>` | Delete an OCI registry |
 
 ## Admin Commands
 

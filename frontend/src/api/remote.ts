@@ -8,6 +8,9 @@ import type {
   CreateRemoteWorkspaceRequest,
   OCIRegistry,
   Job,
+  User,
+  AuditLog,
+  DashboardStats,
 } from '@/types';
 
 export const remoteApi = {
@@ -84,6 +87,27 @@ export const remoteApi = {
   // Remote jobs proxy
   listJobs: async (): Promise<Job[]> => {
     const { data } = await apiClient.get('/remote/jobs');
+    return data;
+  },
+
+  // Remote admin proxies
+  listUsers: async (): Promise<User[]> => {
+    const { data } = await apiClient.get('/remote/admin/users');
+    return data;
+  },
+
+  listAdminRegistries: async (): Promise<OCIRegistry[]> => {
+    const { data } = await apiClient.get('/remote/admin/registries');
+    return data;
+  },
+
+  listAuditLogs: async (params?: { user_id?: string; action?: string }): Promise<AuditLog[]> => {
+    const { data } = await apiClient.get('/remote/admin/audit-logs', { params });
+    return data;
+  },
+
+  getDashboardStats: async (): Promise<DashboardStats> => {
+    const { data } = await apiClient.get('/remote/admin/dashboard/stats');
     return data;
   },
 };

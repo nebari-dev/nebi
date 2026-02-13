@@ -51,6 +51,8 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 		remote.GET("/workspaces/:id/versions/:version/pixi-toml", h.GetVersionPixiToml)
 		remote.GET("/workspaces/:id/versions/:version/pixi-lock", h.GetVersionPixiLock)
 		remote.POST("/workspaces/:id/push", h.PushVersion)
+		remote.GET("/registries", h.ListRegistries)
+		remote.GET("/jobs", h.ListJobs)
 	}
 	return r
 }
@@ -237,5 +239,148 @@ func TestConnectServer_WithMockRemote(t *testing.T) {
 	}
 	if creds.Username != "remoteuser" {
 		t.Errorf("expected stored username=remoteuser, got %q", creds.Username)
+	}
+}
+
+func TestListRegistries_NotConnected(t *testing.T) {
+	db := setupTestDB(t)
+	router := setupRouter(db)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/remote/registries", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when not connected, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListRegistries_WithMockRemote(t *testing.T) {
+	// Create a mock remote Nebi server that returns registries
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && r.URL.Path == "/api/v1/registries" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"id":         "reg-1",
+					"name":       "Docker Hub",
+					"url":        "https://registry-1.docker.io",
+					"is_default": true,
+				},
+				{
+					"id":         "reg-2",
+					"name":       "GHCR",
+					"url":        "https://ghcr.io",
+					"is_default": false,
+				},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer mockServer.Close()
+
+	db := setupTestDB(t)
+	router := setupRouter(db)
+
+	// Set up connection to mock server
+	db.Model(&store.Config{}).Where("id = ?", 1).Update("server_url", mockServer.URL)
+	db.Model(&store.Credentials{}).Where("id = ?", 1).Updates(map[string]any{
+		"token":    "valid-token",
+		"username": "testuser",
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/remote/registries", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var registries []map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &registries); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(registries) != 2 {
+		t.Errorf("expected 2 registries, got %d", len(registries))
+	}
+	if registries[0]["name"] != "Docker Hub" {
+		t.Errorf("expected first registry name=Docker Hub, got %v", registries[0]["name"])
+	}
+}
+
+func TestListJobs_NotConnected(t *testing.T) {
+	db := setupTestDB(t)
+	router := setupRouter(db)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/remote/jobs", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when not connected, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListJobs_WithMockRemote(t *testing.T) {
+	// Create a mock remote Nebi server that returns jobs
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && r.URL.Path == "/api/v1/jobs" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"id":           "job-1",
+					"workspace_id": "ws-1",
+					"type":         "create",
+					"status":       "completed",
+					"created_at":   "2024-01-01T00:00:00Z",
+				},
+				{
+					"id":           "job-2",
+					"workspace_id": "ws-2",
+					"type":         "install",
+					"status":       "running",
+					"created_at":   "2024-01-02T00:00:00Z",
+				},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer mockServer.Close()
+
+	db := setupTestDB(t)
+	router := setupRouter(db)
+
+	// Set up connection to mock server
+	db.Model(&store.Config{}).Where("id = ?", 1).Update("server_url", mockServer.URL)
+	db.Model(&store.Credentials{}).Where("id = ?", 1).Updates(map[string]any{
+		"token":    "valid-token",
+		"username": "testuser",
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/remote/jobs", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var jobs []map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &jobs); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(jobs) != 2 {
+		t.Errorf("expected 2 jobs, got %d", len(jobs))
+	}
+	if jobs[0]["type"] != "create" {
+		t.Errorf("expected first job type=create, got %v", jobs[0]["type"])
+	}
+	if jobs[1]["status"] != "running" {
+		t.Errorf("expected second job status=running, got %v", jobs[1]["status"])
 	}
 }

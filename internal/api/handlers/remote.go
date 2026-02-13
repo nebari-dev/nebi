@@ -301,3 +301,33 @@ func (h *RemoteHandler) PushVersion(c *gin.Context) {
 	}
 	c.JSON(http.StatusCreated, resp)
 }
+
+// ListRegistries proxies registry listing to the remote server.
+func (h *RemoteHandler) ListRegistries(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		h.notConnected(c, err)
+		return
+	}
+	registries, err := client.ListRegistriesPublic(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, registries)
+}
+
+// ListJobs proxies job listing to the remote server.
+func (h *RemoteHandler) ListJobs(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		h.notConnected(c, err)
+		return
+	}
+	jobs, err := client.ListJobs(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, jobs)
+}

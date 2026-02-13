@@ -140,3 +140,17 @@ type WorkspaceTag struct {
 	CreatedAt     string `json:"created_at"`
 	UpdatedAt     string `json:"updated_at"`
 }
+
+// Job represents a background job on the server.
+type Job struct {
+	ID          string                 `json:"id"`
+	WorkspaceID string                 `json:"workspace_id"`
+	Type        string                 `json:"type"`
+	Status      string                 `json:"status"`
+	Logs        string                 `json:"logs,omitempty"`
+	Error       string                 `json:"error,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	CreatedAt   string                 `json:"created_at"`
+	StartedAt   *string                `json:"started_at,omitempty"`
+	CompletedAt *string                `json:"completed_at,omitempty"`
+}

@@ -232,6 +232,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				remote.GET("/workspaces/:id/versions/:version/pixi-toml", remoteHandler.GetVersionPixiToml)
 				remote.GET("/workspaces/:id/versions/:version/pixi-lock", remoteHandler.GetVersionPixiLock)
 				remote.POST("/workspaces/:id/push", remoteHandler.PushVersion)
+				remote.GET("/registries", remoteHandler.ListRegistries)
+				remote.GET("/jobs", remoteHandler.ListJobs)
 			}
 		}
 	}

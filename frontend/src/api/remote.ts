@@ -6,6 +6,8 @@ import type {
   RemoteWorkspaceVersion,
   RemoteWorkspaceTag,
   CreateRemoteWorkspaceRequest,
+  OCIRegistry,
+  Job,
 } from '@/types';
 
 export const remoteApi = {
@@ -71,5 +73,17 @@ export const remoteApi = {
 
   deleteWorkspace: async (id: string): Promise<void> => {
     await apiClient.delete(`/remote/workspaces/${id}`);
+  },
+
+  // Remote registries proxy
+  listRegistries: async (): Promise<OCIRegistry[]> => {
+    const { data } = await apiClient.get('/remote/registries');
+    return data;
+  },
+
+  // Remote jobs proxy
+  listJobs: async (): Promise<Job[]> => {
+    const { data } = await apiClient.get('/remote/jobs');
+    return data;
   },
 };

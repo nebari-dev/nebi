@@ -86,3 +86,20 @@ export const useDeleteRemoteWorkspace = () => {
     },
   });
 };
+
+export const useRemoteRegistries = (enabled: boolean) => {
+  return useQuery({
+    queryKey: ['remote', 'registries'],
+    queryFn: remoteApi.listRegistries,
+    enabled,
+  });
+};
+
+export const useRemoteJobs = (enabled: boolean) => {
+  return useQuery({
+    queryKey: ['remote', 'jobs'],
+    queryFn: remoteApi.listJobs,
+    enabled,
+    refetchInterval: 5000, // Poll for job status updates
+  });
+};

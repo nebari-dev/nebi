@@ -1,0 +1,155 @@
+// Default variables - adapted from Nebari's design system
+
+@import url("https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700&family=Poppins:ital,wght@0,400;0,700;1,400;1,700&family=Red+Hat+Mono:wght@400;500&display=swap");
+
+:root {
+  // nebari colours - the base colour is denoted by the `5` number
+  // secondary (teal)
+  --nebari-teal-0: hsl(176.67, 94.74%, 7.45%);
+  --nebari-teal-1: hsl(176.57, 87.5%, 15.69%);
+  --nebari-teal-2: hsl(176.36, 80.49%, 24.12%);
+  --nebari-teal-3: hsl(176.59, 74.55%, 32.35%);
+  --nebari-teal-4: hsl(176.28, 69.38%, 40.98%);
+  --nebari-teal-5: hsl(175.66, 65.87%, 49.41%);
+  --nebari-teal-6: hsl(174.88, 63.55%, 60.2%);
+  --nebari-teal-7: hsl(173.41, 62.76%, 71.57%);
+  --nebari-teal-8: hsl(171.43, 63.64%, 82.75%);
+  --nebari-teal-9: hsl(171, 66.67%, 94.12%);
+
+  // base (blue-gray)
+  --nebari-blue-gray-0: #0f1015;
+  --nebari-blue-gray-1: #1c1d26;
+  --nebari-blue-gray-2: hsl(236, 15.46%, 19.02%);
+  --nebari-blue-gray-3: hsl(236.84, 14.73%, 25.29%);
+  --nebari-blue-gray-4: hsl(235, 14.63%, 32.16%);
+  --nebari-blue-gray-5: hsl(236, 14.85%, 39.61%);
+  --nebari-blue-gray-6: hsl(233.68, 14.96%, 50.2%);
+  --nebari-blue-gray-7: hsl(233.33, 14.92%, 64.51%);
+  --nebari-blue-gray-8: hsl(232, 14.56%, 79.8%);
+  --nebari-blue-gray-9: hsl(240, 14.29%, 95.88%);
+  --nebari-blue-gray-10: #dcdce9;
+  --nebari-blue-gray-11: #f1f1f6;
+
+  // primary (magenta)
+  --nebari-magenta-0: hsl(292.11, 61.29%, 12.16%);
+  --nebari-magenta-1: hsl(292, 67.57%, 21.76%);
+  --nebari-magenta-2: hsl(291.28, 73.58%, 31.18%);
+  --nebari-magenta-3: hsl(290.63, 77.67%, 40.39%);
+  --nebari-magenta-4: hsl(289.71, 80.95%, 49.41%);
+  --nebari-magenta-5: hsl(288.67, 83.33%, 57.65%);
+  --nebari-magenta-6: hsl(286.96, 83.13%, 67.45%);
+  --nebari-magenta-7: hsl(284.52, 79.49%, 77.06%);
+  --nebari-magenta-8: hsl(281.54, 74.29%, 86.27%);
+  --nebari-magenta-9: hsl(276.67, 69.23%, 94.9%);
+
+  // named colours
+  --global-colors-purple: #7834d6;
+  --global-colors-purple-dark: #4d2582;
+  --global-colors-gold: #eda61d;
+
+  // ==============================================================================
+  // Primitive Colors - Infima overrides with Nebari's colours
+  // ==============================================================================
+
+  --ifm-color-black: var(--nebari-blue-gray-0);
+  --ifm-color-black-light: var(--nebari-blue-gray-1);
+  --ifm-color-black-lighter: var(--nebari-blue-gray-2);
+
+  --ifm-color-white: var(--nebari-blue-gray-11);
+  --ifm-color-white-dark: var(--nebari-blue-gray-10);
+  --ifm-color-white-darker: var(--nebari-blue-gray-9);
+  --ifm-color-white-darkest: var(--nebari-blue-gray-8);
+
+  --ifm-color-gray-darkest: var(--nebari-blue-gray-4);
+  --ifm-color-gray-dark: var(--nebari-blue-gray-5);
+
+  --ifm-color-green: var(--nebari-teal-5);
+  --ifm-color-green-dark: var(--nebari-teal-6);
+
+  --ifm-hover-overlay: rgba(113, 116, 144, 0.13);
+
+  // ==============================================================================
+  // Typography
+  // ==============================================================================
+  --global-font-family: "Atkinson Hyperlegible", sans-serif, system-ui;
+  --global-heading-family: "Poppins", sans-serif, system-ui;
+  --global-block-family-code: "Red Hat Mono", monospace;
+
+  --ifm-code-font-size: 100%;
+  --ifm-h4-font-size: 1.3rem;
+
+  --heading-color: var(--ifm-color-black);
+  --ifm-color-content: var(--ifm-color-black-light);
+  --ifm-color-content-inverse: var(--ifm-color-white);
+  --ifm-color-content-secondary: var(--nebari-blue-gray-4);
+  --ifm-menu-color: var(--nebari-blue-gray-4);
+
+  --nebari-code-color: var(--nebari-teal-2);
+  --nebari-code-color-dark: var(--secondary-nebari);
+
+  // ==============================================================================
+  // General Docusaurus
+  // ==============================================================================
+
+  // Primary color - nebari-magenta
+  --ifm-color-primary: var(--nebari-magenta-5);
+  --ifm-color-primary-dark: var(--nebari-magenta-4);
+  --ifm-color-primary-darker: var(--nebari-magenta-3);
+  --ifm-color-primary-darkest: var(--nebari-magenta-2);
+  --ifm-color-primary-light: var(--nebari-magenta-6);
+  --ifm-color-primary-lighter: var(--nebari-magenta-7);
+  --ifm-color-primary-lightest: var(--nebari-magenta-8);
+
+  // Secondary and accent
+  --secondary-nebari: var(--nebari-teal-5);
+  --accent-nebari: var(--global-colors-gold);
+
+  // Background
+  --ifm-color-background: var(--ifm-color-white);
+  --ifm-color-background-2: var(--ifm-color-white-dark);
+  --ifm-color-background-3: var(--ifm-color-white-darker);
+  --ifm-color-on-background: var(--ifm-color-black);
+  --ifm-color-on-background-2: var(--ifm-color-black-light);
+  --ifm-color-on-background-3: var(--ifm-color-black-lighter);
+
+  // Admonition
+  --ifm-admonition-background-color: var(--nebari-blue-gray-11);
+  --ifm-admonition-color: var(--global-colors-purple);
+  --ifm-admonition-color-success: var(--ifm-color-green);
+  --ifm-admonition-color-warning: var(--ifm-color-red);
+  --ifm-admonition-color-error: var(--ifm-color-red);
+
+  // Navbar
+  --ifm-navbar-background-color: var(--ifm-color-black-light);
+  --ifm-navbar-height: 80px;
+  --ifm-navbar-item-padding-horizontal: 20px;
+  --ifm-navbar-padding-horizontal: 30px;
+  --ifm-dropdown-background-color: var(--ifm-color-on-background-2);
+  --ifm-dropdown-hover-background-color: var(--ifm-color-on-background-3);
+
+  --ifm-global-radius: 3px;
+
+  // links
+  --nebari-links: var(--ifm-color-content);
+  --nebari-links-dark: var(--nebari-magenta-7);
+}
+
+html[data-theme="dark"] {
+  --ifm-color-on-primary: var(--ifm-color-black);
+
+  --ifm-color-content: var(--ifm-color-white);
+  --ifm-color-content-secondary: var(--ifm-color-white-dark);
+
+  // Background
+  --ifm-color-background: var(--ifm-color-black);
+  --ifm-color-background-2: var(--ifm-color-black-light);
+  --ifm-color-background-3: var(--ifm-color-black-lighter);
+  --ifm-hover-overlay: rgba(241, 241, 246, 0.06);
+  --ifm-background-color: var(--ifm-color-black);
+
+  // menu
+  --ifm-menu-color: var(--nebari-blue-gray-9);
+
+  // Admonition
+  --ifm-admonition-background-color: var(--ifm-color-black-light);
+}

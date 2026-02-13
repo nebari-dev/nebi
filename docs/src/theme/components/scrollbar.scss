@@ -1,0 +1,20 @@
+// ==============================================================================
+// Scrollbar
+// ==============================================================================
+
+/* Firefox */
+* {
+  scrollbar-color: var(--ifm-color-primary-lightest) var(--ifm-color-primary-darkest);
+  scrollbar-width: thin;
+}
+
+/* WebKit / Blink */
+::-webkit-scrollbar {
+  width: 7px !important;
+  height: 7px !important;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 0 !important;
+  background: var(--global-colors-purple) !important;
+}

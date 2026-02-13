@@ -1,0 +1,92 @@
+@use "../../scss/mixins" as *;
+
+// ==============================================================================
+// Admonitions
+// ==============================================================================
+
+.admonition,
+.admonition:not(.alert) {
+  color: var(--ifm-color-on-background);
+  border-radius: var(--ifm-global-radius);
+  border-top: 0 solid;
+  border-right: 0 solid;
+  border-left: 10px solid;
+  border-bottom: none;
+
+  background-color: var(--ifm-admonition-background-color);
+  border-left-color: var(--ifm-admonition-color);
+
+  h5 {
+    margin-top: 0;
+  }
+}
+
+.admonition a {
+  @include link-style;
+}
+
+.admonition-icon {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 0.5em;
+  margin-bottom: 4px;
+}
+
+.admonition-success {
+  background-color: var(--ifm-admonition-background-color);
+  border-left-color: var(--ifm-admonition-color-success);
+}
+
+.admonition-warning,
+.admonition-caution {
+  background-color: var(--ifm-admonition-background-color);
+  border-left-color: var(--ifm-admonition-color-warning);
+}
+
+.admonition-danger {
+  background-color: var(--ifm-admonition-background-color);
+  border-left-color: var(--ifm-admonition-color-error);
+}
+
+.admonition-secondary,
+.admonition-note,
+.admonition-info,
+.admonition-tip,
+.admonition-important {
+  background-color: var(--ifm-admonition-background-color);
+  border-left-color: var(--ifm-admonition-color);
+}
+
+[data-theme="dark"] {
+  .admonition {
+    color: var(--ifm-color-white);
+  }
+  .admonition h5,
+  .admonition:not(.alert) h5 {
+    margin-top: 0;
+    color: var(--ifm-color-white);
+  }
+
+  .admonition code {
+    color: var(--nebari-code-color-dark) !important;
+  }
+}
+
+// ==============================================================================
+// Pagination
+// ==============================================================================
+
+.pagination-nav__link {
+  text-decoration: none;
+  &:hover {
+    border: 1px solid var(--ifm-color-emphasis-300);
+    border-bottom: 2px solid var(--ifm-color-primary);
+  }
+}
+
+a.pagination-nav__link {
+  text-decoration: none;
+  &:hover {
+    text-decoration: none;
+  }
+}

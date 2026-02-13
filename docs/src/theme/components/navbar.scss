@@ -1,0 +1,65 @@
+@use "../../scss/mixins" as *;
+
+// ==============================================================================
+// Navbar
+// ==============================================================================
+
+.navbar__brand {
+  @include link-style(var(--secondary-nebari), var(--secondary-nebari));
+  & {
+    text-decoration: none;
+  }
+
+  .navbar__title {
+    font-size: 1.5rem;
+    color: var(--secondary-nebari);
+  }
+}
+
+.navbar--dark {
+  background-color: var(--ifm-color-black-light);
+  border-bottom: 1px solid var(--nebari-blue-gray-3);
+  box-shadow: 0px 1.5px 3px 0px rgba(72, 74, 94, 0.16);
+}
+
+.navbar__link {
+  text-decoration: none;
+  color: var(--nebari-blue-gray-11);
+  @include link-hover(var(--nebari-links-dark));
+}
+
+.navbar__link,
+[data-theme="dark"] {
+  .navbar__link {
+    color: var(--nebari-blue-gray-11);
+    text-decoration: none;
+  }
+
+  .navbar__brand {
+    @include link-style(var(--secondary-nebari), var(--secondary-nebari));
+    & {
+      text-decoration: none;
+    }
+  }
+}
+
+.dropdown__menu,
+[data-theme="dark"] .dropdown__menu {
+  background-color: var(--ifm-color-on-background-2);
+}
+
+.dropdown__link,
+[data-theme="dark"] .dropdown__link {
+  text-decoration: none;
+  color: var(--nebari-blue-gray-11);
+  &--active,
+  &--active:hover {
+    --ifm-dropdown-link-color: var(--ifm-link-color);
+    color: var(--nebari-links-dark);
+  }
+  &:hover {
+    background-color: var(--ifm-dropdown-hover-background-color);
+    color: var(--nebari-blue-gray-11);
+    text-decoration: none;
+  }
+}

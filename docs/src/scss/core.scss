@@ -1,0 +1,72 @@
+@use "mixins" as *;
+
+// ==============================================================================
+// Global
+// ==============================================================================
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--heading-color);
+  font-family: var(--global-heading-family);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--global-font-family);
+}
+
+[data-theme="dark"] {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: var(--ifm-color-white-dark);
+  }
+}
+
+// ==============================================================================
+// Links
+// ==============================================================================
+
+a {
+  @include link-style;
+}
+
+[data-theme="dark"]a {
+  @include link-style(var(--ifm-color-content), var(--nebari-links-dark));
+}
+
+// ==============================================================================
+// Card containers
+// ==============================================================================
+
+.card {
+  background-color: transparent;
+  border-radius: var(--ifm-global-radius);
+}
+
+[data-theme="dark"] a.card {
+  text-decoration: none;
+  color: var(--ifm-color-content);
+  &:hover {
+    text-decoration: none;
+  }
+}
+
+// ==============================================================================
+// code blocks
+// ==============================================================================
+
+code {
+  @include code-block-style;
+}

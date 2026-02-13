@@ -71,3 +71,8 @@ CLAUDE.md
 
 # Git worktrees
 .worktrees/
+
+# Docusaurus
+docs/node_modules/
+docs/build/
+docs/.docusaurus/

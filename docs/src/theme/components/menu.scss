@@ -1,0 +1,90 @@
+// ==============================================================================
+// Menu
+// ==============================================================================
+
+.menu__list {
+  .menu__list {
+    .menu__link {
+      color: var(--ifm-menu-color);
+      font-weight: normal;
+    }
+  }
+
+  .menu__link,
+  .menu__caret {
+    border-radius: 0;
+    text-decoration: none;
+  }
+
+  .menu__link--active {
+    border-left: 2px solid var(--secondary-nebari);
+    background-color: var(--ifm-background-color);
+    color: var(--ifm-color-primary);
+  }
+
+  .menu__link--active:not(.menu__link--sublist) {
+    border-left: 2px solid var(--secondary-nebari);
+    background-color: var(--ifm-background-color);
+  }
+
+  .menu__link:hover {
+    border-left: 2px solid var(--ifm-menu-color);
+    color: var(--ifm-menu-color);
+    background-color: transparent;
+  }
+}
+
+[data-theme="dark"] {
+  .menu__link,
+  .menu__caret {
+    color: var(--ifm-menu-color);
+    border-radius: 0;
+  }
+
+  .menu__link:hover {
+    text-decoration: none;
+  }
+}
+
+// ==============================================================================
+// Table of contents
+// ==============================================================================
+
+.table-of-contents__link {
+  color: var(--ifm-toc-link-color);
+  display: block;
+  text-decoration: none;
+  &:hover {
+    color: var(--ifm-menu-color);
+    border-left: 2px solid var(--ifm-menu-color);
+    padding-left: 5px;
+    font-weight: 500;
+  }
+}
+
+.table-of-contents__link--active {
+  color: var(--ifm-color-primary);
+  border-left: 2px solid var(--secondary-nebari);
+  text-decoration: none;
+  padding-left: 5px;
+  font-weight: 500;
+}
+
+[data-theme="dark"] {
+  .table-of-contents__link {
+    color: var(--ifm-toc-link-color);
+    text-decoration: none;
+  }
+
+  .table-of-contents__link--active,
+  .table-of-contents__link--active code,
+  .table-of-contents__link:hover,
+  .table-of-contents__link:hover code {
+    text-decoration: none;
+    color: var(--ifm-menu-color);
+  }
+  .table-of-contents__link--active {
+    color: var(--nebari-links-dark);
+    border-left: 2px solid var(--secondary-nebari);
+  }
+}

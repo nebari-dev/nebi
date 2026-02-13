@@ -14,8 +14,8 @@ const config: Config = {
     v4: true,
   },
 
-  url: 'https://nebari-dev.github.io',
-  baseUrl: '/nebi/',
+  url: 'https://nebi.nebari.dev',
+  baseUrl: '/',
 
   organizationName: 'nebari-dev',
   projectName: 'nebi',

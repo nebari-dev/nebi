@@ -5,7 +5,7 @@ import { useViewModeStore } from '@/store/viewModeStore';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import { useRemoteServer } from '@/hooks/useRemote';
 import { Button } from '@/components/ui/button';
-import { LogOut, Boxes, ListTodo, Shield, Settings, HardDrive, Cloud } from 'lucide-react';
+import { LogOut, Boxes, ListTodo, Shield, Settings } from 'lucide-react';
 import { useState } from 'react';
 
 export const Layout = () => {
@@ -82,31 +82,47 @@ export const Layout = () => {
                   </NavLink>
                 )}
               </nav>
-              {/* View Mode Toggle - only show when remote is connected */}
-              {isRemoteConnected && (
-                <div className="flex items-center gap-1 p-1 bg-muted rounded-lg ml-4">
-                  <Button
-                    variant={viewMode === 'local' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setViewMode('local')}
-                    className="gap-1.5 h-7 px-3"
-                  >
-                    <HardDrive className="h-3.5 w-3.5" />
-                    Local
-                  </Button>
-                  <Button
-                    variant={viewMode === 'remote' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setViewMode('remote')}
-                    className="gap-1.5 h-7 px-3"
-                  >
-                    <Cloud className="h-3.5 w-3.5" />
-                    Remote
-                  </Button>
-                </div>
-              )}
             </div>
             <div className="flex items-center gap-4">
+              {/* View Mode Toggle - only show when remote is connected */}
+              {isRemoteConnected && (
+                <div className="flex items-center gap-0.5 p-[3px] bg-muted rounded-lg border border-border">
+                  <button
+                    onClick={() => setViewMode('local')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                      viewMode === 'local'
+                        ? 'bg-white text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full transition-all ${
+                        viewMode === 'local'
+                          ? 'bg-primary shadow-[0_0_6px_rgba(155,61,204,0.4)]'
+                          : 'bg-muted-foreground/50'
+                      }`}
+                    />
+                    Local
+                  </button>
+                  <button
+                    onClick={() => setViewMode('remote')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                      viewMode === 'remote'
+                        ? 'bg-white text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full transition-all ${
+                        viewMode === 'remote'
+                          ? 'bg-primary shadow-[0_0_6px_rgba(155,61,204,0.4)]'
+                          : 'bg-muted-foreground/50'
+                      }`}
+                    />
+                    Remote
+                  </button>
+                </div>
+              )}
               {isAdmin && (
                 <NavLink to="/admin">
                   {({ isActive }) => (

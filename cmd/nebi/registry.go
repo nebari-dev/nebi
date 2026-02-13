@@ -14,6 +14,15 @@ var registryCmd = &cobra.Command{
 	Short: "Manage OCI registries on the server",
 }
 
+var (
+	registryCreateName     string
+	registryCreateURL      string
+	registryCreateUsername string
+	registryCreatePassword string
+	registryCreateDefault  bool
+	registryCreatePwdStdin bool
+)
+
 var registryListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
@@ -26,8 +35,36 @@ Examples:
 	RunE: runRegistryList,
 }
 
+var registryCreateCmd = &cobra.Command{
+	Use:   "create",
+	Short: "Create a new OCI registry",
+	Long: `Create a new OCI registry configuration on the server.
+
+Examples:
+  # Interactive - prompts for password
+  nebi registry create --name ghcr --url ghcr.io --username myuser
+
+  # Programmatic - read password from stdin
+  echo "$TOKEN" | nebi registry create --name ghcr --url ghcr.io --username myuser --password-stdin
+
+  # Public registry (no auth)
+  nebi registry create --name dockerhub --url docker.io --default`,
+	Args: cobra.NoArgs,
+	RunE: runRegistryCreate,
+}
+
 func init() {
 	registryCmd.AddCommand(registryListCmd)
+	registryCmd.AddCommand(registryCreateCmd)
+
+	registryCreateCmd.Flags().StringVar(&registryCreateName, "name", "", "Registry name (required)")
+	registryCreateCmd.Flags().StringVar(&registryCreateURL, "url", "", "Registry URL (required)")
+	registryCreateCmd.Flags().StringVar(&registryCreateUsername, "username", "", "Username for authentication")
+	registryCreateCmd.Flags().BoolVar(&registryCreatePwdStdin, "password-stdin", false, "Read password from stdin")
+	registryCreateCmd.Flags().BoolVar(&registryCreateDefault, "default", false, "Set as default registry")
+
+	registryCreateCmd.MarkFlagRequired("name")
+	registryCreateCmd.MarkFlagRequired("url")
 }
 
 func runRegistryList(cmd *cobra.Command, args []string) error {
@@ -58,4 +95,8 @@ func runRegistryList(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(w, "%s\t%s\t%s\n", r.Name, r.URL, def)
 	}
 	return w.Flush()
+}
+
+func runRegistryCreate(cmd *cobra.Command, args []string) error {
+	return fmt.Errorf("not implemented")
 }

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"text/tabwriter"
 
+	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var registryCmd = &cobra.Command{
@@ -18,7 +21,6 @@ var (
 	registryCreateName     string
 	registryCreateURL      string
 	registryCreateUsername string
-	registryCreatePassword string
 	registryCreateDefault  bool
 	registryCreatePwdStdin bool
 )
@@ -98,5 +100,56 @@ func runRegistryList(cmd *cobra.Command, args []string) error {
 }
 
 func runRegistryCreate(cmd *cobra.Command, args []string) error {
-	return fmt.Errorf("not implemented")
+	var password string
+
+	// Handle password input
+	if registryCreateUsername != "" {
+		if registryCreatePwdStdin {
+			// Read password from stdin
+			scanner := bufio.NewScanner(os.Stdin)
+			if scanner.Scan() {
+				password = scanner.Text()
+			}
+			if err := scanner.Err(); err != nil {
+				return fmt.Errorf("reading password from stdin: %w", err)
+			}
+		} else if term.IsTerminal(int(os.Stdin.Fd())) {
+			// Interactive prompt
+			fmt.Fprint(os.Stderr, "Password: ")
+			passBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+			fmt.Fprintln(os.Stderr)
+			if err != nil {
+				return fmt.Errorf("reading password: %w", err)
+			}
+			password = string(passBytes)
+		}
+	}
+
+	client, err := getAuthenticatedClient()
+	if err != nil {
+		return err
+	}
+
+	req := cliclient.CreateRegistryRequest{
+		Name: registryCreateName,
+		URL:  registryCreateURL,
+	}
+	if registryCreateUsername != "" {
+		req.Username = &registryCreateUsername
+	}
+	if password != "" {
+		req.Password = &password
+	}
+	if registryCreateDefault {
+		req.IsDefault = &registryCreateDefault
+	}
+
+	ctx := context.Background()
+	registry, err := client.CreateRegistry(ctx, req)
+	if err != nil {
+		return fmt.Errorf("creating registry: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Created registry '%s' (%s)\n", registry.Name, registry.URL)
+	return nil
 }

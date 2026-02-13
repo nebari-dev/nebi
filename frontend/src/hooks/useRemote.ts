@@ -103,3 +103,35 @@ export const useRemoteJobs = (enabled: boolean) => {
     refetchInterval: 5000, // Poll for job status updates
   });
 };
+
+export const useRemoteUsers = (enabled: boolean) => {
+  return useQuery({
+    queryKey: ['remote', 'admin', 'users'],
+    queryFn: remoteApi.listUsers,
+    enabled,
+  });
+};
+
+export const useRemoteAdminRegistries = (enabled: boolean) => {
+  return useQuery({
+    queryKey: ['remote', 'admin', 'registries'],
+    queryFn: remoteApi.listAdminRegistries,
+    enabled,
+  });
+};
+
+export const useRemoteAuditLogs = (enabled: boolean, filters?: { user_id?: string; action?: string }) => {
+  return useQuery({
+    queryKey: ['remote', 'admin', 'audit-logs', filters],
+    queryFn: () => remoteApi.listAuditLogs(filters),
+    enabled,
+  });
+};
+
+export const useRemoteDashboardStats = (enabled: boolean) => {
+  return useQuery({
+    queryKey: ['remote', 'admin', 'dashboard', 'stats'],
+    queryFn: remoteApi.getDashboardStats,
+    enabled,
+  });
+};

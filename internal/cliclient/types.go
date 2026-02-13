@@ -154,3 +154,21 @@ type Job struct {
 	StartedAt   *string                `json:"started_at,omitempty"`
 	CompletedAt *string                `json:"completed_at,omitempty"`
 }
+
+// AuditLog represents an audit log entry.
+type AuditLog struct {
+	ID          string                 `json:"id"`
+	UserID      string                 `json:"user_id"`
+	Action      string                 `json:"action"`
+	Resource    string                 `json:"resource"`
+	ResourceID  string                 `json:"resource_id,omitempty"`
+	DetailsJSON map[string]interface{} `json:"details_json,omitempty"`
+	Timestamp   string                 `json:"timestamp"`
+	User        *User                  `json:"user,omitempty"`
+}
+
+// DashboardStats represents admin dashboard statistics.
+type DashboardStats struct {
+	TotalDiskUsageBytes     int64  `json:"total_disk_usage_bytes"`
+	TotalDiskUsageFormatted string `json:"total_disk_usage_formatted"`
+}

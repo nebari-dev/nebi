@@ -42,18 +42,24 @@ func (q *MemoryQueue) Enqueue(ctx context.Context, job *models.Job) error {
 		return fmt.Errorf("job must have an ID")
 	}
 
-	// Store job in memory
-	q.jobs[job.ID] = job
+	// Capture values for logging before sending pointer through channel,
+	// since the receiver may immediately begin mutating the struct.
+	jobID := job.ID
+	jobType := job.Type
+
+	// Store a copy in the jobs map (independent of the pointer sent to workers)
+	jobCopy := *job
+	q.jobs[job.ID] = &jobCopy
 
 	// Send to channel (non-blocking with timeout)
 	select {
 	case q.jobChan <- job:
-		slog.Debug("Job enqueued", "job_id", job.ID, "type", job.Type)
+		slog.Debug("Job enqueued", "job_id", jobID, "type", jobType)
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-time.After(5 * time.Second):
-		return fmt.Errorf("queue is full, could not enqueue job %d", job.ID)
+		return fmt.Errorf("queue is full, could not enqueue job %s", jobID)
 	}
 }
 

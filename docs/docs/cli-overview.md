@@ -26,6 +26,7 @@ Nebi's CLI is organized into command groups: **Workspace**, **Sync**, **Connecti
 | `nebi pull [<name>[:<tag>]]` | Pull workspace specs from a server |
 | `nebi diff [<ref-a>] [<ref-b>]` | Compare workspace specs |
 | `nebi publish <name>:<tag>` | Publish to an OCI registry |
+| `nebi import <oci-reference>` | Import a workspace from a public OCI registry |
 
 ## Connection Commands
 

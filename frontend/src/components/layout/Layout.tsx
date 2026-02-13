@@ -1,9 +1,11 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
+import { useViewModeStore } from '@/store/viewModeStore';
 import { useIsAdmin } from '@/hooks/useAdmin';
+import { useRemoteServer } from '@/hooks/useRemote';
 import { Button } from '@/components/ui/button';
-import { LogOut, Boxes, ListTodo, Shield, Settings } from 'lucide-react';
+import { LogOut, Boxes, ListTodo, Shield, Settings, HardDrive, Cloud } from 'lucide-react';
 import { useState } from 'react';
 
 export const Layout = () => {
@@ -12,6 +14,9 @@ export const Layout = () => {
   const navigate = useNavigate();
   const { data: isAdmin } = useIsAdmin();
   const [avatarError, setAvatarError] = useState(false);
+  const { viewMode, setViewMode } = useViewModeStore();
+  const { data: serverStatus } = useRemoteServer();
+  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
 
   const handleLogout = () => {
     clearAuth();
@@ -77,6 +82,29 @@ export const Layout = () => {
                   </NavLink>
                 )}
               </nav>
+              {/* View Mode Toggle - only show when remote is connected */}
+              {isRemoteConnected && (
+                <div className="flex items-center gap-1 p-1 bg-muted rounded-lg ml-4">
+                  <Button
+                    variant={viewMode === 'local' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('local')}
+                    className="gap-1.5 h-7 px-3"
+                  >
+                    <HardDrive className="h-3.5 w-3.5" />
+                    Local
+                  </Button>
+                  <Button
+                    variant={viewMode === 'remote' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('remote')}
+                    className="gap-1.5 h-7 px-3"
+                  >
+                    <Cloud className="h-3.5 w-3.5" />
+                    Remote
+                  </Button>
+                </div>
+              )}
             </div>
             {!isLocalMode && (
               <div className="flex items-center gap-4">

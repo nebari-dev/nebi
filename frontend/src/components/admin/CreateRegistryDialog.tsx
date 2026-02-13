@@ -93,17 +93,16 @@ export const CreateRegistryDialog = () => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">
-                Default Repository <span className="text-muted-foreground">(optional)</span>
-              </label>
+              <label className="text-sm font-medium">Namespace</label>
               <Input
                 type="text"
                 value={defaultRepository}
                 onChange={(e) => setDefaultRepository(e.target.value)}
-                placeholder="e.g., myorg/workspaces"
+                placeholder="e.g., nebari"
+                required
               />
               <p className="text-xs text-muted-foreground">
-                Base path for repositories. Workspace name will be appended when publishing.
+                Organization or namespace for published repositories.
               </p>
             </div>
 
@@ -124,7 +123,7 @@ export const CreateRegistryDialog = () => {
           <div className="border-t pt-4 mt-4 space-y-4">
             <div>
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Authentication</h3>
-              <p className="text-xs text-muted-foreground mt-1">Optional — only needed for private repositories</p>
+              <p className="text-xs text-muted-foreground mt-1">Optional — needed for private repositories and publishing</p>
             </div>
 
             <div className="space-y-2">

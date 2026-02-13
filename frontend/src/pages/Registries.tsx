@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useModeStore } from '@/store/modeStore';
+import { useIsAdmin } from '@/hooks/useAdmin';
 import { usePublicRegistries, useRegistryRepositories, useRepositoryTags, useImportEnvironment } from '@/hooks/useRegistries';
 import type { OCIRegistry } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ type View = 'registries' | 'repositories' | 'tags';
 
 export const Registries = () => {
   const navigate = useNavigate();
-  const isLocalMode = useModeStore((s) => s.isLocalMode());
+  const { data: isAdmin } = useIsAdmin();
   const { data: registries, isLoading: registriesLoading } = usePublicRegistries();
   const importMutation = useImportEnvironment();
 
@@ -275,7 +275,7 @@ export const Registries = () => {
         <div className="text-center py-12">
           <p className="text-muted-foreground">
             No registries configured.{' '}
-            {isLocalMode ? (
+            {isAdmin ? (
               <Link to="/admin/registries" className="text-primary hover:underline">
                 Add one in Admin &rarr; Registries.
               </Link>

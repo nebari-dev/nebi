@@ -1,3 +1,5 @@
+@use "../../scss/mixins" as *;
+
 .footer {
   background-color: var(--ifm-color-black-light);
   color: var(--ifm-footer-color);

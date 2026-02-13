@@ -1,3 +1,5 @@
+@use "mixins" as *;
+
 // ==============================================================================
 // Global
 // ==============================================================================
@@ -36,28 +38,6 @@ body {
 // Links
 // ==============================================================================
 
-@mixin link-style($text-color: var(--nebari-links), $decoration-color: var(--ifm-color-primary)) {
-  text-decoration: underline;
-  color: $text-color;
-  text-decoration-color: $decoration-color;
-  text-underline-offset: 3px;
-  transition: {
-    property: text-decoration;
-    timing-function: ease-out;
-    duration: 0.3s;
-  }
-  @include link-hover($decoration-color);
-}
-
-@mixin link-hover($decoration-color) {
-  &:hover {
-    text-decoration: underline;
-    color: $decoration-color;
-    text-decoration-thickness: 2px !important;
-    text-decoration-color: $decoration-color;
-  }
-}
-
 a {
   @include link-style;
 }
@@ -86,14 +66,6 @@ a {
 // ==============================================================================
 // code blocks
 // ==============================================================================
-@mixin code-block-style {
-  font-family: var(--global-block-family-code);
-  background-color: transparent;
-  border: 0px;
-  color: var(--nebari-code-color);
-  vertical-align: bottom;
-  font-weight: 500;
-}
 
 code {
   @include code-block-style;

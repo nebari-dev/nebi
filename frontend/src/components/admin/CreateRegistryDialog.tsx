@@ -102,7 +102,7 @@ export const CreateRegistryDialog = () => {
                 required
               />
               <p className="text-xs text-muted-foreground">
-                Organization or namespace for published repositories.
+                Organization or namespace on the registry.
               </p>
             </div>
 

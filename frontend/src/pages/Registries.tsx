@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ArrowLeft, Search, Download, Package, ChevronRight, X, Globe, Lock } from 'lucide-react';
+import { Loader2, ArrowLeft, Search, Download, Package, ChevronRight, X, Globe, Lock, Plus } from 'lucide-react';
 
 type View = 'registries' | 'repositories' | 'tags';
 
@@ -118,7 +118,7 @@ export const Registries = () => {
             <ArrowLeft className="h-4 w-4" />
           </Button>
         )}
-        <div>
+        <div className="flex-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <button
               className="hover:text-foreground transition-colors"
@@ -162,6 +162,12 @@ export const Registries = () => {
             {view === 'tags' && 'Select a tag to import'}
           </p>
         </div>
+        {view === 'registries' && isAdmin && (
+          <Button onClick={() => navigate('/admin/registries?add=true')}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Registry
+          </Button>
+        )}
       </div>
 
       {error && (

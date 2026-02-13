@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2/registry/remote"
@@ -231,6 +232,103 @@ func PullEnvironment(ctx context.Context, repoRef, tag string, opts BrowseOption
 	// Update the workspace name in pixi.toml to avoid conflicts
 	// The caller can override the name if needed
 	return result, nil
+}
+
+// IsNebiRepository checks if a repository contains a Nebi OCI image by inspecting
+// the manifest config media type of the first available tag.
+func IsNebiRepository(ctx context.Context, repoRef string, opts BrowseOptions) bool {
+	repo, err := remote.NewRepository(repoRef)
+	if err != nil {
+		return false
+	}
+
+	repo.Client = &auth.Client{
+		Credential: func(ctx context.Context, hostname string) (auth.Credential, error) {
+			return auth.Credential{
+				Username: opts.Username,
+				Password: opts.Password,
+			}, nil
+		},
+	}
+
+	// Get the first tag only — errStopIteration is expected, so we ignore the error.
+	var firstTag string
+	_ = repo.Tags(ctx, "", func(tags []string) error {
+		if len(tags) > 0 {
+			firstTag = tags[0]
+		}
+		return errStopIteration
+	})
+	if firstTag == "" {
+		return false
+	}
+
+	// Resolve the tag to get its manifest
+	desc, err := repo.Resolve(ctx, firstTag)
+	if err != nil {
+		return false
+	}
+
+	manifestReader, err := repo.Fetch(ctx, desc)
+	if err != nil {
+		return false
+	}
+	defer manifestReader.Close()
+
+	manifestData, err := io.ReadAll(manifestReader)
+	if err != nil {
+		return false
+	}
+
+	var manifest ocispec.Manifest
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		return false
+	}
+
+	return manifest.Config.MediaType == MediaTypePixiConfig
+}
+
+// errStopIteration is a sentinel error used to stop tag pagination early.
+var errStopIteration = fmt.Errorf("stop iteration")
+
+// FilterNebiRepositories filters a list of repositories to only include those
+// that contain Nebi OCI images. It checks repositories concurrently with a semaphore.
+func FilterNebiRepositories(ctx context.Context, repos []RepositoryInfo, host string, opts BrowseOptions) []RepositoryInfo {
+	type indexedResult struct {
+		index int
+		keep  bool
+	}
+
+	results := make([]indexedResult, len(repos))
+	sem := make(chan struct{}, 10)
+	var wg sync.WaitGroup
+
+	for i, repo := range repos {
+		wg.Add(1)
+		go func(i int, repo RepositoryInfo) {
+			defer wg.Done()
+
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				return
+			}
+
+			repoRef := fmt.Sprintf("%s/%s", host, repo.Name)
+			results[i] = indexedResult{index: i, keep: IsNebiRepository(ctx, repoRef, opts)}
+		}(i, repo)
+	}
+
+	wg.Wait()
+
+	var filtered []RepositoryInfo
+	for i, r := range results {
+		if r.keep {
+			filtered = append(filtered, repos[i])
+		}
+	}
+	return filtered
 }
 
 // fetchLayer fetches content from a single layer descriptor

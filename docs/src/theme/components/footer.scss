@@ -1,0 +1,12 @@
+.footer {
+  background-color: var(--ifm-color-black-light);
+  color: var(--ifm-footer-color);
+  font-weight: bold;
+}
+
+.footer__link-item,
+[data-theme="dark"] .footer__link-item {
+  color: var(--nebari-blue-gray-9);
+  text-decoration: none;
+  @include link-hover(var(--nebari-links-dark));
+}

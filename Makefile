@@ -25,8 +25,8 @@ install-tools: ## Install development tools (swag, air, golangci-lint)
 swagger: ## Generate Swagger documentation
 	@echo "Generating Swagger docs..."
 	@command -v swag >/dev/null 2>&1 || { echo "swag not found, installing..."; go install github.com/swaggo/swag/cmd/swag@latest; }
-	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g cmd/nebi/serve.go -o docs
-	@echo "Swagger docs generated at /docs"
+	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g cmd/nebi/serve.go -o internal/swagger --packageName swagger
+	@echo "Swagger docs generated at /internal/swagger"
 
 build-frontend: ## Build frontend and copy to internal/web/dist
 	@echo "Building frontend..."
@@ -85,7 +85,7 @@ test: ## Run tests (unit + e2e)
 clean: ## Clean build artifacts
 	@echo "Cleaning..."
 	@rm -rf bin/
-	@rm -rf docs/
+	@rm -rf internal/swagger/
 	@rm -rf internal/web/dist
 	@rm -rf $(FRONTEND_DIR)/dist
 	@rm -f nebi.db

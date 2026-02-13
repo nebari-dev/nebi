@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	_ "github.com/nebari-dev/nebi/docs" // Load swagger docs
+	_ "github.com/nebari-dev/nebi/internal/swagger" // Load swagger docs
 )
 
 // Version is set via ldflags at build time

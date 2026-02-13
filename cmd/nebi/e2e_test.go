@@ -162,6 +162,12 @@ func resetFlags() {
 	loginToken = ""
 	// publish.go
 	publishRegistry = ""
+	// registry.go
+	registryCreateName = ""
+	registryCreateURL = ""
+	registryCreateUsername = ""
+	registryCreateDefault = false
+	registryCreatePwdStdin = false
 }
 
 // runCLI executes a CLI command in-process and captures output.
@@ -216,6 +222,27 @@ func runCLI(t *testing.T, workDir string, args ...string) runResult {
 
 	result.Stdout = stdoutBuf.String()
 	result.Stderr = stderrBuf.String()
+	return result
+}
+
+// runCLIWithStdin runs the CLI with the given args and stdin input.
+func runCLIWithStdin(t *testing.T, cwd, stdin string, args ...string) runResult {
+	t.Helper()
+	origStdin := os.Stdin
+
+	// Create a pipe for stdin
+	stdinR, stdinW, _ := os.Pipe()
+	os.Stdin = stdinR
+	go func() {
+		stdinW.WriteString(stdin)
+		stdinW.Close()
+	}()
+
+	result := runCLI(t, cwd, args...)
+
+	os.Stdin = origStdin
+	stdinR.Close()
+
 	return result
 }
 
@@ -862,6 +889,73 @@ func TestE2E_RegistryListEmpty(t *testing.T) {
 	}
 	if !strings.Contains(res.Stderr, "No registries") {
 		t.Errorf("expected 'No registries' message, got stderr: %s", res.Stderr)
+	}
+}
+
+func TestE2E_RegistryCreate(t *testing.T) {
+	setupLocalStore(t)
+	dir := t.TempDir()
+
+	// Create a registry
+	res := runCLI(t, dir, "registry", "create", "--name", "test-registry", "--url", "ghcr.io")
+	if res.ExitCode != 0 {
+		t.Fatalf("registry create failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "Created registry") {
+		t.Errorf("expected 'Created registry' message, got stderr: %s", res.Stderr)
+	}
+
+	// Verify it shows up in list
+	res = runCLI(t, dir, "registry", "list")
+	if res.ExitCode != 0 {
+		t.Fatalf("registry list failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, "test-registry") {
+		t.Errorf("expected registry in list, got stdout: %s", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "ghcr.io") {
+		t.Errorf("expected URL in list, got stdout: %s", res.Stdout)
+	}
+}
+
+func TestE2E_RegistryCreateDuplicate(t *testing.T) {
+	setupLocalStore(t)
+	dir := t.TempDir()
+
+	// Create first registry
+	res := runCLI(t, dir, "registry", "create", "--name", "dup-test", "--url", "ghcr.io")
+	if res.ExitCode != 0 {
+		t.Fatalf("first create failed: %s", res.Stderr)
+	}
+
+	// Try to create with same name - should fail
+	res = runCLI(t, dir, "registry", "create", "--name", "dup-test", "--url", "quay.io")
+	if res.ExitCode == 0 {
+		t.Fatal("expected error for duplicate name")
+	}
+	if !strings.Contains(res.Stderr, "already exists") && !strings.Contains(res.Stderr, "UNIQUE constraint") {
+		t.Errorf("expected duplicate error message, got: %s", res.Stderr)
+	}
+}
+
+func TestE2E_RegistryCreateWithPasswordStdin(t *testing.T) {
+	setupLocalStore(t)
+	dir := t.TempDir()
+
+	// Create with password via stdin
+	res := runCLIWithStdin(t, dir, "secret-password\n", "registry", "create",
+		"--name", "auth-registry",
+		"--url", "private.registry.io",
+		"--username", "testuser",
+		"--password-stdin")
+	if res.ExitCode != 0 {
+		t.Fatalf("registry create with password failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Verify it shows up in list
+	res = runCLI(t, dir, "registry", "list")
+	if !strings.Contains(res.Stdout, "auth-registry") {
+		t.Errorf("expected registry in list, got stdout: %s", res.Stdout)
 	}
 }
 

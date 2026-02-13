@@ -4,20 +4,48 @@ sidebar_position: 1
 
 # Getting Started
 
-Nebi is a local-first workspace management tool for [Pixi](https://pixi.sh). It lets you track, sync, and share reproducible environments with your team.
+Nebi is a multi-user environment management tool for [Pixi](https://pixi.sh). It lets you track, sync, and share reproducible environments with your team.
+
+## Prerequisites
+
+Nebi manages Pixi workspaces but **does not install Pixi for you**. Install Pixi first:
+
+```bash
+curl -fsSL https://pixi.sh/install.sh | bash
+```
+
+See the [Pixi installation docs](https://pixi.sh) for more options.
 
 ## Installation
 
 ### Using the install script (macOS/Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nebari-dev/nebi/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nebari-dev/nebi/main/install.sh | sh
 ```
 
-This installs the `nebi` binary to `~/.local/bin`. Make sure it's on your `PATH`:
+This installs the latest release of `nebi` to `~/.local/bin`. Make sure it's on your `PATH`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
+```
+
+#### Install a specific version
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nebari-dev/nebi/main/install.sh | sh -s -- --version v0.6.0-rc1
+```
+
+#### Install with the desktop app
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nebari-dev/nebi/main/install.sh | sh -s -- --version v0.6.0-rc1 --desktop
+```
+
+#### Install to a custom directory
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nebari-dev/nebi/main/install.sh | sh -s -- --install-dir /usr/local/bin
 ```
 
 ### From source

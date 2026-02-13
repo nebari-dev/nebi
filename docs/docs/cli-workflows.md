@@ -128,3 +128,25 @@ $ nebi publish my-project:v1.0
 # Publish with a custom image reference
 $ nebi publish my-project:v1.0 myorg/myenv:latest
 ```
+
+---
+
+## Workflow 6: Import from an OCI Registry
+
+Import a workspace into nebi from a public OCI registry.
+
+```bash
+# Import a workspace into the current directory
+$ nebi import quay.io/nebari/my-env:v1
+Imported quay.io/nebari/my-env:v1 -> /home/alice/my-project
+
+# Import into a specific directory
+$ nebi import ghcr.io/myorg/data-science:latest -o ./my-project
+
+# Import as a global workspace
+$ nebi import quay.io/nebari/my-env:v1 --global data-science
+Imported quay.io/nebari/my-env:v1 -> global workspace "data-science" (/home/alice/.local/share/nebi/data-science)
+
+# Overwrite existing files without prompting
+$ nebi import quay.io/nebari/my-env:v1 --force
+```

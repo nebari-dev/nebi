@@ -174,5 +174,53 @@ func runRegistryCreate(cmd *cobra.Command, args []string) error {
 }
 
 func runRegistryDelete(cmd *cobra.Command, args []string) error {
-	return fmt.Errorf("not implemented")
+	name := args[0]
+
+	client, err := getAuthenticatedClient()
+	if err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	// Find the registry by name
+	registryID, err := findRegistryByName(client, ctx, name)
+	if err != nil {
+		return err
+	}
+
+	// Confirm unless --force
+	if !registryDeleteForce {
+		fmt.Fprintf(os.Stderr, "Delete registry '%s'? [y/N] ", name)
+
+		var response string
+		fmt.Scanln(&response)
+
+		if response != "y" && response != "Y" {
+			fmt.Fprintln(os.Stderr, "Aborted.")
+			return nil
+		}
+	}
+
+	if err := client.DeleteRegistry(ctx, registryID); err != nil {
+		return fmt.Errorf("deleting registry: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Deleted registry '%s'\n", name)
+	return nil
+}
+
+// findRegistryByName finds a registry by name and returns its ID.
+func findRegistryByName(client *cliclient.Client, ctx context.Context, name string) (string, error) {
+	registries, err := client.ListRegistries(ctx)
+	if err != nil {
+		return "", fmt.Errorf("listing registries: %w", err)
+	}
+
+	for _, r := range registries {
+		if r.Name == name {
+			return r.ID, nil
+		}
+	}
+	return "", fmt.Errorf("registry '%s' not found", name)
 }

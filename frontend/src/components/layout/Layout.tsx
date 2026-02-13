@@ -79,7 +79,7 @@ export const Layout = () => {
               </nav>
             </div>
             <div className="flex items-center gap-4">
-              {(isLocalMode || isAdmin) && (
+              {isAdmin && (
                 <NavLink to="/admin">
                   {({ isActive }) => (
                     <Button

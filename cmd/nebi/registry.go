@@ -23,6 +23,7 @@ var (
 	registryCreateUsername string
 	registryCreateDefault  bool
 	registryCreatePwdStdin bool
+	registryDeleteForce    bool
 )
 
 var registryListCmd = &cobra.Command{
@@ -55,9 +56,25 @@ Examples:
 	RunE: runRegistryCreate,
 }
 
+var registryDeleteCmd = &cobra.Command{
+	Use:   "delete <name>",
+	Short: "Delete an OCI registry",
+	Long: `Delete an OCI registry configuration from the server.
+
+Examples:
+  # Interactive - prompts for confirmation
+  nebi registry delete ghcr
+
+  # Skip confirmation
+  nebi registry delete ghcr --force`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRegistryDelete,
+}
+
 func init() {
 	registryCmd.AddCommand(registryListCmd)
 	registryCmd.AddCommand(registryCreateCmd)
+	registryCmd.AddCommand(registryDeleteCmd)
 
 	registryCreateCmd.Flags().StringVar(&registryCreateName, "name", "", "Registry name (required)")
 	registryCreateCmd.Flags().StringVar(&registryCreateURL, "url", "", "Registry URL (required)")
@@ -67,6 +84,8 @@ func init() {
 
 	registryCreateCmd.MarkFlagRequired("name")
 	registryCreateCmd.MarkFlagRequired("url")
+
+	registryDeleteCmd.Flags().BoolVarP(&registryDeleteForce, "force", "f", false, "Skip confirmation prompt")
 }
 
 func runRegistryList(cmd *cobra.Command, args []string) error {
@@ -152,4 +171,8 @@ func runRegistryCreate(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(os.Stderr, "Created registry '%s' (%s)\n", registry.Name, registry.URL)
 	return nil
+}
+
+func runRegistryDelete(cmd *cobra.Command, args []string) error {
+	return fmt.Errorf("not implemented")
 }

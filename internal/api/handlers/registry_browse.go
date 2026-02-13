@@ -86,6 +86,11 @@ func (h *RegistryBrowseHandler) ListRepositories(c *gin.Context) {
 		}
 	}
 
+	// Filter to only Nebi OCI images (repos with pixi config media type)
+	if !catalogFailed && len(repos) > 0 {
+		repos = oci.FilterNebiRepositories(c.Request.Context(), repos, host, opts)
+	}
+
 	// Always merge in known publications from the DB
 	knownRepos := h.fallbackRepositories(registry.ID.String(), "")
 	seen := make(map[string]bool)

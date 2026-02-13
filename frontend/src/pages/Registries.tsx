@@ -1,17 +1,19 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
+import { useIsAdmin } from '@/hooks/useAdmin';
 import { usePublicRegistries, useRegistryRepositories, useRepositoryTags, useImportEnvironment } from '@/hooks/useRegistries';
 import type { OCIRegistry } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ArrowLeft, Search, Download, Package, ChevronRight, X, Globe, Lock } from 'lucide-react';
+import { Loader2, ArrowLeft, Search, Download, Package, ChevronRight, X, Globe, Lock, Settings } from 'lucide-react';
 
 type View = 'registries' | 'repositories' | 'tags';
 
 export const Registries = () => {
   const navigate = useNavigate();
+  const { data: isAdmin } = useIsAdmin();
   const { data: registries, isLoading: registriesLoading } = usePublicRegistries();
   const importMutation = useImportEnvironment();
 
@@ -116,7 +118,7 @@ export const Registries = () => {
             <ArrowLeft className="h-4 w-4" />
           </Button>
         )}
-        <div>
+        <div className="flex-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <button
               className="hover:text-foreground transition-colors"
@@ -160,6 +162,12 @@ export const Registries = () => {
             {view === 'tags' && 'Select a tag to import'}
           </p>
         </div>
+        {view === 'registries' && isAdmin && (
+          <Button variant="outline" onClick={() => navigate('/admin/registries')}>
+            <Settings className="h-4 w-4 mr-2" />
+            Manage Registries
+          </Button>
+        )}
       </div>
 
       {error && (
@@ -271,7 +279,16 @@ export const Registries = () => {
 
       {view === 'registries' && (!registries || registries.length === 0) && (
         <div className="text-center py-12">
-          <p className="text-muted-foreground">No registries configured. Ask an admin to add one.</p>
+          <p className="text-muted-foreground">
+            No registries configured.{' '}
+            {isAdmin ? (
+              <Link to="/admin/registries" className="text-primary hover:underline">
+                Add one in Admin &rarr; Registries.
+              </Link>
+            ) : (
+              'Ask an admin to add one.'
+            )}
+          </p>
         </div>
       )}
 

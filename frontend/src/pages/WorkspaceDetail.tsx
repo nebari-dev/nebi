@@ -16,6 +16,7 @@ import { ShareButton } from '@/components/sharing/ShareButton';
 import { PublishButton } from '@/components/publishing/PublishButton';
 import { RoleBadge } from '@/components/sharing/RoleBadge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
+import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
 import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check, ExternalLink, Save, HardDrive, Pencil } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
@@ -144,6 +145,34 @@ export const WorkspaceDetail = () => {
           <Badge className={statusColors[workspace.status]}>
             {workspace.status}
           </Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            disabled={workspace.status !== 'ready'}
+            onClick={async () => {
+              if (!pixiToml) {
+                setLoadingToml(true);
+                try {
+                  const { content } = await workspacesApi.getPixiToml(wsId);
+                  setPixiToml(content);
+                  setEditedToml(content);
+                } catch {
+                  setError('Failed to load pixi.toml');
+                  return;
+                } finally {
+                  setLoadingToml(false);
+                }
+              } else {
+                setEditedToml(pixiToml);
+              }
+              setActiveTab('toml');
+              setIsEditingToml(true);
+            }}
+          >
+            <Pencil className="h-4 w-4" />
+            Edit
+          </Button>
           <PublishButton environmentId={wsId} environmentName={workspace.name} environmentStatus={workspace.status} />
           {!isLocalWs && isOwner && <ShareButton environmentId={wsId} />}
         </div>
@@ -357,7 +386,7 @@ export const WorkspaceDetail = () => {
               <div className="flex items-center justify-between">
                 <CardTitle>pixi.toml Configuration</CardTitle>
                 <div className="flex items-center gap-2">
-                  {isLocalWs && pixiToml && !isEditingToml && (
+                  {pixiToml && !isEditingToml && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -439,10 +468,10 @@ export const WorkspaceDetail = () => {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : isEditingToml ? (
-                <textarea
-                  className="w-full h-96 bg-slate-900 text-slate-100 p-4 rounded-md font-mono text-sm resize-y border-0 focus:outline-none focus:ring-2 focus:ring-primary"
-                  value={editedToml}
-                  onChange={(e) => setEditedToml(e.target.value)}
+                <PixiTomlEditor
+                  tomlValue={editedToml}
+                  onTomlChange={setEditedToml}
+                  workspaceName={workspace.name}
                 />
               ) : pixiToml ? (
                 <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto font-mono text-sm whitespace-pre">

@@ -172,13 +172,18 @@ func PullEnvironment(ctx context.Context, repoRef, tag string, opts BrowseOption
 		return nil, fmt.Errorf("failed to create repository client: %w", err)
 	}
 
-	repo.Client = &auth.Client{
-		Credential: func(ctx context.Context, hostname string) (auth.Credential, error) {
-			return auth.Credential{
-				Username: opts.Username,
-				Password: opts.Password,
-			}, nil
-		},
+	// Only set a custom auth client when credentials are provided.
+	// For anonymous access (empty credentials), the default client handles
+	// the bearer token exchange (including Quay.io) correctly.
+	if opts.Username != "" || opts.Password != "" {
+		repo.Client = &auth.Client{
+			Credential: func(ctx context.Context, hostname string) (auth.Credential, error) {
+				return auth.Credential{
+					Username: opts.Username,
+					Password: opts.Password,
+				}, nil
+			},
+		}
 	}
 
 	// Resolve the tag to a manifest descriptor

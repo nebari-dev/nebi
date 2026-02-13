@@ -43,6 +43,7 @@ func init() {
 	pullCmd.GroupID = "sync"
 	diffCmd.GroupID = "sync"
 	publishCmd.GroupID = "sync"
+	importCmd.GroupID = "sync"
 
 	loginCmd.GroupID = "connection"
 	registryCmd.GroupID = "connection"
@@ -59,6 +60,7 @@ func init() {
 	rootCmd.AddCommand(shellCmd)
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(publishCmd)
+	rootCmd.AddCommand(importCmd)
 	rootCmd.AddCommand(registryCmd)
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(versionCmd)

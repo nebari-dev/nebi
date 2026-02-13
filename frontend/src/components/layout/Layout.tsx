@@ -78,45 +78,47 @@ export const Layout = () => {
                 )}
               </nav>
             </div>
-            {!isLocalMode && (
-              <div className="flex items-center gap-4">
-                {isAdmin && (
-                  <NavLink to="/admin">
-                    {({ isActive }) => (
-                      <Button
-                        variant={isActive ? 'secondary' : 'ghost'}
-                        className="gap-2"
-                      >
-                        <Shield className="h-4 w-4" />
-                        Admin
-                      </Button>
-                    )}
-                  </NavLink>
-                )}
-                {user?.avatar_url && !avatarError ? (
-                  <img
-                    src={user.avatar_url}
-                    alt={user.username}
-                    className="h-8 w-8 rounded-full"
-                    referrerPolicy="no-referrer-when-downgrade"
-                    crossOrigin="anonymous"
-                    onError={() => setAvatarError(true)}
-                  />
-                ) : (
-                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <span className="text-sm font-medium text-primary">
-                      {user?.username?.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                )}
-                <span className="text-sm font-medium text-foreground">
-                  {user?.username}
-                </span>
-                <Button variant="ghost" size="icon" onClick={handleLogout}>
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
+            <div className="flex items-center gap-4">
+              {isAdmin && (
+                <NavLink to="/admin">
+                  {({ isActive }) => (
+                    <Button
+                      variant={isActive ? 'secondary' : 'ghost'}
+                      className="gap-2"
+                    >
+                      <Shield className="h-4 w-4" />
+                      Admin
+                    </Button>
+                  )}
+                </NavLink>
+              )}
+              {!isLocalMode && (
+                <>
+                  {user?.avatar_url && !avatarError ? (
+                    <img
+                      src={user.avatar_url}
+                      alt={user.username}
+                      className="h-8 w-8 rounded-full"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      crossOrigin="anonymous"
+                      onError={() => setAvatarError(true)}
+                    />
+                  ) : (
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                      <span className="text-sm font-medium text-primary">
+                        {user?.username?.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
+                  <span className="text-sm font-medium text-foreground">
+                    {user?.username}
+                  </span>
+                  <Button variant="ghost" size="icon" onClick={handleLogout}>
+                    <LogOut className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>

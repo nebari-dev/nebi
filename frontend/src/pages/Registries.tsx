@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
+import { useIsAdmin } from '@/hooks/useAdmin';
 import { usePublicRegistries, useRegistryRepositories, useRepositoryTags, useImportEnvironment } from '@/hooks/useRegistries';
 import type { OCIRegistry } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ type View = 'registries' | 'repositories' | 'tags';
 
 export const Registries = () => {
   const navigate = useNavigate();
+  const { data: isAdmin } = useIsAdmin();
   const { data: registries, isLoading: registriesLoading } = usePublicRegistries();
   const importMutation = useImportEnvironment();
 
@@ -271,7 +273,16 @@ export const Registries = () => {
 
       {view === 'registries' && (!registries || registries.length === 0) && (
         <div className="text-center py-12">
-          <p className="text-muted-foreground">No registries configured. Ask an admin to add one.</p>
+          <p className="text-muted-foreground">
+            No registries configured.{' '}
+            {isAdmin ? (
+              <Link to="/admin/registries" className="text-primary hover:underline">
+                Add one in Admin &rarr; Registries.
+              </Link>
+            ) : (
+              'Ask an admin to add one.'
+            )}
+          </p>
         </div>
       )}
 

@@ -53,6 +53,23 @@ func ParseRegistryURL(rawURL string) (host, namespace string) {
 	return
 }
 
+// newAuthClient returns an auth.Client for the given credentials, or nil
+// for anonymous access. When nil, oras-go uses its default client which
+// properly handles anonymous bearer token exchange (needed for Quay.io etc).
+func newAuthClient(username, password string) *auth.Client {
+	if username == "" && password == "" {
+		return nil
+	}
+	return &auth.Client{
+		Credential: func(ctx context.Context, hostname string) (auth.Credential, error) {
+			return auth.Credential{
+				Username: username,
+				Password: password,
+			}, nil
+		},
+	}
+}
+
 // ListRepositories queries the /v2/_catalog endpoint for a registry
 func ListRepositories(ctx context.Context, opts BrowseOptions) ([]RepositoryInfo, error) {
 	reg, err := remote.NewRegistry(opts.RegistryHost)
@@ -60,13 +77,8 @@ func ListRepositories(ctx context.Context, opts BrowseOptions) ([]RepositoryInfo
 		return nil, fmt.Errorf("failed to create registry client: %w", err)
 	}
 
-	reg.Client = &auth.Client{
-		Credential: func(ctx context.Context, hostname string) (auth.Credential, error) {
-			return auth.Credential{
-				Username: opts.Username,
-				Password: opts.Password,
-			}, nil
-		},
+	if c := newAuthClient(opts.Username, opts.Password); c != nil {
+		reg.Client = c
 	}
 
 	var repos []RepositoryInfo
@@ -142,13 +154,8 @@ func ListTags(ctx context.Context, repoRef string, opts BrowseOptions) ([]TagInf
 		return nil, fmt.Errorf("failed to create repository client: %w", err)
 	}
 
-	repo.Client = &auth.Client{
-		Credential: func(ctx context.Context, hostname string) (auth.Credential, error) {
-			return auth.Credential{
-				Username: opts.Username,
-				Password: opts.Password,
-			}, nil
-		},
+	if c := newAuthClient(opts.Username, opts.Password); c != nil {
+		repo.Client = c
 	}
 
 	var tags []TagInfo
@@ -172,18 +179,8 @@ func PullEnvironment(ctx context.Context, repoRef, tag string, opts BrowseOption
 		return nil, fmt.Errorf("failed to create repository client: %w", err)
 	}
 
-	// Only set a custom auth client when credentials are provided.
-	// For anonymous access (empty credentials), the default client handles
-	// the bearer token exchange (including Quay.io) correctly.
-	if opts.Username != "" || opts.Password != "" {
-		repo.Client = &auth.Client{
-			Credential: func(ctx context.Context, hostname string) (auth.Credential, error) {
-				return auth.Credential{
-					Username: opts.Username,
-					Password: opts.Password,
-				}, nil
-			},
-		}
+	if c := newAuthClient(opts.Username, opts.Password); c != nil {
+		repo.Client = c
 	}
 
 	// Resolve the tag to a manifest descriptor
@@ -247,13 +244,8 @@ func IsNebiRepository(ctx context.Context, repoRef string, opts BrowseOptions) b
 		return false
 	}
 
-	repo.Client = &auth.Client{
-		Credential: func(ctx context.Context, hostname string) (auth.Credential, error) {
-			return auth.Credential{
-				Username: opts.Username,
-				Password: opts.Password,
-			}, nil
-		},
+	if c := newAuthClient(opts.Username, opts.Password); c != nil {
+		repo.Client = c
 	}
 
 	// Get the first tag only — errStopIteration is expected, so we ignore the error.

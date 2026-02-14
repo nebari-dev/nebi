@@ -1,7 +1,9 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
+import { useViewModeStore } from '@/store/viewModeStore';
 import { useIsAdmin } from '@/hooks/useAdmin';
+import { useRemoteServer } from '@/hooks/useRemote';
 import { Button } from '@/components/ui/button';
 import { LogOut, Boxes, ListTodo, Shield, Settings } from 'lucide-react';
 import { useState } from 'react';
@@ -12,6 +14,9 @@ export const Layout = () => {
   const navigate = useNavigate();
   const { data: isAdmin } = useIsAdmin();
   const [avatarError, setAvatarError] = useState(false);
+  const { viewMode, setViewMode } = useViewModeStore();
+  const { data: serverStatus } = useRemoteServer();
+  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
 
   const handleLogout = () => {
     clearAuth();
@@ -81,6 +86,45 @@ export const Layout = () => {
               </nav>
             </div>
             <div className="flex items-center gap-4">
+              {/* View Mode Toggle - only show when remote is connected */}
+              {isRemoteConnected && (
+                <div className="flex items-center gap-0.5 p-[3px] bg-muted rounded-lg border border-border">
+                  <button
+                    onClick={() => setViewMode('local')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                      viewMode === 'local'
+                        ? 'bg-white text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full transition-all ${
+                        viewMode === 'local'
+                          ? 'bg-primary shadow-[0_0_6px_rgba(155,61,204,0.4)]'
+                          : 'bg-muted-foreground/50'
+                      }`}
+                    />
+                    Local
+                  </button>
+                  <button
+                    onClick={() => setViewMode('remote')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                      viewMode === 'remote'
+                        ? 'bg-white text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full transition-all ${
+                        viewMode === 'remote'
+                          ? 'bg-primary shadow-[0_0_6px_rgba(155,61,204,0.4)]'
+                          : 'bg-muted-foreground/50'
+                      }`}
+                    />
+                    Remote
+                  </button>
+                </div>
+              )}
               {isAdmin && (
                 <NavLink to="/admin">
                   {({ isActive }) => (

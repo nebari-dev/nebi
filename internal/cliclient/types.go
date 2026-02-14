@@ -140,3 +140,35 @@ type WorkspaceTag struct {
 	CreatedAt     string `json:"created_at"`
 	UpdatedAt     string `json:"updated_at"`
 }
+
+// Job represents a background job on the server.
+type Job struct {
+	ID          string                 `json:"id"`
+	WorkspaceID string                 `json:"workspace_id"`
+	Type        string                 `json:"type"`
+	Status      string                 `json:"status"`
+	Logs        string                 `json:"logs,omitempty"`
+	Error       string                 `json:"error,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	CreatedAt   string                 `json:"created_at"`
+	StartedAt   *string                `json:"started_at,omitempty"`
+	CompletedAt *string                `json:"completed_at,omitempty"`
+}
+
+// AuditLog represents an audit log entry.
+type AuditLog struct {
+	ID          int         `json:"id"`
+	UserID      string      `json:"user_id"`
+	Action      string      `json:"action"`
+	Resource    string      `json:"resource"`
+	ResourceID  string      `json:"resource_id,omitempty"`
+	DetailsJSON interface{} `json:"details_json,omitempty"`
+	Timestamp   string      `json:"timestamp"`
+	User        *User       `json:"user,omitempty"`
+}
+
+// DashboardStats represents admin dashboard statistics.
+type DashboardStats struct {
+	TotalDiskUsageBytes     int64  `json:"total_disk_usage_bytes"`
+	TotalDiskUsageFormatted string `json:"total_disk_usage_formatted"`
+}

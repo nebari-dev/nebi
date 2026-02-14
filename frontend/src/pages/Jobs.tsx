@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useJobs } from '@/hooks/useJobs';
 import { useJobLogStream } from '@/hooks/useJobLogStream';
+import { useRemoteServer, useRemoteJobs } from '@/hooks/useRemote';
+import { useModeStore } from '@/store/modeStore';
+import { useViewModeStore } from '@/store/viewModeStore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -53,13 +56,18 @@ const CopyButton = ({ text }: { text: string }) => {
   );
 };
 
-const JobCard = ({ job, isFirst }: { job: Job; isFirst: boolean }) => {
+const JobCard = ({ job, isFirst, isRemote }: { job: Job; isFirst: boolean; isRemote: boolean }) => {
   const [expanded, setExpanded] = useState(isFirst);
   // Initialize hook with existing logs from database so SSE appends instead of replacing
-  const { logs: streamedLogs, isStreaming } = useJobLogStream(job.id, job.status, job.logs || '');
+  // Only use streaming for local jobs - remote jobs don't support SSE
+  const { logs: streamedLogs, isStreaming } = useJobLogStream(
+    isRemote ? '' : job.id, // Disable streaming for remote jobs
+    isRemote ? 'completed' : job.status,
+    job.logs || ''
+  );
 
-  // Always use streamed logs (which includes initial DB logs + new SSE logs)
-  const displayLogs = streamedLogs;
+  // For remote jobs, just use static logs; for local jobs, use streamed logs
+  const displayLogs = isRemote ? (job.logs || '') : streamedLogs;
 
   return (
     <Card>
@@ -167,7 +175,29 @@ const JobCard = ({ job, isFirst }: { job: Job; isFirst: boolean }) => {
 };
 
 export const Jobs = () => {
-  const { data: jobs, isLoading } = useJobs();
+  const { data: jobs, isLoading: jobsLoading } = useJobs();
+
+  // View mode support for local desktop app
+  const isLocalMode = useModeStore((s) => s.isLocalMode());
+  const viewMode = useViewModeStore((state) => state.viewMode);
+  const { data: serverStatus } = useRemoteServer();
+  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
+  const { data: remoteJobs, isLoading: remoteLoading } = useRemoteJobs(isRemoteConnected);
+
+  // Show jobs based on view mode when connected to remote
+  const { displayedJobs, isRemote } = useMemo(() => {
+    if (!isRemoteConnected) {
+      return { displayedJobs: jobs || [], isRemote: false };
+    }
+    // When connected, show based on viewMode
+    if (viewMode === 'local') {
+      return { displayedJobs: jobs || [], isRemote: false };
+    } else {
+      return { displayedJobs: remoteJobs || [], isRemote: true };
+    }
+  }, [jobs, remoteJobs, isRemoteConnected, viewMode]);
+
+  const isLoading = jobsLoading || (isRemoteConnected && remoteLoading);
 
   if (isLoading) {
     return (
@@ -185,12 +215,12 @@ export const Jobs = () => {
       </div>
 
       <div className="space-y-4">
-        {jobs?.map((job, index) => (
-          <JobCard key={job.id} job={job} isFirst={index === 0} />
+        {displayedJobs.map((job, index) => (
+          <JobCard key={job.id} job={job} isFirst={index === 0} isRemote={isRemote} />
         ))}
       </div>
 
-      {jobs?.length === 0 && (
+      {displayedJobs.length === 0 && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">No jobs yet</p>
         </div>

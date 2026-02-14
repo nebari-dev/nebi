@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import { usePublicRegistries, useRegistryRepositories, useRepositoryTags, useImportEnvironment } from '@/hooks/useRegistries';
+import { useRemoteServer, useRemoteRegistries } from '@/hooks/useRemote';
+import { useModeStore } from '@/store/modeStore';
+import { useViewModeStore } from '@/store/viewModeStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +16,29 @@ export const Registries = () => {
   const { data: isAdmin } = useIsAdmin();
   const { data: registries, isLoading: registriesLoading } = usePublicRegistries();
 
-  if (registriesLoading) {
+  // View mode support for local desktop app
+  const isLocalMode = useModeStore((s) => s.isLocalMode());
+  const viewMode = useViewModeStore((state) => state.viewMode);
+  const { data: serverStatus } = useRemoteServer();
+  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
+  const { data: remoteRegistries, isLoading: remoteLoading } = useRemoteRegistries(isRemoteConnected);
+
+  // Show registries based on view mode when connected to remote
+  const displayedRegistries = useMemo(() => {
+    if (!isRemoteConnected) {
+      return registries || [];
+    }
+    // When connected, show based on viewMode
+    if (viewMode === 'local') {
+      return registries || [];
+    } else {
+      return remoteRegistries || [];
+    }
+  }, [registries, remoteRegistries, isRemoteConnected, viewMode]);
+
+  const isLoading = registriesLoading || (isRemoteConnected && remoteLoading);
+
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -52,7 +77,7 @@ export const Registries = () => {
                 </tr>
               </thead>
               <tbody>
-                {registries?.map((registry) => (
+                {displayedRegistries.map((registry) => (
                   <tr key={registry.id} className="border-b last:border-0 hover:bg-muted/50">
                     <td className="p-4 font-medium">{registry.name}</td>
                     <td className="p-4 font-mono text-sm text-muted-foreground">{registry.url}</td>
@@ -77,7 +102,7 @@ export const Registries = () => {
         </CardContent>
       </Card>
 
-      {(!registries || registries.length === 0) && (
+      {displayedRegistries.length === 0 && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">
             No registries configured.{' '}

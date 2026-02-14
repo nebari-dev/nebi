@@ -232,6 +232,14 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				remote.GET("/workspaces/:id/versions/:version/pixi-toml", remoteHandler.GetVersionPixiToml)
 				remote.GET("/workspaces/:id/versions/:version/pixi-lock", remoteHandler.GetVersionPixiLock)
 				remote.POST("/workspaces/:id/push", remoteHandler.PushVersion)
+				remote.GET("/registries", remoteHandler.ListRegistries)
+				remote.GET("/jobs", remoteHandler.ListJobs)
+
+				// Admin proxies (for view mode toggle in admin pages)
+				remote.GET("/admin/users", remoteHandler.ListAdminUsers)
+				remote.GET("/admin/registries", remoteHandler.ListAdminRegistries)
+				remote.GET("/admin/audit-logs", remoteHandler.ListAdminAuditLogs)
+				remote.GET("/admin/dashboard/stats", remoteHandler.GetAdminDashboardStats)
 			}
 		}
 	}

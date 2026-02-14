@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useWorkspaces, useCreateWorkspace, useDeleteWorkspace } from '@/hooks/useWorkspaces';
 import { useRemoteServer, useRemoteWorkspaces, useCreateRemoteWorkspace, useDeleteRemoteWorkspace } from '@/hooks/useRemote';
 import { useModeStore } from '@/store/modeStore';
+import { useViewModeStore } from '@/store/viewModeStore';
 import { workspacesApi } from '@/api/workspaces';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
-import { Loader2, Plus, Trash2, X, Edit, Cloud, Monitor, HardDrive } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Edit } from 'lucide-react';
 
 type UnifiedWorkspace = {
   id: string;
@@ -55,6 +56,7 @@ export const Workspaces = () => {
   const { data: serverStatus } = useRemoteServer();
   const isRemoteConnected = isLocal && serverStatus?.status === 'connected';
   const { data: remoteWorkspaces, isLoading: remoteLoading } = useRemoteWorkspaces(isRemoteConnected);
+  const viewMode = useViewModeStore((state) => state.viewMode);
 
   const [showCreate, setShowCreate] = useState(false);
   const [createTarget, setCreateTarget] = useState<'local' | 'server'>('local');
@@ -70,44 +72,55 @@ export const Workspaces = () => {
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string; location: 'local' | 'remote' } | null>(null);
   const [error, setError] = useState('');
 
-  // Merge local and remote workspaces into a single list
-  const unifiedWorkspaces = useMemo<UnifiedWorkspace[]>(() => {
-    const items: UnifiedWorkspace[] = [];
-
-    if (workspaces) {
-      for (const ws of workspaces) {
-        items.push({
-          id: ws.id,
-          name: ws.name,
-          status: ws.status,
-          package_manager: ws.package_manager,
-          created_at: ws.created_at,
-          location: 'local',
-          source: ws.source,
-          path: ws.path,
-          owner_id: ws.owner_id,
-          owner: ws.owner,
-          size_formatted: ws.size_formatted,
-        });
-      }
+  // Filter workspaces based on view mode (when remote connected) or show all local (when not)
+  const displayedWorkspaces = useMemo<UnifiedWorkspace[]>(() => {
+    // If not connected to remote, always show local workspaces
+    if (!isRemoteConnected) {
+      if (!workspaces) return [];
+      return workspaces.map((ws) => ({
+        id: ws.id,
+        name: ws.name,
+        status: ws.status,
+        package_manager: ws.package_manager,
+        created_at: ws.created_at,
+        location: 'local' as const,
+        source: ws.source,
+        path: ws.path,
+        owner_id: ws.owner_id,
+        owner: ws.owner,
+        size_formatted: ws.size_formatted,
+      }));
     }
 
-    if (isRemoteConnected && remoteWorkspaces) {
-      for (const ws of remoteWorkspaces) {
-        items.push({
-          id: ws.id,
-          name: ws.name,
-          status: ws.status,
-          package_manager: ws.package_manager,
-          created_at: ws.created_at,
-          location: 'remote',
-          owner: ws.owner,
-        });
-      }
+    // When connected, show based on viewMode
+    if (viewMode === 'local') {
+      if (!workspaces) return [];
+      return workspaces.map((ws) => ({
+        id: ws.id,
+        name: ws.name,
+        status: ws.status,
+        package_manager: ws.package_manager,
+        created_at: ws.created_at,
+        location: 'local' as const,
+        source: ws.source,
+        path: ws.path,
+        owner_id: ws.owner_id,
+        owner: ws.owner,
+        size_formatted: ws.size_formatted,
+      }));
+    } else {
+      if (!remoteWorkspaces) return [];
+      return remoteWorkspaces.map((ws) => ({
+        id: ws.id,
+        name: ws.name,
+        status: ws.status,
+        package_manager: ws.package_manager,
+        created_at: ws.created_at,
+        location: 'remote' as const,
+        owner: ws.owner,
+      }));
     }
-
-    return items;
-  }, [workspaces, remoteWorkspaces, isRemoteConnected]);
+  }, [workspaces, remoteWorkspaces, isRemoteConnected, viewMode]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -232,7 +245,7 @@ export const Workspaces = () => {
         </div>
         <Button onClick={() => {
           setShowCreate(!showCreate);
-          setCreateTarget('local');
+          setCreateTarget(isRemoteConnected && viewMode === 'remote' ? 'server' : 'local');
           setError('');
         }}>
           <Plus className="h-4 w-4 mr-2" />
@@ -262,32 +275,6 @@ export const Workspaces = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreate} className="space-y-4">
-              {/* Local/Server target tabs — only in local mode when connected */}
-              {isLocal && isRemoteConnected && (
-                <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
-                  <Button
-                    type="button"
-                    variant={createTarget === 'local' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setCreateTarget('local')}
-                    className="gap-2"
-                  >
-                    <Monitor className="h-4 w-4" />
-                    Local
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={createTarget === 'server' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setCreateTarget('server')}
-                    className="gap-2"
-                  >
-                    <Cloud className="h-4 w-4" />
-                    Server
-                  </Button>
-                </div>
-              )}
-
               <div className="space-y-2">
                 <label className="text-sm font-medium">Workspace Name</label>
                 <Input
@@ -401,7 +388,7 @@ export const Workspaces = () => {
                 </tr>
               </thead>
               <tbody>
-                {unifiedWorkspaces.map((ws) => (
+                {displayedWorkspaces.map((ws) => (
                   <tr
                     key={`${ws.location}-${ws.id}`}
                     className="border-b last:border-0 hover:bg-muted/50 cursor-pointer transition-colors"
@@ -414,18 +401,6 @@ export const Workspaces = () => {
                     <td className="p-4 font-medium">
                       <div className="flex items-center gap-2">
                         {ws.name}
-                        {isLocal && ws.location === 'local' && (
-                          <Badge variant="outline" className="bg-cyan-500/10 text-cyan-500 border-cyan-500/20 gap-1 text-xs">
-                            <HardDrive className="h-3 w-3" />
-                            Local
-                          </Badge>
-                        )}
-                        {isLocal && ws.location === 'remote' && (
-                          <Badge className="bg-purple-500/10 text-purple-500 border-purple-500/20 gap-1 text-xs">
-                            <Cloud className="h-3 w-3" />
-                            Remote
-                          </Badge>
-                        )}
                       </div>
                       {ws.location === 'local' && ws.path && (
                         <div className="text-xs text-muted-foreground font-normal mt-0.5 font-mono truncate max-w-xs" title={ws.path}>
@@ -488,7 +463,7 @@ export const Workspaces = () => {
         </CardContent>
       </Card>
 
-      {unifiedWorkspaces.length === 0 && !showCreate && (
+      {displayedWorkspaces.length === 0 && !showCreate && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">No workspaces yet. Create your first one!</p>
         </div>

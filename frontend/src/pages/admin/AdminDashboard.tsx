@@ -1,7 +1,11 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useUsers, useDashboardStats } from '@/hooks/useAdmin';
 import { useWorkspaces } from '@/hooks/useWorkspaces';
 import { useJobs } from '@/hooks/useJobs';
+import { useModeStore } from '@/store/modeStore';
+import { useViewModeStore } from '@/store/viewModeStore';
+import { useRemoteServer, useRemoteWorkspaces, useRemoteJobs, useRemoteDashboardStats } from '@/hooks/useRemote';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   Loader2,
@@ -67,15 +71,52 @@ export const AdminDashboard = () => {
   const { data: jobs, isLoading: jobsLoading } = useJobs();
   const { data: dashboardStats, isLoading: statsLoading } = useDashboardStats();
 
+  // View mode support
+  const isLocalMode = useModeStore((s) => s.isLocalMode());
+  const viewMode = useViewModeStore((state) => state.viewMode);
+  const { data: serverStatus } = useRemoteServer();
+  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
+  const shouldShowRemote = isRemoteConnected && viewMode === 'remote';
+
+  // Remote data
+  const { data: remoteWorkspaces, isLoading: remoteWsLoading } = useRemoteWorkspaces(shouldShowRemote);
+  const { data: remoteJobs, isLoading: remoteJobsLoading } = useRemoteJobs(shouldShowRemote);
+  const { data: remoteDashboardStats, isLoading: remoteStatsLoading } = useRemoteDashboardStats(shouldShowRemote);
+
+  // Select data based on view mode
+  const displayedWorkspaces = useMemo(() => {
+    if (!isRemoteConnected || viewMode === 'local') {
+      return workspaces || [];
+    }
+    return remoteWorkspaces || [];
+  }, [workspaces, remoteWorkspaces, isRemoteConnected, viewMode]);
+
+  const displayedJobs = useMemo(() => {
+    if (!isRemoteConnected || viewMode === 'local') {
+      return jobs || [];
+    }
+    return remoteJobs || [];
+  }, [jobs, remoteJobs, isRemoteConnected, viewMode]);
+
+  const displayedStats = useMemo(() => {
+    if (!isRemoteConnected || viewMode === 'local') {
+      return dashboardStats;
+    }
+    return remoteDashboardStats;
+  }, [dashboardStats, remoteDashboardStats, isRemoteConnected, viewMode]);
+
   const activeJobs =
-    jobs?.filter(
+    displayedJobs.filter(
       (job) => job.status === 'running' || job.status === 'pending',
-    ).length || 0;
+    ).length;
 
   const failedJobs =
-    jobs?.filter((job) => job.status === 'failed').length || 0;
+    displayedJobs.filter((job) => job.status === 'failed').length;
 
-  if (usersLoading || wsLoading || jobsLoading || statsLoading) {
+  const isLoading = usersLoading || wsLoading || jobsLoading || statsLoading ||
+    (shouldShowRemote && (remoteWsLoading || remoteJobsLoading || remoteStatsLoading));
+
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -95,13 +136,13 @@ export const AdminDashboard = () => {
         <StatCard title="Total Users" value={users?.length || 0} icon={Users} />
         <StatCard
           title="Environments"
-          value={workspaces?.length || 0}
+          value={displayedWorkspaces.length}
           icon={Boxes}
         />
         <StatCard title="Active Jobs" value={activeJobs} icon={Activity} />
         <StatCard
           title="Disk Usage"
-          value={dashboardStats?.total_disk_usage_formatted || 'N/A'}
+          value={displayedStats?.total_disk_usage_formatted || 'N/A'}
           icon={HardDrive}
         />
       </div>

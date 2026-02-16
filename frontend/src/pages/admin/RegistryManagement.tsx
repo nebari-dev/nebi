@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRegistries, useDeleteRegistry } from '@/hooks/useRegistries';
+import { useModeStore } from '@/store/modeStore';
+import { useViewModeStore } from '@/store/viewModeStore';
+import { useRemoteServer, useRemoteAdminRegistries } from '@/hooks/useRemote';
 import { CreateRegistryDialog } from '@/components/admin/CreateRegistryDialog';
 import { EditRegistryDialog } from '@/components/admin/EditRegistryDialog';
 import { Card, CardContent } from '@/components/ui/card';
@@ -10,8 +13,30 @@ import { Loader2, Pencil, Trash2, Star } from 'lucide-react';
 import type { OCIRegistry } from '@/types';
 
 export const RegistryManagement = () => {
-  const { data: registries, isLoading } = useRegistries();
+  const { data: registries, isLoading: registriesLoading } = useRegistries();
   const deleteRegistryMutation = useDeleteRegistry();
+
+  // View mode support
+  const isLocalMode = useModeStore((s) => s.isLocalMode());
+  const viewMode = useViewModeStore((state) => state.viewMode);
+  const { data: serverStatus } = useRemoteServer();
+  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
+  const shouldShowRemote = isRemoteConnected && viewMode === 'remote';
+  const { data: remoteRegistries, isLoading: remoteLoading } = useRemoteAdminRegistries(shouldShowRemote);
+
+  // Show registries based on view mode
+  const displayedRegistries = useMemo(() => {
+    if (!isRemoteConnected) {
+      return registries || [];
+    }
+    if (viewMode === 'local') {
+      return registries || [];
+    } else {
+      return remoteRegistries || [];
+    }
+  }, [registries, remoteRegistries, isRemoteConnected, viewMode]);
+
+  const isLoading = registriesLoading || (shouldShowRemote && remoteLoading);
 
   const [editingRegistry, setEditingRegistry] = useState<OCIRegistry | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
@@ -71,7 +96,7 @@ export const RegistryManagement = () => {
                 </tr>
               </thead>
               <tbody>
-                {registries?.map((registry) => (
+                {displayedRegistries.map((registry) => (
                   <tr key={registry.id} className="border-b last:border-0 hover:bg-muted/50">
                     <td className="p-4 font-medium">
                       <div className="flex items-center gap-2">
@@ -133,7 +158,7 @@ export const RegistryManagement = () => {
         </CardContent>
       </Card>
 
-      {registries?.length === 0 && (
+      {displayedRegistries.length === 0 && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">
             No registries configured. Add your first registry to start publishing workspaces.

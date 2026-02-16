@@ -301,3 +301,95 @@ func (h *RemoteHandler) PushVersion(c *gin.Context) {
 	}
 	c.JSON(http.StatusCreated, resp)
 }
+
+// ListRegistries proxies registry listing to the remote server.
+func (h *RemoteHandler) ListRegistries(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		h.notConnected(c, err)
+		return
+	}
+	registries, err := client.ListRegistriesPublic(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, registries)
+}
+
+// ListJobs proxies job listing to the remote server.
+func (h *RemoteHandler) ListJobs(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		h.notConnected(c, err)
+		return
+	}
+	jobs, err := client.ListJobs(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, jobs)
+}
+
+// ListAdminUsers proxies admin user listing to the remote server.
+func (h *RemoteHandler) ListAdminUsers(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		h.notConnected(c, err)
+		return
+	}
+	users, err := client.ListUsers(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, users)
+}
+
+// ListAdminRegistries proxies admin registry listing to the remote server.
+func (h *RemoteHandler) ListAdminRegistries(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		h.notConnected(c, err)
+		return
+	}
+	registries, err := client.ListRegistriesAdmin(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, registries)
+}
+
+// ListAdminAuditLogs proxies admin audit log listing to the remote server.
+func (h *RemoteHandler) ListAdminAuditLogs(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		h.notConnected(c, err)
+		return
+	}
+	userID := c.Query("user_id")
+	action := c.Query("action")
+	logs, err := client.ListAuditLogs(c.Request.Context(), userID, action)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, logs)
+}
+
+// GetAdminDashboardStats proxies admin dashboard stats to the remote server.
+func (h *RemoteHandler) GetAdminDashboardStats(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		h.notConnected(c, err)
+		return
+	}
+	stats, err := client.GetDashboardStats(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, stats)
+}

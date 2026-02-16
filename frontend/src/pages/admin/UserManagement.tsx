@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useUsers, useToggleAdmin, useDeleteUser } from '@/hooks/useAdmin';
 import { useAuthStore } from '@/store/authStore';
+import { useModeStore } from '@/store/modeStore';
+import { useViewModeStore } from '@/store/viewModeStore';
+import { useRemoteServer, useRemoteUsers } from '@/hooks/useRemote';
 import { CreateUserDialog } from '@/components/admin/CreateUserDialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,10 +12,31 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Loader2, Shield, ShieldOff, Trash2 } from 'lucide-react';
 
 export const UserManagement = () => {
-  const { data: users, isLoading } = useUsers();
+  const { data: users, isLoading: usersLoading } = useUsers();
   const toggleAdminMutation = useToggleAdmin();
   const deleteUserMutation = useDeleteUser();
   const currentUser = useAuthStore((state) => state.user);
+
+  // View mode support
+  const isLocalMode = useModeStore((s) => s.isLocalMode());
+  const viewMode = useViewModeStore((state) => state.viewMode);
+  const { data: serverStatus } = useRemoteServer();
+  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
+  const { data: remoteUsers, isLoading: remoteLoading } = useRemoteUsers(isRemoteConnected && viewMode === 'remote');
+
+  // Show users based on view mode
+  const displayedUsers = useMemo(() => {
+    if (!isRemoteConnected) {
+      return users || [];
+    }
+    if (viewMode === 'local') {
+      return users || [];
+    } else {
+      return remoteUsers || [];
+    }
+  }, [users, remoteUsers, isRemoteConnected, viewMode]);
+
+  const isLoading = usersLoading || (isRemoteConnected && viewMode === 'remote' && remoteLoading);
 
   const [confirmAction, setConfirmAction] = useState<{
     type: 'toggle' | 'delete';
@@ -79,7 +103,7 @@ export const UserManagement = () => {
                 </tr>
               </thead>
               <tbody>
-                {users?.map((user) => (
+                {displayedUsers.map((user) => (
                   <tr key={user.id} className="border-b last:border-0 hover:bg-muted/50">
                     <td className="p-4 font-medium">
                       {user.username}
@@ -159,7 +183,7 @@ export const UserManagement = () => {
         </CardContent>
       </Card>
 
-      {users?.length === 0 && (
+      {displayedUsers.length === 0 && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">No users found</p>
         </div>

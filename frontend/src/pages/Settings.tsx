@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useRemoteServer, useConnectServer, useDisconnectServer } from '@/hooks/useRemote';
+import { useViewModeStore } from '@/store/viewModeStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +11,7 @@ export const Settings = () => {
   const { data: serverStatus, isLoading } = useRemoteServer();
   const connectMutation = useConnectServer();
   const disconnectMutation = useDisconnectServer();
+  const setViewMode = useViewModeStore((s) => s.setViewMode);
 
   const [url, setUrl] = useState('');
   const [username, setUsername] = useState('');
@@ -21,6 +23,7 @@ export const Settings = () => {
     setError('');
     try {
       await connectMutation.mutateAsync({ url, username, password });
+      setViewMode('remote'); // Auto-switch to remote view on successful connection
       setUrl('');
       setUsername('');
       setPassword('');
@@ -34,6 +37,7 @@ export const Settings = () => {
     setError('');
     try {
       await disconnectMutation.mutateAsync();
+      setViewMode('local'); // Switch back to local view on disconnect
     } catch (err: unknown) {
       const apiError = err as { response?: { data?: { error?: string } } };
       setError(apiError.response?.data?.error || 'Failed to disconnect from server');

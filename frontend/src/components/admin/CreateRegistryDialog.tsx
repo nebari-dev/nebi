@@ -12,7 +12,7 @@ export const CreateRegistryDialog = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [apiToken, setApiToken] = useState('');
-  const [defaultRepository, setDefaultRepository] = useState('');
+  const [namespace, setNamespace] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [error, setError] = useState('');
 
@@ -33,7 +33,7 @@ export const CreateRegistryDialog = () => {
         username: username || undefined,
         password: password || undefined,
         api_token: apiToken || undefined,
-        default_repository: defaultRepository || undefined,
+        namespace: namespace || undefined,
         is_default: isDefault,
       });
       handleOpenChange(false);
@@ -42,7 +42,7 @@ export const CreateRegistryDialog = () => {
       setUsername('');
       setPassword('');
       setApiToken('');
-      setDefaultRepository('');
+      setNamespace('');
       setIsDefault(false);
       setError('');
     } catch (err) {
@@ -96,8 +96,8 @@ export const CreateRegistryDialog = () => {
               <label className="text-sm font-medium">Namespace</label>
               <Input
                 type="text"
-                value={defaultRepository}
-                onChange={(e) => setDefaultRepository(e.target.value)}
+                value={namespace}
+                onChange={(e) => setNamespace(e.target.value)}
                 placeholder="e.g., nebari"
                 required
               />

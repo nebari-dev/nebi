@@ -18,7 +18,7 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [apiToken, setApiToken] = useState('');
-  const [defaultRepository, setDefaultRepository] = useState('');
+  const [namespace, setNamespace] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [error, setError] = useState('');
 
@@ -32,7 +32,7 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
       setUsername(registry.username || '');
       setPassword(''); // Don't pre-fill password for security
       setApiToken(''); // Don't pre-fill token for security
-      setDefaultRepository(registry.default_repository || '');
+      setNamespace(registry.namespace || '');
       setIsDefault(registry.is_default);
     }
   }, [registry]);
@@ -50,7 +50,7 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
           username: username || undefined,
           password: password || undefined, // Only update if provided
           api_token: apiToken || undefined, // Only update if provided
-          default_repository: defaultRepository || undefined,
+          namespace: namespace || undefined,
           is_default: isDefault,
         },
       });
@@ -101,8 +101,8 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
               <label className="text-sm font-medium">Namespace</label>
               <Input
                 type="text"
-                value={defaultRepository}
-                onChange={(e) => setDefaultRepository(e.target.value)}
+                value={namespace}
+                onChange={(e) => setNamespace(e.target.value)}
                 placeholder="e.g., nebari"
                 required
               />

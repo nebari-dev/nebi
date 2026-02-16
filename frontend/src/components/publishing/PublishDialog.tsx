@@ -74,12 +74,12 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
       if (defaultRegistry) {
         setSelectedRegistry(defaultRegistry.id);
 
-        // Auto-populate repository based on default registry's default_repository
+        // Auto-populate repository based on default registry's namespace
         // Append first 8 chars of workspace ID to avoid collisions
         const envIdSuffix = environmentId.slice(0, 8);
         const normalizedName = normalizeRepoName(environmentName);
-        if (defaultRegistry.default_repository) {
-          const baseRepo = defaultRegistry.default_repository.replace(/\/$/, '');
+        if (defaultRegistry.namespace) {
+          const baseRepo = defaultRegistry.namespace.replace(/\/$/, '');
           setRepository(`${baseRepo}/${normalizedName}-${envIdSuffix}`);
         } else {
           setRepository(`${normalizedName}-${envIdSuffix}`);
@@ -99,8 +99,8 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
     if (hasAutoPopulated && selectedRegistryObj) {
       const envIdSuffix = environmentId.slice(0, 8);
       const normalizedName = normalizeRepoName(environmentName);
-      if (selectedRegistryObj.default_repository) {
-        const baseRepo = selectedRegistryObj.default_repository.replace(/\/$/, '');
+      if (selectedRegistryObj.namespace) {
+        const baseRepo = selectedRegistryObj.namespace.replace(/\/$/, '');
         setRepository(`${baseRepo}/${normalizedName}-${envIdSuffix}`);
       } else {
         setRepository(`${normalizedName}-${envIdSuffix}`);

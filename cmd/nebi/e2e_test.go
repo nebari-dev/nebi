@@ -163,12 +163,12 @@ func resetFlags() {
 	// publish.go
 	publishRegistry = ""
 	// registry.go
-	registryCreateName = ""
-	registryCreateURL = ""
-	registryCreateUsername = ""
-	registryCreateDefault = false
-	registryCreatePwdStdin = false
-	registryDeleteForce = false
+	registryAddName = ""
+	registryAddURL = ""
+	registryAddUsername = ""
+	registryAddDefault = false
+	registryAddPwdStdin = false
+	registryRemoveForce = false
 }
 
 // runCLI executes a CLI command in-process and captures output.
@@ -893,17 +893,17 @@ func TestE2E_RegistryListEmpty(t *testing.T) {
 	}
 }
 
-func TestE2E_RegistryCreate(t *testing.T) {
+func TestE2E_RegistryAdd(t *testing.T) {
 	setupLocalStore(t)
 	dir := t.TempDir()
 
-	// Create a registry
-	res := runCLI(t, dir, "registry", "create", "--name", "test-registry", "--url", "ghcr.io")
+	// Add a registry
+	res := runCLI(t, dir, "registry", "add", "--name", "test-registry", "--url", "ghcr.io")
 	if res.ExitCode != 0 {
-		t.Fatalf("registry create failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+		t.Fatalf("registry add failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
-	if !strings.Contains(res.Stderr, "Created registry") {
-		t.Errorf("expected 'Created registry' message, got stderr: %s", res.Stderr)
+	if !strings.Contains(res.Stderr, "Added registry") {
+		t.Errorf("expected 'Added registry' message, got stderr: %s", res.Stderr)
 	}
 
 	// Verify it shows up in list
@@ -919,18 +919,18 @@ func TestE2E_RegistryCreate(t *testing.T) {
 	}
 }
 
-func TestE2E_RegistryCreateDuplicate(t *testing.T) {
+func TestE2E_RegistryAddDuplicate(t *testing.T) {
 	setupLocalStore(t)
 	dir := t.TempDir()
 
-	// Create first registry
-	res := runCLI(t, dir, "registry", "create", "--name", "dup-test", "--url", "ghcr.io")
+	// Add first registry
+	res := runCLI(t, dir, "registry", "add", "--name", "dup-test", "--url", "ghcr.io")
 	if res.ExitCode != 0 {
-		t.Fatalf("first create failed: %s", res.Stderr)
+		t.Fatalf("first add failed: %s", res.Stderr)
 	}
 
-	// Try to create with same name - should fail
-	res = runCLI(t, dir, "registry", "create", "--name", "dup-test", "--url", "quay.io")
+	// Try to add with same name - should fail
+	res = runCLI(t, dir, "registry", "add", "--name", "dup-test", "--url", "quay.io")
 	if res.ExitCode == 0 {
 		t.Fatal("expected error for duplicate name")
 	}
@@ -940,18 +940,18 @@ func TestE2E_RegistryCreateDuplicate(t *testing.T) {
 	}
 }
 
-func TestE2E_RegistryCreateWithPasswordStdin(t *testing.T) {
+func TestE2E_RegistryAddWithPasswordStdin(t *testing.T) {
 	setupLocalStore(t)
 	dir := t.TempDir()
 
-	// Create with password via stdin
-	res := runCLIWithStdin(t, dir, "secret-password\n", "registry", "create",
+	// Add with password via stdin
+	res := runCLIWithStdin(t, dir, "secret-password\n", "registry", "add",
 		"--name", "auth-registry",
 		"--url", "private.registry.io",
 		"--username", "testuser",
 		"--password-stdin")
 	if res.ExitCode != 0 {
-		t.Fatalf("registry create with password failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+		t.Fatalf("registry add with password failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
 
 	// Verify it shows up in list
@@ -961,37 +961,37 @@ func TestE2E_RegistryCreateWithPasswordStdin(t *testing.T) {
 	}
 }
 
-func TestE2E_RegistryDelete(t *testing.T) {
+func TestE2E_RegistryRemove(t *testing.T) {
 	setupLocalStore(t)
 	dir := t.TempDir()
 
-	// Create a registry first
-	res := runCLI(t, dir, "registry", "create", "--name", "delete-me", "--url", "example.io")
+	// Add a registry first
+	res := runCLI(t, dir, "registry", "add", "--name", "remove-me", "--url", "example.io")
 	if res.ExitCode != 0 {
-		t.Fatalf("create failed: %s", res.Stderr)
+		t.Fatalf("add failed: %s", res.Stderr)
 	}
 
-	// Delete it with --force
-	res = runCLI(t, dir, "registry", "delete", "delete-me", "--force")
+	// Remove it with --force
+	res = runCLI(t, dir, "registry", "remove", "remove-me", "--force")
 	if res.ExitCode != 0 {
-		t.Fatalf("registry delete failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+		t.Fatalf("registry remove failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
-	if !strings.Contains(res.Stderr, "Deleted registry") {
-		t.Errorf("expected 'Deleted registry' message, got stderr: %s", res.Stderr)
+	if !strings.Contains(res.Stderr, "Removed registry") {
+		t.Errorf("expected 'Removed registry' message, got stderr: %s", res.Stderr)
 	}
 
 	// Verify it's gone from list
 	res = runCLI(t, dir, "registry", "list")
-	if strings.Contains(res.Stdout, "delete-me") {
-		t.Errorf("registry should be deleted, but still in list: %s", res.Stdout)
+	if strings.Contains(res.Stdout, "remove-me") {
+		t.Errorf("registry should be removed, but still in list: %s", res.Stdout)
 	}
 }
 
-func TestE2E_RegistryDeleteNotFound(t *testing.T) {
+func TestE2E_RegistryRemoveNotFound(t *testing.T) {
 	setupLocalStore(t)
 	dir := t.TempDir()
 
-	res := runCLI(t, dir, "registry", "delete", "nonexistent", "--force")
+	res := runCLI(t, dir, "registry", "remove", "nonexistent", "--force")
 	if res.ExitCode == 0 {
 		t.Fatal("expected error for nonexistent registry")
 	}
@@ -1000,18 +1000,18 @@ func TestE2E_RegistryDeleteNotFound(t *testing.T) {
 	}
 }
 
-func TestE2E_RegistryDeleteConfirmNo(t *testing.T) {
+func TestE2E_RegistryRemoveConfirmNo(t *testing.T) {
 	setupLocalStore(t)
 	dir := t.TempDir()
 
-	// Create a registry first
-	res := runCLI(t, dir, "registry", "create", "--name", "keep-me", "--url", "example.io")
+	// Add a registry first
+	res := runCLI(t, dir, "registry", "add", "--name", "keep-me", "--url", "example.io")
 	if res.ExitCode != 0 {
-		t.Fatalf("create failed: %s", res.Stderr)
+		t.Fatalf("add failed: %s", res.Stderr)
 	}
 
-	// Try delete without --force, stdin provides empty (defaults to no)
-	res = runCLIWithStdin(t, dir, "\n", "registry", "delete", "keep-me")
+	// Try remove without --force, stdin provides empty (defaults to no)
+	res = runCLIWithStdin(t, dir, "\n", "registry", "remove", "keep-me")
 	if res.ExitCode != 0 {
 		t.Fatalf("expected exit 0 when declining, got %d: %s", res.ExitCode, res.Stderr)
 	}
@@ -1019,30 +1019,30 @@ func TestE2E_RegistryDeleteConfirmNo(t *testing.T) {
 	// Registry should still exist
 	res = runCLI(t, dir, "registry", "list")
 	if !strings.Contains(res.Stdout, "keep-me") {
-		t.Errorf("registry should still exist after declining delete: %s", res.Stdout)
+		t.Errorf("registry should still exist after declining remove: %s", res.Stdout)
 	}
 }
 
-func TestE2E_RegistryDeleteConfirmYes(t *testing.T) {
+func TestE2E_RegistryRemoveConfirmYes(t *testing.T) {
 	setupLocalStore(t)
 	dir := t.TempDir()
 
-	// Create a registry first
-	res := runCLI(t, dir, "registry", "create", "--name", "confirm-delete", "--url", "example.io")
+	// Add a registry first
+	res := runCLI(t, dir, "registry", "add", "--name", "confirm-remove", "--url", "example.io")
 	if res.ExitCode != 0 {
-		t.Fatalf("create failed: %s", res.Stderr)
+		t.Fatalf("add failed: %s", res.Stderr)
 	}
 
-	// Delete with confirmation
-	res = runCLIWithStdin(t, dir, "y\n", "registry", "delete", "confirm-delete")
+	// Remove with confirmation
+	res = runCLIWithStdin(t, dir, "y\n", "registry", "remove", "confirm-remove")
 	if res.ExitCode != 0 {
-		t.Fatalf("registry delete failed (exit %d):\nstderr: %s", res.ExitCode, res.Stderr)
+		t.Fatalf("registry remove failed (exit %d):\nstderr: %s", res.ExitCode, res.Stderr)
 	}
 
 	// Registry should be gone
 	res = runCLI(t, dir, "registry", "list")
-	if strings.Contains(res.Stdout, "confirm-delete") {
-		t.Errorf("registry should be deleted: %s", res.Stdout)
+	if strings.Contains(res.Stdout, "confirm-remove") {
+		t.Errorf("registry should be removed: %s", res.Stdout)
 	}
 }
 

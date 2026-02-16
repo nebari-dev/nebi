@@ -18,12 +18,12 @@ var registryCmd = &cobra.Command{
 }
 
 var (
-	registryCreateName     string
-	registryCreateURL      string
-	registryCreateUsername string
-	registryCreateDefault  bool
-	registryCreatePwdStdin bool
-	registryDeleteForce    bool
+	registryAddName     string
+	registryAddURL      string
+	registryAddUsername string
+	registryAddDefault  bool
+	registryAddPwdStdin bool
+	registryRemoveForce bool
 )
 
 var registryListCmd = &cobra.Command{
@@ -38,54 +38,55 @@ Examples:
 	RunE: runRegistryList,
 }
 
-var registryCreateCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create a new OCI registry",
-	Long: `Create a new OCI registry configuration on the server.
+var registryAddCmd = &cobra.Command{
+	Use:   "add",
+	Short: "Add an OCI registry",
+	Long: `Add an OCI registry configuration on the server.
 
 Examples:
   # Interactive - prompts for password
-  nebi registry create --name ghcr --url ghcr.io --username myuser
+  nebi registry add --name ghcr --url ghcr.io --username myuser
 
   # Programmatic - read password from stdin
-  echo "$TOKEN" | nebi registry create --name ghcr --url ghcr.io --username myuser --password-stdin
+  echo "$TOKEN" | nebi registry add --name ghcr --url ghcr.io --username myuser --password-stdin
 
   # Public registry (no auth)
-  nebi registry create --name dockerhub --url docker.io --default`,
+  nebi registry add --name dockerhub --url docker.io --default`,
 	Args: cobra.NoArgs,
-	RunE: runRegistryCreate,
+	RunE: runRegistryAdd,
 }
 
-var registryDeleteCmd = &cobra.Command{
-	Use:   "delete <name>",
-	Short: "Delete an OCI registry",
-	Long: `Delete an OCI registry configuration from the server.
+var registryRemoveCmd = &cobra.Command{
+	Use:     "remove <name>",
+	Aliases: []string{"rm"},
+	Short:   "Remove an OCI registry",
+	Long: `Remove an OCI registry configuration from the server.
 
 Examples:
   # Interactive - prompts for confirmation
-  nebi registry delete ghcr
+  nebi registry remove ghcr
 
   # Skip confirmation
-  nebi registry delete ghcr --force`,
+  nebi registry remove ghcr --force`,
 	Args: cobra.ExactArgs(1),
-	RunE: runRegistryDelete,
+	RunE: runRegistryRemove,
 }
 
 func init() {
 	registryCmd.AddCommand(registryListCmd)
-	registryCmd.AddCommand(registryCreateCmd)
-	registryCmd.AddCommand(registryDeleteCmd)
+	registryCmd.AddCommand(registryAddCmd)
+	registryCmd.AddCommand(registryRemoveCmd)
 
-	registryCreateCmd.Flags().StringVar(&registryCreateName, "name", "", "Registry name (required)")
-	registryCreateCmd.Flags().StringVar(&registryCreateURL, "url", "", "Registry URL (required)")
-	registryCreateCmd.Flags().StringVar(&registryCreateUsername, "username", "", "Username for authentication")
-	registryCreateCmd.Flags().BoolVar(&registryCreatePwdStdin, "password-stdin", false, "Read password from stdin")
-	registryCreateCmd.Flags().BoolVar(&registryCreateDefault, "default", false, "Set as default registry")
+	registryAddCmd.Flags().StringVar(&registryAddName, "name", "", "Registry name (required)")
+	registryAddCmd.Flags().StringVar(&registryAddURL, "url", "", "Registry URL (required)")
+	registryAddCmd.Flags().StringVar(&registryAddUsername, "username", "", "Username for authentication")
+	registryAddCmd.Flags().BoolVar(&registryAddPwdStdin, "password-stdin", false, "Read password from stdin")
+	registryAddCmd.Flags().BoolVar(&registryAddDefault, "default", false, "Set as default registry")
 
-	registryCreateCmd.MarkFlagRequired("name")
-	registryCreateCmd.MarkFlagRequired("url")
+	registryAddCmd.MarkFlagRequired("name")
+	registryAddCmd.MarkFlagRequired("url")
 
-	registryDeleteCmd.Flags().BoolVarP(&registryDeleteForce, "force", "f", false, "Skip confirmation prompt")
+	registryRemoveCmd.Flags().BoolVarP(&registryRemoveForce, "force", "f", false, "Skip confirmation prompt")
 }
 
 func runRegistryList(cmd *cobra.Command, args []string) error {
@@ -118,12 +119,12 @@ func runRegistryList(cmd *cobra.Command, args []string) error {
 	return w.Flush()
 }
 
-func runRegistryCreate(cmd *cobra.Command, args []string) error {
+func runRegistryAdd(cmd *cobra.Command, args []string) error {
 	var password string
 
 	// Handle password input
-	if registryCreateUsername != "" {
-		if registryCreatePwdStdin {
+	if registryAddUsername != "" {
+		if registryAddPwdStdin {
 			// Read password from stdin
 			scanner := bufio.NewScanner(os.Stdin)
 			if scanner.Scan() {
@@ -150,17 +151,17 @@ func runRegistryCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	req := cliclient.CreateRegistryRequest{
-		Name: registryCreateName,
-		URL:  registryCreateURL,
+		Name: registryAddName,
+		URL:  registryAddURL,
 	}
-	if registryCreateUsername != "" {
-		req.Username = &registryCreateUsername
+	if registryAddUsername != "" {
+		req.Username = &registryAddUsername
 	}
 	if password != "" {
 		req.Password = &password
 	}
-	if registryCreateDefault {
-		req.IsDefault = &registryCreateDefault
+	if registryAddDefault {
+		req.IsDefault = &registryAddDefault
 	}
 
 	ctx := context.Background()
@@ -169,11 +170,11 @@ func runRegistryCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating registry: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "Created registry '%s' (%s)\n", registry.Name, registry.URL)
+	fmt.Fprintf(os.Stderr, "Added registry '%s' (%s)\n", registry.Name, registry.URL)
 	return nil
 }
 
-func runRegistryDelete(cmd *cobra.Command, args []string) error {
+func runRegistryRemove(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
 	client, err := getAuthenticatedClient()
@@ -190,8 +191,8 @@ func runRegistryDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	// Confirm unless --force
-	if !registryDeleteForce {
-		fmt.Fprintf(os.Stderr, "Delete registry '%s'? [y/N] ", name)
+	if !registryRemoveForce {
+		fmt.Fprintf(os.Stderr, "Remove registry '%s'? [y/N] ", name)
 
 		var response string
 		fmt.Scanln(&response)
@@ -206,7 +207,7 @@ func runRegistryDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("deleting registry: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "Deleted registry '%s'\n", name)
+	fmt.Fprintf(os.Stderr, "Removed registry '%s'\n", name)
 	return nil
 }
 

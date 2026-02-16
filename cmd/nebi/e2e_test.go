@@ -881,18 +881,18 @@ func TestE2E_WorkspacePruneNoop(t *testing.T) {
 	}
 }
 
-func TestE2E_RegistryListEmpty(t *testing.T) {
+func TestE2E_RegistryListDefault(t *testing.T) {
 	setupLocalStore(t)
 
 	dir := t.TempDir()
 
-	// No registries configured, should get empty message
+	// Fresh server should have the default nebari-environments registry
 	res := runCLI(t, dir, "registry", "list")
 	if res.ExitCode != 0 {
 		t.Fatalf("registry list failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
-	if !strings.Contains(res.Stderr, "No registries") {
-		t.Errorf("expected 'No registries' message, got stderr: %s", res.Stderr)
+	if !strings.Contains(res.Stdout, "nebari-environments") {
+		t.Errorf("expected default 'nebari-environments' registry, got stdout: %s", res.Stdout)
 	}
 }
 

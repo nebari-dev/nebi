@@ -179,6 +179,14 @@ export interface Publication {
   published_at: string;
 }
 
+export interface PublishDefaults {
+  registry_id: string;
+  registry_name: string;
+  namespace: string;
+  repository: string;
+  tag: string;
+}
+
 export interface PublishRequest {
   registry_id: string; // UUID
   repository: string;

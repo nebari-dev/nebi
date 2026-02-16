@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { OCIRegistry, CreateRegistryRequest, UpdateRegistryRequest, Publication, PublishRequest, Job, RegistryRepository, RegistryTag, ImportEnvironmentRequest, Workspace } from '@/types';
+import type { OCIRegistry, CreateRegistryRequest, UpdateRegistryRequest, Publication, PublishDefaults, PublishRequest, Job, RegistryRepository, RegistryTag, ImportEnvironmentRequest, Workspace } from '@/types';
 
 export const registriesApi = {
   // Public endpoints (for all authenticated users)
@@ -34,6 +34,11 @@ export const registriesApi = {
   },
 
   // Publishing endpoints (require write permission on workspace)
+  getPublishDefaults: async (workspaceId: string): Promise<PublishDefaults> => {
+    const { data } = await apiClient.get(`/workspaces/${workspaceId}/publish-defaults`);
+    return data;
+  },
+
   publish: async (workspaceId: string, req: PublishRequest): Promise<Job> => {
     const { data } = await apiClient.post(`/workspaces/${workspaceId}/publish`, req);
     return data;

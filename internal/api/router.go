@@ -159,6 +159,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			ws.POST("/push", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.PushVersion)
 			ws.POST("/publish", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.PublishWorkspace)
 			ws.GET("/publications", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.ListPublications)
+			ws.GET("/publish-defaults", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.GetPublishDefaults)
 		}
 
 		// Job endpoints

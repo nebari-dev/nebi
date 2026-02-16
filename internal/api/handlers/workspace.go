@@ -1043,6 +1043,63 @@ func (h *WorkspaceHandler) ListPublications(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// GetPublishDefaults godoc
+// @Summary Get default values for publishing a workspace
+// @Description Returns suggested registry, repository name, and next tag for publishing
+// @Tags workspaces
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "Workspace ID"
+// @Success 200 {object} PublishDefaultsResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /workspaces/{id}/publish-defaults [get]
+func (h *WorkspaceHandler) GetPublishDefaults(c *gin.Context) {
+	wsID := c.Param("id")
+
+	// Get workspace
+	var ws models.Workspace
+	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
+		return
+	}
+
+	// Find default registry
+	var registry models.OCIRegistry
+	if err := h.db.Where("is_default = ?", true).First(&registry).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "No default registry configured"})
+		return
+	}
+
+	// Repository = normalized workspace name + first 8 chars of ID to avoid collisions
+	repo := fmt.Sprintf("%s-%s", ws.Name, ws.ID.String()[:8])
+
+	// Compute next tag from existing publications
+	var publications []models.Publication
+	h.db.Where("workspace_id = ?", wsID).Find(&publications)
+
+	tag := nextVersionTag(publications)
+
+	c.JSON(http.StatusOK, PublishDefaultsResponse{
+		RegistryID:   registry.ID,
+		RegistryName: registry.Name,
+		Namespace:    registry.Namespace,
+		Repository:   repo,
+		Tag:          tag,
+	})
+}
+
+// nextVersionTag computes the next vN tag from existing publications.
+func nextVersionTag(publications []models.Publication) string {
+	maxVersion := 0
+	for _, p := range publications {
+		var n int
+		if _, err := fmt.Sscanf(p.Tag, "v%d", &n); err == nil && n > maxVersion {
+			maxVersion = n
+		}
+	}
+	return fmt.Sprintf("v%d", maxVersion+1)
+}
+
 // --- Request/Response types ---
 
 type CreateWorkspaceRequest struct {
@@ -1105,6 +1162,14 @@ type PublishRequest struct {
 	RegistryID uuid.UUID `json:"registry_id" binding:"required"`
 	Repository string    `json:"repository" binding:"required"` // e.g., "myorg/myenv"
 	Tag        string    `json:"tag" binding:"required"`        // e.g., "v1.0.0"
+}
+
+type PublishDefaultsResponse struct {
+	RegistryID   uuid.UUID `json:"registry_id"`
+	RegistryName string    `json:"registry_name"`
+	Namespace    string    `json:"namespace"`
+	Repository   string    `json:"repository"`
+	Tag          string    `json:"tag"`
 }
 
 type PublicationResponse struct {

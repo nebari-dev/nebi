@@ -1571,6 +1571,46 @@ const docTemplate = `{
                 }
             }
         },
+        "/workspaces/{id}/publish-defaults": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns suggested registry, repository name, and next tag for publishing",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workspaces"
+                ],
+                "summary": "Get default values for publishing a workspace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.PublishDefaultsResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/workspaces/{id}/push": {
             "post": {
                 "security": [
@@ -2184,6 +2224,26 @@ const docTemplate = `{
                 },
                 "version_number": {
                     "type": "integer"
+                }
+            }
+        },
+        "handlers.PublishDefaultsResponse": {
+            "type": "object",
+            "properties": {
+                "namespace": {
+                    "type": "string"
+                },
+                "registry_id": {
+                    "type": "string"
+                },
+                "registry_name": {
+                    "type": "string"
+                },
+                "repository": {
+                    "type": "string"
+                },
+                "tag": {
+                    "type": "string"
                 }
             }
         },

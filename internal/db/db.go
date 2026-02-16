@@ -120,6 +120,11 @@ func Migrate(db *gorm.DB) error {
 		return fmt.Errorf("failed to seed default roles: %w", err)
 	}
 
+	// Seed default registry if it doesn't exist
+	if err := seedDefaultRegistry(db); err != nil {
+		return fmt.Errorf("failed to seed default registry: %w", err)
+	}
+
 	return nil
 }
 
@@ -143,5 +148,26 @@ func seedDefaultRoles(db *gorm.DB) error {
 		}
 	}
 
+	return nil
+}
+
+// seedDefaultRegistry creates the default nebari-environments registry
+func seedDefaultRegistry(db *gorm.DB) error {
+	var count int64
+	db.Model(&models.OCIRegistry{}).Where("name = ?", "nebari-environments").Count(&count)
+	if count > 0 {
+		return nil
+	}
+
+	registry := models.OCIRegistry{
+		Name:      "nebari-environments",
+		URL:       "quay.io",
+		Namespace: "nebari_environments",
+		IsDefault: true,
+	}
+	if err := db.Create(&registry).Error; err != nil {
+		return err
+	}
+	slog.Info("Created default registry", "name", registry.Name, "url", registry.URL)
 	return nil
 }

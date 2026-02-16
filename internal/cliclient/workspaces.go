@@ -61,6 +61,16 @@ func (c *Client) GetWorkspacePublications(ctx context.Context, wsID string) ([]P
 	return pubs, nil
 }
 
+// GetPublishDefaults returns suggested defaults for publishing a workspace.
+func (c *Client) GetPublishDefaults(ctx context.Context, wsID string) (*PublishDefaults, error) {
+	var defaults PublishDefaults
+	_, err := c.Get(ctx, fmt.Sprintf("/workspaces/%s/publish-defaults", wsID), &defaults)
+	if err != nil {
+		return nil, err
+	}
+	return &defaults, nil
+}
+
 // GetWorkspaceVersions returns versions for a workspace.
 func (c *Client) GetWorkspaceVersions(ctx context.Context, wsID string) ([]WorkspaceVersion, error) {
 	var versions []WorkspaceVersion

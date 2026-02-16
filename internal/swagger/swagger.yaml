@@ -35,11 +35,11 @@ definitions:
     properties:
       api_token:
         type: string
-      default_repository:
-        type: string
       is_default:
         type: boolean
       name:
+        type: string
+      namespace:
         type: string
       password:
         type: string
@@ -150,6 +150,19 @@ definitions:
       version_number:
         type: integer
     type: object
+  handlers.PublishDefaultsResponse:
+    properties:
+      namespace:
+        type: string
+      registry_id:
+        type: string
+      registry_name:
+        type: string
+      repository:
+        type: string
+      tag:
+        type: string
+    type: object
   handlers.PublishRequest:
     properties:
       registry_id:
@@ -190,8 +203,6 @@ definitions:
     properties:
       created_at:
         type: string
-      default_repository:
-        type: string
       has_api_token:
         type: boolean
       id:
@@ -199,6 +210,8 @@ definitions:
       is_default:
         type: boolean
       name:
+        type: string
+      namespace:
         type: string
       url:
         type: string
@@ -234,11 +247,11 @@ definitions:
     properties:
       api_token:
         type: string
-      default_repository:
-        type: string
       is_default:
         type: boolean
       name:
+        type: string
+      namespace:
         type: string
       password:
         type: string
@@ -1476,6 +1489,31 @@ paths:
       security:
       - BearerAuth: []
       summary: Publish workspace to OCI registry
+      tags:
+      - workspaces
+  /workspaces/{id}/publish-defaults:
+    get:
+      description: Returns suggested registry, repository name, and next tag for publishing
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.PublishDefaultsResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get default values for publishing a workspace
       tags:
       - workspaces
   /workspaces/{id}/push:

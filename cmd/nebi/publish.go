@@ -9,46 +9,52 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var publishRegistry string
+var (
+	publishRegistry string
+	publishTag      string
+	publishRepo     string
+)
 
 var publishCmd = &cobra.Command{
-	Use:   "publish <workspace>:<tag> [<repo>:<oci-tag>]",
-	Short: "Publish a workspace version to an OCI registry",
-	Long: `Publish a workspace version from the server to an OCI registry.
+	Use:   "publish [workspace]",
+	Short: "Publish a workspace to an OCI registry",
+	Long: `Publish a workspace to an OCI registry.
 
-The workspace must already exist on the server with the specified tag.
+If no workspace name is given, the current directory's tracked workspace is used.
+The repository name defaults to the workspace name.
+The tag auto-increments (v1, v2, v3, ...) based on existing publications.
 If --registry is not specified, the server's default registry is used.
 
-The optional second argument specifies the OCI repository and tag.
-If omitted, the workspace name and tag are used as defaults.
-
 Examples:
-  nebi publish myworkspace:v1.0
-  nebi publish myworkspace:v1.0 myorg/myenv:latest
-  nebi publish myworkspace:v1.0 --registry ghcr myorg/myenv:latest`,
-	Args: cobra.RangeArgs(1, 2),
+  nebi publish                                       # publish current directory workspace
+  nebi publish myworkspace
+  nebi publish myworkspace --tag v1.0.0
+  nebi publish myworkspace --repo custom-name --registry ghcr`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: runWorkspacePublish,
 }
 
 func init() {
 	publishCmd.Flags().StringVar(&publishRegistry, "registry", "", "Registry name or ID (uses server default if not set)")
+	publishCmd.Flags().StringVar(&publishTag, "tag", "", "OCI tag (auto-increments v1, v2, ... if not set)")
+	publishCmd.Flags().StringVar(&publishRepo, "repo", "", "OCI repository name (defaults to workspace name)")
 }
 
 func runWorkspacePublish(cmd *cobra.Command, args []string) error {
-	wsName, tag := parseWsRef(args[0])
-	if tag == "" {
-		return fmt.Errorf("tag is required; usage: nebi publish <workspace>:<tag>")
-	}
-
-	// Parse optional repo:oci-tag from second positional arg
-	repo := wsName
-	ociTag := tag
-	if len(args) == 2 {
-		r, t := parseWsRef(args[1])
-		repo = r
-		if t != "" {
-			ociTag = t
+	var wsName string
+	if len(args) == 1 {
+		wsName = args[0]
+	} else {
+		// Resolve from current directory origin
+		origin, err := lookupOrigin()
+		if err != nil {
+			return err
 		}
+		if origin == nil {
+			return fmt.Errorf("no workspace specified and no origin set in current directory;\nusage: nebi publish [workspace]")
+		}
+		wsName = origin.OriginName
+		fmt.Fprintf(os.Stderr, "Using workspace %q from origin\n", wsName)
 	}
 
 	client, err := getAuthenticatedClient()
@@ -64,19 +70,38 @@ func runWorkspacePublish(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Resolve registry ID
-	registryID, err := resolveRegistryID(client, ctx, publishRegistry)
+	// Get server-computed defaults
+	defaults, err := client.GetPublishDefaults(ctx, ws.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting publish defaults: %w", err)
+	}
+
+	// Use flags to override defaults
+	registryID := defaults.RegistryID
+	if publishRegistry != "" {
+		registryID, err = resolveRegistryID(client, ctx, publishRegistry)
+		if err != nil {
+			return err
+		}
+	}
+
+	repo := defaults.Repository
+	if publishRepo != "" {
+		repo = publishRepo
+	}
+
+	tag := defaults.Tag
+	if publishTag != "" {
+		tag = publishTag
 	}
 
 	req := cliclient.PublishRequest{
 		RegistryID: registryID,
 		Repository: repo,
-		Tag:        ociTag,
+		Tag:        tag,
 	}
 
-	fmt.Fprintf(os.Stderr, "Publishing %s:%s to %s:%s...\n", wsName, tag, repo, ociTag)
+	fmt.Fprintf(os.Stderr, "Publishing %s to %s:%s...\n", wsName, repo, tag)
 	resp, err := client.PublishWorkspace(ctx, ws.ID, req)
 	if err != nil {
 		return fmt.Errorf("failed to publish: %w", err)
@@ -91,15 +116,6 @@ func resolveRegistryID(client *cliclient.Client, ctx context.Context, registry s
 	registries, err := client.ListRegistries(ctx)
 	if err != nil {
 		return "", fmt.Errorf("listing registries: %w", err)
-	}
-
-	if registry == "" {
-		for _, r := range registries {
-			if r.IsDefault {
-				return r.ID, nil
-			}
-		}
-		return "", fmt.Errorf("no default registry configured on server; use --registry to specify one")
 	}
 
 	for _, r := range registries {

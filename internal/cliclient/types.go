@@ -68,6 +68,15 @@ type Publication struct {
 	PublishedAt   string `json:"published_at"`
 }
 
+// PublishDefaults represents suggested defaults for publishing a workspace.
+type PublishDefaults struct {
+	RegistryID   string `json:"registry_id"`
+	RegistryName string `json:"registry_name"`
+	Namespace    string `json:"namespace"`
+	Repository   string `json:"repository"`
+	Tag          string `json:"tag"`
+}
+
 // PublishRequest represents a request to publish a workspace.
 type PublishRequest struct {
 	RegistryID string `json:"registry_id"`
@@ -108,6 +117,7 @@ type CreateRegistryRequest struct {
 	Username  *string `json:"username,omitempty"`
 	Password  *string `json:"password,omitempty"`
 	IsDefault *bool   `json:"is_default,omitempty"`
+	Namespace *string `json:"namespace,omitempty"`
 }
 
 // UpdateRegistryRequest represents a request to update a registry.
@@ -117,6 +127,7 @@ type UpdateRegistryRequest struct {
 	Username  *string `json:"username,omitempty"`
 	Password  *string `json:"password,omitempty"`
 	IsDefault *bool   `json:"is_default,omitempty"`
+	Namespace *string `json:"namespace,omitempty"`
 }
 
 // PushRequest represents a request to push a version to the server.

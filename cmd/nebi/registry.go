@@ -18,12 +18,13 @@ var registryCmd = &cobra.Command{
 }
 
 var (
-	registryAddName     string
-	registryAddURL      string
-	registryAddUsername string
-	registryAddDefault  bool
-	registryAddPwdStdin bool
-	registryRemoveForce bool
+	registryAddName      string
+	registryAddURL       string
+	registryAddUsername  string
+	registryAddNamespace string
+	registryAddDefault   bool
+	registryAddPwdStdin  bool
+	registryRemoveForce  bool
 )
 
 var registryListCmd = &cobra.Command{
@@ -48,7 +49,7 @@ Examples:
   nebi registry add --name ghcr --url ghcr.io --username myuser
 
   # Programmatic - read password from stdin
-  echo "$TOKEN" | nebi registry add --name ghcr --url ghcr.io --username myuser --password-stdin
+  echo "$TOKEN" | nebi registry add --name quay --url quay.io --namespace nebari_environments --username myuser --password-stdin
 
   # Public registry (no auth)
   nebi registry add --name dockerhub --url docker.io --default`,
@@ -80,11 +81,13 @@ func init() {
 	registryAddCmd.Flags().StringVar(&registryAddName, "name", "", "Registry name (required)")
 	registryAddCmd.Flags().StringVar(&registryAddURL, "url", "", "Registry URL (required)")
 	registryAddCmd.Flags().StringVar(&registryAddUsername, "username", "", "Username for authentication")
+	registryAddCmd.Flags().StringVar(&registryAddNamespace, "namespace", "", "Organization or namespace on the registry")
 	registryAddCmd.Flags().BoolVar(&registryAddPwdStdin, "password-stdin", false, "Read password from stdin")
 	registryAddCmd.Flags().BoolVar(&registryAddDefault, "default", false, "Set as default registry")
 
 	registryAddCmd.MarkFlagRequired("name")
 	registryAddCmd.MarkFlagRequired("url")
+	registryAddCmd.MarkFlagRequired("namespace")
 
 	registryRemoveCmd.Flags().BoolVarP(&registryRemoveForce, "force", "f", false, "Skip confirmation prompt")
 }
@@ -162,6 +165,9 @@ func runRegistryAdd(cmd *cobra.Command, args []string) error {
 	}
 	if registryAddDefault {
 		req.IsDefault = &registryAddDefault
+	}
+	if registryAddNamespace != "" {
+		req.Namespace = &registryAddNamespace
 	}
 
 	ctx := context.Background()

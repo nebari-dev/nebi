@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { usePublicRegistries, usePublishWorkspace, usePublications } from '@/hooks/useRegistries';
+import { useState, useEffect } from 'react';
+import { usePublicRegistries, usePublishWorkspace, usePublishDefaults, usePublications } from '@/hooks/useRegistries';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,42 +12,10 @@ interface PublishDialogProps {
   environmentName: string;
 }
 
-// Helper function to normalize repository name for OCI compatibility
-// OCI repos must be lowercase, alphanumeric with hyphens/underscores/periods
-const normalizeRepoName = (name: string): string => {
-  return name
-    .toLowerCase()
-    .replace(/\s+/g, '-')           // Replace spaces with hyphens
-    .replace(/[^a-z0-9._-]/g, '')   // Remove invalid characters
-    .replace(/-+/g, '-')            // Replace multiple hyphens with single
-    .replace(/^-|-$/g, '');         // Remove leading/trailing hyphens
-};
-
-// Helper function to suggest next version tag
-const suggestNextTag = (existingTags: string[]): string => {
-  if (existingTags.length === 0) {
-    return 'v1';
-  }
-
-  // Extract version numbers from tags like "v1", "v2", "v10", etc.
-  const versionNumbers = existingTags
-    .map(tag => {
-      const match = tag.match(/^v(\d+)$/);
-      return match ? parseInt(match[1], 10) : null;
-    })
-    .filter((n): n is number => n !== null);
-
-  if (versionNumbers.length === 0) {
-    return 'v1';
-  }
-
-  const maxVersion = Math.max(...versionNumbers);
-  return `v${maxVersion + 1}`;
-};
-
-export const PublishDialog = ({ open, onOpenChange, environmentId, environmentName }: PublishDialogProps) => {
+export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDialogProps) => {
   const { data: registries, isLoading: registriesLoading } = usePublicRegistries();
-  const { data: publications, isLoading: publicationsLoading } = usePublications(environmentId);
+  const { data: defaults, isLoading: defaultsLoading } = usePublishDefaults(environmentId);
+  const { data: publications } = usePublications(environmentId);
   const publishMutation = usePublishWorkspace();
 
   const [selectedRegistry, setSelectedRegistry] = useState('');
@@ -57,56 +25,15 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [hasAutoPopulated, setHasAutoPopulated] = useState(false);
 
-  // Find default registry
-  const defaultRegistry = useMemo(() => {
-    return registries?.find(r => r.is_default);
-  }, [registries]);
-
-  // Get selected registry object
-  const selectedRegistryObj = useMemo(() => {
-    return registries?.find(r => r.id === selectedRegistry);
-  }, [registries, selectedRegistry]);
-
-  // Auto-populate all fields when dialog opens and data is loaded
+  // Auto-populate from server-provided defaults
   useEffect(() => {
-    if (open && !hasAutoPopulated && registries && publications) {
-      // Auto-select default registry
-      if (defaultRegistry) {
-        setSelectedRegistry(defaultRegistry.id);
-
-        // Auto-populate repository based on default registry's default_repository
-        // Append first 8 chars of workspace ID to avoid collisions
-        const envIdSuffix = environmentId.slice(0, 8);
-        const normalizedName = normalizeRepoName(environmentName);
-        if (defaultRegistry.default_repository) {
-          const baseRepo = defaultRegistry.default_repository.replace(/\/$/, '');
-          setRepository(`${baseRepo}/${normalizedName}-${envIdSuffix}`);
-        } else {
-          setRepository(`${normalizedName}-${envIdSuffix}`);
-        }
-      }
-
-      // Auto-populate tag based on existing publications
-      const existingTagNames = publications.map(p => p.tag);
-      setTag(suggestNextTag(existingTagNames));
-
+    if (open && !hasAutoPopulated && defaults) {
+      setSelectedRegistry(defaults.registry_id);
+      setRepository(defaults.repository);
+      setTag(defaults.tag);
       setHasAutoPopulated(true);
     }
-  }, [open, hasAutoPopulated, registries, publications, defaultRegistry, environmentName]);
-
-  // Update repository when registry selection changes (after initial auto-populate)
-  useEffect(() => {
-    if (hasAutoPopulated && selectedRegistryObj) {
-      const envIdSuffix = environmentId.slice(0, 8);
-      const normalizedName = normalizeRepoName(environmentName);
-      if (selectedRegistryObj.default_repository) {
-        const baseRepo = selectedRegistryObj.default_repository.replace(/\/$/, '');
-        setRepository(`${baseRepo}/${normalizedName}-${envIdSuffix}`);
-      } else {
-        setRepository(`${normalizedName}-${envIdSuffix}`);
-      }
-    }
-  }, [selectedRegistryObj, hasAutoPopulated, environmentName, environmentId]);
+  }, [open, hasAutoPopulated, defaults]);
 
   // Reset form when dialog closes
   useEffect(() => {
@@ -141,7 +68,6 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
       setPublishSuccess(true);
       setTimeout(() => {
         onOpenChange(false);
-        // Refresh the page to show the new publication in the Publications tab
         window.location.reload();
       }, 2000);
     } catch (err) {
@@ -158,7 +84,7 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
     }
   };
 
-  const isLoading = registriesLoading || publicationsLoading;
+  const isLoading = registriesLoading || defaultsLoading;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -221,16 +147,21 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Repository</label>
-                  <Input
-                    type="text"
-                    value={repository}
-                    onChange={(e) => setRepository(e.target.value)}
-                    placeholder="e.g., myorg/myenv or username/project"
-                    required
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    The repository path in the registry
-                  </p>
+                  <div className="flex items-center gap-0">
+                    {defaults?.namespace && (
+                      <span className="inline-flex items-center px-3 h-10 rounded-l-md border border-r-0 border-input bg-muted text-muted-foreground text-sm">
+                        {defaults.namespace}/
+                      </span>
+                    )}
+                    <Input
+                      type="text"
+                      value={repository}
+                      onChange={(e) => setRepository(e.target.value)}
+                      placeholder="e.g., myenv"
+                      required
+                      className={defaults?.namespace ? 'rounded-l-none' : ''}
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -239,7 +170,7 @@ export const PublishDialog = ({ open, onOpenChange, environmentId, environmentNa
                     type="text"
                     value={tag}
                     onChange={(e) => setTag(e.target.value)}
-                    placeholder="e.g., v1.0.0 or latest"
+                    placeholder="e.g., v1"
                     required
                   />
                   <p className="text-xs text-muted-foreground">

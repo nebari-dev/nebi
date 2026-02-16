@@ -162,10 +162,13 @@ func resetFlags() {
 	loginToken = ""
 	// publish.go
 	publishRegistry = ""
+	publishTag = ""
+	publishRepo = ""
 	// registry.go
 	registryAddName = ""
 	registryAddURL = ""
 	registryAddUsername = ""
+	registryAddNamespace = ""
 	registryAddDefault = false
 	registryAddPwdStdin = false
 	registryRemoveForce = false
@@ -898,7 +901,7 @@ func TestE2E_RegistryAdd(t *testing.T) {
 	dir := t.TempDir()
 
 	// Add a registry
-	res := runCLI(t, dir, "registry", "add", "--name", "test-registry", "--url", "ghcr.io")
+	res := runCLI(t, dir, "registry", "add", "--name", "test-registry", "--url", "ghcr.io", "--namespace", "testns")
 	if res.ExitCode != 0 {
 		t.Fatalf("registry add failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -924,13 +927,13 @@ func TestE2E_RegistryAddDuplicate(t *testing.T) {
 	dir := t.TempDir()
 
 	// Add first registry
-	res := runCLI(t, dir, "registry", "add", "--name", "dup-test", "--url", "ghcr.io")
+	res := runCLI(t, dir, "registry", "add", "--name", "dup-test", "--url", "ghcr.io", "--namespace", "testns")
 	if res.ExitCode != 0 {
 		t.Fatalf("first add failed: %s", res.Stderr)
 	}
 
 	// Try to add with same name - should fail
-	res = runCLI(t, dir, "registry", "add", "--name", "dup-test", "--url", "quay.io")
+	res = runCLI(t, dir, "registry", "add", "--name", "dup-test", "--url", "quay.io", "--namespace", "testns")
 	if res.ExitCode == 0 {
 		t.Fatal("expected error for duplicate name")
 	}
@@ -949,6 +952,7 @@ func TestE2E_RegistryAddWithPasswordStdin(t *testing.T) {
 		"--name", "auth-registry",
 		"--url", "private.registry.io",
 		"--username", "testuser",
+		"--namespace", "testns",
 		"--password-stdin")
 	if res.ExitCode != 0 {
 		t.Fatalf("registry add with password failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
@@ -966,7 +970,7 @@ func TestE2E_RegistryRemove(t *testing.T) {
 	dir := t.TempDir()
 
 	// Add a registry first
-	res := runCLI(t, dir, "registry", "add", "--name", "remove-me", "--url", "example.io")
+	res := runCLI(t, dir, "registry", "add", "--name", "remove-me", "--url", "example.io", "--namespace", "testns")
 	if res.ExitCode != 0 {
 		t.Fatalf("add failed: %s", res.Stderr)
 	}
@@ -1005,7 +1009,7 @@ func TestE2E_RegistryRemoveConfirmNo(t *testing.T) {
 	dir := t.TempDir()
 
 	// Add a registry first
-	res := runCLI(t, dir, "registry", "add", "--name", "keep-me", "--url", "example.io")
+	res := runCLI(t, dir, "registry", "add", "--name", "keep-me", "--url", "example.io", "--namespace", "testns")
 	if res.ExitCode != 0 {
 		t.Fatalf("add failed: %s", res.Stderr)
 	}
@@ -1028,7 +1032,7 @@ func TestE2E_RegistryRemoveConfirmYes(t *testing.T) {
 	dir := t.TempDir()
 
 	// Add a registry first
-	res := runCLI(t, dir, "registry", "add", "--name", "confirm-remove", "--url", "example.io")
+	res := runCLI(t, dir, "registry", "add", "--name", "confirm-remove", "--url", "example.io", "--namespace", "testns")
 	if res.ExitCode != 0 {
 		t.Fatalf("add failed: %s", res.Stderr)
 	}
@@ -1046,23 +1050,12 @@ func TestE2E_RegistryRemoveConfirmYes(t *testing.T) {
 	}
 }
 
-func TestE2E_WorkspacePublishRequiresTag(t *testing.T) {
-	setupLocalStore(t)
-
-	dir := t.TempDir()
-
-	res := runCLI(t, dir, "publish", "some-ws")
-	if res.ExitCode == 0 {
-		t.Fatal("expected non-zero exit when tag is missing")
-	}
-}
-
 func TestE2E_WorkspacePublishNotFound(t *testing.T) {
 	setupLocalStore(t)
 
 	dir := t.TempDir()
 
-	res := runCLI(t, dir, "publish", "nonexistent:v1")
+	res := runCLI(t, dir, "publish", "nonexistent")
 	if res.ExitCode == 0 {
 		t.Fatal("expected non-zero exit for nonexistent workspace")
 	}

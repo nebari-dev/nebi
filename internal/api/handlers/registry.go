@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -25,34 +27,34 @@ func NewRegistryHandler(db *gorm.DB, encKey []byte) *RegistryHandler {
 // Request/Response types
 
 type CreateRegistryRequest struct {
-	Name              string `json:"name" binding:"required"`
-	URL               string `json:"url" binding:"required"`
-	Username          string `json:"username"`
-	Password          string `json:"password"`
-	APIToken          string `json:"api_token"`
-	IsDefault         bool   `json:"is_default"`
-	DefaultRepository string `json:"default_repository"`
+	Name      string `json:"name" binding:"required"`
+	URL       string `json:"url" binding:"required"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	APIToken  string `json:"api_token"`
+	IsDefault bool   `json:"is_default"`
+	Namespace string `json:"namespace"`
 }
 
 type UpdateRegistryRequest struct {
-	Name              *string `json:"name"`
-	URL               *string `json:"url"`
-	Username          *string `json:"username"`
-	Password          *string `json:"password"`
-	APIToken          *string `json:"api_token"`
-	IsDefault         *bool   `json:"is_default"`
-	DefaultRepository *string `json:"default_repository"`
+	Name      *string `json:"name"`
+	URL       *string `json:"url"`
+	Username  *string `json:"username"`
+	Password  *string `json:"password"`
+	APIToken  *string `json:"api_token"`
+	IsDefault *bool   `json:"is_default"`
+	Namespace *string `json:"namespace"`
 }
 
 type RegistryResponse struct {
-	ID                uuid.UUID `json:"id"`
-	Name              string    `json:"name"`
-	URL               string    `json:"url"`
-	Username          string    `json:"username"`
-	HasAPIToken       bool      `json:"has_api_token"`
-	IsDefault         bool      `json:"is_default"`
-	DefaultRepository string    `json:"default_repository"`
-	CreatedAt         string    `json:"created_at"`
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	URL         string    `json:"url"`
+	Username    string    `json:"username"`
+	HasAPIToken bool      `json:"has_api_token"`
+	IsDefault   bool      `json:"is_default"`
+	Namespace   string    `json:"namespace"`
+	CreatedAt   string    `json:"created_at"`
 }
 
 // ListRegistries godoc
@@ -80,14 +82,14 @@ func (h *RegistryHandler) ListRegistries(c *gin.Context) {
 			slog.Error("Failed to decrypt API token", "registry_id", reg.ID, "error", err)
 		}
 		response[i] = RegistryResponse{
-			ID:                reg.ID,
-			Name:              reg.Name,
-			URL:               reg.URL,
-			Username:          reg.Username,
-			HasAPIToken:       apiToken != "",
-			IsDefault:         reg.IsDefault,
-			DefaultRepository: reg.DefaultRepository,
-			CreatedAt:         reg.CreatedAt.Format("2006-01-02 15:04:05"),
+			ID:          reg.ID,
+			Name:        reg.Name,
+			URL:         reg.URL,
+			Username:    reg.Username,
+			HasAPIToken: apiToken != "",
+			IsDefault:   reg.IsDefault,
+			Namespace:   reg.Namespace,
+			CreatedAt:   reg.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
 	}
 
@@ -138,30 +140,34 @@ func (h *RegistryHandler) CreateRegistry(c *gin.Context) {
 	}
 
 	registry := models.OCIRegistry{
-		Name:              req.Name,
-		URL:               req.URL,
-		Username:          req.Username,
-		Password:          encPassword,
-		APIToken:          encAPIToken,
-		IsDefault:         req.IsDefault,
-		DefaultRepository: req.DefaultRepository,
-		CreatedBy:         userID,
+		Name:      req.Name,
+		URL:       req.URL,
+		Username:  req.Username,
+		Password:  encPassword,
+		APIToken:  encAPIToken,
+		IsDefault: req.IsDefault,
+		Namespace: req.Namespace,
+		CreatedBy: userID,
 	}
 
 	if err := h.db.Create(&registry).Error; err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "duplicate") {
+			c.JSON(http.StatusConflict, ErrorResponse{Error: fmt.Sprintf("Registry with name '%s' already exists", req.Name)})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create registry"})
 		return
 	}
 
 	c.JSON(http.StatusCreated, RegistryResponse{
-		ID:                registry.ID,
-		Name:              registry.Name,
-		URL:               registry.URL,
-		Username:          registry.Username,
-		HasAPIToken:       req.APIToken != "",
-		IsDefault:         registry.IsDefault,
-		DefaultRepository: registry.DefaultRepository,
-		CreatedAt:         registry.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:          registry.ID,
+		Name:        registry.Name,
+		URL:         registry.URL,
+		Username:    registry.Username,
+		HasAPIToken: req.APIToken != "",
+		IsDefault:   registry.IsDefault,
+		Namespace:   registry.Namespace,
+		CreatedAt:   registry.CreatedAt.Format("2006-01-02 15:04:05"),
 	})
 }
 
@@ -191,14 +197,14 @@ func (h *RegistryHandler) GetRegistry(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, RegistryResponse{
-		ID:                registry.ID,
-		Name:              registry.Name,
-		URL:               registry.URL,
-		Username:          registry.Username,
-		HasAPIToken:       apiToken != "",
-		IsDefault:         registry.IsDefault,
-		DefaultRepository: registry.DefaultRepository,
-		CreatedAt:         registry.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:          registry.ID,
+		Name:        registry.Name,
+		URL:         registry.URL,
+		Username:    registry.Username,
+		HasAPIToken: apiToken != "",
+		IsDefault:   registry.IsDefault,
+		Namespace:   registry.Namespace,
+		CreatedAt:   registry.CreatedAt.Format("2006-01-02 15:04:05"),
 	})
 }
 
@@ -263,8 +269,8 @@ func (h *RegistryHandler) UpdateRegistry(c *gin.Context) {
 		}
 		registry.IsDefault = *req.IsDefault
 	}
-	if req.DefaultRepository != nil {
-		registry.DefaultRepository = *req.DefaultRepository
+	if req.Namespace != nil {
+		registry.Namespace = *req.Namespace
 	}
 
 	if err := h.db.Save(&registry).Error; err != nil {
@@ -278,14 +284,14 @@ func (h *RegistryHandler) UpdateRegistry(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, RegistryResponse{
-		ID:                registry.ID,
-		Name:              registry.Name,
-		URL:               registry.URL,
-		Username:          registry.Username,
-		HasAPIToken:       updatedAPIToken != "",
-		IsDefault:         registry.IsDefault,
-		DefaultRepository: registry.DefaultRepository,
-		CreatedAt:         registry.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:          registry.ID,
+		Name:        registry.Name,
+		URL:         registry.URL,
+		Username:    registry.Username,
+		HasAPIToken: updatedAPIToken != "",
+		IsDefault:   registry.IsDefault,
+		Namespace:   registry.Namespace,
+		CreatedAt:   registry.CreatedAt.Format("2006-01-02 15:04:05"),
 	})
 }
 
@@ -336,14 +342,14 @@ func (h *RegistryHandler) ListPublicRegistries(c *gin.Context) {
 	response := make([]RegistryResponse, len(registries))
 	for i, reg := range registries {
 		response[i] = RegistryResponse{
-			ID:                reg.ID,
-			Name:              reg.Name,
-			URL:               reg.URL,
-			Username:          "",    // Don't expose username to regular users
-			HasAPIToken:       false, // Don't expose token info to regular users
-			IsDefault:         reg.IsDefault,
-			DefaultRepository: reg.DefaultRepository,
-			CreatedAt:         reg.CreatedAt.Format("2006-01-02 15:04:05"),
+			ID:          reg.ID,
+			Name:        reg.Name,
+			URL:         reg.URL,
+			Username:    "",    // Don't expose username to regular users
+			HasAPIToken: false, // Don't expose token info to regular users
+			IsDefault:   reg.IsDefault,
+			Namespace:   reg.Namespace,
+			CreatedAt:   reg.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
 	}
 

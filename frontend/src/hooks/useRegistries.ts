@@ -79,6 +79,15 @@ export const usePublishWorkspace = () => {
   });
 };
 
+// Query hook for publish defaults (server-computed)
+export const usePublishDefaults = (workspaceId: string) => {
+  return useQuery({
+    queryKey: ['publish-defaults', workspaceId],
+    queryFn: () => registriesApi.getPublishDefaults(workspaceId),
+    enabled: !!workspaceId,
+  });
+};
+
 // Query hook for workspace publications
 export const usePublications = (workspaceId: string) => {
   return useQuery({

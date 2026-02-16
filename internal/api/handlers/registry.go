@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -149,6 +151,10 @@ func (h *RegistryHandler) CreateRegistry(c *gin.Context) {
 	}
 
 	if err := h.db.Create(&registry).Error; err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "duplicate") {
+			c.JSON(http.StatusConflict, ErrorResponse{Error: fmt.Sprintf("Registry with name '%s' already exists", req.Name)})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create registry"})
 		return
 	}

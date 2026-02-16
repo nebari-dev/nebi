@@ -36,7 +36,8 @@ Nebi is a server and CLI for managing [Pixi](https://prefix.dev/) environments i
 **Key features:**
 - Server with async job queue, RBAC, and PostgreSQL/Valkey backend
 - Local-first CLI for workspace tracking (no server required for basic use)
-- Push/pull versioned `pixi.toml` and `pixi.lock` to shared servers
+- Push/pull versioned `pixi.toml` and `pixi.lock` to shared servers with content-addressed deduplication
+- Publish environments from the server to OCI registries (Quay.io, GHCR, etc.)
 - Diff specs between local directories or server versions
 - Single-server connection with token-based authentication
 
@@ -92,7 +93,10 @@ nebi login https://nebi.company.com
 cd my-project
 nebi init
 
-# Push your environment to the server
+# Push your environment to the server (auto-tags with content hash + latest)
+nebi push myworkspace
+
+# Push with an explicit tag
 nebi push myworkspace:v1.0
 
 # Pull an environment on another machine
@@ -188,8 +192,9 @@ nebi diff ./project-a ./project-b --lock    # also compare pixi.lock
 nebi diff myworkspace:v1 myworkspace:v2
 
 # Push/pull versioned specs
-nebi push myworkspace:v1.0
-nebi push :v2.0                          # reuse workspace name from origin
+nebi push myworkspace                    # auto-tags: sha-<hash> + latest
+nebi push myworkspace:v1.0               # also adds user tag v1.0
+nebi push                                # reuse workspace name from origin
 nebi pull myworkspace:v1.0
 nebi pull                                # re-pull from last origin
 
@@ -213,10 +218,10 @@ nebi workspace prune                   # clean up workspaces with missing paths
 nebi diff data-science ./my-project
 nebi diff data-science ml-pipeline
 
-# Publish a workspace version to an OCI registry
-nebi publish myworkspace:v1.0
-nebi publish myworkspace:v1.0 myorg/myenv:latest
-nebi publish myworkspace:v1.0 --registry ghcr myorg/myenv:latest
+# Publish a workspace to an OCI registry (uses content hash tag by default)
+nebi publish myworkspace
+nebi publish myworkspace --tag v1.0.0
+nebi publish myworkspace --registry ghcr --repo myorg/myenv
 ```
 
 ### Connection Commands

@@ -75,7 +75,7 @@ pixi add python numpy pandas
 
 ```bash
 nebi login https://nebi.company.com
-nebi push my-project:v1.0
+nebi push my-project
 ```
 
 ### 4. Pull on another machine

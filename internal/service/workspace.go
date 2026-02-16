@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -206,8 +207,35 @@ func (s *WorkspaceService) SavePixiToml(wsID string, content string) error {
 	return nil
 }
 
-// PushVersion creates a new workspace version, writes files, handles tags,
-// and records audit logs.
+// contentHash computes a deterministic hash of manifest + lock content.
+// Returns "sha-" followed by the first 12 hex characters of the SHA-256 digest.
+func contentHash(pixiToml, pixiLock string) string {
+	h := sha256.New()
+	h.Write([]byte(pixiToml))
+	h.Write([]byte("\n---\n"))
+	h.Write([]byte(pixiLock))
+	return fmt.Sprintf("sha-%x", h.Sum(nil)[:6]) // 6 bytes = 12 hex chars
+}
+
+// upsertTag creates or updates a tag for the given workspace/version.
+// If the tag already exists, it updates the version number.
+// If it doesn't exist, it creates a new tag record.
+func (s *WorkspaceService) upsertTag(wsID uuid.UUID, tag string, versionNumber int, userID uuid.UUID) error {
+	var existing models.WorkspaceTag
+	if err := s.db.Where("workspace_id = ? AND tag = ?", wsID, tag).First(&existing).Error; err == nil {
+		existing.VersionNumber = versionNumber
+		return s.db.Save(&existing).Error
+	}
+	return s.db.Create(&models.WorkspaceTag{
+		WorkspaceID:   wsID,
+		Tag:           tag,
+		VersionNumber: versionNumber,
+		CreatedBy:     userID,
+	}).Error
+}
+
+// PushVersion creates a new workspace version (or deduplicates), writes files,
+// handles tags (content hash, latest, optional user tag), and records audit logs.
 func (s *WorkspaceService) PushVersion(ctx context.Context, wsID string, req PushRequest, userID uuid.UUID) (*PushResult, error) {
 	var ws models.Workspace
 	if err := s.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
@@ -221,76 +249,97 @@ func (s *WorkspaceService) PushVersion(ctx context.Context, wsID string, req Pus
 		return nil, &ValidationError{Message: "Workspace must be in ready state to push"}
 	}
 
-	// Check tag conflict before any side effects (file writes, version creation)
-	var existingTag models.WorkspaceTag
-	tagExists := false
-	if err := s.db.Where("workspace_id = ? AND tag = ?", ws.ID, req.Tag).First(&existingTag).Error; err == nil {
-		tagExists = true
-		if !req.Force {
-			return nil, &ConflictError{
-				Message: fmt.Sprintf("tag %q already exists at version %d; use --force to reassign", req.Tag, existingTag.VersionNumber),
+	// Check user-tag conflict before any side effects
+	if req.Tag != "" {
+		var existingUserTag models.WorkspaceTag
+		if err := s.db.Where("workspace_id = ? AND tag = ?", ws.ID, req.Tag).First(&existingUserTag).Error; err == nil {
+			if !req.Force {
+				return nil, &ConflictError{
+					Message: fmt.Sprintf("tag %q already exists at version %d; use --force to reassign", req.Tag, existingUserTag.VersionNumber),
+				}
 			}
 		}
 	}
 
-	// Write files to workspace path
-	wsPath := s.executor.GetWorkspacePath(&ws)
-	if err := os.MkdirAll(wsPath, 0755); err != nil {
-		return nil, fmt.Errorf("create workspace directory: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte(req.PixiToml), 0644); err != nil {
-		return nil, fmt.Errorf("write pixi.toml: %w", err)
-	}
-	if req.PixiLock != "" {
-		if err := os.WriteFile(filepath.Join(wsPath, "pixi.lock"), []byte(req.PixiLock), 0644); err != nil {
-			return nil, fmt.Errorf("write pixi.lock: %w", err)
-		}
-	}
+	// Compute content hash
+	hashTag := contentHash(req.PixiToml, req.PixiLock)
 
-	// Create version record
-	newVersion := models.WorkspaceVersion{
-		WorkspaceID:     ws.ID,
-		ManifestContent: req.PixiToml,
-		LockFileContent: req.PixiLock,
-		PackageMetadata: "[]",
-		CreatedBy:       userID,
-		Description:     fmt.Sprintf("Pushed as %s:%s", ws.Name, req.Tag),
-	}
-	if err := s.db.Create(&newVersion).Error; err != nil {
-		return nil, fmt.Errorf("create version: %w", err)
-	}
+	// Check for content deduplication: does a version with this hash already exist?
+	var existingHashTag models.WorkspaceTag
+	deduplicated := false
+	var versionNumber int
 
-	// Handle tag
-	if tagExists {
-		oldVersion := existingTag.VersionNumber
-		existingTag.VersionNumber = newVersion.VersionNumber
-		if err := s.db.Save(&existingTag).Error; err != nil {
-			return nil, fmt.Errorf("update tag: %w", err)
-		}
-		audit.Log(s.db, userID, audit.ActionReassignTag, audit.ResourceWorkspace, ws.ID, map[string]interface{}{
-			"tag":         req.Tag,
-			"old_version": oldVersion,
-			"new_version": newVersion.VersionNumber,
-		})
+	if err := s.db.Where("workspace_id = ? AND tag = ?", ws.ID, hashTag).First(&existingHashTag).Error; err == nil {
+		// Content already exists — deduplicate
+		deduplicated = true
+		versionNumber = existingHashTag.VersionNumber
 	} else {
-		newTag := models.WorkspaceTag{
-			WorkspaceID:   ws.ID,
-			Tag:           req.Tag,
-			VersionNumber: newVersion.VersionNumber,
-			CreatedBy:     userID,
+		// New content — write files and create version
+		wsPath := s.executor.GetWorkspacePath(&ws)
+		if err := os.MkdirAll(wsPath, 0755); err != nil {
+			return nil, fmt.Errorf("create workspace directory: %w", err)
 		}
-		if err := s.db.Create(&newTag).Error; err != nil {
-			return nil, fmt.Errorf("create tag: %w", err)
+		if err := os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte(req.PixiToml), 0644); err != nil {
+			return nil, fmt.Errorf("write pixi.toml: %w", err)
 		}
+		if req.PixiLock != "" {
+			if err := os.WriteFile(filepath.Join(wsPath, "pixi.lock"), []byte(req.PixiLock), 0644); err != nil {
+				return nil, fmt.Errorf("write pixi.lock: %w", err)
+			}
+		}
+
+		desc := fmt.Sprintf("Pushed %s", ws.Name)
+		if req.Tag != "" {
+			desc = fmt.Sprintf("Pushed as %s:%s", ws.Name, req.Tag)
+		}
+
+		newVersion := models.WorkspaceVersion{
+			WorkspaceID:     ws.ID,
+			ManifestContent: req.PixiToml,
+			LockFileContent: req.PixiLock,
+			ContentHash:     hashTag,
+			PackageMetadata: "[]",
+			CreatedBy:       userID,
+			Description:     desc,
+		}
+		if err := s.db.Create(&newVersion).Error; err != nil {
+			return nil, fmt.Errorf("create version: %w", err)
+		}
+		versionNumber = newVersion.VersionNumber
+
+		// Create hash tag
+		if err := s.upsertTag(ws.ID, hashTag, versionNumber, userID); err != nil {
+			return nil, fmt.Errorf("create hash tag: %w", err)
+		}
+	}
+
+	// Always update "latest" tag
+	if err := s.upsertTag(ws.ID, "latest", versionNumber, userID); err != nil {
+		return nil, fmt.Errorf("update latest tag: %w", err)
+	}
+
+	tags := []string{hashTag, "latest"}
+
+	// Handle optional user tag
+	if req.Tag != "" {
+		if err := s.upsertTag(ws.ID, req.Tag, versionNumber, userID); err != nil {
+			return nil, fmt.Errorf("create user tag: %w", err)
+		}
+		tags = append(tags, req.Tag)
 	}
 
 	audit.Log(s.db, userID, audit.ActionPush, audit.ResourceWorkspace, ws.ID, map[string]interface{}{
-		"tag":     req.Tag,
-		"version": newVersion.VersionNumber,
+		"tags":         tags,
+		"version":      versionNumber,
+		"content_hash": hashTag,
+		"deduplicated": deduplicated,
 	})
 
 	return &PushResult{
-		VersionNumber: newVersion.VersionNumber,
+		VersionNumber: versionNumber,
+		Tags:          tags,
+		ContentHash:   hashTag,
+		Deduplicated:  deduplicated,
 		Tag:           req.Tag,
 	}, nil
 }

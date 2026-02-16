@@ -20,5 +20,8 @@ type PushRequest struct {
 // PushResult is returned after a successful push.
 type PushResult struct {
 	VersionNumber int
-	Tag           string
+	Tags          []string
+	ContentHash   string
+	Deduplicated  bool
+	Tag           string // kept for backwards compatibility
 }

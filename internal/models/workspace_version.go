@@ -21,6 +21,9 @@ type WorkspaceVersion struct {
 	ManifestContent string `gorm:"type:text;not null" json:"manifest_content"`  // pixi.toml content
 	PackageMetadata string `gorm:"type:text;not null" json:"package_metadata"`  // JSON of package list
 
+	// Content hash for deduplication
+	ContentHash string `gorm:"type:text;index" json:"content_hash"`
+
 	// Context
 	JobID         *uuid.UUID `gorm:"type:text;index" json:"job_id,omitempty"` // Job that triggered this version
 	Job           *Job       `gorm:"foreignKey:JobID" json:"job,omitempty"`

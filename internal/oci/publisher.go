@@ -26,11 +26,12 @@ const (
 
 // PublishOptions contains options for publishing a workspace
 type PublishOptions struct {
-	Repository   string // Full repository path (e.g., "ghcr.io/myorg/myenv")
-	Tag          string // Tag for the manifest (e.g., "v1.0.0")
-	Username     string // Registry username
-	Password     string // Registry password/token
-	RegistryHost string // Registry hostname (e.g., "ghcr.io")
+	Repository   string   // Full repository path (e.g., "ghcr.io/myorg/myenv")
+	Tag          string   // Primary tag for the manifest (e.g., "sha-a1b2c3d4e5f6")
+	ExtraTags    []string // Additional tags to apply (e.g., ["latest"])
+	Username     string   // Registry username
+	Password     string   // Registry password/token
+	RegistryHost string   // Registry hostname (e.g., "ghcr.io")
 }
 
 // PublishWorkspace publishes pixi.toml and pixi.lock to an OCI registry
@@ -141,18 +142,22 @@ func PublishWorkspace(ctx context.Context, envPath string, opts PublishOptions) 
 		return "", fmt.Errorf("failed to push pixi.lock to registry: %w", err)
 	}
 
-	// Push manifest
+	// Push manifest with tag in a single operation.
+	// Using PushReference instead of Push+Tag avoids a round-trip fetch
+	// that fails when the repository is new or was deleted.
 	manifestReader, err := fs.Fetch(ctx, manifestDesc)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch manifest: %w", err)
 	}
-	if err := repo.Push(ctx, manifestDesc, manifestReader); err != nil {
+	if err := repo.PushReference(ctx, manifestDesc, manifestReader, opts.Tag); err != nil {
 		return "", fmt.Errorf("failed to push manifest to registry: %w", err)
 	}
 
-	// Tag the manifest in the remote repository
-	if err := repo.Tag(ctx, manifestDesc, opts.Tag); err != nil {
-		return "", fmt.Errorf("failed to tag manifest: %w", err)
+	// Apply additional tags (manifest already exists from PushReference above)
+	for _, extraTag := range opts.ExtraTags {
+		if err := repo.Tag(ctx, manifestDesc, extraTag); err != nil {
+			return "", fmt.Errorf("failed to tag manifest as %q: %w", extraTag, err)
+		}
 	}
 
 	// Return the manifest digest

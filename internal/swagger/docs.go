@@ -2271,8 +2271,7 @@ const docTemplate = `{
         "handlers.PushVersionRequest": {
             "type": "object",
             "required": [
-                "pixi_toml",
-                "tag"
+                "pixi_toml"
             ],
             "properties": {
                 "force": {
@@ -2292,8 +2291,20 @@ const docTemplate = `{
         "handlers.PushVersionResponse": {
             "type": "object",
             "properties": {
+                "content_hash": {
+                    "type": "string"
+                },
+                "deduplicated": {
+                    "type": "boolean"
+                },
                 "tag": {
                     "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "version_number": {
                     "type": "integer"
@@ -2699,6 +2710,10 @@ const docTemplate = `{
         "models.WorkspaceVersion": {
             "type": "object",
             "properties": {
+                "content_hash": {
+                    "description": "Content hash for deduplication",
+                    "type": "string"
+                },
                 "created_at": {
                     "description": "Timestamps",
                     "type": "string"

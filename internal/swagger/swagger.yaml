@@ -190,12 +190,19 @@ definitions:
         type: string
     required:
     - pixi_toml
-    - tag
     type: object
   handlers.PushVersionResponse:
     properties:
+      content_hash:
+        type: string
+      deduplicated:
+        type: boolean
       tag:
         type: string
+      tags:
+        items:
+          type: string
+        type: array
       version_number:
         type: integer
     type: object
@@ -472,6 +479,9 @@ definitions:
     - WsStatusDeleting
   models.WorkspaceVersion:
     properties:
+      content_hash:
+        description: Content hash for deduplication
+        type: string
       created_at:
         description: Timestamps
         type: string

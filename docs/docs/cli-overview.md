@@ -22,10 +22,10 @@ Nebi's CLI is organized into command groups: **Workspace**, **Sync**, **Connecti
 
 | Command | Description |
 |---------|-------------|
-| `nebi push [<name>:]<tag>` | Push workspace specs to a server |
+| `nebi push [<name>][:<tag>]` | Push workspace specs to a server (tag optional, auto-tags with content hash + latest) |
 | `nebi pull [<name>[:<tag>]]` | Pull workspace specs from a server |
 | `nebi diff [<ref-a>] [<ref-b>]` | Compare workspace specs |
-| `nebi publish <name>:<tag>` | Publish to an OCI registry |
+| `nebi publish [name]` | Publish to an OCI registry (uses content hash tag by default) |
 | `nebi import <oci-reference>` | Import a workspace from a public OCI registry |
 
 ## Connection Commands

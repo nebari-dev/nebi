@@ -480,11 +480,16 @@ func TestListTags_AfterPush(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(tags) != 1 {
-		t.Fatalf("expected 1 tag, got %d", len(tags))
+	// Push now creates: content hash tag + "latest" (auto) + "latest" (user, deduped) → 2 unique tags
+	if len(tags) != 2 {
+		t.Fatalf("expected 2 tags (hash + latest), got %d", len(tags))
 	}
-	if tags[0].Tag != "latest" {
-		t.Errorf("expected tag=latest, got %q", tags[0].Tag)
+	tagNames := map[string]bool{}
+	for _, tg := range tags {
+		tagNames[tg.Tag] = true
+	}
+	if !tagNames["latest"] {
+		t.Errorf("expected a 'latest' tag, got tags: %v", tagNames)
 	}
 }
 

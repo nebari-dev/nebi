@@ -140,8 +140,11 @@ type PushRequest struct {
 
 // PushResponse represents the response from pushing a version.
 type PushResponse struct {
-	VersionNumber int    `json:"version_number"`
-	Tag           string `json:"tag"`
+	VersionNumber int      `json:"version_number"`
+	Tags          []string `json:"tags"`
+	ContentHash   string   `json:"content_hash"`
+	Deduplicated  bool     `json:"deduplicated"`
+	Tag           string   `json:"tag"`
 }
 
 // WorkspaceTag represents a server-side tag pointing to a version.

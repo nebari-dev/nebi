@@ -250,6 +250,9 @@ func (h *WorkspaceHandler) PushVersion(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, PushVersionResponse{
 		VersionNumber: result.VersionNumber,
+		Tags:          result.Tags,
+		ContentHash:   result.ContentHash,
+		Deduplicated:  result.Deduplicated,
 		Tag:           result.Tag,
 	})
 }
@@ -940,9 +943,25 @@ func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
 	// Publish using OCI package
 	wsPath := h.executor.GetWorkspacePath(&ws)
 
+	// Collect extra OCI tags: "latest" + all workspace tags for this version
+	extraTagSet := map[string]bool{}
+	extraTagSet["latest"] = true
+	var wsTags []models.WorkspaceTag
+	h.db.Where("workspace_id = ? AND version_number = ?", ws.ID, latestVersion.VersionNumber).Find(&wsTags)
+	for _, t := range wsTags {
+		extraTagSet[t.Tag] = true
+	}
+	// Don't duplicate the primary tag
+	delete(extraTagSet, req.Tag)
+	var extraTags []string
+	for t := range extraTagSet {
+		extraTags = append(extraTags, t)
+	}
+
 	digest, err := oci.PublishWorkspace(c.Request.Context(), wsPath, oci.PublishOptions{
 		Repository:   fullRepo,
 		Tag:          req.Tag,
+		ExtraTags:    extraTags,
 		Username:     registry.Username,
 		Password:     password,
 		RegistryHost: host,
@@ -1073,11 +1092,13 @@ func (h *WorkspaceHandler) GetPublishDefaults(c *gin.Context) {
 	// Repository = normalized workspace name + first 8 chars of ID to avoid collisions
 	repo := fmt.Sprintf("%s-%s", ws.Name, ws.ID.String()[:8])
 
-	// Compute next tag from existing publications
-	var publications []models.Publication
-	h.db.Where("workspace_id = ?", wsID).Find(&publications)
-
-	tag := nextVersionTag(publications)
+	// Use the content hash of the latest version as the default OCI tag.
+	// This ensures each distinct content gets its own tag in the registry.
+	var latestVersion models.WorkspaceVersion
+	tag := "latest"
+	if err := h.db.Where("workspace_id = ?", wsID).Order("version_number DESC").First(&latestVersion).Error; err == nil && latestVersion.ContentHash != "" {
+		tag = latestVersion.ContentHash
+	}
 
 	c.JSON(http.StatusOK, PublishDefaultsResponse{
 		RegistryID:   registry.ID,
@@ -1086,18 +1107,6 @@ func (h *WorkspaceHandler) GetPublishDefaults(c *gin.Context) {
 		Repository:   repo,
 		Tag:          tag,
 	})
-}
-
-// nextVersionTag computes the next vN tag from existing publications.
-func nextVersionTag(publications []models.Publication) string {
-	maxVersion := 0
-	for _, p := range publications {
-		var n int
-		if _, err := fmt.Sscanf(p.Tag, "v%d", &n); err == nil && n > maxVersion {
-			maxVersion = n
-		}
-	}
-	return fmt.Sprintf("v%d", maxVersion+1)
 }
 
 // --- Request/Response types ---
@@ -1123,15 +1132,18 @@ type SavePixiTomlRequest struct {
 }
 
 type PushVersionRequest struct {
-	Tag      string `json:"tag" binding:"required"`
+	Tag      string `json:"tag"`
 	PixiToml string `json:"pixi_toml" binding:"required"`
 	PixiLock string `json:"pixi_lock"`
 	Force    bool   `json:"force"`
 }
 
 type PushVersionResponse struct {
-	VersionNumber int    `json:"version_number"`
-	Tag           string `json:"tag"`
+	VersionNumber int      `json:"version_number"`
+	Tags          []string `json:"tags"`
+	ContentHash   string   `json:"content_hash"`
+	Deduplicated  bool     `json:"deduplicated"`
+	Tag           string   `json:"tag"`
 }
 
 type WorkspaceTagResponse struct {

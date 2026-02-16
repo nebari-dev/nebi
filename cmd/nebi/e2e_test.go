@@ -166,6 +166,7 @@ func resetFlags() {
 	registryAddName = ""
 	registryAddURL = ""
 	registryAddUsername = ""
+	registryAddNamespace = ""
 	registryAddDefault = false
 	registryAddPwdStdin = false
 	registryRemoveForce = false

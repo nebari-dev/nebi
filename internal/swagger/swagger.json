@@ -2010,13 +2010,13 @@
                 "api_token": {
                     "type": "string"
                 },
-                "default_repository": {
-                    "type": "string"
-                },
                 "is_default": {
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "namespace": {
                     "type": "string"
                 },
                 "password": {
@@ -2240,9 +2240,6 @@
                 "created_at": {
                     "type": "string"
                 },
-                "default_repository": {
-                    "type": "string"
-                },
                 "has_api_token": {
                     "type": "boolean"
                 },
@@ -2253,6 +2250,9 @@
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "namespace": {
                     "type": "string"
                 },
                 "url": {
@@ -2307,13 +2307,13 @@
                 "api_token": {
                     "type": "string"
                 },
-                "default_repository": {
-                    "type": "string"
-                },
                 "is_default": {
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "namespace": {
                     "type": "string"
                 },
                 "password": {

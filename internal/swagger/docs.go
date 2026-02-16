@@ -2016,13 +2016,13 @@ const docTemplate = `{
                 "api_token": {
                     "type": "string"
                 },
-                "default_repository": {
-                    "type": "string"
-                },
                 "is_default": {
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "namespace": {
                     "type": "string"
                 },
                 "password": {
@@ -2246,9 +2246,6 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
-                "default_repository": {
-                    "type": "string"
-                },
                 "has_api_token": {
                     "type": "boolean"
                 },
@@ -2259,6 +2256,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "namespace": {
                     "type": "string"
                 },
                 "url": {
@@ -2313,13 +2313,13 @@ const docTemplate = `{
                 "api_token": {
                     "type": "string"
                 },
-                "default_repository": {
-                    "type": "string"
-                },
                 "is_default": {
                     "type": "boolean"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "namespace": {
                     "type": "string"
                 },
                 "password": {

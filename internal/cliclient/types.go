@@ -68,6 +68,15 @@ type Publication struct {
 	PublishedAt   string `json:"published_at"`
 }
 
+// PublishDefaults represents suggested defaults for publishing a workspace.
+type PublishDefaults struct {
+	RegistryID   string `json:"registry_id"`
+	RegistryName string `json:"registry_name"`
+	Namespace    string `json:"namespace"`
+	Repository   string `json:"repository"`
+	Tag          string `json:"tag"`
+}
+
 // PublishRequest represents a request to publish a workspace.
 type PublishRequest struct {
 	RegistryID string `json:"registry_id"`

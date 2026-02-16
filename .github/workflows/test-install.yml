@@ -20,6 +20,9 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Run install script
         id: install
+        env:
+          # Avoid GitHub API rate limits when fetching latest release version
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           chmod +x install.sh
           set +e

@@ -79,6 +79,23 @@ else
     error "Neither curl nor wget found. Please install one of them."
 fi
 
+# Helper for GitHub API requests (uses GITHUB_TOKEN if available to avoid rate limits)
+github_api_get() {
+    if command -v curl >/dev/null 2>&1; then
+        if [ -n "$GITHUB_TOKEN" ]; then
+            curl -fsSL -H "Authorization: token ${GITHUB_TOKEN}" "$1"
+        else
+            curl -fsSL "$1"
+        fi
+    else
+        if [ -n "$GITHUB_TOKEN" ]; then
+            wget --header="Authorization: token ${GITHUB_TOKEN}" -qO- "$1"
+        else
+            wget -qO- "$1"
+        fi
+    fi
+}
+
 # Detect OS
 OS="$(uname -s)"
 case "$OS" in
@@ -98,7 +115,7 @@ esac
 # Determine version
 if [ -z "$VERSION" ]; then
     info "Fetching latest release version..."
-    VERSION="$($DOWNLOAD "https://api.github.com/repos/${REPO}/releases/latest" | \
+    VERSION="$(github_api_get "https://api.github.com/repos/${REPO}/releases/latest" | \
         sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')"
     if [ -z "$VERSION" ]; then
         error "Could not determine latest version. Please specify with --version."

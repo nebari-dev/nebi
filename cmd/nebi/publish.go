@@ -16,19 +16,21 @@ var (
 )
 
 var publishCmd = &cobra.Command{
-	Use:   "publish <workspace>",
+	Use:   "publish [workspace]",
 	Short: "Publish a workspace to an OCI registry",
 	Long: `Publish a workspace to an OCI registry.
 
+If no workspace name is given, the current directory's tracked workspace is used.
 The repository name defaults to the workspace name.
 The tag auto-increments (v1, v2, v3, ...) based on existing publications.
 If --registry is not specified, the server's default registry is used.
 
 Examples:
+  nebi publish                                       # publish current directory workspace
   nebi publish myworkspace
   nebi publish myworkspace --tag v1.0.0
   nebi publish myworkspace --repo custom-name --registry ghcr`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.MaximumNArgs(1),
 	RunE: runWorkspacePublish,
 }
 
@@ -39,7 +41,21 @@ func init() {
 }
 
 func runWorkspacePublish(cmd *cobra.Command, args []string) error {
-	wsName := args[0]
+	var wsName string
+	if len(args) == 1 {
+		wsName = args[0]
+	} else {
+		// Resolve from current directory origin
+		origin, err := lookupOrigin()
+		if err != nil {
+			return err
+		}
+		if origin == nil {
+			return fmt.Errorf("no workspace specified and no origin set in current directory;\nusage: nebi publish [workspace]")
+		}
+		wsName = origin.OriginName
+		fmt.Fprintf(os.Stderr, "Using workspace %q from origin\n", wsName)
+	}
 
 	client, err := getAuthenticatedClient()
 	if err != nil {

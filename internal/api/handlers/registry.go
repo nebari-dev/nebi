@@ -25,34 +25,34 @@ func NewRegistryHandler(db *gorm.DB, encKey []byte) *RegistryHandler {
 // Request/Response types
 
 type CreateRegistryRequest struct {
-	Name              string `json:"name" binding:"required"`
-	URL               string `json:"url" binding:"required"`
-	Username          string `json:"username"`
-	Password          string `json:"password"`
-	APIToken          string `json:"api_token"`
-	IsDefault         bool   `json:"is_default"`
+	Name      string `json:"name" binding:"required"`
+	URL       string `json:"url" binding:"required"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	APIToken  string `json:"api_token"`
+	IsDefault bool   `json:"is_default"`
 	Namespace string `json:"namespace"`
 }
 
 type UpdateRegistryRequest struct {
-	Name              *string `json:"name"`
-	URL               *string `json:"url"`
-	Username          *string `json:"username"`
-	Password          *string `json:"password"`
-	APIToken          *string `json:"api_token"`
-	IsDefault         *bool   `json:"is_default"`
+	Name      *string `json:"name"`
+	URL       *string `json:"url"`
+	Username  *string `json:"username"`
+	Password  *string `json:"password"`
+	APIToken  *string `json:"api_token"`
+	IsDefault *bool   `json:"is_default"`
 	Namespace *string `json:"namespace"`
 }
 
 type RegistryResponse struct {
-	ID                uuid.UUID `json:"id"`
-	Name              string    `json:"name"`
-	URL               string    `json:"url"`
-	Username          string    `json:"username"`
-	HasAPIToken       bool      `json:"has_api_token"`
-	IsDefault         bool      `json:"is_default"`
-	Namespace string    `json:"namespace"`
-	CreatedAt         string    `json:"created_at"`
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	URL         string    `json:"url"`
+	Username    string    `json:"username"`
+	HasAPIToken bool      `json:"has_api_token"`
+	IsDefault   bool      `json:"is_default"`
+	Namespace   string    `json:"namespace"`
+	CreatedAt   string    `json:"created_at"`
 }
 
 // ListRegistries godoc
@@ -80,14 +80,14 @@ func (h *RegistryHandler) ListRegistries(c *gin.Context) {
 			slog.Error("Failed to decrypt API token", "registry_id", reg.ID, "error", err)
 		}
 		response[i] = RegistryResponse{
-			ID:                reg.ID,
-			Name:              reg.Name,
-			URL:               reg.URL,
-			Username:          reg.Username,
-			HasAPIToken:       apiToken != "",
-			IsDefault:         reg.IsDefault,
-			Namespace: reg.Namespace,
-			CreatedAt:         reg.CreatedAt.Format("2006-01-02 15:04:05"),
+			ID:          reg.ID,
+			Name:        reg.Name,
+			URL:         reg.URL,
+			Username:    reg.Username,
+			HasAPIToken: apiToken != "",
+			IsDefault:   reg.IsDefault,
+			Namespace:   reg.Namespace,
+			CreatedAt:   reg.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
 	}
 
@@ -138,14 +138,14 @@ func (h *RegistryHandler) CreateRegistry(c *gin.Context) {
 	}
 
 	registry := models.OCIRegistry{
-		Name:              req.Name,
-		URL:               req.URL,
-		Username:          req.Username,
-		Password:          encPassword,
-		APIToken:          encAPIToken,
-		IsDefault:         req.IsDefault,
+		Name:      req.Name,
+		URL:       req.URL,
+		Username:  req.Username,
+		Password:  encPassword,
+		APIToken:  encAPIToken,
+		IsDefault: req.IsDefault,
 		Namespace: req.Namespace,
-		CreatedBy:         userID,
+		CreatedBy: userID,
 	}
 
 	if err := h.db.Create(&registry).Error; err != nil {
@@ -154,14 +154,14 @@ func (h *RegistryHandler) CreateRegistry(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, RegistryResponse{
-		ID:                registry.ID,
-		Name:              registry.Name,
-		URL:               registry.URL,
-		Username:          registry.Username,
-		HasAPIToken:       req.APIToken != "",
-		IsDefault:         registry.IsDefault,
-		Namespace: registry.Namespace,
-		CreatedAt:         registry.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:          registry.ID,
+		Name:        registry.Name,
+		URL:         registry.URL,
+		Username:    registry.Username,
+		HasAPIToken: req.APIToken != "",
+		IsDefault:   registry.IsDefault,
+		Namespace:   registry.Namespace,
+		CreatedAt:   registry.CreatedAt.Format("2006-01-02 15:04:05"),
 	})
 }
 
@@ -191,14 +191,14 @@ func (h *RegistryHandler) GetRegistry(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, RegistryResponse{
-		ID:                registry.ID,
-		Name:              registry.Name,
-		URL:               registry.URL,
-		Username:          registry.Username,
-		HasAPIToken:       apiToken != "",
-		IsDefault:         registry.IsDefault,
-		Namespace: registry.Namespace,
-		CreatedAt:         registry.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:          registry.ID,
+		Name:        registry.Name,
+		URL:         registry.URL,
+		Username:    registry.Username,
+		HasAPIToken: apiToken != "",
+		IsDefault:   registry.IsDefault,
+		Namespace:   registry.Namespace,
+		CreatedAt:   registry.CreatedAt.Format("2006-01-02 15:04:05"),
 	})
 }
 
@@ -278,14 +278,14 @@ func (h *RegistryHandler) UpdateRegistry(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, RegistryResponse{
-		ID:                registry.ID,
-		Name:              registry.Name,
-		URL:               registry.URL,
-		Username:          registry.Username,
-		HasAPIToken:       updatedAPIToken != "",
-		IsDefault:         registry.IsDefault,
-		Namespace: registry.Namespace,
-		CreatedAt:         registry.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:          registry.ID,
+		Name:        registry.Name,
+		URL:         registry.URL,
+		Username:    registry.Username,
+		HasAPIToken: updatedAPIToken != "",
+		IsDefault:   registry.IsDefault,
+		Namespace:   registry.Namespace,
+		CreatedAt:   registry.CreatedAt.Format("2006-01-02 15:04:05"),
 	})
 }
 
@@ -336,14 +336,14 @@ func (h *RegistryHandler) ListPublicRegistries(c *gin.Context) {
 	response := make([]RegistryResponse, len(registries))
 	for i, reg := range registries {
 		response[i] = RegistryResponse{
-			ID:                reg.ID,
-			Name:              reg.Name,
-			URL:               reg.URL,
-			Username:          "",    // Don't expose username to regular users
-			HasAPIToken:       false, // Don't expose token info to regular users
-			IsDefault:         reg.IsDefault,
-			Namespace: reg.Namespace,
-			CreatedAt:         reg.CreatedAt.Format("2006-01-02 15:04:05"),
+			ID:          reg.ID,
+			Name:        reg.Name,
+			URL:         reg.URL,
+			Username:    "",    // Don't expose username to regular users
+			HasAPIToken: false, // Don't expose token info to regular users
+			IsDefault:   reg.IsDefault,
+			Namespace:   reg.Namespace,
+			CreatedAt:   reg.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
 	}
 

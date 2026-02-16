@@ -65,11 +65,10 @@ func (h *RegistryBrowseHandler) ListRepositories(c *gin.Context) {
 
 		// Try Quay.io API fallback if the host is quay.io
 		if strings.Contains(host, "quay.io") {
-			// Derive namespace from URL path or default_repository
+			// Derive namespace from URL path or registry namespace
 			ns := namespace
-			if ns == "" && registry.DefaultRepository != "" {
-				parts := strings.SplitN(registry.DefaultRepository, "/", 2)
-				ns = parts[0]
+			if ns == "" && registry.Namespace != "" {
+				ns = registry.Namespace
 			}
 			if ns != "" {
 				apiToken, _ := nebicrypto.DecryptField(registry.APIToken, h.encKey)

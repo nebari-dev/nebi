@@ -108,6 +108,7 @@ type CreateRegistryRequest struct {
 	Username  *string `json:"username,omitempty"`
 	Password  *string `json:"password,omitempty"`
 	IsDefault *bool   `json:"is_default,omitempty"`
+	Namespace *string `json:"namespace,omitempty"`
 }
 
 // UpdateRegistryRequest represents a request to update a registry.
@@ -117,6 +118,7 @@ type UpdateRegistryRequest struct {
 	Username  *string `json:"username,omitempty"`
 	Password  *string `json:"password,omitempty"`
 	IsDefault *bool   `json:"is_default,omitempty"`
+	Namespace *string `json:"namespace,omitempty"`
 }
 
 // PushRequest represents a request to push a version to the server.

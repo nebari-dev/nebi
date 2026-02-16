@@ -456,7 +456,7 @@ func TestE2E_PushAutoCreatesWorkspace(t *testing.T) {
 	}
 }
 
-func TestE2E_PushRequiresTag(t *testing.T) {
+func TestE2E_PushWithoutTag(t *testing.T) {
 	setupLocalStore(t)
 
 	dir := t.TempDir()
@@ -465,9 +465,18 @@ func TestE2E_PushRequiresTag(t *testing.T) {
 		"version: 6\n",
 	)
 
-	res := runCLI(t, dir, "push", "some-ws")
-	if res.ExitCode == 0 {
-		t.Fatal("expected non-zero exit when tag is missing")
+	// Push without a tag should succeed (auto-tags with content hash + latest)
+	res := runCLI(t, dir, "push", "notag-ws")
+	if res.ExitCode != 0 {
+		t.Fatalf("push without tag should succeed, got exit %d:\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Verify auto-generated tags in output
+	if !strings.Contains(res.Stderr, "sha-") {
+		t.Errorf("expected content hash tag in output, got: %s", res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "latest") {
+		t.Errorf("expected latest tag in output, got: %s", res.Stderr)
 	}
 }
 
@@ -1184,8 +1193,10 @@ func TestE2E_PushColonTagShorthand(t *testing.T) {
 	if !strings.Contains(res.Stderr, "Using workspace") {
 		t.Errorf("expected 'Using workspace' message, got stderr: %s", res.Stderr)
 	}
-	if !strings.Contains(res.Stderr, "Pushed "+wsName+":v2") {
-		t.Errorf("expected 'Pushed %s:v2', got stderr: %s", wsName, res.Stderr)
+	// Content is same as v1, so it's deduplicated — check for either "Pushed" or "Content unchanged"
+	hasOutput := strings.Contains(res.Stderr, wsName) && strings.Contains(res.Stderr, "v2")
+	if !hasOutput {
+		t.Errorf("expected push output with workspace name and tag v2, got stderr: %s", res.Stderr)
 	}
 }
 

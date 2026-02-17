@@ -11,6 +11,12 @@
   }
 }
 
+.heroLogo {
+  max-width: 150px;
+  width: 100%;
+  margin-bottom: 1.5rem;
+}
+
 .heroTitle,
 [data-theme="dark"] .heroTitle {
   font-size: 3rem;

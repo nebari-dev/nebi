@@ -373,12 +373,12 @@ func runWorkspaceRemoveLocal(arg string) error {
 			return fmt.Errorf("no tracked workspace at path %q", absPath)
 		}
 	} else {
-		ws, err = s.FindGlobalWorkspaceByName(arg)
+		ws, err = s.FindWorkspaceByName(arg)
 		if err != nil {
 			return err
 		}
 		if ws == nil {
-			return fmt.Errorf("global workspace %q not found; use 'nebi workspace list' to see available workspaces\nTo remove a local workspace, use a path (e.g. ./myproject)", arg)
+			return fmt.Errorf("workspace %q not found; use 'nebi workspace list' to see available workspaces", arg)
 		}
 	}
 

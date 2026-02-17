@@ -70,12 +70,12 @@ Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables to create the ad
 
 **Linux / macOS:**
 ```sh
-curl -fsSL https://raw.githubusercontent.com/nebari-dev/nebi/main/install.sh | sh
+curl -fsSL https://nebi.nebari.dev/install.sh | sh
 ```
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/nebari-dev/nebi/main/install.ps1 | iex
+irm https://nebi.nebari.dev/install.ps1 | iex
 ```
 
 See `install.sh --help` or the script source for advanced options (`--version`, `--install-dir`, `--desktop`).

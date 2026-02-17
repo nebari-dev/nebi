@@ -1,6 +1,6 @@
 #!/bin/sh
 # Nebi installer script for Linux and macOS
-# Usage: curl -fsSL https://raw.githubusercontent.com/nebari-dev/nebi/main/install.sh | sh
+# Usage: curl -fsSL https://nebi.nebari.dev/install.sh | sh
 #
 # Flags:
 #   --version <ver>       Install specific version (e.g. v0.5.0). Default: latest

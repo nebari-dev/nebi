@@ -1,5 +1,5 @@
 # Nebi installer script for Windows
-# Usage: irm https://raw.githubusercontent.com/nebari-dev/nebi/main/install.ps1 | iex
+# Usage: irm https://nebi.nebari.dev/install.ps1 | iex
 #
 # Parameters:
 #   -Version <ver>        Install specific version (e.g. v0.5.0). Default: latest

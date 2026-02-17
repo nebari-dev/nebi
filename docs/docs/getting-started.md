@@ -21,7 +21,7 @@ See the [Pixi installation docs](https://pixi.sh) for more options.
 ### Using the install script (macOS/Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nebari-dev/nebi/main/install.sh | sh
+curl -fsSL https://nebi.nebari.dev/install.sh | sh
 ```
 
 This installs the latest release of `nebi` to `~/.local/bin`. Make sure it's on your `PATH`:
@@ -33,19 +33,19 @@ export PATH="$HOME/.local/bin:$PATH"
 #### Install a specific version
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nebari-dev/nebi/main/install.sh | sh -s -- --version v0.6.0-rc1
+curl -fsSL https://nebi.nebari.dev/install.sh | sh -s -- --version v0.6.0-rc3
 ```
 
 #### Install with the desktop app
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nebari-dev/nebi/main/install.sh | sh -s -- --version v0.6.0-rc1 --desktop
+curl -fsSL https://nebi.nebari.dev/install.sh | sh -s -- --version v0.6.0-rc3 --desktop
 ```
 
 #### Install to a custom directory
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nebari-dev/nebi/main/install.sh | sh -s -- --install-dir /usr/local/bin
+curl -fsSL https://nebi.nebari.dev/install.sh | sh -s -- --install-dir /usr/local/bin
 ```
 
 ### From source

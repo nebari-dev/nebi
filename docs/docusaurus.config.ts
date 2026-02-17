@@ -8,7 +8,7 @@ const darkCodeTheme = prismThemes.nightOwl;
 const config: Config = {
   title: 'Nebi',
   tagline: 'Multi-user environment management for Pixi',
-  favicon: 'img/favicon.ico',
+  favicon: 'img/nebi-icon.png',
 
   future: {
     v4: true,
@@ -59,6 +59,10 @@ const config: Config = {
     },
     navbar: {
       title: 'Nebi',
+      logo: {
+        alt: 'Nebi',
+        src: 'img/nebi-icon.png',
+      },
       style: 'dark',
       hideOnScroll: false,
       items: [

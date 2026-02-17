@@ -12,6 +12,11 @@ function HomepageHeader() {
   return (
     <header className={styles.heroBanner}>
       <div className="container">
+        <img
+          src="/img/nebi-icon.png"
+          alt="Nebi"
+          className={styles.heroLogo}
+        />
         <Heading as="h1" className={styles.heroTitle}>
           {siteConfig.title}
         </Heading>

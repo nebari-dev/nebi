@@ -66,6 +66,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := validateWorkspaceName(name); err != nil {
+		return fmt.Errorf("pixi.toml workspace name is invalid: %w", err)
+	}
 
 	ws := &store.LocalWorkspace{
 		Name: name,
@@ -113,6 +116,9 @@ func ensureInit(dir string) error {
 	name, err := pixi.ExtractWorkspaceName(string(content))
 	if err != nil {
 		return err
+	}
+	if err := validateWorkspaceName(name); err != nil {
+		return fmt.Errorf("pixi.toml workspace name is invalid: %w", err)
 	}
 
 	ws := &store.LocalWorkspace{

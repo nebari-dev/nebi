@@ -254,6 +254,64 @@ func TestRemove(t *testing.T) {
 	}
 }
 
+func TestExtractWorkspaceName(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+		wantErr bool
+	}{
+		{
+			name:    "workspace section",
+			content: "[workspace]\nname = \"my-env\"\nchannels = [\"conda-forge\"]\n",
+			want:    "my-env",
+		},
+		{
+			name:    "project fallback",
+			content: "[project]\nname = \"old-env\"\nchannels = [\"conda-forge\"]\n",
+			want:    "old-env",
+		},
+		{
+			name:    "workspace preferred over project",
+			content: "[workspace]\nname = \"new\"\n[project]\nname = \"old\"\n",
+			want:    "new",
+		},
+		{
+			name:    "no name field",
+			content: "[workspace]\nchannels = [\"conda-forge\"]\n",
+			wantErr: true,
+		},
+		{
+			name:    "empty content",
+			content: "",
+			wantErr: true,
+		},
+		{
+			name:    "empty name field",
+			content: "[workspace]\nname = \"\"\n",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ExtractWorkspaceName(tt.content)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got name %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestErrorHandling tests error cases
 func TestErrorHandling(t *testing.T) {
 	_, err := exec.LookPath("pixi")

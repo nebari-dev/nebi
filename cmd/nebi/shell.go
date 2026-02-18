@@ -11,6 +11,7 @@ import (
 
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var shellCmd = &cobra.Command{
@@ -141,7 +142,16 @@ func resolveWorkspaceArgs(args []string) (dir string, pixiArgs []string, useMani
 }
 
 // pickWorkspace prompts the user to select from multiple workspaces with the same name.
+// In non-interactive mode (piped stdin), returns an error asking the user to use a path.
 func pickWorkspace(workspaces []store.LocalWorkspace, name string) (*store.LocalWorkspace, error) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		paths := make([]string, len(workspaces))
+		for i, ws := range workspaces {
+			paths[i] = ws.Path
+		}
+		return nil, fmt.Errorf("multiple workspaces named %q; use a path to disambiguate:\n  %s", name, strings.Join(paths, "\n  "))
+	}
+
 	fmt.Fprintf(os.Stderr, "Multiple workspaces named %q:\n", name)
 	for i, ws := range workspaces {
 		fmt.Fprintf(os.Stderr, "  %d. %s\n", i+1, ws.Path)

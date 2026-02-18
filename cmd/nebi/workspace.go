@@ -273,12 +273,20 @@ func runWorkspaceRemoveLocal(arg string) error {
 			return fmt.Errorf("no tracked workspace at path %q", absPath)
 		}
 	} else {
-		ws, err = s.FindWorkspaceByName(arg)
+		workspaces, err := s.FindWorkspacesByName(arg)
 		if err != nil {
 			return err
 		}
-		if ws == nil {
+		switch len(workspaces) {
+		case 0:
 			return fmt.Errorf("workspace %q not found; use 'nebi workspace list' to see available workspaces", arg)
+		case 1:
+			ws = &workspaces[0]
+		default:
+			ws, err = pickWorkspace(workspaces, arg)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

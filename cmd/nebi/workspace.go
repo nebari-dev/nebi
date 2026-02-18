@@ -280,7 +280,7 @@ func runWorkspaceRemoveLocal(arg string) error {
 			return fmt.Errorf("no tracked workspace at path %q", absPath)
 		}
 	} else {
-		workspaces, err := s.FindWorkspacesByName(arg)
+		workspaces, err := findWorkspacesByNameWithSync(s, arg)
 		if err != nil {
 			return err
 		}

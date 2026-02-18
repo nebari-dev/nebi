@@ -123,6 +123,32 @@ func syncWorkspaceName(s *store.Store, ws *store.LocalWorkspace) error {
 	return nil
 }
 
+// findWorkspacesByNameWithSync looks up workspaces by name. If no matches are found,
+// it syncs all workspace names from pixi.toml (in case a rename occurred) and retries.
+func findWorkspacesByNameWithSync(s *store.Store, name string) ([]store.LocalWorkspace, error) {
+	workspaces, err := s.FindWorkspacesByName(name)
+	if err != nil {
+		return nil, err
+	}
+	if len(workspaces) > 0 {
+		return workspaces, nil
+	}
+
+	// No match — sync all workspace names and retry
+	all, err := s.ListWorkspaces()
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		if syncErr := syncWorkspaceName(s, &all[i]); syncErr != nil {
+			// Non-fatal: continue syncing other workspaces
+			fmt.Fprintf(os.Stderr, "Warning: %s: %v\n", all[i].Path, syncErr)
+		}
+	}
+
+	return s.FindWorkspacesByName(name)
+}
+
 // saveOrigin records a push/pull origin for the current working directory.
 func saveOrigin(name, tag, action, tomlContent, lockContent string) error {
 	cwd, err := os.Getwd()

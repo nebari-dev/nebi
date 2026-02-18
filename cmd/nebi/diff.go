@@ -149,7 +149,7 @@ func resolveSource(ref, defaultLabel string) (*diffSource, error) {
 		s, err := store.New()
 		if err == nil {
 			defer s.Close()
-			workspaces, err := s.FindWorkspacesByName(ref)
+			workspaces, err := findWorkspacesByNameWithSync(s, ref)
 			if err == nil && len(workspaces) > 0 {
 				var ws *store.LocalWorkspace
 				if len(workspaces) == 1 {

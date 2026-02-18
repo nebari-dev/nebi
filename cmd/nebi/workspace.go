@@ -116,6 +116,13 @@ func runWorkspaceListLocal() error {
 		return nil
 	}
 
+	// Sync workspace names from pixi.toml before displaying
+	for i := range wss {
+		if err := syncWorkspaceName(s, &wss[i]); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: %s: %v\n", wss[i].Path, err)
+		}
+	}
+
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "NAME\tPATH")
 	var missing int
@@ -313,6 +320,13 @@ func runWorkspacePrune(cmd *cobra.Command, args []string) error {
 	wss, err := s.ListWorkspaces()
 	if err != nil {
 		return err
+	}
+
+	// Sync workspace names from pixi.toml before pruning
+	for i := range wss {
+		if err := syncWorkspaceName(s, &wss[i]); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: %s: %v\n", wss[i].Path, err)
+		}
 	}
 
 	var pruned []string

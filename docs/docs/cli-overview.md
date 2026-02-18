@@ -12,8 +12,7 @@ Nebi's CLI is organized into command groups: **Workspace**, **Sync**, **Connecti
 |---------|-------------|
 | `nebi init` | Track current directory as a workspace (runs `pixi init` if needed) |
 | `nebi status` | Show workspace sync status |
-| `nebi workspace list` | List local and global workspaces |
-| `nebi workspace promote <name>` | Copy current workspace to a global workspace |
+| `nebi workspace list` | List tracked workspaces |
 | `nebi workspace remove <name>` | Remove a workspace from tracking |
 | `nebi shell [name] [pixi-args...]` | Activate a pixi shell |
 | `nebi run [name] [pixi-args...]` | Run a command or task via pixi |

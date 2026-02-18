@@ -52,7 +52,7 @@ pause() {
 # =============================================================================
 cleanup_existing() {
     local found=0
-    if nebi workspace list 2>/dev/null | grep -q "my-datascience\|promoted-ws"; then
+    if nebi workspace list 2>/dev/null | grep -q "my-datascience"; then
         found=1
     fi
     if nebi server list 2>/dev/null | grep -q "demo"; then
@@ -65,7 +65,6 @@ cleanup_existing() {
         read -r answer
         if [[ "$answer" =~ ^[Yy]$ ]]; then
             nebi workspace remove my-datascience 2>/dev/null || true
-            nebi workspace remove promoted-ws 2>/dev/null || true
             nebi server remove demo 2>/dev/null || true
             echo -e "${GREEN}Cleaned up previous demo artifacts.${NC}"
         else
@@ -245,43 +244,22 @@ run nebi diff "$PULL_DIR" "$DEMO_WORKSPACE:$TAG_V2" -s demo || true
 pause
 
 # =============================================================================
-# 9. Global workspaces
+# 9. Shell and Run
 # =============================================================================
-section "9. Global workspaces"
-
-echo "Pull a workspace globally (stored in ~/.local/share/nebi/):"
-run nebi pull "$DEMO_WORKSPACE:$TAG_V2" --global my-datascience -s demo
-
-echo "Promote current tracked workspace to a global workspace:"
-cd "$DEMO_DIR"
-run nebi workspace promote promoted-ws
-
-echo "List all workspaces (local + global):"
-run nebi workspace list
-
-echo ""
-echo "Diff between two global workspaces:"
-run nebi diff my-datascience promoted-ws || true
-
-pause
-
-# =============================================================================
-# 10. Shell and Run
-# =============================================================================
-section "10. Shell and Run"
+section "9. Shell and Run"
 
 echo "nebi shell and nebi run wrap pixi shell/run with workspace lookup"
 echo "and auto-initialization. All args pass through to pixi."
 echo ""
 echo "Shell examples:"
 echo -e "  ${YELLOW}nebi shell${NC}                          # current directory (auto-initializes)"
-echo -e "  ${YELLOW}nebi shell my-datascience${NC}            # global workspace by name"
+echo -e "  ${YELLOW}nebi shell my-workspace${NC}              # tracked workspace by name"
 echo -e "  ${YELLOW}nebi shell ./some-project${NC}            # local directory by path"
-echo -e "  ${YELLOW}nebi shell my-datascience -e dev${NC}     # args pass through to pixi shell"
+echo -e "  ${YELLOW}nebi shell my-workspace -e dev${NC}       # args pass through to pixi shell"
 echo ""
 echo "Run examples:"
 echo -e "  ${YELLOW}nebi run my-task${NC}                     # run a pixi task (auto-initializes)"
-echo -e "  ${YELLOW}nebi run my-datascience my-task${NC}      # run a task in a global workspace"
+echo -e "  ${YELLOW}nebi run my-workspace my-task${NC}        # run a task in a named workspace"
 echo -e "  ${YELLOW}nebi run ./some-project my-task${NC}      # run a task in a local directory"
 echo -e "  ${YELLOW}nebi run -e dev my-task${NC}              # args pass through to pixi run"
 echo ""
@@ -290,9 +268,9 @@ echo "(Skipping actual shell/run activation in demo)"
 pause
 
 # =============================================================================
-# 11. Publish to OCI registry
+# 10. Publish to OCI registry
 # =============================================================================
-section "11. Publish to OCI registry"
+section "10. Publish to OCI registry"
 
 echo "To publish a server-hosted workspace to an OCI registry:"
 echo ""
@@ -310,13 +288,9 @@ echo "(Skipping actual publish — requires an OCI registry configured on the se
 pause
 
 # =============================================================================
-# 12. Cleanup
+# 11. Cleanup
 # =============================================================================
-section "12. Cleanup"
-
-echo "Removing global workspaces..."
-run nebi workspace remove my-datascience || true
-run nebi workspace remove promoted-ws || true
+section "11. Cleanup"
 
 echo "Removing server..."
 run nebi server remove demo || true

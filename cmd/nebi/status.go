@@ -50,12 +50,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	wsType := "local"
-	if s.IsGlobalWorkspace(ws) {
-		wsType = "global"
-	}
 	fmt.Fprintf(os.Stdout, "Workspace: %s\n", ws.Name)
-	fmt.Fprintf(os.Stdout, "Type:      %s\n", wsType)
 	fmt.Fprintf(os.Stdout, "Path:      %s\n", ws.Path)
 
 	serverURL, _ := s.LoadServerURL()

@@ -17,17 +17,17 @@ var shellCmd = &cobra.Command{
 	Long: `Activate an interactive shell in a pixi workspace.
 
 With no arguments, activates the current directory (auto-initializes if needed).
-A bare name that matches a global workspace uses that workspace.
+A bare name that matches a tracked workspace uses that workspace.
 A path (with a slash) uses that local directory.
 All arguments are passed through to pixi shell.
 
 The --manifest-path flag is managed by nebi; use pixi shell directly if you need custom manifest paths.
 
-Global workspaces activate via --manifest-path so you stay in your current directory.
+Named workspaces activate via --manifest-path so you stay in your current directory.
 
 Examples:
   nebi shell                       # shell in current directory
-  nebi shell data-science          # activate a global workspace (stays in cwd)
+  nebi shell data-science          # activate a tracked workspace (stays in cwd)
   nebi shell ./my-project          # shell into a local directory
   nebi shell data-science -e dev   # activate with a specific pixi environment`,
 	DisableFlagParsing: true,
@@ -39,12 +39,12 @@ func runShell(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	dir, pixiArgs, isGlobal, err := resolveWorkspaceArgs(args)
+	dir, pixiArgs, namedLookup, err := resolveWorkspaceArgs(args)
 	if err != nil {
 		return err
 	}
 
-	if !isGlobal {
+	if !namedLookup {
 		if err := ensureInit(dir); err != nil {
 			return err
 		}
@@ -60,12 +60,12 @@ func runShell(cmd *cobra.Command, args []string) error {
 	}
 
 	fullArgs := []string{"shell"}
-	if isGlobal {
+	if namedLookup {
 		fullArgs = append(fullArgs, "--manifest-path", filepath.Join(dir, "pixi.toml"))
 	}
 	fullArgs = append(fullArgs, pixiArgs...)
 	c := exec.Command(pixiPath, fullArgs...)
-	if !isGlobal {
+	if !namedLookup {
 		c.Dir = dir
 	}
 	c.Stdin = os.Stdin
@@ -82,7 +82,7 @@ func runShell(cmd *cobra.Command, args []string) error {
 }
 
 // resolveWorkspaceArgs parses args for shell/run commands.
-func resolveWorkspaceArgs(args []string) (dir string, pixiArgs []string, isGlobal bool, err error) {
+func resolveWorkspaceArgs(args []string) (dir string, pixiArgs []string, namedLookup bool, err error) {
 	if len(args) == 0 {
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -103,14 +103,14 @@ func resolveWorkspaceArgs(args []string) (dir string, pixiArgs []string, isGloba
 		return absDir, rest, false, nil
 	}
 
-	// Check if first arg is a global workspace name
+	// Check if first arg is a tracked workspace name
 	s, err := store.New()
 	if err != nil {
 		return "", nil, false, err
 	}
 	defer s.Close()
 
-	ws, err := s.FindGlobalWorkspaceByName(first)
+	ws, err := s.FindWorkspaceByName(first)
 	if err != nil {
 		return "", nil, false, err
 	}

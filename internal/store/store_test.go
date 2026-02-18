@@ -1,7 +1,6 @@
 package store
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/google/uuid"
@@ -87,27 +86,35 @@ func TestWorkspaceRoundTrip(t *testing.T) {
 	}
 }
 
-func TestGlobalWorkspace(t *testing.T) {
+func TestFindWorkspaceByName(t *testing.T) {
 	s := testStore(t)
 
-	wsDir := s.GlobalWorkspaceDir("test-uuid-123")
 	ws := &LocalWorkspace{
 		Name: "data-science",
-		Path: wsDir,
+		Path: "/home/user/data-science",
 	}
 	if err := s.CreateWorkspace(ws); err != nil {
 		t.Fatal(err)
 	}
 
-	found, err := s.FindGlobalWorkspaceByName("data-science")
+	found, err := s.FindWorkspaceByName("data-science")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if found == nil {
-		t.Fatal("expected to find global workspace")
+		t.Fatal("expected to find workspace by name")
 	}
-	if !s.IsGlobalWorkspace(found) {
-		t.Error("expected workspace to be identified as global")
+	if found.Name != "data-science" {
+		t.Errorf("expected name 'data-science', got %q", found.Name)
+	}
+
+	// Not found
+	notFound, err := s.FindWorkspaceByName("nonexistent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if notFound != nil {
+		t.Fatal("expected nil for nonexistent name")
 	}
 }
 
@@ -179,16 +186,6 @@ func TestServerURL(t *testing.T) {
 	url, _ = s.LoadServerURL()
 	if url != "https://nebi.example.com" {
 		t.Fatalf("expected URL, got %q", url)
-	}
-}
-
-func TestGlobalWorkspaceDir(t *testing.T) {
-	s, _ := Open(t.TempDir())
-	defer s.Close()
-	dir := s.GlobalWorkspaceDir("abc-123")
-	expected := filepath.Join(s.DataDir(), "workspaces", "abc-123")
-	if dir != expected {
-		t.Errorf("got %q, want %q", dir, expected)
 	}
 }
 

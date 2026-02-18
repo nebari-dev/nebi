@@ -204,14 +204,11 @@ nebi pull                                # re-pull from last origin
 nebi workspace list --remote
 nebi workspace tags myworkspace
 
-# Global workspaces (stored centrally by nebi)
-nebi pull myworkspace:v1.0 --global data-science
-nebi workspace promote data-science     # copy current workspace to global
-nebi workspace list                     # shows local and global workspaces
+# Run pixi tasks and shells by workspace name
 nebi shell data-science                 # open pixi shell in a workspace by name
 nebi shell data-science -e dev          # args pass through to pixi shell
 nebi run my-task                        # run a pixi task (auto-initializes workspace)
-nebi run data-science my-task           # run a task in a global workspace
+nebi run data-science my-task           # run a task in a named workspace
 nebi workspace remove data-science      # remove a workspace from tracking
 nebi workspace remove myenv --remote   # remove a workspace from a server
 nebi workspace prune                   # clean up workspaces with missing paths
@@ -248,7 +245,7 @@ nebi serve --port 8080 --mode server
 ### Configuration
 
 Nebi stores data in platform-standard directories:
-- **Data** (`~/.local/share/nebi/`): index, credentials, global workspace environments
+- **Data** (`~/.local/share/nebi/`): index and credentials
 - **Config** (`~/.config/nebi/config.yaml`): default server and user preferences
 
 Run `nebi login <server-url>` to configure the server. All server-dependent commands (`push`, `pull`, `diff`, `workspace tags`, etc.) use the configured server.

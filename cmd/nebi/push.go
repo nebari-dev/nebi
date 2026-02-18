@@ -61,6 +61,10 @@ func runPush(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Using workspace %q from origin\n", wsName)
 	}
 
+	if err := validateWorkspaceName(wsName); err != nil {
+		return fmt.Errorf("invalid workspace name: %w", err)
+	}
+
 	// Read local spec files
 	pixiToml, err := os.ReadFile("pixi.toml")
 	if err != nil {

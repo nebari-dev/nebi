@@ -30,7 +30,7 @@
 
 > **⚠️ Alpha Software**: Nebi is currently in alpha. APIs, UI, CLI and available features may change without notice. Not recommended for production use.
 
-![Nebi Demo](https://raw.githubusercontent.com/nebari-dev/nebi-video-demo-automation/main/assets/demo.gif)
+![Nebi Demo](https://raw.githubusercontent.com/nebari-dev/nebi-video-demo-automation/25e0139cf70cc0e9f8a2cf938fddd85ecd83adee/assets/demo.gif)
 
 ## What is Nebi?
 

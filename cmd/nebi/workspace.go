@@ -84,10 +84,10 @@ Examples:
 }
 
 func init() {
-	workspaceListCmd.Flags().BoolVar(&wsListRemote, "remote", false, "List workspaces on the server instead of locally")
+	workspaceListCmd.Flags().BoolVarP(&wsListRemote, "remote", "r", false, "List workspaces on the server instead of locally")
 	workspaceCmd.AddCommand(workspaceListCmd)
 	workspaceCmd.AddCommand(workspaceTagsCmd)
-	workspaceRemoveCmd.Flags().BoolVar(&wsRemoveRemote, "remote", false, "Remove workspace from the server instead of locally")
+	workspaceRemoveCmd.Flags().BoolVarP(&wsRemoveRemote, "remote", "r", false, "Remove workspace from the server instead of locally")
 	workspaceCmd.AddCommand(workspaceRemoveCmd)
 	workspaceCmd.AddCommand(workspacePruneCmd)
 }

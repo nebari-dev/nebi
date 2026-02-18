@@ -603,7 +603,7 @@ func TestE2E_WorkspaceRemove(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	wsName := filepath.Base(dir)
+	wsName := "remove-test" // matches [project] name in pixi.toml
 
 	// Remove workspace by name
 	res = runCLI(t, dir, "workspace", "remove", wsName)
@@ -708,7 +708,7 @@ func TestE2E_WorkspaceRemoveAlias(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	wsName := filepath.Base(dir)
+	wsName := "alias-test" // matches [project] name in pixi.toml
 
 	// Use 'rm' alias to remove by name
 	res = runCLI(t, dir, "workspace", "rm", wsName)
@@ -1015,7 +1015,7 @@ func TestE2E_DiffByWorkspaceName(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	wsName := filepath.Base(dir)
+	wsName := "diff-name-test" // matches [project] name in pixi.toml
 
 	// Create a second directory with different content
 	dir2 := t.TempDir()
@@ -1427,7 +1427,10 @@ func TestE2E_PullSavesOrigin(t *testing.T) {
 	// Pull to a new tracked directory
 	dstDir := t.TempDir()
 	// Init the destination first so it's a tracked workspace
-	writePixiFiles(t, dstDir, "placeholder", "placeholder")
+	writePixiFiles(t, dstDir,
+		"[project]\nname = \"origin-pull-dst\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+		"version: 6\n",
+	)
 	res = runCLI(t, dstDir, "init")
 	if res.ExitCode != 0 {
 		t.Fatalf("init dst failed: %s %s", res.Stdout, res.Stderr)

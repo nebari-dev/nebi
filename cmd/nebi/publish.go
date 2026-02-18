@@ -30,8 +30,9 @@ Examples:
   nebi publish myworkspace
   nebi publish myworkspace --tag v1.0.0
   nebi publish myworkspace --repo custom-name --registry ghcr`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: runWorkspacePublish,
+	Args:              cobra.MaximumNArgs(1),
+	RunE:              runWorkspacePublish,
+	ValidArgsFunction: completeServerWorkspaceNames,
 }
 
 func init() {

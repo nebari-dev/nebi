@@ -39,8 +39,9 @@ Examples:
   nebi diff myworkspace:v1 ./local-dir         # server vs local dir
 
 Use --lock to also compare pixi.lock files.`,
-	Args: cobra.RangeArgs(0, 2),
-	RunE: runDiff,
+	Args:              cobra.RangeArgs(0, 2),
+	RunE:              runDiff,
+	ValidArgsFunction: completeWorkspaceNamesOrPaths,
 }
 
 func init() {

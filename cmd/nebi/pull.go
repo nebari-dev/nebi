@@ -34,8 +34,9 @@ Examples:
   nebi pull myworkspace:v1.0
   nebi pull                                # re-pull from origin
   nebi pull myworkspace -o ./my-project`,
-	Args: cobra.RangeArgs(0, 1),
-	RunE: runPull,
+	Args:              cobra.RangeArgs(0, 1),
+	RunE:              runPull,
+	ValidArgsFunction: completeServerWorkspaceRef,
 }
 
 func init() {

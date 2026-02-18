@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -55,7 +56,17 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("workspace already tracked: %s", cwd)
 	}
 
-	name := filepath.Base(cwd)
+	// Read workspace name from pixi.toml
+	pixiTomlPath := filepath.Join(cwd, "pixi.toml")
+	content, err := os.ReadFile(pixiTomlPath)
+	if err != nil {
+		return fmt.Errorf("reading pixi.toml: %w", err)
+	}
+	name, err := pixi.ExtractWorkspaceName(string(content))
+	if err != nil {
+		return err
+	}
+
 	ws := &store.LocalWorkspace{
 		Name: name,
 		Path: cwd,
@@ -75,7 +86,8 @@ func ensureInit(dir string) error {
 		return fmt.Errorf("resolving path: %w", err)
 	}
 
-	if _, err := os.Stat(filepath.Join(absDir, "pixi.toml")); err != nil {
+	pixiTomlPath := filepath.Join(absDir, "pixi.toml")
+	if _, err := os.Stat(pixiTomlPath); err != nil {
 		return fmt.Errorf("no pixi.toml found in %s", absDir)
 	}
 
@@ -93,7 +105,16 @@ func ensureInit(dir string) error {
 		return nil
 	}
 
-	name := filepath.Base(absDir)
+	// Read workspace name from pixi.toml
+	content, err := os.ReadFile(pixiTomlPath)
+	if err != nil {
+		return fmt.Errorf("reading pixi.toml: %w", err)
+	}
+	name, err := pixi.ExtractWorkspaceName(string(content))
+	if err != nil {
+		return err
+	}
+
 	ws := &store.LocalWorkspace{
 		Name: name,
 		Path: absDir,

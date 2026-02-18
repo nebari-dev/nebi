@@ -17,7 +17,9 @@ mkdir my-data-project && cd my-data-project
 nebi init
 ```
 
-If no `pixi.toml` exists, Nebi automatically runs `pixi init` for you:
+If no `pixi.toml` exists, Nebi automatically runs `pixi init` for you.
+
+The workspace name comes from the `[workspace] name` field in `pixi.toml`:
 
 ```
 No pixi.toml found; running pixi init...
@@ -48,7 +50,6 @@ nebi status
 
 ```
 Workspace: my-data-project
-Type:      local
 Path:      /home/user/my-data-project
 
 No origin. Push or pull to set an origin.
@@ -63,10 +64,10 @@ nebi workspace list
 ```
 
 ```
-NAME             TYPE    PATH
-my-data-project  local   /home/user/my-data-project
-ml-pipeline      local   /home/user/ml-pipeline
-data-science     global  /home/user/.local/share/nebi/workspaces/data-science
+NAME             PATH
+my-data-project  /home/user/my-data-project
+ml-pipeline      /home/user/ml-pipeline
+data-science     /home/user/data-science
 ```
 
 ### Import from an OCI Registry
@@ -78,25 +79,19 @@ nebi import quay.io/nebari/data-science:v1.0 -o ./my-project
 ```
 
 ```
-Tracking workspace 'my-project' at /home/user/my-project
+Tracking workspace 'data-science' at /home/user/my-project
 Imported quay.io/nebari/data-science:v1.0 -> /home/user/my-project
 ```
 
-Or save it as a global workspace you can use from anywhere:
+### Use Workspaces by Name
+
+Tracked workspaces can be activated from any directory by name. If multiple workspaces share the same name, an interactive picker is shown:
 
 ```bash
-nebi import quay.io/nebari/data-science:v1.0 --global data-science
-```
-
-### Use Global Workspaces
-
-Global workspaces are stored centrally and can be activated from any directory:
-
-```bash
-# Activate a shell with the global workspace's environment
+# Activate a shell with the workspace's environment
 nebi shell data-science
 
-# Run a task from a global workspace (stays in current directory)
+# Run a task from a workspace (stays in current directory)
 nebi run data-science jupyter-lab
 ```
 
@@ -191,7 +186,7 @@ nebi pull my-data-project:prod -o ./local-copy
 ```
 
 ```
-Tracking workspace 'local-copy' at /home/user/local-copy
+Tracking workspace 'my-data-project' at /home/user/local-copy
 Pulled my-data-project:prod (version 2) -> /home/user/local-copy
 ```
 
@@ -211,7 +206,6 @@ nebi status
 
 ```
 Workspace: my-data-project
-Type:      local
 Path:      /home/user/my-data-project
 Server:    https://nebi.company.com
 

@@ -118,6 +118,47 @@ func TestFindWorkspaceByName(t *testing.T) {
 	}
 }
 
+func TestFindWorkspacesByName(t *testing.T) {
+	s := testStore(t)
+
+	// Create two workspaces with the same name but different paths
+	ws1 := &LocalWorkspace{Name: "data-science", Path: "/home/user/project-a"}
+	ws2 := &LocalWorkspace{Name: "data-science", Path: "/home/user/project-b"}
+	ws3 := &LocalWorkspace{Name: "other", Path: "/home/user/other"}
+	for _, ws := range []*LocalWorkspace{ws1, ws2, ws3} {
+		if err := s.CreateWorkspace(ws); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Should return both data-science workspaces
+	found, err := s.FindWorkspacesByName("data-science")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 2 {
+		t.Fatalf("expected 2 workspaces, got %d", len(found))
+	}
+
+	// Should return one for "other"
+	found, err = s.FindWorkspacesByName("other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 1 {
+		t.Fatalf("expected 1 workspace, got %d", len(found))
+	}
+
+	// Should return empty for nonexistent
+	found, err = s.FindWorkspacesByName("nonexistent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 0 {
+		t.Fatalf("expected 0 workspaces, got %d", len(found))
+	}
+}
+
 func TestOriginFields(t *testing.T) {
 	s := testStore(t)
 

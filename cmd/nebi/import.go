@@ -23,6 +23,9 @@ The OCI reference should be in the format: registry/repository:tag
 
 This works entirely locally — no server connection needed.
 
+The local workspace name is derived from the [workspace] name field
+in the imported pixi.toml.
+
 Examples:
   nebi import quay.io/nebari/my-env:v1
   nebi import ghcr.io/myorg/data-science:latest -o ./my-project`,
@@ -79,6 +82,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 
 	absOutput, _ := filepath.Abs(outputDir)
 
+	// Auto-track the workspace (name will be read from imported pixi.toml)
 	if err := ensureInit(outputDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to auto-track workspace: %v\n", err)
 	}

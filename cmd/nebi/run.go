@@ -16,6 +16,7 @@ var runCmd = &cobra.Command{
 
 With no workspace name, runs in the current directory (auto-initializes if needed).
 If the first argument matches a tracked workspace name, runs in that workspace.
+If multiple workspaces share the same name, an interactive picker is shown.
 A path (with a slash) uses that local directory.
 All arguments are passed through to pixi run.
 
@@ -25,7 +26,7 @@ Named workspaces run via --manifest-path so you stay in your current directory.
 
 Examples:
   nebi run my-task                    # run a pixi task in the current directory
-  nebi run data-science my-task       # run a task in a named workspace (stays in cwd)
+  nebi run data-science my-task       # run a task in a workspace by name (stays in cwd)
   nebi run ./my-project my-task       # run a task in a local directory
   nebi run -e dev my-task             # run with a specific pixi environment`,
 	DisableFlagParsing: true,
@@ -37,12 +38,12 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	dir, pixiArgs, namedLookup, err := resolveWorkspaceArgs(args)
+	dir, pixiArgs, useManifestPath, err := resolveWorkspaceArgs(args)
 	if err != nil {
 		return err
 	}
 
-	if !namedLookup {
+	if !useManifestPath {
 		if err := ensureInit(dir); err != nil {
 			return err
 		}
@@ -58,12 +59,12 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	fullArgs := []string{"run"}
-	if namedLookup {
+	if useManifestPath {
 		fullArgs = append(fullArgs, "--manifest-path", filepath.Join(dir, "pixi.toml"))
 	}
 	fullArgs = append(fullArgs, pixiArgs...)
 	c := exec.Command(pixiPath, fullArgs...)
-	if !namedLookup {
+	if !useManifestPath {
 		c.Dir = dir
 	}
 	c.Stdin = os.Stdin

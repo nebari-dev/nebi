@@ -144,13 +144,22 @@ func resolveSource(ref, defaultLabel string) (*diffSource, error) {
 		return resolveLocalSource(ref, defaultLabel)
 	}
 
-	// 2. Tracked workspace name (check store before assuming server ref)
+	// 2. Local workspace name (check store before assuming server ref)
 	if !strings.Contains(ref, ":") {
 		s, err := store.New()
 		if err == nil {
 			defer s.Close()
-			ws, err := s.FindWorkspaceByName(ref)
-			if err == nil && ws != nil {
+			workspaces, err := findWorkspacesByNameWithSync(s, ref)
+			if err == nil && len(workspaces) > 0 {
+				var ws *store.LocalWorkspace
+				if len(workspaces) == 1 {
+					ws = &workspaces[0]
+				} else {
+					ws, err = pickWorkspace(workspaces, ref)
+					if err != nil {
+						return nil, err
+					}
+				}
 				return resolveLocalSource(ws.Path, ref)
 			}
 		}

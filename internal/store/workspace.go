@@ -50,6 +50,16 @@ func (s *Store) FindWorkspaceByName(name string) (*LocalWorkspace, error) {
 	return &ws, nil
 }
 
+// FindWorkspacesByName returns all workspaces with the given name.
+// Multiple workspaces can share the same name since path is the unique identifier.
+func (s *Store) FindWorkspacesByName(name string) ([]LocalWorkspace, error) {
+	var wss []LocalWorkspace
+	if err := s.db.Where("name = ?", name).Find(&wss).Error; err != nil {
+		return nil, fmt.Errorf("finding workspaces by name: %w", err)
+	}
+	return wss, nil
+}
+
 // CreateWorkspace creates a new workspace record.
 func (s *Store) CreateWorkspace(ws *LocalWorkspace) error {
 	if ws.ID == uuid.Nil {

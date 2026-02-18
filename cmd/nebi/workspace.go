@@ -84,10 +84,10 @@ Examples:
 }
 
 func init() {
-	workspaceListCmd.Flags().BoolVar(&wsListRemote, "remote", false, "List workspaces on the server instead of locally")
+	workspaceListCmd.Flags().BoolVarP(&wsListRemote, "remote", "r", false, "List workspaces on the server instead of locally")
 	workspaceCmd.AddCommand(workspaceListCmd)
 	workspaceCmd.AddCommand(workspaceTagsCmd)
-	workspaceRemoveCmd.Flags().BoolVar(&wsRemoveRemote, "remote", false, "Remove workspace from the server instead of locally")
+	workspaceRemoveCmd.Flags().BoolVarP(&wsRemoveRemote, "remote", "r", false, "Remove workspace from the server instead of locally")
 	workspaceCmd.AddCommand(workspaceRemoveCmd)
 	workspaceCmd.AddCommand(workspacePruneCmd)
 }
@@ -114,6 +114,13 @@ func runWorkspaceListLocal() error {
 	if len(wss) == 0 {
 		fmt.Fprintln(os.Stderr, "No tracked workspaces. Run 'nebi init' in a pixi workspace to get started.")
 		return nil
+	}
+
+	// Sync workspace names from pixi.toml before displaying
+	for i := range wss {
+		if err := syncWorkspaceName(s, &wss[i]); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: %s: %v\n", wss[i].Path, err)
+		}
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -273,12 +280,20 @@ func runWorkspaceRemoveLocal(arg string) error {
 			return fmt.Errorf("no tracked workspace at path %q", absPath)
 		}
 	} else {
-		ws, err = s.FindWorkspaceByName(arg)
+		workspaces, err := findWorkspacesByNameWithSync(s, arg)
 		if err != nil {
 			return err
 		}
-		if ws == nil {
+		switch len(workspaces) {
+		case 0:
 			return fmt.Errorf("workspace %q not found; use 'nebi workspace list' to see available workspaces", arg)
+		case 1:
+			ws = &workspaces[0]
+		default:
+			ws, err = pickWorkspace(workspaces, arg)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -305,6 +320,13 @@ func runWorkspacePrune(cmd *cobra.Command, args []string) error {
 	wss, err := s.ListWorkspaces()
 	if err != nil {
 		return err
+	}
+
+	// Sync workspace names from pixi.toml before pruning
+	for i := range wss {
+		if err := syncWorkspaceName(s, &wss[i]); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: %s: %v\n", wss[i].Path, err)
+		}
 	}
 
 	var pruned []string

@@ -30,6 +30,8 @@
 
 > **⚠️ Alpha Software**: Nebi is currently in alpha. APIs, UI, CLI and available features may change without notice. Not recommended for production use.
 
+![Nebi Demo](https://raw.githubusercontent.com/nebari-dev/nebi-video-demo-automation/main/assets/demo.gif)
+
 ## What is Nebi?
 
 Nebi is a server and CLI for managing [Pixi](https://prefix.dev/) environments in multi-user settings. The server handles environment creation, versioning, and access control, while the local-first CLI lets you track workspaces, push/pull versioned specs, and diff environments across machines or teams.

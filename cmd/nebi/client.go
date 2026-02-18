@@ -121,6 +121,9 @@ func syncWorkspaceName(s *store.Store, ws *store.LocalWorkspace) error {
 	}
 
 	if ws.Name != tomlName {
+		if err := validateWorkspaceName(tomlName); err != nil {
+			return fmt.Errorf("pixi.toml workspace name is invalid: %w", err)
+		}
 		oldName := ws.Name
 		ws.Name = tomlName
 		if err := s.SaveWorkspace(ws); err != nil {

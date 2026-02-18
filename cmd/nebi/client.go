@@ -63,16 +63,7 @@ func findWsByName(client *cliclient.Client, ctx context.Context, name string) (*
 // validateWorkspaceName checks that a workspace name doesn't contain path separators or colons,
 // which would make it ambiguous with paths or server refs.
 func validateWorkspaceName(name string) error {
-	if strings.ContainsAny(name, `/\:`) {
-		return fmt.Errorf("workspace name %q must not contain '/', '\\', or ':'", name)
-	}
-	if name == "" {
-		return fmt.Errorf("workspace name must not be empty")
-	}
-	if name == "." || name == ".." {
-		return fmt.Errorf("workspace name %q is reserved and cannot be used", name)
-	}
-	return nil
+	return pixi.ValidateWorkspaceName(name)
 }
 
 // lookupOrigin returns the origin fields for the current working directory workspace.
@@ -117,13 +108,10 @@ func syncWorkspaceName(s *store.Store, ws *store.LocalWorkspace) error {
 
 	tomlName, err := pixi.ExtractWorkspaceName(string(content))
 	if err != nil {
-		return nil // Can't extract name, skip sync
+		return err
 	}
 
 	if ws.Name != tomlName {
-		if err := validateWorkspaceName(tomlName); err != nil {
-			return fmt.Errorf("pixi.toml workspace name is invalid: %w", err)
-		}
 		oldName := ws.Name
 		ws.Name = tomlName
 		if err := s.SaveWorkspace(ws); err != nil {

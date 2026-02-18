@@ -291,6 +291,26 @@ func TestExtractWorkspaceName(t *testing.T) {
 			content: "[workspace]\nname = \"\"\n",
 			wantErr: true,
 		},
+		{
+			name:    "name with slash rejected",
+			content: "[workspace]\nname = \"data-science/fastapi\"\n",
+			wantErr: true,
+		},
+		{
+			name:    "name with colon rejected",
+			content: "[workspace]\nname = \"my:env\"\n",
+			wantErr: true,
+		},
+		{
+			name:    "name with backslash rejected",
+			content: "[workspace]\nname = \"my\\\\env\"\n",
+			wantErr: true,
+		},
+		{
+			name:    "dot name rejected",
+			content: "[workspace]\nname = \".\"\n",
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

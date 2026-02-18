@@ -495,24 +495,47 @@ type pixiManifestWithWorkspace struct {
 	} `toml:"project"`
 }
 
+// ValidateWorkspaceName checks that a workspace name is valid for use with nebi.
+// Names must not be empty, contain path separators or colons (which are ambiguous
+// with filesystem paths and server refs), or be reserved names like "." or "..".
+func ValidateWorkspaceName(name string) error {
+	if name == "" {
+		return fmt.Errorf("workspace name must not be empty")
+	}
+	if strings.ContainsAny(name, `/\:`) {
+		return fmt.Errorf("workspace name %q must not contain '/', '\\', or ':'", name)
+	}
+	if name == "." || name == ".." {
+		return fmt.Errorf("workspace name %q is reserved and cannot be used", name)
+	}
+	return nil
+}
+
 // ExtractWorkspaceName reads the workspace name from pixi.toml content.
 // It first looks for [workspace] name, then falls back to [project] name.
-// Returns an error if no name field is found in either section.
+// Returns an error if no name field is found in either section, or if the
+// name is invalid (contains path separators, colons, or is a reserved name).
 func ExtractWorkspaceName(content string) (string, error) {
 	var manifest pixiManifestWithWorkspace
 	if err := toml.Unmarshal([]byte(content), &manifest); err != nil {
 		return "", fmt.Errorf("failed to parse pixi.toml: %w", err)
 	}
 
+	var name string
+
 	// Prefer [workspace] name (modern pixi format)
 	if manifest.Workspace.Name != "" {
-		return manifest.Workspace.Name, nil
+		name = manifest.Workspace.Name
+	} else if manifest.Project.Name != "" {
+		// Fall back to [project] name (older format)
+		name = manifest.Project.Name
+	} else {
+		return "", fmt.Errorf("pixi.toml must have [workspace] name field")
 	}
 
-	// Fall back to [project] name (older format)
-	if manifest.Project.Name != "" {
-		return manifest.Project.Name, nil
+	if err := ValidateWorkspaceName(name); err != nil {
+		return "", fmt.Errorf("pixi.toml workspace name is invalid: %w", err)
 	}
 
-	return "", fmt.Errorf("pixi.toml must have [workspace] name field")
+	return name, nil
 }

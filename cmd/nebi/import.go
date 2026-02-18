@@ -11,7 +11,6 @@ import (
 )
 
 var importOutput string
-var importGlobal string
 var importForce bool
 
 var importCmd = &cobra.Command{
@@ -26,15 +25,13 @@ This works entirely locally — no server connection needed.
 
 Examples:
   nebi import quay.io/nebari/my-env:v1
-  nebi import ghcr.io/myorg/data-science:latest -o ./my-project
-  nebi import quay.io/nebari/my-env:v1 --global data-science`,
+  nebi import ghcr.io/myorg/data-science:latest -o ./my-project`,
 	Args: cobra.ExactArgs(1),
 	RunE: runImport,
 }
 
 func init() {
 	importCmd.Flags().StringVarP(&importOutput, "output", "o", ".", "Output directory")
-	importCmd.Flags().StringVar(&importGlobal, "global", "", "Save as a global workspace with this name")
 	importCmd.Flags().BoolVar(&importForce, "force", false, "Overwrite existing files without prompting")
 }
 
@@ -55,23 +52,13 @@ func runImport(cmd *cobra.Command, args []string) error {
 	}
 
 	outputDir := importOutput
-	if importGlobal != "" {
-		if err := validateWorkspaceName(importGlobal); err != nil {
-			return err
-		}
-		outputDir, err = setupGlobalWorkspace(importGlobal, importForce)
-		if err != nil {
-			return err
-		}
-	} else {
-		if !importForce {
-			absDir, _ := filepath.Abs(outputDir)
-			existing := filepath.Join(absDir, "pixi.toml")
-			if _, statErr := os.Stat(existing); statErr == nil {
-				if !confirmOverwrite(absDir) {
-					fmt.Fprintln(os.Stderr, "Aborted.")
-					return nil
-				}
+	if !importForce {
+		absDir, _ := filepath.Abs(outputDir)
+		existing := filepath.Join(absDir, "pixi.toml")
+		if _, statErr := os.Stat(existing); statErr == nil {
+			if !confirmOverwrite(absDir) {
+				fmt.Fprintln(os.Stderr, "Aborted.")
+				return nil
 			}
 		}
 	}
@@ -92,18 +79,12 @@ func runImport(cmd *cobra.Command, args []string) error {
 
 	absOutput, _ := filepath.Abs(outputDir)
 
-	if importGlobal == "" {
-		if err := ensureInit(outputDir); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to auto-track workspace: %v\n", err)
-		}
+	if err := ensureInit(outputDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to auto-track workspace: %v\n", err)
 	}
 
 	ref := repoRef + ":" + tag
-	if importGlobal != "" {
-		fmt.Fprintf(os.Stderr, "Imported %s -> global workspace %q (%s)\n", ref, importGlobal, absOutput)
-	} else {
-		fmt.Fprintf(os.Stderr, "Imported %s -> %s\n", ref, absOutput)
-	}
+	fmt.Fprintf(os.Stderr, "Imported %s -> %s\n", ref, absOutput)
 
 	return nil
 }

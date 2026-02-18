@@ -291,12 +291,12 @@ export const Workspaces = () => {
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Path (optional)</label>
                   <Input
-                    placeholder="e.g., /home/user/projects/my-project (leave empty for global workspace)"
+                    placeholder="e.g., /home/user/projects/my-project"
                     value={localPath}
                     onChange={(e) => setLocalPath(e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Specify a local directory path for this workspace. Leave empty to create a global (managed) workspace.
+                    Specify a local directory path for this workspace.
                   </p>
                 </div>
               )}

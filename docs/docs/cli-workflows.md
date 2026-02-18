@@ -37,8 +37,8 @@ $ pixi add python numpy pandas
 
 # See tracked workspaces
 $ nebi workspace list
-  NAME          TYPE     PATH
-  my-project    local    /home/alice/my-project
+  NAME          PATH
+  my-project    /home/alice/my-project
 ```
 
 ---
@@ -100,21 +100,18 @@ $ nebi diff ./my-project my-project:v1.0
 
 ---
 
-## Workflow 4: Global Workspaces, Shell, and Run
+## Workflow 4: Shell and Run
 
-Global workspaces live in `~/.local/share/nebi/` and can be activated by name from anywhere.
+Any tracked workspace can be activated by name from anywhere using `nebi shell` or `nebi run`.
 
 ```bash
-# Promote the current tracked workspace to a global workspace
-$ nebi workspace promote data-science
-
-# Open a pixi shell in a global workspace
+# Open a pixi shell in a tracked workspace (stays in your current directory)
 $ nebi shell data-science
 
 # Run a pixi task in the current directory
 $ nebi run my-task
 
-# Run a task in a global workspace
+# Run a task in a named workspace
 $ nebi run data-science my-task
 ```
 
@@ -158,10 +155,6 @@ Imported quay.io/nebari/my-env:v1 -> /home/alice/my-project
 
 # Import into a specific directory
 $ nebi import ghcr.io/myorg/data-science:latest -o ./my-project
-
-# Import as a global workspace
-$ nebi import quay.io/nebari/my-env:v1 --global data-science
-Imported quay.io/nebari/my-env:v1 -> global workspace "data-science" (/home/alice/.local/share/nebi/data-science)
 
 # Overwrite existing files without prompting
 $ nebi import quay.io/nebari/my-env:v1 --force

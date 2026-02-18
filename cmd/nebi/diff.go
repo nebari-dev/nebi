@@ -21,7 +21,7 @@ var diffCmd = &cobra.Command{
 	Long: `Compare pixi.toml (and pixi.lock with --lock) between two references.
 Each reference can be:
   - A path (contains a slash): ./dir, /tmp/project, foo/bar
-  - A global workspace name (bare word): data-science
+  - A tracked workspace name (bare word): data-science
   - A server ref (contains a colon): myworkspace:v1
 
 If no refs are given, compares the current directory against the last
@@ -33,7 +33,7 @@ Examples:
   nebi diff                                    # local vs origin
   nebi diff ./other-project                    # other dir vs cwd
   nebi diff ./project-a ./project-b            # two local dirs
-  nebi diff data-science                       # global workspace vs cwd
+  nebi diff data-science                       # tracked workspace vs cwd
   nebi diff myworkspace:v1                     # server version vs cwd
   nebi diff myworkspace:v1 myworkspace:v2      # two server versions
   nebi diff myworkspace:v1 ./local-dir         # server vs local dir
@@ -144,12 +144,12 @@ func resolveSource(ref, defaultLabel string) (*diffSource, error) {
 		return resolveLocalSource(ref, defaultLabel)
 	}
 
-	// 2. Global workspace name (check store before assuming server ref)
+	// 2. Tracked workspace name (check store before assuming server ref)
 	if !strings.Contains(ref, ":") {
 		s, err := store.New()
 		if err == nil {
 			defer s.Close()
-			ws, err := s.FindGlobalWorkspaceByName(ref)
+			ws, err := s.FindWorkspaceByName(ref)
 			if err == nil && ws != nil {
 				return resolveLocalSource(ws.Path, ref)
 			}

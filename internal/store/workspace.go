@@ -2,7 +2,6 @@ package store
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/google/uuid"
 )
@@ -47,21 +46,6 @@ func (s *Store) FindWorkspaceByName(name string) (*LocalWorkspace, error) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("finding workspace by name: %w", result.Error)
-	}
-	return &ws, nil
-}
-
-// FindGlobalWorkspaceByName returns the first global workspace with the given name.
-// A workspace is global if its path is inside the store's managed workspaces directory.
-func (s *Store) FindGlobalWorkspaceByName(name string) (*LocalWorkspace, error) {
-	globalPrefix := filepath.Join(s.dataDir, "workspaces") + string(filepath.Separator)
-	var ws LocalWorkspace
-	result := s.db.Where("name = ? AND path LIKE ?", name, globalPrefix+"%").First(&ws)
-	if result.Error != nil {
-		if result.RowsAffected == 0 {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("finding global workspace: %w", result.Error)
 	}
 	return &ws, nil
 }

@@ -17,7 +17,7 @@ var statusCmd = &cobra.Command{
 	Short: "Show workspace sync status",
 	Long: `Show the current workspace's tracking info and sync status with the server.
 
-Displays the workspace name, type, path, and origin info for the
+Displays the workspace name, path, and origin info for the
 last push/pull operation.
 
 If the server is reachable, checks whether the local files or server version
@@ -48,6 +48,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	if ws == nil {
 		fmt.Fprintln(os.Stderr, "Not a tracked workspace. Run 'nebi init'.")
 		return nil
+	}
+
+	// Sync workspace name if pixi.toml has changed
+	if err := syncWorkspaceName(s, ws); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
 	}
 
 	fmt.Fprintf(os.Stdout, "Workspace: %s\n", ws.Name)

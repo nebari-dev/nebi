@@ -481,3 +481,38 @@ func (p *PixiManager) executeCommand(ctx context.Context, workDir string, args .
 
 	return strings.TrimSpace(stdout.String()), nil
 }
+
+// pixiManifestWithWorkspace represents pixi.toml with both [workspace] and [project] sections.
+// Modern pixi uses [workspace], older versions used [project].
+type pixiManifestWithWorkspace struct {
+	Workspace struct {
+		Name     string   `toml:"name"`
+		Channels []string `toml:"channels"`
+	} `toml:"workspace"`
+	Project struct {
+		Name     string   `toml:"name"`
+		Channels []string `toml:"channels"`
+	} `toml:"project"`
+}
+
+// ExtractWorkspaceName reads the workspace name from pixi.toml content.
+// It first looks for [workspace] name, then falls back to [project] name.
+// Returns an error if no name field is found in either section.
+func ExtractWorkspaceName(content string) (string, error) {
+	var manifest pixiManifestWithWorkspace
+	if err := toml.Unmarshal([]byte(content), &manifest); err != nil {
+		return "", fmt.Errorf("failed to parse pixi.toml: %w", err)
+	}
+
+	// Prefer [workspace] name (modern pixi format)
+	if manifest.Workspace.Name != "" {
+		return manifest.Workspace.Name, nil
+	}
+
+	// Fall back to [project] name (older format)
+	if manifest.Project.Name != "" {
+		return manifest.Project.Name, nil
+	}
+
+	return "", fmt.Errorf("pixi.toml must have [workspace] name field")
+}

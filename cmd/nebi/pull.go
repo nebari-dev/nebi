@@ -25,6 +25,9 @@ origin are used.
 
 If no tag is specified, the latest version is pulled.
 
+The local workspace name is derived from the [workspace] name field
+in the pulled pixi.toml, not from the server workspace name.
+
 Use --force to skip the overwrite confirmation prompt.
 
 Examples:
@@ -168,6 +171,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 
 	absOutput, _ := filepath.Abs(outputDir)
 
+	// Auto-track the workspace (name will be read from pulled pixi.toml)
 	if err := ensureInit(outputDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to auto-track workspace: %v\n", err)
 	}

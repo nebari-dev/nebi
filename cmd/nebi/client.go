@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
+	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
 	"github.com/nebari-dev/nebi/internal/store"
 )
 
@@ -95,7 +97,39 @@ func lookupOrigin() (*store.LocalWorkspace, error) {
 		return nil, nil
 	}
 
+	// Sync workspace name if pixi.toml has changed
+	if err := syncWorkspaceName(s, ws); err != nil {
+		// Non-fatal: log warning but continue
+		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+	}
+
 	return ws, nil
+}
+
+// syncWorkspaceName updates the stored workspace name if it differs from pixi.toml.
+// This ensures workspace list shows correct names after pixi.toml edits.
+func syncWorkspaceName(s *store.Store, ws *store.LocalWorkspace) error {
+	pixiTomlPath := filepath.Join(ws.Path, "pixi.toml")
+	content, err := os.ReadFile(pixiTomlPath)
+	if err != nil {
+		return nil // pixi.toml not readable, skip sync
+	}
+
+	tomlName, err := pixi.ExtractWorkspaceName(string(content))
+	if err != nil {
+		return nil // Can't extract name, skip sync
+	}
+
+	if ws.Name != tomlName {
+		oldName := ws.Name
+		ws.Name = tomlName
+		if err := s.SaveWorkspace(ws); err != nil {
+			return fmt.Errorf("updating workspace name: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "Workspace name updated: %q -> %q (from pixi.toml)\n", oldName, tomlName)
+	}
+
+	return nil
 }
 
 // saveOrigin records a push/pull origin for the current working directory.

@@ -2213,6 +2213,9 @@ const docTemplate = `{
                 "registry_name": {
                     "type": "string"
                 },
+                "registry_namespace": {
+                    "type": "string"
+                },
                 "registry_url": {
                     "type": "string"
                 },

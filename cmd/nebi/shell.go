@@ -36,6 +36,7 @@ Examples:
   nebi shell data-science -e dev   # activate with a specific pixi environment`,
 	DisableFlagParsing: true,
 	RunE:               runShell,
+	ValidArgsFunction:  completeWorkspaceNames,
 }
 
 func runShell(cmd *cobra.Command, args []string) error {

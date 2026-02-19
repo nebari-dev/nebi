@@ -41,8 +41,9 @@ var workspaceTagsCmd = &cobra.Command{
 
 Examples:
   nebi workspace tags myworkspace`,
-	Args: cobra.ExactArgs(1),
-	RunE: runWorkspaceTags,
+	Args:              cobra.ExactArgs(1),
+	RunE:              runWorkspaceTags,
+	ValidArgsFunction: completeServerWorkspaceNames,
 }
 
 var wsRemoveRemote bool
@@ -66,8 +67,9 @@ Examples:
   nebi workspace remove data-science        # remove workspace by name
   nebi workspace remove ./my-project        # remove workspace by path
   nebi workspace remove myenv --remote      # delete workspace from server`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: runWorkspaceRemove,
+	Args:              cobra.MaximumNArgs(1),
+	RunE:              runWorkspaceRemove,
+	ValidArgsFunction: completeWorkspaceRemove,
 }
 
 var workspacePruneCmd = &cobra.Command{

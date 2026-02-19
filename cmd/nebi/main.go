@@ -64,6 +64,7 @@ func init() {
 	rootCmd.AddCommand(registryCmd)
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(completionCmd)
 }
 
 func main() {

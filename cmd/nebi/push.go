@@ -36,6 +36,7 @@ Examples:
   nebi push myworkspace:v2.0 --force       # overwrite existing user tag`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runPush,
+	// No completion - workspace name is user-provided, not selected from existing
 }
 
 func init() {

@@ -31,6 +31,7 @@ Examples:
   nebi run -e dev my-task             # run with a specific pixi environment`,
 	DisableFlagParsing: true,
 	RunE:               runRun,
+	ValidArgsFunction:  completeWorkspaceNames,
 }
 
 func runRun(cmd *cobra.Command, args []string) error {

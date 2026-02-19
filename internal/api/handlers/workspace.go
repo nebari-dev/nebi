@@ -998,10 +998,10 @@ func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
 		RegistryURL:       publication.Registry.URL,
 		RegistryNamespace: publication.Registry.Namespace,
 		Repository:        publication.Repository,
-		Tag:           publication.Tag,
-		Digest:        publication.Digest,
-		PublishedBy:   publication.PublishedByUser.Username,
-		PublishedAt:   publication.CreatedAt.Format("2006-01-02 15:04:05"),
+		Tag:               publication.Tag,
+		Digest:            publication.Digest,
+		PublishedBy:       publication.PublishedByUser.Username,
+		PublishedAt:       publication.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
 
 	// Audit log
@@ -1054,10 +1054,10 @@ func (h *WorkspaceHandler) ListPublications(c *gin.Context) {
 			RegistryURL:       pub.Registry.URL,
 			RegistryNamespace: pub.Registry.Namespace,
 			Repository:        pub.Repository,
-			Tag:           pub.Tag,
-			Digest:        pub.Digest,
-			PublishedBy:   pub.PublishedByUser.Username,
-			PublishedAt:   pub.CreatedAt.Format("2006-01-02 15:04:05"),
+			Tag:               pub.Tag,
+			Digest:            pub.Digest,
+			PublishedBy:       pub.PublishedByUser.Username,
+			PublishedAt:       pub.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
 	}
 
@@ -1193,10 +1193,10 @@ type PublicationResponse struct {
 	RegistryURL       string    `json:"registry_url"`
 	RegistryNamespace string    `json:"registry_namespace"`
 	Repository        string    `json:"repository"`
-	Tag           string    `json:"tag"`
-	Digest        string    `json:"digest"`
-	PublishedBy   string    `json:"published_by"`
-	PublishedAt   string    `json:"published_at"`
+	Tag               string    `json:"tag"`
+	Digest            string    `json:"digest"`
+	PublishedBy       string    `json:"published_by"`
+	PublishedAt       string    `json:"published_at"`
 }
 
 // WorkspaceResponse includes workspace data with formatted size

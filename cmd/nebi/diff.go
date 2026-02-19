@@ -21,7 +21,7 @@ var diffCmd = &cobra.Command{
 	Long: `Compare pixi.toml (and pixi.lock with --lock) between two references.
 Each reference can be:
   - A path (contains a slash): ./dir, /tmp/project, foo/bar
-  - A global workspace name (bare word): data-science
+  - A tracked workspace name (bare word): data-science
   - A server ref (contains a colon): myworkspace:v1
 
 If no refs are given, compares the current directory against the last
@@ -33,14 +33,15 @@ Examples:
   nebi diff                                    # local vs origin
   nebi diff ./other-project                    # other dir vs cwd
   nebi diff ./project-a ./project-b            # two local dirs
-  nebi diff data-science                       # global workspace vs cwd
+  nebi diff data-science                       # tracked workspace vs cwd
   nebi diff myworkspace:v1                     # server version vs cwd
   nebi diff myworkspace:v1 myworkspace:v2      # two server versions
   nebi diff myworkspace:v1 ./local-dir         # server vs local dir
 
 Use --lock to also compare pixi.lock files.`,
-	Args: cobra.RangeArgs(0, 2),
-	RunE: runDiff,
+	Args:              cobra.RangeArgs(0, 2),
+	RunE:              runDiff,
+	ValidArgsFunction: completeWorkspaceNamesOrPaths,
 }
 
 func init() {
@@ -144,13 +145,22 @@ func resolveSource(ref, defaultLabel string) (*diffSource, error) {
 		return resolveLocalSource(ref, defaultLabel)
 	}
 
-	// 2. Global workspace name (check store before assuming server ref)
+	// 2. Local workspace name (check store before assuming server ref)
 	if !strings.Contains(ref, ":") {
 		s, err := store.New()
 		if err == nil {
 			defer s.Close()
-			ws, err := s.FindGlobalWorkspaceByName(ref)
-			if err == nil && ws != nil {
+			workspaces, err := findWorkspacesByNameWithSync(s, ref)
+			if err == nil && len(workspaces) > 0 {
+				var ws *store.LocalWorkspace
+				if len(workspaces) == 1 {
+					ws = &workspaces[0]
+				} else {
+					ws, err = pickWorkspace(workspaces, ref)
+					if err != nil {
+						return nil, err
+					}
+				}
 				return resolveLocalSource(ws.Path, ref)
 			}
 		}

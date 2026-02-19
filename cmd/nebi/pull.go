@@ -13,7 +13,6 @@ import (
 )
 
 var pullOutput string
-var pullGlobal string
 var pullForce bool
 
 var pullCmd = &cobra.Command{
@@ -26,23 +25,22 @@ origin are used.
 
 If no tag is specified, the latest version is pulled.
 
-Use --global <name> to pull into a global workspace managed by nebi,
-instead of writing to the current directory.
+The local workspace name is derived from the [workspace] name field
+in the pulled pixi.toml, not from the server workspace name.
 
 Use --force to skip the overwrite confirmation prompt.
 
 Examples:
   nebi pull myworkspace:v1.0
   nebi pull                                # re-pull from origin
-  nebi pull myworkspace -o ./my-project
-  nebi pull myworkspace:v2.0 --global data-science`,
-	Args: cobra.RangeArgs(0, 1),
-	RunE: runPull,
+  nebi pull myworkspace -o ./my-project`,
+	Args:              cobra.RangeArgs(0, 1),
+	RunE:              runPull,
+	ValidArgsFunction: completeServerWorkspaceRef,
 }
 
 func init() {
 	pullCmd.Flags().StringVarP(&pullOutput, "output", "o", ".", "Output directory")
-	pullCmd.Flags().StringVar(&pullGlobal, "global", "", "Save as a global workspace with this name")
 	pullCmd.Flags().BoolVar(&pullForce, "force", false, "Overwrite existing files without prompting")
 }
 
@@ -147,23 +145,13 @@ func runPull(cmd *cobra.Command, args []string) error {
 	}
 
 	outputDir := pullOutput
-	if pullGlobal != "" {
-		if err := validateWorkspaceName(pullGlobal); err != nil {
-			return err
-		}
-		outputDir, err = setupGlobalWorkspace(pullGlobal, pullForce)
-		if err != nil {
-			return err
-		}
-	} else {
-		if !pullForce {
-			absDir, _ := filepath.Abs(outputDir)
-			existing := filepath.Join(absDir, "pixi.toml")
-			if _, statErr := os.Stat(existing); statErr == nil {
-				if !confirmOverwrite(absDir) {
-					fmt.Fprintln(os.Stderr, "Aborted.")
-					return nil
-				}
+	if !pullForce {
+		absDir, _ := filepath.Abs(outputDir)
+		existing := filepath.Join(absDir, "pixi.toml")
+		if _, statErr := os.Stat(existing); statErr == nil {
+			if !confirmOverwrite(absDir) {
+				fmt.Fprintln(os.Stderr, "Aborted.")
+				return nil
 			}
 		}
 	}
@@ -184,10 +172,9 @@ func runPull(cmd *cobra.Command, args []string) error {
 
 	absOutput, _ := filepath.Abs(outputDir)
 
-	if pullGlobal == "" {
-		if err := ensureInit(outputDir); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to auto-track workspace: %v\n", err)
-		}
+	// Auto-track the workspace (name will be read from pulled pixi.toml)
+	if err := ensureInit(outputDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to auto-track workspace: %v\n", err)
 	}
 
 	refStr := wsName
@@ -195,11 +182,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 		refStr = wsName + ":" + tag
 	}
 
-	if pullGlobal != "" {
-		fmt.Fprintf(os.Stderr, "Pulled %s (version %d) -> global workspace %q (%s)\n", refStr, versionNumber, pullGlobal, absOutput)
-	} else {
-		fmt.Fprintf(os.Stderr, "Pulled %s (version %d) -> %s\n", refStr, versionNumber, absOutput)
-	}
+	fmt.Fprintf(os.Stderr, "Pulled %s (version %d) -> %s\n", refStr, versionNumber, absOutput)
 
 	if saveErr := saveOrigin(wsName, tag, "pull", pixiToml, pixiLock); saveErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save origin: %v\n", saveErr)
@@ -214,36 +197,4 @@ func confirmOverwrite(dir string) bool {
 	answer, _ := reader.ReadString('\n')
 	answer = strings.TrimSpace(strings.ToLower(answer))
 	return answer == "y" || answer == "yes"
-}
-
-func setupGlobalWorkspace(name string, force bool) (string, error) {
-	s, err := store.New()
-	if err != nil {
-		return "", err
-	}
-	defer s.Close()
-
-	existing, err := s.FindGlobalWorkspaceByName(name)
-	if err != nil {
-		return "", err
-	}
-	if existing != nil {
-		if !force {
-			if !confirmOverwrite(existing.Path) {
-				return "", fmt.Errorf("aborted")
-			}
-		}
-		return existing.Path, nil
-	}
-
-	wsDir := s.GlobalWorkspaceDir(name)
-	ws := &store.LocalWorkspace{
-		Name: name,
-		Path: wsDir,
-	}
-	if err := s.CreateWorkspace(ws); err != nil {
-		return "", fmt.Errorf("saving workspace: %w", err)
-	}
-
-	return wsDir, nil
 }

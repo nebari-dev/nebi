@@ -17,7 +17,7 @@ var statusCmd = &cobra.Command{
 	Short: "Show workspace sync status",
 	Long: `Show the current workspace's tracking info and sync status with the server.
 
-Displays the workspace name, type, path, and origin info for the
+Displays the workspace name, path, and origin info for the
 last push/pull operation.
 
 If the server is reachable, checks whether the local files or server version
@@ -50,12 +50,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	wsType := "local"
-	if s.IsGlobalWorkspace(ws) {
-		wsType = "global"
+	// Sync workspace name if pixi.toml has changed
+	if err := syncWorkspaceName(s, ws); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
 	}
+
 	fmt.Fprintf(os.Stdout, "Workspace: %s\n", ws.Name)
-	fmt.Fprintf(os.Stdout, "Type:      %s\n", wsType)
 	fmt.Fprintf(os.Stdout, "Path:      %s\n", ws.Path)
 
 	serverURL, _ := s.LoadServerURL()

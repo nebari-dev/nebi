@@ -36,6 +36,7 @@ Examples:
   nebi push myworkspace:v2.0 --force       # overwrite existing user tag`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runPush,
+	// No completion - workspace name is user-provided, not selected from existing
 }
 
 func init() {
@@ -59,6 +60,10 @@ func runPush(cmd *cobra.Command, args []string) error {
 		}
 		wsName = origin.OriginName
 		fmt.Fprintf(os.Stderr, "Using workspace %q from origin\n", wsName)
+	}
+
+	if err := validateWorkspaceName(wsName); err != nil {
+		return fmt.Errorf("invalid workspace name: %w", err)
 	}
 
 	// Read local spec files

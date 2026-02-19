@@ -41,24 +41,9 @@ var workspaceTagsCmd = &cobra.Command{
 
 Examples:
   nebi workspace tags myworkspace`,
-	Args: cobra.ExactArgs(1),
-	RunE: runWorkspaceTags,
-}
-
-var workspacePromoteCmd = &cobra.Command{
-	Use:   "promote <name>",
-	Short: "Copy current workspace to a global workspace",
-	Long: `Create a global workspace by copying pixi.toml and pixi.lock
-from the current tracked workspace directory.
-
-The global workspace is stored in nebi's data directory and can be
-referenced by name in commands like shell, run, and diff.
-
-Examples:
-  cd my-project
-  nebi workspace promote data-science`,
-	Args: cobra.ExactArgs(1),
-	RunE: runWorkspacePromote,
+	Args:              cobra.ExactArgs(1),
+	RunE:              runWorkspaceTags,
+	ValidArgsFunction: completeServerWorkspaceNames,
 }
 
 var wsRemoveRemote bool
@@ -71,20 +56,20 @@ var workspaceRemoveCmd = &cobra.Command{
 
 By default removes from the local index:
   - With no argument or ".", removes the workspace tracked in the current directory.
-  - For global workspaces, the stored files are also deleted.
-  - For local workspaces, only the tracking entry is removed; project files are untouched.
-  - A bare name refers to a global workspace; use a path (with a slash) for a local workspace.
+  - Only the tracking entry is removed; project files are untouched.
+  - A bare name looks up a workspace by name; use a path (with a slash) for a path-based lookup.
 
 With --remote, deletes the workspace from the configured server.
 
 Examples:
   nebi workspace remove                     # remove workspace in current directory
   nebi workspace remove .                   # same as above
-  nebi workspace remove data-science        # remove global workspace by name
-  nebi workspace remove ./my-project        # remove local workspace by path
+  nebi workspace remove data-science        # remove workspace by name
+  nebi workspace remove ./my-project        # remove workspace by path
   nebi workspace remove myenv --remote      # delete workspace from server`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: runWorkspaceRemove,
+	Args:              cobra.MaximumNArgs(1),
+	RunE:              runWorkspaceRemove,
+	ValidArgsFunction: completeWorkspaceRemove,
 }
 
 var workspacePruneCmd = &cobra.Command{
@@ -92,8 +77,7 @@ var workspacePruneCmd = &cobra.Command{
 	Short: "Remove workspaces whose paths no longer exist",
 	Long: `Remove all tracked workspaces whose directories are missing from disk.
 
-For global workspaces with missing paths, the index entry is removed.
-For local workspaces, the tracking entry is removed; no files are affected.
+The tracking entry is removed; no files are affected.
 
 Examples:
   nebi workspace prune`,
@@ -102,11 +86,10 @@ Examples:
 }
 
 func init() {
-	workspaceListCmd.Flags().BoolVar(&wsListRemote, "remote", false, "List workspaces on the server instead of locally")
+	workspaceListCmd.Flags().BoolVarP(&wsListRemote, "remote", "r", false, "List workspaces on the server instead of locally")
 	workspaceCmd.AddCommand(workspaceListCmd)
 	workspaceCmd.AddCommand(workspaceTagsCmd)
-	workspaceCmd.AddCommand(workspacePromoteCmd)
-	workspaceRemoveCmd.Flags().BoolVar(&wsRemoveRemote, "remote", false, "Remove workspace from the server instead of locally")
+	workspaceRemoveCmd.Flags().BoolVarP(&wsRemoveRemote, "remote", "r", false, "Remove workspace from the server instead of locally")
 	workspaceCmd.AddCommand(workspaceRemoveCmd)
 	workspaceCmd.AddCommand(workspacePruneCmd)
 }
@@ -135,20 +118,23 @@ func runWorkspaceListLocal() error {
 		return nil
 	}
 
+	// Sync workspace names from pixi.toml before displaying
+	for i := range wss {
+		if err := syncWorkspaceName(s, &wss[i]); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: %s: %v\n", wss[i].Path, err)
+		}
+	}
+
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tTYPE\tPATH")
+	fmt.Fprintln(w, "NAME\tPATH")
 	var missing int
 	for _, ws := range wss {
-		wsType := "local"
-		if s.IsGlobalWorkspace(&ws) {
-			wsType = "global"
-		}
 		path := ws.Path
 		if _, err := os.Stat(ws.Path); os.IsNotExist(err) {
 			path += " (missing)"
 			missing++
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\n", ws.Name, wsType, path)
+		fmt.Fprintf(w, "%s\t%s\n", ws.Name, path)
 	}
 	if err := w.Flush(); err != nil {
 		return err
@@ -227,83 +213,6 @@ func runWorkspaceListServer() error {
 	return w.Flush()
 }
 
-func runWorkspacePromote(cmd *cobra.Command, args []string) error {
-	name := args[0]
-
-	if err := validateWorkspaceName(name); err != nil {
-		return err
-	}
-
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("getting working directory: %w", err)
-	}
-
-	s, err := store.New()
-	if err != nil {
-		return err
-	}
-	defer s.Close()
-
-	// Verify current directory is a tracked workspace
-	existing, err := s.FindWorkspaceByPath(cwd)
-	if err != nil {
-		return err
-	}
-	if existing == nil {
-		return fmt.Errorf("current directory is not a tracked workspace; run 'nebi init' first")
-	}
-
-	// Check global name uniqueness
-	existingGlobal, err := s.FindGlobalWorkspaceByName(name)
-	if err != nil {
-		return err
-	}
-	if existingGlobal != nil {
-		return fmt.Errorf("a global workspace named %q already exists", name)
-	}
-
-	// Read source files
-	toml, err := os.ReadFile(filepath.Join(cwd, "pixi.toml"))
-	if err != nil {
-		return fmt.Errorf("reading pixi.toml: %w", err)
-	}
-
-	var lock []byte
-	lockData, err := os.ReadFile(filepath.Join(cwd, "pixi.lock"))
-	if err == nil {
-		lock = lockData
-	}
-
-	// Create global workspace
-	wsDir := s.GlobalWorkspaceDir(name)
-
-	if err := os.MkdirAll(wsDir, 0755); err != nil {
-		return fmt.Errorf("creating global workspace directory: %w", err)
-	}
-
-	if err := os.WriteFile(filepath.Join(wsDir, "pixi.toml"), toml, 0644); err != nil {
-		return fmt.Errorf("writing pixi.toml: %w", err)
-	}
-
-	if lock != nil {
-		if err := os.WriteFile(filepath.Join(wsDir, "pixi.lock"), lock, 0644); err != nil {
-			return fmt.Errorf("writing pixi.lock: %w", err)
-		}
-	}
-
-	ws := &store.LocalWorkspace{
-		Name: name,
-		Path: wsDir,
-	}
-	if err := s.CreateWorkspace(ws); err != nil {
-		return fmt.Errorf("saving workspace: %w", err)
-	}
-
-	fmt.Fprintf(os.Stderr, "Global workspace %q created from %s\n", name, cwd)
-	return nil
-}
-
 func runWorkspaceRemove(cmd *cobra.Command, args []string) error {
 	arg := ""
 	if len(args) > 0 {
@@ -373,21 +282,20 @@ func runWorkspaceRemoveLocal(arg string) error {
 			return fmt.Errorf("no tracked workspace at path %q", absPath)
 		}
 	} else {
-		ws, err = s.FindWorkspaceByName(arg)
+		workspaces, err := findWorkspacesByNameWithSync(s, arg)
 		if err != nil {
 			return err
 		}
-		if ws == nil {
+		switch len(workspaces) {
+		case 0:
 			return fmt.Errorf("workspace %q not found; use 'nebi workspace list' to see available workspaces", arg)
-		}
-	}
-
-	isGlobal := s.IsGlobalWorkspace(ws)
-
-	// Delete directory for global workspaces
-	if isGlobal {
-		if err := os.RemoveAll(ws.Path); err != nil {
-			return fmt.Errorf("removing global workspace directory: %w", err)
+		case 1:
+			ws = &workspaces[0]
+		default:
+			ws, err = pickWorkspace(workspaces, arg)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -400,11 +308,7 @@ func runWorkspaceRemoveLocal(arg string) error {
 		return fmt.Errorf("removing workspace: %w", err)
 	}
 
-	if isGlobal {
-		fmt.Fprintf(os.Stderr, "Removed global workspace %q\n", displayName)
-	} else {
-		fmt.Fprintf(os.Stderr, "Removed workspace %q (project files untouched)\n", displayName)
-	}
+	fmt.Fprintf(os.Stderr, "Removed workspace %q (project files untouched)\n", displayName)
 	return nil
 }
 
@@ -418,6 +322,13 @@ func runWorkspacePrune(cmd *cobra.Command, args []string) error {
 	wss, err := s.ListWorkspaces()
 	if err != nil {
 		return err
+	}
+
+	// Sync workspace names from pixi.toml before pruning
+	for i := range wss {
+		if err := syncWorkspaceName(s, &wss[i]); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: %s: %v\n", wss[i].Path, err)
+		}
 	}
 
 	var pruned []string

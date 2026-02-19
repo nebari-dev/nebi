@@ -90,8 +90,8 @@ const config: Config = {
               to: '/docs/getting-started',
             },
             {
-              label: 'CLI Workflows',
-              to: '/docs/cli-workflows',
+              label: 'CLI Guide',
+              to: '/docs/cli-guide',
             },
           ],
         },

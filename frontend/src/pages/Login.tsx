@@ -28,7 +28,7 @@ export const Login = () => {
 
   // Try session-based auth (works with any authenticating proxy)
   useEffect(() => {
-    if (isLocalMode) return;
+    if (isLocalMode || sessionChecked) return;
     apiClient.get('/auth/session', { withCredentials: true })
       .then(({ data }) => {
         setAuth(data.token, data.user);
@@ -38,7 +38,8 @@ export const Login = () => {
         // No proxy session, show login form as usual
         setSessionChecked(true);
       });
-  }, [isLocalMode, setAuth, navigate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLocalMode]);
 
   // Don't render login form in local mode
   if (isLocalMode) return null;

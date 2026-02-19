@@ -54,39 +54,8 @@ curl -fsSL https://nebi.nebari.dev/install.sh | sh -s -- --install-dir /usr/loca
 go install github.com/nebari-dev/nebi/cmd/nebi@latest
 ```
 
-## Quick Start
-
-### 1. Initialize a workspace
-
-```bash
-mkdir my-project && cd my-project
-nebi init
-```
-
-If no `pixi.toml` exists, `nebi init` will run `pixi init` for you automatically.
-
-### 2. Add dependencies
-
-```bash
-pixi add python numpy pandas
-```
-
-### 3. Push to a server
-
-```bash
-nebi login https://nebi.company.com
-nebi push my-project
-```
-
-### 4. Pull on another machine
-
-```bash
-nebi login https://nebi.company.com
-nebi pull my-project:v1.0
-```
-
 ## What's Next?
 
-- [CLI Overview](./cli-overview.md) — Learn about all available commands
-- [CLI Workflows](./cli-workflows.md) — Step-by-step workflow examples
+- [CLI Guide](./cli-guide.md) — Local workflows and team collaboration
+- [CLI Reference](./cli-reference.md) — All available commands at a glance
 - [Server Setup](./server-setup.md) — Run your own Nebi server

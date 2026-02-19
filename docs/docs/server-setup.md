@@ -39,5 +39,5 @@ http://localhost:8460/docs
 
 ## What's Next
 
-- See the [CLI Workflows](./cli-workflows.md) guide for push/pull examples
-- Check the [CLI Overview](./cli-overview.md) for all available commands
+- See the [CLI Guide](./cli-guide.md) for push/pull examples
+- Check the [CLI Reference](./cli-reference.md) for all available commands

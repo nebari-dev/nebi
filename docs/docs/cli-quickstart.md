@@ -40,21 +40,6 @@ nebi init
 Workspace 'existing-pixi-project' initialized (/home/user/existing-pixi-project)
 ```
 
-### Check Workspace Status
-
-See the current state of your workspace:
-
-```bash
-nebi status
-```
-
-```
-Workspace: my-data-project
-Path:      /home/user/my-data-project
-
-No origin. Push or pull to set an origin.
-```
-
 ### List Your Workspaces
 
 See all workspaces tracked by Nebi:

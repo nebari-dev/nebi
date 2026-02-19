@@ -47,6 +47,8 @@ type AuthConfig struct {
 	OIDCClientID     string `mapstructure:"oidc_client_id"`     // OIDC client ID
 	OIDCClientSecret string `mapstructure:"oidc_client_secret"` // OIDC client secret
 	OIDCRedirectURL  string `mapstructure:"oidc_redirect_url"`  // OIDC redirect URL (e.g., http://localhost:8460/auth/oidc/callback)
+	ProxyAdminGroups string `mapstructure:"proxy_admin_groups"` // Comma-separated Keycloak/OIDC groups that grant admin (e.g., "admin,nebi-admin")
+	ProxyDefaultRole string `mapstructure:"proxy_default_role"` // Default role for proxy-authenticated users (default: "editor")
 }
 
 // QueueConfig holds job queue configuration
@@ -92,6 +94,8 @@ func Load() (*Config, error) {
 	v.SetDefault("auth.oidc_client_id", "")
 	v.SetDefault("auth.oidc_client_secret", "")
 	v.SetDefault("auth.oidc_redirect_url", "http://localhost:8460/api/v1/auth/oidc/callback")
+	v.SetDefault("auth.proxy_admin_groups", "admin")
+	v.SetDefault("auth.proxy_default_role", "editor")
 	v.SetDefault("queue.type", "memory")
 	v.SetDefault("queue.valkey_addr", "localhost:6379")
 	v.SetDefault("log.format", "text")

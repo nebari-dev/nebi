@@ -28,6 +28,10 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      // Don't redirect for /auth/session — it's expected to return 401 when no proxy
+      if (error.config?.url === '/auth/session') {
+        return Promise.reject(error);
+      }
       // In local mode, don't redirect to login
       const { mode } = useModeStore.getState();
       if (mode !== 'local') {

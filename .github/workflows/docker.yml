@@ -38,15 +38,17 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
+            # PR builds: tag with pr-<number> and sha only
             type=ref,event=pr
-            type=raw,value=latest,enable={{is_default_branch}}
             type=sha
+            # Main branch builds: add branch name and latest
+            type=ref,event=branch,enable={{is_default_branch}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            # Release builds
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
       - name: Login to Quay.io
-        if: ${{ github.event_name == 'push' }}
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
@@ -62,16 +64,17 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
-          push: ${{ github.event_name == 'push' }}
-          load: ${{ github.event_name == 'pull_request' }}
+          push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Smoke test
-        if: ${{ github.event_name == 'pull_request' }}
         run: |
           IMAGE_TAG="${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}"
           echo "Testing image: ${IMAGE_TAG}"
+
+          # Pull the image we just pushed
+          docker pull ${IMAGE_TAG}
 
           # Start container with port mapping
           docker run --rm -d --name test-nebi \
@@ -96,9 +99,8 @@ jobs:
           docker stop test-nebi
 
       - name: Add image tags to summary
-        if: ${{ github.event_name == 'push' }}
         run: |
-          echo "## 🐳 Docker Image Built: ${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Docker Image Built: ${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Platforms:** linux/amd64" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

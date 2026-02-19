@@ -14,6 +14,7 @@ type User struct {
 	PasswordHash string         `gorm:"not null" json:"-"`
 	Email        string         `gorm:"uniqueIndex;not null" json:"email"`
 	AvatarURL    string         `json:"avatar_url"`
+	Groups       []string       `gorm:"serializer:json" json:"groups"`
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
 	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`

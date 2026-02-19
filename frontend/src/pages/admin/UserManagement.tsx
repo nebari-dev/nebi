@@ -98,6 +98,7 @@ export const UserManagement = () => {
                   <th className="text-left p-4 font-medium">Username</th>
                   <th className="text-left p-4 font-medium">Email</th>
                   <th className="text-left p-4 font-medium">Role</th>
+                  <th className="text-left p-4 font-medium">Groups</th>
                   <th className="text-left p-4 font-medium">Created</th>
                   <th className="text-right p-4 font-medium">Actions</th>
                 </tr>
@@ -120,6 +121,19 @@ export const UserManagement = () => {
                         </Badge>
                       ) : (
                         <Badge variant="outline">User</Badge>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      {user.groups && user.groups.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {user.groups.map((group) => (
+                            <Badge key={group} variant="outline" className="text-xs">
+                              {group}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">-</span>
                       )}
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">

@@ -3,6 +3,7 @@ export interface User {
   username: string;
   email: string;
   avatar_url?: string;
+  groups?: string[];
   is_admin?: boolean;
   created_at: string;
   updated_at: string;
@@ -93,15 +94,22 @@ export interface AuditLog {
 }
 
 export interface Collaborator {
-  user_id: string;
-  username: string;
-  email: string;
+  user_id?: string;
+  group_name?: string;
+  username?: string;
+  email?: string;
   role: 'owner' | 'editor' | 'viewer';
   is_owner: boolean;
+  is_group?: boolean;
 }
 
 export interface ShareWorkspaceRequest {
   user_id: string;
+  role: 'editor' | 'viewer';
+}
+
+export interface ShareGroupRequest {
+  group_name: string;
   role: 'editor' | 'viewer';
 }
 

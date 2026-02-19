@@ -94,6 +94,7 @@ func TestFindOrCreateProxyUser_CreatesNew(t *testing.T) {
 		PreferredUsername: "bob",
 		Email:             "bob@example.com",
 		Picture:           "https://example.com/bob.png",
+		Groups:            []string{"engineering", "dev"},
 	}
 
 	user, err := findOrCreateProxyUser(db, claims)
@@ -110,12 +111,15 @@ func TestFindOrCreateProxyUser_CreatesNew(t *testing.T) {
 	if user.AvatarURL != "https://example.com/bob.png" {
 		t.Errorf("expected avatar URL, got %s", user.AvatarURL)
 	}
+	if len(user.Groups) != 2 || user.Groups[0] != "engineering" || user.Groups[1] != "dev" {
+		t.Errorf("expected groups [engineering dev], got %v", user.Groups)
+	}
 
-	// Verify in DB
-	var count int64
-	db.Model(&models.User{}).Where("username = ?", "bob").Count(&count)
-	if count != 1 {
-		t.Errorf("expected 1 user in db, got %d", count)
+	// Verify groups persisted in DB
+	var dbUser models.User
+	db.First(&dbUser, "username = ?", "bob")
+	if len(dbUser.Groups) != 2 {
+		t.Errorf("expected 2 groups persisted in db, got %d", len(dbUser.Groups))
 	}
 }
 
@@ -127,6 +131,7 @@ func TestFindOrCreateProxyUser_FindsExisting(t *testing.T) {
 		Username:     "carol",
 		Email:        "carol@example.com",
 		AvatarURL:    "old-avatar",
+		Groups:       []string{"old-group"},
 		PasswordHash: "",
 	}
 	db.Create(&existing)
@@ -135,6 +140,7 @@ func TestFindOrCreateProxyUser_FindsExisting(t *testing.T) {
 		PreferredUsername: "carol",
 		Email:             "carol@example.com",
 		Picture:           "new-avatar",
+		Groups:            []string{"new-group", "engineering"},
 	}
 
 	user, err := findOrCreateProxyUser(db, claims)
@@ -147,6 +153,9 @@ func TestFindOrCreateProxyUser_FindsExisting(t *testing.T) {
 	}
 	if user.AvatarURL != "new-avatar" {
 		t.Errorf("expected avatar to be updated to new-avatar, got %s", user.AvatarURL)
+	}
+	if len(user.Groups) != 2 || user.Groups[0] != "new-group" || user.Groups[1] != "engineering" {
+		t.Errorf("expected groups to be synced to [new-group engineering], got %v", user.Groups)
 	}
 }
 

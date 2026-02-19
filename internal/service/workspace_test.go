@@ -190,7 +190,7 @@ func TestList_LocalModeReturnsAll(t *testing.T) {
 	svc.Create(context.Background(), CreateRequest{Name: "ws-bob"}, bob)
 
 	// In local mode, any user sees all workspaces
-	workspaces, err := svc.List(alice)
+	workspaces, err := svc.List(alice, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestList_TeamModeFiltersToOwner(t *testing.T) {
 	svc.Create(context.Background(), CreateRequest{Name: "ws-alice"}, alice)
 	svc.Create(context.Background(), CreateRequest{Name: "ws-bob"}, bob)
 
-	workspaces, err := svc.List(alice)
+	workspaces, err := svc.List(alice, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

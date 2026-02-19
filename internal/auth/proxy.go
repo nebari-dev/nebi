@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -82,9 +83,17 @@ func findOrCreateProxyUser(db *gorm.DB, claims *ProxyTokenClaims) (*models.User,
 	var user models.User
 	result := db.Where("username = ? OR email = ?", username, email).First(&user)
 	if result.Error == nil {
-		// Existing user — update avatar if changed
+		// Existing user — update avatar and groups if changed
+		needsUpdate := false
 		if user.AvatarURL != claims.Picture {
 			user.AvatarURL = claims.Picture
+			needsUpdate = true
+		}
+		if !slices.Equal(user.Groups, claims.Groups) {
+			user.Groups = claims.Groups
+			needsUpdate = true
+		}
+		if needsUpdate {
 			db.Save(&user)
 		}
 		return &user, nil
@@ -100,6 +109,7 @@ func findOrCreateProxyUser(db *gorm.DB, claims *ProxyTokenClaims) (*models.User,
 		Username:     username,
 		Email:        email,
 		AvatarURL:    claims.Picture,
+		Groups:       claims.Groups,
 		PasswordHash: "", // proxy users don't have passwords
 	}
 	if err := db.Create(&user).Error; err != nil {

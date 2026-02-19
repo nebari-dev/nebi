@@ -67,7 +67,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		logger.Info("Running in local mode — authentication bypassed", "user", auth.LocalUsername())
 	} else {
 		if cfg.Auth.Type == "basic" {
-			authenticator = auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
+			basicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
+			basicAuth.SetProxyAdminGroups(cfg.Auth.ProxyAdminGroups)
+			authenticator = basicAuth
 		}
 
 		// Initialize OIDC if configured
@@ -89,12 +91,19 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		}
 	}
 
+	// Session check endpoint needs a BasicAuthenticator for JWT generation.
+	// Create one if the primary authenticator isn't already basic auth.
+	sessionBasicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
+
 	// Public routes
 	public := router.Group("/api/v1")
 	{
 		public.GET("/health", handlers.HealthCheck)
 		public.GET("/version", handlers.GetVersion)
 		public.POST("/auth/login", handlers.Login(authenticator))
+
+		// Session check: exchanges proxy IdToken cookie for a Nebi JWT (no auth middleware)
+		public.GET("/auth/session", handlers.SessionCheck(sessionBasicAuth, cfg.Auth.ProxyAdminGroups))
 
 		// OIDC routes (if enabled, team mode only)
 		if oidcAuth != nil {

@@ -12,6 +12,7 @@ export const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [searchParams] = useSearchParams();
 
   const setAuth = useAuthStore((state) => state.setAuth);
@@ -24,6 +25,20 @@ export const Login = () => {
       navigate('/workspaces');
     }
   }, [isLocalMode, navigate]);
+
+  // Try session-based auth (works with any authenticating proxy)
+  useEffect(() => {
+    if (isLocalMode) return;
+    apiClient.get('/auth/session', { withCredentials: true })
+      .then(({ data }) => {
+        setAuth(data.token, data.user);
+        navigate('/');
+      })
+      .catch(() => {
+        // No proxy session, show login form as usual
+        setSessionChecked(true);
+      });
+  }, [isLocalMode, setAuth, navigate]);
 
   // Don't render login form in local mode
   if (isLocalMode) return null;
@@ -76,6 +91,9 @@ export const Login = () => {
       setLoading(false);
     }
   };
+
+  // Wait for session check before showing the form
+  if (!sessionChecked) return null;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white">

@@ -969,6 +969,26 @@ paths:
       summary: Initiate OIDC login
       tags:
       - auth
+  /auth/session:
+    get:
+      description: Check for an IdToken cookie (set by an authenticating proxy) and
+        return a Nebi JWT
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.LoginResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Check proxy session
+      tags:
+      - auth
   /health:
     get:
       description: Returns the health status of the service

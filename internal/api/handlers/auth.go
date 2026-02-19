@@ -40,3 +40,22 @@ func Login(authenticator auth.Authenticator) gin.HandlerFunc {
 		c.JSON(http.StatusOK, resp)
 	}
 }
+
+// SessionCheck godoc
+// @Summary Check proxy session
+// @Description Check for an IdToken cookie (set by an authenticating proxy) and return a Nebi JWT
+// @Tags auth
+// @Produce json
+// @Success 200 {object} auth.LoginResponse
+// @Failure 401 {object} map[string]string
+// @Router /auth/session [get]
+func SessionCheck(basicAuth *auth.BasicAuthenticator, proxyAdminGroups string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		resp, err := basicAuth.SessionFromProxy(c.Request, proxyAdminGroups)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "no proxy session"})
+			return
+		}
+		c.JSON(http.StatusOK, resp)
+	}
+}

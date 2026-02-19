@@ -25,8 +25,9 @@ const (
 
 // BasicAuthenticator implements basic username/password authentication
 type BasicAuthenticator struct {
-	db        *gorm.DB
-	jwtSecret []byte
+	db               *gorm.DB
+	jwtSecret        []byte
+	proxyAdminGroups []string
 }
 
 // NewBasicAuthenticator creates a new basic authenticator
@@ -35,6 +36,11 @@ func NewBasicAuthenticator(db *gorm.DB, jwtSecret string) *BasicAuthenticator {
 		db:        db,
 		jwtSecret: []byte(jwtSecret),
 	}
+}
+
+// SetProxyAdminGroups configures which IdToken groups grant Nebi admin.
+func (a *BasicAuthenticator) SetProxyAdminGroups(groups string) {
+	a.proxyAdminGroups = parseAdminGroups(groups)
 }
 
 // HashPassword hashes a password using bcrypt
@@ -131,7 +137,8 @@ func (a *BasicAuthenticator) validateToken(tokenString string) (*Claims, error) 
 	return nil, ErrUnauthorized
 }
 
-// Middleware returns a Gin middleware for authentication
+// Middleware returns a Gin middleware for authentication.
+// It checks (in order): Bearer token header, ?token= query param, IdToken cookie.
 func (a *BasicAuthenticator) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var tokenString string
@@ -150,45 +157,90 @@ func (a *BasicAuthenticator) Middleware() gin.HandlerFunc {
 		} else {
 			// Fallback to query parameter (for EventSource/SSE compatibility)
 			tokenString = c.Query("token")
-			if tokenString == "" {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "missing authorization"})
+		}
+
+		// If we have a Nebi JWT, validate it
+		if tokenString != "" {
+			user, err := a.validateAndLoadUser(tokenString)
+			if err != nil {
+				slog.Warn("Invalid token", "error", err)
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
 				c.Abort()
 				return
 			}
+			c.Set(UserContextKey, user)
+			c.Next()
+			return
 		}
 
-		// Validate token
-		claims, err := a.validateToken(tokenString)
+		// Fallback: try IdToken cookie from authenticating proxy (e.g. Envoy Gateway)
+		proxyClaims, err := parseIdTokenCookie(c.Request)
 		if err != nil {
-			slog.Warn("Invalid token", "error", err)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing authorization"})
 			c.Abort()
 			return
 		}
 
-		// Parse user ID from claims
-		userID, err := uuid.Parse(claims.UserID)
+		user, err := findOrCreateProxyUser(a.db, proxyClaims)
 		if err != nil {
-			slog.Error("Invalid user ID in token", "user_id", claims.UserID, "error", err)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user ID"})
+			slog.Error("Failed to find/create proxy user", "error", err)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "proxy authentication failed"})
 			c.Abort()
 			return
 		}
 
-		// Load user from database
-		var user models.User
-		result := a.db.First(&user, userID)
-		if result.Error != nil {
-			slog.Error("Failed to load user from token", "user_id", userID, "error", result.Error)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
-			c.Abort()
-			return
-		}
+		// Sync admin role from proxy groups on every request
+		syncRolesFromGroups(user.ID, proxyClaims.Groups, a.proxyAdminGroups)
 
-		// Store user in context
-		c.Set(UserContextKey, &user)
+		c.Set(UserContextKey, user)
 		c.Next()
 	}
+}
+
+// validateAndLoadUser validates a Nebi JWT and loads the user from the database.
+func (a *BasicAuthenticator) validateAndLoadUser(tokenString string) (*models.User, error) {
+	claims, err := a.validateToken(tokenString)
+	if err != nil {
+		return nil, err
+	}
+
+	userID, err := uuid.Parse(claims.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID in token: %w", err)
+	}
+
+	var user models.User
+	if result := a.db.First(&user, userID); result.Error != nil {
+		return nil, fmt.Errorf("user not found: %w", result.Error)
+	}
+
+	return &user, nil
+}
+
+// SessionFromProxy checks for an IdToken cookie, finds/creates the user,
+// syncs roles, and returns a Nebi JWT + user. Used by /auth/session.
+func (a *BasicAuthenticator) SessionFromProxy(r *http.Request, adminGroups string) (*LoginResponse, error) {
+	proxyClaims, err := parseIdTokenCookie(r)
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := findOrCreateProxyUser(a.db, proxyClaims)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find/create proxy user: %w", err)
+	}
+
+	syncRolesFromGroups(user.ID, proxyClaims.Groups, parseAdminGroups(adminGroups))
+
+	token, err := a.generateToken(user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate token: %w", err)
+	}
+
+	return &LoginResponse{
+		Token: token,
+		User:  user,
+	}, nil
 }
 
 // GetUserFromContext extracts the authenticated user from the Gin context

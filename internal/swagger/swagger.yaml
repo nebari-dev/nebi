@@ -141,6 +141,8 @@ definitions:
         type: string
       registry_name:
         type: string
+      registry_namespace:
+        type: string
       registry_url:
         type: string
       repository:

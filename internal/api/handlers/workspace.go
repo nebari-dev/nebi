@@ -992,11 +992,12 @@ func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
 	h.db.Preload("Registry").Preload("PublishedByUser").First(&publication, publication.ID)
 
 	response := PublicationResponse{
-		ID:            publication.ID,
-		VersionNumber: publication.VersionNumber,
-		RegistryName:  publication.Registry.Name,
-		RegistryURL:   publication.Registry.URL,
-		Repository:    publication.Repository,
+		ID:                publication.ID,
+		VersionNumber:     publication.VersionNumber,
+		RegistryName:      publication.Registry.Name,
+		RegistryURL:       publication.Registry.URL,
+		RegistryNamespace: publication.Registry.Namespace,
+		Repository:        publication.Repository,
 		Tag:           publication.Tag,
 		Digest:        publication.Digest,
 		PublishedBy:   publication.PublishedByUser.Username,
@@ -1047,11 +1048,12 @@ func (h *WorkspaceHandler) ListPublications(c *gin.Context) {
 	response := make([]PublicationResponse, len(publications))
 	for i, pub := range publications {
 		response[i] = PublicationResponse{
-			ID:            pub.ID,
-			VersionNumber: pub.VersionNumber,
-			RegistryName:  pub.Registry.Name,
-			RegistryURL:   pub.Registry.URL,
-			Repository:    pub.Repository,
+			ID:                pub.ID,
+			VersionNumber:     pub.VersionNumber,
+			RegistryName:      pub.Registry.Name,
+			RegistryURL:       pub.Registry.URL,
+			RegistryNamespace: pub.Registry.Namespace,
+			Repository:        pub.Repository,
 			Tag:           pub.Tag,
 			Digest:        pub.Digest,
 			PublishedBy:   pub.PublishedByUser.Username,
@@ -1185,11 +1187,12 @@ type PublishDefaultsResponse struct {
 }
 
 type PublicationResponse struct {
-	ID            uuid.UUID `json:"id"`
-	VersionNumber int       `json:"version_number"`
-	RegistryName  string    `json:"registry_name"`
-	RegistryURL   string    `json:"registry_url"`
-	Repository    string    `json:"repository"`
+	ID                uuid.UUID `json:"id"`
+	VersionNumber     int       `json:"version_number"`
+	RegistryName      string    `json:"registry_name"`
+	RegistryURL       string    `json:"registry_url"`
+	RegistryNamespace string    `json:"registry_namespace"`
+	Repository        string    `json:"repository"`
 	Tag           string    `json:"tag"`
 	Digest        string    `json:"digest"`
 	PublishedBy   string    `json:"published_by"`

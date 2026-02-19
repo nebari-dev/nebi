@@ -172,6 +172,7 @@ export interface Publication {
   id: string; // UUID
   registry_name: string;
   registry_url: string;
+  registry_namespace: string;
   repository: string;
   tag: string;
   digest: string;

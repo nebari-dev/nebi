@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi } from '@/api/admin';
-import type { CreateUserRequest, ShareWorkspaceRequest } from '@/types/models';
+import type { CreateUserRequest, ShareWorkspaceRequest, ShareGroupRequest } from '@/types/models';
 
 // Check if current user is admin
 export const useIsAdmin = () => {
@@ -89,6 +89,36 @@ export const useUnshareWorkspace = (workspaceId: string) => {
   return useMutation({
     mutationFn: (userId: string) =>
       adminApi.unshareWorkspace(workspaceId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['collaborators', workspaceId] });
+    },
+  });
+};
+
+// Groups Hooks
+export const useGroups = () => {
+  return useQuery({
+    queryKey: ['groups'],
+    queryFn: adminApi.getGroups,
+  });
+};
+
+export const useShareWorkspaceWithGroup = (workspaceId: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: ShareGroupRequest) =>
+      adminApi.shareWorkspaceWithGroup(workspaceId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['collaborators', workspaceId] });
+    },
+  });
+};
+
+export const useUnshareWorkspaceFromGroup = (workspaceId: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (groupName: string) =>
+      adminApi.unshareWorkspaceFromGroup(workspaceId, groupName),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['collaborators', workspaceId] });
     },

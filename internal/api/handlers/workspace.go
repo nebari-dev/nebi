@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -66,8 +67,9 @@ func handleServiceError(c *gin.Context, err error) {
 // @Router /workspaces [get]
 func (h *WorkspaceHandler) ListWorkspaces(c *gin.Context) {
 	userID := getUserID(c)
+	userGroups := getUserGroups(c)
 
-	workspaces, err := h.svc.List(userID)
+	workspaces, err := h.svc.List(userID, userGroups)
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -734,6 +736,168 @@ func (h *WorkspaceHandler) UnshareWorkspace(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// ShareWorkspaceWithGroup godoc
+// @Summary Share workspace with a group (owner only)
+// @Tags workspaces
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path string true "Workspace ID"
+// @Param share body ShareGroupRequest true "Group share details"
+// @Success 201 {object} models.GroupPermission
+// @Router /workspaces/{id}/share-group [post]
+func (h *WorkspaceHandler) ShareWorkspaceWithGroup(c *gin.Context) {
+	ownerID := getUserID(c)
+	wsID := c.Param("id")
+
+	var req ShareGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	wsUUID, err := uuid.Parse(wsID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid workspace ID"})
+		return
+	}
+
+	var ws models.Workspace
+	if err := h.db.Where("id = ?", wsUUID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
+		return
+	}
+
+	if ws.OwnerID != ownerID {
+		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Only the owner can share this workspace"})
+		return
+	}
+
+	if req.Role != "viewer" && req.Role != "editor" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Role must be 'viewer' or 'editor'"})
+		return
+	}
+
+	var role models.Role
+	if err := h.db.Where("name = ?", req.Role).First(&role).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Role not found"})
+		return
+	}
+
+	// Check if group permission already exists
+	var existing models.GroupPermission
+	if err := h.db.Where("group_name = ? AND workspace_id = ?", req.GroupName, wsUUID).First(&existing).Error; err == nil {
+		// Update existing permission
+		existing.RoleID = role.ID
+		if err := h.db.Save(&existing).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update group permission"})
+			return
+		}
+		c.JSON(http.StatusOK, existing)
+		return
+	}
+
+	gp := models.GroupPermission{
+		GroupName:   req.GroupName,
+		WorkspaceID: wsUUID,
+		RoleID:      role.ID,
+	}
+
+	if err := h.db.Create(&gp).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create group permission"})
+		return
+	}
+
+	audit.LogAction(h.db, ownerID, audit.ActionGrantPermission, fmt.Sprintf("ws:%s", wsUUID.String()), map[string]interface{}{
+		"group_name": req.GroupName,
+		"role":       req.Role,
+	})
+
+	c.JSON(http.StatusCreated, gp)
+}
+
+// UnshareWorkspaceFromGroup godoc
+// @Summary Revoke group access to workspace (owner only)
+// @Tags workspaces
+// @Security BearerAuth
+// @Param id path string true "Workspace ID"
+// @Param group_name path string true "Group name to revoke"
+// @Success 204
+// @Router /workspaces/{id}/share-group/{group_name} [delete]
+func (h *WorkspaceHandler) UnshareWorkspaceFromGroup(c *gin.Context) {
+	ownerID := getUserID(c)
+	wsID := c.Param("id")
+	groupName := c.Param("group_name")
+
+	wsUUID, err := uuid.Parse(wsID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid workspace ID"})
+		return
+	}
+
+	var ws models.Workspace
+	if err := h.db.Where("id = ?", wsUUID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
+		return
+	}
+
+	if ws.OwnerID != ownerID {
+		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Only the owner can unshare this workspace"})
+		return
+	}
+
+	var gp models.GroupPermission
+	if err := h.db.Where("group_name = ? AND workspace_id = ?", groupName, wsUUID).First(&gp).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Group permission not found"})
+		return
+	}
+
+	if err := h.db.Delete(&gp).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to delete group permission"})
+		return
+	}
+
+	audit.LogAction(h.db, ownerID, audit.ActionRevokePermission, fmt.Sprintf("ws:%s", wsUUID.String()), map[string]interface{}{
+		"group_name": groupName,
+	})
+
+	c.Status(http.StatusNoContent)
+}
+
+// ListGroups godoc
+// @Summary List all known groups across all users
+// @Tags groups
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {array} string
+// @Router /groups [get]
+func (h *WorkspaceHandler) ListGroups(c *gin.Context) {
+	var users []models.User
+	if err := h.db.Where("groups IS NOT NULL AND groups != '[]' AND groups != 'null'").Find(&users).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch users"})
+		return
+	}
+
+	groupSet := make(map[string]bool)
+	for _, u := range users {
+		for _, g := range u.Groups {
+			if g != "" {
+				groupSet[g] = true
+			}
+		}
+	}
+
+	groups := make([]string, 0, len(groupSet))
+	for g := range groupSet {
+		groups = append(groups, g)
+	}
+
+	// Sort for deterministic output
+	sort.Strings(groups)
+
+	c.JSON(http.StatusOK, groups)
+}
+
 // ListCollaborators godoc
 // @Summary List all users with access to workspace
 // @Tags workspaces
@@ -771,8 +935,9 @@ func (h *WorkspaceHandler) ListCollaborators(c *gin.Context) {
 	collaborators := []CollaboratorResponse{}
 
 	if err := h.db.First(&owner, "id = ?", ws.OwnerID).Error; err == nil {
+		ownerID := ws.OwnerID
 		collaborators = append(collaborators, CollaboratorResponse{
-			UserID:   ws.OwnerID,
+			UserID:   &ownerID,
 			Username: owner.Username,
 			Email:    owner.Email,
 			Role:     "owner",
@@ -783,12 +948,26 @@ func (h *WorkspaceHandler) ListCollaborators(c *gin.Context) {
 	// Add other collaborators (excluding owner if they have a permission record)
 	for _, perm := range permissions {
 		if perm.UserID != ws.OwnerID {
+			uid := perm.UserID
 			collaborators = append(collaborators, CollaboratorResponse{
-				UserID:   perm.UserID,
+				UserID:   &uid,
 				Username: perm.User.Username,
 				Email:    perm.User.Email,
 				Role:     perm.Role.Name,
 				IsOwner:  false,
+			})
+		}
+	}
+
+	// Add group collaborators
+	var groupPerms []models.GroupPermission
+	if err := h.db.Preload("Role").Where("workspace_id = ?", wsUUID).Find(&groupPerms).Error; err == nil {
+		for _, gp := range groupPerms {
+			name := gp.GroupName
+			collaborators = append(collaborators, CollaboratorResponse{
+				GroupName: &name,
+				Role:      gp.Role.Name,
+				IsGroup:   true,
 			})
 		}
 	}
@@ -1165,11 +1344,18 @@ type ShareWorkspaceRequest struct {
 }
 
 type CollaboratorResponse struct {
-	UserID   uuid.UUID `json:"user_id"`
-	Username string    `json:"username"`
-	Email    string    `json:"email,omitempty"`
-	Role     string    `json:"role"` // "owner", "editor", "viewer"
-	IsOwner  bool      `json:"is_owner"`
+	UserID    *uuid.UUID `json:"user_id,omitempty"`
+	GroupName *string    `json:"group_name,omitempty"`
+	Username  string     `json:"username,omitempty"`
+	Email     string     `json:"email,omitempty"`
+	Role      string     `json:"role"` // "owner", "editor", "viewer"
+	IsOwner   bool       `json:"is_owner"`
+	IsGroup   bool       `json:"is_group"`
+}
+
+type ShareGroupRequest struct {
+	GroupName string `json:"group_name" binding:"required"`
+	Role      string `json:"role" binding:"required"` // "viewer" or "editor"
 }
 
 type PublishRequest struct {
@@ -1229,4 +1415,13 @@ func getUserID(c *gin.Context) uuid.UUID {
 		return uuid.Nil
 	}
 	return user.(*models.User).ID
+}
+
+// getUserGroups returns the groups of the authenticated user from context.
+func getUserGroups(c *gin.Context) []string {
+	user, exists := c.Get("user")
+	if !exists {
+		return nil
+	}
+	return user.(*models.User).Groups
 }

@@ -103,6 +103,7 @@ func Migrate(db *gorm.DB) error {
 		&models.Workspace{},
 		&models.Job{},
 		&models.Permission{},
+		&models.GroupPermission{},
 		&models.Template{},
 		&models.Package{},
 		&models.AuditLog{},

@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { User, CreateUserRequest, AuditLog, Collaborator, ShareWorkspaceRequest, DashboardStats } from '@/types/models';
+import type { User, CreateUserRequest, AuditLog, Collaborator, ShareWorkspaceRequest, ShareGroupRequest, DashboardStats } from '@/types/models';
 
 export const adminApi = {
   // User Management
@@ -39,6 +39,20 @@ export const adminApi = {
 
   unshareWorkspace: async (workspaceId: string, userId: string): Promise<void> => {
     await apiClient.delete(`/workspaces/${workspaceId}/share/${userId}`);
+  },
+
+  // Group Sharing
+  getGroups: async (): Promise<string[]> => {
+    const response = await apiClient.get('/groups');
+    return response.data;
+  },
+
+  shareWorkspaceWithGroup: async (workspaceId: string, data: ShareGroupRequest): Promise<void> => {
+    await apiClient.post(`/workspaces/${workspaceId}/share-group`, data);
+  },
+
+  unshareWorkspaceFromGroup: async (workspaceId: string, groupName: string): Promise<void> => {
+    await apiClient.delete(`/workspaces/${workspaceId}/share-group/${groupName}`);
   },
 
   // Dashboard Stats

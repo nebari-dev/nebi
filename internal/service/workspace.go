@@ -31,7 +31,7 @@ func New(db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool) *Work
 
 // List returns workspaces visible to the given user.
 // In local mode all workspaces are returned (no ownership filtering).
-func (s *WorkspaceService) List(userID uuid.UUID) ([]models.Workspace, error) {
+func (s *WorkspaceService) List(userID uuid.UUID, userGroups []string) ([]models.Workspace, error) {
 	var workspaces []models.Workspace
 
 	if s.isLocal {
@@ -41,7 +41,7 @@ func (s *WorkspaceService) List(userID uuid.UUID) ([]models.Workspace, error) {
 		return workspaces, nil
 	}
 
-	// Team mode: owner + permission-based filtering
+	// Team mode: owner + permission-based + group-based filtering
 	query := s.db.Where("owner_id = ?", userID)
 
 	var permissions []models.Permission
@@ -51,6 +51,16 @@ func (s *WorkspaceService) List(userID uuid.UUID) ([]models.Workspace, error) {
 	for _, p := range permissions {
 		wsIDs = append(wsIDs, p.WorkspaceID)
 	}
+
+	// Also include workspaces shared via group permissions
+	if len(userGroups) > 0 {
+		var groupPerms []models.GroupPermission
+		s.db.Where("group_name IN ?", userGroups).Find(&groupPerms)
+		for _, gp := range groupPerms {
+			wsIDs = append(wsIDs, gp.WorkspaceID)
+		}
+	}
+
 	if len(wsIDs) > 0 {
 		query = query.Or("id IN ?", wsIDs)
 	}

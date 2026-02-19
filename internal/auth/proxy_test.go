@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -41,12 +41,12 @@ func makeJWT(t *testing.T, claims any) string {
 
 func TestParseIdTokenCookie_HappyPath(t *testing.T) {
 	claims := ProxyTokenClaims{
-		Sub:              "sub-123",
+		Sub:               "sub-123",
 		PreferredUsername: "alice",
-		Email:            "alice@example.com",
-		Name:             "Alice",
-		Picture:          "https://example.com/alice.png",
-		Groups:           []string{"admin", "dev"},
+		Email:             "alice@example.com",
+		Name:              "Alice",
+		Picture:           "https://example.com/alice.png",
+		Groups:            []string{"admin", "dev"},
 	}
 	jwt := makeJWT(t, claims)
 
@@ -92,8 +92,8 @@ func TestFindOrCreateProxyUser_CreatesNew(t *testing.T) {
 
 	claims := &ProxyTokenClaims{
 		PreferredUsername: "bob",
-		Email:            "bob@example.com",
-		Picture:          "https://example.com/bob.png",
+		Email:             "bob@example.com",
+		Picture:           "https://example.com/bob.png",
 	}
 
 	user, err := findOrCreateProxyUser(db, claims)
@@ -133,8 +133,8 @@ func TestFindOrCreateProxyUser_FindsExisting(t *testing.T) {
 
 	claims := &ProxyTokenClaims{
 		PreferredUsername: "carol",
-		Email:            "carol@example.com",
-		Picture:          "new-avatar",
+		Email:             "carol@example.com",
+		Picture:           "new-avatar",
 	}
 
 	user, err := findOrCreateProxyUser(db, claims)

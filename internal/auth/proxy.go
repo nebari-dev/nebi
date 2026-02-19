@@ -19,7 +19,7 @@ import (
 // set by an authenticating proxy (e.g., Envoy Gateway after Keycloak OIDC).
 type ProxyTokenClaims struct {
 	Sub               string   `json:"sub"`
-	PreferredUsername  string   `json:"preferred_username"`
+	PreferredUsername string   `json:"preferred_username"`
 	Email             string   `json:"email"`
 	Name              string   `json:"name"`
 	Picture           string   `json:"picture"`

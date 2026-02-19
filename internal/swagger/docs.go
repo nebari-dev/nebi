@@ -755,6 +755,33 @@ const docTemplate = `{
                 }
             }
         },
+        "/groups": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "groups"
+                ],
+                "summary": "List all known groups across all users",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "description": "Returns the health status of the service",
@@ -1800,6 +1827,85 @@ const docTemplate = `{
                 }
             }
         },
+        "/workspaces/{id}/share-group": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workspaces"
+                ],
+                "summary": "Share workspace with a group (owner only)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Group share details",
+                        "name": "share",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ShareGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.GroupPermission"
+                        }
+                    }
+                }
+            }
+        },
+        "/workspaces/{id}/share-group/{group_name}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "workspaces"
+                ],
+                "summary": "Revoke group access to workspace (owner only)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Group name to revoke",
+                        "name": "group_name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
         "/workspaces/{id}/share/{user_id}": {
             "delete": {
                 "security": [
@@ -2059,6 +2165,12 @@ const docTemplate = `{
             "properties": {
                 "email": {
                     "type": "string"
+                },
+                "group_name": {
+                    "type": "string"
+                },
+                "is_group": {
+                    "type": "boolean"
                 },
                 "is_owner": {
                     "type": "boolean"
@@ -2394,6 +2506,22 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.ShareGroupRequest": {
+            "type": "object",
+            "required": [
+                "group_name",
+                "role"
+            ],
+            "properties": {
+                "group_name": {
+                    "type": "string"
+                },
+                "role": {
+                    "description": "\"viewer\" or \"editor\"",
+                    "type": "string"
+                }
+            }
+        },
         "handlers.ShareWorkspaceRequest": {
             "type": "object",
             "required": [
@@ -2447,6 +2575,12 @@ const docTemplate = `{
                 },
                 "email": {
                     "type": "string"
+                },
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "id": {
                     "type": "string"
@@ -2504,6 +2638,35 @@ const docTemplate = `{
                     "$ref": "#/definitions/models.User"
                 },
                 "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.GroupPermission": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "group_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "role": {
+                    "$ref": "#/definitions/models.Role"
+                },
+                "role_id": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "workspace": {
+                    "$ref": "#/definitions/models.Workspace"
+                },
+                "workspace_id": {
                     "type": "string"
                 }
             }
@@ -2669,6 +2832,12 @@ const docTemplate = `{
                 },
                 "email": {
                     "type": "string"
+                },
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "id": {
                     "type": "string"

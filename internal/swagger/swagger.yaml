@@ -21,6 +21,10 @@ definitions:
     properties:
       email:
         type: string
+      group_name:
+        type: string
+      is_group:
+        type: boolean
       is_owner:
         type: boolean
       role:
@@ -241,6 +245,17 @@ definitions:
     required:
     - content
     type: object
+  handlers.ShareGroupRequest:
+    properties:
+      group_name:
+        type: string
+      role:
+        description: '"viewer" or "editor"'
+        type: string
+    required:
+    - group_name
+    - role
+    type: object
   handlers.ShareWorkspaceRequest:
     properties:
       role:
@@ -277,6 +292,10 @@ definitions:
         type: string
       email:
         type: string
+      groups:
+        items:
+          type: string
+        type: array
       id:
         type: string
       is_admin:
@@ -315,6 +334,25 @@ definitions:
       user:
         $ref: '#/definitions/models.User'
       user_id:
+        type: string
+    type: object
+  models.GroupPermission:
+    properties:
+      created_at:
+        type: string
+      group_name:
+        type: string
+      id:
+        type: integer
+      role:
+        $ref: '#/definitions/models.Role'
+      role_id:
+        type: integer
+      updated_at:
+        type: string
+      workspace:
+        $ref: '#/definitions/models.Workspace'
+      workspace_id:
         type: string
     type: object
   models.Job:
@@ -430,6 +468,10 @@ definitions:
         type: string
       email:
         type: string
+      groups:
+        items:
+          type: string
+        type: array
       id:
         type: string
       updated_at:
@@ -989,6 +1031,22 @@ paths:
       summary: Check proxy session
       tags:
       - auth
+  /groups:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: string
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List all known groups across all users
+      tags:
+      - groups
   /health:
     get:
       description: Returns the health status of the service
@@ -1647,6 +1705,55 @@ paths:
       security:
       - BearerAuth: []
       summary: Share workspace with another user (owner only)
+      tags:
+      - workspaces
+  /workspaces/{id}/share-group:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Group share details
+        in: body
+        name: share
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.ShareGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.GroupPermission'
+      security:
+      - BearerAuth: []
+      summary: Share workspace with a group (owner only)
+      tags:
+      - workspaces
+  /workspaces/{id}/share-group/{group_name}:
+    delete:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Group name to revoke
+        in: path
+        name: group_name
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Revoke group access to workspace (owner only)
       tags:
       - workspaces
   /workspaces/{id}/share/{user_id}:

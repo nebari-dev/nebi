@@ -97,6 +97,19 @@ export const usePublications = (workspaceId: string) => {
   });
 };
 
+// Mutation hook for updating publication visibility
+export const useUpdatePublication = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ workspaceId, pubId, isPublic }: { workspaceId: string; pubId: string; isPublic: boolean }) =>
+      registriesApi.updatePublication(workspaceId, pubId, isPublic),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['publications', variables.workspaceId] });
+    },
+  });
+};
+
 // Query hook for registry repositories (browse)
 export const useRegistryRepositories = (registryId: string, search?: string) => {
   return useQuery({

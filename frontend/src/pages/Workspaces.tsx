@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
-import { Loader2, Plus, Trash2, X, Edit } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Edit, Copy, Check } from 'lucide-react';
 
 type UnifiedWorkspace = {
   id: string;
@@ -71,6 +71,7 @@ export const Workspaces = () => {
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string; location: 'local' | 'remote' } | null>(null);
   const [error, setError] = useState('');
+  const [copiedPullId, setCopiedPullId] = useState<string | null>(null);
 
   // Filter workspaces based on view mode (when remote connected) or show all local (when not)
   const displayedWorkspaces = useMemo<UnifiedWorkspace[]>(() => {
@@ -223,6 +224,15 @@ export const Workspaces = () => {
       const errorMessage = error?.response?.data?.error || 'Failed to update workspace. Please try again.';
       setError(errorMessage);
     }
+  };
+
+  const handleCopyPull = async (e: React.MouseEvent, wsName: string, wsId: string) => {
+    e.stopPropagation();
+    const serverUrl = window.location.origin;
+    const cmd = `nebi login ${serverUrl} && nebi pull ${wsName}`;
+    await navigator.clipboard.writeText(cmd);
+    setCopiedPullId(wsId);
+    setTimeout(() => setCopiedPullId(null), 2000);
   };
 
   const isCreatePending = createMutation.isPending || createRemoteMutation.isPending;
@@ -424,6 +434,21 @@ export const Workspaces = () => {
                     </td>
                     <td className="p-4">
                       <div className="flex justify-end gap-2">
+                        {ws.location === 'local' && ws.source !== 'local' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={(e) => handleCopyPull(e, ws.name, ws.id)}
+                            title="Copy nebi pull command"
+                          >
+                            {copiedPullId === ws.id ? (
+                              <Check className="h-4 w-4" />
+                            ) : (
+                              <Copy className="h-4 w-4" />
+                            )}
+                          </Button>
+                        )}
                         {ws.location === 'local' && ws.source !== 'local' && (
                           <Button
                             variant="ghost"

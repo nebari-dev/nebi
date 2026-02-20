@@ -135,6 +135,8 @@ definitions:
         type: string
       id:
         type: string
+      is_public:
+        type: boolean
       published_at:
         type: string
       published_by:
@@ -251,6 +253,13 @@ definitions:
     required:
     - role
     - user_id
+    type: object
+  handlers.UpdatePublicationRequest:
+    properties:
+      is_public:
+        type: boolean
+    required:
+    - is_public
     type: object
   handlers.UpdateRegistryRequest:
     properties:
@@ -1480,6 +1489,52 @@ paths:
       security:
       - BearerAuth: []
       summary: List publications for an workspace
+      tags:
+      - workspaces
+  /workspaces/{id}/publications/{pubId}:
+    patch:
+      consumes:
+      - application/json
+      description: Toggle the public/private visibility of a publication
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Publication ID
+        in: path
+        name: pubId
+        required: true
+        type: string
+      - description: Update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdatePublicationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.PublicationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a publication's visibility
       tags:
       - workspaces
   /workspaces/{id}/publish:

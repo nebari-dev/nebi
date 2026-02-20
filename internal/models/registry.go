@@ -34,6 +34,7 @@ type Publication struct {
 	Repository      string      `gorm:"not null" json:"repository"` // e.g., "myorg/myenv"
 	Tag             string      `gorm:"not null" json:"tag"`        // e.g., "v1.0.0"
 	Digest          string      `json:"digest"`                     // OCI manifest digest
+	IsPublic        bool        `gorm:"default:false" json:"is_public"`
 	PublishedBy     uuid.UUID   `gorm:"type:uuid;not null" json:"published_by"`
 	PublishedByUser User        `gorm:"foreignKey:PublishedBy" json:"published_by_user,omitempty"`
 	CreatedAt       time.Time   `json:"created_at"`

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useWorkspace } from '@/hooks/useWorkspaces';
 import { usePackages, useInstallPackages, useRemovePackage } from '@/hooks/usePackages';
 import { useCollaborators } from '@/hooks/useAdmin';
-import { usePublications } from '@/hooks/useRegistries';
+import { usePublications, useUpdatePublication } from '@/hooks/useRegistries';
 import { workspacesApi } from '@/api/workspaces';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,7 @@ import { PublishButton } from '@/components/publishing/PublishButton';
 import { RoleBadge } from '@/components/sharing/RoleBadge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
-import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check, ExternalLink, Save, HardDrive, Pencil } from 'lucide-react';
+import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check, ExternalLink, Save, HardDrive, Pencil, Globe, Lock } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -38,6 +38,7 @@ export const WorkspaceDetail = () => {
   const { data: publications, isLoading: publicationsLoading } = usePublications(wsId);
   const installMutation = useInstallPackages(wsId);
   const removeMutation = useRemovePackage(wsId);
+  const updatePubMutation = useUpdatePublication();
   const currentUser = useAuthStore((state) => state.user);
 
   const [activeTab, setActiveTab] = useState('overview');
@@ -51,6 +52,8 @@ export const WorkspaceDetail = () => {
   const [savingToml, setSavingToml] = useState(false);
   const [loadingToml, setLoadingToml] = useState(false);
   const [copiedToml, setCopiedToml] = useState(false);
+  const [copiedPull, setCopiedPull] = useState(false);
+  const [copiedImportId, setCopiedImportId] = useState<string | null>(null);
 
   const isLocalWs = workspace?.source === 'local';
 
@@ -79,6 +82,22 @@ export const WorkspaceDetail = () => {
     await navigator.clipboard.writeText(pixiToml);
     setCopiedToml(true);
     setTimeout(() => setCopiedToml(false), 2000);
+  };
+
+  const handleCopyPull = async () => {
+    const serverUrl = window.location.origin;
+    const cmd = `nebi login ${serverUrl} && nebi pull ${workspace?.name || ''}`;
+    await navigator.clipboard.writeText(cmd);
+    setCopiedPull(true);
+    setTimeout(() => setCopiedPull(false), 2000);
+  };
+
+  const handleCopyImport = async (pub: { registry_url: string; registry_namespace: string; repository: string; tag: string; id: string }) => {
+    const repoPath = pub.registry_namespace ? `${pub.registry_namespace}/${pub.repository}` : pub.repository;
+    const cmd = `nebi import ${pub.registry_url}/${repoPath}:${pub.tag}`;
+    await navigator.clipboard.writeText(cmd);
+    setCopiedImportId(pub.id);
+    setTimeout(() => setCopiedImportId(null), 2000);
   };
 
   const handleInstall = async (e: React.FormEvent) => {
@@ -145,6 +164,26 @@ export const WorkspaceDetail = () => {
           <Badge className={statusColors[workspace.status]}>
             {workspace.status}
           </Badge>
+          {!isLocalWs && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={handleCopyPull}
+            >
+              {copiedPull ? (
+                <>
+                  <Check className="h-4 w-4" />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="h-4 w-4" />
+                  nebi pull
+                </>
+              )}
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -519,6 +558,17 @@ export const WorkspaceDetail = () => {
                               {pub.repository}:{pub.tag}
                               <ExternalLink className="h-4 w-4" />
                             </a>
+                            {pub.is_public ? (
+                              <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
+                                <Globe className="mr-1 h-3 w-3" />
+                                Public
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20">
+                                <Lock className="mr-1 h-3 w-3" />
+                                Private
+                              </Badge>
+                            )}
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                             <div>
@@ -544,6 +594,45 @@ export const WorkspaceDetail = () => {
                               {pub.digest}
                             </code>
                           </div>
+                        </div>
+                        <div className="flex items-center gap-2 ml-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1"
+                            onClick={() => handleCopyImport(pub)}
+                          >
+                            {copiedImportId === pub.id ? (
+                              <>
+                                <Check className="h-3.5 w-3.5" />
+                                Copied
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-3.5 w-3.5" />
+                                nebi import
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            variant={pub.is_public ? "outline" : "default"}
+                            size="sm"
+                            className="gap-1"
+                            onClick={() => updatePubMutation.mutate({ workspaceId: wsId, pubId: pub.id, isPublic: !pub.is_public })}
+                            disabled={updatePubMutation.isPending}
+                          >
+                            {pub.is_public ? (
+                              <>
+                                <Lock className="h-3.5 w-3.5" />
+                                Make Private
+                              </>
+                            ) : (
+                              <>
+                                <Globe className="h-3.5 w-3.5" />
+                                Make Public
+                              </>
+                            )}
+                          </Button>
                         </div>
                       </div>
                     </div>

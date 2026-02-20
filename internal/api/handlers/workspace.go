@@ -1000,6 +1000,7 @@ func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
 		Repository:        publication.Repository,
 		Tag:               publication.Tag,
 		Digest:            publication.Digest,
+		IsPublic:          publication.IsPublic,
 		PublishedBy:       publication.PublishedByUser.Username,
 		PublishedAt:       publication.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
@@ -1056,12 +1057,93 @@ func (h *WorkspaceHandler) ListPublications(c *gin.Context) {
 			Repository:        pub.Repository,
 			Tag:               pub.Tag,
 			Digest:            pub.Digest,
+			IsPublic:          pub.IsPublic,
 			PublishedBy:       pub.PublishedByUser.Username,
 			PublishedAt:       pub.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// UpdatePublication godoc
+// @Summary Update a publication's visibility
+// @Description Toggle the public/private visibility of a publication
+// @Tags workspaces
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path string true "Workspace ID"
+// @Param pubId path string true "Publication ID"
+// @Param request body UpdatePublicationRequest true "Update request"
+// @Success 200 {object} PublicationResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /workspaces/{id}/publications/{pubId} [patch]
+func (h *WorkspaceHandler) UpdatePublication(c *gin.Context) {
+	wsID := c.Param("id")
+	pubID := c.Param("pubId")
+
+	var req UpdatePublicationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// Check workspace exists
+	var ws models.Workspace
+	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
+		return
+	}
+
+	// Find publication
+	var publication models.Publication
+	if err := h.db.Where("id = ? AND workspace_id = ?", pubID, wsID).First(&publication).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Publication not found"})
+		return
+	}
+
+	// Update visibility
+	publication.IsPublic = *req.IsPublic
+	if err := h.db.Save(&publication).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update publication"})
+		return
+	}
+
+	// Try to change repository visibility on the registry (best-effort)
+	var registry models.OCIRegistry
+	if err := h.db.Where("id = ?", publication.RegistryID).First(&registry).Error; err == nil && registry.APIToken != "" {
+		apiToken, err := nebicrypto.DecryptField(registry.APIToken, h.encKey)
+		if err == nil {
+			host, _ := oci.ParseRegistryURL(registry.URL)
+			repoPath := publication.Repository
+			if registry.Namespace != "" {
+				repoPath = registry.Namespace + "/" + publication.Repository
+			}
+			if visErr := oci.ChangeRepositoryVisibility(c.Request.Context(), host, repoPath, apiToken, *req.IsPublic); visErr != nil {
+				slog.Warn("Failed to change registry visibility", "error", visErr, "repo", repoPath)
+			}
+		}
+	}
+
+	// Load relations for response
+	h.db.Preload("Registry").Preload("PublishedByUser").First(&publication, publication.ID)
+
+	c.JSON(http.StatusOK, PublicationResponse{
+		ID:                publication.ID,
+		VersionNumber:     publication.VersionNumber,
+		RegistryName:      publication.Registry.Name,
+		RegistryURL:       publication.Registry.URL,
+		RegistryNamespace: publication.Registry.Namespace,
+		Repository:        publication.Repository,
+		Tag:               publication.Tag,
+		Digest:            publication.Digest,
+		IsPublic:          publication.IsPublic,
+		PublishedBy:       publication.PublishedByUser.Username,
+		PublishedAt:       publication.CreatedAt.Format("2006-01-02 15:04:05"),
+	})
 }
 
 // GetPublishDefaults godoc
@@ -1195,8 +1277,13 @@ type PublicationResponse struct {
 	Repository        string    `json:"repository"`
 	Tag               string    `json:"tag"`
 	Digest            string    `json:"digest"`
+	IsPublic          bool      `json:"is_public"`
 	PublishedBy       string    `json:"published_by"`
 	PublishedAt       string    `json:"published_at"`
+}
+
+type UpdatePublicationRequest struct {
+	IsPublic *bool `json:"is_public" binding:"required"`
 }
 
 // WorkspaceResponse includes workspace data with formatted size

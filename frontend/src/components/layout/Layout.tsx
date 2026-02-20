@@ -4,6 +4,7 @@ import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import { useRemoteServer } from '@/hooks/useRemote';
+import { useVersion } from '@/hooks/useVersion';
 import { Button } from '@/components/ui/button';
 import { LogOut, Boxes, ListTodo, Shield, Settings } from 'lucide-react';
 import { useState } from 'react';
@@ -16,6 +17,7 @@ export const Layout = () => {
   const [avatarError, setAvatarError] = useState(false);
   const { viewMode, setViewMode } = useViewModeStore();
   const { data: serverStatus } = useRemoteServer();
+  const { data: versionInfo } = useVersion();
   const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
 
   const handleLogout = () => {
@@ -171,6 +173,11 @@ export const Layout = () => {
       <main className="container mx-auto px-4 py-8">
         <Outlet />
       </main>
+      {versionInfo?.version && (
+        <div className="fixed bottom-2 right-3 text-xs text-muted-foreground">
+          v{versionInfo.version}
+        </div>
+      )}
     </div>
   );
 };

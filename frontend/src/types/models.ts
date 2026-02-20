@@ -176,6 +176,7 @@ export interface Publication {
   repository: string;
   tag: string;
   digest: string;
+  is_public: boolean;
   published_by: string;
   published_at: string;
 }

@@ -49,6 +49,11 @@ export const registriesApi = {
     return data;
   },
 
+  updatePublication: async (workspaceId: string, pubId: string, isPublic: boolean): Promise<Publication> => {
+    const { data } = await apiClient.patch(`/workspaces/${workspaceId}/publications/${pubId}`, { is_public: isPublic });
+    return data;
+  },
+
   // Browse endpoints (for all authenticated users)
   listRepositories: async (registryId: string, search?: string): Promise<{ repositories: RegistryRepository[]; fallback: boolean }> => {
     const params = search ? { search } : {};

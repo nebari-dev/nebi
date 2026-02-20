@@ -328,6 +328,41 @@ func FilterNebiRepositories(ctx context.Context, repos []RepositoryInfo, host st
 	return filtered
 }
 
+// ChangeRepositoryVisibility changes the visibility of a repository on Quay.io.
+// It calls the Quay.io API: POST /api/v1/repository/{repo}/changevisibility
+func ChangeRepositoryVisibility(ctx context.Context, host, repoPath, apiToken string, isPublic bool) error {
+	visibility := "private"
+	if isPublic {
+		visibility = "public"
+	}
+
+	apiURL := fmt.Sprintf("https://%s/api/v1/repository/%s/changevisibility", host, repoPath)
+	body := fmt.Sprintf(`{"visibility": "%s"}`, visibility)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, strings.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if apiToken != "" {
+		req.Header.Set("Authorization", "Bearer "+apiToken)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to call visibility API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("visibility API returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
 // fetchLayer fetches content from a single layer descriptor
 func fetchLayer(ctx context.Context, repo *remote.Repository, desc ocispec.Descriptor) (string, error) {
 	reader, err := repo.Fetch(ctx, desc)

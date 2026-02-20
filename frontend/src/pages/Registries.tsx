@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ArrowLeft, Search, Download, Package, ChevronRight, X, Globe, Lock, Settings } from 'lucide-react';
+import { Loader2, ArrowLeft, Search, Download, Package, ChevronRight, X, Globe, Lock, Settings, Copy, Check } from 'lucide-react';
 
 export const Registries = () => {
   const navigate = useNavigate();
@@ -283,6 +283,7 @@ export const RegistryTags = () => {
   const [showImport, setShowImport] = useState(false);
   const [importTag, setImportTag] = useState('');
   const [importName, setImportName] = useState('');
+  const [copiedTag, setCopiedTag] = useState<string | null>(null);
 
   const { data: tagData, isLoading: tagsLoading } = useRepositoryTags(
     registryId || '',
@@ -316,6 +317,16 @@ export const RegistryTags = () => {
       const error = err as { response?: { data?: { error?: string } } };
       setError(error?.response?.data?.error || 'Failed to import environment.');
     }
+  };
+
+  const handleCopyImportCmd = async (tagName: string) => {
+    if (!selectedRegistry) return;
+    const host = selectedRegistry.url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const repoPath = selectedRegistry.namespace ? `${selectedRegistry.namespace}/${repo}` : repo;
+    const cmd = `nebi import ${host}/${repoPath}:${tagName}`;
+    await navigator.clipboard.writeText(cmd);
+    setCopiedTag(tagName);
+    setTimeout(() => setCopiedTag(null), 2000);
   };
 
   if (registriesLoading) {
@@ -435,10 +446,25 @@ export const RegistryTags = () => {
                       <tr key={tag.name} className="border-b last:border-0 hover:bg-muted/50">
                         <td className="p-4 font-mono text-sm">{tag.name}</td>
                         <td className="p-4 text-right">
-                          <Button size="sm" onClick={() => handleOpenImport(tag.name)}>
-                            <Download className="mr-2 h-4 w-4" />
-                            Import
-                          </Button>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button size="sm" variant="outline" onClick={() => handleCopyImportCmd(tag.name)}>
+                              {copiedTag === tag.name ? (
+                                <>
+                                  <Check className="mr-2 h-4 w-4" />
+                                  Copied
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="mr-2 h-4 w-4" />
+                                  nebi import
+                                </>
+                              )}
+                            </Button>
+                            <Button size="sm" onClick={() => handleOpenImport(tag.name)}>
+                              <Download className="mr-2 h-4 w-4" />
+                              Import
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}

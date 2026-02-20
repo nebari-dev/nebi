@@ -4,6 +4,7 @@ import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import { useRemoteServer } from '@/hooks/useRemote';
+import { useVersion } from '@/hooks/useVersion';
 import { Button } from '@/components/ui/button';
 import { LogOut, Boxes, ListTodo, Shield, Settings } from 'lucide-react';
 import { useState } from 'react';
@@ -16,6 +17,7 @@ export const Layout = () => {
   const [avatarError, setAvatarError] = useState(false);
   const { viewMode, setViewMode } = useViewModeStore();
   const { data: serverStatus } = useRemoteServer();
+  const { data: versionInfo } = useVersion();
   const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
 
   const handleLogout = () => {
@@ -171,6 +173,16 @@ export const Layout = () => {
       <main className="container mx-auto px-4 py-8">
         <Outlet />
       </main>
+      {versionInfo?.version && (
+        <a
+          href={`https://github.com/nebari-dev/nebi/releases/tag/v${versionInfo.version}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="fixed bottom-6 left-8 text-sm text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+        >
+          v{versionInfo.version}
+        </a>
+      )}
     </div>
   );
 };

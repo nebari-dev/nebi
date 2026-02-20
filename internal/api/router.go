@@ -95,6 +95,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	// Create one if the primary authenticator isn't already basic auth.
 	sessionBasicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
 
+	// CLI session store for browser-based login flow
+	cliStore := auth.NewCLISessionStore()
+
 	// Public routes
 	public := router.Group("/api/v1")
 	{
@@ -105,12 +108,19 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		// Session check: exchanges proxy IdToken cookie for a Nebi JWT (no auth middleware)
 		public.GET("/auth/session", handlers.SessionCheck(sessionBasicAuth, cfg.Auth.ProxyAdminGroups))
 
+		// CLI browser login: register session and poll for token
+		public.POST("/auth/cli/session", handlers.CLICreateSession(cliStore))
+		public.GET("/auth/cli/token", handlers.CLIPollToken(cliStore))
+
 		// OIDC routes (if enabled, team mode only)
 		if oidcAuth != nil {
 			public.GET("/auth/oidc/login", handlers.OIDCLogin(oidcAuth))
 			public.GET("/auth/oidc/callback", handlers.OIDCCallback(oidcAuth))
 		}
 	}
+
+	// Browser-facing CLI login page (serves HTML, not under /api/v1)
+	router.GET("/auth/cli/login", handlers.CLILogin(sessionBasicAuth, cfg.Auth.ProxyAdminGroups, cliStore))
 
 	// Derive encryption key for credential encryption at rest
 	encKey, err := nebicrypto.DeriveKey(cfg.Auth.JWTSecret)

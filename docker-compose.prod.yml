@@ -74,7 +74,7 @@ services:
   #   mkdir -p ./data/environments
   #   chown -R 65532:65532 ./data/environments
   nebi-api:
-    image: ${NEBI_IMAGE:-quay.io/aktech/nebi:latest}
+    image: ${NEBI_IMAGE:-quay.io/aktech/nebi:sha-23363b2}
     container_name: nebi-api
     command: ["/app/nebi", "--mode=both"]
     env_file:
@@ -121,7 +121,7 @@ services:
 
   # Nebi Worker 1 - Additional worker for job processing
   nebi-worker-1:
-    image: ${NEBI_IMAGE:-quay.io/aktech/nebi:latest}
+    image: ${NEBI_IMAGE:-quay.io/aktech/nebi:sha-23363b2}
     container_name: nebi-worker-1
     command: ["/app/nebi", "--mode=worker"]
     env_file:
@@ -154,7 +154,7 @@ services:
 
   # Nebi Worker 2 - Additional worker for job processing
   nebi-worker-2:
-    image: ${NEBI_IMAGE:-quay.io/aktech/nebi:latest}
+    image: ${NEBI_IMAGE:-quay.io/aktech/nebi:sha-23363b2}
     container_name: nebi-worker-2
     command: ["/app/nebi", "--mode=worker"]
     env_file:

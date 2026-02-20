@@ -24,14 +24,22 @@ var loginCmd = &cobra.Command{
 	Short: "Connect to a nebi server",
 	Long: `Sets the server URL and authenticates with a nebi server.
 
+By default, opens a browser for authentication (works with proxy/Keycloak
+deployments). Use --username for password-based login or --token for direct
+token authentication.
+
 Examples:
-  # Interactive - prompts for username and password
+  # Browser login (default) — works with proxy/Keycloak deployments
+  # Opens a browser; also works over SSH (prints URL to open on any device)
   nebi login https://nebi.company.com
 
-  # Non-interactive with username flag and password from stdin
+  # Password login — prompts for username and password
+  nebi login https://nebi.company.com --username myuser
+
+  # Non-interactive with password from stdin
   echo "$PASSWORD" | nebi login https://nebi.company.com --username myuser --password-stdin
 
-  # Using an API token (skips username/password)
+  # Using an API token (skips interactive login)
   nebi login https://nebi.company.com --token <api-token>`,
 	Args: cobra.ExactArgs(1),
 	RunE: runLogin,
@@ -62,25 +70,14 @@ func runLogin(cmd *cobra.Command, args []string) error {
 	var username string
 
 	if loginToken != "" {
+		// Direct token mode
 		token = loginToken
 		username = "(token)"
-	} else {
-		var user string
+	} else if loginUsername != "" {
+		// Username/password mode
 		var password string
 
-		// Get username
-		if loginUsername != "" {
-			user = loginUsername
-		} else {
-			fmt.Fprint(os.Stderr, "Username: ")
-			if _, err := fmt.Scanln(&user); err != nil {
-				return fmt.Errorf("reading username: %w", err)
-			}
-		}
-
-		// Get password
 		if loginPasswordStdin {
-			// Read password from stdin (for scripting)
 			scanner := bufio.NewScanner(os.Stdin)
 			if scanner.Scan() {
 				password = scanner.Text()
@@ -89,7 +86,6 @@ func runLogin(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("reading password from stdin: %w", err)
 			}
 		} else if term.IsTerminal(int(os.Stdin.Fd())) {
-			// Interactive prompt
 			fmt.Fprint(os.Stderr, "Password: ")
 			passBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
 			fmt.Fprintln(os.Stderr)
@@ -102,13 +98,21 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		}
 
 		client := cliclient.NewWithoutAuth(serverURL)
-		resp, err := client.Login(context.Background(), user, password)
+		resp, err := client.Login(context.Background(), loginUsername, password)
 		if err != nil {
 			return fmt.Errorf("login failed: %w", err)
 		}
 
 		token = resp.Token
-		username = user
+		username = loginUsername
+	} else {
+		// Browser-based login (default)
+		t, u, err := browserLogin(context.Background(), serverURL)
+		if err != nil {
+			return fmt.Errorf("browser login failed: %w", err)
+		}
+		token = t
+		username = u
 	}
 
 	s, err := store.New()

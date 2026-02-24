@@ -3,6 +3,7 @@ import { apiClient } from '@/api/client';
 
 interface VersionInfo {
   version: string;
+  commit: string;
   mode: string;
 }
 

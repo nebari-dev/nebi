@@ -53,6 +53,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		Port:    servePort,
 		Mode:    serveMode,
 		Version: Version,
+		Commit:  Commit,
 	}
 
 	if err := server.RunWithSignalHandling(cfg); err != nil {

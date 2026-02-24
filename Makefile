@@ -1,11 +1,12 @@
-.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all up down
+.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all build-desktop up down
 
 # Variables
 BINARY_NAME=nebi
 FRONTEND_DIR=frontend
 BUILD_DIR=bin
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS=-ldflags "-X main.Version=$(VERSION)"
+COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.Commit=$(COMMIT)"
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -140,6 +141,11 @@ build-all: build-frontend ## Build binaries for all platforms
 	@echo "Building windows/amd64..."
 	@GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/nebi
 	@echo "All platform builds complete"
+
+build-desktop: build-frontend ## Build Wails desktop app with version info
+	@echo "Building desktop app..."
+	@wails build -ldflags "-X main.Version=$(VERSION) -X main.Commit=$(COMMIT)"
+	@echo "Desktop app built: build/bin/Nebi.app"
 
 # K3d Development Environment
 up: ## Create k3d cluster and start Tilt (recreates cluster if exists)

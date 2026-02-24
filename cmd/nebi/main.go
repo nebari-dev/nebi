@@ -11,6 +11,9 @@ import (
 // Version is set via ldflags at build time
 var Version = "dev"
 
+// Commit is the git commit hash, set via ldflags at build time
+var Commit = ""
+
 var rootCmd = &cobra.Command{
 	Use:   "nebi",
 	Short: "Nebi - Local-first workspace management for Pixi",

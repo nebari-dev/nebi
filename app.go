@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nebari-dev/nebi/internal/api"
+	"github.com/nebari-dev/nebi/internal/api/handlers"
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
@@ -182,6 +183,10 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 			logToFile(fmt.Sprintf("startEmbeddedServer: worker error: %v", err))
 		}
 	}()
+
+	// Pass version info to the API handler (parsed by resolveVersion on first request)
+	handlers.Version = Version
+	handlers.Commit = Commit
 
 	// Initialize API router
 	logToFile("startEmbeddedServer: initializing router...")

@@ -4,7 +4,9 @@ import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import { useRemoteServer } from '@/hooks/useRemote';
+import { useVersion } from '@/hooks/useVersion';
 import { Button } from '@/components/ui/button';
+
 import { LogOut, Boxes, ListTodo, Shield, Settings } from 'lucide-react';
 import { useState } from 'react';
 
@@ -16,6 +18,7 @@ export const Layout = () => {
   const [avatarError, setAvatarError] = useState(false);
   const { viewMode, setViewMode } = useViewModeStore();
   const { data: serverStatus } = useRemoteServer();
+  const { data: versionInfo } = useVersion();
   const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
 
   const handleLogout = () => {
@@ -24,7 +27,7 @@ export const Layout = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -168,9 +171,25 @@ export const Layout = () => {
           </div>
         </div>
       </header>
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8 flex-1">
         <Outlet />
       </main>
+      {versionInfo?.version && (
+        <footer className="border-t border-border/60 py-4 px-8">
+          <a
+            href={
+              versionInfo.commit
+                ? `https://github.com/nebari-dev/nebi/commit/${versionInfo.commit}`
+                : `https://github.com/nebari-dev/nebi/releases/tag/v${versionInfo.version}`
+            }
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+          >
+            v{versionInfo.version}
+          </a>
+        </footer>
+      )}
     </div>
   );
 };

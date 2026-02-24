@@ -31,6 +31,7 @@ type Config struct {
 	Port    int    // Port to run the server on (0 = use config default)
 	Mode    string // Run mode: server, worker, or both
 	Version string // Version string to report
+	Commit  string // Git commit hash
 }
 
 // Run starts the server with the given configuration and blocks until the context is canceled.
@@ -38,6 +39,9 @@ func Run(ctx context.Context, cfg Config) error {
 	// Set version in handlers
 	if cfg.Version != "" {
 		handlers.Version = cfg.Version
+	}
+	if cfg.Commit != "" {
+		handlers.Commit = cfg.Commit
 	}
 
 	// Load configuration

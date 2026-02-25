@@ -99,13 +99,13 @@
   <!-- Cross-component arrows                               -->
   <!-- ════════════════════════════════════════════════════ -->
 
-  <!-- CLI → Server (push/pull) — smooth curve up -->
-  <path d="M 350 358 C 420 358, 390 122, 410 122" class="arrow" stroke="#2aaa9a" marker-end="url(#arr-teal)" />
-  <text x="398" y="262" text-anchor="middle" class="arrow-label" fill="#2aaa9a">push / pull</text>
+  <!-- CLI → Server (push/pull) — curve from CLI box right edge up to Server box bottom -->
+  <path d="M 370 310 C 440 310, 440 230, 480 220" class="arrow" stroke="#2aaa9a" marker-end="url(#arr-teal)" />
+  <text x="430" y="272" text-anchor="middle" class="arrow-label" fill="#2aaa9a">push / pull</text>
 
-  <!-- CLI → OCI (publish) — horizontal -->
-  <path d="M 350 392 L 530 392" class="arrow" stroke="#eda61d" marker-end="url(#arr-gold)" />
-  <text x="440" y="385" text-anchor="middle" class="arrow-label" fill="#eda61d">publish</text>
+  <!-- CLI → OCI (publish) — from CLI box right edge to OCI box left edge -->
+  <path d="M 370 373 L 530 373" class="arrow" stroke="#eda61d" marker-end="url(#arr-gold)" />
+  <text x="450" y="366" text-anchor="middle" class="arrow-label" fill="#eda61d">publish</text>
 
   <!-- Server → OCI (publish) — vertical -->
   <path d="M 690 220 L 690 318" class="arrow" stroke="#eda61d" marker-end="url(#arr-gold)" />

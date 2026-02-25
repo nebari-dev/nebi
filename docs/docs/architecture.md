@@ -8,28 +8,7 @@ Nebi is built as a single Go codebase with a React frontend. It runs in three fo
 
 ## System Overview
 
-```mermaid
-graph TD
-    subgraph Desktop["Desktop App (Wails)"]
-        UI[React UI] --> Server[Embedded Go Server]
-        Server --> SQLite[(SQLite)]
-    end
-
-    subgraph Remote["Nebi Server (Team Mode)"]
-        API[Gin API] --> DB[(PostgreSQL / SQLite)]
-        Worker --> DB
-        API --> Queue[Valkey Queue]
-        Queue --> Worker
-    end
-
-    subgraph CLI
-        Store[(Local SQLite)] --- CLITool[nebi CLI]
-    end
-
-    CLITool -- push/pull --> API
-    CLITool -- publish --> OCI[(OCI Registries)]
-    API -- publish --> OCI
-```
+<img src="/img/architecture.svg" alt="Nebi architecture diagram" style={{maxWidth: '100%', height: 'auto'}} />
 
 ## Desktop App
 

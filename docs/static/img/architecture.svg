@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 520" font-family="'Atkinson Hyperlegible', 'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <style>
+      .box { rx: 10; ry: 10; stroke-width: 2; }
+      .label { font-size: 13px; fill: #ccd; }
+      .title { font-size: 15px; font-weight: 700; }
+      .sub { font-size: 12px; fill: #9a9ab5; }
+      .arrow { stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+      .arrow-label { font-size: 11px; fill: #9a9ab5; }
+    </style>
+    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#717490" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="880" height="520" rx="12" fill="#0f1015" />
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- Desktop App (Wails)                                     -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <rect x="30" y="30" width="240" height="210" class="box" fill="#1c1d26" stroke="#3d3e52" />
+  <text x="150" y="58" text-anchor="middle" class="title" fill="#dcdce9">Desktop App</text>
+  <text x="150" y="76" text-anchor="middle" class="sub">Wails · native window</text>
+
+  <!-- React UI -->
+  <rect x="55" y="92" width="190" height="36" class="box" fill="#4d2582" stroke="#7834d6" />
+  <text x="150" y="115" text-anchor="middle" class="label" fill="#e8d5ff">React UI</text>
+
+  <!-- Embedded Go Server -->
+  <rect x="55" y="140" width="190" height="36" class="box" fill="#1a3a3a" stroke="#2aaa9a" />
+  <text x="150" y="163" text-anchor="middle" class="label" fill="#8cded4">Embedded Go Server</text>
+
+  <!-- SQLite -->
+  <rect x="85" y="190" width="130" height="32" class="box" fill="#23242f" stroke="#505270" />
+  <text x="150" y="211" text-anchor="middle" class="label" fill="#b0b2cc">SQLite</text>
+
+  <!-- internal arrows -->
+  <line x1="150" y1="128" x2="150" y2="140" class="arrow" stroke="#717490" />
+  <line x1="150" y1="176" x2="150" y2="190" class="arrow" stroke="#717490" />
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- Nebi Server (Team Mode)                                 -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <rect x="320" y="30" width="530" height="210" class="box" fill="#1c1d26" stroke="#3d3e52" />
+  <text x="585" y="58" text-anchor="middle" class="title" fill="#dcdce9">Nebi Server</text>
+  <text x="585" y="76" text-anchor="middle" class="sub">Team mode · multi-user</text>
+
+  <!-- Gin API -->
+  <rect x="345" y="92" width="150" height="36" class="box" fill="#1a3a3a" stroke="#2aaa9a" />
+  <text x="420" y="115" text-anchor="middle" class="label" fill="#8cded4">Gin API</text>
+
+  <!-- Auth / RBAC -->
+  <rect x="510" y="92" width="130" height="36" class="box" fill="#3b1a50" stroke="#9a49ca" />
+  <text x="575" y="115" text-anchor="middle" class="label" fill="#d4a5f0">Auth · RBAC</text>
+
+  <!-- Worker -->
+  <rect x="655" y="92" width="170" height="36" class="box" fill="#1a3a3a" stroke="#2aaa9a" />
+  <text x="740" y="115" text-anchor="middle" class="label" fill="#8cded4">Worker</text>
+
+  <!-- Queue -->
+  <rect x="655" y="145" width="170" height="32" class="box" fill="#23242f" stroke="#505270" />
+  <text x="740" y="166" text-anchor="middle" class="label" fill="#b0b2cc">Valkey / Memory Queue</text>
+
+  <!-- DB -->
+  <rect x="345" y="145" width="295" height="32" class="box" fill="#23242f" stroke="#505270" />
+  <text x="492" y="166" text-anchor="middle" class="label" fill="#b0b2cc">PostgreSQL / SQLite</text>
+
+  <!-- React UI (bundled) -->
+  <rect x="345" y="195" width="480" height="30" class="box" fill="#4d2582" stroke="#7834d6" />
+  <text x="585" y="215" text-anchor="middle" class="label" fill="#e8d5ff">Bundled React Frontend</text>
+
+  <!-- internal arrows -->
+  <line x1="420" y1="128" x2="420" y2="145" class="arrow" stroke="#717490" />
+  <line x1="740" y1="128" x2="740" y2="145" class="arrow" stroke="#717490" />
+  <line x1="575" y1="128" x2="492" y2="145" class="arrow" stroke="#717490" />
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- CLI                                                      -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <rect x="30" y="290" width="340" height="200" class="box" fill="#1c1d26" stroke="#3d3e52" />
+  <text x="200" y="318" text-anchor="middle" class="title" fill="#dcdce9">CLI</text>
+  <text x="200" y="336" text-anchor="middle" class="sub">Local-first · no server required</text>
+
+  <!-- nebi CLI -->
+  <rect x="55" y="352" width="290" height="36" class="box" fill="#1a3a3a" stroke="#2aaa9a" />
+  <text x="200" y="375" text-anchor="middle" class="label" fill="#8cded4">nebi CLI</text>
+
+  <!-- Local SQLite -->
+  <rect x="55" y="404" width="140" height="32" class="box" fill="#23242f" stroke="#505270" />
+  <text x="125" y="425" text-anchor="middle" class="label" fill="#b0b2cc">Local SQLite</text>
+
+  <!-- Pixi -->
+  <rect x="210" y="404" width="135" height="32" class="box" fill="#2b3520" stroke="#6a9a30" />
+  <text x="277" y="425" text-anchor="middle" class="label" fill="#b5d98a">Pixi</text>
+
+  <!-- internal arrows -->
+  <line x1="125" y1="388" x2="125" y2="404" class="arrow" stroke="#717490" />
+  <line x1="277" y1="388" x2="277" y2="404" class="arrow" stroke="#717490" />
+  <!-- pixi label -->
+  <text x="320" y="450" text-anchor="middle" class="sub">manages environments</text>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- OCI Registries                                          -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <rect x="530" y="340" width="320" height="110" class="box" fill="#1c1d26" stroke="#3d3e52" />
+  <text x="690" y="372" text-anchor="middle" class="title" fill="#dcdce9">OCI Registries</text>
+  <text x="690" y="392" text-anchor="middle" class="sub">GHCR · Quay.io · self-hosted</text>
+
+  <!-- OCI artifacts -->
+  <rect x="560" y="407" width="120" height="28" class="box" fill="#23242f" stroke="#505270" />
+  <text x="620" y="426" text-anchor="middle" font-size="11" fill="#b0b2cc">pixi.toml</text>
+  <rect x="695" y="407" width="120" height="28" class="box" fill="#23242f" stroke="#505270" />
+  <text x="755" y="426" text-anchor="middle" font-size="11" fill="#b0b2cc">pixi.lock</text>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- Connecting arrows                                       -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+
+  <!-- CLI → Server (push/pull) -->
+  <path d="M 345 370 C 400 370, 380 160, 420 160" class="arrow" stroke="#2aaa9a" />
+  <text x="400" y="278" text-anchor="middle" class="arrow-label" fill="#2aaa9a">push / pull</text>
+
+  <!-- CLI → OCI (publish) -->
+  <path d="M 345 390 L 530 390" class="arrow" stroke="#eda61d" />
+  <text x="437" y="408" text-anchor="middle" class="arrow-label" fill="#eda61d">publish</text>
+
+  <!-- Server → OCI (publish) -->
+  <path d="M 690 240 L 690 340" class="arrow" stroke="#eda61d" />
+  <text x="712" y="295" text-anchor="start" class="arrow-label" fill="#eda61d">publish</text>
+</svg>

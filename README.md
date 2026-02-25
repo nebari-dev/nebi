@@ -47,29 +47,6 @@ Nebi is a server and CLI for managing [Pixi](https://prefix.dev/) environments i
 
 ## Quick Start
 
-### Local Development
-
-```bash
-# Install development tools
-make install-tools
-
-# Run with hot reload (frontend + backend)
-# Frontend dependencies will be automatically installed if needed
-ADMIN_USERNAME=admin ADMIN_PASSWORD=<your-password> make dev
-```
-
-This will start:
-- **Frontend dev server** at http://localhost:8461 (with hot reload)
-- **Backend API** at http://localhost:8460 (with hot reload)
-- **API docs** at http://localhost:8460/docs
-
-**Admin Credentials:**
-Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables to create the admin user on first startup.
-
-> **Note**: The admin user is automatically created on first startup when `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables are set. If you start the server without these variables, no admin user will be created and you won't be able to log in.
-
-> **Tip**: Access the app at http://localhost:8461 for the best development experience with instant hot reload of frontend changes!
-
 ### Quick Install
 
 **Linux / macOS:**
@@ -109,6 +86,29 @@ nebi pull myworkspace:v1.0
 # Check sync status anytime
 nebi status
 ```
+
+### Local Development
+
+```bash
+# Install development tools
+make install-tools
+
+# Run with hot reload (frontend + backend)
+# Frontend dependencies will be automatically installed if needed
+ADMIN_USERNAME=admin ADMIN_PASSWORD=<your-password> make dev
+```
+
+This will start:
+- **Frontend dev server** at http://localhost:8461 (with hot reload)
+- **Backend API** at http://localhost:8460 (with hot reload)
+- **API docs** at http://localhost:8460/docs
+
+**Admin Credentials:**
+Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables to create the admin user on first startup.
+
+> **Note**: The admin user is automatically created on first startup when `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables are set. If you start the server without these variables, no admin user will be created and you won't be able to log in.
+
+> **Tip**: Access the app at http://localhost:8461 for the best development experience with instant hot reload of frontend changes!
 
 ## API Usage
 
@@ -243,6 +243,10 @@ nebi registry list
 nebi serve
 nebi serve --port 8080 --mode server
 ```
+
+### Shell Completion
+
+Nebi supports tab completion for bash, zsh, fish, and PowerShell. Run `nebi completion --help` for setup instructions.
 
 ### Configuration
 

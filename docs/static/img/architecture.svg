@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 500" font-family="'Atkinson Hyperlegible', 'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <style>
+      .box { rx: 10; ry: 10; stroke-width: 2; }
+      .chip { rx: 6; ry: 6; stroke-width: 1.5; }
+      .label { font-size: 13px; }
+      .title { font-size: 15px; font-weight: 700; }
+      .sub { font-size: 11.5px; fill: #9a9ab5; }
+      .arrow { stroke-width: 2; fill: none; }
+      .arrow-label { font-size: 11px; }
+    </style>
+    <marker id="arr-teal" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#2aaa9a" />
+    </marker>
+    <marker id="arr-gold" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#eda61d" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="880" height="500" rx="12" fill="#0f1015" />
+
+  <!-- ════════════════════════════════════════════════════ -->
+  <!-- Desktop App                                          -->
+  <!-- ════════════════════════════════════════════════════ -->
+  <rect x="30" y="28" width="240" height="192" class="box" fill="#1c1d26" stroke="#3d3e52" />
+  <text x="150" y="56" text-anchor="middle" class="title" fill="#dcdce9">Desktop App</text>
+  <text x="150" y="74" text-anchor="middle" class="sub">Wails · native window</text>
+
+  <!-- stacked chips — no arrows, just visual layering -->
+  <rect x="50" y="90" width="200" height="32" class="chip" fill="#4d2582" stroke="#7834d6" />
+  <text x="150" y="111" text-anchor="middle" class="label" fill="#e8d5ff">React UI</text>
+
+  <rect x="50" y="130" width="200" height="32" class="chip" fill="#1a3a3a" stroke="#2aaa9a" />
+  <text x="150" y="151" text-anchor="middle" class="label" fill="#8cded4">Embedded Go Server</text>
+
+  <rect x="50" y="170" width="200" height="32" class="chip" fill="#23242f" stroke="#505270" />
+  <text x="150" y="191" text-anchor="middle" class="label" fill="#b0b2cc">SQLite</text>
+
+  <!-- ════════════════════════════════════════════════════ -->
+  <!-- Nebi Server                                          -->
+  <!-- ════════════════════════════════════════════════════ -->
+  <rect x="320" y="28" width="530" height="192" class="box" fill="#1c1d26" stroke="#3d3e52" />
+  <text x="585" y="56" text-anchor="middle" class="title" fill="#dcdce9">Nebi Server</text>
+  <text x="585" y="74" text-anchor="middle" class="sub">Team mode · multi-user</text>
+
+  <!-- top row: API, Auth, Worker -->
+  <rect x="340" y="90" width="140" height="32" class="chip" fill="#1a3a3a" stroke="#2aaa9a" />
+  <text x="410" y="111" text-anchor="middle" class="label" fill="#8cded4">Gin API</text>
+
+  <rect x="495" y="90" width="130" height="32" class="chip" fill="#3b1a50" stroke="#9a49ca" />
+  <text x="560" y="111" text-anchor="middle" class="label" fill="#d4a5f0">Auth · RBAC</text>
+
+  <rect x="640" y="90" width="190" height="32" class="chip" fill="#1a3a3a" stroke="#2aaa9a" />
+  <text x="735" y="111" text-anchor="middle" class="label" fill="#8cded4">Worker</text>
+
+  <!-- bottom row: DB, Queue -->
+  <rect x="340" y="133" width="280" height="32" class="chip" fill="#23242f" stroke="#505270" />
+  <text x="480" y="154" text-anchor="middle" class="label" fill="#b0b2cc">PostgreSQL / SQLite</text>
+
+  <rect x="640" y="133" width="190" height="32" class="chip" fill="#23242f" stroke="#505270" />
+  <text x="735" y="154" text-anchor="middle" class="label" fill="#b0b2cc">Valkey / Memory Queue</text>
+
+  <!-- bundled frontend -->
+  <rect x="340" y="178" width="490" height="28" class="chip" fill="#4d2582" stroke="#7834d6" />
+  <text x="585" y="197" text-anchor="middle" class="label" fill="#e8d5ff">Bundled React Frontend</text>
+
+  <!-- ════════════════════════════════════════════════════ -->
+  <!-- CLI                                                  -->
+  <!-- ════════════════════════════════════════════════════ -->
+  <rect x="30" y="280" width="340" height="190" class="box" fill="#1c1d26" stroke="#3d3e52" />
+  <text x="200" y="308" text-anchor="middle" class="title" fill="#dcdce9">CLI</text>
+  <text x="200" y="326" text-anchor="middle" class="sub">Local-first · no server required</text>
+
+  <rect x="50" y="342" width="300" height="32" class="chip" fill="#1a3a3a" stroke="#2aaa9a" />
+  <text x="200" y="363" text-anchor="middle" class="label" fill="#8cded4">nebi CLI</text>
+
+  <rect x="50" y="386" width="140" height="32" class="chip" fill="#23242f" stroke="#505270" />
+  <text x="120" y="407" text-anchor="middle" class="label" fill="#b0b2cc">Local SQLite</text>
+
+  <rect x="205" y="386" width="145" height="32" class="chip" fill="#2b3520" stroke="#6a9a30" />
+  <text x="277" y="407" text-anchor="middle" class="label" fill="#b5d98a">Pixi</text>
+
+  <text x="277" y="436" text-anchor="middle" class="sub">manages environments</text>
+
+  <!-- ════════════════════════════════════════════════════ -->
+  <!-- OCI Registries                                       -->
+  <!-- ════════════════════════════════════════════════════ -->
+  <rect x="530" y="318" width="320" height="110" class="box" fill="#1c1d26" stroke="#3d3e52" />
+  <text x="690" y="348" text-anchor="middle" class="title" fill="#dcdce9">OCI Registries</text>
+  <text x="690" y="366" text-anchor="middle" class="sub">GHCR · Quay.io · self-hosted</text>
+
+  <rect x="555" y="380" width="120" height="28" class="chip" fill="#23242f" stroke="#505270" />
+  <text x="615" y="399" text-anchor="middle" font-size="11" fill="#b0b2cc">pixi.toml</text>
+  <rect x="690" y="380" width="120" height="28" class="chip" fill="#23242f" stroke="#505270" />
+  <text x="750" y="399" text-anchor="middle" font-size="11" fill="#b0b2cc">pixi.lock</text>
+
+  <!-- ════════════════════════════════════════════════════ -->
+  <!-- Cross-component arrows                               -->
+  <!-- ════════════════════════════════════════════════════ -->
+
+  <!-- CLI → Server (push/pull) — curve from CLI box right edge up to Server box bottom -->
+  <path d="M 370 310 C 440 310, 440 230, 480 220" class="arrow" stroke="#2aaa9a" marker-end="url(#arr-teal)" />
+  <text x="430" y="272" text-anchor="middle" class="arrow-label" fill="#2aaa9a">push / pull</text>
+
+  <!-- CLI → OCI (publish) — from CLI box right edge to OCI box left edge -->
+  <path d="M 370 373 L 530 373" class="arrow" stroke="#eda61d" marker-end="url(#arr-gold)" />
+  <text x="450" y="366" text-anchor="middle" class="arrow-label" fill="#eda61d">publish</text>
+
+  <!-- Server → OCI (publish) — vertical -->
+  <path d="M 690 220 L 690 318" class="arrow" stroke="#eda61d" marker-end="url(#arr-gold)" />
+  <text x="710" y="274" text-anchor="start" class="arrow-label" fill="#eda61d">publish</text>
+</svg>

@@ -8,38 +8,27 @@ Nebi is built as a single Go codebase with a React frontend. It runs in three fo
 
 ## System Overview
 
-```
-┌─────────────────────┐     ┌─────────────────────────────────┐
-│   Desktop App       │     │         Nebi Server              │
-│   (Wails)           │     │         (Team Mode)              │
-│                     │     │                                   │
-│  ┌───────────────┐  │     │  ┌─────────┐   ┌─────────────┐  │
-│  │ React UI      │  │     │  │ Gin API  │   │   Worker     │  │
-│  └──────┬────────┘  │     │  └────┬────┘   └──────┬──────┘  │
-│         │           │     │       │                │          │
-│  ┌──────┴────────┐  │     │  ┌────┴────────────────┴──────┐  │
-│  │ Embedded      │  │     │  │  PostgreSQL / SQLite        │  │
-│  │ Go Server     │  │     │  │  Valkey (job queue)         │  │
-│  └──────┬────────┘  │     │  └────────────────────────────┘  │
-│         │           │     │                                   │
-│  ┌──────┴────────┐  │     └──────────────┬──────────────────┘
-│  │  SQLite       │  │                    │
-│  └───────────────┘  │                    │
-└─────────────────────┘                    │
-                                           │
-┌─────────────────────┐                    │
-│       CLI           │                    │
-│                     │  push/pull         │
-│  ┌───────────────┐  ├────────────────────┘
-│  │ Local SQLite  │  │
-│  │ Store         │  ├────────────────────┐
-│  └───────────────┘  │  publish           │
-└─────────────────────┘                    │
-                                           │
-                            ┌──────────────┴──────────────┐
-                            │      OCI Registries          │
-                            │  (GHCR, Quay.io, etc.)       │
-                            └──────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Desktop["Desktop App (Wails)"]
+        UI[React UI] --> Server[Embedded Go Server]
+        Server --> SQLite[(SQLite)]
+    end
+
+    subgraph Remote["Nebi Server (Team Mode)"]
+        API[Gin API] --> DB[(PostgreSQL / SQLite)]
+        Worker --> DB
+        API --> Queue[Valkey Queue]
+        Queue --> Worker
+    end
+
+    subgraph CLI
+        Store[(Local SQLite)] --- CLITool[nebi CLI]
+    end
+
+    CLITool -- push/pull --> API
+    CLITool -- publish --> OCI[(OCI Registries)]
+    API -- publish --> OCI
 ```
 
 ## Desktop App

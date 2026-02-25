@@ -100,7 +100,7 @@
   <!-- ════════════════════════════════════════════════════ -->
 
   <!-- CLI → Server (push/pull) — smooth curve up -->
-  <path d="M 350 358 C 420 358, 390 150, 410 150" class="arrow" stroke="#2aaa9a" marker-end="url(#arr-teal)" />
+  <path d="M 350 358 C 420 358, 390 122, 410 122" class="arrow" stroke="#2aaa9a" marker-end="url(#arr-teal)" />
   <text x="398" y="262" text-anchor="middle" class="arrow-label" fill="#2aaa9a">push / pull</text>
 
   <!-- CLI → OCI (publish) — horizontal -->

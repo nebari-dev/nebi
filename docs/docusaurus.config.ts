@@ -22,6 +22,8 @@ const config: Config = {
 
   onBrokenLinks: 'throw',
 
+  staticDirectories: ['static', '../assets'],
+
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],

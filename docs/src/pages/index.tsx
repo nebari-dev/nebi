@@ -33,6 +33,38 @@ function HomepageHeader() {
   );
 }
 
+function HomepageDemo() {
+  return (
+    <section className={styles.demoSection}>
+      <div className="container">
+        <Heading as="h2" className={styles.demoHeading}>
+          See Nebi in Action
+        </Heading>
+        <div className={styles.demoGrid}>
+          <div className={styles.demoItem}>
+            <Heading as="h3" className={styles.demoLabel}>Web UI</Heading>
+            <img
+              src="https://raw.githubusercontent.com/nebari-dev/nebi-video-demo-automation/25e0139cf70cc0e9f8a2cf938fddd85ecd83adee/assets/demo.gif"
+              alt="Nebi Web UI Demo"
+              className={styles.demoImage}
+              loading="lazy"
+            />
+          </div>
+          <div className={styles.demoItem}>
+            <Heading as="h3" className={styles.demoLabel}>CLI</Heading>
+            <img
+              src="/nebi-demo.gif"
+              alt="Nebi CLI Demo"
+              className={styles.demoImage}
+              loading="lazy"
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function Home(): ReactNode {
   return (
     <Layout
@@ -40,6 +72,7 @@ export default function Home(): ReactNode {
       description="Nebi - Multi-user environment management for Pixi">
       <HomepageHeader />
       <main>
+        <HomepageDemo />
         <HomepageFeatures />
       </main>
     </Layout>

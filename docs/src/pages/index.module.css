@@ -53,3 +53,37 @@
   color: #fff;
   text-decoration: none;
 }
+
+.demoSection {
+  padding: 3rem 0;
+  text-align: center;
+}
+
+.demoHeading {
+  margin-bottom: 2rem;
+  font-size: 2rem;
+}
+
+.demoGrid {
+  display: flex;
+  gap: 2rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.demoItem {
+  flex: 1;
+  min-width: 300px;
+  max-width: 600px;
+}
+
+.demoLabel {
+  font-size: 1.2rem;
+  margin-bottom: 0.75rem;
+}
+
+.demoImage {
+  width: 100%;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}

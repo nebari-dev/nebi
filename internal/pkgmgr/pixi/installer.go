@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 const (
@@ -157,17 +158,31 @@ func extractPixi(tarPath, destDir string) error {
 
 			slog.Info("Found pixi binary in archive", "name", header.Name, "size", header.Size)
 
-			outFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0755)
+			// Write to a temp file then atomically rename to avoid
+			// "text file busy" when concurrent callers try to exec
+			// the binary while it's still being written.
+			tmpFile, err := os.CreateTemp(destDir, "pixi-*.tmp")
 			if err != nil {
-				slog.Error("Failed to create output file", "error", err, "path", destPath)
-				return fmt.Errorf("failed to create pixi binary: %w", err)
+				return fmt.Errorf("failed to create temp file: %w", err)
 			}
-			defer outFile.Close()
+			tmpPath := tmpFile.Name()
 
-			bytesWritten, err := io.Copy(outFile, tr)
+			bytesWritten, err := io.Copy(tmpFile, tr)
 			if err != nil {
-				slog.Error("Failed to write pixi binary", "error", err, "path", destPath)
+				tmpFile.Close()
+				os.Remove(tmpPath)
 				return fmt.Errorf("failed to write pixi binary: %w", err)
+			}
+			tmpFile.Close()
+
+			if err := os.Chmod(tmpPath, 0755); err != nil {
+				os.Remove(tmpPath)
+				return fmt.Errorf("failed to chmod pixi binary: %w", err)
+			}
+
+			if err := os.Rename(tmpPath, destPath); err != nil {
+				os.Remove(tmpPath)
+				return fmt.Errorf("failed to rename pixi binary: %w", err)
 			}
 
 			slog.Info("Pixi binary extracted successfully", "path", destPath, "bytes", bytesWritten)
@@ -180,8 +195,20 @@ func extractPixi(tarPath, destDir string) error {
 	return fmt.Errorf("pixi binary not found in archive")
 }
 
-// InstallPixi automatically downloads and installs pixi to ~/.local/bin
+var installOnce sync.Once
+var installResult string
+var installErr error
+
+// InstallPixi automatically downloads and installs pixi to ~/.local/bin.
+// Safe to call concurrently; only the first caller does the actual install.
 func InstallPixi(ctx context.Context) (string, error) {
+	installOnce.Do(func() {
+		installResult, installErr = doInstallPixi(ctx)
+	})
+	return installResult, installErr
+}
+
+func doInstallPixi(ctx context.Context) (string, error) {
 	slog.Info("Starting pixi auto-installation",
 		"os", runtime.GOOS,
 		"arch", runtime.GOARCH,

@@ -8,6 +8,10 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 )
 
+// Version and Commit are set via ldflags at build time
+var Version = "dev"
+var Commit = ""
+
 //go:embed all:frontend/dist
 var assets embed.FS
 
@@ -18,8 +22,8 @@ func main() {
 	// Run Wails application
 	err := wails.Run(&options.App{
 		Title:  "Nebi - Environment Manager",
-		Width:  1280,
-		Height: 800,
+		Width:  1440,
+		Height: 900,
 		AssetServer: &assetserver.Options{
 			Assets:  assets,
 			Handler: app.Handler(),

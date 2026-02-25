@@ -6,11 +6,14 @@
       .label { font-size: 13px; }
       .title { font-size: 15px; font-weight: 700; }
       .sub { font-size: 11.5px; fill: #9a9ab5; }
-      .arrow { stroke-width: 2; fill: none; marker-end: url(#arr); }
+      .arrow { stroke-width: 2; fill: none; }
       .arrow-label { font-size: 11px; }
     </style>
-    <marker id="arr" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7" fill="none" stroke="inherit" stroke-width="1.5" />
+    <marker id="arr-teal" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#2aaa9a" />
+    </marker>
+    <marker id="arr-gold" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#eda61d" />
     </marker>
   </defs>
 
@@ -97,14 +100,14 @@
   <!-- ════════════════════════════════════════════════════ -->
 
   <!-- CLI → Server (push/pull) — smooth curve up -->
-  <path d="M 350 358 C 420 358, 390 150, 410 150" class="arrow" stroke="#2aaa9a" />
+  <path d="M 350 358 C 420 358, 390 150, 410 150" class="arrow" stroke="#2aaa9a" marker-end="url(#arr-teal)" />
   <text x="398" y="262" text-anchor="middle" class="arrow-label" fill="#2aaa9a">push / pull</text>
 
   <!-- CLI → OCI (publish) — horizontal -->
-  <path d="M 350 392 L 530 392" class="arrow" stroke="#eda61d" />
+  <path d="M 350 392 L 530 392" class="arrow" stroke="#eda61d" marker-end="url(#arr-gold)" />
   <text x="440" y="385" text-anchor="middle" class="arrow-label" fill="#eda61d">publish</text>
 
   <!-- Server → OCI (publish) — vertical -->
-  <path d="M 690 220 L 690 318" class="arrow" stroke="#eda61d" />
+  <path d="M 690 220 L 690 318" class="arrow" stroke="#eda61d" marker-end="url(#arr-gold)" />
   <text x="710" y="274" text-anchor="start" class="arrow-label" fill="#eda61d">publish</text>
 </svg>

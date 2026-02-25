@@ -56,6 +56,7 @@ go install github.com/nebari-dev/nebi/cmd/nebi@latest
 
 ## What's Next?
 
+- [Architecture](./architecture.md) — How the desktop app, CLI, server, and OCI registries fit together
 - [CLI Guide](./cli-guide.md) — Local workflows and team collaboration
 - [CLI Reference](./cli-reference.md) — All available commands at a glance
 - [Server Setup](./server-setup.md) — Run your own Nebi server

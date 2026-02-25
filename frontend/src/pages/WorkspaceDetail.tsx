@@ -93,8 +93,9 @@ export const WorkspaceDetail = () => {
   };
 
   const handleCopyImport = async (pub: { registry_url: string; registry_namespace: string; repository: string; tag: string; id: string }) => {
+    const host = pub.registry_url.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const repoPath = pub.registry_namespace ? `${pub.registry_namespace}/${pub.repository}` : pub.repository;
-    const cmd = `nebi import ${pub.registry_url}/${repoPath}:${pub.tag}`;
+    const cmd = `nebi import ${host}/${repoPath}:${pub.tag}`;
     await navigator.clipboard.writeText(cmd);
     setCopiedImportId(pub.id);
     setTimeout(() => setCopiedImportId(null), 2000);
@@ -550,7 +551,7 @@ export const WorkspaceDetail = () => {
                         <div className="flex-1 space-y-2">
                           <div className="flex items-center gap-2">
                             <a
-                              href={`https://${pub.registry_url}/repository/${pub.registry_namespace ? pub.registry_namespace + '/' : ''}${pub.repository}?tab=tags`}
+                              href={`https://${pub.registry_url.replace(/^https?:\/\//, '').replace(/\/$/, '')}/repository/${pub.registry_namespace ? pub.registry_namespace + '/' : ''}${pub.repository}?tab=tags`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="font-medium text-lg hover:underline text-primary flex items-center gap-1"

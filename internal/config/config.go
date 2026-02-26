@@ -26,8 +26,9 @@ func (c *Config) IsLocalMode() bool {
 
 // ServerConfig holds HTTP server configuration
 type ServerConfig struct {
-	Port int    `mapstructure:"port"`
-	Mode string `mapstructure:"mode"` // "development" or "production"
+	Port     int    `mapstructure:"port"`
+	Mode     string `mapstructure:"mode"`      // "development" or "production"
+	BasePath string `mapstructure:"base_path"` // URL path prefix (e.g. "/nebi")
 }
 
 // DatabaseConfig holds database configuration
@@ -83,6 +84,7 @@ func Load() (*Config, error) {
 	v.SetDefault("mode", "team")
 	v.SetDefault("server.port", 8460)
 	v.SetDefault("server.mode", "development")
+	v.SetDefault("server.base_path", "")
 	v.SetDefault("database.driver", "sqlite")
 	v.SetDefault("database.dsn", "./nebi.db")
 	v.SetDefault("database.max_idle_conns", 10)
@@ -124,6 +126,11 @@ func Load() (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
+	}
+
+	// Normalize base path: ensure leading slash, strip trailing slash
+	if cfg.Server.BasePath != "" {
+		cfg.Server.BasePath = "/" + strings.Trim(cfg.Server.BasePath, "/")
 	}
 
 	// Validate mode

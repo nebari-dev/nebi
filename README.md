@@ -152,6 +152,7 @@ curl -X POST http://localhost:8460/api/v1/workspaces/{id}/packages \
 # Server configuration
 NEBI_SERVER_PORT=8460
 NEBI_SERVER_MODE=development
+NEBI_SERVER_BASE_PATH=/proxy/8460  # Serve all routes under this path prefix (for reverse proxies)
 
 # Database configuration
 NEBI_DATABASE_DRIVER=postgres
@@ -172,6 +173,24 @@ NEBI_LOG_FORMAT=json
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=<your-secure-password>
 ADMIN_EMAIL=admin@example.com  # Optional, defaults to <username>@nebi.local
+```
+
+### Reverse Proxy / Base Path
+
+To run Nebi behind a reverse proxy at a sub-path (e.g., jupyter-server-proxy):
+
+```bash
+NEBI_SERVER_BASE_PATH=/proxy/8460 nebi serve
+```
+
+All routes (API, frontend, docs) are served under the specified prefix. For example, with `/proxy/8460`:
+- Frontend: `http://host/proxy/8460/`
+- API: `http://host/proxy/8460/api/v1/...`
+- Docs: `http://host/proxy/8460/docs`
+
+The CLI works without changes — just include the full path when connecting:
+```bash
+nebi login https://hub.example.com/proxy/8460
 ```
 
 ## CLI Usage

@@ -58,6 +58,9 @@ func Run(ctx context.Context, cfg Config) error {
 	// Initialize logger
 	logger.Init(appCfg.Log.Format, appCfg.Log.Level)
 	slog.Info("Starting Nebi server", "version", cfg.Version, "mode", appCfg.Server.Mode)
+	if appCfg.Server.BasePath != "" {
+		slog.Info("Base path configured", "base_path", appCfg.Server.BasePath)
+	}
 
 	// Initialize database
 	database, err := db.New(appCfg.Database)

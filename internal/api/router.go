@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -38,6 +39,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	}
 
 	localMode := cfg.IsLocalMode()
+	basePath := cfg.Server.BasePath
 
 	// Set handler-level mode for /version endpoint
 	if localMode {
@@ -95,8 +97,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	// Create one if the primary authenticator isn't already basic auth.
 	sessionBasicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
 
+	// Base group for all routes (supports reverse proxy path prefix)
+	base := router.Group(basePath)
+
 	// Public routes
-	public := router.Group("/api/v1")
+	public := base.Group("/api/v1")
 	{
 		public.GET("/health", handlers.HealthCheck)
 		public.GET("/version", handlers.GetVersion)
@@ -125,7 +130,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	jobHandler := handlers.NewJobHandler(db, logBroker, valkeyClient)
 
 	// Protected routes (require authentication)
-	protected := router.Group("/api/v1")
+	protected := base.Group("/api/v1")
 	protected.Use(authenticator.Middleware())
 	{
 		// User info
@@ -256,7 +261,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	}
 
 	// Swagger documentation
-	router.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	base.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Serve embedded frontend
 	embedFS, err := web.GetFileSystem()
@@ -267,18 +272,31 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		router.NoRoute(func(c *gin.Context) {
 			path := c.Request.URL.Path
 
+			// Strip base path prefix to get the relative path
+			relPath := path
+			if basePath != "" {
+				if !strings.HasPrefix(path, basePath) {
+					c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
+					return
+				}
+				relPath = strings.TrimPrefix(path, basePath)
+				if relPath == "" {
+					relPath = "/"
+				}
+			}
+
 			// Don't serve HTML for API calls or docs
-			if strings.HasPrefix(path, "/api") {
+			if strings.HasPrefix(relPath, "/api") {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
 				return
 			}
-			if strings.HasPrefix(path, "/docs") {
+			if strings.HasPrefix(relPath, "/docs") {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
 				return
 			}
 
 			// Remove leading slash for embedded FS
-			fsPath := strings.TrimPrefix(path, "/")
+			fsPath := strings.TrimPrefix(relPath, "/")
 			if fsPath == "" {
 				fsPath = "index.html"
 			}
@@ -319,6 +337,18 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				contentType = "image/png"
 			} else if strings.HasSuffix(fsPath, ".jpg") || strings.HasSuffix(fsPath, ".jpeg") {
 				contentType = "image/jpeg"
+			}
+
+			// For index.html, inject base path and rewrite asset URLs
+			if fsPath == "index.html" && basePath != "" {
+				html := string(content)
+				// Inject base path script tag into <head>
+				injection := fmt.Sprintf(`<script>window.__NEBI_BASE_PATH__=%q;</script>`, basePath)
+				html = strings.Replace(html, "<head>", "<head>\n    "+injection, 1)
+				// Rewrite absolute asset paths to include base path
+				html = strings.ReplaceAll(html, `href="/`, `href="`+basePath+`/`)
+				html = strings.ReplaceAll(html, `src="/`, `src="`+basePath+`/`)
+				content = []byte(html)
 			}
 
 			c.Data(http.StatusOK, contentType, content)

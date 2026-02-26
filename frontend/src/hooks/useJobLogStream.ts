@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { useAuthStore } from '@/store/authStore';
+import { getApiBaseUrl } from '@/lib/basePath';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_URL || getApiBaseUrl();
 
 export const useJobLogStream = (jobId: string, jobStatus: string, initialLogs: string = '') => {
   const [logs, setLogs] = useState<string>(initialLogs);

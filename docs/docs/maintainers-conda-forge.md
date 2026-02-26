@@ -34,7 +34,7 @@ Maintainers listed in the recipe get commit access to these repos.
 
 ## Recipe structure
 
-Recipes live in `recipes/` in this repo for reference, but the canonical versions are in the feedstock repos. The recipes use the **v1 format** (`recipe.yaml`) with `rattler-build`.
+Recipes are maintained in the feedstock repos (linked above). They use the **v1 format** (`recipe.yaml`) with `rattler-build`.
 
 ### nebi (CLI)
 
@@ -52,34 +52,28 @@ Recipes live in `recipes/` in this repo for reference, but the canonical version
 
 ## Testing recipes locally
 
-Install `rattler-build`:
+Clone a feedstock and build locally with `rattler-build`:
 
 ```bash
 pixi global install rattler-build
-```
-
-Build and test a recipe:
-
-```bash
-rattler-build build --recipe recipes/nebi/recipe.yaml
-rattler-build build --recipe recipes/nebi-desktop/recipe.yaml
+gh repo clone conda-forge/nebi-feedstock
+rattler-build build --recipe nebi-feedstock/recipe/recipe.yaml
 ```
 
 The desktop recipe needs a `conda_build_config.yaml` for local builds (not needed on conda-forge CI):
 
 ```yaml
-# recipes/nebi-desktop/conda_build_config.yaml (local builds only)
+# conda_build_config.yaml (local builds only)
 c_stdlib:
   - sysroot
 c_stdlib_version:
   - "2.17"
 ```
 
-Install the built package locally:
+Install a locally-built package:
 
 ```bash
 pixi global install --channel ./output --channel conda-forge nebi
-pixi global install --channel ./output --channel conda-forge nebi-desktop
 ```
 
 ## Updating recipes

@@ -102,7 +102,7 @@ export const Login = () => {
         <div className="space-y-6 pb-8">
           <div className="flex justify-center">
             <img
-              src={`${getBasePath()}/nebi-logo.png`}
+              src={`${getBasePath()}/nebi-logo.svg`}
               alt="Nebi Logo"
               className="h-24 w-auto"
             />

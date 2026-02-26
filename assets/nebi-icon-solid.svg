@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="15 6 555 206">
+  <rect x="15" y="6" width="555" height="206" fill="#FFFFFF"/>
+  <!-- Isometric cube (15% shrink, transparent gaps) -->
+  <polygon points="110,18 187,62 110,106 33,62" fill="#9A3DCC"/>
+  <polygon points="27,73 104,117 104,199 27,155" fill="#EAB54F"/>
+  <polygon points="116,117 193,73 193,155 116,199" fill="#359D96"/>
+  <!-- "Nebi" text -->
+  <text x="235" y="109" dominant-baseline="central" font-family="'Nunito', 'Poppins', 'IBM Plex Sans', system-ui, sans-serif" font-size="140" font-weight="800" fill="#000000">Nebi</text>
+</svg>

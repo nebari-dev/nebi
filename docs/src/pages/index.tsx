@@ -13,7 +13,7 @@ function HomepageHeader() {
     <header className={styles.heroBanner}>
       <div className="container">
         <img
-          src="/img/nebi-icon.png"
+          src="/img/nebi-icon.svg"
           alt="Nebi"
           className={styles.heroLogo}
         />

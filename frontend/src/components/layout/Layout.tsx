@@ -35,7 +35,7 @@ export const Layout = () => {
             <div className="flex items-center gap-8">
               <NavLink to="/workspaces">
                 <img
-                  src={`${getBasePath()}/nebi-logo.png`}
+                  src={`${getBasePath()}/nebi-logo.svg`}
                   alt="Nebi"
                   className="h-10 w-auto"
                 />

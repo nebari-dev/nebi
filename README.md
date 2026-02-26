@@ -1,7 +1,7 @@
 # Nebi
 
 <div align="center">
-  <img src="assets/nebi-icon-solid.jpg" alt="Nebi" width="400"/>
+  <img src="assets/nebi-icon-solid.svg" alt="Nebi" width="200"/>
 </div>
 
 <p align="center">

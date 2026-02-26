@@ -7,6 +7,13 @@ const sidebars: SidebarsConfig = {
     'cli-guide',
     'server-setup',
     'cli-reference',
+    {
+      type: 'category',
+      label: 'Maintainers',
+      items: [
+        'maintainers-conda-forge',
+      ],
+    },
   ],
 };
 

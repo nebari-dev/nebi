@@ -3,10 +3,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
 import { authApi } from '@/api/auth';
+import { getBasePath, getApiBaseUrl } from '@/lib/basePath';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { apiClient } from '@/api/client';
-import { getApiBaseUrl } from '@/lib/basePath';
 
 export const Login = () => {
   const [username, setUsername] = useState('');
@@ -102,7 +102,7 @@ export const Login = () => {
         <div className="space-y-6 pb-8">
           <div className="flex justify-center">
             <img
-              src="/nebi-logo.png"
+              src={`${getBasePath()}/nebi-logo.png`}
               alt="Nebi Logo"
               className="h-24 w-auto"
             />

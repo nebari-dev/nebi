@@ -38,6 +38,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	}
 
 	localMode := cfg.IsLocalMode()
+	basePath := cfg.Server.BasePath
 
 	// Set handler-level mode for /version endpoint
 	if localMode {
@@ -95,8 +96,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	// Create one if the primary authenticator isn't already basic auth.
 	sessionBasicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
 
+	// Base group for all routes (supports reverse proxy path prefix)
+	base := router.Group(basePath)
+
 	// Public routes
-	public := router.Group("/api/v1")
+	public := base.Group("/api/v1")
 	{
 		public.GET("/health", handlers.HealthCheck)
 		public.GET("/version", handlers.GetVersion)
@@ -125,7 +129,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	jobHandler := handlers.NewJobHandler(db, logBroker, valkeyClient)
 
 	// Protected routes (require authentication)
-	protected := router.Group("/api/v1")
+	protected := base.Group("/api/v1")
 	protected.Use(authenticator.Middleware())
 	{
 		// User info
@@ -256,7 +260,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	}
 
 	// Swagger documentation
-	router.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	base.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Serve embedded frontend
 	embedFS, err := web.GetFileSystem()

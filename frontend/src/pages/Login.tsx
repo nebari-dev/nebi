@@ -6,6 +6,7 @@ import { authApi } from '@/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { apiClient } from '@/api/client';
+import { getApiBaseUrl } from '@/lib/basePath';
 
 export const Login = () => {
   const [username, setUsername] = useState('');
@@ -155,7 +156,7 @@ export const Login = () => {
           </div>
 
           <Button
-            onClick={() => window.location.href = '/api/v1/auth/oidc/login'}
+            onClick={() => window.location.href = `${getApiBaseUrl()}/auth/oidc/login`}
             variant="outline"
             className="w-full h-12 text-base font-medium"
           >

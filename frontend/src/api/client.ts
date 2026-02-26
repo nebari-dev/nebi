@@ -1,8 +1,9 @@
 import axios from 'axios';
 import { queryClient } from '@/lib/queryClient';
 import { useModeStore } from '@/store/modeStore';
+import { getBasePath, getApiBaseUrl } from '@/lib/basePath';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_URL || getApiBaseUrl();
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -38,7 +39,7 @@ apiClient.interceptors.response.use(
         localStorage.removeItem('auth_token');
         // Clear all query cache to prevent stale data
         queryClient.clear();
-        window.location.href = '/login';
+        window.location.href = `${getBasePath()}/login`;
       }
     }
     return Promise.reject(error);

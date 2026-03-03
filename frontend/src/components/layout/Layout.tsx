@@ -4,7 +4,7 @@ import { useModeStore } from '@/store/modeStore';
 import { getBasePath } from '@/lib/basePath';
 import { useViewModeStore } from '@/store/viewModeStore';
 import { useIsAdmin } from '@/hooks/useAdmin';
-import { useRemoteServer } from '@/hooks/useRemote';
+import { useRemoteServer, useAutoConnect } from '@/hooks/useRemote';
 import { useVersion } from '@/hooks/useVersion';
 import { Button } from '@/components/ui/button';
 
@@ -21,6 +21,9 @@ export const Layout = () => {
   const { data: serverStatus } = useRemoteServer();
   const { data: versionInfo } = useVersion();
   const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
+
+  // Auto-connect to remote Nebi when NEBI_REMOTE_URL is configured (Nebari integration)
+  useAutoConnect();
 
   const handleLogout = () => {
     clearAuth();

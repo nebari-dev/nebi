@@ -19,12 +19,32 @@ import (
 var ErrWsNotFound = errors.New("workspace not found on server")
 
 // getAuthenticatedClient loads credentials and returns an authenticated API client.
+//
+// It checks, in order:
+//  1. NEBI_REMOTE_URL + NEBI_AUTH_TOKEN env vars (for JupyterLab pod integration)
+//  2. Stored server URL and credentials from the local nebi.db
 func getAuthenticatedClient() (*cliclient.Client, error) {
+	// Check env vars first (Nebari JupyterLab pod integration)
+	if envURL := os.Getenv("NEBI_REMOTE_URL"); envURL != "" {
+		if envToken := os.Getenv("NEBI_AUTH_TOKEN"); envToken != "" {
+			return cliclient.New(envURL, envToken), nil
+		}
+	}
+
 	s, err := store.New()
 	if err != nil {
 		return nil, err
 	}
 	defer s.Close()
+
+	// If NEBI_REMOTE_URL is set but no NEBI_AUTH_TOKEN, check if we have stored creds
+	if envURL := os.Getenv("NEBI_REMOTE_URL"); envURL != "" {
+		creds, err := s.LoadCredentials()
+		if err == nil && creds.Token != "" {
+			return cliclient.New(envURL, creds.Token), nil
+		}
+		return nil, fmt.Errorf("NEBI_REMOTE_URL is set but no auth token available; open the Nebi UI first to auto-connect, or run 'nebi login %s'", envURL)
+	}
 
 	serverURL, err := s.LoadServerURL()
 	if err != nil {

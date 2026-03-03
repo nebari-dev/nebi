@@ -1,6 +1,8 @@
+import { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { remoteApi } from '@/api/remote';
 import type { ConnectServerRequest, CreateRemoteWorkspaceRequest } from '@/types';
+import { useViewModeStore } from '@/store/viewModeStore';
 
 export const useRemoteServer = () => {
   return useQuery({
@@ -19,6 +21,50 @@ export const useConnectServer = () => {
       queryClient.invalidateQueries({ queryKey: ['remote'] });
     },
   });
+};
+
+/**
+ * Auto-connect to the remote Nebi server when NEBI_REMOTE_URL is configured.
+ *
+ * This hook runs once on app load. It checks if NEBI_REMOTE_URL is set (via
+ * the /remote/auto-connect-config endpoint) and whether we're already connected.
+ * If not connected, it calls /remote/connect-via-proxy which reads the IdToken
+ * cookie forwarded by jupyter-server-proxy and exchanges it for a Nebi JWT
+ * on the remote server.
+ *
+ * The result is zero-click auto-connection for JupyterLab users.
+ */
+export const useAutoConnect = () => {
+  const queryClient = useQueryClient();
+  const attempted = useRef(false);
+  const setViewMode = useViewModeStore((s) => s.setViewMode);
+
+  const { data: config } = useQuery({
+    queryKey: ['remote', 'auto-connect-config'],
+    queryFn: remoteApi.getAutoConnectConfig,
+    staleTime: Infinity, // Only fetch once
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!config || attempted.current) return;
+    if (!config.auto_connect) return;
+    if (config.already_connected) {
+      // Already connected — just switch to remote view
+      setViewMode('remote');
+      return;
+    }
+
+    attempted.current = true;
+
+    remoteApi.connectViaProxy(config.remote_url).then(() => {
+      queryClient.invalidateQueries({ queryKey: ['remote'] });
+      setViewMode('remote');
+      console.log('[nebi] Auto-connected to remote server:', config.remote_url);
+    }).catch((err) => {
+      console.warn('[nebi] Auto-connect failed (will retry on next page load):', err.message || err);
+    });
+  }, [config, queryClient, setViewMode]);
 };
 
 export const useDisconnectServer = () => {

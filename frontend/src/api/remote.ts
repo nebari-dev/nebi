@@ -13,6 +13,12 @@ import type {
   DashboardStats,
 } from '@/types';
 
+export interface AutoConnectConfig {
+  remote_url: string;
+  auto_connect: boolean;
+  already_connected: boolean;
+}
+
 export const remoteApi = {
   // Server connection management
   getServer: async (): Promise<RemoteServer> => {
@@ -22,6 +28,20 @@ export const remoteApi = {
 
   connectServer: async (req: ConnectServerRequest): Promise<RemoteServer> => {
     const { data } = await apiClient.post('/remote/connect', req);
+    return data;
+  },
+
+  // Connect to remote server using the IdToken cookie forwarded by
+  // jupyter-server-proxy. This enables zero-click auto-connection when
+  // running inside a Nebari JupyterLab pod with NEBI_REMOTE_URL set.
+  connectViaProxy: async (url?: string): Promise<RemoteServer> => {
+    const { data } = await apiClient.post('/remote/connect-via-proxy', url ? { url } : {});
+    return data;
+  },
+
+  // Get auto-connect configuration (checks NEBI_REMOTE_URL env var)
+  getAutoConnectConfig: async (): Promise<AutoConnectConfig> => {
+    const { data } = await apiClient.get('/remote/auto-connect-config');
     return data;
   },
 

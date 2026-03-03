@@ -562,6 +562,53 @@
                 }
             }
         },
+        "/auth/cli-login": {
+            "get": {
+                "description": "After the user authenticates via the OIDC proxy (e.g., Envoy Gateway + Keycloak),\nthis endpoint reads the IdToken cookie, exchanges it for a Nebi JWT, and renders\na page that sends the token to the CLI's local callback server.",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Browser-based login for CLI clients behind an OIDC proxy",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "CLI's local callback server port",
+                        "name": "callback_port",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "HTML page that redirects token to CLI",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Authenticate user and return JWT token",

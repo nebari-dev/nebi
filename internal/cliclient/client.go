@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -171,4 +172,17 @@ func IsUnauthorized(err error) bool {
 		return apiErr.StatusCode == 401
 	}
 	return false
+}
+
+// IsOIDCRedirect returns true if the error indicates the server is behind an
+// OIDC proxy that redirected to a login page instead of returning JSON.
+// This typically manifests as a JSON decode error when the response body
+// starts with '<' (HTML) instead of '{' (JSON).
+func IsOIDCRedirect(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "invalid character '<'") ||
+		strings.Contains(msg, "invalid character '&lt;'")
 }

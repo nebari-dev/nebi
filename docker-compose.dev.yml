@@ -1,0 +1,16 @@
+services:
+  nebi-team:
+    build: .
+    container_name: nebi-team-dev
+    ports:
+      - "8470:8460"
+    environment:
+      NEBI_MODE: team
+      NEBI_DATABASE_DSN: /app/data/nebi-team.db
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin123
+    volumes:
+      - nebi_team_data:/app/data
+
+volumes:
+  nebi_team_data:

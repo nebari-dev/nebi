@@ -874,6 +874,40 @@ paths:
       summary: Toggle admin status for a user
       tags:
       - admin
+  /auth/cli-login:
+    get:
+      description: |-
+        After the user authenticates via the OIDC proxy (e.g., Envoy Gateway + Keycloak),
+        this endpoint reads the IdToken cookie, exchanges it for a Nebi JWT, and renders
+        a page that sends the token to the CLI's local callback server.
+      parameters:
+      - description: CLI's local callback server port
+        in: query
+        name: callback_port
+        required: true
+        type: integer
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: HTML page that redirects token to CLI
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Browser-based login for CLI clients behind an OIDC proxy
+      tags:
+      - auth
   /auth/login:
     post:
       consumes:

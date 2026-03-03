@@ -6,6 +6,7 @@
 bin/
 tmp/
 internal/web/dist/
+output/
 
 # Database
 *.db

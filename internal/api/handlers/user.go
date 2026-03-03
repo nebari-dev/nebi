@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nebari-dev/nebi/internal/auth"
+	_ "github.com/nebari-dev/nebi/internal/models" // imported for swagger type resolution
 )
 
 // GetCurrentUser godoc

@@ -26,7 +26,7 @@ install-tools: ## Install development tools (swag, air, golangci-lint)
 swagger: ## Generate Swagger documentation
 	@echo "Generating Swagger docs..."
 	@command -v swag >/dev/null 2>&1 || { echo "swag not found, installing..."; go install github.com/swaggo/swag/cmd/swag@latest; }
-	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g cmd/nebi/serve.go -o internal/swagger --packageName swagger
+	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g cmd/nebi/serve.go -o internal/swagger --packageName swagger --exclude output,cross-platform-example
 	@echo "Swagger docs generated at /internal/swagger"
 
 build-frontend: ## Build frontend and copy to internal/web/dist

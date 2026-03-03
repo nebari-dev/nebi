@@ -570,26 +570,26 @@ const docTemplate = `{
         },
         "/auth/cli-login": {
             "get": {
-                "description": "After the user authenticates via the OIDC proxy (e.g., Envoy Gateway + Keycloak),\nthis endpoint reads the IdToken cookie, exchanges it for a Nebi JWT, and renders\na page that sends the token to the CLI's local callback server.",
+                "description": "Handles browser-based CLI login using a device code flow.\nIf behind an OIDC proxy, auto-completes the code. Otherwise shows a login form.",
                 "produces": [
                     "text/html"
                 ],
                 "tags": [
                     "auth"
                 ],
-                "summary": "Browser-based login for CLI clients behind an OIDC proxy",
+                "summary": "Browser-based login for CLI clients",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "CLI's local callback server port",
-                        "name": "callback_port",
+                        "type": "string",
+                        "description": "Device code from CLI",
+                        "name": "code",
                         "in": "query",
                         "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "HTML page that redirects token to CLI",
+                        "description": "HTML page",
                         "schema": {
                             "type": "string"
                         }
@@ -602,9 +602,60 @@ const docTemplate = `{
                                 "type": "string"
                             }
                         }
+                    }
+                }
+            }
+        },
+        "/auth/cli-login/code": {
+            "post": {
+                "description": "Generates a short-lived device code for browser-based CLI authentication.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Request a device code for CLI login",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/cli-login/poll": {
+            "get": {
+                "description": "Polls the status of a device code. Returns the token when authentication is complete.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Poll for CLI login completion",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Device code",
+                        "name": "code",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
                     },
-                    "401": {
-                        "description": "Unauthorized",
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {

@@ -110,10 +110,12 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		// Session check: exchanges proxy IdToken cookie for a Nebi JWT (no auth middleware)
 		public.GET("/auth/session", handlers.SessionCheck(sessionBasicAuth, cfg.Auth.ProxyAdminGroups))
 
-		// CLI login: browser-based login for CLI clients behind OIDC proxies.
-		// After the user authenticates via the proxy, this renders a page that
-		// sends the resulting Nebi JWT to the CLI's local callback server.
-		public.GET("/auth/cli-login", handlers.CLILogin(sessionBasicAuth, cfg.Auth.ProxyAdminGroups))
+		// CLI login: device code flow for browser-based CLI authentication.
+		cliLoginHandler := handlers.CLILogin(sessionBasicAuth, cfg.Auth.ProxyAdminGroups)
+		public.POST("/auth/cli-login/code", handlers.CLILoginCode())
+		public.GET("/auth/cli-login", cliLoginHandler)
+		public.POST("/auth/cli-login", cliLoginHandler)
+		public.GET("/auth/cli-login/poll", handlers.CLILoginPoll())
 
 		// OIDC routes (if enabled, team mode only)
 		if oidcAuth != nil {

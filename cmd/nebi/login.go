@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
@@ -157,70 +155,48 @@ func runLogin(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// browserLogin performs browser-based authentication for servers behind OIDC proxies.
-// It starts a local HTTP server, opens the browser to the server's CLI login endpoint,
-// and waits for the OIDC-authenticated callback with a Nebi JWT.
+// browserLogin performs browser-based authentication using a device code flow.
+// It requests a short code from the server, opens the browser, and polls for completion.
 func browserLogin(serverURL string) (token, username string, err error) {
-	// Start a local callback server on a random port
-	listener, err := net.Listen("tcp", "localhost:0")
+	ctx := context.Background()
+	client := cliclient.NewWithoutAuth(serverURL)
+
+	// Request a device code
+	codeResp, err := client.RequestDeviceCode(ctx)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to start local callback server: %w", err)
+		return "", "", fmt.Errorf("failed to request device code: %w", err)
 	}
-	port := listener.Addr().(*net.TCPAddr).Port
-
-	// Channel to receive the auth result
-	type authResult struct {
-		token    string
-		username string
-		err      error
-	}
-	resultCh := make(chan authResult, 1)
-
-	// Set up the callback handler
-	mux := http.NewServeMux()
-	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-		t := r.URL.Query().Get("token")
-		u := r.URL.Query().Get("username")
-		if t == "" {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.WriteHeader(http.StatusOK)
-			resultCh <- authResult{err: fmt.Errorf("no token received from server")}
-			return
-		}
-
-		// Allow cross-origin requests from the server page
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "OK")
-		resultCh <- authResult{token: t, username: u}
-	})
-
-	server := &http.Server{Handler: mux}
-	go server.Serve(listener)
-	defer server.Close()
 
 	// Build the login URL
-	loginURL := fmt.Sprintf("%s/api/v1/auth/cli-login?callback_port=%d", serverURL, port)
+	loginURL := fmt.Sprintf("%s/api/v1/auth/cli-login?code=%s", serverURL, codeResp.Code)
 
 	fmt.Fprintf(os.Stderr, "Opening browser for authentication...\n")
 	fmt.Fprintf(os.Stderr, "If the browser doesn't open, visit:\n  %s\n\n", loginURL)
-	fmt.Fprintf(os.Stderr, "Waiting for authentication...\n")
+	fmt.Fprintf(os.Stderr, "Your login code is: %s\n\n", codeResp.Code)
 
 	// Open browser
 	if err := openBrowser(loginURL); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not open browser: %v\n", err)
 	}
 
-	// Wait for callback with timeout
-	select {
-	case result := <-resultCh:
-		if result.err != nil {
-			return "", "", result.err
+	fmt.Fprintf(os.Stderr, "Waiting for authentication...\n")
+
+	// Poll for completion
+	deadline := time.Now().Add(5 * time.Minute)
+	for time.Now().Before(deadline) {
+		time.Sleep(2 * time.Second)
+
+		pollResp, pollErr := client.PollDeviceCode(ctx, codeResp.Code)
+		if pollErr != nil {
+			continue // transient error, keep polling
 		}
-		return result.token, result.username, nil
-	case <-time.After(5 * time.Minute):
-		return "", "", fmt.Errorf("timed out waiting for browser authentication (5 minutes)")
+
+		if pollResp.Status == "complete" {
+			return pollResp.Token, pollResp.Username, nil
+		}
 	}
+
+	return "", "", fmt.Errorf("timed out waiting for browser authentication (5 minutes)")
 }
 
 // openBrowser opens the given URL in the user's default browser.

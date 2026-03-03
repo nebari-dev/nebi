@@ -877,20 +877,19 @@ paths:
   /auth/cli-login:
     get:
       description: |-
-        After the user authenticates via the OIDC proxy (e.g., Envoy Gateway + Keycloak),
-        this endpoint reads the IdToken cookie, exchanges it for a Nebi JWT, and renders
-        a page that sends the token to the CLI's local callback server.
+        Handles browser-based CLI login using a device code flow.
+        If behind an OIDC proxy, auto-completes the code. Otherwise shows a login form.
       parameters:
-      - description: CLI's local callback server port
+      - description: Device code from CLI
         in: query
-        name: callback_port
+        name: code
         required: true
-        type: integer
+        type: string
       produces:
       - text/html
       responses:
         "200":
-          description: HTML page that redirects token to CLI
+          description: HTML page
           schema:
             type: string
         "400":
@@ -899,13 +898,48 @@ paths:
             additionalProperties:
               type: string
             type: object
-        "401":
-          description: Unauthorized
+      summary: Browser-based login for CLI clients
+      tags:
+      - auth
+  /auth/cli-login/code:
+    post:
+      description: Generates a short-lived device code for browser-based CLI authentication.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Request a device code for CLI login
+      tags:
+      - auth
+  /auth/cli-login/poll:
+    get:
+      description: Polls the status of a device code. Returns the token when authentication
+        is complete.
+      parameters:
+      - description: Device code
+        in: query
+        name: code
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
           schema:
             additionalProperties:
               type: string
             type: object
-      summary: Browser-based login for CLI clients behind an OIDC proxy
+      summary: Poll for CLI login completion
       tags:
       - auth
   /auth/login:

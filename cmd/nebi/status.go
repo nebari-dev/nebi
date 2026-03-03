@@ -12,6 +12,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var statusJSON bool
+
+func init() {
+	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output as JSON")
+}
+
+type statusResult struct {
+	Workspace    string `json:"workspace"`
+	Path         string `json:"path"`
+	Server       string `json:"server,omitempty"`
+	OriginName   string `json:"origin_name,omitempty"`
+	OriginTag    string `json:"origin_tag,omitempty"`
+	OriginAction string `json:"origin_action,omitempty"`
+	TomlModified bool   `json:"toml_modified"`
+	LockModified bool   `json:"lock_modified"`
+	ServerSync   string `json:"server_sync,omitempty"`
+}
+
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show workspace sync status",
@@ -46,6 +64,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if ws == nil {
+		if statusJSON {
+			return fmt.Errorf("not a tracked workspace")
+		}
 		fmt.Fprintln(os.Stderr, "Not a tracked workspace. Run 'nebi init'.")
 		return nil
 	}
@@ -55,10 +76,15 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
 	}
 
+	serverURL, _ := s.LoadServerURL()
+
+	if statusJSON {
+		return runStatusJSON(s, ws, serverURL, cwd)
+	}
+
 	fmt.Fprintf(os.Stdout, "Workspace: %s\n", ws.Name)
 	fmt.Fprintf(os.Stdout, "Path:      %s\n", ws.Path)
 
-	serverURL, _ := s.LoadServerURL()
 	if serverURL != "" {
 		fmt.Fprintf(os.Stdout, "Server:    %s\n", serverURL)
 	} else {
@@ -99,6 +125,77 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func runStatusJSON(s *store.Store, ws *store.LocalWorkspace, serverURL, cwd string) error {
+	result := statusResult{
+		Workspace:    ws.Name,
+		Path:         ws.Path,
+		Server:       serverURL,
+		OriginName:   ws.OriginName,
+		OriginTag:    ws.OriginTag,
+		OriginAction: ws.OriginAction,
+	}
+
+	if ws.OriginName == "" {
+		return writeJSON(result)
+	}
+
+	// Check local file modifications against stored hashes
+	localToml, _ := os.ReadFile(filepath.Join(cwd, "pixi.toml"))
+	localLock, _ := os.ReadFile(filepath.Join(cwd, "pixi.lock"))
+	localTomlHash, err := store.TomlContentHash(string(localToml))
+	if err != nil {
+		return fmt.Errorf("hashing local pixi.toml: %w", err)
+	}
+	localLockHash := store.ContentHash(string(localLock))
+
+	result.TomlModified = ws.OriginTomlHash != "" && ws.OriginTomlHash != localTomlHash
+	result.LockModified = ws.OriginLockHash != "" && ws.OriginLockHash != localLockHash
+
+	if serverURL != "" {
+		result.ServerSync = checkServerOriginStatus(s, serverURL, ws)
+	}
+
+	return writeJSON(result)
+}
+
+func checkServerOriginStatus(s *store.Store, serverURL string, ws *store.LocalWorkspace) string {
+	creds, err := s.LoadCredentials()
+	if err != nil || creds.Token == "" {
+		return "not_logged_in"
+	}
+
+	client := cliclient.New(serverURL, creds.Token)
+	ctx := context.Background()
+
+	serverWs, err := findWsByName(client, ctx, ws.OriginName)
+	if err != nil {
+		if errors.Is(err, ErrWsNotFound) {
+			return "not_found"
+		}
+		return "not_reachable"
+	}
+
+	versionNumber, err := resolveVersionNumber(client, ctx, serverWs.ID, ws.OriginName, ws.OriginTag)
+	if err != nil {
+		return "tag_not_found"
+	}
+
+	toml, err := client.GetVersionPixiToml(ctx, serverWs.ID, versionNumber)
+	if err != nil {
+		return "not_reachable"
+	}
+
+	serverHash, err := store.TomlContentHash(toml)
+	if err != nil {
+		return "hash_error"
+	}
+	if ws.OriginTomlHash != "" && ws.OriginTomlHash != serverHash {
+		return "server_changed"
+	}
+
+	return "in_sync"
 }
 
 func checkServerOrigin(s *store.Store, serverURL string, ws *store.LocalWorkspace) string {

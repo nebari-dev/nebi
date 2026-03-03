@@ -25,6 +25,7 @@ var (
 	registryAddDefault   bool
 	registryAddPwdStdin  bool
 	registryRemoveForce  bool
+	registryListJSON     bool
 )
 
 var registryListCmd = &cobra.Command{
@@ -74,6 +75,7 @@ Examples:
 }
 
 func init() {
+	registryListCmd.Flags().BoolVar(&registryListJSON, "json", false, "Output as JSON")
 	registryCmd.AddCommand(registryListCmd)
 	registryCmd.AddCommand(registryAddCmd)
 	registryCmd.AddCommand(registryRemoveCmd)
@@ -106,8 +108,15 @@ func runRegistryList(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(registries) == 0 {
+		if registryListJSON {
+			return writeJSON([]cliclient.Registry{})
+		}
 		fmt.Fprintln(os.Stderr, "No registries configured on server.")
 		return nil
+	}
+
+	if registryListJSON {
+		return writeJSON(registries)
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)

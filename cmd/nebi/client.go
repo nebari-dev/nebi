@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -200,6 +201,13 @@ func formatTimestamp(ts string) string {
 		return ts
 	}
 	return t.Format("2006-01-02 15:04")
+}
+
+// writeJSON marshals v as indented JSON to stdout.
+func writeJSON(v any) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
 }
 
 // waitForWsReady polls until the workspace reaches ready state or timeout.

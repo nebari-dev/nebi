@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -154,8 +155,11 @@ func resetFlags() {
 	pullForce = false
 	// push.go
 	pushForce = false
+	pushJSON = false
 	// workspace.go
 	wsListRemote = false
+	wsListJSON = false
+	wsTagsJSON = false
 	wsRemoveRemote = false
 	// login.go
 	loginToken = ""
@@ -171,6 +175,9 @@ func resetFlags() {
 	registryAddDefault = false
 	registryAddPwdStdin = false
 	registryRemoveForce = false
+	registryListJSON = false
+	// status.go
+	statusJSON = false
 }
 
 // runCLI executes a CLI command in-process and captures output.
@@ -1715,5 +1722,105 @@ func TestE2E_PullWithoutTagResolvesTag(t *testing.T) {
 	}
 	if !strings.Contains(res.Stdout, wsName+":v2.0") {
 		t.Errorf("expected resolved tag v2.0 in status output, got: %s", res.Stdout)
+	}
+}
+
+func TestE2E_WorkspaceListJSON(t *testing.T) {
+	setupLocalStore(t)
+
+	dir := t.TempDir()
+	writePixiFiles(t, dir,
+		"[project]\nname = \"json-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+		"version: 6\n",
+	)
+	runCLI(t, dir, "init")
+
+	res := runCLI(t, dir, "workspace", "list", "--json")
+	if res.ExitCode != 0 {
+		t.Fatalf("workspace list --json failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	var items []json.RawMessage
+	if err := json.Unmarshal([]byte(res.Stdout), &items); err != nil {
+		t.Fatalf("invalid JSON output: %v\nraw: %s", err, res.Stdout)
+	}
+	if len(items) == 0 {
+		t.Error("expected at least one workspace in JSON output")
+	}
+}
+
+func TestE2E_WorkspaceListJSONEmpty(t *testing.T) {
+	setupLocalStore(t)
+
+	dir := t.TempDir()
+
+	res := runCLI(t, dir, "workspace", "list", "--json")
+	if res.ExitCode != 0 {
+		t.Fatalf("workspace list --json failed: %s %s", res.Stdout, res.Stderr)
+	}
+	if strings.TrimSpace(res.Stdout) != "[]" {
+		t.Errorf("expected empty JSON array, got: %s", res.Stdout)
+	}
+}
+
+func TestE2E_StatusJSON(t *testing.T) {
+	setupLocalStore(t)
+
+	dir := t.TempDir()
+	toml := "[project]\nname = \"status-json\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	writePixiFiles(t, dir, toml, "version: 6\n")
+	runCLI(t, dir, "init")
+
+	res := runCLI(t, dir, "status", "--json")
+	if res.ExitCode != 0 {
+		t.Fatalf("status --json failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(res.Stdout), &result); err != nil {
+		t.Fatalf("invalid JSON: %v\nraw: %s", err, res.Stdout)
+	}
+	if result["workspace"] != "status-json" {
+		t.Errorf("expected workspace 'status-json', got: %v", result["workspace"])
+	}
+	if result["path"] != dir {
+		t.Errorf("expected path %q, got: %v", dir, result["path"])
+	}
+}
+
+func TestE2E_StatusJSONNotTracked(t *testing.T) {
+	setupLocalStore(t)
+
+	dir := t.TempDir()
+
+	res := runCLI(t, dir, "status", "--json")
+	if res.ExitCode == 0 {
+		t.Error("expected non-zero exit code for untracked workspace with --json")
+	}
+}
+
+func TestE2E_PushJSON(t *testing.T) {
+	setupLocalStore(t)
+
+	dir := t.TempDir()
+	writePixiFiles(t, dir,
+		"[project]\nname = \"push-json\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+		"version: 6\n",
+	)
+
+	res := runCLI(t, dir, "push", "push-json-ws:v1", "--json")
+	if res.ExitCode != 0 {
+		t.Fatalf("push --json failed: %s %s", res.Stdout, res.Stderr)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal([]byte(res.Stdout), &resp); err != nil {
+		t.Fatalf("invalid JSON: %v\nraw: %s", err, res.Stdout)
+	}
+	if _, ok := resp["version_number"]; !ok {
+		t.Error("expected version_number in push JSON response")
+	}
+	if _, ok := resp["content_hash"]; !ok {
+		t.Error("expected content_hash in push JSON response")
 	}
 }

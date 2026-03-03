@@ -8,6 +8,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -18,7 +19,11 @@ var workspaceCmd = &cobra.Command{
 	Short:   "Manage tracked workspaces",
 }
 
-var wsListRemote bool
+var (
+	wsListRemote bool
+	wsListJSON   bool
+	wsTagsJSON   bool
+)
 
 var workspaceListCmd = &cobra.Command{
 	Use:     "list",
@@ -87,7 +92,9 @@ Examples:
 
 func init() {
 	workspaceListCmd.Flags().BoolVarP(&wsListRemote, "remote", "r", false, "List workspaces on the server instead of locally")
+	workspaceListCmd.Flags().BoolVar(&wsListJSON, "json", false, "Output as JSON")
 	workspaceCmd.AddCommand(workspaceListCmd)
+	workspaceTagsCmd.Flags().BoolVar(&wsTagsJSON, "json", false, "Output as JSON")
 	workspaceCmd.AddCommand(workspaceTagsCmd)
 	workspaceRemoveCmd.Flags().BoolVarP(&wsRemoveRemote, "remote", "r", false, "Remove workspace from the server instead of locally")
 	workspaceCmd.AddCommand(workspaceRemoveCmd)
@@ -114,6 +121,9 @@ func runWorkspaceListLocal() error {
 	}
 
 	if len(wss) == 0 {
+		if wsListJSON {
+			return writeJSON([]store.LocalWorkspace{})
+		}
 		fmt.Fprintln(os.Stderr, "No tracked workspaces. Run 'nebi init' in a pixi workspace to get started.")
 		return nil
 	}
@@ -123,6 +133,22 @@ func runWorkspaceListLocal() error {
 		if err := syncWorkspaceName(s, &wss[i]); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: %s: %v\n", wss[i].Path, err)
 		}
+	}
+
+	if wsListJSON {
+		type item struct {
+			store.LocalWorkspace
+			Missing bool `json:"missing"`
+		}
+		items := make([]item, len(wss))
+		for i, ws := range wss {
+			_, statErr := os.Stat(ws.Path)
+			items[i] = item{
+				LocalWorkspace: ws,
+				Missing:        os.IsNotExist(statErr),
+			}
+		}
+		return writeJSON(items)
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -166,8 +192,15 @@ func runWorkspaceTags(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(tags) == 0 {
+		if wsTagsJSON {
+			return writeJSON([]cliclient.WorkspaceTag{})
+		}
 		fmt.Fprintf(os.Stderr, "No tags for workspace %q.\n", wsName)
 		return nil
+	}
+
+	if wsTagsJSON {
+		return writeJSON(tags)
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -196,8 +229,15 @@ func runWorkspaceListServer() error {
 	}
 
 	if len(workspaces) == 0 {
+		if wsListJSON {
+			return writeJSON([]cliclient.Workspace{})
+		}
 		fmt.Fprintln(os.Stderr, "No workspaces on server.")
 		return nil
+	}
+
+	if wsListJSON {
+		return writeJSON(workspaces)
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)

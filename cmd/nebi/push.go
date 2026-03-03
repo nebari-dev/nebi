@@ -11,7 +11,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var pushForce bool
+var (
+	pushForce bool
+	pushJSON  bool
+)
 
 var pushCmd = &cobra.Command{
 	Use:   "push [<workspace>][:<tag>]",
@@ -41,6 +44,7 @@ Examples:
 
 func init() {
 	pushCmd.Flags().BoolVar(&pushForce, "force", false, "Overwrite existing tag on server")
+	pushCmd.Flags().BoolVar(&pushJSON, "json", false, "Output as JSON")
 }
 
 func runPush(cmd *cobra.Command, args []string) error {
@@ -125,7 +129,11 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to push %s: %w", pushLabel, err)
 	}
 
-	if resp.Deduplicated {
+	if pushJSON {
+		if err := writeJSON(resp); err != nil {
+			return err
+		}
+	} else if resp.Deduplicated {
 		fmt.Fprintf(os.Stderr, "Content unchanged — %s (version %d, tags: %s)\n",
 			wsName, resp.VersionNumber, strings.Join(resp.Tags, ", "))
 	} else {

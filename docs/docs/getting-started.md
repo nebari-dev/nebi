@@ -1,5 +1,5 @@
 ---
-sidebar_position: 1
+sidebar_position: 2
 ---
 
 # Getting Started
@@ -56,7 +56,9 @@ go install github.com/nebari-dev/nebi/cmd/nebi@latest
 
 ## What's Next?
 
-- [Architecture](./architecture.md) — How the desktop app, CLI, server, and OCI registries fit together
-- [CLI Guide](./cli-guide.md) — Local workflows and team collaboration
+- [Why Nebi](./why-nebi.md) — What Nebi does and how it relates to Pixi
+- [Tutorial](./tutorial/index.md) — Step-by-step guide from first use to team collaboration
+- [Concepts](./concepts/index.md) — Understand workspaces, versioning, and the workspace lifecycle
+- [How-To Guides](./how-to/index.md) — Task-oriented guides for common workflows
 - [CLI Reference](./cli-reference.md) — All available commands at a glance
-- [Server Setup](./server-setup.md) — Run your own Nebi server
+- [Architecture](./architecture.md) — How the desktop app, CLI, server, and OCI registries fit together

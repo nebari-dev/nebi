@@ -1,0 +1,45 @@
+name: Bug report
+description: Report a bug or unexpected behavior
+title: "[BUG] -  "
+labels: ["type: bug"]
+
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the issue you encountered.
+      placeholder: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide steps to reproduce the issue.
+      placeholder: |
+        1. Run command...
+        2. Open page...
+        3. See error...
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Provide any relevant environment details.
+      placeholder: |
+        OS:
+        Nebi version:
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Any other information that might help.

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { buildImportCommand } from '@/lib/registry';
 import { useWorkspace } from '@/hooks/useWorkspaces';
 import { usePackages, useInstallPackages, useRemovePackage } from '@/hooks/usePackages';
 import { useCollaborators } from '@/hooks/useAdmin';
@@ -93,9 +94,8 @@ export const WorkspaceDetail = () => {
   };
 
   const handleCopyImport = async (pub: { registry_url: string; registry_namespace: string; repository: string; tag: string; id: string }) => {
-    const host = pub.registry_url.replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const repoPath = pub.registry_namespace ? `${pub.registry_namespace}/${pub.repository}` : pub.repository;
-    const cmd = `nebi import ${host}/${repoPath}:${pub.tag}`;
+    const repo = pub.registry_namespace ? `${pub.registry_namespace}/${pub.repository}` : pub.repository;
+    const cmd = buildImportCommand(pub.registry_url, repo, pub.tag);
     await navigator.clipboard.writeText(cmd);
     setCopiedImportId(pub.id);
     setTimeout(() => setCopiedImportId(null), 2000);

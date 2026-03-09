@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
+import { buildImportCommand } from '@/lib/registry';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import { usePublicRegistries, useRegistryRepositories, useRepositoryTags, useImportEnvironment } from '@/hooks/useRegistries';
 import { useRemoteServer, useRemoteRegistries } from '@/hooks/useRemote';
@@ -321,9 +322,7 @@ export const RegistryTags = () => {
 
   const handleCopyImportCmd = async (tagName: string) => {
     if (!selectedRegistry) return;
-    const host = selectedRegistry.url.replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const repoPath = selectedRegistry.namespace ? `${selectedRegistry.namespace}/${repo}` : repo;
-    const cmd = `nebi import ${host}/${repoPath}:${tagName}`;
+    const cmd = buildImportCommand(selectedRegistry.url, repo, tagName);
     await navigator.clipboard.writeText(cmd);
     setCopiedTag(tagName);
     setTimeout(() => setCopiedTag(null), 2000);

@@ -25,9 +25,8 @@ const (
 
 // BasicAuthenticator implements basic username/password authentication
 type BasicAuthenticator struct {
-	db               *gorm.DB
-	jwtSecret        []byte
-	proxyAdminGroups []string
+	db        *gorm.DB
+	jwtSecret []byte
 }
 
 // NewBasicAuthenticator creates a new basic authenticator
@@ -36,11 +35,6 @@ func NewBasicAuthenticator(db *gorm.DB, jwtSecret string) *BasicAuthenticator {
 		db:        db,
 		jwtSecret: []byte(jwtSecret),
 	}
-}
-
-// SetProxyAdminGroups configures which IdToken groups grant Nebi admin.
-func (a *BasicAuthenticator) SetProxyAdminGroups(groups string) {
-	a.proxyAdminGroups = parseAdminGroups(groups)
 }
 
 // HashPassword hashes a password using bcrypt
@@ -195,33 +189,6 @@ func (a *BasicAuthenticator) validateAndLoadUser(tokenString string) (*models.Us
 	}
 
 	return &user, nil
-}
-
-// SessionFromGateway reads the Keycloak access token from the Authorization
-// header (forwarded by Envoy Gateway's ForwardAccessToken), finds or creates
-// the user, syncs roles, and returns a Nebi JWT.
-func (a *BasicAuthenticator) SessionFromGateway(r *http.Request, adminGroups string) (*LoginResponse, error) {
-	claims, err := ParseGatewayToken(r)
-	if err != nil {
-		return nil, err
-	}
-
-	user, err := findOrCreateProxyUser(a.db, claims)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find/create user: %w", err)
-	}
-
-	syncRolesFromGroups(user.ID, claims.Groups, parseAdminGroups(adminGroups))
-
-	token, err := a.generateToken(user)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate token: %w", err)
-	}
-
-	return &LoginResponse{
-		Token: token,
-		User:  user,
-	}, nil
 }
 
 // GetUserFromContext extracts the authenticated user from the Gin context

@@ -42,8 +42,8 @@ func Login(authenticator auth.Authenticator) gin.HandlerFunc {
 }
 
 // SessionCheck godoc
-// @Summary Check proxy session
-// @Description Check for an IdToken cookie (set by an authenticating proxy) and return a Nebi JWT
+// @Summary Check gateway session
+// @Description Read the Keycloak access token forwarded by Envoy Gateway and return a Nebi JWT
 // @Tags auth
 // @Produce json
 // @Success 200 {object} auth.LoginResponse
@@ -51,9 +51,9 @@ func Login(authenticator auth.Authenticator) gin.HandlerFunc {
 // @Router /auth/session [get]
 func SessionCheck(basicAuth *auth.BasicAuthenticator, proxyAdminGroups string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		resp, err := basicAuth.SessionFromProxy(c.Request, proxyAdminGroups)
+		resp, err := basicAuth.SessionFromGateway(c.Request, proxyAdminGroups)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "no proxy session"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "no gateway session"})
 			return
 		}
 		c.JSON(http.StatusOK, resp)

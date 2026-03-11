@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { remoteApi } from '@/api/remote';
 import type { ConnectServerRequest, CreateRemoteWorkspaceRequest } from '@/types';
@@ -28,16 +28,20 @@ export const useConnectServer = () => {
  *
  * This hook runs once on app load. It checks if NEBI_REMOTE_URL is set (via
  * the /remote/auto-connect-config endpoint) and whether we're already connected.
- * If not connected, it calls /remote/connect-via-proxy which reads the IdToken
- * cookie forwarded by jupyter-server-proxy and exchanges it for a Nebi JWT
- * on the remote server.
+ * If not connected, it initiates a device code flow: requests a code from the
+ * remote server, exposes an approval URL for the user to click, and polls for
+ * completion. Keycloak SSO typically auto-approves with zero interaction.
  *
- * The result is zero-click auto-connection for JupyterLab users.
+ * Returns state for the UI to render a "Connect to team server" link.
  */
 export const useAutoConnect = () => {
   const queryClient = useQueryClient();
   const attempted = useRef(false);
+  const pollRef = useRef<ReturnType<typeof setInterval>>();
   const setViewMode = useViewModeStore((s) => s.setViewMode);
+  const [approvalUrl, setApprovalUrl] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const { data: config } = useQuery({
     queryKey: ['remote', 'auto-connect-config'],
@@ -45,6 +49,58 @@ export const useAutoConnect = () => {
     staleTime: Infinity, // Only fetch once
     retry: false,
   });
+
+  const startDeviceCodeFlow = useCallback(async (remoteUrl: string) => {
+    try {
+      setConnecting(true);
+      setError(null);
+
+      // Request a device code from the remote server
+      const { code } = await remoteApi.requestDeviceCode(remoteUrl);
+
+      // Build approval URL and expose it for the UI
+      const url = `${remoteUrl}/api/v1/auth/cli-login?code=${code}`;
+      setApprovalUrl(url);
+
+      // Open in a new tab — Keycloak SSO may auto-approve
+      window.open(url, '_blank');
+
+      // Poll for completion
+      pollRef.current = setInterval(async () => {
+        try {
+          const result = await remoteApi.pollDeviceCode(remoteUrl, code);
+          if (result.status === 'complete' && result.token && result.username) {
+            clearInterval(pollRef.current);
+            pollRef.current = undefined;
+
+            // Store credentials locally
+            await remoteApi.connectWithToken(remoteUrl, result.token, result.username);
+            queryClient.invalidateQueries({ queryKey: ['remote'] });
+            setViewMode('remote');
+            setApprovalUrl(null);
+            setConnecting(false);
+            console.log('[nebi] Auto-connected to remote server:', remoteUrl);
+          }
+        } catch {
+          // Poll failed — keep trying until timeout
+        }
+      }, 2000);
+
+      // Stop polling after 5 minutes
+      setTimeout(() => {
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = undefined;
+          setConnecting(false);
+          setError('Connection timed out. Please try again.');
+        }
+      }, 300000);
+    } catch (err) {
+      setConnecting(false);
+      setError(err instanceof Error ? err.message : 'Failed to start connection');
+      console.warn('[nebi] Auto-connect device code flow failed:', err);
+    }
+  }, [queryClient, setViewMode]);
 
   useEffect(() => {
     if (!config || attempted.current) return;
@@ -56,15 +112,16 @@ export const useAutoConnect = () => {
     }
 
     attempted.current = true;
+    startDeviceCodeFlow(config.remote_url);
 
-    remoteApi.connectViaProxy(config.remote_url).then(() => {
-      queryClient.invalidateQueries({ queryKey: ['remote'] });
-      setViewMode('remote');
-      console.log('[nebi] Auto-connected to remote server:', config.remote_url);
-    }).catch((err) => {
-      console.warn('[nebi] Auto-connect failed (will retry on next page load):', err.message || err);
-    });
-  }, [config, queryClient, setViewMode]);
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+      }
+    };
+  }, [config, setViewMode, startDeviceCodeFlow]);
+
+  return { approvalUrl, connecting, error, startDeviceCodeFlow, config };
 };
 
 export const useDisconnectServer = () => {

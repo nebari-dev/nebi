@@ -568,44 +568,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/cli-login": {
-            "get": {
-                "description": "Handles browser-based CLI login using a device code flow.\nIf behind an OIDC proxy, auto-completes the code. Otherwise shows a login form.",
-                "produces": [
-                    "text/html"
-                ],
-                "tags": [
-                    "auth"
-                ],
-                "summary": "Browser-based login for CLI clients",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Device code from CLI",
-                        "name": "code",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "HTML page",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/auth/cli-login/code": {
             "post": {
                 "description": "Generates a short-lived device code for browser-based CLI authentication.",
@@ -819,35 +781,6 @@ const docTemplate = `{
                         "description": "Redirect to OIDC provider",
                         "schema": {
                             "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/auth/session": {
-            "get": {
-                "description": "Read the Keycloak access token forwarded by Envoy Gateway and return a Nebi JWT",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "auth"
-                ],
-                "summary": "Check gateway session",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/auth.LoginResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
                         }
                     }
                 }

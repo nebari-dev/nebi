@@ -208,6 +208,44 @@ func (h *RemoteHandler) GetAutoConnectConfig(c *gin.Context) {
 	})
 }
 
+// RequestDeviceCode proxies a device code request to the remote server.
+// This avoids CORS issues when the frontend requests a device code for auto-connect.
+func (h *RemoteHandler) RequestDeviceCode(c *gin.Context) {
+	var req struct {
+		URL string `json:"url" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	client := cliclient.NewWithoutAuth(req.URL)
+	resp, err := client.RequestDeviceCode(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// PollDeviceCode proxies a device code poll request to the remote server.
+func (h *RemoteHandler) PollDeviceCode(c *gin.Context) {
+	remoteURL := c.Query("url")
+	code := c.Query("code")
+	if remoteURL == "" || code == "" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "url and code query parameters required"})
+		return
+	}
+
+	client := cliclient.NewWithoutAuth(remoteURL)
+	resp, err := client.PollDeviceCode(c.Request.Context(), code)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 // ListWorkspaces godoc
 // @Summary List remote workspaces
 // @Description Proxy workspace listing to the connected remote server

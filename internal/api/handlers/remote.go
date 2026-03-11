@@ -1,15 +1,10 @@
 package handlers
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nebari-dev/nebi/internal/cliclient"
@@ -144,107 +139,6 @@ func (h *RemoteHandler) DisconnectServer(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "disconnected"})
-}
-
-// ConnectViaProxy godoc
-// @Summary Connect to remote server via proxy cookie
-// @Description Authenticate with a remote Nebi server using an IdToken cookie forwarded by jupyter-server-proxy. Enables zero-click auto-connection for JupyterLab pods behind Envoy/Keycloak OIDC.
-// @Tags remote
-// @Accept json
-// @Produce json
-// @Param request body object false "Optional request with url (falls back to NEBI_REMOTE_URL env var)"
-// @Success 200 {object} map[string]string "status, url, username"
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse "No IdToken cookie found"
-// @Failure 500 {object} ErrorResponse
-// @Failure 502 {object} ErrorResponse "Remote server unreachable or auth failed"
-// @Router /remote/connect-via-proxy [post]
-func (h *RemoteHandler) ConnectViaProxy(c *gin.Context) {
-	// Get remote URL from request body or NEBI_REMOTE_URL env var
-	var req struct {
-		URL string `json:"url"`
-	}
-	_ = c.ShouldBindJSON(&req)
-	remoteURL := req.URL
-	if remoteURL == "" {
-		remoteURL = os.Getenv("NEBI_REMOTE_URL")
-	}
-	if remoteURL == "" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "no remote URL provided and NEBI_REMOTE_URL not set"})
-		return
-	}
-	remoteURL = strings.TrimRight(remoteURL, "/")
-
-	// Find the IdToken cookie from the incoming request (forwarded by jupyter-server-proxy)
-	var idTokenCookie string
-	for _, cookie := range c.Request.Cookies() {
-		if strings.HasPrefix(cookie.Name, "IdToken") {
-			idTokenCookie = cookie.Name + "=" + cookie.Value
-			break
-		}
-	}
-	if idTokenCookie == "" {
-		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "no IdToken cookie found in request (is Keycloak auth configured?)"})
-		return
-	}
-
-	// Call the remote Nebi server's /auth/session endpoint with the IdToken cookie
-	sessionURL := remoteURL + "/api/v1/auth/session"
-	httpReq, err := http.NewRequestWithContext(c.Request.Context(), "GET", sessionURL, nil)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("failed to build request: %v", err)})
-		return
-	}
-	httpReq.Header.Set("Cookie", idTokenCookie)
-
-	httpClient := &http.Client{Timeout: 10 * time.Second}
-	resp, err := httpClient.Do(httpReq)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("failed to reach remote server: %v", err)})
-		return
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("remote auth failed (status %d): %s", resp.StatusCode, string(body))})
-		return
-	}
-
-	var loginResp struct {
-		Token string `json:"token"`
-		User  struct {
-			Username string `json:"username"`
-		} `json:"user"`
-	}
-	if err := json.Unmarshal(body, &loginResp); err != nil {
-		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("failed to parse remote response: %v", err)})
-		return
-	}
-
-	// Store URL and credentials
-	if err := h.db.Model(&store.Config{}).Where("id = ?", 1).Update("server_url", remoteURL).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to store server URL"})
-		return
-	}
-	if err := h.db.Model(&store.Credentials{}).Where("id = ?", 1).Updates(map[string]any{
-		"token":    loginResp.Token,
-		"username": loginResp.User.Username,
-	}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to store credentials"})
-		return
-	}
-
-	slog.Info("Auto-connected to remote Nebi via proxy cookie",
-		"url", remoteURL,
-		"username", loginResp.User.Username,
-	)
-
-	c.JSON(http.StatusOK, gin.H{
-		"status":   "connected",
-		"url":      remoteURL,
-		"username": loginResp.User.Username,
-	})
 }
 
 // GetAutoConnectConfig godoc

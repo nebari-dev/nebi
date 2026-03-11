@@ -58,8 +58,8 @@ func CLILogin(basicAuth *auth.BasicAuthenticator, proxyAdminGroups string, store
 			return
 		}
 
-		// Try proxy session first (OIDC proxy sets an IdToken cookie)
-		resp, err := basicAuth.SessionFromProxy(c.Request, proxyAdminGroups)
+		// Try gateway token first (Envoy forwards access token via Authorization header)
+		resp, err := basicAuth.SessionFromGateway(c.Request, proxyAdminGroups)
 		if err == nil {
 			store.Complete(code, resp.Token, resp.User.Username)
 			renderCLISuccess(c)
@@ -81,7 +81,7 @@ func CLILogin(basicAuth *auth.BasicAuthenticator, proxyAdminGroups string, store
 			return
 		}
 
-		// GET with no proxy session — show login form
+		// GET with no gateway token — show login form
 		renderCLILoginForm(c, code, "")
 	}
 }

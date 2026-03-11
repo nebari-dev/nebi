@@ -244,7 +244,6 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			remote := protected.Group("/remote")
 			{
 				remote.POST("/connect", remoteHandler.ConnectServer)
-				remote.POST("/connect-via-proxy", remoteHandler.ConnectViaProxy)
 				remote.GET("/auto-connect-config", remoteHandler.GetAutoConnectConfig)
 				remote.GET("/server", remoteHandler.GetServer)
 				remote.DELETE("/server", remoteHandler.DisconnectServer)

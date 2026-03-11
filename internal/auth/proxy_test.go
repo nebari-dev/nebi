@@ -3,8 +3,6 @@ package auth
 import (
 	"encoding/base64"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -37,54 +35,6 @@ func makeJWT(t *testing.T, claims any) string {
 	payloadB64 := base64.RawURLEncoding.EncodeToString(payload)
 	sig := base64.RawURLEncoding.EncodeToString([]byte("fake-signature"))
 	return header + "." + payloadB64 + "." + sig
-}
-
-func TestParseIdTokenCookie_HappyPath(t *testing.T) {
-	claims := ProxyTokenClaims{
-		Sub:               "sub-123",
-		PreferredUsername: "alice",
-		Email:             "alice@example.com",
-		Name:              "Alice",
-		Picture:           "https://example.com/alice.png",
-		Groups:            []string{"admin", "dev"},
-	}
-	jwt := makeJWT(t, claims)
-
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.AddCookie(&http.Cookie{Name: "IdToken-nebi", Value: jwt})
-
-	got, err := parseIdTokenCookie(req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if got.PreferredUsername != "alice" {
-		t.Errorf("expected username alice, got %s", got.PreferredUsername)
-	}
-	if got.Email != "alice@example.com" {
-		t.Errorf("expected email alice@example.com, got %s", got.Email)
-	}
-	if len(got.Groups) != 2 {
-		t.Errorf("expected 2 groups, got %d", len(got.Groups))
-	}
-}
-
-func TestParseIdTokenCookie_NoCookie(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	_, err := parseIdTokenCookie(req)
-	if err == nil {
-		t.Error("expected error when no IdToken cookie present")
-	}
-}
-
-func TestParseIdTokenCookie_InvalidJWT(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.AddCookie(&http.Cookie{Name: "IdToken-nebi", Value: "not-a-jwt"})
-
-	_, err := parseIdTokenCookie(req)
-	if err == nil {
-		t.Error("expected error for invalid JWT format")
-	}
 }
 
 func TestFindOrCreateProxyUser_CreatesNew(t *testing.T) {

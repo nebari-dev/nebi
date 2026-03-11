@@ -31,12 +31,26 @@ export const remoteApi = {
     return data;
   },
 
-  // Connect to remote server using the IdToken cookie forwarded by
-  // jupyter-server-proxy. This enables zero-click auto-connection when
-  // running inside a Nebari JupyterLab pod with NEBI_REMOTE_URL set.
-  connectViaProxy: async (url?: string): Promise<RemoteServer> => {
-    const { data } = await apiClient.post('/remote/connect-via-proxy', url ? { url } : {});
+  // Connect to remote server using a pre-obtained token (e.g. from device code flow)
+  connectWithToken: async (url: string, token: string, username: string): Promise<RemoteServer> => {
+    const { data } = await apiClient.post('/remote/connect-with-token', { url, token, username });
     return data;
+  },
+
+  // Request a device code from the remote Nebi server for authentication
+  requestDeviceCode: async (remoteUrl: string): Promise<{ code: string; expires_in: number }> => {
+    const resp = await fetch(`${remoteUrl}/api/v1/auth/cli-login/code`, {
+      method: 'POST',
+    });
+    if (!resp.ok) throw new Error('Failed to request device code');
+    return resp.json();
+  },
+
+  // Poll the remote Nebi server for device code completion
+  pollDeviceCode: async (remoteUrl: string, code: string): Promise<{ status: string; token?: string; username?: string }> => {
+    const resp = await fetch(`${remoteUrl}/api/v1/auth/cli-login/poll?code=${code}`);
+    if (!resp.ok) throw new Error('Failed to poll device code');
+    return resp.json();
   },
 
   // Get auto-connect configuration (checks NEBI_REMOTE_URL env var)

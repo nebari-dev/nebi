@@ -94,6 +94,48 @@ func (h *RemoteHandler) ConnectServer(c *gin.Context) {
 	})
 }
 
+// ConnectWithToken godoc
+// @Summary Connect to remote server with an existing token
+// @Description Store remote server URL and pre-obtained token (e.g. from device code flow)
+// @Tags remote
+// @Accept json
+// @Produce json
+// @Param request body object true "Connection request with url, token, and username"
+// @Success 200 {object} map[string]string "status, url, username"
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /remote/connect-with-token [post]
+func (h *RemoteHandler) ConnectWithToken(c *gin.Context) {
+	var req struct {
+		URL      string `json:"url" binding:"required"`
+		Token    string `json:"token" binding:"required"`
+		Username string `json:"username" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// Store URL and credentials
+	if err := h.db.Model(&store.Config{}).Where("id = ?", 1).Update("server_url", req.URL).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to store server URL"})
+		return
+	}
+	if err := h.db.Model(&store.Credentials{}).Where("id = ?", 1).Updates(map[string]any{
+		"token":    req.Token,
+		"username": req.Username,
+	}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to store credentials"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":   "connected",
+		"url":      req.URL,
+		"username": req.Username,
+	})
+}
+
 // GetServer godoc
 // @Summary Get remote server status
 // @Description Returns the current remote server connection status, URL, and username

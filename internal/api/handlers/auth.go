@@ -40,4 +40,3 @@ func Login(authenticator auth.Authenticator) gin.HandlerFunc {
 		c.JSON(http.StatusOK, resp)
 	}
 }
-

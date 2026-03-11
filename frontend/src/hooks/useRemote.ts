@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { remoteApi } from '@/api/remote';
 import type { ConnectServerRequest, CreateRemoteWorkspaceRequest } from '@/types';
 import { useViewModeStore } from '@/store/viewModeStore';
+import { useDeviceCodeStore } from '@/store/deviceCodeStore';
 
 export const useRemoteServer = () => {
   return useQuery({
@@ -39,9 +40,7 @@ export const useAutoConnect = () => {
   const attempted = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const setViewMode = useViewModeStore((s) => s.setViewMode);
-  const [approvalUrl, setApprovalUrl] = useState<string | null>(null);
-  const [connecting, setConnecting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { connecting, approvalUrl, error, setConnecting, setApprovalUrl, setError } = useDeviceCodeStore();
 
   const { data: config } = useQuery({
     queryKey: ['remote', 'auto-connect-config'],
@@ -51,11 +50,13 @@ export const useAutoConnect = () => {
   });
 
   const startDeviceCodeFlow = useCallback(async (remoteUrl: string) => {
+    // Prevent duplicate flows (e.g. hook called from multiple components)
+    if (useDeviceCodeStore.getState().connecting) return;
     try {
       setConnecting(true);
       setError(null);
 
-      // Request a device code from the remote server
+      // Request a device code via the local backend proxy (avoids CORS)
       const { code } = await remoteApi.requestDeviceCode(remoteUrl);
 
       // Build approval URL and expose it for the UI
@@ -98,9 +99,9 @@ export const useAutoConnect = () => {
     } catch (err) {
       setConnecting(false);
       setError(err instanceof Error ? err.message : 'Failed to start connection');
-      console.warn('[nebi] Auto-connect device code flow failed:', err);
+      console.warn('[nebi] Device code flow failed:', err);
     }
-  }, [queryClient, setViewMode]);
+  }, [queryClient, setViewMode, setConnecting, setApprovalUrl, setError]);
 
   useEffect(() => {
     if (!config || attempted.current) return;

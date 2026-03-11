@@ -252,6 +252,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				remote.POST("/connect", remoteHandler.ConnectServer)
 				remote.POST("/connect-with-token", remoteHandler.ConnectWithToken)
 				remote.GET("/auto-connect-config", remoteHandler.GetAutoConnectConfig)
+				remote.POST("/device-code", remoteHandler.RequestDeviceCode)
+				remote.GET("/device-code/poll", remoteHandler.PollDeviceCode)
 				remote.GET("/server", remoteHandler.GetServer)
 				remote.DELETE("/server", remoteHandler.DisconnectServer)
 				remote.GET("/workspaces", remoteHandler.ListWorkspaces)

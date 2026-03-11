@@ -37,20 +37,16 @@ export const remoteApi = {
     return data;
   },
 
-  // Request a device code from the remote Nebi server for authentication
+  // Request a device code from the remote Nebi server (proxied through local backend to avoid CORS)
   requestDeviceCode: async (remoteUrl: string): Promise<{ code: string; expires_in: number }> => {
-    const resp = await fetch(`${remoteUrl}/api/v1/auth/cli-login/code`, {
-      method: 'POST',
-    });
-    if (!resp.ok) throw new Error('Failed to request device code');
-    return resp.json();
+    const { data } = await apiClient.post('/remote/device-code', { url: remoteUrl });
+    return data;
   },
 
-  // Poll the remote Nebi server for device code completion
+  // Poll the remote Nebi server for device code completion (proxied through local backend)
   pollDeviceCode: async (remoteUrl: string, code: string): Promise<{ status: string; token?: string; username?: string }> => {
-    const resp = await fetch(`${remoteUrl}/api/v1/auth/cli-login/poll?code=${code}`);
-    if (!resp.ok) throw new Error('Failed to poll device code');
-    return resp.json();
+    const { data } = await apiClient.get(`/remote/device-code/poll?url=${encodeURIComponent(remoteUrl)}&code=${code}`);
+    return data;
   },
 
   // Get auto-connect configuration (checks NEBI_REMOTE_URL env var)

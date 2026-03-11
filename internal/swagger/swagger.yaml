@@ -894,33 +894,6 @@ paths:
       summary: Toggle admin status for a user
       tags:
       - admin
-  /auth/cli-login:
-    get:
-      description: |-
-        Handles browser-based CLI login using a device code flow.
-        If behind an OIDC proxy, auto-completes the code. Otherwise shows a login form.
-      parameters:
-      - description: Device code from CLI
-        in: query
-        name: code
-        required: true
-        type: string
-      produces:
-      - text/html
-      responses:
-        "200":
-          description: HTML page
-          schema:
-            type: string
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Browser-based login for CLI clients
-      tags:
-      - auth
   /auth/cli-login/code:
     post:
       description: Generates a short-lived device code for browser-based CLI authentication.
@@ -1064,26 +1037,6 @@ paths:
           schema:
             type: string
       summary: Initiate OIDC login
-      tags:
-      - auth
-  /auth/session:
-    get:
-      description: Read the Keycloak access token forwarded by Envoy Gateway and return
-        a Nebi JWT
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/auth.LoginResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Check gateway session
       tags:
       - auth
   /health:

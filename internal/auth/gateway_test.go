@@ -8,11 +8,11 @@ import (
 
 func TestParseGatewayToken_HappyPath(t *testing.T) {
 	claims := ProxyTokenClaims{
-		Sub:              "sub-123",
+		Sub:               "sub-123",
 		PreferredUsername: "alice",
-		Email:            "alice@example.com",
-		Name:             "Alice",
-		Groups:           []string{"admin", "dev"},
+		Email:             "alice@example.com",
+		Name:              "Alice",
+		Groups:            []string{"admin", "dev"},
 	}
 	jwt := makeJWT(t, claims)
 

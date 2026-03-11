@@ -820,14 +820,14 @@
         },
         "/auth/session": {
             "get": {
-                "description": "Check for an IdToken cookie (set by an authenticating proxy) and return a Nebi JWT",
+                "description": "Read the Keycloak access token forwarded by Envoy Gateway and return a Nebi JWT",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "auth"
                 ],
-                "summary": "Check proxy session",
+                "summary": "Check gateway session",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -1260,9 +1260,9 @@
                 }
             }
         },
-        "/remote/connect-via-proxy": {
+        "/remote/connect-with-token": {
             "post": {
-                "description": "Authenticate with a remote Nebi server using an IdToken cookie forwarded by jupyter-server-proxy. Enables zero-click auto-connection for JupyterLab pods behind Envoy/Keycloak OIDC.",
+                "description": "Store remote server URL and pre-obtained token (e.g. from device code flow)",
                 "consumes": [
                     "application/json"
                 ],
@@ -1272,12 +1272,13 @@
                 "tags": [
                     "remote"
                 ],
-                "summary": "Connect to remote server via proxy cookie",
+                "summary": "Connect to remote server with an existing token",
                 "parameters": [
                     {
-                        "description": "Optional request with url (falls back to NEBI_REMOTE_URL env var)",
+                        "description": "Connection request with url, token, and username",
                         "name": "request",
                         "in": "body",
+                        "required": true,
                         "schema": {
                             "type": "object"
                         }
@@ -1299,20 +1300,8 @@
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
-                    "401": {
-                        "description": "No IdToken cookie found",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
-                    },
                     "500": {
                         "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
-                    },
-                    "502": {
-                        "description": "Remote server unreachable or auth failed",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }

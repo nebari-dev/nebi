@@ -37,7 +37,7 @@ export const useConnectServer = () => {
 export const useAutoConnect = () => {
   const queryClient = useQueryClient();
   const attempted = useRef(false);
-  const pollRef = useRef<ReturnType<typeof setInterval>>();
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const setViewMode = useViewModeStore((s) => s.setViewMode);
   const [approvalUrl, setApprovalUrl] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -70,8 +70,8 @@ export const useAutoConnect = () => {
         try {
           const result = await remoteApi.pollDeviceCode(remoteUrl, code);
           if (result.status === 'complete' && result.token && result.username) {
-            clearInterval(pollRef.current);
-            pollRef.current = undefined;
+            clearInterval(pollRef.current!);
+            pollRef.current = null;
 
             // Store credentials locally
             await remoteApi.connectWithToken(remoteUrl, result.token, result.username);
@@ -89,8 +89,8 @@ export const useAutoConnect = () => {
       // Stop polling after 5 minutes
       setTimeout(() => {
         if (pollRef.current) {
-          clearInterval(pollRef.current);
-          pollRef.current = undefined;
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
           setConnecting(false);
           setError('Connection timed out. Please try again.');
         }

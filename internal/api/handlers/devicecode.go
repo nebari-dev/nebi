@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -39,7 +42,13 @@ func CLILoginCode(store *auth.DeviceCodeStore) gin.HandlerFunc {
 // @Success 200 {string} string "HTML page"
 // @Failure 400 {object} map[string]string
 // @Router /auth/cli-login [get]
-func CLILogin(basicAuth *auth.BasicAuthenticator, proxyAdminGroups string, store *auth.DeviceCodeStore) gin.HandlerFunc {
+// cliLoginState embeds the device code in the OIDC state parameter.
+type cliLoginState struct {
+	Nonce      string `json:"n"`
+	DeviceCode string `json:"c"`
+}
+
+func CLILogin(basicAuth *auth.BasicAuthenticator, store *auth.DeviceCodeStore, oidcAuth *auth.OIDCAuthenticator, cliCallbackURL string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		code := c.Query("code")
 		if code == "" {
@@ -58,11 +67,22 @@ func CLILogin(basicAuth *auth.BasicAuthenticator, proxyAdminGroups string, store
 			return
 		}
 
-		// Try gateway token first (Envoy forwards access token via Authorization header)
-		resp, err := basicAuth.SessionFromGateway(c.Request, proxyAdminGroups)
-		if err == nil {
-			store.Complete(code, resp.Token, resp.User.Username)
-			renderCLISuccess(c)
+		// If OIDC is available and this is a GET, redirect to Keycloak
+		if oidcAuth != nil && c.Request.Method == http.MethodGet {
+			nonce, err := generateRandomState()
+			if err != nil {
+				slog.Error("Failed to generate state for CLI login", "error", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+				return
+			}
+
+			stateData := cliLoginState{Nonce: nonce, DeviceCode: code}
+			stateJSON, _ := json.Marshal(stateData)
+			state := base64.URLEncoding.EncodeToString(stateJSON)
+
+			c.SetCookie("cli_login_state", state, 600, "/", "", false, true)
+			authURL := oidcAuth.GetAuthURLWithRedirect(state, cliCallbackURL)
+			c.Redirect(http.StatusTemporaryRedirect, authURL)
 			return
 		}
 
@@ -81,9 +101,86 @@ func CLILogin(basicAuth *auth.BasicAuthenticator, proxyAdminGroups string, store
 			return
 		}
 
-		// GET with no gateway token — show login form
+		// GET without OIDC — show login form
 		renderCLILoginForm(c, code, "")
 	}
+}
+
+// CLILoginCallback handles the OIDC callback for the device code flow.
+func CLILoginCallback(oidcAuth *auth.OIDCAuthenticator, store *auth.DeviceCodeStore, cliCallbackURL string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Verify state cookie for CSRF
+		state := c.Query("state")
+		storedState, err := c.Cookie("cli_login_state")
+		if err != nil || state == "" || state != storedState {
+			slog.Warn("Invalid CLI login state", "state", state)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid state parameter"})
+			return
+		}
+		c.SetCookie("cli_login_state", "", -1, "/", "", false, true)
+
+		// Extract device code from state
+		stateJSON, err := base64.URLEncoding.DecodeString(state)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid state encoding"})
+			return
+		}
+		var stateData cliLoginState
+		if err := json.Unmarshal(stateJSON, &stateData); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid state data"})
+			return
+		}
+
+		// Verify device code is still valid
+		_, _, found, completed := store.Poll(stateData.DeviceCode)
+		if !found {
+			c.JSON(http.StatusNotFound, gin.H{"error": "device code expired"})
+			return
+		}
+		if completed {
+			renderCLISuccess(c)
+			return
+		}
+
+		// Exchange auth code for tokens
+		authCode := c.Query("code")
+		if authCode == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "missing authorization code"})
+			return
+		}
+
+		resp, err := oidcAuth.HandleCallbackWithRedirect(c.Request.Context(), authCode, cliCallbackURL)
+		if err != nil {
+			slog.Error("CLI login OIDC callback failed", "error", err)
+			renderCLIError(c, "Authentication failed")
+			return
+		}
+
+		store.Complete(stateData.DeviceCode, resp.Token, resp.User.Username)
+		renderCLISuccess(c)
+	}
+}
+
+// renderCLIError renders an error page for CLI login.
+func renderCLIError(c *gin.Context, msg string) {
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.String(http.StatusOK, fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Nebi CLI Login</title>
+  <style>
+    body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f8f9fa; }
+    .card { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
+    .error { color: #dc2626; font-size: 1.2rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <p class="error">%s</p>
+    <p style="color: #6b7280; font-size: 0.9rem;">Please close this tab and try again.</p>
+  </div>
+</body>
+</html>`, msg))
 }
 
 // CLILoginPoll godoc

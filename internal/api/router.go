@@ -70,7 +70,6 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	} else {
 		if cfg.Auth.Type == "basic" {
 			basicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
-			basicAuth.SetProxyAdminGroups(cfg.Auth.ProxyAdminGroups)
 			authenticator = basicAuth
 		}
 
@@ -81,6 +80,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				ClientID:     cfg.Auth.OIDCClientID,
 				ClientSecret: cfg.Auth.OIDCClientSecret,
 				RedirectURL:  cfg.Auth.OIDCRedirectURL,
+				AdminGroups:  cfg.Auth.ProxyAdminGroups,
 			}
 			var err error
 			// Use context.Background() for initialization
@@ -93,9 +93,17 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		}
 	}
 
-	// Session check endpoint needs a BasicAuthenticator for JWT generation.
-	// Create one if the primary authenticator isn't already basic auth.
-	sessionBasicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
+	// BasicAuthenticator for CLI login form fallback
+	cliBasicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
+
+	// Derive CLI login callback URL from the OIDC redirect URL base
+	cliCallbackURL := ""
+	if cfg.Auth.OIDCRedirectURL != "" {
+		// Extract base URL (everything before the path) and append CLI callback path
+		if idx := strings.Index(cfg.Auth.OIDCRedirectURL, "/api/"); idx != -1 {
+			cliCallbackURL = cfg.Auth.OIDCRedirectURL[:idx] + "/api/v1/auth/cli-login/callback"
+		}
+	}
 
 	// Base group for all routes (supports reverse proxy path prefix)
 	base := router.Group(basePath)
@@ -107,12 +115,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		public.GET("/version", handlers.GetVersion)
 		public.POST("/auth/login", handlers.Login(authenticator))
 
-		// Session check: exchanges proxy IdToken cookie for a Nebi JWT (no auth middleware)
-		public.GET("/auth/session", handlers.SessionCheck(sessionBasicAuth, cfg.Auth.ProxyAdminGroups))
-
 		// CLI login: device code flow for browser-based CLI authentication.
 		cliCodeStore := auth.NewDeviceCodeStore()
-		cliLoginHandler := handlers.CLILogin(sessionBasicAuth, cfg.Auth.ProxyAdminGroups, cliCodeStore)
+		cliLoginHandler := handlers.CLILogin(cliBasicAuth, cliCodeStore, oidcAuth, cliCallbackURL)
 		public.POST("/auth/cli-login/code", handlers.CLILoginCode(cliCodeStore))
 		public.GET("/auth/cli-login", cliLoginHandler)
 		public.POST("/auth/cli-login", cliLoginHandler)
@@ -122,6 +127,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		if oidcAuth != nil {
 			public.GET("/auth/oidc/login", handlers.OIDCLogin(oidcAuth))
 			public.GET("/auth/oidc/callback", handlers.OIDCCallback(oidcAuth))
+			public.GET("/auth/cli-login/callback", handlers.CLILoginCallback(oidcAuth, cliCodeStore, cliCallbackURL))
 		}
 	}
 

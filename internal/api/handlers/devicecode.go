@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log/slog"
 	"net/http"
 
@@ -180,7 +181,7 @@ func renderCLIError(c *gin.Context, msg string) {
     <p style="color: #6b7280; font-size: 0.9rem;">Please close this tab and try again.</p>
   </div>
 </body>
-</html>`, msg))
+</html>`, html.EscapeString(msg)))
 }
 
 // CLILoginPoll godoc
@@ -285,5 +286,5 @@ func renderCLILoginForm(c *gin.Context, code, errMsg string) {
     </form>
   </div>
 </body>
-</html>`, code, errorHTML))
+</html>`, html.EscapeString(code), errorHTML))
 }

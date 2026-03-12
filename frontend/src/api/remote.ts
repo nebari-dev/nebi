@@ -13,6 +13,12 @@ import type {
   DashboardStats,
 } from '@/types';
 
+export interface AutoConnectConfig {
+  remote_url: string;
+  auto_connect: boolean;
+  already_connected: boolean;
+}
+
 export const remoteApi = {
   // Server connection management
   getServer: async (): Promise<RemoteServer> => {
@@ -22,6 +28,30 @@ export const remoteApi = {
 
   connectServer: async (req: ConnectServerRequest): Promise<RemoteServer> => {
     const { data } = await apiClient.post('/remote/connect', req);
+    return data;
+  },
+
+  // Connect to remote server using a pre-obtained token (e.g. from device code flow)
+  connectWithToken: async (url: string, token: string, username: string): Promise<RemoteServer> => {
+    const { data } = await apiClient.post('/remote/connect-with-token', { url, token, username });
+    return data;
+  },
+
+  // Request a device code from the remote Nebi server (proxied through local backend to avoid CORS)
+  requestDeviceCode: async (remoteUrl: string): Promise<{ code: string; expires_in: number }> => {
+    const { data } = await apiClient.post('/remote/device-code', { url: remoteUrl });
+    return data;
+  },
+
+  // Poll the remote Nebi server for device code completion (proxied through local backend)
+  pollDeviceCode: async (remoteUrl: string, code: string): Promise<{ status: string; token?: string; username?: string }> => {
+    const { data } = await apiClient.get(`/remote/device-code/poll?url=${encodeURIComponent(remoteUrl)}&code=${code}`);
+    return data;
+  },
+
+  // Get auto-connect configuration (checks NEBI_REMOTE_URL env var)
+  getAutoConnectConfig: async (): Promise<AutoConnectConfig> => {
+    const { data } = await apiClient.get('/remote/auto-connect-config');
     return data;
   },
 

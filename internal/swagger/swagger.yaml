@@ -17,6 +17,26 @@ definitions:
       user:
         $ref: '#/definitions/models.User'
     type: object
+  cliclient.CreateWorkspaceRequest:
+    properties:
+      name:
+        type: string
+      package_manager:
+        type: string
+      pixi_toml:
+        type: string
+    type: object
+  cliclient.PushRequest:
+    properties:
+      force:
+        type: boolean
+      pixi_lock:
+        type: string
+      pixi_toml:
+        type: string
+      tag:
+        type: string
+    type: object
   handlers.CollaboratorResponse:
     properties:
       email:
@@ -874,33 +894,6 @@ paths:
       summary: Toggle admin status for a user
       tags:
       - admin
-  /auth/cli-login:
-    get:
-      description: |-
-        Handles browser-based CLI login using a device code flow.
-        If behind an OIDC proxy, auto-completes the code. Otherwise shows a login form.
-      parameters:
-      - description: Device code from CLI
-        in: query
-        name: code
-        required: true
-        type: string
-      produces:
-      - text/html
-      responses:
-        "200":
-          description: HTML page
-          schema:
-            type: string
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Browser-based login for CLI clients
-      tags:
-      - auth
   /auth/cli-login/code:
     post:
       description: Generates a short-lived device code for browser-based CLI authentication.
@@ -1046,26 +1039,6 @@ paths:
       summary: Initiate OIDC login
       tags:
       - auth
-  /auth/session:
-    get:
-      description: Check for an IdToken cookie (set by an authenticating proxy) and
-        return a Nebi JWT
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/auth.LoginResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Check proxy session
-      tags:
-      - auth
   /health:
     get:
       description: Returns the health status of the service
@@ -1187,6 +1160,574 @@ paths:
       summary: List available registries (public info only)
       tags:
       - registries
+  /remote/admin/audit-logs:
+    get:
+      description: Proxy admin audit log listing to the connected remote server
+      parameters:
+      - description: Filter by user ID
+        in: query
+        name: user_id
+        type: string
+      - description: Filter by action
+        in: query
+        name: action
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "503":
+          description: Not connected to remote server
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: List remote admin audit logs
+      tags:
+      - remote
+  /remote/admin/dashboard/stats:
+    get:
+      description: Proxy admin dashboard statistics from the connected remote server
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "503":
+          description: Not connected to remote server
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Get remote admin dashboard stats
+      tags:
+      - remote
+  /remote/admin/registries:
+    get:
+      description: Proxy admin registry listing to the connected remote server
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "503":
+          description: Not connected to remote server
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: List remote admin registries
+      tags:
+      - remote
+  /remote/admin/users:
+    get:
+      description: Proxy admin user listing to the connected remote server
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "503":
+          description: Not connected to remote server
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: List remote admin users
+      tags:
+      - remote
+  /remote/auto-connect-config:
+    get:
+      description: Returns whether NEBI_REMOTE_URL is configured and whether the server
+        is already connected. Used by the frontend on load to trigger auto-connection.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: remote_url, auto_connect, already_connected
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get auto-connect configuration
+      tags:
+      - remote
+  /remote/connect:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate with a remote Nebi server using username/password
+        and store credentials locally
+      parameters:
+      - description: Connection request with url, username, and password
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: status, url, username
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Connect to remote server
+      tags:
+      - remote
+  /remote/connect-with-token:
+    post:
+      consumes:
+      - application/json
+      description: Store remote server URL and pre-obtained token (e.g. from device
+        code flow)
+      parameters:
+      - description: Connection request with url, token, and username
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: status, url, username
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Connect to remote server with an existing token
+      tags:
+      - remote
+  /remote/jobs:
+    get:
+      description: Proxy job listing to the connected remote server
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "503":
+          description: Not connected to remote server
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: List remote jobs
+      tags:
+      - remote
+  /remote/registries:
+    get:
+      description: Proxy registry listing to the connected remote server
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "503":
+          description: Not connected to remote server
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: List remote registries
+      tags:
+      - remote
+  /remote/server:
+    delete:
+      description: Clear stored remote server URL and credentials
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: status
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Disconnect from remote server
+      tags:
+      - remote
+    get:
+      description: Returns the current remote server connection status, URL, and username
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: status, url, username
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get remote server status
+      tags:
+      - remote
+  /remote/workspaces:
+    get:
+      description: Proxy workspace listing to the connected remote server
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "503":
+          description: Not connected to remote server
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: List remote workspaces
+      tags:
+      - remote
+    post:
+      consumes:
+      - application/json
+      description: Proxy workspace creation to the connected remote server
+      parameters:
+      - description: Workspace creation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/cliclient.CreateWorkspaceRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "503":
+          description: Not connected to remote server
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Create remote workspace
+      tags:
+      - remote
+  /remote/workspaces/{id}:
+    delete:
+      description: Proxy workspace deletion to the connected remote server
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "503":
+          description: Not connected to remote server
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Delete remote workspace
+      tags:
+      - remote
+    get:
+      description: Proxy a single workspace fetch to the connected remote server
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "503":
+          description: Not connected to remote server
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Get remote workspace
+      tags:
+      - remote
+  /remote/workspaces/{id}/pixi-toml:
+    get:
+      description: Proxy pixi.toml fetch for a workspace on the connected remote server
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: content
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "503":
+          description: Not connected to remote server
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Get remote workspace pixi.toml
+      tags:
+      - remote
+  /remote/workspaces/{id}/push:
+    post:
+      consumes:
+      - application/json
+      description: Proxy version push to a workspace on the connected remote server
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Push request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/cliclient.PushRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "503":
+          description: Not connected to remote server
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Push version to remote workspace
+      tags:
+      - remote
+  /remote/workspaces/{id}/tags:
+    get:
+      description: Proxy tag listing for a workspace on the connected remote server
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "503":
+          description: Not connected to remote server
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: List remote workspace tags
+      tags:
+      - remote
+  /remote/workspaces/{id}/versions:
+    get:
+      description: Proxy version listing for a workspace on the connected remote server
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "503":
+          description: Not connected to remote server
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: List remote workspace versions
+      tags:
+      - remote
+  /remote/workspaces/{id}/versions/{version}/pixi-lock:
+    get:
+      description: Proxy version-specific pixi.lock fetch from the connected remote
+        server
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Version number
+        in: path
+        name: version
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: content
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid version number
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "503":
+          description: Not connected to remote server
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Get remote workspace version pixi.lock
+      tags:
+      - remote
+  /remote/workspaces/{id}/versions/{version}/pixi-toml:
+    get:
+      description: Proxy version-specific pixi.toml fetch from the connected remote
+        server
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Version number
+        in: path
+        name: version
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: content
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid version number
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "503":
+          description: Not connected to remote server
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Get remote workspace version pixi.toml
+      tags:
+      - remote
   /version:
     get:
       description: Returns version information about the Nebi server

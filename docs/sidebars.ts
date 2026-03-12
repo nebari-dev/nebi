@@ -2,11 +2,25 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
 const sidebars: SidebarsConfig = {
   docsSidebar: [
-    'getting-started',
-    'architecture',
-    'cli-guide',
-    'server-setup',
-    'cli-reference',
+    'introduction',
+    'installation',
+    {
+      type: 'category',
+      label: 'CLI Usage',
+      items: [
+        'cli-local',
+        'cli-team',
+        'cli-reference',
+      ],
+    },
+    'desktop-overview',
+    {
+      type: 'category',
+      label: 'Nebi Server (for Team)',
+      items: [
+        'server-setup',
+      ],
+    },
     {
       type: 'category',
       label: 'Maintainers',

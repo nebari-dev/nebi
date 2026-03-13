@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { buildImportCommand } from '@/lib/registry';
 import { useWorkspace } from '@/hooks/useWorkspaces';
+import { useServerConfig } from '@/hooks/useConfig';
 import { usePackages, useInstallPackages, useRemovePackage } from '@/hooks/usePackages';
 import { useCollaborators } from '@/hooks/useAdmin';
 import { usePublications, useUpdatePublication } from '@/hooks/useRegistries';
@@ -34,6 +35,7 @@ export const WorkspaceDetail = () => {
   const wsId = id || '';
 
   const { data: workspace, isLoading: wsLoading } = useWorkspace(wsId);
+  const { data: serverConfig } = useServerConfig();
   const { data: packages, isLoading: packagesLoading } = usePackages(wsId);
   const { data: collaborators } = useCollaborators(wsId);
   const { data: publications, isLoading: publicationsLoading } = usePublications(wsId);
@@ -56,8 +58,11 @@ export const WorkspaceDetail = () => {
   const [copiedPull, setCopiedPull] = useState(false);
   const [copiedImportId, setCopiedImportId] = useState<string | null>(null);
 
+  // Determine if this is a local workspace
   const isLocalWs = workspace?.source === 'local';
-
+  // Determine if server is in local mode
+  const isLocalMode = serverConfig?.mode === 'local';
+  // User can only share if it's not a local workspace and they are the owner
   const isOwner = workspace?.owner_id === currentUser?.id;
 
   // Load pixi.toml when switching to that tab
@@ -230,7 +235,7 @@ export const WorkspaceDetail = () => {
           <TabsTrigger value="publications">
             Publications ({publications?.length || 0})
           </TabsTrigger>
-          {!isLocalWs && (
+          {!isLocalWs && !isLocalMode && (
             <TabsTrigger value="collaborators">
               Collaborators ({collaborators?.length || 0})
             </TabsTrigger>
@@ -648,7 +653,7 @@ export const WorkspaceDetail = () => {
           </Card>
         </TabsContent>
 
-        {!isLocalWs && (
+        {!isLocalWs && !isLocalMode && (
           <TabsContent value="collaborators">
             <Card>
               <CardHeader>

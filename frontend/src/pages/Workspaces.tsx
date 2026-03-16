@@ -392,7 +392,6 @@ export const Workspaces = () => {
                 <tr>
                   <th className="text-left p-4 font-medium">Name</th>
                   <th className="text-left p-4 font-medium">Status</th>
-                  <th className="text-left p-4 font-medium">Package Manager</th>
                   <th className="text-left p-4 font-medium">Size</th>
                   <th className="text-left p-4 font-medium">Created</th>
                   <th className="text-right p-4 font-medium">Actions</th>
@@ -414,7 +413,7 @@ export const Workspaces = () => {
                         {ws.name}
                       </div>
                       {ws.location === 'local' && ws.path && (
-                        <div className="text-xs text-muted-foreground font-normal mt-0.5 font-mono truncate max-w-xs" title={ws.path}>
+                        <div className="text-xs text-muted-foreground font-normal mt-0.5 font-mono truncate max-w-sm" title={ws.path}>
                           {ws.path}
                         </div>
                       )}
@@ -423,9 +422,6 @@ export const Workspaces = () => {
                       <Badge className={statusColors[ws.status] || 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'}>
                         {capitalize(ws.status)}
                       </Badge>
-                    </td>
-                    <td className="p-4">
-                      <span className="font-mono text-sm">{ws.package_manager}</span>
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">
                       {ws.location === 'local' ? (ws.size_formatted || '-') : '-'}

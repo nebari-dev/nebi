@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loader2, ChevronDown, ChevronRight, Radio, Copy, Check } from 'lucide-react';
 import type { Job } from '@/types';
+import { capitalize } from '@/lib/utils';
 
 const statusColors = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -77,10 +78,10 @@ const JobCard = ({ job, isFirst, isRemote }: { job: Job; isFirst: boolean; isRem
             {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             <CardTitle className="text-lg">Job #{job.id}</CardTitle>
             <Badge className={typeColors[job.type]}>
-              {job.type}
+              {capitalize(job.type)}
             </Badge>
             <Badge className={statusColors[job.status]}>
-              {job.status}
+              {capitalize(job.status)}
               {isStreaming && <Radio className="h-3 w-3 ml-1 inline animate-pulse" />}
             </Badge>
           </div>

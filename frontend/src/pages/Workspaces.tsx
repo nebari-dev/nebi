@@ -11,7 +11,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
-import { Loader2, Plus, Trash2, X, Edit, Copy, Check } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Edit, Copy, Check, Download } from 'lucide-react';
+import { SplitButton } from '@/components/ui/split-button';
+import { capitalize } from '@/lib/utils';
 
 type UnifiedWorkspace = {
   id: string;
@@ -253,14 +255,21 @@ export const Workspaces = () => {
           <h1 className="text-3xl font-bold">Workspaces</h1>
           <p className="text-muted-foreground">Manage your development workspaces</p>
         </div>
-        <Button onClick={() => {
-          setShowCreate(!showCreate);
-          setCreateTarget(isRemoteConnected && viewMode === 'remote' ? 'server' : 'local');
-          setError('');
-        }}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Workspace
-        </Button>
+        <SplitButton
+          onPrimary={() => {
+            setShowCreate(!showCreate);
+            setCreateTarget(isRemoteConnected && viewMode === 'remote' ? 'server' : 'local');
+            setError('');
+          }}
+          primaryLabel={<><Plus className="h-4 w-4 mr-2" />New Workspace</>}
+          menuItems={[
+            {
+              label: 'Import Workspace from Registry',
+              icon: <Download className="h-4 w-4" />,
+              onClick: () => navigate('/registries'),
+            },
+          ]}
+        />
       </div>
 
       {error && (
@@ -387,11 +396,10 @@ export const Workspaces = () => {
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="border-b bg-muted/50">
+              <thead className={`bg-muted/50 ${displayedWorkspaces.length > 0 ? 'border-b' : ''}`}>
                 <tr>
                   <th className="text-left p-4 font-medium">Name</th>
                   <th className="text-left p-4 font-medium">Status</th>
-                  <th className="text-left p-4 font-medium">Package Manager</th>
                   <th className="text-left p-4 font-medium">Size</th>
                   <th className="text-left p-4 font-medium">Created</th>
                   <th className="text-right p-4 font-medium">Actions</th>
@@ -413,18 +421,15 @@ export const Workspaces = () => {
                         {ws.name}
                       </div>
                       {ws.location === 'local' && ws.path && (
-                        <div className="text-xs text-muted-foreground font-normal mt-0.5 font-mono truncate max-w-xs" title={ws.path}>
+                        <div className="text-xs text-muted-foreground font-normal mt-0.5 font-mono truncate max-w-sm" title={ws.path}>
                           {ws.path}
                         </div>
                       )}
                     </td>
                     <td className="p-4">
                       <Badge className={statusColors[ws.status] || 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'}>
-                        {ws.status}
+                        {capitalize(ws.status)}
                       </Badge>
-                    </td>
-                    <td className="p-4">
-                      <span className="font-mono text-sm">{ws.package_manager}</span>
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">
                       {ws.location === 'local' ? (ws.size_formatted || '-') : '-'}

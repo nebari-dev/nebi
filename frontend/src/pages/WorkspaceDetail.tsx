@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { buildImportCommand } from '@/lib/registry';
+import { capitalize } from '@/lib/utils';
 import { useWorkspace } from '@/hooks/useWorkspaces';
+import { useModeStore } from '@/store/modeStore';
 import { usePackages, useInstallPackages, useRemovePackage } from '@/hooks/usePackages';
 import { useCollaborators } from '@/hooks/useAdmin';
 import { usePublications, useUpdatePublication } from '@/hooks/useRegistries';
@@ -56,8 +58,11 @@ export const WorkspaceDetail = () => {
   const [copiedPull, setCopiedPull] = useState(false);
   const [copiedImportId, setCopiedImportId] = useState<string | null>(null);
 
+  // Determine if this is a local workspace
   const isLocalWs = workspace?.source === 'local';
-
+  // Determine if server is in local mode
+  const isLocalMode = useModeStore((s) => s.isLocalMode());
+  // User can only share if it's not a local workspace and they are the owner
   const isOwner = workspace?.owner_id === currentUser?.id;
 
   // Load pixi.toml when switching to that tab
@@ -163,7 +168,7 @@ export const WorkspaceDetail = () => {
             </Badge>
           )}
           <Badge className={statusColors[workspace.status]}>
-            {workspace.status}
+            {capitalize(workspace.status)}
           </Badge>
           {!isLocalWs && (
             <Button
@@ -230,7 +235,7 @@ export const WorkspaceDetail = () => {
           <TabsTrigger value="publications">
             Publications ({publications?.length || 0})
           </TabsTrigger>
-          {!isLocalWs && (
+          {!isLocalWs && !isLocalMode && (
             <TabsTrigger value="collaborators">
               Collaborators ({collaborators?.length || 0})
             </TabsTrigger>
@@ -257,7 +262,7 @@ export const WorkspaceDetail = () => {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Status:</span>
                 <Badge className={statusColors[workspace.status]}>
-                  {workspace.status}
+                  {capitalize(workspace.status)}
                 </Badge>
               </div>
               <div className="flex justify-between">
@@ -648,7 +653,7 @@ export const WorkspaceDetail = () => {
           </Card>
         </TabsContent>
 
-        {!isLocalWs && (
+        {!isLocalWs && !isLocalMode && (
           <TabsContent value="collaborators">
             <Card>
               <CardHeader>

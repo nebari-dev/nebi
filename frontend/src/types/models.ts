@@ -259,15 +259,3 @@ export interface ImportEnvironmentRequest {
   tag: string;
   name: string;
 }
-
-export interface ServerFeatures {
-  auth: boolean;
-  rbac: boolean;
-  remote_proxy: boolean;
-  local_storage: boolean;
-}
-
-export interface ServerConfig {
-  mode: string;
-  features: ServerFeatures;
-}

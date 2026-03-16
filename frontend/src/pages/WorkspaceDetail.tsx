@@ -20,7 +20,8 @@ import { PublishButton } from '@/components/publishing/PublishButton';
 import { RoleBadge } from '@/components/sharing/RoleBadge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
-import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check, ExternalLink, Save, HardDrive, Pencil, Globe, Lock } from 'lucide-react';
+import { UserBadge } from '@/components/ui/user-badge';
+import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check, ExternalLink, Save, HardDrive, Pencil, Globe, Lock, User, Boxes, Users, Calendar, History, Fingerprint, FolderOpen, GitBranch, CircleQuestionMark, IdCard } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -57,6 +58,7 @@ export const WorkspaceDetail = () => {
   const [copiedToml, setCopiedToml] = useState(false);
   const [copiedPull, setCopiedPull] = useState(false);
   const [copiedImportId, setCopiedImportId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState(false);
 
   // Determine if this is a local workspace
   const isLocalWs = workspace?.source === 'local';
@@ -247,69 +249,166 @@ export const WorkspaceDetail = () => {
             <CardHeader>
               <CardTitle>Workspace Info</CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-3">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Name:</span>
-                <span className="font-medium">{workspace.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Owner:</span>
-                <span className="font-medium">
-                  {workspace.owner?.username || (isOwner ? 'You' : 'Unknown')}
-                  {isOwner && <span className="ml-2 text-xs text-muted-foreground">(you)</span>}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Status:</span>
-                <Badge className={statusColors[workspace.status]}>
-                  {capitalize(workspace.status)}
-                </Badge>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Package Manager:</span>
-                <span className="font-medium font-mono text-sm">{workspace.package_manager}</span>
-              </div>
-              {isLocalWs && workspace.path && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Path:</span>
-                  <span className="font-medium font-mono text-sm truncate max-w-md" title={workspace.path}>{workspace.path}</span>
+            <CardContent className="p-0 pb-2">
+              <div>
+
+                {/* Workspace Name */}
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <IdCard className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium">Workspace Name</span>
+                  </div>
+                  <span className="text-sm">{workspace.name}</span>
                 </div>
-              )}
-              {isLocalWs && workspace.origin_name && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Origin:</span>
-                  <span className="font-medium">
-                    {workspace.origin_name}
-                    {workspace.origin_tag && `:${workspace.origin_tag}`}
-                    {workspace.origin_action && ` (${workspace.origin_action})`}
-                  </span>
+
+                {/* Owner */}
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <User className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium">Owner</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <UserBadge username={workspace.owner?.username || (isOwner ? currentUser?.username || 'You' : 'Unknown')} />
+                  </div>
                 </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Size:</span>
-                <span className="font-medium">{workspace.size_formatted || 'Calculating...'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Packages:</span>
-                <span className="font-medium">{packages?.length || 0} installed</span>
-              </div>
-              {!isLocalWs && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Collaborators:</span>
-                  <span className="font-medium">{collaborators?.length || 0}</span>
+
+                {/* Status */}
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <CircleQuestionMark className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium">Status</span>
+                  </div>
+                  <div>
+                    <Badge className={statusColors[workspace.status]}>
+                      {capitalize(workspace.status)}
+                    </Badge>
+                  </div>
                 </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Created:</span>
-                <span>{new Date(workspace.created_at).toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Last Updated:</span>
-                <span>{new Date(workspace.updated_at).toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">ID:</span>
-                <span className="font-mono text-xs text-muted-foreground">{workspace.id}</span>
+
+                {/* Package Manager */}
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Package className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium">Package Manager</span>
+                  </div>
+                  <code className="text-sm font-mono">{workspace.package_manager}</code>
+                </div>
+
+                {/* Path (local workspaces only) */}
+                {isLocalWs && workspace.path && (
+                  <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <FolderOpen className="h-3 w-3 shrink-0" />
+                      <span className="text-sm font-medium">Path</span>
+                    </div>
+                    <code className="text-sm font-mono truncate max-w-md" title={workspace.path}>{workspace.path}</code>
+                  </div>
+                )}
+
+                {/* Origin (local workspaces only) */}
+                {isLocalWs && workspace.origin_name && (
+                  <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <GitBranch className="h-3 w-3 shrink-0" />
+                      <span className="text-sm font-medium">Origin</span>
+                    </div>
+                    <span className="text-sm">
+                      {workspace.origin_name}
+                      {workspace.origin_tag && `:${workspace.origin_tag}`}
+                      {workspace.origin_action && ` (${workspace.origin_action})`}
+                    </span>
+                  </div>
+                )}
+
+                {/* Size */}
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <HardDrive className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium">Size</span>
+                  </div>
+                  <span className="text-sm">{workspace.size_formatted || 'Calculating...'}</span>
+                </div>
+
+                {/* Packages — links to packages tab */}
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
+                  <button
+                    className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-left"
+                    onClick={() => setActiveTab('packages')}
+                  >
+                    <Boxes className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium underline decoration-dotted underline-offset-2">Packages</span>
+                  </button>
+                  <span className="text-sm">{packages?.length || 0} installed</span>
+                </div>
+
+                {/* Collaborators — links to collaborators tab (non-local, non-local-mode workspaces) */}
+                {!isLocalWs && (
+                  <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
+                    {!isLocalMode ? (
+                      <button
+                        className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-left"
+                        onClick={() => setActiveTab('collaborators')}
+                      >
+                        <Users className="h-3 w-3 shrink-0" />
+                        <span className="text-sm font-medium underline decoration-dotted underline-offset-2">Collaborators ({collaborators?.length || 0})</span>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <Users className="h-3 w-3 shrink-0" />
+                        <span className="text-sm font-medium">Collaborators ({collaborators?.length || 0})</span>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-1.5">
+                      {collaborators?.slice(0, 3).map((c) => (
+                        <UserBadge key={c.user_id} username={c.username} />
+                      ))}
+                      {(collaborators?.length || 0) > 3 && (
+                        <span className="text-xs text-muted-foreground self-center">+{(collaborators?.length || 0) - 3} more</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Created */}
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Calendar className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium">Created</span>
+                  </div>
+                  <span className="text-sm">{new Date(workspace.created_at).toLocaleString()}</span>
+                </div>
+
+                {/* Last Updated */}
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <History className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium">Last Updated</span>
+                  </div>
+                  <span className="text-sm">{new Date(workspace.updated_at).toLocaleString()}</span>
+                </div>
+
+                {/* ID */}
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Fingerprint className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium">ID</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <code className="text-xs font-mono text-muted-foreground">{workspace.id}</code>
+                    <button
+                      className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(workspace.id);
+                        setCopiedId(true);
+                        setTimeout(() => setCopiedId(false), 2000);
+                      }}
+                      title="Copy ID"
+                    >
+                      {copiedId ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                    </button>
+                  </div>
+                </div>
+
               </div>
             </CardContent>
           </Card>

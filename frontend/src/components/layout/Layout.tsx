@@ -9,6 +9,7 @@ import { useVersion } from '@/hooks/useVersion';
 import { Button } from '@/components/ui/button';
 
 import { LogOut, Boxes, ListTodo, Shield, Settings, ExternalLink } from 'lucide-react';
+import { openExternal } from '@/lib/openExternal';
 import { useState } from 'react';
 
 export const Layout = () => {
@@ -87,17 +88,14 @@ export const Layout = () => {
                     )}
                   </NavLink>
                 )}
-                <NavLink to="https://nebi.nebari.dev/" target="_blank" rel="noopener noreferrer">
-                  {({ isActive }) => (
-                    <Button
-                      variant={isActive ? 'secondary' : 'ghost'}
-                      className="gap-2"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      Docs
-                    </Button>
-                  )}
-                </NavLink>
+                <Button
+                  variant="ghost"
+                  className="gap-2"
+                  onClick={() => openExternal('https://nebi.nebari.dev/')}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Docs
+                </Button>
 
               </nav>
             </div>

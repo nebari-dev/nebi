@@ -11,7 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
-import { Loader2, Plus, Trash2, X, Edit, Copy, Check } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Edit, Copy, Check, Download } from 'lucide-react';
+import { SplitButton } from '@/components/ui/split-button';
 import { capitalize } from '@/lib/utils';
 
 type UnifiedWorkspace = {
@@ -254,14 +255,21 @@ export const Workspaces = () => {
           <h1 className="text-3xl font-bold">Workspaces</h1>
           <p className="text-muted-foreground">Manage your development workspaces</p>
         </div>
-        <Button onClick={() => {
-          setShowCreate(!showCreate);
-          setCreateTarget(isRemoteConnected && viewMode === 'remote' ? 'server' : 'local');
-          setError('');
-        }}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Workspace
-        </Button>
+        <SplitButton
+          onPrimary={() => {
+            setShowCreate(!showCreate);
+            setCreateTarget(isRemoteConnected && viewMode === 'remote' ? 'server' : 'local');
+            setError('');
+          }}
+          primaryLabel={<><Plus className="h-4 w-4 mr-2" />New Workspace</>}
+          menuItems={[
+            {
+              label: 'Import Workspace from Registry',
+              icon: <Download className="h-4 w-4" />,
+              onClick: () => navigate('/registries'),
+            },
+          ]}
+        />
       </div>
 
       {error && (

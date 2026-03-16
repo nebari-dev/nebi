@@ -388,7 +388,7 @@ export const Workspaces = () => {
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="border-b bg-muted/50">
+              <thead className={`bg-muted/50 ${displayedWorkspaces.length > 0 ? 'border-b' : ''}`}>
                 <tr>
                   <th className="text-left p-4 font-medium">Name</th>
                   <th className="text-left p-4 font-medium">Status</th>

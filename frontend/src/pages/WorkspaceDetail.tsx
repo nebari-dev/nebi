@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { buildImportCommand } from '@/lib/registry';
+import { capitalize } from '@/lib/utils';
 import { useWorkspace } from '@/hooks/useWorkspaces';
 import { useServerConfig } from '@/hooks/useConfig';
 import { usePackages, useInstallPackages, useRemovePackage } from '@/hooks/usePackages';
@@ -168,7 +169,7 @@ export const WorkspaceDetail = () => {
             </Badge>
           )}
           <Badge className={statusColors[workspace.status]}>
-            {workspace.status}
+            {capitalize(workspace.status)}
           </Badge>
           {!isLocalWs && (
             <Button
@@ -262,7 +263,7 @@ export const WorkspaceDetail = () => {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Status:</span>
                 <Badge className={statusColors[workspace.status]}>
-                  {workspace.status}
+                  {capitalize(workspace.status)}
                 </Badge>
               </div>
               <div className="flex justify-between">

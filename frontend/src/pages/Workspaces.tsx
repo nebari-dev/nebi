@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
 import { Loader2, Plus, Trash2, X, Edit, Copy, Check } from 'lucide-react';
+import { capitalize } from '@/lib/utils';
 
 type UnifiedWorkspace = {
   id: string;
@@ -420,7 +421,7 @@ export const Workspaces = () => {
                     </td>
                     <td className="p-4">
                       <Badge className={statusColors[ws.status] || 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'}>
-                        {ws.status}
+                        {capitalize(ws.status)}
                       </Badge>
                     </td>
                     <td className="p-4">

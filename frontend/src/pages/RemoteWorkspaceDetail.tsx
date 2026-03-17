@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ArrowLeft, Loader2, Cloud, Copy, Check } from 'lucide-react';
+import { capitalize } from '@/lib/utils';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -84,7 +85,7 @@ export const RemoteWorkspaceDetail = () => {
             Remote
           </Badge>
           <Badge className={statusColors[workspace.status] || 'bg-gray-500/10 text-gray-500 border-gray-500/20'}>
-            {workspace.status}
+            {capitalize(workspace.status)}
           </Badge>
         </div>
       </div>
@@ -110,7 +111,7 @@ export const RemoteWorkspaceDetail = () => {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Status:</span>
                 <Badge className={statusColors[workspace.status] || 'bg-gray-500/10 text-gray-500 border-gray-500/20'}>
-                  {workspace.status}
+                  {capitalize(workspace.status)}
                 </Badge>
               </div>
               <div className="flex justify-between">

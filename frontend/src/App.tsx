@@ -9,7 +9,6 @@ import { Login } from './pages/Login';
 import { Workspaces } from './pages/Workspaces';
 import { WorkspaceDetail } from './pages/WorkspaceDetail';
 import { RemoteWorkspaceDetail } from './pages/RemoteWorkspaceDetail';
-import { Jobs } from './pages/Jobs';
 import { Registries, RegistryRepositories, RegistryTags } from './pages/Registries';
 import { Settings } from './pages/Settings';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
@@ -97,7 +96,6 @@ function App() {
               <Route path="workspaces" element={<Workspaces />} />
               <Route path="workspaces/:id" element={<WorkspaceDetail />} />
               <Route path="remote/workspaces/:id" element={<RemoteWorkspaceDetail />} />
-              <Route path="jobs" element={<Jobs />} />
               <Route path="registries" element={<Registries />} />
               <Route path="registries/:registryId" element={<RegistryRepositories />} />
               <Route path="registries/:registryId/repo/*" element={<RegistryTags />} />

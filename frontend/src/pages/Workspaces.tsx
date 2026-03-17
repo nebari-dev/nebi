@@ -4,6 +4,7 @@ import { useWorkspaces, useCreateWorkspace, useDeleteWorkspace } from '@/hooks/u
 import { useRemoteServer, useRemoteWorkspaces, useCreateRemoteWorkspace, useDeleteRemoteWorkspace } from '@/hooks/useRemote';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
+import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
 import { workspacesApi } from '@/api/workspaces';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,6 +50,7 @@ python = ">=3.11"
 
 export const Workspaces = () => {
   const navigate = useNavigate();
+  const setPendingTab = useWorkspaceNavStore((s) => s.setPendingTab);
   const { data: workspaces, isLoading } = useWorkspaces();
   const createMutation = useCreateWorkspace();
   const deleteMutation = useDeleteWorkspace();
@@ -140,12 +142,22 @@ export const Workspaces = () => {
           pixi_toml: tomlContent,
         });
       } else {
-        await createMutation.mutateAsync({
+        const ws = await createMutation.mutateAsync({
           name: newWsName,
           package_manager: 'pixi',
           pixi_toml: tomlContent,
           ...(localPath.trim() ? { path: localPath.trim(), source: 'local' as const } : {}),
         });
+
+        // Reset form
+        setNewWsName('');
+        setLocalPath('');
+        setPixiToml(DEFAULT_PIXI_TOML);
+        setShowCreate(false);
+
+        setPendingTab('jobs');
+        navigate(`/workspaces/${ws.id}`);
+        return;
       }
 
       // Reset form
@@ -153,10 +165,6 @@ export const Workspaces = () => {
       setLocalPath('');
       setPixiToml(DEFAULT_PIXI_TOML);
       setShowCreate(false);
-
-      if (createTarget === 'local' || !isRemoteConnected) {
-        navigate('/jobs');
-      }
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
       const errorMessage = error?.response?.data?.error || 'Failed to create workspace. Please try again.';
@@ -209,7 +217,7 @@ export const Workspaces = () => {
     try {
       await deleteMutation.mutateAsync(editWsId);
 
-      await createMutation.mutateAsync({
+      const ws = await createMutation.mutateAsync({
         name: editWsName,
         package_manager: 'pixi',
         pixi_toml: editPixiToml
@@ -220,7 +228,8 @@ export const Workspaces = () => {
       setEditWsName('');
       setEditPixiToml('');
 
-      navigate('/jobs');
+      setPendingTab('jobs');
+      navigate(`/workspaces/${ws.id}`);
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
       const errorMessage = error?.response?.data?.error || 'Failed to update workspace. Please try again.';

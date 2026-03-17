@@ -164,6 +164,12 @@ func Run(ctx context.Context, cfg Config) error {
 				slog.Error("Server failed", "error", err)
 			}
 		}()
+
+		url := fmt.Sprintf("http://localhost:%d", appCfg.Server.Port)
+		if appCfg.Server.BasePath != "" {
+			url += appCfg.Server.BasePath
+		}
+		fmt.Printf("\n  \033[32m✔\033[0m Server running at \033[1;36m%s\033[0m\n\n", url)
 	}
 
 	// Wait for context cancellation

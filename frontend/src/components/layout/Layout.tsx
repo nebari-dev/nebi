@@ -8,7 +8,7 @@ import { useRemoteServer } from '@/hooks/useRemote';
 import { useVersion } from '@/hooks/useVersion';
 import { Button } from '@/components/ui/button';
 
-import { LogOut, Boxes, ListTodo, Shield, Settings, ExternalLink } from 'lucide-react';
+import { LogOut, Boxes, Shield, Settings, ExternalLink } from 'lucide-react';
 import { openExternal } from '@/lib/openExternal';
 import { useState } from 'react';
 
@@ -50,17 +50,6 @@ export const Layout = () => {
                     >
                       <Boxes className="h-4 w-4" />
                       Workspaces
-                    </Button>
-                  )}
-                </NavLink>
-                <NavLink to="/jobs">
-                  {({ isActive }) => (
-                    <Button
-                      variant={isActive ? 'secondary' : 'ghost'}
-                      className="gap-2"
-                    >
-                      <ListTodo className="h-4 w-4" />
-                      Jobs
                     </Button>
                   )}
                 </NavLink>

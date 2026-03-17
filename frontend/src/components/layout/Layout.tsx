@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
 import { getBasePath } from '@/lib/basePath';
@@ -23,6 +23,9 @@ export const Layout = () => {
   const { data: versionInfo } = useVersion();
   const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
 
+  const location = useLocation();
+  const isAdminPage = location.pathname.startsWith('/admin');
+
   const handleLogout = () => {
     clearAuth();
     navigate('/login');
@@ -31,7 +34,7 @@ export const Layout = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
+        <div className={isAdminPage ? 'px-4 py-4' : 'container mx-auto px-4 py-4'}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-8">
               <NavLink to="/workspaces">
@@ -171,7 +174,7 @@ export const Layout = () => {
           </div>
         </div>
       </header>
-      <main className="container mx-auto px-4 py-8 flex-1">
+      <main className={isAdminPage ? 'flex-1 overflow-hidden' : 'container mx-auto px-4 py-8 flex-1'}>
         <Outlet />
       </main>
       {versionInfo?.version && (

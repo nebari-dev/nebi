@@ -16,6 +16,14 @@ curl -fsSL https://pixi.sh/install.sh | bash
 
 See the [Pixi installation docs](https://pixi.sh) for more options.
 
+## Activate a Shell
+
+Open an interactive shell with the workspace environment activated:
+
+```bash
+pixi shell
+```
+
 ## Add Dependencies
 
 Use `pixi add` to add packages to your workspace. This updates `pixi.toml` and `pixi.lock` automatically:
@@ -54,6 +62,8 @@ This resolves dependencies and installs all packages defined in the workspace.
 
 ## List Installed Packages
 
+View all packages installed in the current workspace:
+
 ```bash
 pixi list
 ```
@@ -70,14 +80,6 @@ pixi run test
 pixi run python my_script.py
 ```
 
-## Activate a Shell
-
-Open an interactive shell with the workspace environment activated:
-
-```bash
-pixi shell
-```
-
 ## Typical Nebi + Pixi Workflow
 
 Here's how Pixi commands fit into a typical Nebi workflow:
@@ -87,11 +89,11 @@ Here's how Pixi commands fit into a typical Nebi workflow:
 mkdir my-project && cd my-project
 nebi init
 
-# 2. Add dependencies with Pixi
-pixi add numpy pandas matplotlib
-
-# 3. Work in the environment
+# 2. Activate the environment
 pixi shell
+
+# 3. Add dependencies
+pixi add numpy pandas matplotlib
 
 # 4. Push the workspace to your team
 nebi push my-project

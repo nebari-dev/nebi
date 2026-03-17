@@ -120,7 +120,7 @@ jobs:
           go install github.com/swaggo/swag/cmd/swag
 
       - name: Run tests (unit + e2e)
-        run: go test -tags=e2e -v -race -coverprofile=coverage.out $(go list ./... | grep -v /scripts | grep -v "^github.com/nebari-dev/nebi$")
+        run: go test -tags=e2e -v -race -coverprofile=coverage.out ./cmd/... ./internal/...
 
       - name: Upload coverage
         uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2

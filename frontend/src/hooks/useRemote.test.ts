@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server, mockWorkspace, mockJob, mockRegistry, mockUser } from '@/test/handlers';
@@ -55,7 +55,7 @@ describe('useConnectServer', () => {
       http.post('/api/v1/remote/connect', () => HttpResponse.json(mockRemoteServer))
     );
     const { result } = renderHook(() => useConnectServer(), { wrapper: createWrapper() });
-    result.current.mutate({ url: 'https://remote.example.com', token: 'tok' });
+    result.current.mutate({ url: 'https://remote.example.com', username: 'user', password: 'pass' });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toMatchObject({ connected: true });
   });
@@ -67,7 +67,7 @@ describe('useConnectServer', () => {
       )
     );
     const { result } = renderHook(() => useConnectServer(), { wrapper: createWrapper() });
-    result.current.mutate({ url: 'https://bad.example.com', token: 'bad' });
+    result.current.mutate({ url: 'https://bad.example.com', username: 'user', password: 'pass' });
     await waitFor(() => expect(result.current.isError).toBe(true));
   });
 });
@@ -131,7 +131,7 @@ describe('useCreateRemoteWorkspace', () => {
       )
     );
     const { result } = renderHook(() => useCreateRemoteWorkspace(), { wrapper: createWrapper() });
-    result.current.mutate({ workspace_id: 'ws-1' });
+    result.current.mutate({ name: 'New Remote WS' });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
   });
 });

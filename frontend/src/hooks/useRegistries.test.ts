@@ -71,7 +71,7 @@ describe('usePublishWorkspace', () => {
     const { result } = renderHook(() => usePublishWorkspace(), { wrapper: createWrapper() });
     result.current.mutate({
       workspaceId: 'ws-1',
-      data: { registry_id: 'reg-1', namespace: 'myorg', repository: 'myenv', tag: 'latest' },
+      data: { registry_id: 'reg-1', repository: 'myenv', tag: 'latest' },
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toMatchObject({ id: mockJob.id });
@@ -86,7 +86,7 @@ describe('usePublishWorkspace', () => {
     const { result } = renderHook(() => usePublishWorkspace(), { wrapper: createWrapper() });
     result.current.mutate({
       workspaceId: 'ws-1',
-      data: { registry_id: 'reg-1', namespace: 'myorg', repository: 'myenv', tag: 'latest' },
+      data: { registry_id: 'reg-1', repository: 'myenv', tag: 'latest' },
     });
     await waitFor(() => expect(result.current.isError).toBe(true));
   });

@@ -217,8 +217,9 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold">Jobs</h2>
+      <div className="space-y-4 mb-6">
+        <h2 className="text-2xl font-bold mb-0">Jobs</h2>
+        <p className="text-muted-foreground text-sm mt-1">View all job executions and their status</p>
       </div>
 
       <div className="space-y-4">

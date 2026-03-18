@@ -28,9 +28,15 @@ Make sure it's on your `PATH`:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-## More installation options
+### More installation options
 
-### Install a specific version (only CLI)
+#### Install only CLI
+
+```bash
+curl -fsSL https://pixi.sh/install.sh | bash
+```
+
+#### Install a specific version (only CLI)
 
 ```bash
 curl -fsSL https://nebi.nebari.dev/install.sh | sh -s -- --version v0.6.0-rc3
@@ -48,15 +54,15 @@ curl -fsSL https://nebi.nebari.dev/install.sh | sh -s -- --version v0.6.0-rc3 --
 curl -fsSL https://nebi.nebari.dev/install.sh | sh -s -- --install-dir /usr/local/bin
 ```
 
-### Install from conda-forge
+## Install from conda-forge
 
-Nebi CLI and desktop is distributed on conda-forge, you can install it with conda in your base environment:
+Nebi (CLI and desktop) package is distributed on conda-forge, you can install it with conda in your base environment:
 
 ```bash
 conda install conda-forge::nebi
 ```
 
-### Install from source
+## Install from source
 
 For certain cases like development or testing, you can install Nebi from source:
 

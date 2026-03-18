@@ -58,7 +58,7 @@ export const TabsTrigger = ({ value, children, className = '' }: TabsTriggerProp
         text-sm font-medium ring-offset-background transition-all
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
         disabled:pointer-events-none disabled:opacity-50
-        ${isActive ? 'bg-background text-foreground shadow-sm' : ''}
+        ${isActive ? 'bg-background text-foreground shadow-sm' : 'text-foreground/60'}
         ${className}
       `}
     >

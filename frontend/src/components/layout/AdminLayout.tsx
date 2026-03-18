@@ -25,7 +25,7 @@ export const AdminLayout = () => {
                 <div
                   className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                     isActive
-                      ? 'bg-[#E8D7FB] text-[#9B3DCC]'
+                      ? 'bg-[#E8D7FB] text-[#7B2FAA]'
                       : 'text-muted-foreground hover:bg-[var(--color-nav-hover)] hover:text-foreground'
                   }`}
                 >

@@ -8,17 +8,7 @@ import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Search } from 'lucide-react';
-
-const ACTION_COLORS: Record<string, string> = {
-  create_user: 'bg-green-500/10 text-green-500 border-green-500/20',
-  delete_user: 'bg-red-500/10 text-red-500 border-red-500/20',
-  grant_permission: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  revoke_permission: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
-  make_admin: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
-  revoke_admin: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
-  share_workspace: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20',
-  unshare_workspace: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-};
+import { logActionVariant } from '@/lib/constants';
 
 export const AuditLogs = () => {
   const [filters, setFilters] = useState({
@@ -85,6 +75,7 @@ export const AuditLogs = () => {
         </div>
         <Select
           value={filters.action}
+          aria-label='Select an action'
           onChange={(e) => setFilters({ ...filters, action: e.target.value })}
           className="w-64"
         >
@@ -123,7 +114,7 @@ export const AuditLogs = () => {
                       {log.user?.username || log.user_id}
                     </td>
                     <td className="p-4">
-                      <Badge className={ACTION_COLORS[log.action] || 'bg-gray-500/10 text-gray-500 border-gray-500/20'}>
+                      <Badge variant={logActionVariant[log.action] || 'outline'}>
                         {log.action.replace(/_/g, ' ')}
                       </Badge>
                     </td>

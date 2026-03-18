@@ -15,6 +15,7 @@ import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
 import { Loader2, Plus, Trash2, X, Edit, Copy, Check, Download } from 'lucide-react';
 import { SplitButton } from '@/components/ui/split-button';
 import { capitalize } from '@/lib/utils';
+import { workspaceStatusVariant } from '@/lib/constants';
 
 type UnifiedWorkspace = {
   id: string;
@@ -29,14 +30,6 @@ type UnifiedWorkspace = {
   owner_id?: string;
   owner?: { id: string; username: string; email: string };
   size_formatted?: string;
-};
-
-const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-  creating: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  ready: 'bg-green-500/10 text-green-500 border-green-500/20',
-  failed: 'bg-red-500/10 text-red-500 border-red-500/20',
-  deleting: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
 };
 
 const DEFAULT_PIXI_TOML = `[workspace]
@@ -436,7 +429,7 @@ export const Workspaces = () => {
                       )}
                     </td>
                     <td className="p-4">
-                      <Badge className={statusColors[ws.status] || 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'}>
+                      <Badge variant={workspaceStatusVariant[ws.status] ?? 'outline'}>
                         {capitalize(ws.status)}
                       </Badge>
                     </td>
@@ -484,6 +477,7 @@ export const Workspaces = () => {
                         <Button
                           variant="ghost"
                           size="sm"
+                          title="Delete workspace"
                           onClick={(e) => {
                             e.stopPropagation();
                             setConfirmDelete({ id: ws.id, name: ws.name, location: ws.location });

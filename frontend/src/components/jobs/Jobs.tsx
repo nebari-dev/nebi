@@ -10,21 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, ChevronDown, ChevronRight, Radio, Copy, Check } from 'lucide-react';
 import type { Job } from '@/types';
 import { capitalize } from '@/lib/utils';
-
-const statusColors = {
-  pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-  running: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  completed: 'bg-green-500/10 text-green-500 border-green-500/20',
-  failed: 'bg-red-500/10 text-red-500 border-red-500/20',
-};
-
-const typeColors = {
-  create: 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20',
-  delete: 'bg-red-500/10 text-red-500 border-red-500/20',
-  install: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  remove: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
-  update: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
-};
+import { jobStatusVariant } from '@/lib/constants';
 
 const CopyButton = ({ text }: { text: string }) => {
   const [copied, setCopied] = useState(false);
@@ -77,10 +63,10 @@ const JobCard = ({ job, isFirst, isRemote }: { job: Job; isFirst: boolean; isRem
           <div className="flex items-center gap-3">
             {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             <CardTitle className="text-lg">Job #{job.id}</CardTitle>
-            <Badge className={typeColors[job.type]}>
+            <Badge variant='info'>
               {capitalize(job.type)}
             </Badge>
-            <Badge className={statusColors[job.status]}>
+            <Badge variant={jobStatusVariant[job.status]}>
               {capitalize(job.status)}
               {isStreaming && <Radio className="h-3 w-3 ml-1 inline animate-pulse" />}
             </Badge>

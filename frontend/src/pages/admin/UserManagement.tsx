@@ -114,7 +114,7 @@ export const UserManagement = () => {
                     <td className="p-4 text-sm text-muted-foreground">{user.email}</td>
                     <td className="p-4">
                       {user.is_admin ? (
-                        <Badge className="bg-purple-500/10 text-purple-500 border-purple-500/20">
+                        <Badge variant="default">
                           <Shield className="h-3 w-3 mr-1" />
                           Admin
                         </Badge>

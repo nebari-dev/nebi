@@ -1,7 +1,3 @@
----
-sidebar_position: 2
----
-
 # Architecture
 
 Nebi is built as a single Go codebase with a React frontend. It runs in three forms: a **desktop app**, a **CLI**, and a **team server**. All three share the same core libraries but serve different use cases.

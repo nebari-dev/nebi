@@ -1,7 +1,3 @@
----
-sidebar_position: 4
----
-
 # Server Setup
 
 Nebi includes a built-in server for team collaboration. This page covers how to run and configure it.

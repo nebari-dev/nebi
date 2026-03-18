@@ -91,6 +91,9 @@ jobs:
           name: frontend-dist
           path: internal/web/dist
 
+      - name: Create stub frontend/dist for embed
+        run: mkdir -p frontend/dist && touch frontend/dist/.gitkeep
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@8564da7cb3c6866ed1da648ca8f00a258ef0c802 # v6.5.2
         with:

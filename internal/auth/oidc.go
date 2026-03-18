@@ -78,6 +78,11 @@ func NewOIDCAuthenticator(ctx context.Context, cfg OIDCConfig, db *gorm.DB, jwtS
 	}, nil
 }
 
+// Verifier returns the OIDC ID token verifier for signature validation.
+func (a *OIDCAuthenticator) Verifier() *oidc.IDTokenVerifier {
+	return a.verifier
+}
+
 // GetAuthURL returns the URL to redirect users to for authentication
 func (a *OIDCAuthenticator) GetAuthURL(state string) string {
 	return a.config.AuthCodeURL(state)

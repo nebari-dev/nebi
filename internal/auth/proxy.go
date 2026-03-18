@@ -1,14 +1,13 @@
 package auth
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/rbac"
@@ -26,10 +25,13 @@ type ProxyTokenClaims struct {
 	Groups            []string `json:"groups"`
 }
 
-// parseIdTokenCookie finds a cookie whose name starts with "IdToken" and
-// decodes the JWT payload (middle segment). No signature verification is
-// performed because the authenticating proxy (Envoy) already validated it.
-func parseIdTokenCookie(r *http.Request) (*ProxyTokenClaims, error) {
+// verifyIdTokenCookie finds a cookie whose name starts with "IdToken" and
+// verifies its signature using the OIDC provider's JWKS before extracting claims.
+func verifyIdTokenCookie(r *http.Request, verifier *oidc.IDTokenVerifier) (*ProxyTokenClaims, error) {
+	if verifier == nil {
+		return nil, errors.New("IdToken verification not configured")
+	}
+
 	var rawToken string
 	for _, c := range r.Cookies() {
 		if strings.HasPrefix(c.Name, "IdToken") {
@@ -41,20 +43,14 @@ func parseIdTokenCookie(r *http.Request) (*ProxyTokenClaims, error) {
 		return nil, errors.New("no IdToken cookie found")
 	}
 
-	parts := strings.Split(rawToken, ".")
-	if len(parts) != 3 {
-		return nil, fmt.Errorf("IdToken cookie is not a valid JWT (got %d parts)", len(parts))
-	}
-
-	// Decode the payload (second segment)
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	idToken, err := verifier.Verify(r.Context(), rawToken)
 	if err != nil {
-		return nil, fmt.Errorf("failed to base64-decode JWT payload: %w", err)
+		return nil, fmt.Errorf("failed to verify IdToken: %w", err)
 	}
 
 	var claims ProxyTokenClaims
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JWT claims: %w", err)
+	if err := idToken.Claims(&claims); err != nil {
+		return nil, fmt.Errorf("failed to extract claims from verified IdToken: %w", err)
 	}
 
 	return &claims, nil

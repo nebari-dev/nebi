@@ -97,6 +97,14 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	// Create one if the primary authenticator isn't already basic auth.
 	sessionBasicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
 
+	// Wire OIDC ID token verifier into authenticators that handle proxy cookies.
+	if oidcAuth != nil {
+		sessionBasicAuth.SetIDTokenVerifier(oidcAuth.Verifier())
+		if ba, ok := authenticator.(*auth.BasicAuthenticator); ok {
+			ba.SetIDTokenVerifier(oidcAuth.Verifier())
+		}
+	}
+
 	// Base group for all routes (supports reverse proxy path prefix)
 	base := router.Group(basePath)
 

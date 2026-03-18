@@ -8,7 +8,7 @@ Nebi is built as a single Go codebase with a React frontend. It runs in three fo
 
 ## System Overview
 
-<img src="/img/architecture.svg" alt="Nebi architecture diagram" style={{maxWidth: '100%', height: 'auto'}} />
+<img src="/img/context-diagram.svg" alt="Nebi System Context diagram" style={{maxWidth: '100%', height: 'auto'}} />
 
 ## Desktop App
 

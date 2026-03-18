@@ -8,7 +8,8 @@ import { useRemoteServer, useAutoConnect } from '@/hooks/useRemote';
 import { useVersion } from '@/hooks/useVersion';
 import { Button } from '@/components/ui/button';
 
-import { LogOut, Boxes, ListTodo, Shield, Settings } from 'lucide-react';
+import { LogOut, Boxes, Shield, Settings, ExternalLink } from 'lucide-react';
+import { openExternal } from '@/lib/openExternal';
 import { useState } from 'react';
 
 export const Layout = () => {
@@ -55,17 +56,6 @@ export const Layout = () => {
                     </Button>
                   )}
                 </NavLink>
-                <NavLink to="/jobs">
-                  {({ isActive }) => (
-                    <Button
-                      variant={isActive ? 'secondary' : 'ghost'}
-                      className="gap-2"
-                    >
-                      <ListTodo className="h-4 w-4" />
-                      Jobs
-                    </Button>
-                  )}
-                </NavLink>
                 <NavLink to="/registries">
                   {({ isActive }) => (
                     <Button
@@ -90,6 +80,15 @@ export const Layout = () => {
                     )}
                   </NavLink>
                 )}
+                <Button
+                  variant="ghost"
+                  className="gap-2"
+                  onClick={() => openExternal('https://nebi.nebari.dev/')}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Docs
+                </Button>
+
               </nav>
             </div>
             <div className="flex items-center gap-4">

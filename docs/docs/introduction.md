@@ -2,7 +2,7 @@
 sidebar_position: 1
 ---
 
-# Introduction
+# What is Nebi?
 
 Nebi is a multi-user environment management tool. Think of it as git for environments: you can push, pull, diff, and roll back, with access control built in.
 

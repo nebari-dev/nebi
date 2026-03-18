@@ -175,7 +175,7 @@ const JobCard = ({ job, isFirst, isRemote }: { job: Job; isFirst: boolean; isRem
   );
 };
 
-export const Jobs = () => {
+export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
   const { data: jobs, isLoading: jobsLoading } = useJobs();
 
   // View mode support for local desktop app
@@ -187,16 +187,23 @@ export const Jobs = () => {
 
   // Show jobs based on view mode when connected to remote
   const { displayedJobs, isRemote } = useMemo(() => {
+    let base: typeof jobs;
+    let remote: boolean;
     if (!isRemoteConnected) {
-      return { displayedJobs: jobs || [], isRemote: false };
-    }
-    // When connected, show based on viewMode
-    if (viewMode === 'local') {
-      return { displayedJobs: jobs || [], isRemote: false };
+      base = jobs || [];
+      remote = false;
+    } else if (viewMode === 'local') {
+      base = jobs || [];
+      remote = false;
     } else {
-      return { displayedJobs: remoteJobs || [], isRemote: true };
+      base = remoteJobs || [];
+      remote = true;
     }
-  }, [jobs, remoteJobs, isRemoteConnected, viewMode]);
+    return {
+      displayedJobs: workspaceId ? (base || []).filter((j) => j.workspace_id === workspaceId) : (base || []),
+      isRemote: remote,
+    };
+  }, [jobs, remoteJobs, isRemoteConnected, viewMode, workspaceId]);
 
   const isLoading = jobsLoading || (isRemoteConnected && remoteLoading);
 
@@ -210,9 +217,9 @@ export const Jobs = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Jobs</h1>
-        <p className="text-muted-foreground">View all job executions and their status</p>
+      <div className="space-y-4 mb-6">
+        <h2 className="text-2xl font-bold mb-0">Jobs</h2>
+        <p className="text-muted-foreground text-sm mt-1">View all job executions and their status</p>
       </div>
 
       <div className="space-y-4">

@@ -136,7 +136,7 @@ export const PixiTomlEditor = ({ tomlValue, onTomlChange, workspaceName }: PixiT
       {mode === 'ui' ? (
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Packages</label>
+            <label className="text-sm font-medium block pt-2 pb-0">Packages</label>
             <div className="border rounded-lg overflow-hidden">
               <table className="w-full">
                 <thead className="bg-muted/50 border-b">
@@ -213,7 +213,7 @@ export const PixiTomlEditor = ({ tomlValue, onTomlChange, workspaceName }: PixiT
         </div>
       ) : (
         <div className="space-y-2">
-          <label className="text-sm font-medium">pixi.toml Configuration</label>
+          <label className="text-sm font-medium block pt-2 pb-0">pixi.toml Configuration</label>
           <Textarea
             placeholder="Enter your pixi.toml content"
             value={tomlValue}

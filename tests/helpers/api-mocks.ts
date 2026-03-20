@@ -234,9 +234,12 @@ export async function setupApiMocks(page: Page) {
 export async function setupApiMocksAsAdmin(page: Page) {
   await setupCommonRoutes(page);
   await setupAdminRoutes(page);
-  // Override the catch-all admin 403 with real admin data for the me endpoint
+  // Override auth endpoints to use admin user
   await page.route(`**${BASE}/auth/me`, (route) =>
     route.fulfill({ json: mockAdminUser })
+  );
+  await page.route(`**${BASE}/auth/login`, (route) =>
+    route.fulfill({ json: { token: 'admin-token', user: mockAdminUser } })
   );
 }
 

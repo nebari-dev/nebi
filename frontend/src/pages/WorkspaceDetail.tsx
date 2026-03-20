@@ -686,12 +686,12 @@ export const WorkspaceDetail = () => {
                           <ExternalLink className="h-4 w-4" />
                         </a>
                         {pub.is_public ? (
-                          <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
+                          <Badge variant="success">
                             <Globe className="mr-1 h-3 w-3" />
                             Public
                           </Badge>
                         ) : (
-                          <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20">
+                          <Badge variant="warning">
                             <Lock className="mr-1 h-3 w-3" />
                             Private
                           </Badge>

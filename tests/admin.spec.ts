@@ -23,8 +23,8 @@ test('admin dashboard quick action links are present', async ({ page }) => {
 
 test('users page lists users', async ({ page }) => {
   await page.goto('/admin/users');
-  await expect(page.getByText('testuser')).toBeVisible();
-  await expect(page.getByText('admin')).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'testuser' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: /admin.*you/ })).toBeVisible();
 });
 
 test('create user dialog opens and submits', async ({ page }) => {
@@ -34,7 +34,8 @@ test('create user dialog opens and submits', async ({ page }) => {
 
   await page.getByLabel(/username/i).fill('newuser');
   await page.getByLabel(/email/i).fill('new@example.com');
-  await page.getByLabel(/password/i).fill('password123');
+  await page.getByLabel('Password', { exact: true }).fill('password123');
+  await page.getByLabel('Confirm Password', { exact: true }).fill('password123');
   await page.getByRole('button', { name: /create/i }).last().click();
 
   await expect(page.getByRole('dialog')).not.toBeVisible();
@@ -73,7 +74,7 @@ test('admin dashboard passes accessibility audit', async ({ page }) => {
 
 test('users page passes accessibility audit', async ({ page }) => {
   await page.goto('/admin/users');
-  await expect(page.getByText('testuser')).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'testuser' })).toBeVisible();
   await checkA11y(page, 'admin users');
 });
 

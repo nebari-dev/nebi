@@ -36,7 +36,7 @@ test('repositories page shows repo list and search input', async ({ page }) => {
 
 test('View Tags navigates to tags page', async ({ page }) => {
   await page.goto('/registries/reg-1');
-  await page.getByRole('button', { name: 'View Tags' }).click();
+  await page.getByRole('table').getByRole('button', { name: 'View Tags' }).click();
   await page.waitForURL('**/registries/reg-1/repo/**');
   await expect(page.getByText('v1.0.0')).toBeVisible();
   await expect(page.getByText('latest')).toBeVisible();
@@ -44,7 +44,7 @@ test('View Tags navigates to tags page', async ({ page }) => {
 
 test('tags page Import button opens import form', async ({ page }) => {
   await page.goto('/registries/reg-1/repo/myorg/test-workspace');
-  await page.getByRole('button', { name: 'Import' }).first().click();
+  await page.getByRole('button', { name: 'Import', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: 'Import Environment' })).toBeVisible();
   await expect(page.getByPlaceholder('Enter workspace name')).toBeVisible();
 });

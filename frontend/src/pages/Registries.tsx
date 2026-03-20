@@ -152,7 +152,7 @@ export const RegistryRepositories = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/registries')}>
+        <Button variant="ghost" size="icon" title="Back to Registries" onClick={() => navigate('/registries')}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
@@ -334,7 +334,7 @@ export const RegistryTags = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate(`/registries/${registryId}`)}>
+        <Button variant="ghost" size="icon" title="Back to Repository List" onClick={() => navigate(`/registries/${registryId}`)}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">

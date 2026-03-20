@@ -12,7 +12,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -228,8 +228,9 @@ export const WorkspaceDetail = () => {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="packages">Packages</TabsTrigger>
-          <TabsTrigger value="toml">pixi.toml</TabsTrigger>
-          <TabsTrigger value="versions">Version History</TabsTrigger>
+          <TabsTrigger value="toml">Configuration</TabsTrigger>
+          <TabsTrigger value="versions">Versions</TabsTrigger>
+          <TabsTrigger value="jobs">Jobs</TabsTrigger>
           <TabsTrigger value="publications">
             Publications ({publications?.length || 0})
           </TabsTrigger>
@@ -238,187 +239,195 @@ export const WorkspaceDetail = () => {
               Collaborators ({collaborators?.length || 0})
             </TabsTrigger>
           )}
-          <TabsTrigger value="jobs">Jobs</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview">
-          <div className="space-y-4 mb-6">
-            <h2 className="text-2xl font-bold mb-0">Workspace Info</h2>
-            <p className="text-muted-foreground text-sm mt-1">
-              View details about this workspace, including its origin, size, and collaborators.
+        <TabsContent value="overview" className="px-1">
+          <div className="space-y-4 my-4">
+            <h2 className="text-2xl font-bold mb-0">Overview</h2>
+            <p className="text-muted-foreground text-sm mt-2">
+              View details for the active version of this workspace
             </p>
           </div>
           <div>
-            <Card>
-              <CardContent className="p-0 pb-2">
+            <div>
+
+              <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <IdCard className="h-3 w-3 shrink-0" />
+                  <span className="text-sm font-medium">Workspace Name</span>
+                </div>
+                <span className="text-sm">{workspace.name}</span>
+              </div>
+
+              {/* Owner */}
+              <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <User className="h-3 w-3 shrink-0" />
+                  <span className="text-sm font-medium">Owner</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <UserBadge username={workspace.owner?.username || (isOwner ? currentUser?.username || 'You' : 'Unknown')} />
+                </div>
+              </div>
+
+              {/* Status */}
+              <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <CircleQuestionMark className="h-3 w-3 shrink-0" />
+                  <span className="text-sm font-medium">Status</span>
+                </div>
                 <div>
+                  <Badge variant={workspaceStatusVariant[workspace.status] ?? 'outline'}>
+                    {capitalize(workspace.status)}
+                  </Badge>
+                </div>
+              </div>
 
-                  <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <IdCard className="h-3 w-3 shrink-0" />
-                      <span className="text-sm font-medium">Workspace Name</span>
-                    </div>
-                    <span className="text-sm">{workspace.name}</span>
+              {/* Package Manager */}
+              <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Package className="h-3 w-3 shrink-0" />
+                  <span className="text-sm font-medium">Package Manager</span>
+                </div>
+                <code className="text-sm font-mono">{workspace.package_manager}</code>
+              </div>
+
+              {/* Path (local workspaces only) */}
+              {isLocalWs && workspace.path && (
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <FolderOpen className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium">Path</span>
                   </div>
+                  <code className="text-sm font-mono truncate max-w-md" title={workspace.path}>{workspace.path}</code>
+                </div>
+              )}
 
-                  {/* Owner */}
-                  <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <User className="h-3 w-3 shrink-0" />
-                      <span className="text-sm font-medium">Owner</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <UserBadge username={workspace.owner?.username || (isOwner ? currentUser?.username || 'You' : 'Unknown')} />
-                    </div>
+              {/* Origin (local workspaces only) */}
+              {isLocalWs && workspace.origin_name && (
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <GitBranch className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium">Origin</span>
                   </div>
+                  <span className="text-sm">
+                    {workspace.origin_name}
+                    {workspace.origin_tag && `:${workspace.origin_tag}`}
+                    {workspace.origin_action && ` (${workspace.origin_action})`}
+                  </span>
+                </div>
+              )}
 
-                  {/* Status */}
-                  <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <CircleQuestionMark className="h-3 w-3 shrink-0" />
-                      <span className="text-sm font-medium">Status</span>
-                    </div>
-                    <div>
-                      <Badge variant={workspaceStatusVariant[workspace.status] ?? 'outline'}>
-                        {capitalize(workspace.status)}
-                      </Badge>
-                    </div>
-                  </div>
+              {/* Status */}
+              <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <CircleQuestionMark className="h-3 w-3 shrink-0" />
+                  <span className="text-sm font-medium">Status</span>
+                </div>
+                <div>
+                  <Badge variant={workspaceStatusVariant[workspace.status] ?? 'outline'}>
+                    {capitalize(workspace.status)}
+                  </Badge>
+                </div>
+              </div>
+              
+              {/* Size */}
+              <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <HardDrive className="h-3 w-3 shrink-0" />
+                  <span className="text-sm font-medium">Size</span>
+                </div>
+                <span className="text-sm">{workspace.size_formatted || 'Calculating...'}</span>
+              </div>
 
-                  {/* Package Manager */}
-                  <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <Package className="h-3 w-3 shrink-0" />
-                      <span className="text-sm font-medium">Package Manager</span>
-                    </div>
-                    <code className="text-sm font-mono">{workspace.package_manager}</code>
-                  </div>
+              {/* Packages — links to packages tab */}
+              <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                <button
+                  className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-left"
+                  onClick={() => setActiveTab('packages')}
+                >
+                  <Boxes className="h-3 w-3 shrink-0" />
+                  <span className="text-sm font-medium underline decoration-dotted underline-offset-2">Packages</span>
+                </button>
+                <span className="text-sm">{packages?.length || 0} installed</span>
+              </div>
 
-                  {/* Path (local workspaces only) */}
-                  {isLocalWs && workspace.path && (
-                    <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <FolderOpen className="h-3 w-3 shrink-0" />
-                        <span className="text-sm font-medium">Path</span>
-                      </div>
-                      <code className="text-sm font-mono truncate max-w-md" title={workspace.path}>{workspace.path}</code>
-                    </div>
-                  )}
-
-                  {/* Origin (local workspaces only) */}
-                  {isLocalWs && workspace.origin_name && (
-                    <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <GitBranch className="h-3 w-3 shrink-0" />
-                        <span className="text-sm font-medium">Origin</span>
-                      </div>
-                      <span className="text-sm">
-                        {workspace.origin_name}
-                        {workspace.origin_tag && `:${workspace.origin_tag}`}
-                        {workspace.origin_action && ` (${workspace.origin_action})`}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Size */}
-                  <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <HardDrive className="h-3 w-3 shrink-0" />
-                      <span className="text-sm font-medium">Size</span>
-                    </div>
-                    <span className="text-sm">{workspace.size_formatted || 'Calculating...'}</span>
-                  </div>
-
-                  {/* Packages — links to packages tab */}
-                  <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
+              {/* Collaborators — links to collaborators tab (non-local, non-local-mode workspaces) */}
+              {!isLocalWs && (
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                  {!isLocalMode ? (
                     <button
                       className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-left"
-                      onClick={() => setActiveTab('packages')}
+                      onClick={() => setActiveTab('collaborators')}
                     >
-                      <Boxes className="h-3 w-3 shrink-0" />
-                      <span className="text-sm font-medium underline decoration-dotted underline-offset-2">Packages</span>
+                      <Users className="h-3 w-3 shrink-0" />
+                      <span className="text-sm font-medium underline decoration-dotted underline-offset-2">Collaborators ({collaborators?.length || 0})</span>
                     </button>
-                    <span className="text-sm">{packages?.length || 0} installed</span>
-                  </div>
-
-                  {/* Collaborators — links to collaborators tab (non-local, non-local-mode workspaces) */}
-                  {!isLocalWs && (
-                    <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
-                      {!isLocalMode ? (
-                        <button
-                          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-left"
-                          onClick={() => setActiveTab('collaborators')}
-                        >
-                          <Users className="h-3 w-3 shrink-0" />
-                          <span className="text-sm font-medium underline decoration-dotted underline-offset-2">Collaborators ({collaborators?.length || 0})</span>
-                        </button>
-                      ) : (
-                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                          <Users className="h-3 w-3 shrink-0" />
-                          <span className="text-sm font-medium">Collaborators ({collaborators?.length || 0})</span>
-                        </div>
-                      )}
-                      <div className="flex flex-wrap gap-1.5">
-                        {collaborators?.slice(0, 3).map((c) => (
-                          <UserBadge key={c.user_id} username={c.username} />
-                        ))}
-                        {(collaborators?.length || 0) > 3 && (
-                          <span className="text-xs text-muted-foreground self-center">+{(collaborators?.length || 0) - 3} more</span>
-                        )}
-                      </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <Users className="h-3 w-3 shrink-0" />
+                      <span className="text-sm font-medium">Collaborators ({collaborators?.length || 0})</span>
                     </div>
                   )}
-
-                  {/* Created */}
-                  <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <Calendar className="h-3 w-3 shrink-0" />
-                      <span className="text-sm font-medium">Created</span>
-                    </div>
-                    <span className="text-sm">{new Date(workspace.created_at).toLocaleString()}</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {collaborators?.slice(0, 3).map((c) => (
+                      <UserBadge key={c.user_id} username={c.username} />
+                    ))}
+                    {(collaborators?.length || 0) > 3 && (
+                      <span className="text-xs text-muted-foreground self-center">+{(collaborators?.length || 0) - 3} more</span>
+                    )}
                   </div>
-
-                  {/* Last Updated */}
-                  <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <History className="h-3 w-3 shrink-0" />
-                      <span className="text-sm font-medium">Last Updated</span>
-                    </div>
-                    <span className="text-sm">{new Date(workspace.updated_at).toLocaleString()}</span>
-                  </div>
-
-                  {/* ID */}
-                  <div className="grid grid-cols-[220px_1fr] items-center gap-4 px-6 py-2.5">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <Fingerprint className="h-3 w-3 shrink-0" />
-                      <span className="text-sm font-medium">ID</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <code className="text-xs font-mono text-muted-foreground">{workspace.id}</code>
-                      <button
-                        className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground"
-                        onClick={async () => {
-                          await navigator.clipboard.writeText(workspace.id);
-                          setCopiedId(true);
-                          setTimeout(() => setCopiedId(false), 2000);
-                        }}
-                        title="Copy ID"
-                      >
-                        {copiedId ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                      </button>
-                    </div>
-                  </div>
-
                 </div>
-              </CardContent>
-            </Card>
+              )}
+
+              {/* Created */}
+              <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Calendar className="h-3 w-3 shrink-0" />
+                  <span className="text-sm font-medium">Created</span>
+                </div>
+                <span className="text-sm">{new Date(workspace.created_at).toLocaleString()}</span>
+              </div>
+
+              {/* Last Updated */}
+              <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <History className="h-3 w-3 shrink-0" />
+                  <span className="text-sm font-medium">Last Updated</span>
+                </div>
+                <span className="text-sm">{new Date(workspace.updated_at).toLocaleString()}</span>
+              </div>
+
+              {/* ID */}
+              <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Fingerprint className="h-3 w-3 shrink-0" />
+                  <span className="text-sm font-medium">ID</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <code className="text-xs font-mono text-muted-foreground">{workspace.id}</code>
+                  <button
+                    className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(workspace.id);
+                      setCopiedId(true);
+                      setTimeout(() => setCopiedId(false), 2000);
+                    }}
+                    title="Copy ID"
+                  >
+                    {copiedId ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  </button>
+                </div>
+              </div>
+
+            </div>
           </div>
           
         </TabsContent>
 
-        <TabsContent value="packages">
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
+        <TabsContent value="packages" className="px-1">
+          <div className="space-y-4 my-3">
+            <div className="flex justify-between items-center  mb-0">
               <h2 className="text-2xl font-bold">Packages</h2>
               <Button
                 onClick={() => {
@@ -431,6 +440,11 @@ export const WorkspaceDetail = () => {
                 Install Package
               </Button>
             </div>
+          <div>
+          <p className="text-muted-foreground text-sm mt-1">
+            Manage packages for the current version. Editing packages will create a new version of the workspace.
+          </p>
+        </div>
 
         {showInstall && (
           <Card>
@@ -471,50 +485,52 @@ export const WorkspaceDetail = () => {
           </div>
         ) : (
           <Card>
-            <div className="rounded-md border">
-              <table className="w-full">
-                <thead className="border-b bg-muted/50">
-                  <tr>
-                    <th className="text-left p-4 font-medium">Package</th>
-                    <th className="text-left p-4 font-medium">Installed Version</th>
-                    <th className="text-right p-4 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {packages?.length === 0 ? (
+            <CardContent className="p-0">
+              <div>
+                <table className="w-full">
+                  <thead className="border-b bg-muted/70">
                     <tr>
-                      <td colSpan={3} className="p-8 text-center text-muted-foreground">
-                        No packages installed
-                      </td>
+                      <th className="text-left p-4 font-medium">Package</th>
+                      <th className="text-left p-4 font-medium">Installed Version</th>
+                      <th className="text-right p-4 font-medium">Actions</th>
                     </tr>
-                  ) : (
-                    packages?.map((pkg) => (
-                      <tr key={pkg.id} className="hover:bg-muted/50">
-                        <td className="p-4">
-                          <div className="flex items-center gap-2">
-                            <Package className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">{pkg.name}</span>
-                          </div>
-                        </td>
-                        <td className="p-4 text-muted-foreground font-mono text-sm">
-                          {pkg.version || '-'}
-                        </td>
-                        <td className="p-4 text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setConfirmRemovePackage(pkg.name)}
-                            disabled={removeMutation.isPending || workspace.status !== 'ready'}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                  </thead>
+                  <tbody className="divide-y">
+                    {packages?.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="p-8 text-center text-muted-foreground">
+                          No packages installed
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    ) : (
+                      packages?.map((pkg) => (
+                        <tr key={pkg.id} className="hover:bg-muted/50">
+                          <td className="p-4">
+                            <div className="flex items-center gap-2">
+                              <Package className="h-4 w-4 text-muted-foreground" />
+                              <span className="font-medium">{pkg.name}</span>
+                            </div>
+                          </td>
+                          <td className="p-4 text-muted-foreground font-mono text-sm">
+                            {pkg.version || '-'}
+                          </td>
+                          <td className="p-4 text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setConfirmRemovePackage(pkg.name)}
+                              disabled={removeMutation.isPending || workspace.status !== 'ready'}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
           </Card>
         )}
 
@@ -526,267 +542,266 @@ export const WorkspaceDetail = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="toml">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>pixi.toml Configuration</CardTitle>
-                <div className="flex items-center gap-2">
-                  {pixiToml && !isEditingToml && (
+        <TabsContent value="toml" className="px-1">
+          <div className="space-y-4 my-4">
+            <h2 className="text-2xl font-bold mb-0">Configuration</h2>
+            <p className="text-muted-foreground text-sm mt-2">
+              Configuration defined in the pixi.toml for the current version
+            </p>
+          </div>
+            <div className="flex items-center justify-between pb-2">
+              <div className="flex items-center gap-2">
+                {pixiToml && !isEditingToml && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditedToml(pixiToml);
+                      setIsEditingToml(true);
+                    }}
+                    className="gap-2"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Edit
+                  </Button>
+                )}
+                {isEditingToml && (
+                  <>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        setEditedToml(pixiToml);
-                        setIsEditingToml(true);
+                      onClick={() => setIsEditingToml(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        setSavingToml(true);
+                        try {
+                          await workspacesApi.savePixiToml(wsId, editedToml);
+                          setPixiToml(editedToml);
+                          setIsEditingToml(false);
+                        } catch {
+                          setError('Failed to save pixi.toml');
+                        } finally {
+                          setSavingToml(false);
+                        }
                       }}
+                      disabled={savingToml}
                       className="gap-2"
                     >
-                      <Pencil className="h-4 w-4" />
-                      Edit
-                    </Button>
-                  )}
-                  {isEditingToml && (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setIsEditingToml(false)}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={async () => {
-                          setSavingToml(true);
-                          try {
-                            await workspacesApi.savePixiToml(wsId, editedToml);
-                            setPixiToml(editedToml);
-                            setIsEditingToml(false);
-                          } catch {
-                            setError('Failed to save pixi.toml');
-                          } finally {
-                            setSavingToml(false);
-                          }
-                        }}
-                        disabled={savingToml}
-                        className="gap-2"
-                      >
-                        {savingToml ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Save className="h-4 w-4" />
-                        )}
-                        Save
-                      </Button>
-                    </>
-                  )}
-                  {pixiToml && !isEditingToml && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleCopyToml}
-                      className="gap-2"
-                    >
-                      {copiedToml ? (
-                        <>
-                          <Check className="h-4 w-4" />
-                          Copied
-                        </>
+                      {savingToml ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
-                        <>
-                          <Copy className="h-4 w-4" />
-                          Copy
-                        </>
+                        <Save className="h-4 w-4" />
                       )}
+                      Save
                     </Button>
-                  )}
-                </div>
+                  </>
+                )}
+                {pixiToml && !isEditingToml && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyToml}
+                    className="gap-2"
+                  >
+                    {copiedToml ? (
+                      <>
+                        <Check className="h-4 w-4" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4" />
+                        Copy
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
-            </CardHeader>
-            <CardContent>
-              {workspace.status !== 'ready' ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Workspace must be ready to view pixi.toml
-                </div>
-              ) : loadingToml ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : isEditingToml ? (
-                <PixiTomlEditor
-                  tomlValue={editedToml}
-                  onTomlChange={setEditedToml}
-                  workspaceName={workspace.name}
-                />
-              ) : pixiToml ? (
-                <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto font-mono text-sm whitespace-pre">
-                  {pixiToml}
-                </pre>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  Failed to load pixi.toml
-                </div>
-              )}
-            </CardContent>
-          </Card>
+            </div>
+            {workspace.status !== 'ready' ? (
+              <div className="text-center py-8 text-muted-foreground">
+                Workspace must be ready to view pixi.toml
+              </div>
+            ) : loadingToml ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : isEditingToml ? (
+              <PixiTomlEditor
+                tomlValue={editedToml}
+                onTomlChange={setEditedToml}
+                workspaceName={workspace.name}
+              />
+            ) : pixiToml ? (
+              <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto font-mono text-sm whitespace-pre">
+                {pixiToml}
+              </pre>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                Failed to load pixi.toml
+              </div>
+            )}
         </TabsContent>
 
-        <TabsContent value="versions">
+        <TabsContent value="versions" className='px-1'>
           <VersionHistory environmentId={wsId} environmentStatus={workspace.status} />
         </TabsContent>
 
-        <TabsContent value="publications">
-          <Card>
-            <CardHeader>
-              <CardTitle>Publications</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {publicationsLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : publications && publications.length > 0 ? (
-                <div className="space-y-3">
-                  {publications.map((pub) => (
-                    <div
-                      key={pub.id}
-                      className="p-4 rounded-lg border"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <a
-                              href={`https://${pub.registry_url.replace(/^https?:\/\//, '').replace(/\/$/, '')}/repository/${pub.registry_namespace ? pub.registry_namespace + '/' : ''}${pub.repository}?tab=tags`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-medium text-lg hover:underline text-primary flex items-center gap-1"
-                            >
-                              {pub.repository}:{pub.tag}
-                              <ExternalLink className="h-4 w-4" />
-                            </a>
-                            {pub.is_public ? (
-                              <Badge variant="success">
-                                <Globe className="mr-1 h-3 w-3" />
-                                Public
-                              </Badge>
-                            ) : (
-                              <Badge variant="warning">
-                                <Lock className="mr-1 h-3 w-3" />
-                                Private
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                            <div>
-                              <span className="text-muted-foreground">Registry:</span>
-                              <span className="ml-2 font-medium">{pub.registry_name}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">URL:</span>
-                              <span className="ml-2 font-mono text-xs">{pub.registry_url}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Published by:</span>
-                              <span className="ml-2 font-medium">{pub.published_by}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Published:</span>
-                              <span className="ml-2">{new Date(pub.published_at).toLocaleString()}</span>
-                            </div>
-                          </div>
-                          <div className="pt-2">
-                            <span className="text-muted-foreground text-sm">Digest:</span>
-                            <code className="ml-2 text-xs font-mono bg-muted px-2 py-1 rounded">
-                              {pub.digest}
-                            </code>
-                          </div>
+        <TabsContent value="jobs" className="px-1">
+          <Jobs workspaceId={wsId} />
+        </TabsContent>
+
+        <TabsContent value="publications" className='px-1'>
+          <div className="space-y-4 my-4">
+            <h2 className="text-2xl font-bold mb-0">Publications</h2>
+            <p className="text-muted-foreground text-sm mt-2">
+              View all publications for this workspace
+            </p>
+          </div>
+          {publicationsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : publications && publications.length > 0 ? (
+            <div className="space-y-3">
+              {publications.map((pub) => (
+                <div
+                  key={pub.id}
+                  className="p-4 rounded-lg border"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={`https://${pub.registry_url.replace(/^https?:\/\//, '').replace(/\/$/, '')}/repository/${pub.registry_namespace ? pub.registry_namespace + '/' : ''}${pub.repository}?tab=tags`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-lg hover:underline text-primary flex items-center gap-1"
+                        >
+                          {pub.repository}:{pub.tag}
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                        {pub.is_public ? (
+                          <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
+                            <Globe className="mr-1 h-3 w-3" />
+                            Public
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20">
+                            <Lock className="mr-1 h-3 w-3" />
+                            Private
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Registry:</span>
+                          <span className="ml-2 font-medium">{pub.registry_name}</span>
                         </div>
-                        <div className="flex items-center gap-2 ml-4">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-1"
-                            onClick={() => handleCopyImport(pub)}
-                          >
-                            {copiedImportId === pub.id ? (
-                              <>
-                                <Check className="h-3.5 w-3.5" />
-                                Copied
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="h-3.5 w-3.5" />
-                                nebi import
-                              </>
-                            )}
-                          </Button>
-                          <Button
-                            variant={pub.is_public ? "outline" : "default"}
-                            size="sm"
-                            className="gap-1"
-                            onClick={() => updatePubMutation.mutate({ workspaceId: wsId, pubId: pub.id, isPublic: !pub.is_public })}
-                            disabled={updatePubMutation.isPending}
-                          >
-                            {pub.is_public ? (
-                              <>
-                                <Lock className="h-3.5 w-3.5" />
-                                Make Private
-                              </>
-                            ) : (
-                              <>
-                                <Globe className="h-3.5 w-3.5" />
-                                Make Public
-                              </>
-                            )}
-                          </Button>
+                        <div>
+                          <span className="text-muted-foreground">URL:</span>
+                          <span className="ml-2 font-mono text-xs">{pub.registry_url}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Published by:</span>
+                          <span className="ml-2 font-medium">{pub.published_by}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Published:</span>
+                          <span className="ml-2">{new Date(pub.published_at).toLocaleString()}</span>
                         </div>
                       </div>
+                      <div className="pt-2">
+                        <span className="text-muted-foreground text-sm">Digest:</span>
+                        <code className="ml-2 text-xs font-mono bg-muted px-2 py-1 rounded">
+                          {pub.digest}
+                        </code>
+                      </div>
                     </div>
-                  ))}
+                    <div className="flex items-center gap-2 ml-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1"
+                        onClick={() => handleCopyImport(pub)}
+                      >
+                        {copiedImportId === pub.id ? (
+                          <>
+                            <Check className="h-3.5 w-3.5" />
+                            Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5" />
+                            nebi import
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant={pub.is_public ? "outline" : "default"}
+                        size="sm"
+                        className="gap-1"
+                        onClick={() => updatePubMutation.mutate({ workspaceId: wsId, pubId: pub.id, isPublic: !pub.is_public })}
+                        disabled={updatePubMutation.isPending}
+                      >
+                        {pub.is_public ? (
+                          <>
+                            <Lock className="h-3.5 w-3.5" />
+                            Make Private
+                          </>
+                        ) : (
+                          <>
+                            <Globe className="h-3.5 w-3.5" />
+                            Make Public
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No publications yet. Click the "Publish" button to publish this workspace to an OCI registry.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No publications yet. Click the "Publish" button to publish this workspace to an OCI registry.
+            </p>
+          )}
         </TabsContent>
 
         {!isLocalWs && !isLocalMode && (
-          <TabsContent value="collaborators">
-            <Card>
-              <CardHeader>
-                <CardTitle>Collaborators</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {collaborators?.map((collab) => (
-                    <div
-                      key={collab.user_id}
-                      className="flex justify-between items-center p-3 rounded-lg border"
-                    >
-                      <div className="flex-1">
-                        <div className="font-medium">{collab.username}</div>
-                        <div className="text-sm text-muted-foreground">{collab.email}</div>
-                      </div>
-                      <RoleBadge role={collab.role} />
-                    </div>
-                  ))}
+          <TabsContent value="collaborators" className="px-1">
+            <div className="space-y-4 my-4">
+              <h2 className="text-2xl font-bold mb-0">Collaborators</h2>
+              <p className="text-muted-foreground text-sm mt-2">
+                View all collaborators for this workspace
+              </p>
+            </div>
+            <div className="space-y-2">
+              {collaborators?.map((collab) => (
+                <div
+                  key={collab.user_id}
+                  className="flex justify-between items-center p-3 rounded-lg border"
+                >
+                  <div className="flex-1">
+                    <div className="font-medium">{collab.username}</div>
+                    <div className="text-sm text-muted-foreground">{collab.email}</div>
+                  </div>
+                  <RoleBadge role={collab.role} />
                 </div>
-                {(!collaborators || collaborators.length === 0) && (
-                  <p className="text-sm text-muted-foreground text-center py-8">
-                    No collaborators yet
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+              ))}
+            </div>
+            {(!collaborators || collaborators.length === 0) && (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No collaborators yet
+              </p>
+            )}
           </TabsContent>
         )}
-        <TabsContent value="jobs">
-          <Jobs workspaceId={wsId} />
-        </TabsContent>
+        
       </Tabs>
 
       <ConfirmDialog

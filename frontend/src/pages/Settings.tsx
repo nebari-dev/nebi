@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Settings as SettingsIcon, Loader2, Wifi, WifiOff } from 'lucide-react';
+import { Loader2, Wifi, WifiOff } from 'lucide-react';
 
 export const Settings = () => {
   const { data: serverStatus, isLoading } = useRemoteServer();
@@ -58,7 +58,6 @@ export const Settings = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold flex items-center gap-3">
-          <SettingsIcon className="h-8 w-8" />
           Settings
         </h1>
         <p className="text-muted-foreground">Configure your local Nebi instance</p>

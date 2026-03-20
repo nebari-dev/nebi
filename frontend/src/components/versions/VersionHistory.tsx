@@ -91,12 +91,12 @@ export const VersionHistory = ({ environmentId, environmentStatus }: VersionHist
 
   return (
     <>
-      <div className="space-y-6">
+      <div className="space-y-6 my-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold">Version History</h2>
-            <p className="text-muted-foreground text-sm mt-1">
-              {versions.length} version{versions.length !== 1 ? 's' : ''} • Roll back to any previous state
+            <h2 className="text-2xl font-bold mb-0">Versions</h2>
+            <p className="text-muted-foreground text-sm mt-2">
+              Version history of configurations
             </p>
           </div>
         </div>

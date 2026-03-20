@@ -285,6 +285,33 @@ make test           # Run tests
 make swagger        # Generate API docs
 ```
 
+### E2E Tests
+
+E2E tests use [Playwright](https://playwright.dev/) and run against the frontend dev server with mocked API routes — no running backend is required.
+
+```bash
+# Install dependencies (first time only)
+npm install
+
+# Run all tests headlessly
+npm run test:e2e
+
+# Open the interactive Playwright UI (recommended for development)
+npm run test:e2e:ui
+
+# Run tests in headed mode (visible browser)
+npm run test:e2e:headed
+```
+
+Tests are organized into projects in `playwright.config.ts`:
+- **`setup`** — authenticates users and saves storage state (runs before other projects)
+- **`chromium`** — all standard user tests (`auth`, `workspaces`, `registries`, `workspace-detail`)
+- **`admin-chromium`** — admin-only tests (`admin.spec.ts`)
+
+Each spec also includes an accessibility audit using [axe-core](https://github.com/dequelabs/axe-core) to catch WCAG violations automatically.
+
+When using the Playwright UI, make sure all three projects are checked in the sidebar to see the full test suite.
+
 ### Desktop App
 
 Nebi includes a desktop application built with [Wails](https://wails.io/).

@@ -23,26 +23,26 @@ These are system-level dependencies that pip and uv cannot install. Fixing this 
 
 But pixi wasn't designed for **team environment management**:
 
-- **No version history:** The lockfile is overwritten on every change, with no way to diff or roll back.
-- **No sharing:** Environments are tied to project directories, with no way to publish or distribute them.
-- **No governance:** Anyone who can edit `pixi.toml` can change the environment, with no approval workflows or access control.
+- **No dedicated version history:** Pixi overwrites the lockfile on every change, so tracking, diffing, or rolling back requires a separate version control system like git.
+- **No publish and distribution system:** Environment specifications and lockfiles live inside project directories, shared only through the project repository. There is no built-in way to publish or distribute environments independently.
+- **No governance:** Anyone who can edit `pixi.toml` can change the environment, with no approval workflows or access control beyond the project repository level permissions.
 
-Nebi fills these gaps.
+Nebi builds on Pixi to fill these gaps.
 
 ## Why Nebi?
 
 Since nebi builds on pixi, you get all of pixi's features plus team collaboration on top.
 
-### Install system libraries alongside Python packages
+### Install system libraries alongside Python packages (with Pixi)
 
-With nebi, `pixi add gdal` installs both the Python bindings and the compiled C/C++ library. No separate `apt-get` or `brew` steps needed:
+Nebi tracks the pixi.toml and lockfile, so you can use pixi directly to install packages. `pixi add gdal` installs both the Python bindings and the compiled C/C++ library. No separate `apt-get` or `brew` steps needed:
 
 ```bash
 pixi add gdal geopandas lightgbm
 pixi add --pypi scikit-learn
 ```
 
-### Reproducible environments with lockfiles
+### Reproducible environments with lockfiles (with Pixi)
 
 Without a lockfile, the same install can produce different environments on different machines or at different times. Pixi solves this by generating a lockfile on every `pixi add`, pinning every transitive dependency to an exact version and hash:
 
@@ -62,7 +62,7 @@ git pull
 pixi install
 ```
 
-### Built-in task runner
+### Built-in task runner (with Pixi)
 
 Data science projects involve commands that are hard to remember, like `python src/train.py --config configs/experiment_3.yaml --epochs 100`.
 
@@ -98,7 +98,7 @@ pixi install
 
 ### Share environments across your team
 
-Publish environments to an OCI registry (the same standard behind Docker Hub) so anyone can reproduce your setup without cloning your repo:
+Instead of sharing environments through git repos, the Nebi server lets you publish them to an OCI registry (the same standard behind Docker Hub). Anyone on your team can pull and reproduce your setup from anywhere:
 
 ```bash
 # Publish to an OCI registry

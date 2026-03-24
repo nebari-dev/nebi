@@ -131,6 +131,151 @@ Server:    http://localhost:8460
 Origin:    myworkspace:v1.0 (pull)
 ```
 
+## CLI Usage
+
+### Initialize and track
+
+Track a pixi workspace (runs `pixi init` if no `pixi.toml` exists):
+
+```bash
+cd my-project
+nebi init
+```
+
+Check sync status:
+
+```bash
+nebi status
+```
+
+List all tracked workspaces:
+
+```bash
+nebi workspace list
+```
+
+### Push and pull
+
+Push your environment to the server:
+
+```bash
+nebi push myworkspace                    # auto-tags: sha-<hash> + latest
+nebi push myworkspace:v1.0               # also adds user tag v1.0
+nebi push                                # reuse workspace name from origin
+```
+
+Pull an environment:
+
+```bash
+nebi pull myworkspace:v1.0
+nebi pull                                # re-pull from last origin
+```
+
+List workspaces and tags on a server:
+
+```bash
+nebi workspace list --remote
+nebi workspace tags myworkspace
+```
+
+### Compare environments
+
+Compare against the last pushed or pulled version:
+
+```bash
+nebi diff
+```
+
+Compare between directories:
+
+```bash
+nebi diff ./project-a ./project-b
+nebi diff ./project-a ./project-b --lock    # also compare pixi.lock
+```
+
+Compare server versions or workspace names:
+
+```bash
+nebi diff myworkspace:v1 myworkspace:v2
+nebi diff data-science ./my-project
+nebi diff data-science ml-pipeline
+```
+
+### Run tasks and shells
+
+Open a shell in any workspace by name:
+
+```bash
+nebi shell data-science
+nebi shell data-science -e dev          # args pass through to pixi shell
+```
+
+Run pixi tasks:
+
+```bash
+nebi run my-task                        # run a pixi task (auto-initializes workspace)
+nebi run data-science my-task           # run a task in a named workspace
+```
+
+### Publish and clean up
+
+Publish a workspace to an OCI registry:
+
+```bash
+nebi publish myworkspace
+nebi publish myworkspace --tag v1.0.0
+nebi publish myworkspace --registry ghcr --repo myorg/myenv
+```
+
+Remove and clean up workspaces:
+
+```bash
+nebi workspace remove data-science      # remove a workspace from tracking
+nebi workspace remove myenv --remote   # remove a workspace from a server
+nebi workspace prune                   # clean up workspaces with missing paths
+```
+
+### Connection Commands
+
+Authenticate with a server:
+
+```bash
+nebi login https://nebi.company.com
+nebi login https://nebi.company.com --token <api-token>
+```
+
+List OCI registries on the server:
+
+```bash
+nebi registry list
+```
+
+### Admin Commands
+
+Start a server with default settings:
+
+```bash
+nebi serve
+```
+
+Or customize the port and mode:
+
+```bash
+nebi serve --port 8080 --mode server
+```
+
+### Shell Completion
+
+Nebi supports tab completion for bash, zsh, fish, and PowerShell. Run `nebi completion --help` for setup instructions.
+
+### Configuration
+
+Nebi stores data in platform-standard directories:
+- **Data** (`~/.local/share/nebi/`): index and credentials
+- **Config** (`~/.config/nebi/config.yaml`): default server and user preferences
+
+Run `nebi login <server-url>` to configure the server. All server-dependent commands (`push`, `pull`, `diff`, `workspace tags`, etc.) use the configured server.
+
 ## API Usage
 
 ### Authentication
@@ -213,88 +358,6 @@ The CLI works without changes — just include the full path when connecting:
 ```bash
 nebi login https://hub.example.com/proxy/8460
 ```
-
-## CLI Usage
-
-### Workspace Commands
-
-```bash
-# Track a pixi workspace (runs pixi init if no pixi.toml exists)
-cd my-project
-nebi init
-
-# Check sync status
-nebi status
-
-# List tracked workspaces
-nebi workspace list
-
-# Compare pixi specs between directories or server versions
-nebi diff                                # local vs last pushed/pulled origin
-nebi diff ./project-a ./project-b
-nebi diff ./project-a ./project-b --lock    # also compare pixi.lock
-nebi diff myworkspace:v1 myworkspace:v2
-
-# Push/pull versioned specs
-nebi push myworkspace                    # auto-tags: sha-<hash> + latest
-nebi push myworkspace:v1.0               # also adds user tag v1.0
-nebi push                                # reuse workspace name from origin
-nebi pull myworkspace:v1.0
-nebi pull                                # re-pull from last origin
-
-# List workspaces and tags on a server
-nebi workspace list --remote
-nebi workspace tags myworkspace
-
-# Run pixi tasks and shells by workspace name
-nebi shell data-science                 # open pixi shell in a workspace by name
-nebi shell data-science -e dev          # args pass through to pixi shell
-nebi run my-task                        # run a pixi task (auto-initializes workspace)
-nebi run data-science my-task           # run a task in a named workspace
-nebi workspace remove data-science      # remove a workspace from tracking
-nebi workspace remove myenv --remote   # remove a workspace from a server
-nebi workspace prune                   # clean up workspaces with missing paths
-
-# Diff using workspace names
-nebi diff data-science ./my-project
-nebi diff data-science ml-pipeline
-
-# Publish a workspace to an OCI registry (uses content hash tag by default)
-nebi publish myworkspace
-nebi publish myworkspace --tag v1.0.0
-nebi publish myworkspace --registry ghcr --repo myorg/myenv
-```
-
-### Connection Commands
-
-```bash
-# Authenticate with a server
-nebi login https://nebi.company.com
-nebi login https://nebi.company.com --token <api-token>
-
-# List OCI registries on the server
-nebi registry list
-```
-
-### Admin Commands
-
-```bash
-# Run a server instance
-nebi serve
-nebi serve --port 8080 --mode server
-```
-
-### Shell Completion
-
-Nebi supports tab completion for bash, zsh, fish, and PowerShell. Run `nebi completion --help` for setup instructions.
-
-### Configuration
-
-Nebi stores data in platform-standard directories:
-- **Data** (`~/.local/share/nebi/`): index and credentials
-- **Config** (`~/.config/nebi/config.yaml`): default server and user preferences
-
-Run `nebi login <server-url>` to configure the server. All server-dependent commands (`push`, `pull`, `diff`, `workspace tags`, etc.) use the configured server.
 
 ## Development
 

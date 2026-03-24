@@ -4,7 +4,6 @@ const sidebars: SidebarsConfig = {
   docsSidebar: [
     'installation',
     'introduction',
-    'getting-started',
     'architecture',
     'pixi-essentials',
     'cli-guide',

@@ -36,14 +36,18 @@
 
 ## What is Nebi?
 
-Nebi is a server and CLI for managing [Pixi](https://prefix.dev/) environments in multi-user settings. The server handles environment creation, versioning, and access control, while the local-first CLI lets you track workspaces, push/pull versioned specs, and diff environments across machines or teams.
+If your Python projects need compiled libraries like GDAL or CUDA, you know `pip install` often isn't enough. [Pixi](https://pixi.sh) solves that by managing both Python packages and system libraries in one lockfile.
+
+Nebi builds on Pixi to add what teams need: version history, rollback, sharing environments through registries, and access control over who can change production dependencies.
+
 **Key features:**
-- Server with async job queue, RBAC, and PostgreSQL/Valkey backend
-- Local-first CLI for workspace tracking (no server required for basic use)
-- Push/pull versioned `pixi.toml` and `pixi.lock` to shared servers with content-addressed deduplication
-- Publish environments from the server to OCI registries (Quay.io, GHCR, etc.)
-- Diff specs between local directories or server versions
-- Single-server connection with token-based authentication
+
+- Install system libraries alongside Python packages (via Pixi)
+- Push, pull, and diff versioned environments across machines
+- Share environments through OCI registries (Quay.io, GHCR, etc.)
+- Roll back when a dependency update breaks your workflow
+- Control who can modify shared environments with role-based access
+- Activate any workspace by name from any directory
 
 ## Quick Start
 
@@ -63,52 +67,69 @@ See `install.sh --help` or the script source for advanced options (`--version`, 
 
 ### CLI Quick Start
 
+#### Set up
+
+Start a local Nebi server (set your own admin credentials):
+
 ```bash
-# Install nebi CLI (download from releases or build from source)
-go install github.com/nebari-dev/nebi/cmd/nebi@latest
+export ADMIN_USERNAME=admin
+export ADMIN_PASSWORD=your-password
+nebi serve
+```
 
-# Authenticate with a server
-nebi login https://nebi.company.com
+This starts the Nebi server at [http://localhost:8460](http://localhost:8460).
 
-# Track a pixi workspace
+In a new terminal, connect the CLI to the server:
+
+```bash
+nebi login http://localhost:8460
+```
+
+#### Track and push your environment
+
+Initialize nebi in your project:
+
+```bash
 cd my-project
 nebi init
+```
 
-# Push your environment to the server (auto-tags with content hash + latest)
+Push your environment to the server:
+
+```bash
 nebi push myworkspace
+```
 
-# Push with an explicit tag
+Or tag a specific version:
+
+```bash
 nebi push myworkspace:v1.0
+```
 
-# Pull an environment on another machine
+Once pushed, your workspace appears on the server dashboard:
+
+![Workspace](assets/workspaces.png)
+
+#### Pull on another machine
+
+Pull an environment on another machine:
+
+```bash
 nebi pull myworkspace:v1.0
+```
 
-# Check sync status anytime
+Verify what version you're running with `nebi status`:
+
+```bash
 nebi status
 ```
 
-### Local Development
-
-```bash
-# Install development tools
-make install-tools
-
-# Run with hot reload (frontend + backend)
-# Frontend dependencies will be automatically installed if needed
-ADMIN_USERNAME=admin ADMIN_PASSWORD=<your-password> make dev
+```text
+Workspace: myworkspace
+Path:      /Users/you/my-project
+Server:    http://localhost:8460
+Origin:    myworkspace:v1.0 (pull)
 ```
-
-This will start:
-- **Frontend dev server** at http://localhost:8461 (with hot reload)
-- **Backend API** at http://localhost:8460 (with hot reload)
-- **API docs** at http://localhost:8460/docs
-
-**Admin Credentials:**
-Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables to create the admin user on first startup.
-
-> **Note**: The admin user is automatically created on first startup when `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables are set. If you start the server without these variables, no admin user will be created and you won't be able to log in.
-
-> **Tip**: Access the app at http://localhost:8461 for the best development experience with instant hot reload of frontend changes!
 
 ## API Usage
 
@@ -276,6 +297,34 @@ Nebi stores data in platform-standard directories:
 Run `nebi login <server-url>` to configure the server. All server-dependent commands (`push`, `pull`, `diff`, `workspace tags`, etc.) use the configured server.
 
 ## Development
+
+### Running the Server Locally
+
+To develop or test the Nebi server on your machine, install the required tools and start the dev environment:
+
+```bash
+# Install development tools
+make install-tools
+
+# Run with hot reload (frontend + backend)
+# Frontend dependencies will be automatically installed if needed
+ADMIN_USERNAME=admin ADMIN_PASSWORD=<your-password> make dev
+```
+
+This will start:
+
+- **Frontend dev server** at http://localhost:8461 (with hot reload)
+- **Backend API** at http://localhost:8460 (with hot reload)
+- **API docs** at http://localhost:8460/docs
+
+**Admin Credentials:**
+Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables to create the admin user on first startup.
+
+> **Note**: The admin user is automatically created on first startup when `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables are set. If you start the server without these variables, no admin user will be created and you won't be able to log in.
+
+> **Tip**: Access the app at http://localhost:8461 for the best development experience with instant hot reload of frontend changes!
+
+### Make Targets
 
 ```bash
 make help           # Show all targets

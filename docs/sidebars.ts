@@ -2,9 +2,10 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
 const sidebars: SidebarsConfig = {
   docsSidebar: [
-    // 'introduction',
     // 'installation',
     'getting-started', // TODO: Remove after installation doc is merged
+    'introduction',
+    'architecture',
     'pixi-essentials',
     {
       type: 'category',

@@ -51,9 +51,6 @@ export const Registries = () => {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <div className="flex-1">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span className="text-foreground">Registries</span>
-          </div>
           <h1 className="text-3xl font-bold">Registries</h1>
           <p className="text-muted-foreground">Browse OCI registries and import environments</p>
         </div>

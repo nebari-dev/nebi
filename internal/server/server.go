@@ -77,6 +77,17 @@ func Run(ctx context.Context, cfg Config) error {
 		if err := store.MigrateServerDB(database); err != nil {
 			return fmt.Errorf("failed to migrate store tables: %w", err)
 		}
+
+		// Auto-connect to remote server if configured via environment
+		if remoteURL := os.Getenv("NEBI_REMOTE_URL"); remoteURL != "" {
+			if authToken := os.Getenv("NEBI_AUTH_TOKEN"); authToken != "" {
+				database.Model(&store.Config{}).Where("id = ?", 1).Update("server_url", remoteURL)
+				database.Model(&store.Credentials{}).Where("id = ?", 1).Updates(map[string]any{
+					"token": authToken,
+				})
+				slog.Info("Auto-connected to remote server", "url", remoteURL)
+			}
+		}
 	}
 	slog.Info("Database migrations completed")
 

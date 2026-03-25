@@ -145,6 +145,6 @@ nebi shell geo-ml       # same environment, any directory
 
 ## Next Steps
 
-- [Getting Started](./getting-started.md): Install nebi and set up your first workspace
+- [Getting Started](./installation.md): Install nebi and set up your first workspace
 - [Architecture](./architecture.md): How the CLI, server, and OCI registries fit together
 - [CLI Guide](./cli-guide.md): Local workflows and team collaboration

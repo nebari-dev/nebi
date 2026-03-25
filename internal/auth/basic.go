@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -28,6 +29,7 @@ type BasicAuthenticator struct {
 	db               *gorm.DB
 	jwtSecret        []byte
 	proxyAdminGroups []string
+	idTokenVerifier  *oidc.IDTokenVerifier
 }
 
 // NewBasicAuthenticator creates a new basic authenticator
@@ -41,6 +43,11 @@ func NewBasicAuthenticator(db *gorm.DB, jwtSecret string) *BasicAuthenticator {
 // SetProxyAdminGroups configures which IdToken groups grant Nebi admin.
 func (a *BasicAuthenticator) SetProxyAdminGroups(groups string) {
 	a.proxyAdminGroups = parseAdminGroups(groups)
+}
+
+// SetIDTokenVerifier configures the OIDC verifier used to validate IdToken cookies.
+func (a *BasicAuthenticator) SetIDTokenVerifier(v *oidc.IDTokenVerifier) {
+	a.idTokenVerifier = v
 }
 
 // HashPassword hashes a password using bcrypt
@@ -174,7 +181,7 @@ func (a *BasicAuthenticator) Middleware() gin.HandlerFunc {
 		}
 
 		// Fallback: try IdToken cookie from authenticating proxy (e.g. Envoy Gateway)
-		proxyClaims, err := parseIdTokenCookie(c.Request)
+		proxyClaims, err := verifyIdTokenCookie(c.Request, a.idTokenVerifier)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing authorization"})
 			c.Abort()
@@ -220,7 +227,7 @@ func (a *BasicAuthenticator) validateAndLoadUser(tokenString string) (*models.Us
 // SessionFromProxy checks for an IdToken cookie, finds/creates the user,
 // syncs roles, and returns a Nebi JWT + user. Used by /auth/session.
 func (a *BasicAuthenticator) SessionFromProxy(r *http.Request, adminGroups string) (*LoginResponse, error) {
-	proxyClaims, err := parseIdTokenCookie(r)
+	proxyClaims, err := verifyIdTokenCookie(r, a.idTokenVerifier)
 	if err != nil {
 		return nil, err
 	}

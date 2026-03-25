@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
 import { getBasePath } from '@/lib/basePath';
@@ -8,7 +8,8 @@ import { useRemoteServer } from '@/hooks/useRemote';
 import { useVersion } from '@/hooks/useVersion';
 import { Button } from '@/components/ui/button';
 
-import { LogOut, Boxes, ListTodo, Shield, Settings } from 'lucide-react';
+import { LogOut, Boxes, Shield, Settings, ExternalLink } from 'lucide-react';
+import { openExternal } from '@/lib/openExternal';
 import { useState } from 'react';
 
 export const Layout = () => {
@@ -22,6 +23,9 @@ export const Layout = () => {
   const { data: versionInfo } = useVersion();
   const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
 
+  const location = useLocation();
+  const isAdminPage = location.pathname.startsWith('/admin');
+
   const handleLogout = () => {
     clearAuth();
     navigate('/login');
@@ -30,7 +34,7 @@ export const Layout = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
+        <div className={isAdminPage ? 'px-4 py-4' : 'container mx-auto px-4 py-4'}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-8">
               <NavLink to="/workspaces">
@@ -49,17 +53,6 @@ export const Layout = () => {
                     >
                       <Boxes className="h-4 w-4" />
                       Workspaces
-                    </Button>
-                  )}
-                </NavLink>
-                <NavLink to="/jobs">
-                  {({ isActive }) => (
-                    <Button
-                      variant={isActive ? 'secondary' : 'ghost'}
-                      className="gap-2"
-                    >
-                      <ListTodo className="h-4 w-4" />
-                      Jobs
                     </Button>
                   )}
                 </NavLink>
@@ -87,6 +80,15 @@ export const Layout = () => {
                     )}
                   </NavLink>
                 )}
+                <Button
+                  variant="ghost"
+                  className="gap-2"
+                  onClick={() => openExternal('https://nebi.nebari.dev/')}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Docs
+                </Button>
+
               </nav>
             </div>
             <div className="flex items-center gap-4">
@@ -172,7 +174,7 @@ export const Layout = () => {
           </div>
         </div>
       </header>
-      <main className="container mx-auto px-4 py-8 flex-1">
+      <main className={isAdminPage ? 'flex-1 overflow-hidden' : 'container mx-auto px-4 py-8 flex-1'}>
         <Outlet />
       </main>
       {versionInfo?.version && (

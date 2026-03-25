@@ -2,8 +2,10 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
 const sidebars: SidebarsConfig = {
   docsSidebar: [
-    'getting-started',
+    'installation',
+    'introduction',
     'architecture',
+    'pixi-essentials',
     'cli-guide',
     'server-setup',
     'cli-reference',

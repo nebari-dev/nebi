@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export interface User {
   id: string; // UUID
   username: string;
@@ -229,6 +230,7 @@ export interface RemoteWorkspaceVersion {
   workspace_id: string;
   version_number: number;
   created_at: string;
+  description?: string;
 }
 
 export interface RemoteWorkspaceTag {

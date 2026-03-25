@@ -2,9 +2,9 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
 const sidebars: SidebarsConfig = {
   docsSidebar: [
-    'installation',
     'introduction',
-    'architecture',
+    'installation',
+    'nebi-components',
     'pixi-essentials',
     {
       type: 'category',

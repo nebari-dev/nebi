@@ -63,3 +63,15 @@
     text-decoration: none;
   }
 }
+
+// ==============================================================================
+// Announcement Bar
+// ==============================================================================
+
+div[class^="announcementBar_"] {
+  font-weight: 550;
+  height: 50px;
+  background-color: var(--ifm-color-on-background-2);
+  color: var(--ifm-color-content-inverse);
+  border-bottom: 2px solid var(--secondary-nebari);
+}

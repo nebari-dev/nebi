@@ -16,9 +16,6 @@ Install the CLI (`nebi` package) and the desktop application (`nebi-desktop`) wi
 
 ```bash
 pixi global install nebi nebi-desktop
-```
-
-## Installation script
 
 :::note
 Supported platforms: **macOS** and **Linux**

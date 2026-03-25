@@ -126,20 +126,3 @@ To clean up all workspaces whose directories no longer exist:
 ```bash
 nebi workspace prune
 ```
-
-## Quick Reference
-
-| Task | Command |
-|------|---------|
-| Track a workspace | `nebi init` |
-| List local workspaces | `nebi workspace list` |
-| Activate a shell | `nebi shell <name>` |
-| Run a task | `nebi run <name> <task>` |
-| Import from OCI | `nebi import quay.io/org/env:tag` |
-| Connect to a server | `nebi login <server-url>` |
-| Push to server | `nebi push myworkspace:prod` |
-| Pull from server | `nebi pull myworkspace:prod` |
-| List remote workspaces | `nebi workspace list --remote` |
-| Check status | `nebi status` |
-| Compare changes | `nebi diff` |
-| Publish to OCI | `nebi publish myworkspace --tag v1.0` |

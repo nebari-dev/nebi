@@ -73,3 +73,36 @@ func (c *Client) PollDeviceCode(ctx context.Context, code string) (*DevicePollRe
 	}
 	return &resp, nil
 }
+
+// DeviceConfigResponse is the response from GET /auth/device-config.
+type DeviceConfigResponse struct {
+	Enabled   bool   `json:"enabled"`
+	IssuerURL string `json:"issuer_url,omitempty"`
+	ClientID  string `json:"client_id,omitempty"`
+}
+
+// GetDeviceConfig fetches the OIDC device flow configuration from the server.
+func (c *Client) GetDeviceConfig(ctx context.Context) (*DeviceConfigResponse, error) {
+	var resp DeviceConfigResponse
+	_, err := c.Get(ctx, "/auth/device-config", &resp)
+	if err != nil {
+		return nil, fmt.Errorf("fetching device config: %w", err)
+	}
+	return &resp, nil
+}
+
+// DeviceTokenResponse is the response from POST /auth/device-token.
+type DeviceTokenResponse struct {
+	Token    string `json:"token"`
+	Username string `json:"username"`
+}
+
+// ExchangeDeviceToken exchanges a Keycloak ID token for a Nebi JWT.
+func (c *Client) ExchangeDeviceToken(ctx context.Context, idToken string) (*DeviceTokenResponse, error) {
+	var resp DeviceTokenResponse
+	_, err := c.Post(ctx, "/auth/device-token", map[string]string{"id_token": idToken}, &resp)
+	if err != nil {
+		return nil, fmt.Errorf("exchanging device token: %w", err)
+	}
+	return &resp, nil
+}

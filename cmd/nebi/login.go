@@ -21,7 +21,7 @@ import (
 
 var (
 	loginToken         string
-	loginUsername       string
+	loginUsername      string
 	loginPasswordStdin bool
 )
 

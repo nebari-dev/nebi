@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -263,4 +264,36 @@ func (a *BasicAuthenticator) GetUserFromContext(c *gin.Context) (*models.User, e
 	}
 
 	return user, nil
+}
+
+// ExchangeIDToken verifies a raw OIDC ID token (e.g. from device flow),
+// finds/creates the user, syncs roles, and returns a Nebi JWT.
+func (a *BasicAuthenticator) ExchangeIDToken(rawIDToken string, adminGroups string) (*LoginResponse, error) {
+	if a.idTokenVerifier == nil {
+		return nil, errors.New("OIDC verification not configured")
+	}
+
+	idToken, err := a.idTokenVerifier.Verify(context.Background(), rawIDToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify ID token: %w", err)
+	}
+
+	var claims ProxyTokenClaims
+	if err := idToken.Claims(&claims); err != nil {
+		return nil, fmt.Errorf("failed to extract claims: %w", err)
+	}
+
+	user, err := findOrCreateProxyUser(a.db, &claims)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find/create user: %w", err)
+	}
+
+	syncRolesFromGroups(user.ID, claims.Groups, parseAdminGroups(adminGroups))
+
+	token, err := a.generateToken(user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate token: %w", err)
+	}
+
+	return &LoginResponse{Token: token, User: user}, nil
 }

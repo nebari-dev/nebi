@@ -3,7 +3,10 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -18,7 +21,7 @@ import (
 
 var (
 	loginToken         string
-	loginUsername      string
+	loginUsername       string
 	loginPasswordStdin bool
 )
 
@@ -28,7 +31,7 @@ var loginCmd = &cobra.Command{
 	Long: `Sets the server URL and authenticates with a nebi server.
 
 Examples:
-  # Browser login (default) — opens browser, works with proxy/Keycloak
+  # Default: device flow via Keycloak (opens browser, works with proxy)
   nebi login https://nebi.company.com
 
   # Username/password login
@@ -73,41 +76,17 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		username = "(token)"
 	} else if loginUsername != "" {
 		// Username/password mode
-		var password string
-
-		if loginPasswordStdin {
-			scanner := bufio.NewScanner(os.Stdin)
-			if scanner.Scan() {
-				password = scanner.Text()
-			}
-			if err := scanner.Err(); err != nil {
-				return fmt.Errorf("reading password from stdin: %w", err)
-			}
-		} else if term.IsTerminal(int(os.Stdin.Fd())) {
-			fmt.Fprint(os.Stderr, "Password: ")
-			passBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
-			fmt.Fprintln(os.Stderr)
-			if err != nil {
-				return fmt.Errorf("reading password: %w", err)
-			}
-			password = string(passBytes)
-		} else {
-			return fmt.Errorf("password required: use --password-stdin for non-interactive input")
-		}
-
-		client := cliclient.NewWithoutAuth(serverURL)
-		resp, err := client.Login(context.Background(), loginUsername, password)
+		t, u, err := usernamePasswordLogin(serverURL, loginUsername)
 		if err != nil {
-			return fmt.Errorf("login failed: %w", err)
+			return err
 		}
-
-		token = resp.Token
-		username = loginUsername
+		token = t
+		username = u
 	} else {
-		// Default: browser-based device code login
-		t, u, err := browserLogin(serverURL)
+		// Default: try device flow, fall back to username/password prompt
+		t, u, err := interactiveLogin(serverURL)
 		if err != nil {
-			return fmt.Errorf("browser login failed: %w", err)
+			return err
 		}
 		token = t
 		username = u
@@ -131,48 +110,284 @@ func runLogin(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// browserLogin performs browser-based authentication using a device code flow.
-// It requests a short code from the server, opens the browser, and polls for completion.
-func browserLogin(serverURL string) (token, username string, err error) {
+// interactiveLogin tries RFC 8628 device flow first, falls back to username/password.
+func interactiveLogin(serverURL string) (token, username string, err error) {
 	ctx := context.Background()
 	client := cliclient.NewWithoutAuth(serverURL)
 
-	// Request a device code
-	codeResp, err := client.RequestDeviceCode(ctx)
+	// Check if the server supports device flow
+	deviceCfg, err := client.GetDeviceConfig(ctx)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to request device code: %w", err)
+		fmt.Fprintf(os.Stderr, "Could not check device flow support: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Falling back to username/password login.\n\n")
+		return promptUsernamePasswordLogin(serverURL)
 	}
 
-	// Build the login URL
-	loginURL := fmt.Sprintf("%s/api/v1/auth/cli-login?code=%s", serverURL, codeResp.Code)
+	if !deviceCfg.Enabled {
+		fmt.Fprintf(os.Stderr, "Server does not support device flow.\n")
+		return promptUsernamePasswordLogin(serverURL)
+	}
 
-	fmt.Fprintf(os.Stderr, "Opening browser for authentication...\n")
-	fmt.Fprintf(os.Stderr, "If the browser doesn't open, visit:\n  %s\n\n", loginURL)
-	fmt.Fprintf(os.Stderr, "Your login code is: %s\n\n", codeResp.Code)
+	return deviceFlowLogin(ctx, serverURL, client, deviceCfg)
+}
 
-	// Open browser
-	if err := openBrowser(loginURL); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not open browser: %v\n", err)
+// deviceFlowLogin performs OAuth2 Device Authorization Grant (RFC 8628) via Keycloak.
+func deviceFlowLogin(ctx context.Context, serverURL string, client *cliclient.Client, cfg *cliclient.DeviceConfigResponse) (token, username string, err error) {
+	// Discover the device authorization endpoint from OIDC well-known config
+	deviceAuthURL, tokenURL, err := discoverDeviceEndpoints(ctx, cfg.IssuerURL)
+	if err != nil {
+		return "", "", fmt.Errorf("OIDC discovery failed: %w", err)
+	}
+
+	// Request device authorization from Keycloak
+	deviceResp, err := requestDeviceAuthorization(ctx, deviceAuthURL, cfg.ClientID)
+	if err != nil {
+		return "", "", fmt.Errorf("device authorization failed: %w", err)
+	}
+
+	// Show the user code and verification URI
+	fmt.Fprintf(os.Stderr, "To authenticate, open the following URL in your browser:\n\n")
+	fmt.Fprintf(os.Stderr, "  %s\n\n", deviceResp.VerificationURIComplete)
+	fmt.Fprintf(os.Stderr, "And verify the code: %s\n\n", deviceResp.UserCode)
+
+	// Try to open the browser
+	if err := openBrowser(deviceResp.VerificationURIComplete); err != nil {
+		fmt.Fprintf(os.Stderr, "(Could not open browser automatically)\n\n")
 	}
 
 	fmt.Fprintf(os.Stderr, "Waiting for authentication...\n")
 
-	// Poll for completion
-	deadline := time.Now().Add(5 * time.Minute)
+	// Poll Keycloak's token endpoint
+	interval := deviceResp.Interval
+	if interval < 5 {
+		interval = 5
+	}
+	deadline := time.Now().Add(time.Duration(deviceResp.ExpiresIn) * time.Second)
+
+	var idToken string
 	for time.Now().Before(deadline) {
-		time.Sleep(2 * time.Second)
+		time.Sleep(time.Duration(interval) * time.Second)
 
-		pollResp, pollErr := client.PollDeviceCode(ctx, codeResp.Code)
+		tokenResp, pollErr := pollDeviceToken(ctx, tokenURL, cfg.ClientID, deviceResp.DeviceCode)
 		if pollErr != nil {
-			continue // transient error, keep polling
+			if pollErr == errAuthorizationPending || pollErr == errSlowDown {
+				if pollErr == errSlowDown {
+					interval += 5
+				}
+				continue
+			}
+			return "", "", fmt.Errorf("token polling failed: %w", pollErr)
 		}
 
-		if pollResp.Status == "complete" {
-			return pollResp.Token, pollResp.Username, nil
-		}
+		idToken = tokenResp.IDToken
+		break
 	}
 
-	return "", "", fmt.Errorf("timed out waiting for browser authentication (5 minutes)")
+	if idToken == "" {
+		return "", "", fmt.Errorf("timed out waiting for authentication")
+	}
+
+	// Exchange the Keycloak ID token for a Nebi JWT
+	exchangeResp, err := client.ExchangeDeviceToken(ctx, idToken)
+	if err != nil {
+		return "", "", fmt.Errorf("token exchange failed: %w", err)
+	}
+
+	return exchangeResp.Token, exchangeResp.Username, nil
+}
+
+// oidcDiscovery is a subset of the OIDC well-known configuration.
+type oidcDiscovery struct {
+	DeviceAuthorizationEndpoint string `json:"device_authorization_endpoint"`
+	TokenEndpoint               string `json:"token_endpoint"`
+}
+
+// discoverDeviceEndpoints fetches the OIDC well-known configuration to find
+// the device authorization and token endpoints.
+func discoverDeviceEndpoints(ctx context.Context, issuerURL string) (deviceAuthURL, tokenURL string, err error) {
+	wellKnown := strings.TrimRight(issuerURL, "/") + "/.well-known/openid-configuration"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wellKnown, nil)
+	if err != nil {
+		return "", "", err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("OIDC discovery returned %d", resp.StatusCode)
+	}
+
+	var disc oidcDiscovery
+	if err := json.NewDecoder(resp.Body).Decode(&disc); err != nil {
+		return "", "", err
+	}
+
+	if disc.DeviceAuthorizationEndpoint == "" {
+		return "", "", fmt.Errorf("OIDC provider does not support device authorization grant")
+	}
+
+	return disc.DeviceAuthorizationEndpoint, disc.TokenEndpoint, nil
+}
+
+// deviceAuthResponse is the response from the device authorization endpoint.
+type deviceAuthResponse struct {
+	DeviceCode              string `json:"device_code"`
+	UserCode                string `json:"user_code"`
+	VerificationURI         string `json:"verification_uri"`
+	VerificationURIComplete string `json:"verification_uri_complete"`
+	ExpiresIn               int    `json:"expires_in"`
+	Interval                int    `json:"interval"`
+}
+
+// requestDeviceAuthorization sends a device authorization request to Keycloak.
+func requestDeviceAuthorization(ctx context.Context, deviceAuthURL, clientID string) (*deviceAuthResponse, error) {
+	data := url.Values{
+		"client_id": {clientID},
+		"scope":     {"openid profile email groups"},
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, deviceAuthURL, strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("device authorization returned %d", resp.StatusCode)
+	}
+
+	var result deviceAuthResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+var (
+	errAuthorizationPending = fmt.Errorf("authorization_pending")
+	errSlowDown             = fmt.Errorf("slow_down")
+)
+
+// deviceTokenResponse is the successful response from the token endpoint.
+type deviceTokenResponse struct {
+	AccessToken string `json:"access_token"`
+	IDToken     string `json:"id_token"`
+	TokenType   string `json:"token_type"`
+}
+
+// tokenErrorResponse is the error response from the token endpoint.
+type tokenErrorResponse struct {
+	Error string `json:"error"`
+}
+
+// pollDeviceToken polls Keycloak's token endpoint for the device code grant.
+func pollDeviceToken(ctx context.Context, tokenURL, clientID, deviceCode string) (*deviceTokenResponse, error) {
+	data := url.Values{
+		"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
+		"client_id":   {clientID},
+		"device_code": {deviceCode},
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		var result deviceTokenResponse
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return nil, err
+		}
+		return &result, nil
+	}
+
+	// Handle RFC 8628 error codes
+	var errResp tokenErrorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+		return nil, fmt.Errorf("token endpoint returned %d", resp.StatusCode)
+	}
+
+	switch errResp.Error {
+	case "authorization_pending":
+		return nil, errAuthorizationPending
+	case "slow_down":
+		return nil, errSlowDown
+	case "expired_token":
+		return nil, fmt.Errorf("device code expired — please try again")
+	case "access_denied":
+		return nil, fmt.Errorf("access denied — user declined authorization")
+	default:
+		return nil, fmt.Errorf("token error: %s", errResp.Error)
+	}
+}
+
+// promptUsernamePasswordLogin prompts for username and password interactively.
+func promptUsernamePasswordLogin(serverURL string) (token, username string, err error) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return "", "", fmt.Errorf("device flow not available and stdin is not a terminal; use --username and --password-stdin")
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Fprint(os.Stderr, "Username: ")
+	username, _ = reader.ReadString('\n')
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return "", "", fmt.Errorf("username cannot be empty")
+	}
+
+	return usernamePasswordLogin(serverURL, username)
+}
+
+// usernamePasswordLogin authenticates with username and password.
+func usernamePasswordLogin(serverURL, username string) (token, user string, err error) {
+	var password string
+
+	if loginPasswordStdin {
+		scanner := bufio.NewScanner(os.Stdin)
+		if scanner.Scan() {
+			password = scanner.Text()
+		}
+		if err := scanner.Err(); err != nil {
+			return "", "", fmt.Errorf("reading password from stdin: %w", err)
+		}
+	} else if term.IsTerminal(int(os.Stdin.Fd())) {
+		fmt.Fprint(os.Stderr, "Password: ")
+		passBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Fprintln(os.Stderr)
+		if err != nil {
+			return "", "", fmt.Errorf("reading password: %w", err)
+		}
+		password = string(passBytes)
+	} else {
+		return "", "", fmt.Errorf("password required: use --password-stdin for non-interactive input")
+	}
+
+	client := cliclient.NewWithoutAuth(serverURL)
+	resp, err := client.Login(context.Background(), username, password)
+	if err != nil {
+		return "", "", fmt.Errorf("login failed: %w", err)
+	}
+
+	return resp.Token, username, nil
 }
 
 // openBrowser opens the given URL in the user's default browser.
@@ -183,7 +398,7 @@ func openBrowser(url string) error {
 		cmd = exec.Command("open", url)
 	case "windows":
 		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	default: // linux, freebsd, etc.
+	default:
 		cmd = exec.Command("xdg-open", url)
 	}
 	return cmd.Start()

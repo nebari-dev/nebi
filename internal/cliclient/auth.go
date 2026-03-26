@@ -44,6 +44,26 @@ func (c *Client) RequestDeviceCode(ctx context.Context) (*DeviceCodeResponse, er
 	return &resp, nil
 }
 
+// GetServerVersion calls GET /version (public, no auth required).
+func (c *Client) GetServerVersion(ctx context.Context) (*ServerVersion, error) {
+	var sv ServerVersion
+	_, err := c.Get(ctx, "/version", &sv)
+	if err != nil {
+		return nil, err
+	}
+	return &sv, nil
+}
+
+// GetCurrentUser calls GET /auth/me to get the authenticated user.
+func (c *Client) GetCurrentUser(ctx context.Context) (*User, error) {
+	var user User
+	_, err := c.Get(ctx, "/auth/me", &user)
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 // PollDeviceCode checks whether the device code has been completed.
 func (c *Client) PollDeviceCode(ctx context.Context, code string) (*DevicePollResponse, error) {
 	var resp DevicePollResponse

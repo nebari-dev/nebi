@@ -181,6 +181,17 @@ type AuditLog struct {
 	User        *User       `json:"user,omitempty"`
 }
 
+// ServerVersion represents the response from GET /version.
+type ServerVersion struct {
+	Version   string          `json:"version"`
+	Commit    string          `json:"commit"`
+	GoVersion string          `json:"go_version"`
+	OS        string          `json:"os"`
+	Arch      string          `json:"arch"`
+	Mode      string          `json:"mode"`
+	Features  map[string]bool `json:"features"`
+}
+
 // DashboardStats represents admin dashboard statistics.
 type DashboardStats struct {
 	TotalDiskUsageBytes     int64  `json:"total_disk_usage_bytes"`

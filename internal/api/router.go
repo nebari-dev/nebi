@@ -137,6 +137,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		public.POST("/auth/cli-login", cliLoginHandler)
 		public.GET("/auth/cli-login/poll", handlers.CLILoginPoll(cliCodeStore))
 
+		// Device flow: RFC 8628 configuration and token exchange for CLI.
+		public.GET("/auth/device-config", handlers.DeviceConfig(cfg.Auth.OIDCIssuerURL, cfg.Auth.DeviceFlowClientID))
+		public.POST("/auth/device-token", handlers.DeviceToken(sessionBasicAuth, cfg.Auth.ProxyAdminGroups))
+
 		// OIDC routes (if enabled, team mode only)
 		if oidcAuth != nil {
 			public.GET("/auth/oidc/login", handlers.OIDCLogin(oidcAuth))

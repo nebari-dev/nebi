@@ -2,13 +2,13 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
+	"github.com/nebari-dev/nebi/internal/contenthash"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/queue"
@@ -210,11 +210,7 @@ func (s *WorkspaceService) SavePixiToml(wsID string, content string) error {
 // contentHash computes a deterministic hash of manifest + lock content.
 // Returns "sha-" followed by the first 12 hex characters of the SHA-256 digest.
 func contentHash(pixiToml, pixiLock string) string {
-	h := sha256.New()
-	h.Write([]byte(pixiToml))
-	h.Write([]byte("\n---\n"))
-	h.Write([]byte(pixiLock))
-	return fmt.Sprintf("sha-%x", h.Sum(nil)[:6]) // 6 bytes = 12 hex chars
+	return contenthash.Hash(pixiToml, pixiLock)
 }
 
 // upsertTag creates or updates a tag for the given workspace/version.

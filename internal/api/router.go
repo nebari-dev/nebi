@@ -98,7 +98,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	sessionBasicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
 
 	// Wire OIDC ID token verifier into authenticators that handle proxy cookies.
+	// When OIDC is configured, logout requires redirecting to the gateway's
+	// /logout path to clear OIDC cookies and terminate the Keycloak session.
 	if oidcAuth != nil {
+		handlers.LogoutURL = basePath + "/logout"
 		sessionBasicAuth.SetIDTokenVerifier(oidcAuth.Verifier())
 		if ba, ok := authenticator.(*auth.BasicAuthenticator); ok {
 			ba.SetIDTokenVerifier(oidcAuth.Verifier())

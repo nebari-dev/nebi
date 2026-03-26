@@ -26,9 +26,17 @@ export const Layout = () => {
   const location = useLocation();
   const isAdminPage = location.pathname.startsWith('/admin');
 
+  const logoutUrl = useModeStore((s) => s.logoutUrl);
+
   const handleLogout = () => {
     clearAuth();
-    navigate('/login');
+    if (logoutUrl) {
+      // Redirect to the gateway's OIDC logout path (e.g. Envoy's /logout)
+      // to clear IdToken cookies and terminate the Keycloak session.
+      window.location.href = logoutUrl;
+    } else {
+      navigate('/login');
+    }
   };
 
   return (

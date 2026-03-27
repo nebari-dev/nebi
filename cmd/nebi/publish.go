@@ -4,8 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
+	"github.com/nebari-dev/nebi/internal/contenthash"
+	"github.com/nebari-dev/nebi/internal/oci"
+	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -13,6 +17,7 @@ var (
 	publishRegistry string
 	publishTag      string
 	publishRepo     string
+	publishLocal    bool
 )
 
 var publishCmd = &cobra.Command{
@@ -39,14 +44,21 @@ func init() {
 	publishCmd.Flags().StringVar(&publishRegistry, "registry", "", "Registry name or ID (uses server default if not set)")
 	publishCmd.Flags().StringVar(&publishTag, "tag", "", "OCI tag (auto-increments v1, v2, ... if not set)")
 	publishCmd.Flags().StringVar(&publishRepo, "repo", "", "OCI repository name (defaults to workspace name)")
+	publishCmd.Flags().BoolVar(&publishLocal, "local", false, "Publish directly to registry without a server")
 }
 
 func runWorkspacePublish(cmd *cobra.Command, args []string) error {
+	if isLocalMode(cmd) {
+		return runPublishLocal(args)
+	}
+	return runPublishServer(args)
+}
+
+func runPublishServer(args []string) error {
 	var wsName string
 	if len(args) == 1 {
 		wsName = args[0]
 	} else {
-		// Resolve from current directory origin
 		origin, err := lookupOrigin()
 		if err != nil {
 			return err
@@ -65,21 +77,19 @@ func runWorkspacePublish(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	// Find workspace on server
 	ws, err := findWsByName(client, ctx, wsName)
 	if err != nil {
 		return err
 	}
 
-	// Get server-computed defaults
 	defaults, err := client.GetPublishDefaults(ctx, ws.ID)
 	if err != nil {
 		return fmt.Errorf("getting publish defaults: %w", err)
 	}
 
-	// Use flags to override defaults
 	registryID := defaults.RegistryID
 	if publishRegistry != "" {
+		var err error
 		registryID, err = resolveRegistryID(client, ctx, publishRegistry)
 		if err != nil {
 			return err
@@ -109,6 +119,126 @@ func runWorkspacePublish(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "Published %s:%s (digest: %s)\n", resp.Repository, resp.Tag, resp.Digest)
+	return nil
+}
+
+func runPublishLocal(args []string) error {
+	s, err := store.New()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	// Resolve workspace from args or current directory
+	var ws *store.LocalWorkspace
+	if len(args) == 1 {
+		ws, err = s.FindWorkspaceByName(args[0])
+		if err != nil {
+			return err
+		}
+		if ws == nil {
+			return fmt.Errorf("workspace %q not found in local store; run 'nebi init' in the workspace directory first", args[0])
+		}
+	} else {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("getting working directory: %w", err)
+		}
+		ws, err = s.FindWorkspaceByPath(cwd)
+		if err != nil {
+			return err
+		}
+		if ws == nil {
+			return fmt.Errorf("current directory is not a tracked workspace; run 'nebi init' first")
+		}
+		fmt.Fprintf(os.Stderr, "Using workspace %q\n", ws.Name)
+	}
+
+	// Read pixi files from disk
+	pixiTomlPath := filepath.Join(ws.Path, "pixi.toml")
+	pixiLockPath := filepath.Join(ws.Path, "pixi.lock")
+
+	pixiToml, err := os.ReadFile(pixiTomlPath)
+	if err != nil {
+		return fmt.Errorf("reading pixi.toml: %w", err)
+	}
+	pixiLock, err := os.ReadFile(pixiLockPath)
+	if err != nil {
+		return fmt.Errorf("reading pixi.lock: %w", err)
+	}
+
+	// Resolve registry
+	var reg *store.LocalRegistry
+	if publishRegistry != "" {
+		reg, err = s.GetRegistryByName(publishRegistry)
+		if err != nil {
+			return fmt.Errorf("registry %q not found in local store", publishRegistry)
+		}
+	} else {
+		reg, err = s.GetDefaultRegistry()
+		if err != nil {
+			return err
+		}
+	}
+
+	// Get credentials from keyring
+	cs := store.NewCredentialStore(s.DataDir())
+	password, err := cs.GetPassword(reg.Name)
+	if err != nil && reg.Username != "" {
+		return fmt.Errorf("no credentials found for registry %q; re-add with 'nebi registry add --local'", reg.Name)
+	}
+
+	// Compute defaults
+	tag := contenthash.Hash(string(pixiToml), string(pixiLock))
+	if publishTag != "" {
+		tag = publishTag
+	}
+
+	repo := fmt.Sprintf("%s-%s", ws.Name, ws.ID.String()[:8])
+	if publishRepo != "" {
+		repo = publishRepo
+	}
+
+	// Build full repository path
+	host, namespace := oci.ParseRegistryURL(reg.URL)
+	fullRepo := host
+	if reg.Namespace != "" {
+		fullRepo = host + "/" + reg.Namespace
+	} else if namespace != "" {
+		fullRepo = host + "/" + namespace
+	}
+	fullRepo = fullRepo + "/" + repo
+
+	ctx := context.Background()
+
+	opts := oci.PublishOptions{
+		Repository:   fullRepo,
+		Tag:          tag,
+		ExtraTags:    []string{"latest"},
+		Username:     reg.Username,
+		Password:     password,
+		RegistryHost: host,
+	}
+
+	fmt.Fprintf(os.Stderr, "Publishing %s to %s:%s...\n", ws.Name, fullRepo, tag)
+	digest, err := oci.PublishWorkspace(ctx, ws.Path, opts)
+	if err != nil {
+		return fmt.Errorf("failed to publish: %w", err)
+	}
+
+	// Record publication
+	pub := &store.LocalPublication{
+		WorkspaceID: ws.ID,
+		RegistryID:  reg.ID,
+		Repository:  fullRepo,
+		Tag:         tag,
+		Digest:      digest,
+	}
+	if err := s.CreatePublication(pub); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to record publication: %v\n", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Published %s:%s (digest: %s)\n", fullRepo, tag, digest)
 	return nil
 }
 

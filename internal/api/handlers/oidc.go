@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 
@@ -48,7 +49,7 @@ func OIDCLogin(oidcAuth *auth.OIDCAuthenticator) gin.HandlerFunc {
 // @Failure 400 {object} map[string]string
 // @Failure 401 {object} map[string]string
 // @Router /auth/oidc/callback [get]
-func OIDCCallback(oidcAuth *auth.OIDCAuthenticator) gin.HandlerFunc {
+func OIDCCallback(oidcAuth *auth.OIDCAuthenticator, codeStore *auth.AuthCodeStore, basePath string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Verify state to prevent CSRF
 		state := c.Query("state")
@@ -62,25 +63,38 @@ func OIDCCallback(oidcAuth *auth.OIDCAuthenticator) gin.HandlerFunc {
 		// Clear the state cookie
 		c.SetCookie("oidc_state", "", -1, "/", "", false, true)
 
-		// Get authorization code
-		code := c.Query("code")
-		if code == "" {
+		// Get authorization code from OIDC provider
+		oidcCode := c.Query("code")
+		if oidcCode == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "missing authorization code"})
 			return
 		}
 
-		// Handle callback
-		resp, err := oidcAuth.HandleCallback(c.Request.Context(), code)
+		// Exchange OIDC authorization code for tokens
+		resp, err := oidcAuth.HandleCallback(c.Request.Context(), oidcCode)
 		if err != nil {
 			slog.Error("OIDC callback failed", "error", err)
-			// Redirect to login with error
-			c.Redirect(http.StatusTemporaryRedirect, "/login?error=oauth_failed")
+			c.Redirect(http.StatusTemporaryRedirect, basePath+"/login?error=oauth_failed")
 			return
 		}
 
-		// Redirect to frontend with token as query parameter
-		// The frontend will store it and redirect to home
-		c.Redirect(http.StatusTemporaryRedirect, "/login?token="+resp.Token)
+		// Generate a single-use Nebi authorization code instead of putting
+		// the JWT in the URL (RFC 6749 §4.1 pattern).
+		userJSON, err := json.Marshal(resp.User)
+		if err != nil {
+			slog.Error("Failed to marshal user", "error", err)
+			c.Redirect(http.StatusTemporaryRedirect, basePath+"/login?error=oauth_failed")
+			return
+		}
+
+		authCode, err := codeStore.Generate(resp.Token, userJSON)
+		if err != nil {
+			slog.Error("Failed to generate auth code", "error", err)
+			c.Redirect(http.StatusTemporaryRedirect, basePath+"/login?error=oauth_failed")
+			return
+		}
+
+		c.Redirect(http.StatusTemporaryRedirect, basePath+"/login?code="+authCode)
 	}
 }
 

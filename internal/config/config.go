@@ -99,6 +99,7 @@ func Load() (*Config, error) {
 	v.SetDefault("auth.oidc_redirect_url", "http://localhost:8460/api/v1/auth/oidc/callback")
 	v.SetDefault("auth.proxy_admin_groups", "admin")
 	v.SetDefault("auth.proxy_default_role", "editor")
+	v.SetDefault("auth.device_flow_client_id", "")
 	v.SetDefault("queue.type", "memory")
 	v.SetDefault("queue.valkey_addr", "localhost:6379")
 	v.SetDefault("log.format", "text")

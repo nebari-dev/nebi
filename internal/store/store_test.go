@@ -230,6 +230,99 @@ func TestServerURL(t *testing.T) {
 	}
 }
 
+func TestRegistryCRUD(t *testing.T) {
+	s := testStore(t)
+
+	// Empty initially
+	regs, err := s.ListRegistries()
+	if err != nil {
+		t.Fatalf("ListRegistries: %v", err)
+	}
+	if len(regs) != 0 {
+		t.Fatalf("expected 0 registries, got %d", len(regs))
+	}
+
+	// Create
+	reg := &LocalRegistry{
+		Name:      "ghcr",
+		URL:       "ghcr.io",
+		Username:  "myuser",
+		IsDefault: true,
+		Namespace: "myorg",
+	}
+	if err := s.CreateRegistry(reg); err != nil {
+		t.Fatalf("CreateRegistry: %v", err)
+	}
+	if reg.ID == uuid.Nil {
+		t.Fatal("expected non-nil ID after create")
+	}
+
+	// List
+	regs, _ = s.ListRegistries()
+	if len(regs) != 1 {
+		t.Fatalf("expected 1 registry, got %d", len(regs))
+	}
+	if regs[0].Name != "ghcr" {
+		t.Fatalf("expected name 'ghcr', got %q", regs[0].Name)
+	}
+
+	// Get by name
+	got, err := s.GetRegistryByName("ghcr")
+	if err != nil {
+		t.Fatalf("GetRegistryByName: %v", err)
+	}
+	if got.URL != "ghcr.io" {
+		t.Fatalf("expected URL 'ghcr.io', got %q", got.URL)
+	}
+
+	// Get by name - not found
+	_, err = s.GetRegistryByName("nonexistent")
+	if err == nil {
+		t.Fatal("expected error for nonexistent registry")
+	}
+
+	// Get default
+	def, err := s.GetDefaultRegistry()
+	if err != nil {
+		t.Fatalf("GetDefaultRegistry: %v", err)
+	}
+	if def.Name != "ghcr" {
+		t.Fatalf("expected default to be 'ghcr', got %q", def.Name)
+	}
+
+	// Delete
+	if err := s.DeleteRegistry(reg.ID); err != nil {
+		t.Fatalf("DeleteRegistry: %v", err)
+	}
+	regs, _ = s.ListRegistries()
+	if len(regs) != 0 {
+		t.Fatalf("expected 0 after delete, got %d", len(regs))
+	}
+}
+
+func TestGetDefaultRegistry_NoneSet(t *testing.T) {
+	s := testStore(t)
+
+	_, err := s.GetDefaultRegistry()
+	if err == nil {
+		t.Fatal("expected error when no default registry set")
+	}
+}
+
+func TestRegistryUniqueName(t *testing.T) {
+	s := testStore(t)
+
+	reg1 := &LocalRegistry{Name: "ghcr", URL: "ghcr.io"}
+	if err := s.CreateRegistry(reg1); err != nil {
+		t.Fatal(err)
+	}
+
+	reg2 := &LocalRegistry{Name: "ghcr", URL: "other.io"}
+	if err := s.CreateRegistry(reg2); err == nil {
+		t.Fatal("expected error for duplicate name")
+	}
+}
+
 func TestDefaults(t *testing.T) {
 	s := testStore(t)
 

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -48,9 +49,12 @@ func DeviceToken(basicAuth *auth.BasicAuthenticator, adminGroups string) gin.Han
 
 		resp, err := basicAuth.ExchangeIDToken(req.IDToken, adminGroups)
 		if err != nil {
+			slog.Warn("Device token exchange failed", "error", err)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired id_token"})
 			return
 		}
+
+		slog.Info("Device flow login successful", "user_id", resp.User.ID, "username", resp.User.Username)
 
 		c.JSON(http.StatusOK, gin.H{
 			"token":    resp.Token,

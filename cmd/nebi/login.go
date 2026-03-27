@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -23,6 +24,11 @@ var (
 	loginToken         string
 	loginUsername      string
 	loginPasswordStdin bool
+
+	// oidcHTTPClient is used for all direct calls to the OIDC provider (discovery,
+	// device authorization, token polling). Separate from cliclient to avoid
+	// hanging indefinitely if the provider is unreachable.
+	oidcHTTPClient = &http.Client{Timeout: 30 * time.Second}
 )
 
 var loginCmd = &cobra.Command{
@@ -145,13 +151,19 @@ func deviceFlowLogin(ctx context.Context, serverURL string, client *cliclient.Cl
 		return "", "", fmt.Errorf("device authorization failed: %w", err)
 	}
 
-	// Show the user code and verification URI
+	// Show the user code and verification URI.
+	// verification_uri_complete is OPTIONAL per RFC 8628 §3.2 — fall back to base URI.
+	browseURL := deviceResp.VerificationURIComplete
+	if browseURL == "" {
+		browseURL = deviceResp.VerificationURI
+	}
+
 	fmt.Fprintf(os.Stderr, "To authenticate, open the following URL in your browser:\n\n")
-	fmt.Fprintf(os.Stderr, "  %s\n\n", deviceResp.VerificationURIComplete)
+	fmt.Fprintf(os.Stderr, "  %s\n\n", browseURL)
 	fmt.Fprintf(os.Stderr, "And verify the code: %s\n\n", deviceResp.UserCode)
 
 	// Try to open the browser
-	if err := openBrowser(deviceResp.VerificationURIComplete); err != nil {
+	if err := openBrowser(browseURL); err != nil {
 		fmt.Fprintf(os.Stderr, "(Could not open browser automatically)\n\n")
 	}
 
@@ -212,7 +224,7 @@ func discoverDeviceEndpoints(ctx context.Context, issuerURL string) (deviceAuthU
 		return "", "", err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := oidcHTTPClient.Do(req)
 	if err != nil {
 		return "", "", err
 	}
@@ -257,7 +269,7 @@ func requestDeviceAuthorization(ctx context.Context, deviceAuthURL, clientID str
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := oidcHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -276,8 +288,8 @@ func requestDeviceAuthorization(ctx context.Context, deviceAuthURL, clientID str
 }
 
 var (
-	errAuthorizationPending = fmt.Errorf("authorization_pending")
-	errSlowDown             = fmt.Errorf("slow_down")
+	errAuthorizationPending = errors.New("authorization_pending")
+	errSlowDown             = errors.New("slow_down")
 )
 
 // deviceTokenResponse is the successful response from the token endpoint.
@@ -306,7 +318,7 @@ func pollDeviceToken(ctx context.Context, tokenURL, clientID, deviceCode string)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := oidcHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

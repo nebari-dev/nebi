@@ -182,9 +182,9 @@ func runPull(cmd *cobra.Command, args []string) error {
 		refStr = wsName + ":" + tag
 	}
 
-	fmt.Fprintf(os.Stderr, "Pulled %s (version %d) -> %s\n", refStr, versionNumber, absOutput)
+	fmt.Fprintf(os.Stderr, "Pulled %s (version %d, id=%s) -> %s\n", refStr, versionNumber, ws.ID, absOutput)
 
-	if saveErr := saveOrigin(wsName, tag, "pull", pixiToml, pixiLock); saveErr != nil {
+	if saveErr := saveOrigin(ws.ID, wsName, tag, "pull", pixiToml, pixiLock); saveErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save origin: %v\n", saveErr)
 	}
 

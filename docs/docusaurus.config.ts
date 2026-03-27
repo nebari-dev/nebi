@@ -88,8 +88,8 @@ const config: Config = {
           title: 'Documentation',
           items: [
             {
-              label: 'Getting Started',
-              to: '/docs/getting-started',
+              label: 'Installation',
+              to: '/docs/installation',
             },
             {
               label: 'CLI Guide',

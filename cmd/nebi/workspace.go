@@ -152,7 +152,7 @@ func runWorkspaceListLocal() error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tPATH")
+	fmt.Fprintln(w, "NAME\tORIGIN\tORIGIN_ID\tID\tPATH")
 	var missing int
 	for _, ws := range wss {
 		path := ws.Path
@@ -160,7 +160,15 @@ func runWorkspaceListLocal() error {
 			path += " (missing)"
 			missing++
 		}
-		fmt.Fprintf(w, "%s\t%s\n", ws.Name, path)
+		origin := "-"
+		if ws.OriginName != "" {
+			origin = ws.OriginName
+		}
+		originID := "-"
+		if ws.OriginID != "" {
+			originID = ws.OriginID
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", ws.Name, origin, originID, ws.ID.String(), path)
 	}
 	if err := w.Flush(); err != nil {
 		return err

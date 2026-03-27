@@ -323,6 +323,65 @@ func TestRegistryUniqueName(t *testing.T) {
 	}
 }
 
+func TestPublicationCRUD(t *testing.T) {
+	s := testStore(t)
+
+	// Create a workspace and registry first (foreign keys)
+	ws := &LocalWorkspace{Name: "test-ws", Path: "/tmp/test"}
+	s.CreateWorkspace(ws)
+
+	reg := &LocalRegistry{Name: "ghcr", URL: "ghcr.io", IsDefault: true}
+	s.CreateRegistry(reg)
+
+	// Empty initially
+	pubs, err := s.ListPublications()
+	if err != nil {
+		t.Fatalf("ListPublications: %v", err)
+	}
+	if len(pubs) != 0 {
+		t.Fatalf("expected 0 publications, got %d", len(pubs))
+	}
+
+	// Create
+	pub := &LocalPublication{
+		WorkspaceID: ws.ID,
+		RegistryID:  reg.ID,
+		Repository:  "ghcr.io/myorg/test-ws-12345678",
+		Tag:         "sha-abcdef123456",
+		Digest:      "sha256:deadbeef",
+	}
+	if err := s.CreatePublication(pub); err != nil {
+		t.Fatalf("CreatePublication: %v", err)
+	}
+	if pub.ID == uuid.Nil {
+		t.Fatal("expected non-nil ID after create")
+	}
+
+	// List all
+	pubs, _ = s.ListPublications()
+	if len(pubs) != 1 {
+		t.Fatalf("expected 1 publication, got %d", len(pubs))
+	}
+	if pubs[0].Repository != "ghcr.io/myorg/test-ws-12345678" {
+		t.Fatalf("unexpected repository: %q", pubs[0].Repository)
+	}
+
+	// List by workspace
+	pubs, err = s.ListPublicationsByWorkspace(ws.ID)
+	if err != nil {
+		t.Fatalf("ListPublicationsByWorkspace: %v", err)
+	}
+	if len(pubs) != 1 {
+		t.Fatalf("expected 1 publication for workspace, got %d", len(pubs))
+	}
+
+	// List by workspace - different ID returns empty
+	pubs, _ = s.ListPublicationsByWorkspace(uuid.New())
+	if len(pubs) != 0 {
+		t.Fatalf("expected 0 publications for other workspace, got %d", len(pubs))
+	}
+}
+
 func TestDefaults(t *testing.T) {
 	s := testStore(t)
 

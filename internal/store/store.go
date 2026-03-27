@@ -44,7 +44,7 @@ func Open(dataDir string) (*Store, error) {
 	db.Exec("PRAGMA journal_mode=WAL")
 
 	// AutoMigrate workspace + config/credentials tables
-	if err := db.AutoMigrate(&LocalWorkspace{}, &Config{}, &Credentials{}, &LocalRegistry{}); err != nil {
+	if err := db.AutoMigrate(&LocalWorkspace{}, &Config{}, &Credentials{}, &LocalRegistry{}, &LocalPublication{}); err != nil {
 		return nil, fmt.Errorf("migrating schema: %w", err)
 	}
 

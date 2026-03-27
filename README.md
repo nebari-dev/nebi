@@ -131,8 +131,6 @@ Server:    http://localhost:8460
 Origin:    myworkspace:v1.0 (pull)
 ```
 
-
-
 ## Documentation
 
 - [CLI Guide](https://nebi.nebari.dev/docs/cli-guide) - Full CLI usage and workflows

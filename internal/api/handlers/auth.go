@@ -41,6 +41,23 @@ func Login(authenticator auth.Authenticator) gin.HandlerFunc {
 	}
 }
 
+// SessionRedirect exchanges a proxy IdToken cookie for a Nebi JWT and
+// redirects to the login page with the token as a query parameter. This
+// endpoint lives outside /api/ so it goes through the gateway's protected
+// route (which preserves OIDC cookies set by Envoy Gateway). The /api/
+// routes are public and Envoy strips OIDC cookies from them.
+func SessionRedirect(basicAuth *auth.BasicAuthenticator, proxyAdminGroups string, basePath string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		resp, err := basicAuth.SessionFromProxy(c.Request, proxyAdminGroups)
+		if err != nil {
+			// No valid proxy session — redirect to login without token
+			c.Redirect(http.StatusFound, basePath+"/login")
+			return
+		}
+		c.Redirect(http.StatusFound, basePath+"/login?token="+resp.Token)
+	}
+}
+
 // SessionCheck godoc
 // @Summary Check proxy session
 // @Description Check for an IdToken cookie (set by an authenticating proxy) and return a Nebi JWT

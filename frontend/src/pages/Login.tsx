@@ -27,19 +27,22 @@ export const Login = () => {
     }
   }, [isLocalMode, navigate]);
 
-  // Try session-based auth (works with any authenticating proxy)
+  // Auto-login via gateway proxy: redirect to /auth/session (a protected route
+  // where Envoy preserves OIDC cookies). It reads the IdToken cookie, creates
+  // a Nebi JWT, and redirects back here with ?token=<jwt>.
+  // Skip if we already have a ?token= param (we're returning from the redirect).
   useEffect(() => {
     if (isLocalMode) return;
-    apiClient.get('/auth/session', { withCredentials: true })
-      .then(({ data }) => {
-        setAuth(data.token, data.user);
-        navigate('/');
-      })
-      .catch(() => {
-        // No proxy session, show login form as usual
-        setSessionChecked(true);
-      });
-  }, [isLocalMode, setAuth, navigate]);
+    if (searchParams.get('token') || searchParams.get('error')) return;
+    const logoutUrl = useModeStore.getState().logoutUrl;
+    if (logoutUrl) {
+      // Behind OIDC gateway — use the protected redirect endpoint
+      window.location.href = `${getBasePath()}/auth/session`;
+      return;
+    }
+    // No gateway detected — show login form
+    setSessionChecked(true);
+  }, [isLocalMode, searchParams]);
 
   // Don't render login form in local mode
   if (isLocalMode) return null;

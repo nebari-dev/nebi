@@ -111,6 +111,12 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	// Base group for all routes (supports reverse proxy path prefix)
 	base := router.Group(basePath)
 
+	// Session redirect: a non-/api/ path so it goes through the gateway's
+	// protected route (which preserves OIDC cookies). Reads the IdToken
+	// cookie, creates a Nebi JWT, and redirects to /login?token=<jwt>.
+	// This is the primary auto-login mechanism when behind Envoy Gateway.
+	base.GET("/auth/session", handlers.SessionRedirect(sessionBasicAuth, cfg.Auth.ProxyAdminGroups, basePath))
+
 	// Public routes
 	public := base.Group("/api/v1")
 	{

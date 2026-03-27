@@ -1,12 +1,8 @@
----
-sidebar_position: 2
----
-
 # Pixi Basics
 
 Nebi manages environments built with [Pixi](https://pixi.sh), a cross-platform package manager built on the conda ecosystem. This page covers the Pixi commands you'll use most often when working with Nebi workspaces.
 
-> If you're already comfortable with Pixi, you can skip ahead to the [CLI Guide](./cli-guide.md).
+> If you're already comfortable with Pixi, you can skip ahead to the CLI Guides: [CLI Local](./cli-local.md) and [CLI Team](./cli-team.md).
 
 ## Install Pixi
 

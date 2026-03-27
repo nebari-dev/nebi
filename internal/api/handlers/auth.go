@@ -94,7 +94,7 @@ func CodeExchange(codeStore *auth.AuthCodeStore) gin.HandlerFunc {
 			return
 		}
 
-		c.Data(http.StatusOK, "application/json", []byte(`{"token":"`+token+`","user":`+string(userJSON)+`}`))
+		c.JSON(http.StatusOK, gin.H{"token": token, "user": json.RawMessage(userJSON)})
 	}
 }
 

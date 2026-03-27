@@ -16,6 +16,7 @@ type LocalWorkspace struct {
 	PackageManager string         `gorm:"not null" json:"package_manager"`
 	Path           string         `gorm:"" json:"path,omitempty"`
 	Source         string         `gorm:"default:'managed'" json:"source"`
+	OriginID       string         `json:"origin_id,omitempty"`
 	OriginName     string         `json:"origin_name,omitempty"`
 	OriginTag      string         `json:"origin_tag,omitempty"`
 	OriginAction   string         `json:"origin_action,omitempty"`

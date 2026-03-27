@@ -20,6 +20,14 @@ var ErrWsNotFound = errors.New("workspace not found on server")
 
 // getAuthenticatedClient loads credentials and returns an authenticated API client.
 func getAuthenticatedClient() (*cliclient.Client, error) {
+	// Check environment variables first
+	if envToken := os.Getenv("NEBI_AUTH_TOKEN"); envToken != "" {
+		if envURL := os.Getenv("NEBI_REMOTE_URL"); envURL != "" {
+			return cliclient.New(envURL, envToken), nil
+		}
+	}
+
+	// Fall back to SQLite store
 	s, err := store.New()
 	if err != nil {
 		return nil, err

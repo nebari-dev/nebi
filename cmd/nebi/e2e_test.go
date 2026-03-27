@@ -178,6 +178,8 @@ func resetFlags() {
 	registryListJSON = false
 	// status.go
 	statusJSON = false
+	// info.go
+	infoJSON = false
 }
 
 // runCLI executes a CLI command in-process and captures output.
@@ -1822,5 +1824,108 @@ func TestE2E_PushJSON(t *testing.T) {
 	}
 	if _, ok := resp["content_hash"]; !ok {
 		t.Error("expected content_hash in push JSON response")
+	}
+}
+
+func TestE2E_Info(t *testing.T) {
+	dir := t.TempDir()
+
+	// Set env vars for server auth
+	os.Setenv("NEBI_AUTH_TOKEN", e2eEnv.token)
+	os.Setenv("NEBI_REMOTE_URL", e2eEnv.serverURL)
+	defer os.Unsetenv("NEBI_AUTH_TOKEN")
+	defer os.Unsetenv("NEBI_REMOTE_URL")
+
+	// Test basic info output
+	res := runCLI(t, dir, "info")
+	if res.ExitCode != 0 {
+		t.Fatalf("info failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Verify all sections present
+	for _, section := range []string{"Nebi", "Server", "Auth"} {
+		if !strings.Contains(res.Stdout, section) {
+			t.Errorf("expected %q section in output, got: %s", section, res.Stdout)
+		}
+	}
+
+	if !strings.Contains(res.Stdout, "reachable") {
+		t.Errorf("expected server status 'reachable', got: %s", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "yes") {
+		t.Errorf("expected logged in 'yes', got: %s", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "environment variable") {
+		t.Errorf("expected auth source 'environment variable', got: %s", res.Stdout)
+	}
+
+	// Test JSON output
+	res = runCLI(t, dir, "info", "--json")
+	if res.ExitCode != 0 {
+		t.Fatalf("info --json failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(res.Stdout), &result); err != nil {
+		t.Fatalf("failed to parse JSON output: %v\nstdout: %s", err, res.Stdout)
+	}
+	if result["logged_in"] != true {
+		t.Errorf("expected logged_in=true, got: %v", result["logged_in"])
+	}
+	if result["auth_source"] != "environment variable" {
+		t.Errorf("expected auth_source='environment variable', got: %v", result["auth_source"])
+	}
+	if result["server_status"] != "reachable" {
+		t.Errorf("expected server_status='reachable', got: %v", result["server_status"])
+	}
+}
+
+func TestE2E_InfoWorkspace(t *testing.T) {
+	dir := t.TempDir()
+
+	os.Setenv("NEBI_AUTH_TOKEN", e2eEnv.token)
+	os.Setenv("NEBI_REMOTE_URL", e2eEnv.serverURL)
+	defer os.Unsetenv("NEBI_AUTH_TOKEN")
+	defer os.Unsetenv("NEBI_REMOTE_URL")
+
+	// Create a pixi.toml and init workspace
+	toml := "[project]\nname = \"info-ws-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte(toml), 0644)
+
+	res := runCLI(t, dir, "init")
+	if res.ExitCode != 0 {
+		t.Fatalf("init failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// Info should now show workspace section
+	res = runCLI(t, dir, "info")
+	if res.ExitCode != 0 {
+		t.Fatalf("info failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, "Workspace") {
+		t.Errorf("expected Workspace section in output, got: %s", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "info-ws-test") {
+		t.Errorf("expected workspace name 'info-ws-test', got: %s", res.Stdout)
+	}
+}
+
+func TestE2E_InfoNoServer(t *testing.T) {
+	dir := t.TempDir()
+
+	// Clear any env vars
+	os.Unsetenv("NEBI_AUTH_TOKEN")
+	os.Unsetenv("NEBI_REMOTE_URL")
+
+	res := runCLI(t, dir, "info")
+	if res.ExitCode != 0 {
+		t.Fatalf("info failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	if !strings.Contains(res.Stdout, "not configured") {
+		t.Errorf("expected 'not configured' for server URL, got: %s", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "Logged in: no") {
+		t.Errorf("expected 'Logged in: no', got: %s", res.Stdout)
 	}
 }

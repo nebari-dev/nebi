@@ -148,7 +148,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		// OIDC routes (if enabled, team mode only)
 		if oidcAuth != nil {
 			public.GET("/auth/oidc/login", handlers.OIDCLogin(oidcAuth))
-			public.GET("/auth/oidc/callback", handlers.OIDCCallback(oidcAuth))
+			public.GET("/auth/oidc/callback", handlers.OIDCCallback(oidcAuth, authCodeStore, basePath))
 		}
 	}
 

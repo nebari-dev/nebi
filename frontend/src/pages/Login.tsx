@@ -33,7 +33,7 @@ export const Login = () => {
   // 3. Frontend exchanges code for JWT via POST /api/v1/auth/code/exchange
   useEffect(() => {
     if (isLocalMode) return;
-    if (searchParams.get('token') || searchParams.get('code') || searchParams.get('error')) return;
+    if (searchParams.get('code') || searchParams.get('error')) return;
     if (sessionStorage.getItem('nebi_logout')) {
       sessionStorage.removeItem('nebi_logout');
       setSessionChecked(true);
@@ -51,18 +51,19 @@ export const Login = () => {
   // Don't render login form in local mode
   if (isLocalMode) return null;
 
-  // Handle authorization code exchange (gateway auto-login) and OAuth callback
+  // Exchange single-use authorization code for JWT.
+  // Used by both gateway auto-login (/auth/session) and direct OIDC callback
+  // (/api/v1/auth/oidc/callback). Both redirect here with ?code=<single-use-code>.
   useEffect(() => {
     const code = searchParams.get('code');
-    const token = searchParams.get('token');
     const oauthError = searchParams.get('error');
 
     if (oauthError) {
-      setError('OAuth authentication failed');
+      setError('Authentication failed');
+      setSessionChecked(true);
       return;
     }
 
-    // Exchange single-use authorization code for JWT (gateway flow)
     if (code) {
       const exchangeCode = async () => {
         try {
@@ -78,26 +79,6 @@ export const Login = () => {
         }
       };
       exchangeCode();
-      return;
-    }
-
-    // Handle direct OIDC callback (?token= param)
-    if (token) {
-      const fetchUser = async () => {
-        try {
-          setLoading(true);
-          const response = await apiClient.get('/auth/me', {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          setAuth(token, response.data);
-          navigate('/');
-        } catch {
-          setError('Failed to complete OAuth login');
-        } finally {
-          setLoading(false);
-        }
-      };
-      fetchUser();
     }
   }, [searchParams, setAuth, navigate]);
 

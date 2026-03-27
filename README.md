@@ -51,19 +51,26 @@ Nebi builds on Pixi to add what teams need: version history, rollback, sharing e
 
 ## Quick Start
 
-### Quick Install
+### Install
 
-**Linux / macOS:**
+Pixi is a required Nebi dependency. If not already installed, install pixi as described in the [pixi docs](https://pixi.prefix.dev/latest/installation/). Then use pixi to install Nebi:
+
 ```sh
-curl -fsSL https://nebi.nebari.dev/install.sh | sh
+# Installs CLI + Desktop App (recommended)
+pixi global install nebi
 ```
 
-**Windows (PowerShell):**
-```powershell
-irm https://nebi.nebari.dev/install.ps1 | iex
+If you only need the CLI or the desktop app individually:
+
+```sh
+# CLI only
+pixi global install nebi-cli
+
+# Desktop app only
+pixi global install nebi-desktop
 ```
 
-See `install.sh --help` or the script source for advanced options (`--version`, `--install-dir`, `--desktop`).
+[Alternative installation methods](#alternative-installation-methods) are also available.
 
 ### CLI Quick Start
 
@@ -139,6 +146,34 @@ Origin:    myworkspace:v1.0 (pull)
 - [Architecture](https://nebi.nebari.dev/docs/architecture) - How the CLI, server, and OCI registries fit together
 
 API documentation is available at `/docs` on any running Nebi server (e.g. `http://localhost:8460/docs`).
+
+## Alternative Installation Methods
+
+### Shell Script
+
+**Linux / macOS:**
+```sh
+curl -fsSL https://nebi.nebari.dev/install.sh | sh
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://nebi.nebari.dev/install.ps1 | iex
+```
+
+See `install.sh --help` for advanced options (`--version`, `--install-dir`, `--desktop`).
+
+### GitHub Releases
+
+Download pre-built binaries from the [releases page](https://github.com/nebari-dev/nebi/releases).
+
+### Build from Source
+
+```sh
+go install github.com/nebari-dev/nebi/cmd/nebi@latest
+```
+
+Requires Go 1.24+.
 
 ## Contributing
 

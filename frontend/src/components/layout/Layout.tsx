@@ -31,6 +31,8 @@ export const Layout = () => {
   const handleLogout = () => {
     clearAuth();
     if (logoutUrl) {
+      // Signal Login.tsx to NOT auto-redirect back to /auth/session
+      sessionStorage.setItem('nebi_logout', '1');
       // Redirect to the gateway's OIDC logout path (e.g. Envoy's /logout)
       // to clear IdToken cookies and terminate the Keycloak session.
       window.location.href = logoutUrl;

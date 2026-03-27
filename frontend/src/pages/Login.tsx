@@ -30,10 +30,16 @@ export const Login = () => {
   // Auto-login via gateway proxy: redirect to /auth/session (a protected route
   // where Envoy preserves OIDC cookies). It reads the IdToken cookie, creates
   // a Nebi JWT, and redirects back here with ?token=<jwt>.
-  // Skip if we already have a ?token= param (we're returning from the redirect).
+  // Skip if we already have a ?token= param (we're returning from the redirect)
+  // or if the user just logged out (sessionStorage flag from Layout.tsx).
   useEffect(() => {
     if (isLocalMode) return;
     if (searchParams.get('token') || searchParams.get('error')) return;
+    if (sessionStorage.getItem('nebi_logout')) {
+      sessionStorage.removeItem('nebi_logout');
+      setSessionChecked(true);
+      return;
+    }
     const logoutUrl = useModeStore.getState().logoutUrl;
     if (logoutUrl) {
       // Behind OIDC gateway — use the protected redirect endpoint

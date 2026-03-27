@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -41,20 +42,59 @@ func Login(authenticator auth.Authenticator) gin.HandlerFunc {
 	}
 }
 
-// SessionRedirect exchanges a proxy IdToken cookie for a Nebi JWT and
-// redirects to the login page with the token as a query parameter. This
-// endpoint lives outside /api/ so it goes through the gateway's protected
-// route (which preserves OIDC cookies set by Envoy Gateway). The /api/
-// routes are public and Envoy strips OIDC cookies from them.
-func SessionRedirect(basicAuth *auth.BasicAuthenticator, proxyAdminGroups string, basePath string) gin.HandlerFunc {
+// SessionRedirect exchanges a proxy IdToken cookie for a short-lived,
+// single-use authorization code and redirects to /login?code=<code>.
+// The frontend then exchanges the code for a JWT via POST /api/v1/auth/code/exchange.
+//
+// This follows the OAuth 2.0 authorization code pattern (RFC 6749 §4.1):
+// sensitive tokens never appear in URLs, logs, or browser history.
+//
+// This endpoint lives outside /api/ so that gateway proxies that strip
+// cookies from public routes still forward them here.
+func SessionRedirect(basicAuth *auth.BasicAuthenticator, proxyAdminGroups string, basePath string, codeStore *auth.AuthCodeStore) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		resp, err := basicAuth.SessionFromProxy(c.Request, proxyAdminGroups)
 		if err != nil {
-			// No valid proxy session — redirect to login without token
+			// No valid proxy session — redirect to login without code
 			c.Redirect(http.StatusFound, basePath+"/login")
 			return
 		}
-		c.Redirect(http.StatusFound, basePath+"/login?token="+resp.Token)
+
+		userJSON, err := json.Marshal(resp.User)
+		if err != nil {
+			c.Redirect(http.StatusFound, basePath+"/login")
+			return
+		}
+
+		code, err := codeStore.Generate(resp.Token, userJSON)
+		if err != nil {
+			c.Redirect(http.StatusFound, basePath+"/login")
+			return
+		}
+
+		c.Redirect(http.StatusFound, basePath+"/login?code="+code)
+	}
+}
+
+// CodeExchange exchanges a single-use authorization code for a Nebi JWT.
+// The code is consumed on use and expires after 30 seconds.
+func CodeExchange(codeStore *auth.AuthCodeStore) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Code string `json:"code"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.Code == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "missing code"})
+			return
+		}
+
+		token, userJSON, ok := codeStore.Exchange(req.Code)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired code"})
+			return
+		}
+
+		c.Data(http.StatusOK, "application/json", []byte(`{"token":"`+token+`","user":`+string(userJSON)+`}`))
 	}
 }
 

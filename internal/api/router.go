@@ -58,6 +58,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	// Initialize authenticator based on mode
 	var authenticator auth.Authenticator
 	var oidcAuth *auth.OIDCAuthenticator
+	// Session check endpoint needs a BasicAuthenticator for JWT generation.
+	sessionBasicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
 
 	if localMode {
 		localAuth, err := auth.NewLocalAuthenticator(db)
@@ -86,22 +88,28 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			// Use context.Background() for initialization
 			oidcAuth, err = auth.NewOIDCAuthenticator(nil, oidcCfg, db, cfg.Auth.JWTSecret)
 			if err != nil {
-				logger.Error("Failed to initialize OIDC authenticator", "error", err)
+				logger.Error("Failed to initialize OIDC authenticator, will retry in background", "error", err)
+				// Retry in background — the OIDC provider (e.g. Keycloak) may not
+				// be ready yet at startup. Once it becomes reachable, wire the
+				// verifier into the authenticators so proxy auth starts working.
+				go retryOIDCInit(oidcCfg, db, cfg.Auth.JWTSecret, sessionBasicAuth, authenticator, logger)
 			} else {
 				logger.Info("OIDC authentication enabled", "issuer", cfg.Auth.OIDCIssuerURL)
 			}
 		}
 	}
 
-	// Session check endpoint needs a BasicAuthenticator for JWT generation.
-	// Create one if the primary authenticator isn't already basic auth.
-	sessionBasicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
-
-	// Wire OIDC ID token verifier into authenticators that handle proxy cookies.
 	// When OIDC is configured, logout requires redirecting to the gateway's
 	// /logout path to clear OIDC cookies and terminate the Keycloak session.
-	if oidcAuth != nil {
+	// Set this based on configuration, not initialization success, so the
+	// frontend knows about the gateway even while OIDC retries in background.
+	oidcConfigured := cfg.Auth.OIDCIssuerURL != "" && cfg.Auth.OIDCClientID != ""
+	if oidcConfigured {
 		handlers.LogoutURL = basePath + "/logout"
+	}
+
+	// Wire OIDC ID token verifier into authenticators that handle proxy cookies.
+	if oidcAuth != nil {
 		sessionBasicAuth.SetIDTokenVerifier(oidcAuth.Verifier())
 		if ba, ok := authenticator.(*auth.BasicAuthenticator); ok {
 			ba.SetIDTokenVerifier(oidcAuth.Verifier())
@@ -394,6 +402,28 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 
 	slog.Info("API router initialized", "mode", cfg.Server.Mode, "app_mode", cfg.Mode)
 	return router
+}
+
+// retryOIDCInit retries OIDC provider discovery in the background until it
+// succeeds. This handles the case where the OIDC provider (e.g. Keycloak) is
+// not yet ready when Nebi starts. Once discovery succeeds, the ID token
+// verifier is wired into the authenticators so proxy auth starts working.
+func retryOIDCInit(cfg auth.OIDCConfig, db *gorm.DB, jwtSecret string,
+	sessionAuth *auth.BasicAuthenticator, mainAuth auth.Authenticator, logger *slog.Logger) {
+	for {
+		time.Sleep(10 * time.Second)
+		oa, err := auth.NewOIDCAuthenticator(nil, cfg, db, jwtSecret)
+		if err != nil {
+			logger.Warn("OIDC initialization retry failed, will try again", "error", err)
+			continue
+		}
+		logger.Info("OIDC authentication enabled (after retry)", "issuer", cfg.IssuerURL)
+		sessionAuth.SetIDTokenVerifier(oa.Verifier())
+		if ba, ok := mainAuth.(*auth.BasicAuthenticator); ok {
+			ba.SetIDTokenVerifier(oa.Verifier())
+		}
+		return
+	}
 }
 
 // loggingMiddleware logs HTTP requests

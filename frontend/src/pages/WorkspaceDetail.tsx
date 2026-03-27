@@ -24,14 +24,7 @@ import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
 import { Jobs } from '@/components/jobs/Jobs';
 import { UserBadge } from '@/components/ui/user-badge';
 import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check, ExternalLink, Save, HardDrive, Pencil, Globe, Lock, User, Boxes, Users, Calendar, History, Fingerprint, FolderOpen, GitBranch, CircleQuestionMark, IdCard } from 'lucide-react';
-
-const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-  creating: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  ready: 'bg-green-500/10 text-green-500 border-green-500/20',
-  failed: 'bg-red-500/10 text-red-500 border-red-500/20',
-  deleting: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
-};
+import { workspaceStatusVariant } from '@/lib/constants';
 
 export const WorkspaceDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -158,7 +151,7 @@ export const WorkspaceDetail = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/workspaces')}>
+        <Button variant="ghost" size="icon" title="Back to Workspaces" onClick={() => navigate('/workspaces')}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
@@ -167,12 +160,12 @@ export const WorkspaceDetail = () => {
         </div>
         <div className="flex items-center gap-2">
           {isLocalWs && (
-            <Badge variant="outline" className="bg-cyan-500/10 text-cyan-500 border-cyan-500/20 gap-1">
+            <Badge variant="default" className="gap-1">
               <HardDrive className="h-3 w-3" />
               Local
             </Badge>
           )}
-          <Badge className={statusColors[workspace.status]}>
+          <Badge variant={workspaceStatusVariant[workspace.status] ?? 'outline'}>
             {capitalize(workspace.status)}
           </Badge>
           {!isLocalWs && (
@@ -284,7 +277,7 @@ export const WorkspaceDetail = () => {
                   <span className="text-sm font-medium">Status</span>
                 </div>
                 <div>
-                  <Badge className={statusColors[workspace.status]}>
+                  <Badge variant={workspaceStatusVariant[workspace.status] ?? 'outline'}>
                     {capitalize(workspace.status)}
                   </Badge>
                 </div>
@@ -325,6 +318,19 @@ export const WorkspaceDetail = () => {
                 </div>
               )}
 
+              {/* Status */}
+              <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <CircleQuestionMark className="h-3 w-3 shrink-0" />
+                  <span className="text-sm font-medium">Status</span>
+                </div>
+                <div>
+                  <Badge variant={workspaceStatusVariant[workspace.status] ?? 'outline'}>
+                    {capitalize(workspace.status)}
+                  </Badge>
+                </div>
+              </div>
+              
               {/* Size */}
               <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
                 <div className="flex items-center gap-1.5 text-muted-foreground">
@@ -680,12 +686,12 @@ export const WorkspaceDetail = () => {
                           <ExternalLink className="h-4 w-4" />
                         </a>
                         {pub.is_public ? (
-                          <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
+                          <Badge variant="success">
                             <Globe className="mr-1 h-3 w-3" />
                             Public
                           </Badge>
                         ) : (
-                          <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20">
+                          <Badge variant="warning">
                             <Lock className="mr-1 h-3 w-3" />
                             Private
                           </Badge>

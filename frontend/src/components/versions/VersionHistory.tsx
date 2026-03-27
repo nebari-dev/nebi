@@ -141,9 +141,7 @@ export const VersionHistory = ({ environmentId, environmentStatus }: VersionHist
                                 Version {version.version_number}
                               </h3>
                               {isLatest && (
-                                <Badge className="bg-primary/10 text-primary border-primary/20">
-                                  Current
-                                </Badge>
+                                <Badge variant="default">Current</Badge>
                               )}
                             </div>
                             {version.description && (

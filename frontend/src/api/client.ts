@@ -35,7 +35,7 @@ apiClient.interceptors.response.use(
       }
       // In local mode, don't redirect to login
       const { mode } = useModeStore.getState();
-      if (mode !== 'local') {
+      if (mode !== 'local' && !window.location.pathname.endsWith('/login')) {
         localStorage.removeItem('auth_token');
         // Clear all query cache to prevent stale data
         queryClient.clear();

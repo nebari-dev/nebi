@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Share and Reuse Environments
 
-You've built a data science environment with the exact packages your project needs. A teammate wants to run the same analysis, but they're on a different machine, maybe even a different OS. How do you make sure they get the exact same setup?
+Your coworker is starting a new project but needs the same environment you've been using. They're on a different machine, maybe even a different OS. How do you share your exact setup with them?
 
 This example walks through the full publish-and-consume workflow: **Alice** creates and publishes an environment, and **Bob** downloads and runs it with no manual setup needed.
 
@@ -115,8 +115,10 @@ Bob doesn't need to know what packages Alice chose or how the environment was bu
 If Bob doesn't have access to Alice's Nebi server, he can import directly from the OCI registry:
 
 ```bash
-nebi import quay.io/your-username/data-science-demo:v1.0 -o data-science-demo
+nebi import <registry-url>/data-science-demo:v1.0 -o data-science-demo
 ```
+
+Replace `<registry-url>` with the registry Alice published to (e.g., `quay.io/alice` or `ghcr.io/alice`).
 
 This creates a `data-science-demo` directory with the environment files:
 
@@ -152,7 +154,7 @@ pixi run python -c "import sklearn; print(f'scikit-learn {sklearn.__version__} r
 scikit-learn 1.8.0 ready
 ```
 
-Pixi resolves and installs all dependencies from the lock file on first run. No manual `pip install`, no version conflicts, no "works on my machine."
+The installed version matches the one pinned in Alice's lock file, confirming the environment was reproduced exactly.
 
 ## What Just Happened
 
@@ -160,16 +162,10 @@ Here's the full flow at a glance:
 
 | Step | Who | Command |
 |------|-----|---------|
-| Create and init workspace | Alice | `nebi init` + `pixi add ...` |
-| Push to server | Alice | `nebi push data-science-demo:v1.0` |
-| Publish to OCI | Alice | `nebi publish data-science-demo --tag v1.0 --repo data-science-demo` |
-| Import environment | Bob | `nebi import quay.io/your-username/data-science-demo:v1.0 -o data-science-demo` |
-| Verify environment | Bob | `pixi run python -c "import sklearn; ..."` |
+| Create workspace | Alice | `nebi init` + `pixi add` |
+| Push to server | Alice | `nebi push` |
+| Publish to OCI | Alice | `nebi publish` |
+| Import environment | Bob | `nebi import` |
+| Verify environment | Bob | `pixi run python` |
 
-Alice's exact environment (every package, every version, every platform build) lands on Bob's machine, ready to use.
-
-## Next Steps
-
-- Browse available environments: `nebi workspace list --remote`
-- Compare versions: `nebi diff data-science-demo:v1.0 data-science-demo:v2.0`
-- See all CLI commands: [CLI Reference](../cli-reference.md)
+With nebi, Alice's exact environment lands on Bob's machine without manual setup.

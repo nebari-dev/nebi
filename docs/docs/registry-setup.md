@@ -8,7 +8,7 @@ Nebi can publish environments to OCI registries so anyone can import them withou
 
 ## GitHub Container Registry (GHCR)
 
-GHCR is the easiest option if you already have a GitHub account. Go to GitHub Settings > Developer settings > Personal access tokens and create a token with the `write:packages` scope.
+GHCR is the easiest option if you already have a GitHub account. Go to GitHub Settings > Developer settings > Personal access tokens > **Tokens (classic)** and create a new token with the `write:packages` scope checked.
 
 Then add the registry to Nebi:
 

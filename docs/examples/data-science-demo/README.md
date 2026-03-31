@@ -4,7 +4,7 @@ A sample Pixi environment used in the [Share and Reuse Environments](../../docs/
 
 ## What's included
 
-- **pixi.toml** - environment spec with Python and scikit-learn, plus an inline training task
+- **pixi.toml** - environment spec with Python, scikit-learn, and Streamlit, plus inline tasks for training and interactive prediction
 
 ## Quick start
 
@@ -17,6 +17,7 @@ pixi run train
 
 Run any task with `pixi run <task>`:
 
-| Task | Description |
-|------|-------------|
-| `train` | Train a Decision Tree on the Iris dataset and print results |
+| Task    | Description                                      |
+|---------|--------------------------------------------------|
+| `train` | Train a Decision Tree on Iris and print results  |
+| `app`   | Launch a Streamlit app for species prediction    |

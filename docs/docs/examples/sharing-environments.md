@@ -33,26 +33,20 @@ graph LR
 
 ## Alice: Create and Publish the Environment
 
-### Step 1: Create the workspace
-
-Alice creates a data science environment with common packages like scikit-learn.
+:::info Follow along
+Clone the example to follow along with this tutorial:
 
 ```bash
-mkdir data-science-demo && cd data-science-demo
+git clone https://github.com/nebari-dev/nebi.git
+cd nebi/docs/examples/data-science-demo
 nebi init
 ```
 
-```bash title="Output"
-Workspace 'data-science-demo' initialized (/home/user/data-science-demo)
-```
+:::
 
-She adds the packages she needs:
+### Step 1: Create the workspace
 
-```bash
-pixi add python ">=3.11" scikit-learn ">=1.4"
-```
-
-The resulting `pixi.toml` looks like this:
+Alice creates a data science environment with Python, scikit-learn, and Streamlit. Here's her `pixi.toml`:
 
 ```toml
 [workspace]
@@ -64,13 +58,89 @@ version = "0.1.0"
 [dependencies]
 python = ">=3.11"
 scikit-learn = ">=1.4"
+streamlit = ">=1.30"
 ```
 
-:::tip
-To create your own environment from scratch instead, run `nebi init` in an empty directory and use `pixi add` to add packages (e.g., `pixi add numpy pandas matplotlib`).
-:::
+### Step 2: Add tasks
 
-### Step 2: Push to the Nebi server
+Alice adds a training task directly in `pixi.toml`. Since the task is defined inline, it travels with the environment when published:
+
+```toml
+[tasks]
+train = """python -c "
+from sklearn.datasets import load_iris
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, confusion_matrix
+
+X, y = load_iris(return_X_y=True)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+model = DecisionTreeClassifier(random_state=42)
+model.fit(X_train, y_train)
+
+y_pred = model.predict(X_test)
+print(f'Accuracy: {accuracy_score(y_test, y_pred):.2f}')
+cm = confusion_matrix(y_test, y_pred)
+print('Confusion Matrix:')
+print(cm)
+" """
+```
+
+She also adds a Streamlit app for interactive predictions:
+
+```toml
+app = """python -c "
+import tempfile, os, subprocess, sys
+code = '''
+import streamlit as st
+from sklearn.datasets import load_iris
+from sklearn.tree import DecisionTreeClassifier
+
+iris = load_iris()
+model = DecisionTreeClassifier(random_state=42)
+model.fit(iris.data, iris.target)
+
+st.title('Iris Species Predictor')
+features = [[
+    st.slider('Sepal length', 4.0, 8.0, 5.8),
+    st.slider('Sepal width', 2.0, 4.5, 3.0),
+    st.slider('Petal length', 1.0, 7.0, 4.0),
+    st.slider('Petal width', 0.1, 2.5, 1.2),
+]]
+st.subheader(f'Predicted: {iris.target_names[model.predict(features)[0]]}')
+'''
+f = tempfile.NamedTemporaryFile(suffix='.py', delete=False, mode='w')
+f.write(code)
+f.close()
+subprocess.run([sys.executable, '-m', 'streamlit', 'run', f.name])
+os.unlink(f.name)
+" """
+```
+
+Alice can verify the tasks work locally by running the training task:
+
+```bash
+pixi run train
+```
+
+```bash title="Output"
+Accuracy: 1.00
+Confusion Matrix:
+[[19  0  0]
+ [ 0 13  0]
+ [ 0  0 13]]
+```
+
+Or launch the Streamlit app:
+
+```bash
+pixi run app
+```
+
+![Streamlit prediction app](/img/example-streamlit-app.png)
+
+### Step 3: Push to the Nebi server
 
 Once satisfied with the results, Alice logs in to the Nebi server. The URL depends on your deployment (see [Server Setup](../server-setup.md)):
 
@@ -92,7 +162,7 @@ Pushing data-science-demo:v1.0...
 
 Both `pixi.toml` and `pixi.lock` are now stored on the server, tagged as `v1.0`.
 
-### Step 3: Publish to an OCI registry
+### Step 4: Publish to an OCI registry
 
 Bob works at a different company and can't log in to Alice's Nebi server. By publishing to a public OCI registry, Alice lets Bob import the environment with a single command, no server access needed.
 
@@ -141,20 +211,30 @@ nebi pull data-science-demo:v1.0 -o ./data-science-demo
 Pulled data-science-demo:v1.0
 ```
 
-### Verify the environment
+### Run the task
 
-Either way, Bob now has the full environment. He can verify it works by running a quick check:
+Either way, Bob now has the full environment and the tasks Alice defined. He can run the training task:
 
 ```bash
 cd data-science-demo
-pixi run python -c "import sklearn; print(f'scikit-learn {sklearn.__version__} ready')"
+pixi run train
 ```
 
 ```bash title="Output"
-scikit-learn 1.8.0 ready
+Accuracy: 1.00
+Confusion Matrix:
+[[19  0  0]
+ [ 0 13  0]
+ [ 0  0 13]]
 ```
 
-The installed version matches the one pinned in Alice's lock file, confirming the environment was reproduced exactly.
+Or launch the Streamlit app:
+
+```bash
+pixi run app
+```
+
+Bob gets the same packages, the same versions, and the same results as Alice.
 
 ## What Just Happened
 
@@ -163,9 +243,10 @@ Here's the full flow at a glance:
 | Step | Who | Command |
 |------|-----|---------|
 | Create workspace | Alice | `nebi init` + `pixi add` |
+| Add tasks | Alice | Edit `pixi.toml` |
 | Push to server | Alice | `nebi push` |
 | Publish to OCI | Alice | `nebi publish` |
 | Import environment | Bob | `nebi import` |
-| Verify environment | Bob | `pixi run python` |
+| Run task | Bob | `pixi run train` |
 
 With nebi, Alice's exact environment lands on Bob's machine without manual setup.

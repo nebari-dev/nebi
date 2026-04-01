@@ -27,52 +27,58 @@ export const Login = () => {
     }
   }, [isLocalMode, navigate]);
 
-  // Try session-based auth (works with any authenticating proxy)
+  // Auto-login via OIDC gateway proxy (RFC 6749 §4.1 authorization code pattern):
+  // 1. Redirect to /auth/session (outside /api/, so gateway preserves cookies)
+  // 2. Backend reads IdToken cookie → generates single-use code → redirects to /login?code=xxx
+  // 3. Frontend exchanges code for JWT via POST /api/v1/auth/code/exchange
   useEffect(() => {
     if (isLocalMode) return;
-    apiClient.get('/auth/session', { withCredentials: true })
-      .then(({ data }) => {
-        setAuth(data.token, data.user);
-        navigate('/');
-      })
-      .catch(() => {
-        // No proxy session, show login form as usual
-        setSessionChecked(true);
-      });
-  }, [isLocalMode, setAuth, navigate]);
+    if (searchParams.get('code') || searchParams.get('error')) return;
+    if (sessionStorage.getItem('nebi_logout')) {
+      sessionStorage.removeItem('nebi_logout');
+      setSessionChecked(true);
+      return;
+    }
+    const logoutUrl = useModeStore.getState().logoutUrl;
+    if (logoutUrl) {
+      window.location.href = `${getBasePath()}/auth/session`;
+      return;
+    }
+    // No gateway detected — show login form
+    setSessionChecked(true);
+  }, [isLocalMode, searchParams]);
 
   // Don't render login form in local mode
   if (isLocalMode) return null;
 
-  // Handle OAuth callback
+  // Exchange single-use authorization code for JWT.
+  // Used by both gateway auto-login (/auth/session) and direct OIDC callback
+  // (/api/v1/auth/oidc/callback). Both redirect here with ?code=<single-use-code>.
   useEffect(() => {
-    const token = searchParams.get('token');
+    const code = searchParams.get('code');
     const oauthError = searchParams.get('error');
 
     if (oauthError) {
-      setError('OAuth authentication failed');
+      setError('Authentication failed');
+      setSessionChecked(true);
       return;
     }
 
-    if (token) {
-      // Fetch user info with the token
-      const fetchUser = async () => {
+    if (code) {
+      const exchangeCode = async () => {
         try {
           setLoading(true);
-          // Fetch current user info
-          const response = await apiClient.get('/auth/me', {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-
-          setAuth(token, response.data);
+          const { data } = await apiClient.post('/auth/code/exchange', { code });
+          setAuth(data.token, data.user);
           navigate('/');
         } catch {
-          setError('Failed to complete OAuth login');
+          setError('Failed to complete login');
+          setSessionChecked(true);
         } finally {
           setLoading(false);
         }
       };
-      fetchUser();
+      exchangeCode();
     }
   }, [searchParams, setAuth, navigate]);
 

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Nebi Documentation
+    url: https://nebi.nebari.dev/
+    about: Check out the Nebi documentation

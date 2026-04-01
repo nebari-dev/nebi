@@ -20,6 +20,14 @@ var ErrWsNotFound = errors.New("workspace not found on server")
 
 // getAuthenticatedClient loads credentials and returns an authenticated API client.
 func getAuthenticatedClient() (*cliclient.Client, error) {
+	// Check environment variables first
+	if envToken := os.Getenv("NEBI_AUTH_TOKEN"); envToken != "" {
+		if envURL := os.Getenv("NEBI_REMOTE_URL"); envURL != "" {
+			return cliclient.New(envURL, envToken), nil
+		}
+	}
+
+	// Fall back to SQLite store
 	s, err := store.New()
 	if err != nil {
 		return nil, err
@@ -151,7 +159,7 @@ func findWorkspacesByNameWithSync(s *store.Store, name string) ([]store.LocalWor
 }
 
 // saveOrigin records a push/pull origin for the current working directory.
-func saveOrigin(name, tag, action, tomlContent, lockContent string) error {
+func saveOrigin(remoteID, name, tag, action, tomlContent, lockContent string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting working directory: %w", err)
@@ -176,6 +184,7 @@ func saveOrigin(name, tag, action, tomlContent, lockContent string) error {
 		return fmt.Errorf("hashing pixi.toml: %w", err)
 	}
 
+	ws.OriginID = remoteID
 	ws.OriginName = name
 	ws.OriginTag = tag
 	ws.OriginAction = action

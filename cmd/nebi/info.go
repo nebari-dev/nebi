@@ -272,5 +272,5 @@ func printInfo(r infoResult) {
 }
 
 func printField(label, value string) {
-	fmt.Fprintf(os.Stdout, "%16s: %s\n", label, value)
+	fmt.Fprintf(os.Stdout, "  %-18s%s\n", label+":", value)
 }

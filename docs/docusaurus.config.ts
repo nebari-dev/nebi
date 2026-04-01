@@ -92,8 +92,8 @@ const config: Config = {
               to: '/docs/installation',
             },
             {
-              label: 'CLI Guide',
-              to: '/docs/cli-guide',
+              label: 'What is Nebi?',
+              to: '/docs/introduction',
             },
           ],
         },

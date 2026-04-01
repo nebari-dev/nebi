@@ -1,7 +1,3 @@
----
-sidebar_position: 2
----
-
 # CLI Reference
 
 Nebi's CLI is organized into command groups: **Workspace**, **Sync**, **Connection**, and **Admin**.

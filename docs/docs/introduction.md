@@ -1,7 +1,3 @@
----
-sidebar_position: 1
----
-
 # What is Nebi?
 
 Nebi is a multi-user environment management tool. Think of it as git for environments: you can push, pull, diff, and roll back, with access control built in.
@@ -145,6 +141,5 @@ nebi shell geo-ml       # same environment, any directory
 
 ## Next Steps
 
-- [Getting Started](./installation.md): Install nebi and set up your first workspace
-- [Architecture](./architecture.md): How the CLI, server, and OCI registries fit together
-- [CLI Guide](./cli-guide.md): Local workflows and team collaboration
+- [Installation](./installation.md): Install nebi and set up your first workspace
+- [Nebi Components](./nebi-components.md): How the CLI, server, and OCI registries fit together

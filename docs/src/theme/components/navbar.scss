@@ -67,11 +67,20 @@
 // ==============================================================================
 // Announcement Bar
 // ==============================================================================
-
 div[class^="announcementBar_"] {
   font-weight: 550;
   height: 50px;
   background-color: var(--ifm-color-on-background-2);
-  color: var(--ifm-color-content-inverse);
+  color: var(--ifm-color-on-primary);
   border-bottom: 2px solid var(--secondary-nebari);
+}
+
+a[class^="announcementBar_"] {
+  color: var(--ifm-color-on-primary);
+  text-decoration-color: var(--ifm-link-color);
+}
+
+a:hover[class^="announcementBar_"] {
+  color: var(--ifm-link-color);
+  text-decoration-color: var(--ifm-link-color);
 }

@@ -116,7 +116,7 @@ const config: Config = {
     announcementBar: {
       id: 'support_us',
       content:
-        'This project is in early-release, we would love your feedback! Share your questions and issues on our <a target="_blank" href="https://github.com/nebari-dev/nebi/issues">GitHub repository</a>.',
+        'This project is in early-release, we would love your feedback! Share your questions and issues on our <a class="announcementBar__link" target="_blank" href="https://github.com/nebari-dev/nebi/issues">GitHub repository</a>.',
       isCloseable: true,
     },
     prism: {

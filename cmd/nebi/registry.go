@@ -8,6 +8,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
+	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -26,6 +27,7 @@ var (
 	registryAddPwdStdin  bool
 	registryRemoveForce  bool
 	registryListJSON     bool
+	registryLocal        bool
 )
 
 var registryListCmd = &cobra.Command{
@@ -76,6 +78,7 @@ Examples:
 
 func init() {
 	registryListCmd.Flags().BoolVar(&registryListJSON, "json", false, "Output as JSON")
+	registryListCmd.Flags().BoolVar(&registryLocal, "local", false, "Operate on local registry store instead of server")
 	registryCmd.AddCommand(registryListCmd)
 	registryCmd.AddCommand(registryAddCmd)
 	registryCmd.AddCommand(registryRemoveCmd)
@@ -86,15 +89,60 @@ func init() {
 	registryAddCmd.Flags().StringVar(&registryAddNamespace, "namespace", "", "Organization or namespace on the registry")
 	registryAddCmd.Flags().BoolVar(&registryAddPwdStdin, "password-stdin", false, "Read password from stdin")
 	registryAddCmd.Flags().BoolVar(&registryAddDefault, "default", false, "Set as default registry")
+	registryAddCmd.Flags().BoolVar(&registryLocal, "local", false, "Operate on local registry store instead of server")
 
 	registryAddCmd.MarkFlagRequired("name")
 	registryAddCmd.MarkFlagRequired("url")
 	registryAddCmd.MarkFlagRequired("namespace")
 
 	registryRemoveCmd.Flags().BoolVarP(&registryRemoveForce, "force", "f", false, "Skip confirmation prompt")
+	registryRemoveCmd.Flags().BoolVar(&registryLocal, "local", false, "Operate on local registry store instead of server")
 }
 
 func runRegistryList(cmd *cobra.Command, args []string) error {
+	if isLocalMode(cmd) {
+		return runRegistryListLocal()
+	}
+	return runRegistryListServer()
+}
+
+func runRegistryListLocal() error {
+	s, err := store.New()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	registries, err := s.ListRegistries()
+	if err != nil {
+		return err
+	}
+
+	if len(registries) == 0 {
+		if registryListJSON {
+			return writeJSON([]store.LocalRegistry{})
+		}
+		fmt.Fprintln(os.Stderr, "No local registries configured.")
+		return nil
+	}
+
+	if registryListJSON {
+		return writeJSON(registries)
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "NAME\tURL\tDEFAULT")
+	for _, r := range registries {
+		def := ""
+		if r.IsDefault {
+			def = "*"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\n", r.Name, r.URL, def)
+	}
+	return w.Flush()
+}
+
+func runRegistryListServer() error {
 	client, err := getAuthenticatedClient()
 	if err != nil {
 		return err
@@ -134,10 +182,9 @@ func runRegistryList(cmd *cobra.Command, args []string) error {
 func runRegistryAdd(cmd *cobra.Command, args []string) error {
 	var password string
 
-	// Handle password input
+	// Handle password input (same for both modes)
 	if registryAddUsername != "" {
 		if registryAddPwdStdin {
-			// Read password from stdin
 			scanner := bufio.NewScanner(os.Stdin)
 			if scanner.Scan() {
 				password = scanner.Text()
@@ -146,7 +193,6 @@ func runRegistryAdd(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("reading password from stdin: %w", err)
 			}
 		} else if term.IsTerminal(int(os.Stdin.Fd())) {
-			// Interactive prompt
 			fmt.Fprint(os.Stderr, "Password: ")
 			passBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
 			fmt.Fprintln(os.Stderr)
@@ -157,6 +203,42 @@ func runRegistryAdd(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	if isLocalMode(cmd) {
+		return runRegistryAddLocal(password)
+	}
+	return runRegistryAddServer(password)
+}
+
+func runRegistryAddLocal(password string) error {
+	s, err := store.New()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	reg := &store.LocalRegistry{
+		Name:      registryAddName,
+		URL:       registryAddURL,
+		Username:  registryAddUsername,
+		IsDefault: registryAddDefault,
+		Namespace: registryAddNamespace,
+	}
+	if err := s.CreateRegistry(reg); err != nil {
+		return fmt.Errorf("creating local registry: %w", err)
+	}
+
+	if password != "" {
+		cs := store.NewCredentialStore(s.DataDir())
+		if err := cs.SetPassword(registryAddName, password); err != nil {
+			return fmt.Errorf("storing credentials: %w", err)
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "Added local registry '%s' (%s)\n", reg.Name, reg.URL)
+	return nil
+}
+
+func runRegistryAddServer(password string) error {
 	client, err := getAuthenticatedClient()
 	if err != nil {
 		return err
@@ -192,6 +274,46 @@ func runRegistryAdd(cmd *cobra.Command, args []string) error {
 func runRegistryRemove(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
+	if isLocalMode(cmd) {
+		return runRegistryRemoveLocal(name)
+	}
+	return runRegistryRemoveServer(name)
+}
+
+func runRegistryRemoveLocal(name string) error {
+	s, err := store.New()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	reg, err := s.GetRegistryByName(name)
+	if err != nil {
+		return err
+	}
+
+	if !registryRemoveForce {
+		fmt.Fprintf(os.Stderr, "Remove local registry '%s'? [y/N] ", name)
+		var response string
+		fmt.Scanln(&response)
+		if response != "y" && response != "Y" {
+			fmt.Fprintln(os.Stderr, "Aborted.")
+			return nil
+		}
+	}
+
+	if err := s.DeleteRegistry(reg.ID); err != nil {
+		return fmt.Errorf("deleting registry: %w", err)
+	}
+
+	cs := store.NewCredentialStore(s.DataDir())
+	cs.DeletePassword(name) // Ignore error — credential may not exist
+
+	fmt.Fprintf(os.Stderr, "Removed local registry '%s'\n", name)
+	return nil
+}
+
+func runRegistryRemoveServer(name string) error {
 	client, err := getAuthenticatedClient()
 	if err != nil {
 		return err
@@ -199,19 +321,15 @@ func runRegistryRemove(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	// Find the registry by name
 	registryID, err := findRegistryByName(client, ctx, name)
 	if err != nil {
 		return err
 	}
 
-	// Confirm unless --force
 	if !registryRemoveForce {
 		fmt.Fprintf(os.Stderr, "Remove registry '%s'? [y/N] ", name)
-
 		var response string
 		fmt.Scanln(&response)
-
 		if response != "y" && response != "Y" {
 			fmt.Fprintln(os.Stderr, "Aborted.")
 			return nil

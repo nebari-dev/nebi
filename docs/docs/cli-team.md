@@ -86,6 +86,14 @@ sha-b2c3d4e5f6a7  2        2024-01-15 14:22
 sha-a1b2c3d4e5f6  1        2024-01-15 10:30
 ```
 
+## Remove a Remote Workspace
+
+By default, `nebi workspace remove` only removes the local tracking entry (your project files are untouched). To delete a workspace from the server, use the `--remote` flag:
+
+```bash
+nebi workspace remove my-workspace --remote
+```
+
 ## Diff and Status
 
 ### Check for Changes

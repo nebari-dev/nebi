@@ -121,6 +121,13 @@ nebi workspace remove data-science
 nebi workspace remove /home/user/data-science
 ```
 
+:::note
+This only removes the local tracking entry. Your project files are untouched. To delete a workspace from the server, use `--remote`:
+```bash
+nebi workspace remove my-workspace --remote
+```
+:::
+
 To clean up all workspaces whose directories no longer exist:
 
 ```bash

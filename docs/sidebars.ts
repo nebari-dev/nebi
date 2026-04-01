@@ -8,13 +8,11 @@ const sidebars: SidebarsConfig = {
     'pixi-essentials',
     'cli-guide',
     'server-setup',
-    'registry-setup',
     'cli-reference',
     {
       type: 'category',
       label: 'Examples',
       items: [
-        'examples/sharing-environments',
         'examples/version-rollback',
       ],
     },

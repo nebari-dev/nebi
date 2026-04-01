@@ -45,7 +45,7 @@ By default the server starts on [localhost:8460](http://localhost:8460). To use 
 nebi serve --port 9000
 ```
 
-Once the server is running, authenticate from any client machine with [`nebi login`](./cli-guide.md#connect-to-a-server).
+Once the server is running, authenticate from any client machine with [`nebi login`](./cli-team.md#connect-to-a-server).
 
 ## API Documentation
 

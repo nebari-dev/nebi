@@ -113,6 +113,12 @@ const config: Config = {
       ],
       copyright: `Copyright &copy; ${new Date().getFullYear()} Nebari Dev. Built with Docusaurus.`,
     },
+    announcementBar: {
+      id: 'support_us',
+      content:
+        'This project is in early-release, we would love your feedback! Share your questions and issues on our <a class="announcementBar__link" target="_blank" href="https://github.com/nebari-dev/nebi/issues">GitHub repository</a>.',
+      isCloseable: true,
+    },
     prism: {
       theme: lightCodeTheme,
       darkTheme: darkCodeTheme,

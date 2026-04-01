@@ -151,7 +151,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 	if originTag == "" {
 		originTag = resp.ContentHash
 	}
-	if saveErr := saveOrigin(wsName, originTag, "push", string(pixiToml), string(pixiLock)); saveErr != nil {
+	if saveErr := saveOrigin(ws.ID, wsName, originTag, "push", string(pixiToml), string(pixiLock)); saveErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save origin: %v\n", saveErr)
 	}
 

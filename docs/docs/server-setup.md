@@ -1,7 +1,3 @@
----
-sidebar_position: 4
----
-
 # Server Setup
 
 Nebi includes a built-in server for team collaboration. This page covers how to run and configure it.
@@ -39,5 +35,5 @@ http://localhost:8460/docs
 
 ## What's Next
 
-- See the [CLI Guide](./cli-guide.md) for push/pull examples
+- See the [CLI Team Workflows](./cli-team.md) for push/pull examples
 - Check the [CLI Reference](./cli-reference.md) for all available commands

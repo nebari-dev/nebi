@@ -49,6 +49,7 @@ func init() {
 	importCmd.GroupID = "sync"
 
 	loginCmd.GroupID = "connection"
+	logoutCmd.GroupID = "connection"
 	registryCmd.GroupID = "connection"
 
 	serveCmd.GroupID = "admin"
@@ -58,6 +59,7 @@ func init() {
 	rootCmd.AddCommand(workspaceCmd)
 	rootCmd.AddCommand(diffCmd)
 	rootCmd.AddCommand(loginCmd)
+	rootCmd.AddCommand(logoutCmd)
 	rootCmd.AddCommand(pushCmd)
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(shellCmd)

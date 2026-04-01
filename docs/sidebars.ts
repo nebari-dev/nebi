@@ -20,8 +20,8 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Nebi Server (for Team)',
       items: [
-        'server-setup',
         'server-overview',
+        'server-setup',
       ],
     },
     {

@@ -49,6 +49,7 @@ func init() {
 	importCmd.GroupID = "sync"
 
 	loginCmd.GroupID = "connection"
+	logoutCmd.GroupID = "connection"
 	registryCmd.GroupID = "connection"
 
 	serveCmd.GroupID = "admin"

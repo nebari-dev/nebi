@@ -8,15 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ArrowLeft, Loader2, Cloud, Copy, Check } from 'lucide-react';
 import { capitalize } from '@/lib/utils';
+import { workspaceStatusVariant } from '@/lib/constants';
 import type { RemoteWorkspaceTag, RemoteWorkspaceVersion } from '@/types';
-
-const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-  creating: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  ready: 'bg-green-500/10 text-green-500 border-green-500/20',
-  failed: 'bg-red-500/10 text-red-500 border-red-500/20',
-  deleting: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
-};
 
 export const RemoteWorkspaceDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -81,11 +74,11 @@ export const RemoteWorkspaceDetail = () => {
           <p className="text-muted-foreground">Remote workspace details (read-only)</p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="bg-purple-500/10 text-purple-500 border-purple-500/20">
+          <Badge variant="default">
             <Cloud className="h-3 w-3 mr-1" />
             Remote
           </Badge>
-          <Badge className={statusColors[workspace.status] || 'bg-gray-500/10 text-gray-500 border-gray-500/20'}>
+          <Badge variant={workspaceStatusVariant[workspace.status] ?? 'outline'}>
             {capitalize(workspace.status)}
           </Badge>
         </div>
@@ -111,7 +104,7 @@ export const RemoteWorkspaceDetail = () => {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Status:</span>
-                <Badge className={statusColors[workspace.status] || 'bg-gray-500/10 text-gray-500 border-gray-500/20'}>
+                <Badge variant={workspaceStatusVariant[workspace.status] ?? 'outline'}>
                   {capitalize(workspace.status)}
                 </Badge>
               </div>

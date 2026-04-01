@@ -61,8 +61,9 @@ export const CreateUserDialog = () => {
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Username</label>
+            <label htmlFor="create-user-username" className="text-sm font-medium">Username</label>
             <Input
+              id="create-user-username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -72,8 +73,9 @@ export const CreateUserDialog = () => {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Email</label>
+            <label htmlFor="create-user-email" className="text-sm font-medium">Email</label>
             <Input
+              id="create-user-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -82,8 +84,9 @@ export const CreateUserDialog = () => {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Password</label>
+            <label htmlFor="create-user-password" className="text-sm font-medium">Password</label>
             <Input
+              id="create-user-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -92,8 +95,9 @@ export const CreateUserDialog = () => {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Confirm Password</label>
+            <label htmlFor="create-user-confirm-password" className="text-sm font-medium">Confirm Password</label>
             <Input
+              id="create-user-confirm-password"
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}

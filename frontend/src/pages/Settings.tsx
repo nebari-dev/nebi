@@ -74,11 +74,7 @@ export const Settings = () => {
           <div className="flex items-center justify-between">
             <CardTitle>Remote Server Connection</CardTitle>
             <Badge
-              className={
-                isConnected
-                  ? 'bg-green-500/10 text-green-500 border-green-500/20'
-                  : 'bg-gray-500/10 text-gray-500 border-gray-500/20'
-              }
+              variant={isConnected ? 'success' : 'outline'}
             >
               {isConnected ? (
                 <Wifi className="h-3 w-3 mr-1" />

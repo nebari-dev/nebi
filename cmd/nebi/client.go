@@ -13,6 +13,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
 	"github.com/nebari-dev/nebi/internal/store"
+	"github.com/spf13/cobra"
 )
 
 // ErrWsNotFound is returned when a workspace name is not found on the server.
@@ -51,6 +52,35 @@ func getAuthenticatedClient() (*cliclient.Client, error) {
 	}
 
 	return cliclient.New(serverURL, creds.Token), nil
+}
+
+// isLocalMode returns true if the command should operate in local mode.
+// Local mode is used when:
+// 1. The --local flag is set, OR
+// 2. No server is configured and user is not logged in
+func isLocalMode(cmd *cobra.Command) bool {
+	local, _ := cmd.Flags().GetBool("local")
+	if local {
+		return true
+	}
+
+	s, err := store.New()
+	if err != nil {
+		return true
+	}
+	defer s.Close()
+
+	serverURL, err := s.LoadServerURL()
+	if err != nil || serverURL == "" {
+		return true
+	}
+
+	creds, err := s.LoadCredentials()
+	if err != nil || creds.Token == "" {
+		return true
+	}
+
+	return false
 }
 
 // findWsByName searches for a workspace by name on the server.

@@ -29,6 +29,17 @@ func (s *Store) LoadServerURL() (string, error) {
 	return cfg.ServerURL, nil
 }
 
+// ClearCredentials removes stored credentials and server URL.
+func (s *Store) ClearCredentials() error {
+	if err := s.db.Where("1 = 1").Delete(&Credentials{}).Error; err != nil {
+		return fmt.Errorf("clearing credentials: %w", err)
+	}
+	if err := s.db.Where("1 = 1").Delete(&Config{}).Error; err != nil {
+		return fmt.Errorf("clearing config: %w", err)
+	}
+	return nil
+}
+
 // SaveServerURL stores the server URL.
 func (s *Store) SaveServerURL(url string) error {
 	return s.db.Save(&Config{ID: 1, ServerURL: url}).Error

@@ -28,7 +28,6 @@ graph LR
 
 - [Nebi CLI installed](../installation.md)
 - [Pixi](https://pixi.sh) installed
-- Access to a Nebi server (see [Server Setup](../server-setup.md))
 - A configured OCI registry (see [Registry Setup](../registry-setup.md))
 
 ## Alice: Create and Publish the Environment
@@ -140,31 +139,9 @@ pixi run app
 
 ![Streamlit prediction app](/img/example-streamlit-app.png)
 
-### Step 3: Push to the Nebi server
+### Step 3: Publish to an OCI registry
 
-Once satisfied with the results, Alice logs in to the Nebi server. The URL depends on your deployment (see [Server Setup](../server-setup.md)):
-
-```bash
-nebi login http://localhost:8460
-```
-
-Then pushes her workspace:
-
-```bash
-nebi push data-science-demo:v1.0
-```
-
-```bash title="Output"
-Creating workspace "data-science-demo"...
-Created workspace "data-science-demo"
-Pushing data-science-demo:v1.0...
-```
-
-Both `pixi.toml` and `pixi.lock` are now stored on the server, tagged as `v1.0`.
-
-### Step 4: Publish to an OCI registry
-
-Bob works at a different company and can't log in to Alice's Nebi server. By publishing to a public OCI registry, Alice lets Bob import the environment with a single command, no server access needed.
+Alice publishes her environment to a public OCI registry so anyone can import it with a single command.
 
 The `--tag` sets the version and `--repo` names the repository on the registry:
 
@@ -180,9 +157,7 @@ Published data-science-demo:v1.0
 
 Bob doesn't need to know what packages Alice chose or how the environment was built. He just needs one command.
 
-### Option A: Import from the OCI registry
-
-If Bob doesn't have access to Alice's Nebi server, he can import directly from the OCI registry:
+### Import from the OCI registry
 
 ```bash
 nebi import <registry-url>/data-science-demo:v1.0 -o data-science-demo
@@ -198,22 +173,9 @@ data-science-demo/
 └── pixi.lock
 ```
 
-### Option B: Pull from the Nebi server
-
-If Bob has access to the same Nebi server, he can pull the workspace directly:
-
-```bash
-nebi login http://localhost:8460
-nebi pull data-science-demo:v1.0 -o ./data-science-demo
-```
-
-```bash title="Output"
-Pulled data-science-demo:v1.0
-```
-
 ### Run the task
 
-Either way, Bob now has the full environment and the tasks Alice defined. He can run the training task:
+Bob now has the full environment and the tasks Alice defined. He can run the training task:
 
 ```bash
 cd data-science-demo
@@ -244,9 +206,8 @@ Here's the full flow at a glance:
 |------|-----|---------|
 | Create workspace | Alice | `nebi init` + `pixi add` |
 | Add tasks | Alice | Edit `pixi.toml` |
-| Push to server | Alice | `nebi push` |
 | Publish to OCI | Alice | `nebi publish` |
 | Import environment | Bob | `nebi import` |
 | Run task | Bob | `pixi run train` |
 
-With nebi, Alice's exact environment lands on Bob's machine without manual setup.
+With Nebi, Alice's exact environment lands on Bob's machine without manual setup.

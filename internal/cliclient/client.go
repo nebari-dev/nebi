@@ -5,9 +5,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -63,7 +66,7 @@ func (c *Client) request(ctx context.Context, method, path string, body, result 
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, wrapConnectionError(err, c.serverURL())
 	}
 	defer resp.Body.Close()
 
@@ -121,7 +124,7 @@ func (c *Client) GetText(ctx context.Context, path string) (string, *http.Respon
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", nil, err
+		return "", nil, wrapConnectionError(err, c.serverURL())
 	}
 	defer resp.Body.Close()
 
@@ -172,6 +175,56 @@ func IsUnauthorized(err error) bool {
 		return apiErr.StatusCode == 401
 	}
 	return false
+}
+
+// serverURL returns the base server URL (without the /api/v1 suffix).
+func (c *Client) serverURL() string {
+	return strings.TrimSuffix(c.baseURL, "/api/v1")
+}
+
+// ConnectionError wraps a network error with a helpful message when the
+// server is unreachable.
+type ConnectionError struct {
+	ServerURL string
+	Err       error
+}
+
+func (e *ConnectionError) Error() string {
+	return fmt.Sprintf(
+		"server at %s is unreachable: %v\n\nHint: If the server should be running, check that it is started.\n  To work in local mode instead, use the --local flag.\n  To remove the configured server, run: nebi logout",
+		e.ServerURL, e.Err,
+	)
+}
+
+func (e *ConnectionError) Unwrap() error {
+	return e.Err
+}
+
+// IsConnectionError returns true if the error is a ConnectionError.
+func IsConnectionError(err error) bool {
+	var connErr *ConnectionError
+	return errors.As(err, &connErr)
+}
+
+// wrapConnectionError checks if err is a network-level connection failure
+// and wraps it with a helpful message. Non-connection errors pass through.
+func wrapConnectionError(err error, serverURL string) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		var opErr *net.OpError
+		if errors.As(urlErr, &opErr) {
+			return &ConnectionError{ServerURL: serverURL, Err: err}
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return &ConnectionError{ServerURL: serverURL, Err: err}
+		}
+		// DNS resolution failures
+		var dnsErr *net.DNSError
+		if errors.As(urlErr, &dnsErr) {
+			return &ConnectionError{ServerURL: serverURL, Err: err}
+		}
+	}
+	return err
 }
 
 // IsOIDCRedirect returns true if the error indicates the server is behind an

@@ -1,0 +1,60 @@
+[workspace]
+name = "data-science-demo"
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64"]
+version = "0.1.0"
+
+[dependencies]
+python = ">=3.11"
+scikit-learn = ">=1.4"
+streamlit = ">=1.30"
+
+# ---------------------------------------------------------------------------
+# Shared tasks
+# ---------------------------------------------------------------------------
+[tasks]
+train = """python -c "
+from sklearn.datasets import load_iris
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, confusion_matrix
+
+X, y = load_iris(return_X_y=True)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+model = DecisionTreeClassifier(random_state=42)
+model.fit(X_train, y_train)
+
+y_pred = model.predict(X_test)
+print(f'Accuracy: {accuracy_score(y_test, y_pred):.2f}')
+cm = confusion_matrix(y_test, y_pred)
+print('Confusion Matrix:')
+print(cm)
+" """
+
+app = """python -c "
+import tempfile, os, subprocess, sys
+code = '''
+import streamlit as st
+from sklearn.datasets import load_iris
+from sklearn.tree import DecisionTreeClassifier
+
+iris = load_iris()
+model = DecisionTreeClassifier(random_state=42)
+model.fit(iris.data, iris.target)
+
+st.title('Iris Species Predictor')
+features = [[
+    st.slider('Sepal length', 4.0, 8.0, 5.8),
+    st.slider('Sepal width', 2.0, 4.5, 3.0),
+    st.slider('Petal length', 1.0, 7.0, 4.0),
+    st.slider('Petal width', 0.1, 2.5, 1.2),
+]]
+st.subheader(f'Predicted: {iris.target_names[model.predict(features)[0]]}')
+'''
+f = tempfile.NamedTemporaryFile(suffix='.py', delete=False, mode='w')
+f.write(code)
+f.close()
+subprocess.run([sys.executable, '-m', 'streamlit', 'run', f.name])
+os.unlink(f.name)
+" """

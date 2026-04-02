@@ -26,6 +26,13 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: 'Examples',
+      items: [
+        'examples/version-rollback',
+      ],
+    },
+    {
+      type: 'category',
       label: 'Development',
       items: [
         'maintainers-conda-forge',

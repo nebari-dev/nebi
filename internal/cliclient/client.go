@@ -191,7 +191,7 @@ type ConnectionError struct {
 
 func (e *ConnectionError) Error() string {
 	return fmt.Sprintf(
-		"server at %s is unreachable: %v\n\nHint: If the server should be running, check that it is started.\n  To work in local mode instead, use the --local flag.\n  To remove the configured server, run: nebi logout",
+		"server at %s is unreachable: %v\n\nHint: If the server should be running, check that it is started.\n  To run this command in local mode instead, use the --local flag.\n  To remove the configured server, run: nebi logout",
 		e.ServerURL, e.Err,
 	)
 }

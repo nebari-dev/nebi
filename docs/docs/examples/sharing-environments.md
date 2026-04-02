@@ -117,7 +117,15 @@ os.unlink(f.name)
 " """
 ```
 
-Alice can verify the tasks work locally by running the training task:
+Alice installs the environment to generate the lock file:
+
+```bash
+pixi install
+```
+
+This creates `pixi.lock`, which pins the exact package versions for reproducibility.
+
+She can then verify the tasks work locally by running the training task:
 
 ```bash
 pixi run train
@@ -141,16 +149,42 @@ pixi run app
 
 ### Step 3: Publish to an OCI registry
 
-Alice publishes her environment to a public OCI registry so anyone can import it with a single command.
-
-The `--tag` sets the version and `--repo` names the repository on the registry:
+Before publishing, configure a default registry (see [Registry Setup](../registry-setup.md) for details):
 
 ```bash
-nebi publish data-science-demo --tag v1.0 --repo data-science-demo
+nebi registry add \
+  --default \
+  --name <name> \
+  --url <url> \
+  --namespace <namespace> \
+  --username <username> \
+  --local
 ```
 
+For example, here's how it looks with Docker Hub:
+
+```bash
+nebi registry add \
+  --name dockerhub \
+  --url docker.io \
+  --namespace alice \
+  --username alice \
+  --default \
+  --local
+Password:
+Added local registry 'dockerhub' (docker.io)
+```
+
+Then publish. The `--tag` sets the version and `--repo` names the repository:
+
+```bash
+nebi publish data-science-demo --tag v1.0 --repo data-science-demo --local
+```
+
+Example output with Docker Hub:
+
 ```bash title="Output"
-Published data-science-demo:v1.0
+Published docker.io/alice/data-science-demo:v1.0 (digest: sha256:...)
 ```
 
 ## Bob: Download and Run the Environment
@@ -160,25 +194,22 @@ Bob doesn't need to know what packages Alice chose or how the environment was bu
 ### Import from the OCI registry
 
 ```bash
-nebi import <registry-url>/data-science-demo:v1.0 -o data-science-demo
+nebi import <url>/<namespace>/data-science-demo:v1.0
 ```
 
-Replace `<registry-url>` with the registry Alice published to (e.g., `quay.io/alice` or `ghcr.io/alice`).
+For example, with Alice's Docker Hub registry, the command would be:
 
-This creates a `data-science-demo` directory with the environment files:
-
-```bash title="Output"
-data-science-demo/
-├── pixi.toml
-└── pixi.lock
+```bash
+nebi import docker.io/alice/data-science-demo:v1.0
 ```
+
+This creates `pixi.toml` and `pixi.lock` in the current directory.
 
 ### Run the task
 
-Bob now has the full environment and the tasks Alice defined. He can run the training task:
+Now that Bob has the environment, he can run the training task:
 
 ```bash
-cd data-science-demo
 pixi run train
 ```
 
@@ -196,8 +227,6 @@ Or launch the Streamlit app:
 pixi run app
 ```
 
-Bob gets the same packages, the same versions, and the same results as Alice.
-
 ## What Just Happened
 
 Here's the full flow at a glance:
@@ -210,4 +239,4 @@ Here's the full flow at a glance:
 | Import environment | Bob | `nebi import` |
 | Run task | Bob | `pixi run train` |
 
-With Nebi, Alice's exact environment lands on Bob's machine without manual setup.
+With Nebi, Bob gets the same packages, the same versions, and the same results as Alice without any manual setup.

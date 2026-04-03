@@ -160,8 +160,32 @@ jobs:
           version: latest
           args: build --snapshot --clean
 
-      - name: Upload artifacts
+      - name: Upload Linux amd64
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: nebi-cli-binaries
-          path: dist/nebi_*/nebi*
+          name: nebi-cli-linux-amd64
+          path: dist/nebi_linux_amd64_v1/nebi
+
+      - name: Upload Linux arm64
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nebi-cli-linux-arm64
+          path: dist/nebi_linux_arm64_v8.0/nebi
+
+      - name: Upload macOS Intel
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nebi-cli-darwin-amd64
+          path: dist/nebi_darwin_amd64_v1/nebi
+
+      - name: Upload macOS ARM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nebi-cli-darwin-arm64
+          path: dist/nebi_darwin_arm64_v8.0/nebi
+
+      - name: Upload Windows amd64
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nebi-cli-windows-amd64
+          path: dist/nebi_windows_amd64_v1/nebi.exe

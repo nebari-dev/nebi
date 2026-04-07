@@ -30,6 +30,7 @@ const sidebars: SidebarsConfig = {
       label: 'Examples',
       items: [
         'examples/sharing-environments',
+        'examples/version-rollback',
       ],
     },
     {

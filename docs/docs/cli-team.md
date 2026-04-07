@@ -131,9 +131,39 @@ $ nebi diff ./my-project my-project:v1.0
 $ nebi diff --lock
 ```
 
-## Publish to an OCI Registry
+### Registry Setup
 
-**Publish** takes the workspace files already on the Nebi server and pushes them to an external OCI registry (e.g., Quay.io, GHCR) for distribution. You must **push** before you **publish** — publish reads from the server, not your local files.
+Before publishing, you need to configure an OCI registry with credentials. See [Registry Setup](./registry-setup.md) for step-by-step instructions on setting up GHCR or Quay.io.
+
+Once you have your credentials, add the registry to Nebi:
+
+```bash
+nebi registry add \
+  --name <registry-name> \
+  --url <registry-url> \
+  --namespace <namespace> \
+  --username <username> \
+  --default
+```
+
+When prompted for a password, paste your registry token.
+
+#### Managing registries
+
+```bash
+# List all configured registries
+$ nebi registry list
+
+# Remove a registry
+$ nebi registry remove <name>
+
+# Publish to a specific registry (instead of the default)
+$ nebi publish my-workspace --registry ghcr --tag v1.0
+```
+
+### Publish to an OCI Registry
+
+**Publish** takes the workspace files already on the Nebi server and pushes them to an external OCI registry (e.g., Quay.io, GHCR) for distribution. You must **push** before you **publish**, as publish reads from the server, not your local files.
 
 By default, the content hash tag is used as the primary OCI tag, and a `latest` tag is always created. All workspace tags are propagated to the OCI registry.
 
@@ -143,11 +173,6 @@ $ nebi push my-project
 Pushed my-project (version 2, tags: sha-f8426b81dfed, latest)
 $ nebi publish my-project
 Published my-project-8b3fd00c:sha-f8426b81dfed
-
-# List available registries on the server
-$ nebi registry list
-  NAME    URL
-  ghcr    ghcr.io
 
 # Publish with a custom OCI tag
 $ nebi publish my-project --tag v1.0.0

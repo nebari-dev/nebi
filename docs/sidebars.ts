@@ -16,12 +16,21 @@ const sidebars: SidebarsConfig = {
       ],
     },
     'desktop',
+    'registry-setup',
     {
       type: 'category',
       label: 'Nebi Server (for Team)',
       items: [
         'server-overview',
         'server-setup',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Examples',
+      items: [
+        'examples/sharing-environments',
+        'examples/version-rollback',
       ],
     },
     {

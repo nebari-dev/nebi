@@ -76,3 +76,7 @@ CLAUDE.md
 docs/node_modules/
 docs/build/
 docs/.docusaurus/
+
+# Pixi
+pixi.lock
+.pixi/

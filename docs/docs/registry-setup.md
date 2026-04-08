@@ -35,7 +35,7 @@ nebi registry add \
 The `--namespace` is your username or organization on the registry. It becomes part of the URL: `ghcr.io/<namespace>/<repo-name>`. When prompted for a password, paste the token you created.
 
 :::tip
-Public packages on GHCR are free. Anyone can import them with `nebi import oci://ghcr.io/your-username/my-workspace:v1.0`.
+Public packages on GHCR are free. Anyone can import them with `nebi import ghcr.io/your-username/my-workspace:v1.0`.
 :::
 
 ## Quay.io
@@ -76,3 +76,19 @@ nebi registry add \
 ```
 
 Replace `your-dockerhub-username` with your Docker Hub username or organization. When prompted for a password, paste the access token.
+
+## Pulling from a Public Registry
+
+You do not need a Nebi server, an account, or registry credentials to consume a public environment. If someone publishes their workspace to a public OCI namespace, you can pull it directly:
+
+```bash
+nebi import <registry>/<namespace>/<repo>:<tag>
+```
+
+For example:
+
+```bash
+nebi import quay.io/nebari_environments/data-science-demo:0.1.0
+```
+
+This writes `pixi.toml` and `pixi.lock` into the current directory, ready to run with `pixi run`. To discover public environments visually, see [Browse Public Registries](./ui.md#browse-public-registries).

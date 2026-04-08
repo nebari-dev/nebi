@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	wsVersionRemote   bool
-	wsVersionJSON     bool
+	wsVersionRemote    bool
+	wsVersionJSON      bool
 	wsVersionCreateMsg string
 )
 
@@ -474,4 +474,3 @@ func runWorkspaceVersionRollbackRemote(name string, versionNum int) error {
 	)
 	return nil
 }
-

@@ -7,14 +7,16 @@ import (
 	"runtime"
 
 	"github.com/glebarez/sqlite"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
 // Store manages the local nebi SQLite database via GORM.
 type Store struct {
-	db      *gorm.DB
-	dataDir string
+	db           *gorm.DB
+	dataDir      string
+	localUserID  uuid.UUID
 }
 
 // New creates a Store using the default platform data directory.
@@ -44,7 +46,7 @@ func Open(dataDir string) (*Store, error) {
 	db.Exec("PRAGMA journal_mode=WAL")
 
 	// AutoMigrate workspace + config/credentials tables
-	if err := db.AutoMigrate(&LocalWorkspace{}, &Config{}, &Credentials{}, &LocalRegistry{}, &LocalPublication{}); err != nil {
+	if err := db.AutoMigrate(&LocalUser{}, &LocalWorkspace{}, &LocalWorkspaceVersion{}, &Config{}, &Credentials{}, &LocalRegistry{}, &LocalPublication{}); err != nil {
 		return nil, fmt.Errorf("migrating schema: %w", err)
 	}
 
@@ -52,7 +54,15 @@ func Open(dataDir string) (*Store, error) {
 	db.Exec("INSERT OR IGNORE INTO store_config (id) VALUES (1)")
 	db.Exec("INSERT OR IGNORE INTO store_credentials (id) VALUES (1)")
 
-	return &Store{db: db, dataDir: dataDir}, nil
+	// Ensure the well-known local-user row exists so that FK constraints
+	// added later by the server migration (workspace_versions.created_by
+	// -> users.id) are satisfied by records the CLI creates.
+	localUserID, err := ensureLocalUser(db)
+	if err != nil {
+		return nil, fmt.Errorf("seeding local user: %w", err)
+	}
+
+	return &Store{db: db, dataDir: dataDir, localUserID: localUserID}, nil
 }
 
 // DB returns the underlying GORM DB for advanced queries.

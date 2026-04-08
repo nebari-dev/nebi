@@ -260,14 +260,14 @@ const RepositoryRow = ({
                   {error}
                 </div>
               )}
-              <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-[1fr_2fr_1fr] gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground">Registry</span>
                   <p className="font-medium">{registry.name}</p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <span className="text-muted-foreground">Repository</span>
-                  <p className="font-medium font-mono">{repoName}</p>
+                  <p className="font-medium font-mono break-all">{repoName}</p>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Tag</span>

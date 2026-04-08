@@ -118,6 +118,201 @@ export const Registries = () => {
   );
 };
 
+const RepositoryRow = ({
+  registryId,
+  repoName,
+  registry,
+  isPublic,
+  showVisibility,
+}: {
+  registryId: string;
+  repoName: string;
+  registry: { url: string; name: string } | undefined;
+  isPublic?: boolean;
+  showVisibility: boolean;
+}) => {
+  const navigate = useNavigate();
+  const { data: tagData, isLoading: tagsLoading } = useRepositoryTags(registryId, repoName);
+  const importMutation = useImportEnvironment();
+
+  const [selectedTag, setSelectedTag] = useState('');
+  const [copiedTag, setCopiedTag] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importName, setImportName] = useState('');
+  const [error, setError] = useState('');
+
+  const tags = tagData?.tags || [];
+  const effectiveTag = selectedTag || tags[0]?.name || '';
+
+  const handleCopyImportCmd = async () => {
+    if (!registry || !effectiveTag) return;
+    const cmd = buildImportCommand(registry.url, repoName, effectiveTag);
+    await navigator.clipboard.writeText(cmd);
+    setCopiedTag(effectiveTag);
+    setTimeout(() => setCopiedTag(null), 2000);
+  };
+
+  const handleOpenImport = () => {
+    if (!effectiveTag) return;
+    const repoBaseName = repoName.split('/').pop() || repoName;
+    setImportName(`${repoBaseName}-${effectiveTag}`);
+    setShowImport(true);
+    setError('');
+  };
+
+  const handleImport = async () => {
+    if (!registryId || !importName.trim()) return;
+    setError('');
+    try {
+      await importMutation.mutateAsync({
+        registryId,
+        data: {
+          repository: repoName,
+          tag: effectiveTag,
+          name: importName.trim(),
+        },
+      });
+      setShowImport(false);
+      navigate('/workspaces');
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setError(e?.response?.data?.error || 'Failed to import environment.');
+    }
+  };
+
+  const colSpan = showVisibility ? 4 : 3;
+
+  return (
+    <>
+      <tr className="border-b last:border-0 hover:bg-muted/50">
+        <td className="p-4 font-mono text-sm">{repoName}</td>
+        {showVisibility && (
+          <td className="p-4">
+            {isPublic === undefined ? (
+              <Badge variant="outline" className="text-muted-foreground">Unknown</Badge>
+            ) : isPublic ? (
+              <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
+                <Globe className="mr-1 h-3 w-3" />
+                Public
+              </Badge>
+            ) : (
+              <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20">
+                <Lock className="mr-1 h-3 w-3" />
+                Private
+              </Badge>
+            )}
+          </td>
+        )}
+        <td className="p-4">
+          {tagsLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          ) : tags.length > 0 ? (
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              value={effectiveTag}
+              onChange={(e) => setSelectedTag(e.target.value)}
+            >
+              {tags.map((tag) => (
+                <option key={tag.name} value={tag.name}>{tag.name}</option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-sm text-muted-foreground">No tags</span>
+          )}
+        </td>
+        <td className="p-4 text-right">
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleCopyImportCmd}
+              disabled={!effectiveTag || tagsLoading}
+            >
+              {copiedTag === effectiveTag ? (
+                <>
+                  <Check className="mr-2 h-4 w-4" />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="mr-2 h-4 w-4" />
+                  nebi import
+                </>
+              )}
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleOpenImport}
+              disabled={!effectiveTag || tagsLoading}
+              title="Import this environment into a new workspace"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Import
+            </Button>
+          </div>
+        </td>
+      </tr>
+      {showImport && registry && (
+        <tr>
+          <td colSpan={colSpan} className="p-4 bg-muted/30">
+            <div className="space-y-4">
+              {error && (
+                <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded text-sm">
+                  {error}
+                </div>
+              )}
+              <div className="grid grid-cols-[1fr_2fr_1fr] gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Registry</span>
+                  <p className="font-medium">{registry.name}</p>
+                </div>
+                <div className="min-w-0">
+                  <span className="text-muted-foreground">Repository</span>
+                  <p className="font-medium font-mono break-all">{repoName}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Tag</span>
+                  <p className="font-medium font-mono">{effectiveTag}</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <label className="text-sm font-medium mb-2 block">Workspace Name</label>
+                <Input
+                  value={importName}
+                  onChange={(e) => setImportName(e.target.value)}
+                  placeholder="Enter workspace name"
+                  autoFocus
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setShowImport(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleImport}
+                  disabled={importMutation.isPending || !importName.trim()}
+                >
+                  {importMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-2 h-4 w-4" />
+                      Import
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+};
+
 export const RegistryRepositories = () => {
   const navigate = useNavigate();
   const { registryId } = useParams<{ registryId: string }>();
@@ -125,6 +320,7 @@ export const RegistryRepositories = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [manualRepo, setManualRepo] = useState('');
+  const [manualRepos, setManualRepos] = useState<string[]>([]);
 
   const selectedRegistry = registries?.find((r) => r.id === registryId);
 
@@ -133,14 +329,12 @@ export const RegistryRepositories = () => {
     searchQuery || undefined
   );
 
-  const handleViewTags = (repoName: string) => {
-    navigate(`/registries/${registryId}/repo/${repoName}`);
-  };
-
   const handleManualRepoSubmit = () => {
-    if (manualRepo.trim()) {
-      handleViewTags(manualRepo.trim());
+    const trimmed = manualRepo.trim();
+    if (trimmed && !manualRepos.includes(trimmed)) {
+      setManualRepos((prev) => [...prev, trimmed]);
     }
+    setManualRepo('');
   };
 
   if (registriesLoading) {
@@ -150,6 +344,10 @@ export const RegistryRepositories = () => {
       </div>
     );
   }
+
+  const discoveredRepoNames = new Set(repoData?.repositories?.map((r) => r.name) || []);
+  const uniqueManualRepos = manualRepos.filter((r) => !discoveredRepoNames.has(r));
+  const hasRepos = (repoData?.repositories?.length || 0) > 0 || uniqueManualRepos.length > 0;
 
   return (
     <div className="space-y-6">
@@ -207,11 +405,12 @@ export const RegistryRepositories = () => {
               }}
             />
             <Button onClick={handleManualRepoSubmit} disabled={!manualRepo.trim()}>
-              View Tags
+              <Search className="mr-2 h-4 w-4" />
+              Look Up
             </Button>
           </div>
 
-          {repoData?.repositories && repoData.repositories.length > 0 && (
+          {hasRepos ? (
             <Card>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
@@ -220,44 +419,36 @@ export const RegistryRepositories = () => {
                       <tr>
                         <th className="text-left p-4 font-medium">Repository</th>
                         <th className="text-left p-4 font-medium">Visibility</th>
+                        <th className="text-left p-4 font-medium">Tag</th>
                         <th className="text-right p-4 font-medium">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {repoData.repositories.map((repo) => (
-                        <tr key={repo.name} className="border-b last:border-0 hover:bg-muted/50">
-                          <td className="p-4 font-mono text-sm">{repo.name}</td>
-                          <td className="p-4">
-                            {repo.is_public === undefined ? (
-                              <Badge variant="outline" className="text-muted-foreground">Unknown</Badge>
-                            ) : repo.is_public ? (
-                              <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
-                                <Globe className="mr-1 h-3 w-3" />
-                                Public
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20">
-                                <Lock className="mr-1 h-3 w-3" />
-                                Private
-                              </Badge>
-                            )}
-                          </td>
-                          <td className="p-4 text-right">
-                            <Button size="sm" variant="outline" onClick={() => handleViewTags(repo.name)}>
-                              View Tags
-                              <ChevronRight className="ml-2 h-4 w-4" />
-                            </Button>
-                          </td>
-                        </tr>
+                      {repoData?.repositories?.map((repo) => (
+                        <RepositoryRow
+                          key={repo.name}
+                          registryId={registryId || ''}
+                          repoName={repo.name}
+                          registry={selectedRegistry}
+                          isPublic={repo.is_public}
+                          showVisibility={true}
+                        />
+                      ))}
+                      {uniqueManualRepos.map((repoName) => (
+                        <RepositoryRow
+                          key={repoName}
+                          registryId={registryId || ''}
+                          repoName={repoName}
+                          registry={selectedRegistry}
+                          showVisibility={true}
+                        />
                       ))}
                     </tbody>
                   </table>
                 </div>
               </CardContent>
             </Card>
-          )}
-
-          {repoData?.repositories?.length === 0 && (
+          ) : (
             <div className="text-center py-8">
               <p className="text-muted-foreground">No repositories discovered automatically. Use the field above to enter a repository path directly.</p>
             </div>

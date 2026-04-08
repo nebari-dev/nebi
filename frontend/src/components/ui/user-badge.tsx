@@ -10,11 +10,11 @@ export const UserBadge = ({ username }: { username: string }) => {
   const colorClass = colors[username.charCodeAt(0) % colors.length];
   const initial = username[0]?.toUpperCase() || '?';
   return (
-    <div className="inline-flex items-center gap-1.5 bg-muted border border-border rounded-full pl-[3px] pr-2.5 py-[3px]">
+    <div className="inline-flex items-center gap-1.5 bg-muted border border-zinc-300 dark:border-zinc-600 rounded-full pl-[3px] pr-2.5 py-[3px]">
       <div className={`h-4 w-4 rounded-full flex items-center justify-center text-[10px] font-semibold shrink-0 ${colorClass}`}>
         {initial}
       </div>
-      <span className="text-xs font-semibold text-muted-foreground">{username}</span>
+      <span className="text-xs font-semibold text-secondary-foreground/70">{username}</span>
     </div>
   );
 };

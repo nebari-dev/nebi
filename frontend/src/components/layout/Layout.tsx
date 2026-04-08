@@ -175,7 +175,7 @@ export const Layout = () => {
                   <span className="text-sm font-medium text-foreground">
                     {user?.username}
                   </span>
-                  <Button variant="ghost" size="icon" onClick={handleLogout}>
+                  <Button variant="ghost" size="icon" title="Log out" onClick={handleLogout}>
                     <LogOut className="h-4 w-4" />
                   </Button>
                 </>
@@ -197,7 +197,7 @@ export const Layout = () => {
             }
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+            className="text-sm text-muted-foreground hover:text-muted-foreground transition-colors"
           >
             v{versionInfo.version}
           </a>

@@ -57,6 +57,12 @@ internal/web/dist/
 frontend/dist/
 frontend/node_modules/
 
+# E2E output
+node_modules/
+playwright-report/
+playwright/.auth/
+test-results/
+
 .env
 dist/
 .env.prod

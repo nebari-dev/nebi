@@ -104,7 +104,7 @@ export const Login = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white">
-      <div className="w-full max-w-lg">
+      <main className="w-full max-w-lg">
         <div className="space-y-6 pb-8">
           <div className="flex justify-center">
             <img
@@ -169,7 +169,7 @@ export const Login = () => {
             Sign in with OAuth
           </Button>
         </div>
-      </div>
+      </main>
     </div>
   );
 };

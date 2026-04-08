@@ -40,6 +40,7 @@ export const SplitButton = ({
       </Button>
       <Button
         className="rounded-l-none px-2"
+        title="More options"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}

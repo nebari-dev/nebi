@@ -26,7 +26,7 @@ export const Dialog = ({ open, onOpenChange, children }: DialogProps) => {
             className="fixed inset-0 bg-black/50"
             onClick={() => onOpenChange(false)}
           />
-          <div className="relative bg-card border rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-auto m-4">
+          <div role="dialog" aria-modal="true" className="relative bg-card border rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-auto m-4">
             {content}
           </div>
         </div>

@@ -114,9 +114,7 @@ export const RegistryManagement = () => {
                     </td>
                     <td className="p-4">
                       {registry.is_default ? (
-                        <Badge className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
-                          Default
-                        </Badge>
+                        <Badge variant="default">Default</Badge>
                       ) : (
                         <Badge variant="outline">Active</Badge>
                       )}

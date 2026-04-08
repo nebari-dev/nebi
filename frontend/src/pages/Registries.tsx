@@ -244,6 +244,7 @@ const RepositoryRow = ({
               size="sm"
               onClick={handleOpenImport}
               disabled={!effectiveTag || tagsLoading}
+              title="Import this environment into a new workspace"
             >
               <Download className="mr-2 h-4 w-4" />
               Import
@@ -254,7 +255,7 @@ const RepositoryRow = ({
       {showImport && registry && (
         <tr>
           <td colSpan={colSpan} className="p-4 bg-muted/30">
-            <div className="space-y-4 max-w-lg">
+            <div className="space-y-4">
               {error && (
                 <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded text-sm">
                   {error}
@@ -274,8 +275,8 @@ const RepositoryRow = ({
                   <p className="font-medium font-mono">{effectiveTag}</p>
                 </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Workspace Name</label>
+              <div className="space-y-3">
+                <label className="text-sm font-medium mb-2 block">Workspace Name</label>
                 <Input
                   value={importName}
                   onChange={(e) => setImportName(e.target.value)}

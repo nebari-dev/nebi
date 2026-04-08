@@ -14,9 +14,9 @@ import (
 
 // Store manages the local nebi SQLite database via GORM.
 type Store struct {
-	db           *gorm.DB
-	dataDir      string
-	localUserID  uuid.UUID
+	db          *gorm.DB
+	dataDir     string
+	localUserID uuid.UUID
 }
 
 // New creates a Store using the default platform data directory.

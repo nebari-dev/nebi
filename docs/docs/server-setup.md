@@ -1,6 +1,12 @@
-# Server Setup
+# Nebi Server
 
-Nebi includes a built-in server for team collaboration. This page covers how to run and configure it.
+The Nebi server is a hosted web interface to manage Nebi workspaces in a team. It has a similar interface as the local desktop, but with more features for teams and organizations.
+
+This page covers how to run and configure it.
+
+<!-- TODO: Embed video walkthrough of server UI, created with https://github.com/nebari-dev/nebi-video-demo-automation. Update the link in the following iframe. -->
+
+<!-- <iframe width="560" height="315" src="" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe> -->
 
 ## Admin Credentials
 
@@ -10,25 +16,11 @@ Before starting the server for the first time, set `ADMIN_USERNAME` and `ADMIN_P
 
 You (and your team) will use these credentials to log in via `nebi login` or the web UI.
 
-You can set these credentials in your shell or in a `.env` file.
-
-### Option A: Export in your shell
-
-Set the variables directly in your terminal session before starting the server:
+Export the variables in your terminal session before starting the server:
 
 ```bash
 export ADMIN_USERNAME=admin
 export ADMIN_PASSWORD=your-password
-```
-
-### Option B: Use a `.env` file
-
-Create a `.env` file in the directory where you run `nebi serve`:
-
-```bash
-# .env
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=your-password
 ```
 
 ## Running the Server

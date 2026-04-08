@@ -17,14 +17,7 @@ const sidebars: SidebarsConfig = {
     },
     'ui',
     'registry-setup',
-    {
-      type: 'category',
-      label: 'Nebi Server (for Team)',
-      items: [
-        'server-overview',
-        'server-setup',
-      ],
-    },
+    'server-setup',
     {
       type: 'category',
       label: 'Examples',

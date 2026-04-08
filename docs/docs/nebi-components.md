@@ -8,7 +8,7 @@ It has three components: a **CLI**, a **desktop app**, and a **team server**. Al
 
 ## CLI
 
-The CLI is a standalone tool for managing and tracking Pixi workspaces on your local machines. If you have a team server, the CLI can connect to it.
+The CLI is a standalone tool for managing and tracking Pixi workspaces on your local machines, both for [solo use](./cli-local.md) and for [team workflows](./cli-team.md) backed by a Nebi server. Every command is documented in the [CLI reference](./cli-reference.md).
 
 - **Local database**: Track workspace names, paths, and versions in a local database
 - **Pixi shell/run**: Open a pixi shell or run pixi tasks by workspace name
@@ -18,11 +18,11 @@ The CLI is a standalone tool for managing and tracking Pixi workspaces on your l
 
 ## Desktop application
 
-The desktop app is another tool for managing Pixi workspaces on your local machines. It supports all the CLI workflows through a graphical / app interface.
+The [desktop app](./desktop.md) is another tool for managing Pixi workspaces on your local machines. It supports all the CLI workflows through a graphical / app interface.
 
 ## OCI Registries
 
-Nebi can publish workspace specifications (`pixi.toml` & `pixi.lock`) as OCI artifacts to any OCI-compliant registry such as GitHub Container Registry, Quay.io, or self-hosted registries.
+Nebi can publish workspace specifications (`pixi.toml` & `pixi.lock`) as OCI artifacts to any [OCI-compliant registry](./registry-setup.md) such as GitHub Container Registry, Quay.io, or self-hosted registries.
 
 - Publishing can be done from the CLI (`nebi publish`) or triggered from the desktop app or server
 - The desktop app and server UI includes a registry browser for discovering and pulling published workspaces
@@ -31,7 +31,7 @@ Specs are packed into an OCI Image Manifest with custom media types (`applicatio
 
 ## Nebi Server
 
-The server is the team deployment of Nebi. It runs the desktop app interface but in a **server and team mode** with full multi-user support.
+The [Nebi server](./server-setup.md) is the team deployment of Nebi. It runs the desktop app interface but in a **server and team mode** with full multi-user support.
 
 - **Authentication**: JWT-based sessions with pluggable backends — basic auth, OIDC, or proxy auth
 - **Role-based AC**: Apache Casbin-based access control with per-workspace permissions (read, write, admin) for users
@@ -39,3 +39,5 @@ The server is the team deployment of Nebi. It runs the desktop app interface but
 - **Central database**: SQLite (default) or PostgreSQL for workspace and user tracking
 - **Background worker**: Background processor for async operations like workspace creation and package installation
 - **Job queue**: In-memory queue (single instance) or Valkey (distributed deployments) to process workspace creation and updating requests.
+
+Learn more: [Nebi server setup](./server-setup.md).

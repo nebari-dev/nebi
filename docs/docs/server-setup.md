@@ -16,25 +16,11 @@ Before starting the server for the first time, set `ADMIN_USERNAME` and `ADMIN_P
 
 You (and your team) will use these credentials to log in via `nebi login` or the web UI.
 
-You can set these credentials in your shell or in a `.env` file.
-
-### Option A: Export in your shell
-
-Set the variables directly in your terminal session before starting the server:
+Export the variables in your terminal session before starting the server:
 
 ```bash
 export ADMIN_USERNAME=admin
 export ADMIN_PASSWORD=your-password
-```
-
-### Option B: Use a `.env` file
-
-Create a `.env` file in the directory where you run `nebi serve`:
-
-```bash
-# .env
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=your-password
 ```
 
 ## Running the Server

@@ -319,23 +319,12 @@ export const RegistryRepositories = () => {
   const { data: registries, isLoading: registriesLoading } = usePublicRegistries();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [manualRepo, setManualRepo] = useState('');
-  const [manualRepos, setManualRepos] = useState<string[]>([]);
-
   const selectedRegistry = registries?.find((r) => r.id === registryId);
 
   const { data: repoData, isLoading: reposLoading } = useRegistryRepositories(
     registryId || '',
     searchQuery || undefined
   );
-
-  const handleManualRepoSubmit = () => {
-    const trimmed = manualRepo.trim();
-    if (trimmed && !manualRepos.includes(trimmed)) {
-      setManualRepos((prev) => [...prev, trimmed]);
-    }
-    setManualRepo('');
-  };
 
   if (registriesLoading) {
     return (
@@ -345,9 +334,7 @@ export const RegistryRepositories = () => {
     );
   }
 
-  const discoveredRepoNames = new Set(repoData?.repositories?.map((r) => r.name) || []);
-  const uniqueManualRepos = manualRepos.filter((r) => !discoveredRepoNames.has(r));
-  const hasRepos = (repoData?.repositories?.length || 0) > 0 || uniqueManualRepos.length > 0;
+  const hasRepos = (repoData?.repositories?.length || 0) > 0;
 
   return (
     <div className="space-y-6">
@@ -392,24 +379,6 @@ export const RegistryRepositories = () => {
             </div>
           )}
 
-          <div className="flex gap-2">
-            <Input
-              placeholder="Enter repository path (e.g., org/env-name)"
-              value={manualRepo}
-              onChange={(e) => setManualRepo(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleManualRepoSubmit();
-                }
-              }}
-            />
-            <Button onClick={handleManualRepoSubmit} disabled={!manualRepo.trim()}>
-              <Search className="mr-2 h-4 w-4" />
-              Look Up
-            </Button>
-          </div>
-
           {hasRepos ? (
             <Card>
               <CardContent className="p-0">
@@ -434,15 +403,6 @@ export const RegistryRepositories = () => {
                           showVisibility={true}
                         />
                       ))}
-                      {uniqueManualRepos.map((repoName) => (
-                        <RepositoryRow
-                          key={repoName}
-                          registryId={registryId || ''}
-                          repoName={repoName}
-                          registry={selectedRegistry}
-                          showVisibility={true}
-                        />
-                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -450,7 +410,7 @@ export const RegistryRepositories = () => {
             </Card>
           ) : (
             <div className="text-center py-8">
-              <p className="text-muted-foreground">No repositories discovered automatically. Use the field above to enter a repository path directly.</p>
+              <p className="text-muted-foreground">No repositories found in this registry.</p>
             </div>
           )}
         </>

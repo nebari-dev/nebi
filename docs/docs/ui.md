@@ -15,15 +15,11 @@ The UI includes a **registry browser** for discovering public environments. Open
 
 ![Registries tab showing the nebari-environments registry](/img/community-pull-registries.png)
 
-Click **Browse** on a registry to see every public repository under that namespace.
+Click **Browse** on a registry to see every public repository under that namespace. Each row has a tag dropdown and a **nebi import** button that copies the command for the selected tag to your clipboard.
 
-![Repository list under the nebari-environments registry](/img/community-pull-browse.png)
+![Repository list with inline tag dropdown and nebi import copy button](/img/community-pull-tags.png)
 
-Pick a repository and click **View Tags**. Each tag has a copy-ready `nebi import` command you can paste into your terminal.
-
-![Tags page with copy-ready nebi import commands](/img/community-pull-tags.png)
-
-Clicking the copy button places a command like this on your clipboard:
+Pick a tag, click **nebi import** next to the repository you want, and paste the command into your terminal:
 
 ```bash
 nebi import quay.io/nebari_environments/data-science-demo:0.1.0

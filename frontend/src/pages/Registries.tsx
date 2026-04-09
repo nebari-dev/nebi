@@ -224,6 +224,15 @@ const RepositoryRow = ({
           <div className="flex items-center justify-end gap-2">
             <Button
               size="sm"
+              onClick={handleOpenImport}
+              disabled={!effectiveTag || tagsLoading}
+              title="Import this environment into a new workspace"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Import
+            </Button>
+            <Button
+              size="sm"
               variant="outline"
               onClick={handleCopyImportCmd}
               disabled={!effectiveTag || tagsLoading}
@@ -239,15 +248,6 @@ const RepositoryRow = ({
                   nebi import
                 </>
               )}
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleOpenImport}
-              disabled={!effectiveTag || tagsLoading}
-              title="Import this environment into a new workspace"
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Import
             </Button>
           </div>
         </td>
@@ -594,6 +594,10 @@ export const RegistryTags = () => {
                         <td className="p-4 font-mono text-sm">{tag.name}</td>
                         <td className="p-4 text-right">
                           <div className="flex items-center justify-end gap-2">
+                            <Button size="sm" onClick={() => handleOpenImport(tag.name)}>
+                              <Download className="mr-2 h-4 w-4" />
+                              Import
+                            </Button>
                             <Button size="sm" variant="outline" onClick={() => handleCopyImportCmd(tag.name)}>
                               {copiedTag === tag.name ? (
                                 <>
@@ -606,10 +610,6 @@ export const RegistryTags = () => {
                                   nebi import
                                 </>
                               )}
-                            </Button>
-                            <Button size="sm" onClick={() => handleOpenImport(tag.name)}>
-                              <Download className="mr-2 h-4 w-4" />
-                              Import
                             </Button>
                           </div>
                         </td>

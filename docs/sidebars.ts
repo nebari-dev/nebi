@@ -4,6 +4,7 @@ const sidebars: SidebarsConfig = {
   docsSidebar: [
     'introduction',
     'installation',
+    'quick-start',
     'nebi-components',
     'pixi-essentials',
     {

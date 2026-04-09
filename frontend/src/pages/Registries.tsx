@@ -180,7 +180,7 @@ const RepositoryRow = ({
     }
   };
 
-  const colSpan = showVisibility ? 4 : 3;
+  const colSpan = showVisibility ? 5 : 4;
 
   return (
     <>
@@ -203,7 +203,7 @@ const RepositoryRow = ({
             )}
           </td>
         )}
-        <td className="p-4">
+        <td className="p-4 w-40">
           {tagsLoading ? (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           ) : tags.length > 0 ? (
@@ -220,6 +220,28 @@ const RepositoryRow = ({
             <span className="text-sm text-muted-foreground">No tags</span>
           )}
         </td>
+        <td className="p-4">
+          {registry && effectiveTag && !tagsLoading ? (
+            <div className="flex items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 max-w-sm">
+              <code className="no-scrollbar flex-1 min-w-0 font-mono text-xs whitespace-nowrap overflow-x-auto text-foreground">
+                {buildImportCommand(registry.url, repoName, effectiveTag)}
+              </code>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 shrink-0"
+                onClick={handleCopyImportCmd}
+                title="Copy command"
+              >
+                {copiedTag === effectiveTag ? (
+                  <Check className="h-3.5 w-3.5" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </div>
+          ) : null}
+        </td>
         <td className="p-4 text-right">
           <div className="flex items-center justify-end gap-2">
             <Button
@@ -230,24 +252,6 @@ const RepositoryRow = ({
             >
               <Download className="mr-2 h-4 w-4" />
               Import
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleCopyImportCmd}
-              disabled={!effectiveTag || tagsLoading}
-            >
-              {copiedTag === effectiveTag ? (
-                <>
-                  <Check className="mr-2 h-4 w-4" />
-                  Copied
-                </>
-              ) : (
-                <>
-                  <Copy className="mr-2 h-4 w-4" />
-                  nebi import
-                </>
-              )}
             </Button>
           </div>
         </td>
@@ -389,6 +393,7 @@ export const RegistryRepositories = () => {
                         <th className="text-left p-4 font-medium">Repository</th>
                         <th className="text-left p-4 font-medium">Visibility</th>
                         <th className="text-left p-4 font-medium">Tag</th>
+                        <th className="text-left p-4 font-medium">Command</th>
                         <th className="text-right p-4 font-medium">Actions</th>
                       </tr>
                     </thead>
@@ -585,31 +590,41 @@ export const RegistryTags = () => {
                   <thead className="border-b bg-muted/50">
                     <tr>
                       <th className="text-left p-4 font-medium">Tag</th>
+                      <th className="text-left p-4 font-medium">Command</th>
                       <th className="text-right p-4 font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {tagData?.tags?.map((tag) => (
                       <tr key={tag.name} className="border-b last:border-0 hover:bg-muted/50">
-                        <td className="p-4 font-mono text-sm">{tag.name}</td>
+                        <td className="p-4 font-mono text-sm w-40">{tag.name}</td>
+                        <td className="p-4">
+                          {selectedRegistry && (
+                            <div className="flex items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 max-w-sm">
+                              <code className="no-scrollbar flex-1 min-w-0 font-mono text-xs whitespace-nowrap overflow-x-auto text-foreground">
+                                {buildImportCommand(selectedRegistry.url, repo, tag.name)}
+                              </code>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7 shrink-0"
+                                onClick={() => handleCopyImportCmd(tag.name)}
+                                title="Copy command"
+                              >
+                                {copiedTag === tag.name ? (
+                                  <Check className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Copy className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                            </div>
+                          )}
+                        </td>
                         <td className="p-4 text-right">
                           <div className="flex items-center justify-end gap-2">
                             <Button size="sm" onClick={() => handleOpenImport(tag.name)}>
                               <Download className="mr-2 h-4 w-4" />
                               Import
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => handleCopyImportCmd(tag.name)}>
-                              {copiedTag === tag.name ? (
-                                <>
-                                  <Check className="mr-2 h-4 w-4" />
-                                  Copied
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="mr-2 h-4 w-4" />
-                                  nebi import
-                                </>
-                              )}
                             </Button>
                           </div>
                         </td>

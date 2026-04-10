@@ -128,3 +128,15 @@ func (c *Client) PublishWorkspace(ctx context.Context, wsID string, req PublishR
 	}
 	return &resp, nil
 }
+
+// RollbackWorkspace queues a server-side rollback to a previous version.
+// Returns the queued Job (rollback runs asynchronously on the server).
+func (c *Client) RollbackWorkspace(ctx context.Context, wsID string, versionNumber int) (*Job, error) {
+	req := RollbackRequest{VersionNumber: versionNumber}
+	var job Job
+	_, err := c.Post(ctx, fmt.Sprintf("/workspaces/%s/rollback", wsID), req, &job)
+	if err != nil {
+		return nil, err
+	}
+	return &job, nil
+}

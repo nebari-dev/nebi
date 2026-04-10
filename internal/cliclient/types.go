@@ -130,6 +130,11 @@ type UpdateRegistryRequest struct {
 	Namespace *string `json:"namespace,omitempty"`
 }
 
+// RollbackRequest represents a request to rollback a workspace to a previous version.
+type RollbackRequest struct {
+	VersionNumber int `json:"version_number"`
+}
+
 // PushRequest represents a request to push a version to the server.
 type PushRequest struct {
 	Tag      string `json:"tag"`

@@ -4,6 +4,7 @@ const sidebars: SidebarsConfig = {
   docsSidebar: [
     'introduction',
     'installation',
+    'quick-start',
     'nebi-components',
     'pixi-essentials',
     {
@@ -15,7 +16,7 @@ const sidebars: SidebarsConfig = {
         'cli-reference',
       ],
     },
-    'desktop',
+    'ui',
     'registry-setup',
     'server-setup',
     {

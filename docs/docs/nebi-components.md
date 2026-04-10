@@ -18,7 +18,7 @@ The CLI is a standalone tool for managing and tracking Pixi workspaces on your l
 
 ## Desktop application
 
-The [desktop app](./desktop.md) is another tool for managing Pixi workspaces on your local machines. It supports all the CLI workflows through a graphical / app interface.
+The [desktop app](./ui.md) is another tool for managing Pixi workspaces on your local machines. It supports all the CLI workflows through a graphical / app interface.
 
 ## OCI Registries
 

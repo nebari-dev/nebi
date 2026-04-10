@@ -1,6 +1,6 @@
 # Quick Start
 
-Nebi lets you version your environments the same way git versions your code. In this guide, you will create a workspace, push two versions, compare what changed, and roll back to a working state.
+Nebi lets you version your software environments the same way git versions your code, and Nebi server lets you share and manage these versioned environments in your team. In this guide, you will create a workspace, push two versions, compare what changed, and roll back to a working state.
 
 ## Prerequisites
 

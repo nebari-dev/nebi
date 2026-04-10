@@ -16,7 +16,7 @@ const sidebars: SidebarsConfig = {
         'cli-reference',
       ],
     },
-    'desktop',
+    'ui',
     'registry-setup',
     'server-setup',
     {

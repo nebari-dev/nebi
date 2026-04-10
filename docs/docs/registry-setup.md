@@ -15,9 +15,9 @@ Nebi works with any OCI-compliant registry, for example:
 - Google Artifact Registry
 - Azure Container Registry
 
-This page covers setup instructions for the first three.
+## Configure a Registry
 
-## GitHub Container Registry (GHCR)
+### GitHub Container Registry (GHCR)
 
 GHCR is the easiest option if you already have a GitHub account. Go to GitHub Settings > Developer settings > Personal access tokens > **Tokens (classic)** and create a new token with the `write:packages` scope checked.
 
@@ -35,10 +35,10 @@ nebi registry add \
 The `--namespace` is your username or organization on the registry. It becomes part of the URL: `ghcr.io/<namespace>/<repo-name>`. When prompted for a password, paste the token you created.
 
 :::tip
-Public packages on GHCR are free. Anyone can import them with `nebi import oci://ghcr.io/your-username/my-workspace:v1.0`.
+Public packages on GHCR are free. Anyone can import them with `nebi import ghcr.io/your-username/my-workspace:v1.0`.
 :::
 
-## Quay.io
+### Quay.io
 
 Quay.io is a free container registry by Red Hat. To set it up:
 
@@ -60,7 +60,7 @@ nebi registry add \
 
 The username follows the format `username+robot_name`. When prompted for a password, paste the robot account token.
 
-## Docker Hub
+### Docker Hub
 
 Docker Hub is the most widely used container registry. Create a [personal access token](https://docs.docker.com/security/access-tokens/) with **Read & Write** permission.
 
@@ -76,3 +76,19 @@ nebi registry add \
 ```
 
 Replace `your-dockerhub-username` with your Docker Hub username or organization. When prompted for a password, paste the access token.
+
+## Pull from a Public Registry
+
+You do not need a Nebi server, an account, or registry credentials to consume a public environment. If someone publishes their workspace to a public OCI namespace, you can pull it directly:
+
+```bash
+nebi import <registry>/<namespace>/<repo>:<tag>
+```
+
+For example:
+
+```bash
+nebi import quay.io/nebari_environments/data-science-demo:0.1.0
+```
+
+This writes `pixi.toml` and `pixi.lock` into the current directory, ready to run with `pixi run`. To discover public environments visually, see [Browse Public Registries](./ui.md#browse-public-registries).

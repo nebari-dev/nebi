@@ -39,40 +39,6 @@ my-project/
 └── pixi.lock   # exact version pins for reproducibility
 ```
 
-## Add a Task
-
-Tasks are named commands stored in `pixi.toml`. Anyone who imports the environment gets the same commands.
-
-To add a training task, run:
-
-```bash
-pixi task add train "python -c \"
-from sklearn.datasets import load_iris
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-
-X, y = load_iris(return_X_y=True)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-
-model = DecisionTreeClassifier(random_state=42)
-model.fit(X_train, y_train)
-
-y_pred = model.predict(X_test)
-print(f'Accuracy: {accuracy_score(y_test, y_pred):.2f}')
-\""
-```
-
-Run the training task:
-
-```bash
-pixi run train
-```
-
-```bash title="Output"
-Accuracy: 1.00
-```
-
 ## Push to the Server
 
 Just like `git push` saves your code to a remote, `nebi push` saves your environment spec to a Nebi server.

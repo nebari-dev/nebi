@@ -2,20 +2,19 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { buildImportCommand } from '@/lib/registry';
 import { capitalize } from '@/lib/utils';
-import { useWorkspace } from '@/hooks/useWorkspaces';
+import { useWorkspace, useCreateWorkspace, useDeleteWorkspace } from '@/hooks/useWorkspaces';
 import { useModeStore } from '@/store/modeStore';
-import { usePackages, useInstallPackages, useRemovePackage } from '@/hooks/usePackages';
+import { usePackages } from '@/hooks/usePackages';
 import { useCollaborators } from '@/hooks/useAdmin';
 import { usePublications, useUpdatePublication } from '@/hooks/useRegistries';
 import { workspacesApi } from '@/api/workspaces';
 import { useAuthStore } from '@/store/authStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ShareButton } from '@/components/sharing/ShareButton';
 import { PublishButton } from '@/components/publishing/PublishButton';
 import { RoleBadge } from '@/components/sharing/RoleBadge';
@@ -23,7 +22,7 @@ import { VersionHistory } from '@/components/versions/VersionHistory';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
 import { Jobs } from '@/components/jobs/Jobs';
 import { UserBadge } from '@/components/ui/user-badge';
-import { ArrowLeft, Loader2, Package, Plus, Trash2, Copy, Check, ExternalLink, Save, HardDrive, Pencil, Globe, Lock, User, Boxes, Users, Calendar, History, Fingerprint, FolderOpen, GitBranch, CircleQuestionMark, IdCard } from 'lucide-react';
+import { ArrowLeft, Loader2, Package, Copy, Check, ExternalLink, Save, HardDrive, Pencil, Globe, Lock, User, Boxes, Users, Calendar, History, Fingerprint, FolderOpen, GitBranch, CircleQuestionMark, IdCard } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -43,20 +42,19 @@ export const WorkspaceDetail = () => {
   const { data: packages, isLoading: packagesLoading } = usePackages(wsId);
   const { data: collaborators } = useCollaborators(wsId);
   const { data: publications, isLoading: publicationsLoading } = usePublications(wsId);
-  const installMutation = useInstallPackages(wsId);
-  const removeMutation = useRemovePackage(wsId);
   const updatePubMutation = useUpdatePublication();
+  const createMutation = useCreateWorkspace();
+  const deleteMutation = useDeleteWorkspace();
   const currentUser = useAuthStore((state) => state.user);
 
   const [activeTab, setActiveTab] = useState(() => consumePendingTab() || 'overview');
-  const [showInstall, setShowInstall] = useState(false);
-  const [packageInput, setPackageInput] = useState('');
-  const [confirmRemovePackage, setConfirmRemovePackage] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [pixiToml, setPixiToml] = useState<string>('');
   const [editedToml, setEditedToml] = useState<string>('');
   const [isEditingToml, setIsEditingToml] = useState(false);
   const [savingToml, setSavingToml] = useState(false);
+  const [recreateWorkspace, setRecreateWorkspace] = useState(false);
+  const [confirmRecreate, setConfirmRecreate] = useState(false);
   const [loadingToml, setLoadingToml] = useState(false);
   const [copiedToml, setCopiedToml] = useState(false);
   const [copiedPull, setCopiedPull] = useState(false);
@@ -111,37 +109,7 @@ export const WorkspaceDetail = () => {
     setTimeout(() => setCopiedImportId(null), 2000);
   };
 
-  const handleInstall = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!packageInput.trim()) return;
 
-    setError('');
-    const packageNames = packageInput.split(',').map(p => p.trim()).filter(Boolean);
-
-    try {
-      await installMutation.mutateAsync({ packages: packageNames });
-      setPackageInput('');
-      setShowInstall(false);
-    } catch (err) {
-      const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage = error?.response?.data?.error || 'Failed to install package. Please try again.';
-      setError(errorMessage);
-    }
-  };
-
-  const handleRemove = async () => {
-    if (!confirmRemovePackage) return;
-
-    setError('');
-    try {
-      await removeMutation.mutateAsync(confirmRemovePackage);
-      setConfirmRemovePackage(null);
-    } catch (err) {
-      const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage = error?.response?.data?.error || 'Failed to remove package. Please try again.';
-      setError(errorMessage);
-    }
-  };
 
   if (wsLoading) {
     return (
@@ -234,9 +202,9 @@ export const WorkspaceDetail = () => {
       }}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="packages">Packages</TabsTrigger>
           <TabsTrigger value="toml">Configuration</TabsTrigger>
           <TabsTrigger value="versions">Versions</TabsTrigger>
+          <TabsTrigger value="packages">Packages</TabsTrigger>
           <TabsTrigger value="jobs">Jobs</TabsTrigger>
           <TabsTrigger value="publications">
             Publications ({publications?.length || 0})
@@ -423,49 +391,12 @@ export const WorkspaceDetail = () => {
           <div className="space-y-4 my-3">
             <div className="flex justify-between items-center  mb-0">
               <h2 className="text-2xl font-bold">Packages</h2>
-              <Button
-                onClick={() => {
-                  setShowInstall(!showInstall);
-                  setError('');
-                }}
-                disabled={workspace.status !== 'ready'}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Install Package
-              </Button>
             </div>
           <div>
           <p className="text-muted-foreground text-sm mt-1">
-            Manage packages for the current version. Editing packages will create a new version of the workspace.
+            Packages installed in the current version. Edit the configuration to change packages.
           </p>
         </div>
-
-        {showInstall && (
-          <Card>
-            <CardContent className="pt-6">
-              <form onSubmit={handleInstall} className="flex gap-2">
-                <Input
-                  placeholder="Package name (e.g., python=3.11, numpy)"
-                  value={packageInput}
-                  onChange={(e) => setPackageInput(e.target.value)}
-                  autoFocus
-                />
-                <Button type="submit" disabled={installMutation.isPending}>
-                  {installMutation.isPending ? 'Installing...' : 'Install'}
-                </Button>
-                <Button type="button" variant="outline" onClick={() => {
-                  setShowInstall(false);
-                  setError('');
-                }}>
-                  Cancel
-                </Button>
-              </form>
-              <p className="text-sm text-muted-foreground mt-2">
-                Separate multiple packages with commas
-              </p>
-            </CardContent>
-          </Card>
-        )}
 
         {error && (
           <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded">
@@ -486,13 +417,12 @@ export const WorkspaceDetail = () => {
                     <tr>
                       <th className="text-left p-4 font-medium">Package</th>
                       <th className="text-left p-4 font-medium">Installed Version</th>
-                      <th className="text-right p-4 font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {packages?.length === 0 ? (
                       <tr>
-                        <td colSpan={3} className="p-8 text-center text-muted-foreground">
+                        <td colSpan={2} className="p-8 text-center text-muted-foreground">
                           No packages installed
                         </td>
                       </tr>
@@ -508,16 +438,6 @@ export const WorkspaceDetail = () => {
                           <td className="p-4 text-muted-foreground font-mono text-sm">
                             {pkg.version || '-'}
                           </td>
-                          <td className="p-4 text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setConfirmRemovePackage(pkg.name)}
-                              disabled={removeMutation.isPending || workspace.status !== 'ready'}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </td>
                         </tr>
                       ))
                     )}
@@ -528,11 +448,6 @@ export const WorkspaceDetail = () => {
           </Card>
         )}
 
-            {packages?.length === 0 && !showInstall && (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground">No packages installed yet</p>
-              </div>
-            )}
           </div>
         </TabsContent>
 
@@ -564,33 +479,41 @@ export const WorkspaceDetail = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setIsEditingToml(false)}
+                      onClick={() => {
+                        setIsEditingToml(false);
+                        setRecreateWorkspace(false);
+                      }}
                     >
                       Cancel
                     </Button>
                     <Button
                       size="sm"
                       onClick={async () => {
+                        if (recreateWorkspace) {
+                          setConfirmRecreate(true);
+                          return;
+                        }
                         setSavingToml(true);
                         try {
                           await workspacesApi.savePixiToml(wsId, editedToml);
+                          await workspacesApi.solveWorkspace(wsId);
                           setPixiToml(editedToml);
                           setIsEditingToml(false);
                         } catch {
-                          setError('Failed to save pixi.toml');
+                          setError('Failed to save and install pixi.toml');
                         } finally {
                           setSavingToml(false);
                         }
                       }}
-                      disabled={savingToml}
+                      disabled={savingToml || createMutation.isPending || deleteMutation.isPending}
                       className="gap-2"
                     >
-                      {savingToml ? (
+                      {savingToml || createMutation.isPending || deleteMutation.isPending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <Save className="h-4 w-4" />
                       )}
-                      Save
+                      {recreateWorkspace ? 'Save & Recreate' : 'Save & Install'}
                     </Button>
                   </>
                 )}
@@ -625,11 +548,24 @@ export const WorkspaceDetail = () => {
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
             ) : isEditingToml ? (
-              <PixiTomlEditor
-                tomlValue={editedToml}
-                onTomlChange={setEditedToml}
-                workspaceName={workspace.name}
-              />
+              <>
+                <PixiTomlEditor
+                  tomlValue={editedToml}
+                  onTomlChange={setEditedToml}
+                  workspaceName={workspace.name}
+                />
+                {workspace.source !== 'local' && (
+                  <label className={`inline-flex items-center gap-2 mt-4 cursor-pointer select-none rounded-md px-3 h-9 text-sm font-medium ${recreateWorkspace ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}>
+                    <input
+                      type="checkbox"
+                      checked={recreateWorkspace}
+                      onChange={(e) => setRecreateWorkspace(e.target.checked)}
+                      className="rounded accent-purple-500"
+                    />
+                    Recreate workspace
+                  </label>
+                )}
+              </>
             ) : pixiToml ? (
               <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto font-mono text-sm whitespace-pre">
                 {pixiToml}
@@ -799,12 +735,29 @@ export const WorkspaceDetail = () => {
       </Tabs>
 
       <ConfirmDialog
-        open={!!confirmRemovePackage}
-        onOpenChange={(open) => !open && setConfirmRemovePackage(null)}
-        onConfirm={handleRemove}
-        title="Remove Package"
-        description={`Are you sure you want to remove the package "${confirmRemovePackage}"? This will uninstall it from the workspace.`}
-        confirmText="Remove"
+        open={confirmRecreate}
+        onOpenChange={setConfirmRecreate}
+        onConfirm={async () => {
+          setSavingToml(true);
+          try {
+            await workspacesApi.savePixiToml(wsId, editedToml);
+            await deleteMutation.mutateAsync(wsId);
+            const ws = await createMutation.mutateAsync({
+              name: workspace.name,
+              package_manager: 'pixi',
+              pixi_toml: editedToml,
+            });
+            navigate(`/workspaces/${ws.id}`);
+          } catch {
+            setError('Failed to recreate workspace');
+          } finally {
+            setSavingToml(false);
+            setRecreateWorkspace(false);
+          }
+        }}
+        title="Recreate Workspace"
+        description="This will delete and recreate the workspace from scratch. All job history and version snapshots will be lost, and rollbacks to previous versions will no longer be available."
+        confirmText="Recreate"
         cancelText="Cancel"
         variant="destructive"
       />

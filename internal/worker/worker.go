@@ -378,6 +378,27 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			w.logger.Error("Failed to create version snapshot", "error", err)
 		}
 
+	case models.JobTypeUpdate:
+		fmt.Fprintf(logWriter, "Solving environment from current pixi.toml...\n")
+
+		if err := w.executor.SolveEnvironment(ctx, &ws, logWriter); err != nil {
+			return err
+		}
+
+		// Sync packages from environment
+		if err := w.syncPackagesFromWorkspace(ctx, &ws); err != nil {
+			w.logger.Error("Failed to sync packages after solve", "error", err)
+		}
+
+		// Update workspace size
+		w.updateWorkspaceSize(&ws)
+		w.db.Save(&ws)
+
+		// Create version snapshot
+		if err := w.createVersionSnapshot(ctx, &ws, job, "Solved environment from updated pixi.toml"); err != nil {
+			w.logger.Error("Failed to create version snapshot", "error", err)
+		}
+
 	case models.JobTypeDelete:
 		ws.Status = models.WsStatusDeleting
 		w.db.Save(&ws)

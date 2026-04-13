@@ -220,6 +220,42 @@ func (e *LocalExecutor) RemovePackages(ctx context.Context, ws *models.Workspace
 	return nil
 }
 
+// SolveEnvironment runs pixi install to solve and install the current pixi.toml
+func (e *LocalExecutor) SolveEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error {
+	envPath := e.GetWorkspacePath(ws)
+
+	fmt.Fprintf(logWriter, "Running pixi install to solve environment...\n")
+
+	// Get pixi binary path
+	pmType := ws.PackageManager
+	if pmType == "" {
+		pmType = e.config.PackageManager.DefaultType
+	}
+
+	pixiBinary := "pixi"
+	if pmType == "pixi" && e.config.PackageManager.PixiPath != "" {
+		pm, err := pkgmgr.NewWithPath(pmType, e.config.PackageManager.PixiPath)
+		if err == nil {
+			if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
+				pixiBinary = pixiMgr.BinaryPath()
+			}
+		}
+	}
+
+	cmd := exec.CommandContext(ctx, pixiBinary, "install", "-v")
+	cmd.Dir = envPath
+	cmd.Stdout = logWriter
+	cmd.Stderr = logWriter
+
+	fmt.Fprintf(logWriter, "Running: pixi install -v\n")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("pixi install failed: %w", err)
+	}
+
+	fmt.Fprintf(logWriter, "Environment solved and installed successfully\n")
+	return nil
+}
+
 // DeleteWorkspace removes a workspace from the filesystem.
 // For source=="local" workspaces the directory belongs to the user, so we
 // only deregister (the caller handles DB cleanup) and never touch the filesystem.

@@ -212,6 +212,55 @@ func (h *WorkspaceHandler) SavePixiToml(c *gin.Context) {
 	c.JSON(http.StatusOK, PixiTomlResponse(req))
 }
 
+// SolveWorkspace godoc
+// @Summary Solve and install environment from current pixi.toml
+// @Tags workspaces
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "Workspace ID"
+// @Success 202 {object} models.Job
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /workspaces/{id}/solve [post]
+func (h *WorkspaceHandler) SolveWorkspace(c *gin.Context) {
+	userID := getUserID(c)
+	wsID := c.Param("id")
+
+	var ws models.Workspace
+	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
+		return
+	}
+
+	if ws.Status != models.WsStatusReady {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Workspace is not ready"})
+		return
+	}
+
+	job := &models.Job{
+		Type:        models.JobTypeUpdate,
+		WorkspaceID: ws.ID,
+		Status:      models.JobStatusPending,
+		Metadata:    map[string]interface{}{},
+	}
+
+	if err := h.db.Create(job).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create job"})
+		return
+	}
+
+	if err := h.queue.Enqueue(c.Request.Context(), job); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to queue job"})
+		return
+	}
+
+	audit.LogAction(h.db, userID, audit.ActionSolveWorkspace, fmt.Sprintf("ws:%s", ws.ID.String()), nil)
+
+	c.JSON(http.StatusAccepted, job)
+}
+
 // PushVersion godoc
 // @Summary Push a new version to the server
 // @Description Create a new workspace version and assign a tag

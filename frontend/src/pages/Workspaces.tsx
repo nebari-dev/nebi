@@ -5,14 +5,13 @@ import { useRemoteServer, useRemoteWorkspaces, useCreateRemoteWorkspace, useDele
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
-import { workspacesApi } from '@/api/workspaces';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
-import { Loader2, Plus, Trash2, X, Edit, Copy, Check, Download } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Copy, Check, Download } from 'lucide-react';
 import { SplitButton } from '@/components/ui/split-button';
 import { capitalize } from '@/lib/utils';
 
@@ -68,11 +67,6 @@ export const Workspaces = () => {
   const [localPath, setLocalPath] = useState('');
   const [pixiToml, setPixiToml] = useState(DEFAULT_PIXI_TOML);
 
-  const [showEdit, setShowEdit] = useState(false);
-  const [editWsId, setEditWsId] = useState<string | null>(null);
-  const [editWsName, setEditWsName] = useState('');
-  const [editPixiToml, setEditPixiToml] = useState('');
-  const [loadingEdit, setLoadingEdit] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string; location: 'local' | 'remote' } | null>(null);
   const [error, setError] = useState('');
   const [copiedPullId, setCopiedPullId] = useState<string | null>(null);
@@ -191,51 +185,6 @@ export const Workspaces = () => {
     }
   };
 
-  const handleEdit = async (id: string, name: string) => {
-    setLoadingEdit(true);
-    setError('');
-    try {
-      const { content } = await workspacesApi.getPixiToml(id);
-      setEditWsId(id);
-      setEditWsName(name);
-      setEditPixiToml(content);
-      setShowEdit(true);
-    } catch (err) {
-      const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage = error?.response?.data?.error || 'Failed to load pixi.toml content. Please try again.';
-      setError(errorMessage);
-    } finally {
-      setLoadingEdit(false);
-    }
-  };
-
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editWsId || !editWsName.trim()) return;
-
-    setError('');
-    try {
-      await deleteMutation.mutateAsync(editWsId);
-
-      const ws = await createMutation.mutateAsync({
-        name: editWsName,
-        package_manager: 'pixi',
-        pixi_toml: editPixiToml
-      });
-
-      setShowEdit(false);
-      setEditWsId(null);
-      setEditWsName('');
-      setEditPixiToml('');
-
-      setPendingTab('jobs');
-      navigate(`/workspaces/${ws.id}`);
-    } catch (err) {
-      const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage = error?.response?.data?.error || 'Failed to update workspace. Please try again.';
-      setError(errorMessage);
-    }
-  };
 
   const handleCopyPull = async (e: React.MouseEvent, wsName: string, wsId: string) => {
     e.stopPropagation();
@@ -353,53 +302,6 @@ export const Workspaces = () => {
         </Card>
       )}
 
-      {showEdit && (
-        <Card>
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <CardTitle>Edit Workspace - {editWsName}</CardTitle>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowEdit(false)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleEditSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Workspace Name</label>
-                <Input
-                  placeholder="e.g., my-data-project"
-                  value={editWsName}
-                  onChange={(e) => setEditWsName(e.target.value)}
-                  required
-                />
-              </div>
-
-              <PixiTomlEditor tomlValue={editPixiToml} onTomlChange={setEditPixiToml} workspaceName={editWsName || 'my-project'} />
-
-              <div className="flex gap-2 justify-end">
-                <Button type="button" variant="outline" onClick={() => setShowEdit(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={createMutation.isPending || deleteMutation.isPending}>
-                  {createMutation.isPending || deleteMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Recreating...
-                    </>
-                  ) : (
-                    'Save & Recreate'
-                  )}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardContent className="p-0">
@@ -463,24 +365,7 @@ export const Workspaces = () => {
                             )}
                           </Button>
                         )}
-                        {ws.location === 'local' && ws.source !== 'local' && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEdit(ws.id, ws.name);
-                            }}
-                            disabled={loadingEdit || (ws.status !== 'ready' && ws.status !== 'failed')}
-                            title={
-                              ws.status === 'pending' || ws.status === 'creating' || ws.status === 'deleting'
-                                ? 'Cannot edit while workspace is being processed'
-                                : 'Edit pixi.toml'
-                            }
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        )}
+
                         <Button
                           variant="ghost"
                           size="sm"
@@ -518,6 +403,7 @@ export const Workspaces = () => {
         cancelText="Cancel"
         variant="destructive"
       />
+
     </div>
   );
 };

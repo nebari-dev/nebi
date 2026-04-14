@@ -35,22 +35,29 @@ const config: Config = {
 
   themes: ['@docusaurus/theme-mermaid'],
 
-  plugins: [
-    'docusaurus-plugin-sass',
-    [
-      'docusaurus-plugin-cookie-consent',
-      {
-        title: 'Cookie Consent',
-        description: 'We use cookies to analyze site traffic and improve your experience.',
-        links: [{ label: 'Privacy Policy', href: '/docs/privacy' }],
-        googleConsentMode: {
-          enabled: true,
-          waitForUpdate: 500,
-          adsDataRedaction: true,
-          urlPassthrough: false,
-        },
-      },
-    ],
+  plugins: ['docusaurus-plugin-sass'],
+
+  clientModules: [require.resolve('./src/cookieConsent.ts')],
+
+  headTags: [
+    {
+      tagName: 'script',
+      attributes: {},
+      innerHTML:
+        "window.dataLayer = window.dataLayer || [];" +
+        "function gtag(){dataLayer.push(arguments);}" +
+        "gtag('consent', 'default', {" +
+        "  ad_storage: 'denied'," +
+        "  ad_user_data: 'denied'," +
+        "  ad_personalization: 'denied'," +
+        "  analytics_storage: 'denied'," +
+        "  functionality_storage: 'denied'," +
+        "  personalization_storage: 'denied'," +
+        "  security_storage: 'granted'," +
+        "  wait_for_update: 500" +
+        "});" +
+        "gtag('set', 'ads_data_redaction', true);",
+    },
   ],
 
   presets: [

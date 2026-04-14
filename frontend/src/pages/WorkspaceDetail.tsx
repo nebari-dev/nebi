@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { buildImportCommand } from '@/lib/registry';
 import { capitalize } from '@/lib/utils';
-import { useWorkspace, useCreateWorkspace, useDeleteWorkspace } from '@/hooks/useWorkspaces';
+import { useWorkspace } from '@/hooks/useWorkspaces';
 import { useModeStore } from '@/store/modeStore';
 import { usePackages } from '@/hooks/usePackages';
 import { useCollaborators } from '@/hooks/useAdmin';
@@ -11,7 +11,6 @@ import { workspacesApi } from '@/api/workspaces';
 import { useAuthStore } from '@/store/authStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
 import { Button } from '@/components/ui/button';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -43,8 +42,6 @@ export const WorkspaceDetail = () => {
   const { data: collaborators } = useCollaborators(wsId);
   const { data: publications, isLoading: publicationsLoading } = usePublications(wsId);
   const updatePubMutation = useUpdatePublication();
-  const createMutation = useCreateWorkspace();
-  const deleteMutation = useDeleteWorkspace();
   const currentUser = useAuthStore((state) => state.user);
 
   const [activeTab, setActiveTab] = useState(() => consumePendingTab() || 'overview');
@@ -53,8 +50,6 @@ export const WorkspaceDetail = () => {
   const [editedToml, setEditedToml] = useState<string>('');
   const [isEditingToml, setIsEditingToml] = useState(false);
   const [savingToml, setSavingToml] = useState(false);
-  const [recreateWorkspace, setRecreateWorkspace] = useState(false);
-  const [confirmRecreate, setConfirmRecreate] = useState(false);
   const [loadingToml, setLoadingToml] = useState(false);
   const [copiedToml, setCopiedToml] = useState(false);
   const [copiedPull, setCopiedPull] = useState(false);
@@ -479,20 +474,13 @@ export const WorkspaceDetail = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        setIsEditingToml(false);
-                        setRecreateWorkspace(false);
-                      }}
+                      onClick={() => setIsEditingToml(false)}
                     >
                       Cancel
                     </Button>
                     <Button
                       size="sm"
                       onClick={async () => {
-                        if (recreateWorkspace) {
-                          setConfirmRecreate(true);
-                          return;
-                        }
                         setSavingToml(true);
                         try {
                           await workspacesApi.savePixiToml(wsId, editedToml);
@@ -505,15 +493,15 @@ export const WorkspaceDetail = () => {
                           setSavingToml(false);
                         }
                       }}
-                      disabled={savingToml || createMutation.isPending || deleteMutation.isPending}
+                      disabled={savingToml}
                       className="gap-2"
                     >
-                      {savingToml || createMutation.isPending || deleteMutation.isPending ? (
+                      {savingToml ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <Save className="h-4 w-4" />
                       )}
-                      {recreateWorkspace ? 'Save & Recreate' : 'Save & Install'}
+                      Save & Install
                     </Button>
                   </>
                 )}
@@ -548,24 +536,11 @@ export const WorkspaceDetail = () => {
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
             ) : isEditingToml ? (
-              <>
-                <PixiTomlEditor
-                  tomlValue={editedToml}
-                  onTomlChange={setEditedToml}
-                  workspaceName={workspace.name}
-                />
-                {workspace.source !== 'local' && (
-                  <label className={`inline-flex items-center gap-2 mt-4 cursor-pointer select-none rounded-md px-3 h-9 text-sm font-medium ${recreateWorkspace ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}>
-                    <input
-                      type="checkbox"
-                      checked={recreateWorkspace}
-                      onChange={(e) => setRecreateWorkspace(e.target.checked)}
-                      className="rounded accent-purple-500"
-                    />
-                    Recreate workspace
-                  </label>
-                )}
-              </>
+              <PixiTomlEditor
+                tomlValue={editedToml}
+                onTomlChange={setEditedToml}
+                workspaceName={workspace.name}
+              />
             ) : pixiToml ? (
               <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto font-mono text-sm whitespace-pre">
                 {pixiToml}
@@ -734,33 +709,6 @@ export const WorkspaceDetail = () => {
         
       </Tabs>
 
-      <ConfirmDialog
-        open={confirmRecreate}
-        onOpenChange={setConfirmRecreate}
-        onConfirm={async () => {
-          setSavingToml(true);
-          try {
-            await workspacesApi.savePixiToml(wsId, editedToml);
-            await deleteMutation.mutateAsync(wsId);
-            const ws = await createMutation.mutateAsync({
-              name: workspace.name,
-              package_manager: 'pixi',
-              pixi_toml: editedToml,
-            });
-            navigate(`/workspaces/${ws.id}`);
-          } catch {
-            setError('Failed to recreate workspace');
-          } finally {
-            setSavingToml(false);
-            setRecreateWorkspace(false);
-          }
-        }}
-        title="Recreate Workspace"
-        description="This will delete and recreate the workspace from scratch. All job history and version snapshots will be lost, and rollbacks to previous versions will no longer be available."
-        confirmText="Recreate"
-        cancelText="Cancel"
-        variant="destructive"
-      />
     </div>
   );
 };

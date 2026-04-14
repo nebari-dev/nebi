@@ -35,7 +35,23 @@ const config: Config = {
 
   themes: ['@docusaurus/theme-mermaid'],
 
-  plugins: ['docusaurus-plugin-sass'],
+  plugins: [
+    'docusaurus-plugin-sass',
+    [
+      'docusaurus-plugin-cookie-consent',
+      {
+        title: 'Cookie Consent',
+        description: 'We use cookies to analyze site traffic and improve your experience.',
+        links: [{ label: 'Privacy Policy', href: '/docs/privacy' }],
+        googleConsentMode: {
+          enabled: true,
+          waitForUpdate: 500,
+          adsDataRedaction: true,
+          urlPassthrough: false,
+        },
+      },
+    ],
+  ],
 
   presets: [
     [

@@ -75,6 +75,14 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("saving workspace: %w", err)
 	}
 
+	// Create an initial version snapshot so the workspace has version history
+	// from the moment it is tracked. Failure here is non-fatal — the workspace
+	// itself is already registered. Reuses the pixi.toml bytes already read
+	// above; pixi.lock is optional and read lazily inside the helper.
+	if _, err := createInitialVersion(s, ws, cwd, content, "Initial workspace tracking"); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to create initial version: %v\n", err)
+	}
+
 	fmt.Fprintf(os.Stderr, "Workspace '%s' initialized (%s)\n", name, cwd)
 	return nil
 }
@@ -123,6 +131,23 @@ func ensureInit(dir string) error {
 		return fmt.Errorf("saving workspace: %w", err)
 	}
 
+	if _, err := createInitialVersion(s, ws, absDir, content, "Initial workspace tracking"); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to create initial version: %v\n", err)
+	}
+
 	fmt.Fprintf(os.Stderr, "Tracking workspace '%s' at %s\n", name, absDir)
 	return nil
+}
+
+// createInitialVersion creates a workspace version snapshot from the supplied
+// pixi.toml bytes and the pixi.lock at wsPath. pixi.lock is optional — if
+// absent (e.g. for a freshly created workspace before `pixi install`) an
+// empty lock is recorded.
+func createInitialVersion(s *store.Store, ws *store.LocalWorkspace, wsPath string, manifest []byte, description string) (*store.LocalWorkspaceVersion, error) {
+	lock, _ := os.ReadFile(filepath.Join(wsPath, "pixi.lock"))
+	v, _, err := s.CreateVersion(ws.ID, string(manifest), string(lock), description)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
 }

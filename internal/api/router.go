@@ -172,8 +172,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	}
 
 	// Initialize service and handlers
-	svc := service.New(db, q, exec, localMode)
-	wsHandler := handlers.NewWorkspaceHandler(svc, db, q, exec, localMode, encKey)
+	svc := service.New(db, q, exec, localMode, encKey)
+	wsHandler := handlers.NewWorkspaceHandler(svc)
 	jobHandler := handlers.NewJobHandler(db, logBroker, valkeyClient)
 
 	// Protected routes (require authentication)

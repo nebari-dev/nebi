@@ -18,3 +18,10 @@ type ConflictError struct {
 }
 
 func (e *ConflictError) Error() string { return e.Message }
+
+// ForbiddenError represents a forbidden condition (HTTP 403).
+type ForbiddenError struct {
+	Message string
+}
+
+func (e *ForbiddenError) Error() string { return e.Message }

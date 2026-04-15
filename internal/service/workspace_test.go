@@ -40,6 +40,9 @@ func testSetup(t *testing.T, isLocal bool) (*WorkspaceService, *gorm.DB) {
 		&models.WorkspaceVersion{},
 		&models.WorkspaceTag{},
 		&models.AuditLog{},
+		&models.Package{},
+		&models.OCIRegistry{},
+		&models.Publication{},
 	); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

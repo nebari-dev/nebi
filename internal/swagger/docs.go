@@ -1284,7 +1284,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handlers.CollaboratorResponse"
+                                "$ref": "#/definitions/service.CollaboratorResult"
                             }
                         }
                     }
@@ -1621,7 +1621,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handlers.PublicationResponse"
+                                "$ref": "#/definitions/service.PublicationResult"
                             }
                         }
                     },
@@ -1681,7 +1681,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.PublicationResponse"
+                            "$ref": "#/definitions/service.PublicationResult"
                         }
                     },
                     "400": {
@@ -1745,7 +1745,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/handlers.PublicationResponse"
+                            "$ref": "#/definitions/service.PublicationResult"
                         }
                     },
                     "400": {
@@ -1797,7 +1797,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.PublishDefaultsResponse"
+                            "$ref": "#/definitions/service.PublishDefaultsResult"
                         }
                     },
                     "404": {
@@ -2223,27 +2223,6 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.CollaboratorResponse": {
-            "type": "object",
-            "properties": {
-                "email": {
-                    "type": "string"
-                },
-                "is_owner": {
-                    "type": "boolean"
-                },
-                "role": {
-                    "description": "\"owner\", \"editor\", \"viewer\"",
-                    "type": "string"
-                },
-                "user_id": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
         "handlers.CreateRegistryRequest": {
             "type": "object",
             "required": [
@@ -2389,64 +2368,6 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "content": {
-                    "type": "string"
-                }
-            }
-        },
-        "handlers.PublicationResponse": {
-            "type": "object",
-            "properties": {
-                "digest": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "is_public": {
-                    "type": "boolean"
-                },
-                "published_at": {
-                    "type": "string"
-                },
-                "published_by": {
-                    "type": "string"
-                },
-                "registry_name": {
-                    "type": "string"
-                },
-                "registry_namespace": {
-                    "type": "string"
-                },
-                "registry_url": {
-                    "type": "string"
-                },
-                "repository": {
-                    "type": "string"
-                },
-                "tag": {
-                    "type": "string"
-                },
-                "version_number": {
-                    "type": "integer"
-                }
-            }
-        },
-        "handlers.PublishDefaultsResponse": {
-            "type": "object",
-            "properties": {
-                "namespace": {
-                    "type": "string"
-                },
-                "registry_id": {
-                    "type": "string"
-                },
-                "registry_name": {
-                    "type": "string"
-                },
-                "repository": {
-                    "type": "string"
-                },
-                "tag": {
                     "type": "string"
                 }
             }
@@ -2974,6 +2895,84 @@ const docTemplate = `{
                     "$ref": "#/definitions/models.Workspace"
                 },
                 "workspace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.CollaboratorResult": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "is_owner": {
+                    "type": "boolean"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.PublicationResult": {
+            "type": "object",
+            "properties": {
+                "digest": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_public": {
+                    "type": "boolean"
+                },
+                "published_at": {
+                    "type": "string"
+                },
+                "published_by": {
+                    "type": "string"
+                },
+                "registry_name": {
+                    "type": "string"
+                },
+                "registry_namespace": {
+                    "type": "string"
+                },
+                "registry_url": {
+                    "type": "string"
+                },
+                "repository": {
+                    "type": "string"
+                },
+                "tag": {
+                    "type": "string"
+                },
+                "version_number": {
+                    "type": "integer"
+                }
+            }
+        },
+        "service.PublishDefaultsResult": {
+            "type": "object",
+            "properties": {
+                "namespace": {
+                    "type": "string"
+                },
+                "registry_id": {
+                    "type": "string"
+                },
+                "registry_name": {
+                    "type": "string"
+                },
+                "repository": {
+                    "type": "string"
+                },
+                "tag": {
                     "type": "string"
                 }
             }

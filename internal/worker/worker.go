@@ -338,17 +338,13 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return err
 		}
 
-		// Sync packages from environment
-		if err := w.syncPackagesFromWorkspace(ctx, &ws); err != nil {
+		if err := w.svc.SyncPackagesFromWorkspace(ctx, &ws); err != nil {
 			w.logger.Error("Failed to sync packages after solve", "error", err)
 		}
 
-		// Update workspace size
-		w.updateWorkspaceSize(&ws)
-		w.db.Save(&ws)
+		w.svc.UpdateWorkspaceSize(&ws)
 
-		// Create version snapshot
-		if err := w.createVersionSnapshot(ctx, &ws, job, "Solved environment from updated pixi.toml"); err != nil {
+		if err := w.svc.CreateVersionSnapshot(ctx, &ws, job.ID, userID, "Solved environment from updated pixi.toml"); err != nil {
 			w.logger.Error("Failed to create version snapshot", "error", err)
 		}
 

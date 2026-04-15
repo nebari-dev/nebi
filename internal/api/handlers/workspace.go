@@ -195,39 +195,11 @@ func (h *WorkspaceHandler) SavePixiToml(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /workspaces/{id}/solve [post]
 func (h *WorkspaceHandler) SolveWorkspace(c *gin.Context) {
-	userID := getUserID(c)
-	wsID := c.Param("id")
-
-	var ws models.Workspace
-	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
+	job, err := h.svc.SolveWorkspace(c.Request.Context(), c.Param("id"), getUserID(c))
+	if err != nil {
+		handleServiceError(c, err)
 		return
 	}
-
-	if ws.Status != models.WsStatusReady {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Workspace is not ready"})
-		return
-	}
-
-	job := &models.Job{
-		Type:        models.JobTypeUpdate,
-		WorkspaceID: ws.ID,
-		Status:      models.JobStatusPending,
-		Metadata:    map[string]interface{}{},
-	}
-
-	if err := h.db.Create(job).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create job"})
-		return
-	}
-
-	if err := h.queue.Enqueue(c.Request.Context(), job); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to queue job"})
-		return
-	}
-
-	audit.LogAction(h.db, userID, audit.ActionSolveWorkspace, fmt.Sprintf("ws:%s", ws.ID.String()), nil)
-
 	c.JSON(http.StatusAccepted, job)
 }
 

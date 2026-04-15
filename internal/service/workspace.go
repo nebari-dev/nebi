@@ -22,47 +22,52 @@ type WorkspaceService struct {
 	queue    queue.Queue
 	executor executor.Executor
 	isLocal  bool
+	encKey   []byte
 }
 
 // New creates a new WorkspaceService.
-func New(db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool) *WorkspaceService {
-	return &WorkspaceService{db: db, queue: q, executor: exec, isLocal: isLocal}
+func New(db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool, encKey []byte) *WorkspaceService {
+	return &WorkspaceService{db: db, queue: q, executor: exec, isLocal: isLocal, encKey: encKey}
 }
 
 // List returns workspaces visible to the given user.
 // In local mode all workspaces are returned (no ownership filtering).
-func (s *WorkspaceService) List(userID uuid.UUID) ([]models.Workspace, error) {
+func (s *WorkspaceService) List(userID uuid.UUID) ([]WorkspaceResponse, error) {
 	var workspaces []models.Workspace
 
 	if s.isLocal {
 		if err := s.db.Preload("Owner").Order("created_at DESC").Find(&workspaces).Error; err != nil {
 			return nil, err
 		}
-		return workspaces, nil
+	} else {
+		// Team mode: owner + permission-based filtering
+		query := s.db.Where("owner_id = ?", userID)
+
+		var permissions []models.Permission
+		s.db.Where("user_id = ?", userID).Find(&permissions)
+
+		wsIDs := []uuid.UUID{}
+		for _, p := range permissions {
+			wsIDs = append(wsIDs, p.WorkspaceID)
+		}
+		if len(wsIDs) > 0 {
+			query = query.Or("id IN ?", wsIDs)
+		}
+
+		if err := query.Preload("Owner").Order("created_at DESC").Find(&workspaces).Error; err != nil {
+			return nil, err
+		}
 	}
 
-	// Team mode: owner + permission-based filtering
-	query := s.db.Where("owner_id = ?", userID)
-
-	var permissions []models.Permission
-	s.db.Where("user_id = ?", userID).Find(&permissions)
-
-	wsIDs := []uuid.UUID{}
-	for _, p := range permissions {
-		wsIDs = append(wsIDs, p.WorkspaceID)
+	result := make([]WorkspaceResponse, len(workspaces))
+	for i, ws := range workspaces {
+		result[i] = NewWorkspaceResponse(ws)
 	}
-	if len(wsIDs) > 0 {
-		query = query.Or("id IN ?", wsIDs)
-	}
-
-	if err := query.Preload("Owner").Order("created_at DESC").Find(&workspaces).Error; err != nil {
-		return nil, err
-	}
-	return workspaces, nil
+	return result, nil
 }
 
 // Get returns a single workspace by ID.
-func (s *WorkspaceService) Get(id string) (*models.Workspace, error) {
+func (s *WorkspaceService) Get(id string) (*WorkspaceResponse, error) {
 	var ws models.Workspace
 	if err := s.db.Preload("Owner").Where("id = ?", id).First(&ws).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -70,7 +75,8 @@ func (s *WorkspaceService) Get(id string) (*models.Workspace, error) {
 		}
 		return nil, err
 	}
-	return &ws, nil
+	resp := NewWorkspaceResponse(ws)
+	return &resp, nil
 }
 
 // Create validates and creates a new workspace, queues the creation job,

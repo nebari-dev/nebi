@@ -3,7 +3,6 @@ package worker
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,10 +16,8 @@ import (
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/logstream"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/pkgmgr"
-	_ "github.com/nebari-dev/nebi/internal/pkgmgr/pixi" // Register pixi
 	"github.com/nebari-dev/nebi/internal/queue"
-	"github.com/nebari-dev/nebi/internal/utils"
+	"github.com/nebari-dev/nebi/internal/service"
 	"github.com/valkey-io/valkey-go"
 	"gorm.io/gorm"
 )
@@ -30,6 +27,7 @@ type Worker struct {
 	db           *gorm.DB
 	queue        queue.Queue
 	executor     executor.Executor
+	svc          *service.WorkspaceService
 	logger       *slog.Logger
 	broker       *logstream.LogBroker
 	valkeyClient valkey.Client // For distributed log streaming (optional, can be nil for local mode)
@@ -39,12 +37,13 @@ type Worker struct {
 }
 
 // New creates a new worker instance
-func New(db *gorm.DB, q queue.Queue, exec executor.Executor, logger *slog.Logger, valkeyClient valkey.Client) *Worker {
+func New(db *gorm.DB, q queue.Queue, exec executor.Executor, svc *service.WorkspaceService, logger *slog.Logger, valkeyClient valkey.Client) *Worker {
 	maxWorkers := 10 // Allow up to 10 concurrent jobs
 	return &Worker{
 		db:           db,
 		queue:        q,
 		executor:     exec,
+		svc:          svc,
 		logger:       logger,
 		broker:       logstream.NewBroker(),
 		valkeyClient: valkeyClient,
@@ -249,16 +248,25 @@ func (w *threadSafeWriter) Write(p []byte) (n int, err error) {
 }
 
 func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.Writer) error {
-	// Load environment
+	// Load workspace
 	var ws models.Workspace
 	if err := w.db.First(&ws, job.WorkspaceID).Error; err != nil {
 		return fmt.Errorf("failed to load workspace: %w", err)
 	}
 
+	// Extract user ID from job metadata (if present)
+	userID := ws.OwnerID
+	if userIDInterface, ok := job.Metadata["user_id"]; ok {
+		if userIDStr, ok := userIDInterface.(string); ok {
+			if parsed, err := uuid.Parse(userIDStr); err == nil {
+				userID = parsed
+			}
+		}
+	}
+
 	switch job.Type {
 	case models.JobTypeCreate:
-		ws.Status = models.WsStatusCreating
-		w.db.Save(&ws)
+		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusCreating)
 
 		// Check if pixi_toml content is provided in metadata
 		var pixiToml string
@@ -267,114 +275,59 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 		}
 
 		if err := w.executor.CreateWorkspace(ctx, &ws, logWriter, pixiToml); err != nil {
-			ws.Status = models.WsStatusFailed
-			w.db.Save(&ws)
+			w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusFailed)
 			return err
 		}
 
 		// Persist the resolved path so the CLI can find the workspace on disk
 		if ws.Path == "" {
-			ws.Path = w.executor.GetWorkspacePath(&ws)
+			w.svc.SetWorkspacePath(ws.ID, w.executor.GetWorkspacePath(&ws))
 		}
 
 		// List installed packages and save to database
-		if err := w.syncPackagesFromWorkspace(ctx, &ws); err != nil {
+		if err := w.svc.SyncPackagesFromWorkspace(ctx, &ws); err != nil {
 			w.logger.Error("Failed to sync packages", "error", err)
 		}
 
-		// Update workspace size
-		w.updateWorkspaceSize(&ws)
-
-		ws.Status = models.WsStatusReady
-		w.db.Save(&ws)
+		w.svc.UpdateWorkspaceSize(&ws)
+		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusReady)
 
 		// Create version snapshot
-		if err := w.createVersionSnapshot(ctx, &ws, job, "Initial workspace creation"); err != nil {
+		if err := w.svc.CreateVersionSnapshot(ctx, &ws, job.ID, userID, "Initial workspace creation"); err != nil {
 			w.logger.Error("Failed to create version snapshot", "error", err)
 		}
 
 	case models.JobTypeInstall:
-		// Parse packages from job metadata
-		packagesInterface, ok := job.Metadata["packages"]
-		if !ok {
+		packages := parsePackagesFromMetadata(job.Metadata)
+		if packages == nil {
 			return fmt.Errorf("packages not found in job metadata")
-		}
-
-		// Handle both []string and []interface{} (from JSON unmarshaling)
-		var packages []string
-		switch v := packagesInterface.(type) {
-		case []string:
-			packages = v
-		case []interface{}:
-			packages = make([]string, len(v))
-			for i, p := range v {
-				packages[i] = fmt.Sprint(p)
-			}
-		default:
-			return fmt.Errorf("invalid packages type in job metadata: %T", packagesInterface)
 		}
 
 		if err := w.executor.InstallPackages(ctx, &ws, packages, logWriter); err != nil {
 			return err
 		}
 
-		// Store installed packages in database
-		for _, pkgName := range packages {
-			pkg := models.Package{
-				WorkspaceID: ws.ID,
-				Name:        pkgName,
-				Version:     "", // TODO: Extract version from pixi
-				InstalledAt: time.Now(),
-			}
-			w.db.Create(&pkg)
-		}
+		w.svc.SaveInstalledPackages(ws.ID, packages)
+		w.svc.UpdateWorkspaceSize(&ws)
 
-		// Update workspace size
-		w.updateWorkspaceSize(&ws)
-		w.db.Save(&ws)
-
-		// Create version snapshot
-		description := fmt.Sprintf("Installed packages: %v", packages)
-		if err := w.createVersionSnapshot(ctx, &ws, job, description); err != nil {
+		if err := w.svc.CreateVersionSnapshot(ctx, &ws, job.ID, userID, fmt.Sprintf("Installed packages: %v", packages)); err != nil {
 			w.logger.Error("Failed to create version snapshot", "error", err)
 		}
 
 	case models.JobTypeRemove:
-		// Parse packages from job metadata
-		packagesInterface, ok := job.Metadata["packages"]
-		if !ok {
+		packages := parsePackagesFromMetadata(job.Metadata)
+		if packages == nil {
 			return fmt.Errorf("packages not found in job metadata")
-		}
-
-		var packages []string
-		switch v := packagesInterface.(type) {
-		case []string:
-			packages = v
-		case []interface{}:
-			packages = make([]string, len(v))
-			for i, p := range v {
-				packages[i] = fmt.Sprint(p)
-			}
-		default:
-			return fmt.Errorf("invalid packages type in job metadata: %T", packagesInterface)
 		}
 
 		if err := w.executor.RemovePackages(ctx, &ws, packages, logWriter); err != nil {
 			return err
 		}
 
-		// Remove packages from database
-		for _, pkgName := range packages {
-			w.db.Where("workspace_id = ? AND name = ?", ws.ID, pkgName).Delete(&models.Package{})
-		}
+		w.svc.DeletePackagesByName(ws.ID, packages)
+		w.svc.UpdateWorkspaceSize(&ws)
 
-		// Update workspace size
-		w.updateWorkspaceSize(&ws)
-		w.db.Save(&ws)
-
-		// Create version snapshot
-		description := fmt.Sprintf("Removed packages: %v", packages)
-		if err := w.createVersionSnapshot(ctx, &ws, job, description); err != nil {
+		if err := w.svc.CreateVersionSnapshot(ctx, &ws, job.ID, userID, fmt.Sprintf("Removed packages: %v", packages)); err != nil {
 			w.logger.Error("Failed to create version snapshot", "error", err)
 		}
 
@@ -400,21 +353,16 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 		}
 
 	case models.JobTypeDelete:
-		ws.Status = models.WsStatusDeleting
-		w.db.Save(&ws)
+		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusDeleting)
 
 		if err := w.executor.DeleteWorkspace(ctx, &ws, logWriter); err != nil {
 			return err
 		}
 
-		// Delete all packages first
-		w.db.Where("workspace_id = ?", ws.ID).Delete(&models.Package{})
-
-		// Soft delete the environment
-		w.db.Delete(&ws)
+		w.svc.DeleteAllPackages(ws.ID)
+		w.svc.SoftDeleteWorkspace(ws.ID)
 
 	case models.JobTypeRollback:
-		// Parse version ID from metadata
 		versionIDStr, ok := job.Metadata["version_id"].(string)
 		if !ok {
 			return fmt.Errorf("version_id not found in job metadata")
@@ -431,30 +379,23 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return fmt.Errorf("failed to load version: %w", err)
 		}
 
-		// Verify version belongs to this environment
 		if version.WorkspaceID != ws.ID {
 			return fmt.Errorf("version does not belong to this workspace")
 		}
 
 		fmt.Fprintf(logWriter, "Rolling back to version %d\n", version.VersionNumber)
 
-		// Execute rollback
 		if err := w.executeRollback(ctx, &ws, &version, logWriter); err != nil {
 			return err
 		}
 
-		// Sync packages from environment
-		if err := w.syncPackagesFromWorkspace(ctx, &ws); err != nil {
+		if err := w.svc.SyncPackagesFromWorkspace(ctx, &ws); err != nil {
 			w.logger.Error("Failed to sync packages after rollback", "error", err)
 		}
 
-		// Update workspace size
-		w.updateWorkspaceSize(&ws)
-		w.db.Save(&ws)
+		w.svc.UpdateWorkspaceSize(&ws)
 
-		// Create new version snapshot for the rollback
-		description := fmt.Sprintf("Rolled back to version %d", version.VersionNumber)
-		if err := w.createVersionSnapshot(ctx, &ws, job, description); err != nil {
+		if err := w.svc.CreateVersionSnapshot(ctx, &ws, job.ID, userID, fmt.Sprintf("Rolled back to version %d", version.VersionNumber)); err != nil {
 			w.logger.Error("Failed to create version snapshot after rollback", "error", err)
 		}
 
@@ -467,32 +408,26 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 	return nil
 }
 
-// executeRollback restores environment to a previous version
+// executeRollback restores workspace to a previous version
 func (w *Worker) executeRollback(ctx context.Context, ws *models.Workspace, version *models.WorkspaceVersion, logWriter io.Writer) error {
-	envPath := w.executor.GetWorkspacePath(ws)
+	envPath := w.svc.GetWorkspacePath(ws)
 
 	// 1. Write pixi.toml
-	manifestPath := filepath.Join(envPath, "pixi.toml")
 	fmt.Fprintf(logWriter, "Restoring pixi.toml...\n")
-	if err := os.WriteFile(manifestPath, []byte(version.ManifestContent), 0644); err != nil {
-		return fmt.Errorf("failed to write pixi.toml: %w", err)
+	if err := writeFile(envPath, "pixi.toml", version.ManifestContent); err != nil {
+		return err
 	}
 
 	// 2. Write pixi.lock
-	lockPath := filepath.Join(envPath, "pixi.lock")
 	fmt.Fprintf(logWriter, "Restoring pixi.lock...\n")
-	if err := os.WriteFile(lockPath, []byte(version.LockFileContent), 0644); err != nil {
-		return fmt.Errorf("failed to write pixi.lock: %w", err)
+	if err := writeFile(envPath, "pixi.lock", version.LockFileContent); err != nil {
+		return err
 	}
 
 	// 3. Run pixi install to recreate environment
 	fmt.Fprintf(logWriter, "Running pixi install to apply changes...\n")
 
-	// Use pixi binary from PATH
-	pixiBinary := "pixi"
-
-	// Run pixi install
-	cmd := exec.CommandContext(ctx, pixiBinary, "install", "-v")
+	cmd := exec.CommandContext(ctx, "pixi", "install", "-v")
 	cmd.Dir = envPath
 	cmd.Stdout = logWriter
 	cmd.Stderr = logWriter
@@ -505,121 +440,29 @@ func (w *Worker) executeRollback(ctx context.Context, ws *models.Workspace, vers
 	return nil
 }
 
-// syncPackagesFromWorkspace lists packages from the environment and saves them to the database
-func (w *Worker) syncPackagesFromWorkspace(ctx context.Context, ws *models.Workspace) error {
-	envPath := w.executor.GetWorkspacePath(ws)
-
-	// Create package manager for this environment
-	pm, err := pkgmgr.New(ws.PackageManager)
-	if err != nil {
-		return fmt.Errorf("failed to create package manager: %w", err)
+// parsePackagesFromMetadata extracts the packages list from job metadata,
+// handling both []string and []interface{} (from JSON unmarshaling).
+func parsePackagesFromMetadata(metadata map[string]any) []string {
+	packagesInterface, ok := metadata["packages"]
+	if !ok {
+		return nil
 	}
 
-	// List packages using the package manager
-	pkgs, err := pm.List(ctx, pkgmgr.ListOptions{
-		EnvPath: envPath,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to list packages: %w", err)
-	}
-
-	// Clear existing packages for this environment
-	w.db.Where("workspace_id = ?", ws.ID).Delete(&models.Package{})
-
-	// Insert new packages
-	for _, pkg := range pkgs {
-		dbPkg := models.Package{
-			WorkspaceID: ws.ID,
-			Name:        pkg.Name,
-			Version:     pkg.Version,
+	switch v := packagesInterface.(type) {
+	case []string:
+		return v
+	case []interface{}:
+		packages := make([]string, len(v))
+		for i, p := range v {
+			packages[i] = fmt.Sprint(p)
 		}
-		if err := w.db.Create(&dbPkg).Error; err != nil {
-			w.logger.Error("Failed to save package", "package", pkg.Name, "error", err)
-		}
+		return packages
+	default:
+		return nil
 	}
-
-	w.logger.Info("Synced packages from workspace", "workspace_id", ws.ID, "count", len(pkgs))
-	return nil
 }
 
-// updateWorkspaceSize calculates and updates the workspace size in the database
-func (w *Worker) updateWorkspaceSize(ws *models.Workspace) {
-	envPath := w.executor.GetWorkspacePath(ws)
-	sizeBytes, err := utils.GetDirectorySize(envPath)
-	if err != nil {
-		w.logger.Warn("Failed to calculate workspace size", "ws_id", ws.ID, "error", err)
-		return
-	}
-
-	ws.SizeBytes = sizeBytes
-	w.logger.Info("Updated workspace size", "ws_id", ws.ID, "size", utils.FormatBytes(sizeBytes))
-}
-
-// createVersionSnapshot creates a version snapshot after a successful operation
-func (w *Worker) createVersionSnapshot(ctx context.Context, ws *models.Workspace, job *models.Job, description string) error {
-	envPath := w.executor.GetWorkspacePath(ws)
-
-	// Read pixi.toml
-	manifestPath := filepath.Join(envPath, "pixi.toml")
-	manifestContent, err := os.ReadFile(manifestPath)
-	if err != nil {
-		return fmt.Errorf("failed to read pixi.toml: %w", err)
-	}
-
-	// Read pixi.lock
-	lockPath := filepath.Join(envPath, "pixi.lock")
-	lockContent, err := os.ReadFile(lockPath)
-	if err != nil {
-		return fmt.Errorf("failed to read pixi.lock: %w", err)
-	}
-
-	// Get package list from package manager
-	pm, err := pkgmgr.New(ws.PackageManager)
-	if err != nil {
-		return fmt.Errorf("failed to create package manager: %w", err)
-	}
-
-	pkgs, err := pm.List(ctx, pkgmgr.ListOptions{EnvPath: envPath})
-	if err != nil {
-		return fmt.Errorf("failed to list packages: %w", err)
-	}
-
-	// Serialize package list to JSON
-	packageMetadata, err := json.Marshal(pkgs)
-	if err != nil {
-		return fmt.Errorf("failed to serialize package metadata: %w", err)
-	}
-
-	// Get user ID from job metadata or environment owner
-	var createdBy uuid.UUID
-	if userIDInterface, ok := job.Metadata["user_id"]; ok {
-		if userIDStr, ok := userIDInterface.(string); ok {
-			createdBy, _ = uuid.Parse(userIDStr)
-		}
-	}
-	if createdBy == uuid.Nil {
-		createdBy = ws.OwnerID
-	}
-
-	// Create version record
-	version := models.WorkspaceVersion{
-		WorkspaceID:     ws.ID,
-		LockFileContent: string(lockContent),
-		ManifestContent: string(manifestContent),
-		PackageMetadata: string(packageMetadata),
-		JobID:           &job.ID,
-		CreatedBy:       createdBy,
-		Description:     description,
-	}
-
-	if err := w.db.Create(&version).Error; err != nil {
-		return fmt.Errorf("failed to create version snapshot: %w", err)
-	}
-
-	w.logger.Info("Created version snapshot",
-		"workspace_id", ws.ID,
-		"version_number", version.VersionNumber,
-		"job_id", job.ID)
-
-	return nil
+// writeFile writes content to a file at the given base path.
+func writeFile(basePath, filename, content string) error {
+	return os.WriteFile(filepath.Join(basePath, filename), []byte(content), 0644)
 }

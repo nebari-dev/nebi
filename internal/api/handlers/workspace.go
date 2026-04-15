@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,30 +8,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/nebari-dev/nebi/internal/audit"
-	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
-	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/oci"
-	"github.com/nebari-dev/nebi/internal/pkgmgr"
-	"github.com/nebari-dev/nebi/internal/queue"
-	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/nebari-dev/nebi/internal/service"
-	"github.com/nebari-dev/nebi/internal/utils"
-	"gorm.io/gorm"
 )
 
 type WorkspaceHandler struct {
-	svc      *service.WorkspaceService
-	db       *gorm.DB
-	queue    queue.Queue
-	executor executor.Executor
-	isLocal  bool
-	encKey   []byte
+	svc *service.WorkspaceService
 }
 
-func NewWorkspaceHandler(svc *service.WorkspaceService, db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool, encKey []byte) *WorkspaceHandler {
-	return &WorkspaceHandler{svc: svc, db: db, queue: q, executor: exec, isLocal: isLocal, encKey: encKey}
+func NewWorkspaceHandler(svc *service.WorkspaceService) *WorkspaceHandler {
+	return &WorkspaceHandler{svc: svc}
 }
 
 // handleServiceError maps service-layer errors to HTTP status codes.
@@ -51,6 +36,11 @@ func handleServiceError(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, ErrorResponse{Error: conflictErr.Message})
 		return
 	}
+	var forbiddenErr *service.ForbiddenError
+	if errors.As(err, &forbiddenErr) {
+		c.JSON(http.StatusForbidden, ErrorResponse{Error: forbiddenErr.Message})
+		return
+	}
 	slog.Error("unhandled service error", "error", err)
 	c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Internal server error"})
 }
@@ -65,16 +55,12 @@ func handleServiceError(c *gin.Context, err error) {
 // @Failure 500 {object} ErrorResponse
 // @Router /workspaces [get]
 func (h *WorkspaceHandler) ListWorkspaces(c *gin.Context) {
-	userID := getUserID(c)
-
-	workspaces, err := h.svc.List(userID)
+	workspaces, err := h.svc.List(getUserID(c))
 	if err != nil {
 		handleServiceError(c, err)
 		return
 	}
-
-	enriched := h.enrichWorkspacesWithSize(workspaces)
-	c.JSON(http.StatusOK, enriched)
+	c.JSON(http.StatusOK, workspaces)
 }
 
 // CreateWorkspace godoc
@@ -90,8 +76,6 @@ func (h *WorkspaceHandler) ListWorkspaces(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /workspaces [post]
 func (h *WorkspaceHandler) CreateWorkspace(c *gin.Context) {
-	userID := getUserID(c)
-
 	var req CreateWorkspaceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
@@ -104,7 +88,7 @@ func (h *WorkspaceHandler) CreateWorkspace(c *gin.Context) {
 		PixiToml:       req.PixiToml,
 		Source:         req.Source,
 		Path:           req.Path,
-	}, userID)
+	}, getUserID(c))
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -125,16 +109,12 @@ func (h *WorkspaceHandler) CreateWorkspace(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /workspaces/{id} [get]
 func (h *WorkspaceHandler) GetWorkspace(c *gin.Context) {
-	wsID := c.Param("id")
-
-	ws, err := h.svc.Get(wsID)
+	ws, err := h.svc.Get(c.Param("id"))
 	if err != nil {
 		handleServiceError(c, err)
 		return
 	}
-
-	enriched := h.enrichWorkspaceWithSize(ws)
-	c.JSON(http.StatusOK, enriched)
+	c.JSON(http.StatusOK, ws)
 }
 
 // DeleteWorkspace godoc
@@ -148,14 +128,10 @@ func (h *WorkspaceHandler) GetWorkspace(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /workspaces/{id} [delete]
 func (h *WorkspaceHandler) DeleteWorkspace(c *gin.Context) {
-	userID := getUserID(c)
-	wsID := c.Param("id")
-
-	if err := h.svc.Delete(c.Request.Context(), wsID, userID); err != nil {
+	if err := h.svc.Delete(c.Request.Context(), c.Param("id"), getUserID(c)); err != nil {
 		handleServiceError(c, err)
 		return
 	}
-
 	c.Status(http.StatusNoContent)
 }
 
@@ -171,14 +147,11 @@ func (h *WorkspaceHandler) DeleteWorkspace(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /workspaces/{id}/pixi-toml [get]
 func (h *WorkspaceHandler) GetPixiToml(c *gin.Context) {
-	wsID := c.Param("id")
-
-	content, err := h.svc.GetPixiToml(wsID)
+	content, err := h.svc.GetPixiToml(c.Param("id"))
 	if err != nil {
 		handleServiceError(c, err)
 		return
 	}
-
 	c.JSON(http.StatusOK, PixiTomlResponse{Content: content})
 }
 
@@ -196,19 +169,16 @@ func (h *WorkspaceHandler) GetPixiToml(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /workspaces/{id}/pixi-toml [put]
 func (h *WorkspaceHandler) SavePixiToml(c *gin.Context) {
-	wsID := c.Param("id")
-
 	var req SavePixiTomlRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	if err := h.svc.SavePixiToml(wsID, req.Content); err != nil {
+	if err := h.svc.SavePixiToml(c.Param("id"), req.Content); err != nil {
 		handleServiceError(c, err)
 		return
 	}
-
 	c.JSON(http.StatusOK, PixiTomlResponse(req))
 }
 
@@ -277,21 +247,18 @@ func (h *WorkspaceHandler) SolveWorkspace(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /workspaces/{id}/push [post]
 func (h *WorkspaceHandler) PushVersion(c *gin.Context) {
-	wsID := c.Param("id")
-	userID := getUserID(c)
-
 	var req PushVersionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	result, err := h.svc.PushVersion(c.Request.Context(), wsID, service.PushRequest{
+	result, err := h.svc.PushVersion(c.Request.Context(), c.Param("id"), service.PushRequest{
 		Tag:      req.Tag,
 		PixiToml: req.PixiToml,
 		PixiLock: req.PixiLock,
 		Force:    req.Force,
-	}, userID)
+	}, getUserID(c))
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -315,14 +282,11 @@ func (h *WorkspaceHandler) PushVersion(c *gin.Context) {
 // @Success 200 {array} models.WorkspaceVersion
 // @Router /workspaces/{id}/versions [get]
 func (h *WorkspaceHandler) ListVersions(c *gin.Context) {
-	wsID := c.Param("id")
-
-	versions, err := h.svc.ListVersions(wsID)
+	versions, err := h.svc.ListVersions(c.Param("id"))
 	if err != nil {
 		handleServiceError(c, err)
 		return
 	}
-
 	c.JSON(http.StatusOK, versions)
 }
 
@@ -336,15 +300,11 @@ func (h *WorkspaceHandler) ListVersions(c *gin.Context) {
 // @Success 200 {object} models.WorkspaceVersion
 // @Router /workspaces/{id}/versions/{version} [get]
 func (h *WorkspaceHandler) GetVersion(c *gin.Context) {
-	wsID := c.Param("id")
-	versionNum := c.Param("version")
-
-	version, err := h.svc.GetVersion(wsID, versionNum)
+	version, err := h.svc.GetVersion(c.Param("id"), c.Param("version"))
 	if err != nil {
 		handleServiceError(c, err)
 		return
 	}
-
 	c.JSON(http.StatusOK, version)
 }
 
@@ -358,15 +318,12 @@ func (h *WorkspaceHandler) GetVersion(c *gin.Context) {
 // @Success 200 {string} string "pixi.lock content"
 // @Router /workspaces/{id}/versions/{version}/pixi-lock [get]
 func (h *WorkspaceHandler) DownloadLockFile(c *gin.Context) {
-	wsID := c.Param("id")
 	versionNum := c.Param("version")
-
-	content, err := h.svc.GetVersionFile(wsID, versionNum, "lock")
+	content, err := h.svc.GetVersionFile(c.Param("id"), versionNum, "lock")
 	if err != nil {
 		handleServiceError(c, err)
 		return
 	}
-
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=pixi-lock-v%s.lock", versionNum))
 	c.Header("Content-Type", "text/plain")
 	c.String(http.StatusOK, content)
@@ -382,15 +339,12 @@ func (h *WorkspaceHandler) DownloadLockFile(c *gin.Context) {
 // @Success 200 {string} string "pixi.toml content"
 // @Router /workspaces/{id}/versions/{version}/pixi-toml [get]
 func (h *WorkspaceHandler) DownloadManifestFile(c *gin.Context) {
-	wsID := c.Param("id")
 	versionNum := c.Param("version")
-
-	content, err := h.svc.GetVersionFile(wsID, versionNum, "manifest")
+	content, err := h.svc.GetVersionFile(c.Param("id"), versionNum, "manifest")
 	if err != nil {
 		handleServiceError(c, err)
 		return
 	}
-
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=pixi-toml-v%s.toml", versionNum))
 	c.Header("Content-Type", "text/plain")
 	c.String(http.StatusOK, content)
@@ -405,9 +359,7 @@ func (h *WorkspaceHandler) DownloadManifestFile(c *gin.Context) {
 // @Success 200 {array} WorkspaceTagResponse
 // @Router /workspaces/{id}/tags [get]
 func (h *WorkspaceHandler) ListTags(c *gin.Context) {
-	wsID := c.Param("id")
-
-	tags, err := h.svc.ListTags(wsID)
+	tags, err := h.svc.ListTags(c.Param("id"))
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -422,11 +374,8 @@ func (h *WorkspaceHandler) ListTags(c *gin.Context) {
 			UpdatedAt:     t.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 		}
 	}
-
 	c.JSON(http.StatusOK, response)
 }
-
-// --- Non-extracted methods (remain using h.db directly) ---
 
 // InstallPackages godoc
 // @Summary Install packages in an workspace
@@ -443,51 +392,17 @@ func (h *WorkspaceHandler) ListTags(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /workspaces/{id}/packages [post]
 func (h *WorkspaceHandler) InstallPackages(c *gin.Context) {
-	userID := getUserID(c)
-	wsID := c.Param("id")
-
 	var req InstallPackagesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	var ws models.Workspace
-	// Note: RBAC middleware already checked write access
-	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
+	job, err := h.svc.InstallPackages(c.Request.Context(), c.Param("id"), req.Packages, getUserID(c))
+	if err != nil {
+		handleServiceError(c, err)
 		return
 	}
-
-	// Check if workspace is ready
-	if ws.Status != models.WsStatusReady {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Workspace is not ready"})
-		return
-	}
-
-	// Queue install job
-	job := &models.Job{
-		Type:        models.JobTypeInstall,
-		WorkspaceID: ws.ID,
-		Status:      models.JobStatusPending,
-		Metadata:    map[string]interface{}{"packages": req.Packages},
-	}
-
-	if err := h.db.Create(job).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create job"})
-		return
-	}
-
-	if err := h.queue.Enqueue(c.Request.Context(), job); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to queue job"})
-		return
-	}
-
-	// Audit log
-	audit.LogAction(h.db, userID, audit.ActionInstallPackage, fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
-		"packages": req.Packages,
-	})
-
 	c.JSON(http.StatusAccepted, job)
 }
 
@@ -506,46 +421,11 @@ func (h *WorkspaceHandler) InstallPackages(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /workspaces/{id}/packages/{package} [delete]
 func (h *WorkspaceHandler) RemovePackages(c *gin.Context) {
-	userID := getUserID(c)
-	wsID := c.Param("id")
-	packageName := c.Param("package")
-
-	var ws models.Workspace
-	// Note: RBAC middleware already checked write access
-	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
+	job, err := h.svc.RemovePackage(c.Request.Context(), c.Param("id"), c.Param("package"), getUserID(c))
+	if err != nil {
+		handleServiceError(c, err)
 		return
 	}
-
-	// Check if workspace is ready
-	if ws.Status != models.WsStatusReady {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Workspace is not ready"})
-		return
-	}
-
-	// Queue remove job
-	job := &models.Job{
-		Type:        models.JobTypeRemove,
-		WorkspaceID: ws.ID,
-		Status:      models.JobStatusPending,
-		Metadata:    map[string]interface{}{"packages": []string{packageName}},
-	}
-
-	if err := h.db.Create(job).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create job"})
-		return
-	}
-
-	if err := h.queue.Enqueue(c.Request.Context(), job); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to queue job"})
-		return
-	}
-
-	// Audit log
-	audit.LogAction(h.db, userID, audit.ActionRemovePackage, fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
-		"package": packageName,
-	})
-
 	c.JSON(http.StatusAccepted, job)
 }
 
@@ -561,67 +441,12 @@ func (h *WorkspaceHandler) RemovePackages(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /workspaces/{id}/packages [get]
 func (h *WorkspaceHandler) ListPackages(c *gin.Context) {
-	wsID := c.Param("id")
-
-	var ws models.Workspace
-	// Note: RBAC middleware already checked read access
-	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
+	packages, err := h.svc.ListPackages(c.Param("id"))
+	if err != nil {
+		handleServiceError(c, err)
 		return
 	}
-
-	var packages []models.Package
-	if err := h.db.Where("workspace_id = ?", ws.ID).Find(&packages).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch packages"})
-		return
-	}
-
-	// Auto-sync: if local workspace has 0 packages in DB, populate from disk
-	if len(packages) == 0 && ws.Source == "local" && ws.Status == models.WsStatusReady {
-		if synced := h.syncPackagesFromDisk(&ws); synced != nil {
-			packages = synced
-		}
-	}
-
 	c.JSON(http.StatusOK, packages)
-}
-
-// syncPackagesFromDisk runs pixi list and populates the DB for a local workspace.
-func (h *WorkspaceHandler) syncPackagesFromDisk(ws *models.Workspace) []models.Package {
-	wsPath := h.executor.GetWorkspacePath(ws)
-
-	pmType := ws.PackageManager
-	if pmType == "" {
-		pmType = "pixi"
-	}
-
-	pm, err := pkgmgr.New(pmType)
-	if err != nil {
-		slog.Warn("syncPackagesFromDisk: failed to create package manager", "error", err)
-		return nil
-	}
-
-	listed, err := pm.List(context.Background(), pkgmgr.ListOptions{EnvPath: wsPath})
-	if err != nil {
-		slog.Warn("syncPackagesFromDisk: failed to list packages", "error", err, "path", wsPath)
-		return nil
-	}
-
-	var result []models.Package
-	for _, p := range listed {
-		pkg := models.Package{
-			WorkspaceID: ws.ID,
-			Name:        p.Name,
-			Version:     p.Version,
-		}
-		if err := h.db.Create(&pkg).Error; err != nil {
-			slog.Warn("syncPackagesFromDisk: failed to save package", "error", err, "name", p.Name)
-			continue
-		}
-		result = append(result, pkg)
-	}
-
-	return result
 }
 
 // ShareWorkspace godoc
@@ -635,80 +460,18 @@ func (h *WorkspaceHandler) syncPackagesFromDisk(ws *models.Workspace) []models.P
 // @Success 201 {object} models.Permission
 // @Router /workspaces/{id}/share [post]
 func (h *WorkspaceHandler) ShareWorkspace(c *gin.Context) {
-	ownerID := getUserID(c)
-	wsID := c.Param("id")
-
 	var req ShareWorkspaceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	// Parse workspace ID
-	wsUUID, err := uuid.Parse(wsID)
+	perm, err := h.svc.ShareWorkspace(c.Param("id"), getUserID(c), req.UserID, req.Role)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid workspace ID"})
+		handleServiceError(c, err)
 		return
 	}
-
-	// Get workspace and check ownership
-	var ws models.Workspace
-	if err := h.db.Where("id = ?", wsUUID).First(&ws).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
-		return
-	}
-
-	// Check if user is the owner
-	if ws.OwnerID != ownerID {
-		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Only the owner can share this workspace"})
-		return
-	}
-
-	// Verify target user exists
-	var targetUser models.User
-	if err := h.db.First(&targetUser, "id = ?", req.UserID).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "User not found"})
-		return
-	}
-
-	// Validate role
-	if req.Role != "viewer" && req.Role != "editor" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Role must be 'viewer' or 'editor'"})
-		return
-	}
-
-	// Get role ID
-	var role models.Role
-	if err := h.db.Where("name = ?", req.Role).First(&role).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Role not found"})
-		return
-	}
-
-	// Create permission record
-	permission := models.Permission{
-		UserID:      req.UserID,
-		WorkspaceID: wsUUID,
-		RoleID:      role.ID,
-	}
-
-	if err := h.db.Create(&permission).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create permission"})
-		return
-	}
-
-	// Grant in RBAC
-	if err := rbac.GrantWorkspaceAccess(req.UserID, wsUUID, req.Role); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to grant RBAC permission"})
-		return
-	}
-
-	// Audit log
-	audit.LogAction(h.db, ownerID, audit.ActionGrantPermission, fmt.Sprintf("ws:%s", wsUUID.String()), map[string]interface{}{
-		"target_user_id": req.UserID,
-		"role":           req.Role,
-	})
-
-	c.JSON(http.StatusCreated, permission)
+	c.JSON(http.StatusCreated, perm)
 }
 
 // UnshareWorkspace godoc
@@ -720,66 +483,16 @@ func (h *WorkspaceHandler) ShareWorkspace(c *gin.Context) {
 // @Success 204
 // @Router /workspaces/{id}/share/{user_id} [delete]
 func (h *WorkspaceHandler) UnshareWorkspace(c *gin.Context) {
-	ownerID := getUserID(c)
-	wsID := c.Param("id")
-	targetUserID := c.Param("user_id")
-
-	// Parse UUIDs
-	wsUUID, err := uuid.Parse(wsID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid workspace ID"})
-		return
-	}
-
-	targetUUID, err := uuid.Parse(targetUserID)
+	targetUserID, err := uuid.Parse(c.Param("user_id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid user ID"})
 		return
 	}
 
-	// Get workspace and check ownership
-	var ws models.Workspace
-	if err := h.db.Where("id = ?", wsUUID).First(&ws).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
+	if err := h.svc.UnshareWorkspace(c.Param("id"), getUserID(c), targetUserID); err != nil {
+		handleServiceError(c, err)
 		return
 	}
-
-	// Check if user is the owner
-	if ws.OwnerID != ownerID {
-		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Only the owner can unshare this workspace"})
-		return
-	}
-
-	// Cannot remove owner's own access
-	if targetUUID == ownerID {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Cannot remove owner's access"})
-		return
-	}
-
-	// Find and delete permission
-	var permission models.Permission
-	if err := h.db.Where("user_id = ? AND workspace_id = ?", targetUUID, wsUUID).First(&permission).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Permission not found"})
-		return
-	}
-
-	// Revoke from RBAC
-	if err := rbac.RevokeWorkspaceAccess(targetUUID, wsUUID); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to revoke RBAC permission"})
-		return
-	}
-
-	// Delete permission record
-	if err := h.db.Delete(&permission).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to delete permission"})
-		return
-	}
-
-	// Audit log
-	audit.LogAction(h.db, ownerID, audit.ActionRevokePermission, fmt.Sprintf("ws:%s", wsUUID.String()), map[string]interface{}{
-		"target_user_id": targetUUID,
-	})
-
 	c.Status(http.StatusNoContent)
 }
 
@@ -789,59 +502,14 @@ func (h *WorkspaceHandler) UnshareWorkspace(c *gin.Context) {
 // @Security BearerAuth
 // @Produce json
 // @Param id path string true "Workspace ID"
-// @Success 200 {array} CollaboratorResponse
+// @Success 200 {array} service.CollaboratorResult
 // @Router /workspaces/{id}/collaborators [get]
 func (h *WorkspaceHandler) ListCollaborators(c *gin.Context) {
-	wsID := c.Param("id")
-
-	// Parse workspace ID
-	wsUUID, err := uuid.Parse(wsID)
+	collaborators, err := h.svc.ListCollaborators(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid workspace ID"})
+		handleServiceError(c, err)
 		return
 	}
-
-	// Note: RBAC middleware already checked read access
-	var ws models.Workspace
-	if err := h.db.Where("id = ?", wsUUID).First(&ws).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
-		return
-	}
-
-	// Get all permissions for this workspace
-	var permissions []models.Permission
-	if err := h.db.Preload("User").Preload("Role").Where("workspace_id = ?", wsUUID).Find(&permissions).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch collaborators"})
-		return
-	}
-
-	// Start with owner
-	var owner models.User
-	collaborators := []CollaboratorResponse{}
-
-	if err := h.db.First(&owner, "id = ?", ws.OwnerID).Error; err == nil {
-		collaborators = append(collaborators, CollaboratorResponse{
-			UserID:   ws.OwnerID,
-			Username: owner.Username,
-			Email:    owner.Email,
-			Role:     "owner",
-			IsOwner:  true,
-		})
-	}
-
-	// Add other collaborators (excluding owner if they have a permission record)
-	for _, perm := range permissions {
-		if perm.UserID != ws.OwnerID {
-			collaborators = append(collaborators, CollaboratorResponse{
-				UserID:   perm.UserID,
-				Username: perm.User.Username,
-				Email:    perm.User.Email,
-				Role:     perm.Role.Name,
-				IsOwner:  false,
-			})
-		}
-	}
-
 	c.JSON(http.StatusOK, collaborators)
 }
 
@@ -856,70 +524,17 @@ func (h *WorkspaceHandler) ListCollaborators(c *gin.Context) {
 // @Success 202 {object} models.Job
 // @Router /workspaces/{id}/rollback [post]
 func (h *WorkspaceHandler) RollbackToVersion(c *gin.Context) {
-	userID := getUserID(c)
-	wsID := c.Param("id")
-
 	var req RollbackRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	// Verify workspace exists
-	var ws models.Workspace
-	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
-		return
-	}
-
-	// Check workspace is ready
-	if ws.Status != models.WsStatusReady {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Workspace is not ready"})
-		return
-	}
-
-	// Verify version exists
-	var version models.WorkspaceVersion
-	err := h.db.
-		Where("workspace_id = ? AND version_number = ?", wsID, req.VersionNumber).
-		First(&version).Error
-
+	job, err := h.svc.RollbackToVersion(c.Request.Context(), c.Param("id"), req.VersionNumber, getUserID(c))
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Version not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch version"})
+		handleServiceError(c, err)
 		return
 	}
-
-	// Create rollback job
-	job := &models.Job{
-		Type:        models.JobTypeRollback,
-		WorkspaceID: ws.ID,
-		Status:      models.JobStatusPending,
-		Metadata: map[string]interface{}{
-			"version_id":     version.ID.String(),
-			"version_number": version.VersionNumber,
-			"user_id":        userID.String(),
-		},
-	}
-
-	if err := h.db.Create(job).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create job"})
-		return
-	}
-
-	if err := h.queue.Enqueue(c.Request.Context(), job); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to queue job"})
-		return
-	}
-
-	// Audit log
-	audit.LogAction(h.db, userID, "rollback_workspace", fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
-		"version_number": req.VersionNumber,
-	})
-
 	c.JSON(http.StatusAccepted, job)
 }
 
@@ -932,136 +547,28 @@ func (h *WorkspaceHandler) RollbackToVersion(c *gin.Context) {
 // @Produce json
 // @Param id path string true "Workspace ID"
 // @Param request body PublishRequest true "Publish request"
-// @Success 201 {object} PublicationResponse
+// @Success 201 {object} service.PublicationResult
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /workspaces/{id}/publish [post]
 func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
-	wsID := c.Param("id")
-	userID := getUserID(c)
-
 	var req PublishRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	// Get workspace
-	var ws models.Workspace
-	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
-		return
-	}
-
-	// Check if workspace is ready
-	if ws.Status != models.WsStatusReady {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Workspace must be in ready state to publish"})
-		return
-	}
-
-	// Get the latest version number for this workspace
-	var latestVersion models.WorkspaceVersion
-	if err := h.db.Where("workspace_id = ?", wsID).Order("version_number DESC").First(&latestVersion).Error; err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Workspace has no versions to publish"})
-		return
-	}
-
-	// Get registry
-	var registry models.OCIRegistry
-	if err := h.db.Where("id = ?", req.RegistryID).First(&registry).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Registry not found"})
-		return
-	}
-
-	// Decrypt registry password for OCI push
-	password, err := nebicrypto.DecryptField(registry.Password, h.encKey)
+	result, err := h.svc.PublishWorkspace(c.Request.Context(), c.Param("id"), service.PublishWorkspaceRequest{
+		RegistryID: req.RegistryID,
+		Repository: req.Repository,
+		Tag:        req.Tag,
+	}, getUserID(c))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to decrypt registry credentials"})
+		handleServiceError(c, err)
 		return
 	}
-
-	// Build full repository path: host/namespace/repo
-	host, _ := oci.ParseRegistryURL(registry.URL)
-	repoPath := req.Repository
-	if registry.Namespace != "" {
-		repoPath = registry.Namespace + "/" + req.Repository
-	}
-	fullRepo := fmt.Sprintf("%s/%s", host, repoPath)
-
-	// Publish using OCI package
-	wsPath := h.executor.GetWorkspacePath(&ws)
-
-	// Collect extra OCI tags: "latest" + all workspace tags for this version
-	extraTagSet := map[string]bool{}
-	extraTagSet["latest"] = true
-	var wsTags []models.WorkspaceTag
-	h.db.Where("workspace_id = ? AND version_number = ?", ws.ID, latestVersion.VersionNumber).Find(&wsTags)
-	for _, t := range wsTags {
-		extraTagSet[t.Tag] = true
-	}
-	// Don't duplicate the primary tag
-	delete(extraTagSet, req.Tag)
-	var extraTags []string
-	for t := range extraTagSet {
-		extraTags = append(extraTags, t)
-	}
-
-	digest, err := oci.PublishWorkspace(c.Request.Context(), wsPath, oci.PublishOptions{
-		Repository:   fullRepo,
-		Tag:          req.Tag,
-		ExtraTags:    extraTags,
-		Username:     registry.Username,
-		Password:     password,
-		RegistryHost: host,
-	})
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("Failed to publish: %v", err)})
-		return
-	}
-
-	// Create publication record
-	publication := models.Publication{
-		WorkspaceID:   ws.ID,
-		VersionNumber: latestVersion.VersionNumber,
-		RegistryID:    registry.ID,
-		Repository:    req.Repository,
-		Tag:           req.Tag,
-		Digest:        digest,
-		PublishedBy:   userID,
-	}
-
-	if err := h.db.Create(&publication).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to save publication record"})
-		return
-	}
-
-	// Load relations for response
-	h.db.Preload("Registry").Preload("PublishedByUser").First(&publication, publication.ID)
-
-	response := PublicationResponse{
-		ID:                publication.ID,
-		VersionNumber:     publication.VersionNumber,
-		RegistryName:      publication.Registry.Name,
-		RegistryURL:       publication.Registry.URL,
-		RegistryNamespace: publication.Registry.Namespace,
-		Repository:        publication.Repository,
-		Tag:               publication.Tag,
-		Digest:            publication.Digest,
-		IsPublic:          publication.IsPublic,
-		PublishedBy:       publication.PublishedByUser.Username,
-		PublishedAt:       publication.CreatedAt.Format("2006-01-02 15:04:05"),
-	}
-
-	// Audit log
-	audit.Log(h.db, userID, audit.ActionPublishWorkspace, audit.ResourceWorkspace, ws.ID, map[string]interface{}{
-		"registry":   registry.Name,
-		"repository": req.Repository,
-		"tag":        req.Tag,
-	})
-
-	c.JSON(http.StatusCreated, response)
+	c.JSON(http.StatusCreated, result)
 }
 
 // ListPublications godoc
@@ -1071,48 +578,16 @@ func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
 // @Security BearerAuth
 // @Produce json
 // @Param id path string true "Workspace ID"
-// @Success 200 {array} PublicationResponse
+// @Success 200 {array} service.PublicationResult
 // @Failure 404 {object} ErrorResponse
 // @Router /workspaces/{id}/publications [get]
 func (h *WorkspaceHandler) ListPublications(c *gin.Context) {
-	wsID := c.Param("id")
-
-	// Check workspace exists
-	var ws models.Workspace
-	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
+	publications, err := h.svc.ListPublications(c.Param("id"))
+	if err != nil {
+		handleServiceError(c, err)
 		return
 	}
-
-	// Get publications
-	var publications []models.Publication
-	if err := h.db.Where("workspace_id = ?", wsID).
-		Preload("Registry").
-		Preload("PublishedByUser").
-		Order("created_at DESC").
-		Find(&publications).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch publications"})
-		return
-	}
-
-	response := make([]PublicationResponse, len(publications))
-	for i, pub := range publications {
-		response[i] = PublicationResponse{
-			ID:                pub.ID,
-			VersionNumber:     pub.VersionNumber,
-			RegistryName:      pub.Registry.Name,
-			RegistryURL:       pub.Registry.URL,
-			RegistryNamespace: pub.Registry.Namespace,
-			Repository:        pub.Repository,
-			Tag:               pub.Tag,
-			Digest:            pub.Digest,
-			IsPublic:          pub.IsPublic,
-			PublishedBy:       pub.PublishedByUser.Username,
-			PublishedAt:       pub.CreatedAt.Format("2006-01-02 15:04:05"),
-		}
-	}
-
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, publications)
 }
 
 // UpdatePublication godoc
@@ -1125,74 +600,24 @@ func (h *WorkspaceHandler) ListPublications(c *gin.Context) {
 // @Param id path string true "Workspace ID"
 // @Param pubId path string true "Publication ID"
 // @Param request body UpdatePublicationRequest true "Update request"
-// @Success 200 {object} PublicationResponse
+// @Success 200 {object} service.PublicationResult
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /workspaces/{id}/publications/{pubId} [patch]
 func (h *WorkspaceHandler) UpdatePublication(c *gin.Context) {
-	wsID := c.Param("id")
-	pubID := c.Param("pubId")
-
 	var req UpdatePublicationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	// Check workspace exists
-	var ws models.Workspace
-	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
+	result, err := h.svc.UpdatePublication(c.Request.Context(), c.Param("id"), c.Param("pubId"), *req.IsPublic)
+	if err != nil {
+		handleServiceError(c, err)
 		return
 	}
-
-	// Find publication
-	var publication models.Publication
-	if err := h.db.Where("id = ? AND workspace_id = ?", pubID, wsID).First(&publication).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Publication not found"})
-		return
-	}
-
-	// Update visibility
-	publication.IsPublic = *req.IsPublic
-	if err := h.db.Save(&publication).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update publication"})
-		return
-	}
-
-	// Try to change repository visibility on the registry (best-effort)
-	var registry models.OCIRegistry
-	if err := h.db.Where("id = ?", publication.RegistryID).First(&registry).Error; err == nil && registry.APIToken != "" {
-		apiToken, err := nebicrypto.DecryptField(registry.APIToken, h.encKey)
-		if err == nil {
-			host, _ := oci.ParseRegistryURL(registry.URL)
-			repoPath := publication.Repository
-			if registry.Namespace != "" {
-				repoPath = registry.Namespace + "/" + publication.Repository
-			}
-			if visErr := oci.ChangeRepositoryVisibility(c.Request.Context(), host, repoPath, apiToken, *req.IsPublic); visErr != nil {
-				slog.Warn("Failed to change registry visibility", "error", visErr, "repo", repoPath)
-			}
-		}
-	}
-
-	// Load relations for response
-	h.db.Preload("Registry").Preload("PublishedByUser").First(&publication, publication.ID)
-
-	c.JSON(http.StatusOK, PublicationResponse{
-		ID:                publication.ID,
-		VersionNumber:     publication.VersionNumber,
-		RegistryName:      publication.Registry.Name,
-		RegistryURL:       publication.Registry.URL,
-		RegistryNamespace: publication.Registry.Namespace,
-		Repository:        publication.Repository,
-		Tag:               publication.Tag,
-		Digest:            publication.Digest,
-		IsPublic:          publication.IsPublic,
-		PublishedBy:       publication.PublishedByUser.Username,
-		PublishedAt:       publication.CreatedAt.Format("2006-01-02 15:04:05"),
-	})
+	c.JSON(http.StatusOK, result)
 }
 
 // GetPublishDefaults godoc
@@ -1202,44 +627,16 @@ func (h *WorkspaceHandler) UpdatePublication(c *gin.Context) {
 // @Security BearerAuth
 // @Produce json
 // @Param id path string true "Workspace ID"
-// @Success 200 {object} PublishDefaultsResponse
+// @Success 200 {object} service.PublishDefaultsResult
 // @Failure 404 {object} ErrorResponse
 // @Router /workspaces/{id}/publish-defaults [get]
 func (h *WorkspaceHandler) GetPublishDefaults(c *gin.Context) {
-	wsID := c.Param("id")
-
-	// Get workspace
-	var ws models.Workspace
-	if err := h.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
+	defaults, err := h.svc.GetPublishDefaults(c.Param("id"))
+	if err != nil {
+		handleServiceError(c, err)
 		return
 	}
-
-	// Find default registry
-	var registry models.OCIRegistry
-	if err := h.db.Where("is_default = ?", true).First(&registry).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "No default registry configured"})
-		return
-	}
-
-	// Repository = normalized workspace name + first 8 chars of ID to avoid collisions
-	repo := fmt.Sprintf("%s-%s", ws.Name, ws.ID.String()[:8])
-
-	// Use the content hash of the latest version as the default OCI tag.
-	// This ensures each distinct content gets its own tag in the registry.
-	var latestVersion models.WorkspaceVersion
-	tag := "latest"
-	if err := h.db.Where("workspace_id = ?", wsID).Order("version_number DESC").First(&latestVersion).Error; err == nil && latestVersion.ContentHash != "" {
-		tag = latestVersion.ContentHash
-	}
-
-	c.JSON(http.StatusOK, PublishDefaultsResponse{
-		RegistryID:   registry.ID,
-		RegistryName: registry.Name,
-		Namespace:    registry.Namespace,
-		Repository:   repo,
-		Tag:          tag,
-	})
+	c.JSON(http.StatusOK, defaults)
 }
 
 // --- Request/Response types ---
@@ -1295,67 +692,14 @@ type ShareWorkspaceRequest struct {
 	Role   string    `json:"role" binding:"required"` // "viewer" or "editor"
 }
 
-type CollaboratorResponse struct {
-	UserID   uuid.UUID `json:"user_id"`
-	Username string    `json:"username"`
-	Email    string    `json:"email,omitempty"`
-	Role     string    `json:"role"` // "owner", "editor", "viewer"
-	IsOwner  bool      `json:"is_owner"`
-}
-
 type PublishRequest struct {
 	RegistryID uuid.UUID `json:"registry_id" binding:"required"`
 	Repository string    `json:"repository" binding:"required"` // e.g., "myorg/myenv"
 	Tag        string    `json:"tag" binding:"required"`        // e.g., "v1.0.0"
 }
 
-type PublishDefaultsResponse struct {
-	RegistryID   uuid.UUID `json:"registry_id"`
-	RegistryName string    `json:"registry_name"`
-	Namespace    string    `json:"namespace"`
-	Repository   string    `json:"repository"`
-	Tag          string    `json:"tag"`
-}
-
-type PublicationResponse struct {
-	ID                uuid.UUID `json:"id"`
-	VersionNumber     int       `json:"version_number"`
-	RegistryName      string    `json:"registry_name"`
-	RegistryURL       string    `json:"registry_url"`
-	RegistryNamespace string    `json:"registry_namespace"`
-	Repository        string    `json:"repository"`
-	Tag               string    `json:"tag"`
-	Digest            string    `json:"digest"`
-	IsPublic          bool      `json:"is_public"`
-	PublishedBy       string    `json:"published_by"`
-	PublishedAt       string    `json:"published_at"`
-}
-
 type UpdatePublicationRequest struct {
 	IsPublic *bool `json:"is_public" binding:"required"`
-}
-
-// WorkspaceResponse includes workspace data with formatted size
-type WorkspaceResponse struct {
-	models.Workspace
-	SizeFormatted string `json:"size_formatted"`
-}
-
-// enrichWorkspaceWithSize adds formatted size to a workspace
-func (h *WorkspaceHandler) enrichWorkspaceWithSize(ws *models.Workspace) WorkspaceResponse {
-	return WorkspaceResponse{
-		Workspace:     *ws,
-		SizeFormatted: utils.FormatBytes(ws.SizeBytes),
-	}
-}
-
-// enrichWorkspacesWithSize adds formatted size to multiple workspaces
-func (h *WorkspaceHandler) enrichWorkspacesWithSize(workspaces []models.Workspace) []WorkspaceResponse {
-	result := make([]WorkspaceResponse, len(workspaces))
-	for i, ws := range workspaces {
-		result[i] = h.enrichWorkspaceWithSize(&ws)
-	}
-	return result
 }
 
 // Helper function to get user ID from context

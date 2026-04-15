@@ -65,6 +65,15 @@ pre {
   font-size: 0.9375rem; /* 15px for better readability in logs */
 }
 
+/* Hide scrollbars while keeping scroll behavior */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Cursor pointer for all interactive elements */
 button,
 a,

@@ -17,20 +17,6 @@ definitions:
       user:
         $ref: '#/definitions/models.User'
     type: object
-  handlers.CollaboratorResponse:
-    properties:
-      email:
-        type: string
-      is_owner:
-        type: boolean
-      role:
-        description: '"owner", "editor", "viewer"'
-        type: string
-      user_id:
-        type: string
-      username:
-        type: string
-    type: object
   handlers.CreateRegistryRequest:
     properties:
       api_token:
@@ -127,44 +113,6 @@ definitions:
   handlers.PixiTomlResponse:
     properties:
       content:
-        type: string
-    type: object
-  handlers.PublicationResponse:
-    properties:
-      digest:
-        type: string
-      id:
-        type: string
-      is_public:
-        type: boolean
-      published_at:
-        type: string
-      published_by:
-        type: string
-      registry_name:
-        type: string
-      registry_namespace:
-        type: string
-      registry_url:
-        type: string
-      repository:
-        type: string
-      tag:
-        type: string
-      version_number:
-        type: integer
-    type: object
-  handlers.PublishDefaultsResponse:
-    properties:
-      namespace:
-        type: string
-      registry_id:
-        type: string
-      registry_name:
-        type: string
-      repository:
-        type: string
-      tag:
         type: string
     type: object
   handlers.PublishRequest:
@@ -526,6 +474,57 @@ definitions:
       workspace:
         $ref: '#/definitions/models.Workspace'
       workspace_id:
+        type: string
+    type: object
+  service.CollaboratorResult:
+    properties:
+      email:
+        type: string
+      is_owner:
+        type: boolean
+      role:
+        type: string
+      user_id:
+        type: string
+      username:
+        type: string
+    type: object
+  service.PublicationResult:
+    properties:
+      digest:
+        type: string
+      id:
+        type: string
+      is_public:
+        type: boolean
+      published_at:
+        type: string
+      published_by:
+        type: string
+      registry_name:
+        type: string
+      registry_namespace:
+        type: string
+      registry_url:
+        type: string
+      repository:
+        type: string
+      tag:
+        type: string
+      version_number:
+        type: integer
+    type: object
+  service.PublishDefaultsResult:
+    properties:
+      namespace:
+        type: string
+      registry_id:
+        type: string
+      registry_name:
+        type: string
+      repository:
+        type: string
+      tag:
         type: string
     type: object
 host: localhost:8460
@@ -1334,7 +1333,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/handlers.CollaboratorResponse'
+              $ref: '#/definitions/service.CollaboratorResult'
             type: array
       security:
       - BearerAuth: []
@@ -1548,7 +1547,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/handlers.PublicationResponse'
+              $ref: '#/definitions/service.PublicationResult'
             type: array
         "404":
           description: Not Found
@@ -1587,7 +1586,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/handlers.PublicationResponse'
+            $ref: '#/definitions/service.PublicationResult'
         "400":
           description: Bad Request
           schema:
@@ -1628,7 +1627,7 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/handlers.PublicationResponse'
+            $ref: '#/definitions/service.PublicationResult'
         "400":
           description: Bad Request
           schema:
@@ -1661,7 +1660,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/handlers.PublishDefaultsResponse'
+            $ref: '#/definitions/service.PublishDefaultsResult'
         "404":
           description: Not Found
           schema:

@@ -14,11 +14,13 @@ import (
 	"github.com/nebari-dev/nebi/internal/api"
 	"github.com/nebari-dev/nebi/internal/api/handlers"
 	"github.com/nebari-dev/nebi/internal/config"
+	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/logger"
 	"github.com/nebari-dev/nebi/internal/logstream"
 	"github.com/nebari-dev/nebi/internal/queue"
+	"github.com/nebari-dev/nebi/internal/service"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/nebari-dev/nebi/internal/worker"
 
@@ -139,9 +141,17 @@ func Run(ctx context.Context, cfg Config) error {
 
 	slog.Info("Starting Nebi", "mode", mode)
 
+	// Initialize service for the worker (encryption key derived later by router,
+	// but we derive one here for the standalone-worker case).
+	workerEncKey, err := nebicrypto.DeriveKey(appCfg.Auth.JWTSecret)
+	if err != nil {
+		return fmt.Errorf("failed to derive encryption key: %w", err)
+	}
+	workerSvc := service.New(database, jobQueue, exec, appCfg.IsLocalMode(), workerEncKey)
+
 	// Initialize and start worker if needed
 	if runWorker {
-		w = worker.New(database, jobQueue, exec, slog.Default(), valkeyClient)
+		w = worker.New(database, jobQueue, exec, workerSvc, slog.Default(), valkeyClient)
 		workerCtx, cancel := context.WithCancel(ctx)
 		workerCancel = cancel
 

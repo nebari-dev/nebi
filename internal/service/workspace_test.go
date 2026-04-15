@@ -61,7 +61,7 @@ func testSetup(t *testing.T, isLocal bool) (*WorkspaceService, *gorm.DB) {
 		t.Fatalf("new executor: %v", err)
 	}
 
-	svc := New(db, q, exec, isLocal)
+	svc := New(db, q, exec, isLocal, nil)
 	return svc, db
 }
 

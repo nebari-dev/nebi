@@ -68,7 +68,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.DashboardStatsResponse"
+                            "$ref": "#/definitions/service.DashboardStats"
                         }
                     }
                 }
@@ -172,9 +172,6 @@
                     }
                 ],
                 "description": "Get list of all configured OCI registries (admin only)",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -188,7 +185,7 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handlers.RegistryResponse"
+                                "$ref": "#/definitions/service.RegistryResult"
                             }
                         }
                     },
@@ -232,11 +229,17 @@
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/handlers.RegistryResponse"
+                            "$ref": "#/definitions/service.RegistryResult"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -258,9 +261,6 @@
                     }
                 ],
                 "description": "Get details of a specific OCI registry (admin only)",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -281,7 +281,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.RegistryResponse"
+                            "$ref": "#/definitions/service.RegistryResult"
                         }
                     },
                     "404": {
@@ -331,7 +331,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.RegistryResponse"
+                            "$ref": "#/definitions/service.RegistryResult"
                         }
                     },
                     "400": {
@@ -355,12 +355,6 @@
                     }
                 ],
                 "description": "Delete an OCI registry configuration (admin only)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
                 "tags": [
                     "admin"
                 ],
@@ -434,7 +428,7 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handlers.UserWithAdminStatus"
+                                "$ref": "#/definitions/service.UserWithAdmin"
                             }
                         }
                     }
@@ -501,7 +495,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.UserWithAdminStatus"
+                            "$ref": "#/definitions/service.UserWithAdmin"
                         }
                     }
                 }
@@ -556,7 +550,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.UserWithAdminStatus"
+                            "$ref": "#/definitions/service.UserWithAdmin"
                         }
                     }
                 }
@@ -1016,9 +1010,6 @@
                     }
                 ],
                 "description": "Get list of registries for users to select from (no credentials exposed)",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1032,7 +1023,7 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handlers.RegistryResponse"
+                                "$ref": "#/definitions/service.RegistryResult"
                             }
                         }
                     }
@@ -2292,17 +2283,6 @@
                 }
             }
         },
-        "handlers.DashboardStatsResponse": {
-            "type": "object",
-            "properties": {
-                "total_disk_usage_bytes": {
-                    "type": "integer"
-                },
-                "total_disk_usage_formatted": {
-                    "type": "string"
-                }
-            }
-        },
         "handlers.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -2430,35 +2410,6 @@
                 }
             }
         },
-        "handlers.RegistryResponse": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "type": "string"
-                },
-                "has_api_token": {
-                    "type": "boolean"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "is_default": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "url": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
         "handlers.RollbackRequest": {
             "type": "object",
             "required": [
@@ -2527,32 +2478,6 @@
                     "type": "string"
                 },
                 "url": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "handlers.UserWithAdminStatus": {
-            "type": "object",
-            "properties": {
-                "avatar_url": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "email": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "is_admin": {
-                    "type": "boolean"
-                },
-                "updated_at": {
                     "type": "string"
                 },
                 "username": {
@@ -2913,6 +2838,17 @@
                 }
             }
         },
+        "service.DashboardStats": {
+            "type": "object",
+            "properties": {
+                "total_disk_usage_bytes": {
+                    "type": "integer"
+                },
+                "total_disk_usage_formatted": {
+                    "type": "string"
+                }
+            }
+        },
         "service.PublicationResult": {
             "type": "object",
             "properties": {
@@ -2967,6 +2903,61 @@
                     "type": "string"
                 },
                 "tag": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.RegistryResult": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "has_api_token": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_default": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.UserWithAdmin": {
+            "type": "object",
+            "properties": {
+                "avatar_url": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_admin": {
+                    "type": "boolean"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "username": {
                     "type": "string"
                 }
             }

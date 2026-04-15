@@ -8,23 +8,23 @@ import (
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/logstream"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/service"
 	"github.com/valkey-io/valkey-go"
-	"gorm.io/gorm"
 )
 
 type JobHandler struct {
-	db           *gorm.DB
+	svc          *service.JobService
 	broker       *logstream.LogBroker
 	valkeyClient valkey.Client
 }
 
-func NewJobHandler(db *gorm.DB, broker *logstream.LogBroker, valkeyClient interface{}) *JobHandler {
+func NewJobHandler(svc *service.JobService, broker *logstream.LogBroker, valkeyClient interface{}) *JobHandler {
 	var client valkey.Client
 	if valkeyClient != nil {
 		client, _ = valkeyClient.(valkey.Client)
 	}
 	return &JobHandler{
-		db:           db,
+		svc:          svc,
 		broker:       broker,
 		valkeyClient: client,
 	}
@@ -40,21 +40,11 @@ func NewJobHandler(db *gorm.DB, broker *logstream.LogBroker, valkeyClient interf
 // @Failure 500 {object} ErrorResponse
 // @Router /jobs [get]
 func (h *JobHandler) ListJobs(c *gin.Context) {
-	userID := getUserID(c)
-
-	var jobs []models.Job
-	err := h.db.
-		Select("jobs.*").
-		Joins("JOIN workspaces ON workspaces.id = jobs.workspace_id").
-		Where("workspaces.owner_id = ?", userID).
-		Order("jobs.created_at DESC").
-		Find(&jobs).Error
-
+	jobs, err := h.svc.ListJobs(getUserID(c))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch jobs"})
+		handleServiceError(c, err)
 		return
 	}
-
 	c.JSON(http.StatusOK, jobs)
 }
 
@@ -70,25 +60,11 @@ func (h *JobHandler) ListJobs(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /jobs/{id} [get]
 func (h *JobHandler) GetJob(c *gin.Context) {
-	userID := getUserID(c)
-	jobID := c.Param("id")
-
-	var job models.Job
-	err := h.db.
-		Select("jobs.*").
-		Joins("JOIN workspaces ON workspaces.id = jobs.workspace_id").
-		Where("jobs.id = ? AND workspaces.owner_id = ?", jobID, userID).
-		First(&job).Error
-
+	job, err := h.svc.GetJob(c.Param("id"), getUserID(c))
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Job not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch job"})
+		handleServiceError(c, err)
 		return
 	}
-
 	c.JSON(http.StatusOK, job)
 }
 
@@ -104,31 +80,17 @@ func (h *JobHandler) GetJob(c *gin.Context) {
 // @Failure 404 {object} ErrorResponse
 // @Router /jobs/{id}/logs/stream [get]
 func (h *JobHandler) StreamJobLogs(c *gin.Context) {
-	// Get userID from context (set by auth middleware)
 	userID := getUserID(c)
-	jobID := c.Param("id")
 
-	// Parse job UUID
-	jobUUID, err := uuid.Parse(jobID)
+	jobUUID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid job ID"})
 		return
 	}
 
-	// Verify job exists and user has access
-	var job models.Job
-	err = h.db.
-		Select("jobs.*").
-		Joins("JOIN workspaces ON workspaces.id = jobs.workspace_id").
-		Where("jobs.id = ? AND workspaces.owner_id = ?", jobUUID, userID).
-		First(&job).Error
-
+	job, err := h.svc.GetJobForStreaming(jobUUID, userID)
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Job not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch job"})
+		handleServiceError(c, err)
 		return
 	}
 
@@ -136,7 +98,7 @@ func (h *JobHandler) StreamJobLogs(c *gin.Context) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no") // Disable nginx buffering
+	c.Header("X-Accel-Buffering", "no")
 
 	// If job is already completed or failed, send historical logs and close
 	if job.Status == models.JobStatusCompleted || job.Status == models.JobStatusFailed {
@@ -154,14 +116,12 @@ func (h *JobHandler) StreamJobLogs(c *gin.Context) {
 		c.Writer.Flush()
 	}
 
-	// Use Valkey pub/sub for distributed log streaming if available
+	// Stream real-time logs
 	if h.valkeyClient != nil {
 		h.streamLogsFromValkey(c, jobUUID)
 	} else if h.broker != nil {
-		// Fallback to in-memory broker
 		h.streamLogsFromBroker(c, jobUUID)
 	} else {
-		// No streaming available, poll database
 		fmt.Fprintf(c.Writer, "event: error\ndata: Log streaming not available\n\n")
 		c.Writer.Flush()
 	}
@@ -172,20 +132,16 @@ func (h *JobHandler) streamLogsFromValkey(c *gin.Context, jobID uuid.UUID) {
 	channel := fmt.Sprintf("logs:%s", jobID.String())
 	ctx := c.Request.Context()
 
-	// Subscribe to Valkey pub/sub channel and receive messages
 	subscribeCmd := h.valkeyClient.B().Subscribe().Channel(channel).Build()
 
 	err := h.valkeyClient.Receive(ctx, subscribeCmd, func(msg valkey.PubSubMessage) {
-		// Get log line from message
 		logLine := msg.Message
 
-		// Send log line to client via SSE
 		fmt.Fprintf(c.Writer, "data: %s\n\n", logLine)
 		if flusher, ok := c.Writer.(http.Flusher); ok {
 			flusher.Flush()
 		}
 
-		// Check if this is a completion message
 		if logLine == "\n[COMPLETED] Job finished successfully\n" ||
 			(len(logLine) > 7 && logLine[:7] == "\n[ERROR]") {
 			fmt.Fprintf(c.Writer, "event: done\ndata: Job completed\n\n")
@@ -194,8 +150,6 @@ func (h *JobHandler) streamLogsFromValkey(c *gin.Context, jobID uuid.UUID) {
 	})
 
 	if err != nil {
-		// Error subscribing or streaming (includes context cancellation)
-		// This is normal when client disconnects
 		if err.Error() != "context canceled" {
 			fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", err.Error())
 			c.Writer.Flush()
@@ -205,26 +159,21 @@ func (h *JobHandler) streamLogsFromValkey(c *gin.Context, jobID uuid.UUID) {
 
 // streamLogsFromBroker streams logs from in-memory broker (fallback)
 func (h *JobHandler) streamLogsFromBroker(c *gin.Context, jobID uuid.UUID) {
-	// Subscribe to real-time log stream
 	logChan := h.broker.Subscribe(jobID)
 	defer h.broker.Unsubscribe(jobID, logChan)
 
-	// Stream logs as they arrive
 	clientGone := c.Request.Context().Done()
 	for {
 		select {
 		case <-clientGone:
-			// Client disconnected
 			return
 		case logLine, ok := <-logChan:
 			if !ok {
-				// Channel closed, job completed
 				fmt.Fprintf(c.Writer, "event: done\ndata: Stream ended\n\n")
 				c.Writer.Flush()
 				return
 			}
 
-			// Send log line to client
 			fmt.Fprintf(c.Writer, "data: %s\n\n", logLine)
 			if flusher, ok := c.Writer.(http.Flusher); ok {
 				flusher.Flush()

@@ -1,24 +1,20 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/nebari-dev/nebi/internal/audit"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/rbac"
-	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
+	"github.com/nebari-dev/nebi/internal/service"
 )
 
 type AdminHandler struct {
-	db *gorm.DB
+	svc *service.AdminService
 }
 
-func NewAdminHandler(db *gorm.DB) *AdminHandler {
-	return &AdminHandler{db: db}
+func NewAdminHandler(svc *service.AdminService) *AdminHandler {
+	return &AdminHandler{svc: svc}
 }
 
 // ListUsers godoc
@@ -26,32 +22,15 @@ func NewAdminHandler(db *gorm.DB) *AdminHandler {
 // @Tags admin
 // @Security BearerAuth
 // @Produce json
-// @Success 200 {array} UserWithAdminStatus
+// @Success 200 {array} service.UserWithAdmin
 // @Router /admin/users [get]
 func (h *AdminHandler) ListUsers(c *gin.Context) {
-	var users []models.User
-	if err := h.db.Find(&users).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch users"})
-		return
-	}
-
-	// Get all admin user IDs in ONE Casbin call
-	adminUserIDs, err := rbac.GetAllAdminUserIDs()
+	users, err := h.svc.ListUsers()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to check admin status"})
+		handleServiceError(c, err)
 		return
 	}
-
-	// Build response with admin status using O(1) map lookup
-	usersWithStatus := make([]UserWithAdminStatus, len(users))
-	for i, user := range users {
-		usersWithStatus[i] = UserWithAdminStatus{
-			User:    user,
-			IsAdmin: adminUserIDs[user.ID],
-		}
-	}
-
-	c.JSON(http.StatusOK, usersWithStatus)
+	c.JSON(http.StatusOK, users)
 }
 
 // CreateUser godoc
@@ -64,47 +43,22 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 // @Success 201 {object} models.User
 // @Router /admin/users [post]
 func (h *AdminHandler) CreateUser(c *gin.Context) {
-	adminUser := c.MustGet("user").(*models.User)
-
 	var req CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	user, err := h.svc.CreateUser(service.CreateUserRequest{
+		Username: req.Username,
+		Email:    req.Email,
+		Password: req.Password,
+		IsAdmin:  req.IsAdmin,
+	}, getAdminUserID(c))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to hash password"})
+		handleServiceError(c, err)
 		return
 	}
-
-	user := models.User{
-		Username:     req.Username,
-		Email:        req.Email,
-		PasswordHash: string(hashedPassword),
-	}
-
-	if err := h.db.Create(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create user"})
-		return
-	}
-
-	// If admin flag is set, grant admin permissions
-	if req.IsAdmin {
-		if err := rbac.MakeAdmin(user.ID); err != nil {
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to grant admin permissions"})
-			return
-		}
-	}
-
-	// Audit log
-	audit.LogAction(h.db, adminUser.ID, audit.ActionCreateUser, "user:"+user.ID.String(), map[string]interface{}{
-		"username": user.Username,
-		"email":    user.Email,
-		"is_admin": req.IsAdmin,
-	})
-
 	c.JSON(http.StatusCreated, user)
 }
 
@@ -113,29 +67,21 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 // @Tags admin
 // @Security BearerAuth
 // @Param id path string true "User UUID"
-// @Success 200 {object} UserWithAdminStatus
+// @Success 200 {object} service.UserWithAdmin
 // @Router /admin/users/{id} [get]
 func (h *AdminHandler) GetUser(c *gin.Context) {
-	userIDStr := c.Param("id")
-	userID, err := uuid.Parse(userIDStr)
+	userID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid user ID"})
 		return
 	}
 
-	var user models.User
-	if err := h.db.First(&user, "id = ?", userID).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "User not found"})
+	user, err := h.svc.GetUser(userID)
+	if err != nil {
+		handleServiceError(c, err)
 		return
 	}
-
-	// Check if user is admin
-	isAdmin, _ := rbac.IsAdmin(user.ID)
-
-	c.JSON(http.StatusOK, UserWithAdminStatus{
-		User:    user,
-		IsAdmin: isAdmin,
-	})
+	c.JSON(http.StatusOK, user)
 }
 
 // ToggleAdmin godoc
@@ -143,46 +89,21 @@ func (h *AdminHandler) GetUser(c *gin.Context) {
 // @Tags admin
 // @Security BearerAuth
 // @Param id path string true "User UUID"
-// @Success 200 {object} UserWithAdminStatus
+// @Success 200 {object} service.UserWithAdmin
 // @Router /admin/users/{id}/toggle-admin [post]
 func (h *AdminHandler) ToggleAdmin(c *gin.Context) {
-	adminUser := c.MustGet("user").(*models.User)
-	userIDStr := c.Param("id")
-
-	userID, err := uuid.Parse(userIDStr)
+	userID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid user ID"})
 		return
 	}
 
-	var user models.User
-	if err := h.db.First(&user, "id = ?", userID).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "User not found"})
+	result, err := h.svc.ToggleAdmin(userID, getAdminUserID(c))
+	if err != nil {
+		handleServiceError(c, err)
 		return
 	}
-
-	// Check current admin status
-	isAdmin, _ := rbac.IsAdmin(user.ID)
-
-	// Toggle admin status
-	if isAdmin {
-		if err := rbac.RevokeAdmin(user.ID); err != nil {
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to revoke admin"})
-			return
-		}
-		audit.LogAction(h.db, adminUser.ID, audit.ActionRevokeAdmin, "user:"+user.ID.String(), nil)
-	} else {
-		if err := rbac.MakeAdmin(user.ID); err != nil {
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to make admin"})
-			return
-		}
-		audit.LogAction(h.db, adminUser.ID, audit.ActionMakeAdmin, "user:"+user.ID.String(), nil)
-	}
-
-	c.JSON(http.StatusOK, UserWithAdminStatus{
-		User:    user,
-		IsAdmin: !isAdmin,
-	})
+	c.JSON(http.StatusOK, result)
 }
 
 // DeleteUser godoc
@@ -193,37 +114,16 @@ func (h *AdminHandler) ToggleAdmin(c *gin.Context) {
 // @Success 204
 // @Router /admin/users/{id} [delete]
 func (h *AdminHandler) DeleteUser(c *gin.Context) {
-	adminUser := c.MustGet("user").(*models.User)
-	userIDStr := c.Param("id")
-
-	userID, err := uuid.Parse(userIDStr)
+	userID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid user ID"})
 		return
 	}
 
-	// Can't delete yourself
-	if userID == adminUser.ID {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Cannot delete yourself"})
+	if err := h.svc.DeleteUser(userID, getAdminUserID(c)); err != nil {
+		handleServiceError(c, err)
 		return
 	}
-
-	var user models.User
-	if err := h.db.First(&user, "id = ?", userID).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "User not found"})
-		return
-	}
-
-	if err := h.db.Delete(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to delete user"})
-		return
-	}
-
-	// Audit log
-	audit.LogAction(h.db, adminUser.ID, audit.ActionDeleteUser, "user:"+user.ID.String(), map[string]interface{}{
-		"username": user.Username,
-	})
-
 	c.Status(http.StatusNoContent)
 }
 
@@ -235,12 +135,11 @@ func (h *AdminHandler) DeleteUser(c *gin.Context) {
 // @Success 200 {array} models.Role
 // @Router /admin/roles [get]
 func (h *AdminHandler) ListRoles(c *gin.Context) {
-	var roles []models.Role
-	if err := h.db.Find(&roles).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch roles"})
+	roles, err := h.svc.ListRoles()
+	if err != nil {
+		handleServiceError(c, err)
 		return
 	}
-
 	c.JSON(http.StatusOK, roles)
 }
 
@@ -254,61 +153,18 @@ func (h *AdminHandler) ListRoles(c *gin.Context) {
 // @Success 201 {object} models.Permission
 // @Router /admin/permissions [post]
 func (h *AdminHandler) GrantPermission(c *gin.Context) {
-	adminUser := c.MustGet("user").(*models.User)
-
 	var req GrantPermissionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	// Verify user exists
-	var user models.User
-	if err := h.db.First(&user, "id = ?", req.UserID).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "User not found"})
+	perm, err := h.svc.GrantPermission(req.UserID, req.WorkspaceID, req.RoleID, getAdminUserID(c))
+	if err != nil {
+		handleServiceError(c, err)
 		return
 	}
-
-	// Verify workspace exists
-	var ws models.Workspace
-	if err := h.db.First(&ws, "id = ?", req.WorkspaceID).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Workspace not found"})
-		return
-	}
-
-	// Verify role exists
-	var role models.Role
-	if err := h.db.First(&role, req.RoleID).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Role not found"})
-		return
-	}
-
-	// Create permission record
-	permission := models.Permission{
-		UserID:      req.UserID,
-		WorkspaceID: req.WorkspaceID,
-		RoleID:      req.RoleID,
-	}
-
-	if err := h.db.Create(&permission).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create permission"})
-		return
-	}
-
-	// Grant in RBAC
-	if err := rbac.GrantWorkspaceAccess(user.ID, ws.ID, role.Name); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to grant RBAC permission"})
-		return
-	}
-
-	// Audit log
-	audit.LogAction(h.db, adminUser.ID, audit.ActionGrantPermission, "permission:"+string(rune(permission.ID)), map[string]interface{}{
-		"user_id":      req.UserID,
-		"workspace_id": req.WorkspaceID,
-		"role":         role.Name,
-	})
-
-	c.JSON(http.StatusCreated, permission)
+	c.JSON(http.StatusCreated, perm)
 }
 
 // ListPermissions godoc
@@ -319,12 +175,11 @@ func (h *AdminHandler) GrantPermission(c *gin.Context) {
 // @Success 200 {array} models.Permission
 // @Router /admin/permissions [get]
 func (h *AdminHandler) ListPermissions(c *gin.Context) {
-	var permissions []models.Permission
-	if err := h.db.Preload("User").Preload("Workspace").Preload("Role").Find(&permissions).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch permissions"})
+	permissions, err := h.svc.ListPermissions()
+	if err != nil {
+		handleServiceError(c, err)
 		return
 	}
-
 	c.JSON(http.StatusOK, permissions)
 }
 
@@ -336,33 +191,10 @@ func (h *AdminHandler) ListPermissions(c *gin.Context) {
 // @Success 204
 // @Router /admin/permissions/{id} [delete]
 func (h *AdminHandler) RevokePermission(c *gin.Context) {
-	adminUser := c.MustGet("user").(*models.User)
-	permissionID := c.Param("id")
-
-	var permission models.Permission
-	if err := h.db.Preload("User").Preload("Workspace").First(&permission, permissionID).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Permission not found"})
+	if err := h.svc.RevokePermission(c.Param("id"), getAdminUserID(c)); err != nil {
+		handleServiceError(c, err)
 		return
 	}
-
-	// Revoke from RBAC
-	if err := rbac.RevokeWorkspaceAccess(permission.UserID, permission.WorkspaceID); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to revoke RBAC permission"})
-		return
-	}
-
-	// Delete permission record
-	if err := h.db.Delete(&permission).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to delete permission"})
-		return
-	}
-
-	// Audit log
-	audit.LogAction(h.db, adminUser.ID, audit.ActionRevokePermission, "permission:"+permissionID, map[string]interface{}{
-		"user_id":      permission.UserID,
-		"workspace_id": permission.WorkspaceID,
-	})
-
 	c.Status(http.StatusNoContent)
 }
 
@@ -376,22 +208,11 @@ func (h *AdminHandler) RevokePermission(c *gin.Context) {
 // @Success 200 {array} models.AuditLog
 // @Router /admin/audit-logs [get]
 func (h *AdminHandler) ListAuditLogs(c *gin.Context) {
-	query := h.db.Preload("User").Order("timestamp DESC").Limit(100)
-
-	if userID := c.Query("user_id"); userID != "" {
-		query = query.Where("user_id = ?", userID)
-	}
-
-	if action := c.Query("action"); action != "" {
-		query = query.Where("action = ?", action)
-	}
-
-	var logs []models.AuditLog
-	if err := query.Find(&logs).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch audit logs"})
+	logs, err := h.svc.ListAuditLogs(c.Query("user_id"), c.Query("action"))
+	if err != nil {
+		handleServiceError(c, err)
 		return
 	}
-
 	c.JSON(http.StatusOK, logs)
 }
 
@@ -400,29 +221,19 @@ func (h *AdminHandler) ListAuditLogs(c *gin.Context) {
 // @Tags admin
 // @Security BearerAuth
 // @Produce json
-// @Success 200 {object} DashboardStatsResponse
+// @Success 200 {object} service.DashboardStats
 // @Router /admin/dashboard/stats [get]
 func (h *AdminHandler) GetDashboardStats(c *gin.Context) {
-	// Get total disk usage
-	var totalDiskUsage struct {
-		TotalBytes int64
+	stats, err := h.svc.GetDashboardStats()
+	if err != nil {
+		handleServiceError(c, err)
+		return
 	}
-	h.db.Model(&models.Workspace{}).
-		Select("COALESCE(SUM(size_bytes), 0) as total_bytes").
-		Scan(&totalDiskUsage)
-
-	// Format size
-	totalSizeFormatted := formatBytes(totalDiskUsage.TotalBytes)
-
-	stats := DashboardStatsResponse{
-		TotalDiskUsageBytes:     totalDiskUsage.TotalBytes,
-		TotalDiskUsageFormatted: totalSizeFormatted,
-	}
-
 	c.JSON(http.StatusOK, stats)
 }
 
-// Request types
+// --- Request types ---
+
 type CreateUserRequest struct {
 	Username string `json:"username" binding:"required"`
 	Email    string `json:"email" binding:"required,email"`
@@ -436,26 +247,11 @@ type GrantPermissionRequest struct {
 	RoleID      uint      `json:"role_id" binding:"required"`
 }
 
-type UserWithAdminStatus struct {
-	models.User
-	IsAdmin bool `json:"is_admin"`
-}
-
-type DashboardStatsResponse struct {
-	TotalDiskUsageBytes     int64  `json:"total_disk_usage_bytes"`
-	TotalDiskUsageFormatted string `json:"total_disk_usage_formatted"`
-}
-
-// formatBytes converts bytes to human-readable format
-func formatBytes(bytes int64) string {
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
+// getAdminUserID extracts the admin user ID from context.
+func getAdminUserID(c *gin.Context) uuid.UUID {
+	user, exists := c.Get("user")
+	if !exists {
+		return uuid.Nil
 	}
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
+	return user.(*models.User).ID
 }

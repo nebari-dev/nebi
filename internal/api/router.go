@@ -171,10 +171,14 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		panic(err)
 	}
 
-	// Initialize service and handlers
+	// Initialize services and handlers
 	svc := service.New(db, q, exec, localMode, encKey)
+	adminSvc := service.NewAdminService(db)
+	registrySvc := service.NewRegistryService(db, encKey)
+	jobSvc := service.NewJobService(db)
+
 	wsHandler := handlers.NewWorkspaceHandler(svc)
-	jobHandler := handlers.NewJobHandler(db, logBroker, valkeyClient)
+	jobHandler := handlers.NewJobHandler(jobSvc, logBroker, valkeyClient)
 
 	// Protected routes (require authentication)
 	protected := base.Group("/api/v1")
@@ -234,7 +238,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		protected.POST("/templates", handlers.NotImplemented)
 
 		// OCI Registry endpoints (for users to view available registries)
-		registryHandler := handlers.NewRegistryHandler(db, encKey)
+		registryHandler := handlers.NewRegistryHandler(registrySvc)
 		protected.GET("/registries", registryHandler.ListPublicRegistries)
 
 		// Registry browse & import endpoints (for all authenticated users)
@@ -244,7 +248,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		protected.POST("/registries/:id/import", browseHandler.ImportEnvironment)
 
 		// Admin endpoints (require admin role)
-		adminHandler := handlers.NewAdminHandler(db)
+		adminHandler := handlers.NewAdminHandler(adminSvc)
 		admin := protected.Group("/admin")
 		admin.Use(middleware.RequireAdmin(localMode))
 		{

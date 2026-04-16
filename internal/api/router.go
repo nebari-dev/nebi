@@ -60,7 +60,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	var authenticator auth.Authenticator
 	var oidcAuth *auth.OIDCAuthenticator
 	// Session check endpoint needs a BasicAuthenticator for JWT generation.
-	sessionBasicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
+	sessionBasicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret, rbacProvider)
 
 	if localMode {
 		localAuth, err := auth.NewLocalAuthenticator(db)
@@ -72,7 +72,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		logger.Info("Running in local mode — authentication bypassed", "user", auth.LocalUsername())
 	} else {
 		if cfg.Auth.Type == "basic" {
-			basicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret)
+			basicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret, rbacProvider)
 			basicAuth.SetProxyAdminGroups(cfg.Auth.ProxyAdminGroups)
 			authenticator = basicAuth
 		}
@@ -87,13 +87,13 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			}
 			var err error
 			// Use context.Background() for initialization
-			oidcAuth, err = auth.NewOIDCAuthenticator(nil, oidcCfg, db, cfg.Auth.JWTSecret)
+			oidcAuth, err = auth.NewOIDCAuthenticator(nil, oidcCfg, db, cfg.Auth.JWTSecret, rbacProvider)
 			if err != nil {
 				logger.Error("Failed to initialize OIDC authenticator, will retry in background", "error", err)
 				// Retry in background — the OIDC provider (e.g. Keycloak) may not
 				// be ready yet at startup. Once it becomes reachable, wire the
 				// verifier into the authenticators so proxy auth starts working.
-				go retryOIDCInit(oidcCfg, db, cfg.Auth.JWTSecret, sessionBasicAuth, authenticator, logger)
+				go retryOIDCInit(oidcCfg, db, cfg.Auth.JWTSecret, rbacProvider, sessionBasicAuth, authenticator, logger)
 			} else {
 				logger.Info("OIDC authentication enabled", "issuer", cfg.Auth.OIDCIssuerURL)
 			}
@@ -243,7 +243,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		protected.GET("/registries", registryHandler.ListPublicRegistries)
 
 		// Registry browse & import endpoints (for all authenticated users)
-		browseHandler := handlers.NewRegistryBrowseHandler(db, svc, encKey)
+		browseHandler := handlers.NewRegistryBrowseHandler(registrySvc, svc)
 		protected.GET("/registries/:id/repositories", browseHandler.ListRepositories)
 		protected.GET("/registries/:id/tags", browseHandler.ListTags)
 		protected.POST("/registries/:id/import", browseHandler.ImportEnvironment)
@@ -417,11 +417,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 // succeeds. This handles the case where the OIDC provider (e.g. Keycloak) is
 // not yet ready when Nebi starts. Once discovery succeeds, the ID token
 // verifier is wired into the authenticators so proxy auth starts working.
-func retryOIDCInit(cfg auth.OIDCConfig, db *gorm.DB, jwtSecret string,
+func retryOIDCInit(cfg auth.OIDCConfig, db *gorm.DB, jwtSecret string, rbacProvider rbac.Provider,
 	sessionAuth *auth.BasicAuthenticator, mainAuth auth.Authenticator, logger *slog.Logger) {
 	for {
 		time.Sleep(10 * time.Second)
-		oa, err := auth.NewOIDCAuthenticator(nil, cfg, db, jwtSecret)
+		oa, err := auth.NewOIDCAuthenticator(nil, cfg, db, jwtSecret, rbacProvider)
 		if err != nil {
 			logger.Warn("OIDC initialization retry failed, will try again", "error", err)
 			continue

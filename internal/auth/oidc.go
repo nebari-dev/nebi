@@ -9,6 +9,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/rbac"
 	"golang.org/x/oauth2"
 	"gorm.io/gorm"
 )
@@ -33,7 +34,7 @@ type OIDCConfig struct {
 }
 
 // NewOIDCAuthenticator creates a new OIDC authenticator
-func NewOIDCAuthenticator(ctx context.Context, cfg OIDCConfig, db *gorm.DB, jwtSecret string) (*OIDCAuthenticator, error) {
+func NewOIDCAuthenticator(ctx context.Context, cfg OIDCConfig, db *gorm.DB, jwtSecret string, rbacProvider rbac.Provider) (*OIDCAuthenticator, error) {
 	// Use background context if none provided
 	if ctx == nil {
 		ctx = context.Background()
@@ -66,7 +67,7 @@ func NewOIDCAuthenticator(ctx context.Context, cfg OIDCConfig, db *gorm.DB, jwtS
 	})
 
 	// Create basic authenticator for JWT generation
-	basicAuth := NewBasicAuthenticator(db, jwtSecret)
+	basicAuth := NewBasicAuthenticator(db, jwtSecret, rbacProvider)
 
 	return &OIDCAuthenticator{
 		provider:  provider,

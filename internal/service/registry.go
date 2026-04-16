@@ -217,6 +217,47 @@ func (s *RegistryService) DeleteRegistry(id string) error {
 	return nil
 }
 
+// RegistryWithCredentials holds a registry and its decrypted credentials for OCI operations.
+type RegistryWithCredentials struct {
+	Registry models.OCIRegistry
+	Password string
+	APIToken string
+}
+
+// GetRegistryWithCredentials returns a registry with decrypted credentials for OCI operations.
+func (s *RegistryService) GetRegistryWithCredentials(id string) (*RegistryWithCredentials, error) {
+	var registry models.OCIRegistry
+	if err := s.db.Where("id = ?", id).First(&registry).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	password, err := nebicrypto.DecryptField(registry.Password, s.encKey)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt registry credentials: %w", err)
+	}
+
+	apiToken, _ := nebicrypto.DecryptField(registry.APIToken, s.encKey)
+
+	return &RegistryWithCredentials{
+		Registry: registry,
+		Password: password,
+		APIToken: apiToken,
+	}, nil
+}
+
+// FallbackRepositories returns distinct repository names from publication records for a registry.
+func (s *RegistryService) FallbackRepositories(registryID string) []string {
+	var repositories []string
+	s.db.Model(&models.Publication{}).
+		Where("registry_id = ?", registryID).
+		Distinct("repository").
+		Pluck("repository", &repositories)
+	return repositories
+}
+
 func registryToResult(reg models.OCIRegistry, username string, hasAPIToken bool) RegistryResult {
 	return RegistryResult{
 		ID:          reg.ID,

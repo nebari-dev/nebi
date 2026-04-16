@@ -96,7 +96,11 @@ func Run(ctx context.Context, cfg Config) error {
 
 	// Create default admin user if configured (team mode only)
 	if !appCfg.IsLocalMode() {
-		if err := db.CreateDefaultAdmin(database); err != nil {
+		// Initialize RBAC early so CreateDefaultAdmin can grant admin role
+		if err := rbac.InitEnforcer(database, slog.Default()); err != nil {
+			return fmt.Errorf("failed to initialize RBAC: %w", err)
+		}
+		if err := db.CreateDefaultAdmin(database, rbac.NewDefaultProvider()); err != nil {
 			return fmt.Errorf("failed to create default admin user: %w", err)
 		}
 	}

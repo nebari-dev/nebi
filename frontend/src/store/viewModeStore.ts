@@ -11,7 +11,7 @@ interface ViewModeState {
 export const useViewModeStore = create<ViewModeState>()(
   persist(
     (set) => ({
-      viewMode: 'local',
+      viewMode: 'remote',
       setViewMode: (mode) => set({ viewMode: mode }),
     }),
     { name: 'nebi-view-mode' }

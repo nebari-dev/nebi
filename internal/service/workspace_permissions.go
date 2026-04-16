@@ -6,7 +6,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/rbac"
 	"gorm.io/gorm"
 )
 
@@ -48,25 +47,32 @@ func (s *WorkspaceService) ShareWorkspace(wsID string, ownerID uuid.UUID, target
 		return nil, fmt.Errorf("role not found: %w", err)
 	}
 
-	// Create permission record
-	permission := models.Permission{
-		UserID:      targetUserID,
-		WorkspaceID: wsUUID,
-		RoleID:      roleRecord.ID,
-	}
-	if err := s.db.Create(&permission).Error; err != nil {
-		return nil, fmt.Errorf("create permission: %w", err)
+	var permission models.Permission
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		permission = models.Permission{
+			UserID:      targetUserID,
+			WorkspaceID: wsUUID,
+			RoleID:      roleRecord.ID,
+		}
+		if err := tx.Create(&permission).Error; err != nil {
+			return fmt.Errorf("create permission: %w", err)
+		}
+
+		audit.LogAction(tx, ownerID, audit.ActionGrantPermission, fmt.Sprintf("ws:%s", wsUUID.String()), map[string]interface{}{
+			"target_user_id": targetUserID,
+			"role":           role,
+		})
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	// Grant in RBAC
-	if err := rbac.GrantWorkspaceAccess(targetUserID, wsUUID, role); err != nil {
+	// RBAC outside transaction — Casbin uses its own DB connection
+	if err := s.rbac.GrantWorkspaceAccess(targetUserID, wsUUID, role); err != nil {
 		return nil, fmt.Errorf("grant RBAC permission: %w", err)
 	}
-
-	audit.LogAction(s.db, ownerID, audit.ActionGrantPermission, fmt.Sprintf("ws:%s", wsUUID.String()), map[string]interface{}{
-		"target_user_id": targetUserID,
-		"role":           role,
-	})
 
 	return &permission, nil
 }
@@ -105,19 +111,25 @@ func (s *WorkspaceService) UnshareWorkspace(wsID string, ownerID uuid.UUID, targ
 		return err
 	}
 
-	// Revoke from RBAC
-	if err := rbac.RevokeWorkspaceAccess(targetUUID, wsUUID); err != nil {
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Delete(&permission).Error; err != nil {
+			return fmt.Errorf("delete permission: %w", err)
+		}
+
+		audit.LogAction(tx, ownerID, audit.ActionRevokePermission, fmt.Sprintf("ws:%s", wsUUID.String()), map[string]interface{}{
+			"target_user_id": targetUUID,
+		})
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// RBAC outside transaction — Casbin uses its own DB connection
+	if err := s.rbac.RevokeWorkspaceAccess(targetUUID, wsUUID); err != nil {
 		return fmt.Errorf("revoke RBAC permission: %w", err)
 	}
-
-	// Delete permission record
-	if err := s.db.Delete(&permission).Error; err != nil {
-		return fmt.Errorf("delete permission: %w", err)
-	}
-
-	audit.LogAction(s.db, ownerID, audit.ActionRevokePermission, fmt.Sprintf("ws:%s", wsUUID.String()), map[string]interface{}{
-		"target_user_id": targetUUID,
-	})
 
 	return nil
 }

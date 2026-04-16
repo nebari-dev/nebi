@@ -17,6 +17,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/queue"
+	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/nebari-dev/nebi/internal/service"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/nebari-dev/nebi/internal/worker"
@@ -173,8 +174,9 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	logToFile("startEmbeddedServer: executor initialized")
 
 	// Create service and worker (desktop app uses local mode, no encryption key needed)
-	svc := service.New(database, jobQueue, exec, true, nil)
-	w := worker.New(database, jobQueue, exec, svc, slog.Default(), nil)
+	svc := service.New(database, jobQueue, exec, true, nil, rbac.NewDefaultProvider())
+	jobSvc := service.NewJobService(database)
+	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), nil)
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	_ = workerCancel // Keep reference to avoid unused warning
 	logToFile("startEmbeddedServer: worker created")

@@ -21,13 +21,14 @@ type WorkspaceService struct {
 	db       *gorm.DB
 	queue    queue.Queue
 	executor executor.Executor
+	rbac     rbac.Provider
 	isLocal  bool
 	encKey   []byte
 }
 
 // New creates a new WorkspaceService.
-func New(db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool, encKey []byte) *WorkspaceService {
-	return &WorkspaceService{db: db, queue: q, executor: exec, isLocal: isLocal, encKey: encKey}
+func New(db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool, encKey []byte, rbacProvider rbac.Provider) *WorkspaceService {
+	return &WorkspaceService{db: db, queue: q, executor: exec, isLocal: isLocal, encKey: encKey, rbac: rbacProvider}
 }
 
 // List returns workspaces visible to the given user.
@@ -109,39 +110,46 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 		Path:           req.Path,
 	}
 
-	if err := s.db.Create(&ws).Error; err != nil {
-		return nil, fmt.Errorf("create workspace: %w", err)
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&ws).Error; err != nil {
+			return fmt.Errorf("create workspace: %w", err)
+		}
+
+		// Queue creation job
+		metadata := map[string]interface{}{}
+		if req.PixiToml != "" {
+			metadata["pixi_toml"] = req.PixiToml
+		}
+
+		job := &models.Job{
+			Type:        models.JobTypeCreate,
+			WorkspaceID: ws.ID,
+			Status:      models.JobStatusPending,
+			Metadata:    metadata,
+		}
+		if err := tx.Create(job).Error; err != nil {
+			return fmt.Errorf("create job: %w", err)
+		}
+		if err := s.queue.Enqueue(ctx, job); err != nil {
+			return fmt.Errorf("enqueue job: %w", err)
+		}
+
+		audit.LogAction(tx, userID, audit.ActionCreateWorkspace, fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
+			"name":            ws.Name,
+			"package_manager": ws.PackageManager,
+		})
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	// Queue creation job
-	metadata := map[string]interface{}{}
-	if req.PixiToml != "" {
-		metadata["pixi_toml"] = req.PixiToml
-	}
-
-	job := &models.Job{
-		Type:        models.JobTypeCreate,
-		WorkspaceID: ws.ID,
-		Status:      models.JobStatusPending,
-		Metadata:    metadata,
-	}
-	if err := s.db.Create(job).Error; err != nil {
-		return nil, fmt.Errorf("create job: %w", err)
-	}
-	if err := s.queue.Enqueue(ctx, job); err != nil {
-		return nil, fmt.Errorf("enqueue job: %w", err)
-	}
-
-	// Grant owner access
-	if err := rbac.GrantWorkspaceAccess(userID, ws.ID, "owner"); err != nil {
+	// RBAC grant happens outside the transaction because Casbin uses its own
+	// DB connection, which would deadlock SQLite inside a transaction.
+	if err := s.rbac.GrantWorkspaceAccess(userID, ws.ID, "owner"); err != nil {
 		return nil, fmt.Errorf("grant owner access: %w", err)
 	}
-
-	// Audit
-	audit.LogAction(s.db, userID, audit.ActionCreateWorkspace, fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
-		"name":            ws.Name,
-		"package_manager": ws.PackageManager,
-	})
 
 	return &ws, nil
 }

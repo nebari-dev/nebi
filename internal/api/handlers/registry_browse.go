@@ -6,23 +6,19 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
-	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/oci"
 	"github.com/nebari-dev/nebi/internal/service"
-	"gorm.io/gorm"
 )
 
 // RegistryBrowseHandler handles browsing and importing from OCI registries
 type RegistryBrowseHandler struct {
-	db     *gorm.DB
-	svc    *service.WorkspaceService
-	encKey []byte
+	registrySvc *service.RegistryService
+	wsSvc       *service.WorkspaceService
 }
 
 // NewRegistryBrowseHandler creates a new registry browse handler
-func NewRegistryBrowseHandler(db *gorm.DB, svc *service.WorkspaceService, encKey []byte) *RegistryBrowseHandler {
-	return &RegistryBrowseHandler{db: db, svc: svc, encKey: encKey}
+func NewRegistryBrowseHandler(registrySvc *service.RegistryService, wsSvc *service.WorkspaceService) *RegistryBrowseHandler {
+	return &RegistryBrowseHandler{registrySvc: registrySvc, wsSvc: wsSvc}
 }
 
 // ImportRequest is the JSON body for the import endpoint
@@ -38,24 +34,19 @@ func (h *RegistryBrowseHandler) ListRepositories(c *gin.Context) {
 	registryID := c.Param("id")
 	search := c.Query("search")
 
-	var registry models.OCIRegistry
-	if err := h.db.Where("id = ?", registryID).First(&registry).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Registry not found"})
-		return
-	}
-
-	password, err := nebicrypto.DecryptField(registry.Password, h.encKey)
+	regCreds, err := h.registrySvc.GetRegistryWithCredentials(registryID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to decrypt registry credentials"})
+		handleServiceError(c, err)
 		return
 	}
 
+	registry := regCreds.Registry
 	host, namespace := oci.ParseRegistryURL(registry.URL)
 
 	opts := oci.BrowseOptions{
 		RegistryHost: host,
 		Username:     registry.Username,
-		Password:     password,
+		Password:     regCreds.Password,
 	}
 
 	catalogFailed := false
@@ -65,14 +56,12 @@ func (h *RegistryBrowseHandler) ListRepositories(c *gin.Context) {
 
 		// Try Quay.io API fallback if the host is quay.io
 		if strings.Contains(host, "quay.io") {
-			// Derive namespace from URL path or registry namespace
 			ns := namespace
 			if ns == "" && registry.Namespace != "" {
 				ns = registry.Namespace
 			}
 			if ns != "" {
-				apiToken, _ := nebicrypto.DecryptField(registry.APIToken, h.encKey)
-				quayRepos, quayErr := oci.ListRepositoriesViaQuayAPI(c.Request.Context(), host, ns, apiToken)
+				quayRepos, quayErr := oci.ListRepositoriesViaQuayAPI(c.Request.Context(), host, ns, regCreds.APIToken)
 				if quayErr == nil && len(quayRepos) > 0 {
 					repos = quayRepos
 					catalogFailed = false
@@ -91,15 +80,15 @@ func (h *RegistryBrowseHandler) ListRepositories(c *gin.Context) {
 	}
 
 	// Always merge in known publications from the DB
-	knownRepos := h.fallbackRepositories(registry.ID.String(), "")
+	knownRepoNames := h.registrySvc.FallbackRepositories(registryID)
 	seen := make(map[string]bool)
 	for _, r := range repos {
 		seen[r.Name] = true
 	}
-	for _, r := range knownRepos {
-		if !seen[r.Name] {
-			repos = append(repos, r)
-			seen[r.Name] = true
+	for _, name := range knownRepoNames {
+		if !seen[name] {
+			repos = append(repos, oci.RepositoryInfo{Name: name})
+			seen[name] = true
 		}
 	}
 
@@ -124,31 +113,6 @@ func (h *RegistryBrowseHandler) ListRepositories(c *gin.Context) {
 	})
 }
 
-// fallbackRepositories returns distinct repositories from publication records
-func (h *RegistryBrowseHandler) fallbackRepositories(registryID, search string) []oci.RepositoryInfo {
-	var repositories []string
-	query := h.db.Model(&models.Publication{}).
-		Where("registry_id = ?", registryID).
-		Distinct("repository").
-		Pluck("repository", &repositories)
-
-	if query.Error != nil {
-		return []oci.RepositoryInfo{}
-	}
-
-	var result []oci.RepositoryInfo
-	for _, repo := range repositories {
-		if search == "" || strings.Contains(strings.ToLower(repo), strings.ToLower(search)) {
-			result = append(result, oci.RepositoryInfo{Name: repo})
-		}
-	}
-
-	if result == nil {
-		result = []oci.RepositoryInfo{}
-	}
-	return result
-}
-
 // ListTags lists tags for a repository in a registry
 func (h *RegistryBrowseHandler) ListTags(c *gin.Context) {
 	registryID := c.Param("id")
@@ -159,29 +123,23 @@ func (h *RegistryBrowseHandler) ListTags(c *gin.Context) {
 		return
 	}
 
-	var registry models.OCIRegistry
-	if err := h.db.Where("id = ?", registryID).First(&registry).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Registry not found"})
-		return
-	}
-
-	password, err := nebicrypto.DecryptField(registry.Password, h.encKey)
+	regCreds, err := h.registrySvc.GetRegistryWithCredentials(registryID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to decrypt registry credentials"})
+		handleServiceError(c, err)
 		return
 	}
 
-	host, _ := oci.ParseRegistryURL(registry.URL)
+	host, _ := oci.ParseRegistryURL(regCreds.Registry.URL)
 	repoRef := fmt.Sprintf("%s/%s", host, repoName)
 	opts := oci.BrowseOptions{
 		RegistryHost: host,
-		Username:     registry.Username,
-		Password:     password,
+		Username:     regCreds.Registry.Username,
+		Password:     regCreds.Password,
 	}
 
 	tags, err := oci.ListTags(c.Request.Context(), repoRef, opts)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("Failed to list tags: %v", err)})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to list tags"})
 		return
 	}
 
@@ -203,33 +161,27 @@ func (h *RegistryBrowseHandler) ImportEnvironment(c *gin.Context) {
 		return
 	}
 
-	var registry models.OCIRegistry
-	if err := h.db.Where("id = ?", registryID).First(&registry).Error; err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Registry not found"})
-		return
-	}
-
-	password, err := nebicrypto.DecryptField(registry.Password, h.encKey)
+	regCreds, err := h.registrySvc.GetRegistryWithCredentials(registryID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to decrypt registry credentials"})
+		handleServiceError(c, err)
 		return
 	}
 
-	host, _ := oci.ParseRegistryURL(registry.URL)
+	host, _ := oci.ParseRegistryURL(regCreds.Registry.URL)
 	repoRef := fmt.Sprintf("%s/%s", host, req.Repository)
 	opts := oci.BrowseOptions{
 		RegistryHost: host,
-		Username:     registry.Username,
-		Password:     password,
+		Username:     regCreds.Registry.Username,
+		Password:     regCreds.Password,
 	}
 
 	result, err := oci.PullEnvironment(c.Request.Context(), repoRef, req.Tag, opts)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("Failed to pull environment: %v", err)})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to pull environment"})
 		return
 	}
 
-	ws, err := h.svc.Create(c.Request.Context(), service.CreateRequest{
+	ws, err := h.wsSvc.Create(c.Request.Context(), service.CreateRequest{
 		Name:           req.Name,
 		PackageManager: "pixi",
 		PixiToml:       result.PixiToml,

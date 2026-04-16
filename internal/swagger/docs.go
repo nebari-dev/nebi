@@ -74,7 +74,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.DashboardStatsResponse"
+                            "$ref": "#/definitions/service.DashboardStats"
                         }
                     }
                 }
@@ -178,9 +178,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Get list of all configured OCI registries (admin only)",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -194,7 +191,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handlers.RegistryResponse"
+                                "$ref": "#/definitions/service.RegistryResult"
                             }
                         }
                     },
@@ -238,11 +235,17 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/handlers.RegistryResponse"
+                            "$ref": "#/definitions/service.RegistryResult"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -264,9 +267,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Get details of a specific OCI registry (admin only)",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -287,7 +287,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.RegistryResponse"
+                            "$ref": "#/definitions/service.RegistryResult"
                         }
                     },
                     "404": {
@@ -337,7 +337,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.RegistryResponse"
+                            "$ref": "#/definitions/service.RegistryResult"
                         }
                     },
                     "400": {
@@ -361,12 +361,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Delete an OCI registry configuration (admin only)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
                 "tags": [
                     "admin"
                 ],
@@ -440,7 +434,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handlers.UserWithAdminStatus"
+                                "$ref": "#/definitions/service.UserWithAdmin"
                             }
                         }
                     }
@@ -507,7 +501,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.UserWithAdminStatus"
+                            "$ref": "#/definitions/service.UserWithAdmin"
                         }
                     }
                 }
@@ -562,7 +556,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.UserWithAdminStatus"
+                            "$ref": "#/definitions/service.UserWithAdmin"
                         }
                     }
                 }
@@ -1022,9 +1016,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Get list of registries for users to select from (no credentials exposed)",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1038,7 +1029,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handlers.RegistryResponse"
+                                "$ref": "#/definitions/service.RegistryResult"
                             }
                         }
                     }
@@ -2355,17 +2346,6 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.DashboardStatsResponse": {
-            "type": "object",
-            "properties": {
-                "total_disk_usage_bytes": {
-                    "type": "integer"
-                },
-                "total_disk_usage_formatted": {
-                    "type": "string"
-                }
-            }
-        },
         "handlers.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -2493,35 +2473,6 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.RegistryResponse": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "type": "string"
-                },
-                "has_api_token": {
-                    "type": "boolean"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "is_default": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "url": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
         "handlers.RollbackRequest": {
             "type": "object",
             "required": [
@@ -2590,32 +2541,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "url": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "handlers.UserWithAdminStatus": {
-            "type": "object",
-            "properties": {
-                "avatar_url": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "email": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "is_admin": {
-                    "type": "boolean"
-                },
-                "updated_at": {
                     "type": "string"
                 },
                 "username": {
@@ -2976,6 +2901,17 @@ const docTemplate = `{
                 }
             }
         },
+        "service.DashboardStats": {
+            "type": "object",
+            "properties": {
+                "total_disk_usage_bytes": {
+                    "type": "integer"
+                },
+                "total_disk_usage_formatted": {
+                    "type": "string"
+                }
+            }
+        },
         "service.PublicationResult": {
             "type": "object",
             "properties": {
@@ -3030,6 +2966,61 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "tag": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.RegistryResult": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "has_api_token": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_default": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.UserWithAdmin": {
+            "type": "object",
+            "properties": {
+                "avatar_url": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_admin": {
+                    "type": "boolean"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "username": {
                     "type": "string"
                 }
             }

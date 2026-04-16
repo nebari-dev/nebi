@@ -5,7 +5,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/service"
 )
 
@@ -247,11 +246,5 @@ type GrantPermissionRequest struct {
 	RoleID      uint      `json:"role_id" binding:"required"`
 }
 
-// getAdminUserID extracts the admin user ID from context.
-func getAdminUserID(c *gin.Context) uuid.UUID {
-	user, exists := c.Get("user")
-	if !exists {
-		return uuid.Nil
-	}
-	return user.(*models.User).ID
-}
+// getAdminUserID reuses getUserID from helpers.go.
+var getAdminUserID = getUserID

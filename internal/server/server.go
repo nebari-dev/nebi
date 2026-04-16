@@ -20,6 +20,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/logger"
 	"github.com/nebari-dev/nebi/internal/logstream"
 	"github.com/nebari-dev/nebi/internal/queue"
+	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/nebari-dev/nebi/internal/service"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/nebari-dev/nebi/internal/worker"
@@ -147,11 +148,12 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to derive encryption key: %w", err)
 	}
-	workerSvc := service.New(database, jobQueue, exec, appCfg.IsLocalMode(), workerEncKey)
+	workerSvc := service.New(database, jobQueue, exec, appCfg.IsLocalMode(), workerEncKey, rbac.NewDefaultProvider())
+	workerJobSvc := service.NewJobService(database)
 
 	// Initialize and start worker if needed
 	if runWorker {
-		w = worker.New(database, jobQueue, exec, workerSvc, slog.Default(), valkeyClient)
+		w = worker.New(jobQueue, exec, workerSvc, workerJobSvc, slog.Default(), valkeyClient)
 		workerCtx, cancel := context.WithCancel(ctx)
 		workerCancel = cancel
 

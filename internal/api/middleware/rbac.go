@@ -11,7 +11,7 @@ import (
 
 // RequireAdmin ensures the user is an admin.
 // When localMode is true the check is unconditionally skipped.
-func RequireAdmin(localMode bool) gin.HandlerFunc {
+func RequireAdmin(localMode bool, provider rbac.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if localMode {
 			c.Next()
@@ -26,7 +26,7 @@ func RequireAdmin(localMode bool) gin.HandlerFunc {
 		}
 
 		userID := user.(*models.User).ID
-		isAdmin, err := rbac.IsAdmin(userID)
+		isAdmin, err := provider.IsAdmin(userID)
 		if err != nil || !isAdmin {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			c.Abort()
@@ -39,7 +39,7 @@ func RequireAdmin(localMode bool) gin.HandlerFunc {
 
 // RequireWorkspaceAccess checks if user can access a workspace.
 // When localMode is true the check is unconditionally skipped.
-func RequireWorkspaceAccess(action string, localMode bool) gin.HandlerFunc {
+func RequireWorkspaceAccess(action string, localMode bool, provider rbac.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if localMode {
 			c.Next()
@@ -65,9 +65,9 @@ func RequireWorkspaceAccess(action string, localMode bool) gin.HandlerFunc {
 
 		var hasAccess bool
 		if action == "read" {
-			hasAccess, err = rbac.CanReadWorkspace(userID, wsID)
+			hasAccess, err = provider.CanReadWorkspace(userID, wsID)
 		} else if action == "write" {
-			hasAccess, err = rbac.CanWriteWorkspace(userID, wsID)
+			hasAccess, err = provider.CanWriteWorkspace(userID, wsID)
 		}
 
 		if err != nil || !hasAccess {

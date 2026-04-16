@@ -27,11 +27,12 @@ import (
 
 // NewRouter creates and configures the Gin router
 func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Executor, logBroker *logstream.LogBroker, valkeyClient interface{}, logger *slog.Logger) *gin.Engine {
-	// Initialize RBAC enforcer
+	// Initialize RBAC enforcer and provider
 	if err := rbac.InitEnforcer(db, logger); err != nil {
 		logger.Error("Failed to initialize RBAC", "error", err)
 		panic(err)
 	}
+	rbacProvider := rbac.NewDefaultProvider()
 
 	// Set Gin mode
 	if cfg.Server.Mode == "production" {
@@ -172,8 +173,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	}
 
 	// Initialize services and handlers
-	svc := service.New(db, q, exec, localMode, encKey)
-	adminSvc := service.NewAdminService(db)
+	svc := service.New(db, q, exec, localMode, encKey, rbacProvider)
+	adminSvc := service.NewAdminService(db, rbacProvider)
 	registrySvc := service.NewRegistryService(db, encKey)
 	jobSvc := service.NewJobService(db)
 
@@ -195,37 +196,37 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		ws := protected.Group("/workspaces/:id")
 		{
 			// Read operations (require read permission)
-			ws.GET("", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.GetWorkspace)
-			ws.GET("/packages", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.ListPackages)
-			ws.GET("/pixi-toml", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.GetPixiToml)
-			ws.GET("/collaborators", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.ListCollaborators)
+			ws.GET("", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.GetWorkspace)
+			ws.GET("/packages", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.ListPackages)
+			ws.GET("/pixi-toml", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.GetPixiToml)
+			ws.GET("/collaborators", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.ListCollaborators)
 
 			// Version operations (read permission)
-			ws.GET("/versions", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.ListVersions)
-			ws.GET("/versions/:version", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.GetVersion)
-			ws.GET("/versions/:version/pixi-lock", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.DownloadLockFile)
-			ws.GET("/versions/:version/pixi-toml", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.DownloadManifestFile)
+			ws.GET("/versions", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.ListVersions)
+			ws.GET("/versions/:version", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.GetVersion)
+			ws.GET("/versions/:version/pixi-lock", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.DownloadLockFile)
+			ws.GET("/versions/:version/pixi-toml", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.DownloadManifestFile)
 
 			// Write operations (require write permission)
-			ws.PUT("/pixi-toml", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.SavePixiToml)
-			ws.DELETE("", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.DeleteWorkspace)
-			ws.POST("/packages", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.InstallPackages)
-			ws.DELETE("/packages/:package", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.RemovePackages)
-			ws.POST("/rollback", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.RollbackToVersion)
+			ws.PUT("/pixi-toml", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.SavePixiToml)
+			ws.DELETE("", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.DeleteWorkspace)
+			ws.POST("/packages", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.InstallPackages)
+			ws.DELETE("/packages/:package", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.RemovePackages)
+			ws.POST("/rollback", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.RollbackToVersion)
 
 			// Sharing operations (owner only - checked in handler)
 			ws.POST("/share", wsHandler.ShareWorkspace)
 			ws.DELETE("/share/:user_id", wsHandler.UnshareWorkspace)
 
 			// Tags (read permission)
-			ws.GET("/tags", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.ListTags)
+			ws.GET("/tags", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.ListTags)
 
 			// Push and publish operations (require write permission)
-			ws.POST("/push", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.PushVersion)
-			ws.POST("/publish", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.PublishWorkspace)
-			ws.GET("/publications", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.ListPublications)
-			ws.PATCH("/publications/:pubId", middleware.RequireWorkspaceAccess("write", localMode), wsHandler.UpdatePublication)
-			ws.GET("/publish-defaults", middleware.RequireWorkspaceAccess("read", localMode), wsHandler.GetPublishDefaults)
+			ws.POST("/push", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.PushVersion)
+			ws.POST("/publish", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.PublishWorkspace)
+			ws.GET("/publications", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.ListPublications)
+			ws.PATCH("/publications/:pubId", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.UpdatePublication)
+			ws.GET("/publish-defaults", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.GetPublishDefaults)
 		}
 
 		// Job endpoints
@@ -250,7 +251,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		// Admin endpoints (require admin role)
 		adminHandler := handlers.NewAdminHandler(adminSvc)
 		admin := protected.Group("/admin")
-		admin.Use(middleware.RequireAdmin(localMode))
+		admin.Use(middleware.RequireAdmin(localMode, rbacProvider))
 		{
 			// User management
 			admin.GET("/users", adminHandler.ListUsers)

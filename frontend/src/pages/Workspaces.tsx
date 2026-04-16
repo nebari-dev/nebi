@@ -291,9 +291,7 @@ export const Workspaces = () => {
                       Creating...
                     </>
                   ) : (
-                    createTarget === 'server' && isRemoteConnected
-                      ? 'Create on Server'
-                      : 'Create Workspace'
+                    'Create & Save'
                   )}
                 </Button>
               </div>

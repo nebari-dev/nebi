@@ -19,15 +19,14 @@ import (
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/service"
 	"github.com/valkey-io/valkey-go"
-	"gorm.io/gorm"
 )
 
 // Worker processes jobs from the queue
 type Worker struct {
-	db           *gorm.DB
 	queue        queue.Queue
 	executor     executor.Executor
 	svc          *service.WorkspaceService
+	jobSvc       *service.JobService
 	logger       *slog.Logger
 	broker       *logstream.LogBroker
 	valkeyClient valkey.Client // For distributed log streaming (optional, can be nil for local mode)
@@ -37,13 +36,13 @@ type Worker struct {
 }
 
 // New creates a new worker instance
-func New(db *gorm.DB, q queue.Queue, exec executor.Executor, svc *service.WorkspaceService, logger *slog.Logger, valkeyClient valkey.Client) *Worker {
+func New(q queue.Queue, exec executor.Executor, svc *service.WorkspaceService, jobSvc *service.JobService, logger *slog.Logger, valkeyClient valkey.Client) *Worker {
 	maxWorkers := 10 // Allow up to 10 concurrent jobs
 	return &Worker{
-		db:           db,
 		queue:        q,
 		executor:     exec,
 		svc:          svc,
+		jobSvc:       jobSvc,
 		logger:       logger,
 		broker:       logstream.NewBroker(),
 		valkeyClient: valkeyClient,
@@ -111,22 +110,14 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 	defer func() {
 		if r := recover(); r != nil {
 			w.logger.Error("Panic recovered in processJob", "job_id", job.ID, "panic", r)
-			// Update job as failed
-			completedAt := time.Now()
-			job.CompletedAt = &completedAt
-			job.Status = models.JobStatusFailed
-			job.Error = fmt.Sprintf("Job panicked: %v", r)
-			w.db.Save(job)
+			w.jobSvc.MarkPanicked(job, fmt.Sprintf("Job panicked: %v", r))
 		}
 	}()
 
 	w.logger.Info("Processing job", "job_id", job.ID, "type", job.Type)
 
 	// Update job status to running
-	job.Status = models.JobStatusRunning
-	now := time.Now()
-	job.StartedAt = &now
-	w.db.Save(job)
+	w.jobSvc.MarkRunning(job)
 
 	// Create thread-safe log buffer
 	var logBuf bytes.Buffer
@@ -169,38 +160,28 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 	logMutex.Unlock()
 
 	// Update job status
-	completedAt := time.Now()
-	job.CompletedAt = &completedAt
-	job.Logs = finalLogs
-
 	if err != nil {
 		w.logger.Error("Job failed", "job_id", job.ID, "error", err)
-		job.Status = models.JobStatusFailed
-		job.Error = err.Error()
+		w.jobSvc.MarkFailed(job, finalLogs, err.Error())
 		// Publish error to subscribers
 		errorMsg := fmt.Sprintf("\n[ERROR] Job failed: %v\n", err)
 		w.broker.Publish(job.ID, errorMsg)
-		// Also publish to Valkey if available
 		if w.valkeyClient != nil {
 			valkeyWriter := logstream.NewValkeyLogWriter(w.valkeyClient, job.ID.String())
 			valkeyWriter.Publish(errorMsg)
 		}
 	} else {
 		w.logger.Info("Job completed", "job_id", job.ID)
-		job.Status = models.JobStatusCompleted
+		w.jobSvc.MarkCompleted(job, finalLogs)
 		// Publish completion to subscribers
 		completionMsg := "\n[COMPLETED] Job finished successfully\n"
 		w.broker.Publish(job.ID, completionMsg)
-		// Also publish to Valkey if available
 		if w.valkeyClient != nil {
 			valkeyWriter := logstream.NewValkeyLogWriter(w.valkeyClient, job.ID.String())
 			valkeyWriter.Publish(completionMsg)
-			// Set TTL on Valkey log channel for cleanup (1 hour)
 			valkeyWriter.SetTTL(3600)
 		}
 	}
-
-	w.db.Save(job)
 }
 
 // flushLogsToDatabase periodically saves accumulated logs to the database
@@ -217,7 +198,7 @@ func (w *Worker) flushLogsToDatabase(jobID uuid.UUID, logBuf *bytes.Buffer, logM
 			logMutex.Unlock()
 
 			// Save to database
-			if err := w.db.Model(&models.Job{}).Where("id = ?", jobID).Update("logs", currentLogs).Error; err != nil {
+			if err := w.jobSvc.FlushLogs(jobID, currentLogs); err != nil {
 				w.logger.Error("Failed to flush logs to database", "job_id", jobID, "error", err)
 			}
 
@@ -227,7 +208,7 @@ func (w *Worker) flushLogsToDatabase(jobID uuid.UUID, logBuf *bytes.Buffer, logM
 			finalLogs := logBuf.String()
 			logMutex.Unlock()
 
-			if err := w.db.Model(&models.Job{}).Where("id = ?", jobID).Update("logs", finalLogs).Error; err != nil {
+			if err := w.jobSvc.FlushLogs(jobID, finalLogs); err != nil {
 				w.logger.Error("Failed final log flush", "job_id", jobID, "error", err)
 			}
 			return
@@ -249,9 +230,9 @@ func (w *threadSafeWriter) Write(p []byte) (n int, err error) {
 
 func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.Writer) error {
 	// Load workspace
-	var ws models.Workspace
-	if err := w.db.First(&ws, job.WorkspaceID).Error; err != nil {
-		return fmt.Errorf("failed to load workspace: %w", err)
+	ws, err := w.jobSvc.LoadWorkspace(job.WorkspaceID)
+	if err != nil {
+		return err
 	}
 
 	// Extract user ID from job metadata (if present)
@@ -274,26 +255,26 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			pixiToml, _ = pixiTomlInterface.(string)
 		}
 
-		if err := w.executor.CreateWorkspace(ctx, &ws, logWriter, pixiToml); err != nil {
+		if err := w.executor.CreateWorkspace(ctx, ws, logWriter, pixiToml); err != nil {
 			w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusFailed)
 			return err
 		}
 
 		// Persist the resolved path so the CLI can find the workspace on disk
 		if ws.Path == "" {
-			w.svc.SetWorkspacePath(ws.ID, w.executor.GetWorkspacePath(&ws))
+			w.svc.SetWorkspacePath(ws.ID, w.executor.GetWorkspacePath(ws))
 		}
 
 		// List installed packages and save to database
-		if err := w.svc.SyncPackagesFromWorkspace(ctx, &ws); err != nil {
+		if err := w.svc.SyncPackagesFromWorkspace(ctx, ws); err != nil {
 			w.logger.Error("Failed to sync packages", "error", err)
 		}
 
-		w.svc.UpdateWorkspaceSize(&ws)
+		w.svc.UpdateWorkspaceSize(ws)
 		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusReady)
 
 		// Create version snapshot
-		if err := w.svc.CreateVersionSnapshot(ctx, &ws, job.ID, userID, "Initial workspace creation"); err != nil {
+		if err := w.svc.CreateVersionSnapshot(ctx, ws, job.ID, userID, "Initial workspace creation"); err != nil {
 			w.logger.Error("Failed to create version snapshot", "error", err)
 		}
 
@@ -303,14 +284,14 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return fmt.Errorf("packages not found in job metadata")
 		}
 
-		if err := w.executor.InstallPackages(ctx, &ws, packages, logWriter); err != nil {
+		if err := w.executor.InstallPackages(ctx, ws, packages, logWriter); err != nil {
 			return err
 		}
 
 		w.svc.SaveInstalledPackages(ws.ID, packages)
-		w.svc.UpdateWorkspaceSize(&ws)
+		w.svc.UpdateWorkspaceSize(ws)
 
-		if err := w.svc.CreateVersionSnapshot(ctx, &ws, job.ID, userID, fmt.Sprintf("Installed packages: %v", packages)); err != nil {
+		if err := w.svc.CreateVersionSnapshot(ctx, ws, job.ID, userID, fmt.Sprintf("Installed packages: %v", packages)); err != nil {
 			w.logger.Error("Failed to create version snapshot", "error", err)
 		}
 
@@ -320,21 +301,21 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return fmt.Errorf("packages not found in job metadata")
 		}
 
-		if err := w.executor.RemovePackages(ctx, &ws, packages, logWriter); err != nil {
+		if err := w.executor.RemovePackages(ctx, ws, packages, logWriter); err != nil {
 			return err
 		}
 
 		w.svc.DeletePackagesByName(ws.ID, packages)
-		w.svc.UpdateWorkspaceSize(&ws)
+		w.svc.UpdateWorkspaceSize(ws)
 
-		if err := w.svc.CreateVersionSnapshot(ctx, &ws, job.ID, userID, fmt.Sprintf("Removed packages: %v", packages)); err != nil {
+		if err := w.svc.CreateVersionSnapshot(ctx, ws, job.ID, userID, fmt.Sprintf("Removed packages: %v", packages)); err != nil {
 			w.logger.Error("Failed to create version snapshot", "error", err)
 		}
 
 	case models.JobTypeDelete:
 		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusDeleting)
 
-		if err := w.executor.DeleteWorkspace(ctx, &ws, logWriter); err != nil {
+		if err := w.executor.DeleteWorkspace(ctx, ws, logWriter); err != nil {
 			return err
 		}
 
@@ -353,9 +334,9 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 		}
 
 		// Fetch version
-		var version models.WorkspaceVersion
-		if err := w.db.First(&version, versionID).Error; err != nil {
-			return fmt.Errorf("failed to load version: %w", err)
+		version, err := w.jobSvc.LoadVersion(versionID)
+		if err != nil {
+			return err
 		}
 
 		if version.WorkspaceID != ws.ID {
@@ -364,17 +345,17 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 
 		fmt.Fprintf(logWriter, "Rolling back to version %d\n", version.VersionNumber)
 
-		if err := w.executeRollback(ctx, &ws, &version, logWriter); err != nil {
+		if err := w.executeRollback(ctx, ws, version, logWriter); err != nil {
 			return err
 		}
 
-		if err := w.svc.SyncPackagesFromWorkspace(ctx, &ws); err != nil {
+		if err := w.svc.SyncPackagesFromWorkspace(ctx, ws); err != nil {
 			w.logger.Error("Failed to sync packages after rollback", "error", err)
 		}
 
-		w.svc.UpdateWorkspaceSize(&ws)
+		w.svc.UpdateWorkspaceSize(ws)
 
-		if err := w.svc.CreateVersionSnapshot(ctx, &ws, job.ID, userID, fmt.Sprintf("Rolled back to version %d", version.VersionNumber)); err != nil {
+		if err := w.svc.CreateVersionSnapshot(ctx, ws, job.ID, userID, fmt.Sprintf("Rolled back to version %d", version.VersionNumber)); err != nil {
 			w.logger.Error("Failed to create version snapshot after rollback", "error", err)
 		}
 

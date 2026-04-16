@@ -6,13 +6,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/rbac"
 	"gorm.io/gorm"
 )
 
 func adminTestSetup(t *testing.T) (*AdminService, *WorkspaceService, *gorm.DB) {
 	t.Helper()
 	wsSvc, db := testSetup(t, false)
-	return NewAdminService(db), wsSvc, db
+	return NewAdminService(db, rbac.NewDefaultProvider()), wsSvc, db
 }
 
 // --- ListUsers ---

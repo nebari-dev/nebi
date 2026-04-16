@@ -14,12 +14,13 @@ import (
 
 // AdminService contains business logic for admin operations.
 type AdminService struct {
-	db *gorm.DB
+	db   *gorm.DB
+	rbac rbac.Provider
 }
 
 // NewAdminService creates a new AdminService.
-func NewAdminService(db *gorm.DB) *AdminService {
-	return &AdminService{db: db}
+func NewAdminService(db *gorm.DB, rbacProvider rbac.Provider) *AdminService {
+	return &AdminService{db: db, rbac: rbacProvider}
 }
 
 // UserWithAdmin wraps a user with their admin status.
@@ -49,7 +50,7 @@ func (s *AdminService) ListUsers() ([]UserWithAdmin, error) {
 		return nil, fmt.Errorf("fetch users: %w", err)
 	}
 
-	adminUserIDs, err := rbac.GetAllAdminUserIDs()
+	adminUserIDs, err := s.rbac.GetAllAdminUserIDs()
 	if err != nil {
 		return nil, fmt.Errorf("check admin status: %w", err)
 	}
@@ -82,7 +83,7 @@ func (s *AdminService) CreateUser(req CreateUserRequest, adminUserID uuid.UUID) 
 	}
 
 	if req.IsAdmin {
-		if err := rbac.MakeAdmin(user.ID); err != nil {
+		if err := s.rbac.MakeAdmin(user.ID); err != nil {
 			return nil, fmt.Errorf("grant admin: %w", err)
 		}
 	}
@@ -106,7 +107,7 @@ func (s *AdminService) GetUser(userID uuid.UUID) (*UserWithAdmin, error) {
 		return nil, err
 	}
 
-	isAdmin, _ := rbac.IsAdmin(user.ID)
+	isAdmin, _ := s.rbac.IsAdmin(user.ID)
 	return &UserWithAdmin{User: user, IsAdmin: isAdmin}, nil
 }
 
@@ -120,15 +121,15 @@ func (s *AdminService) ToggleAdmin(userID uuid.UUID, adminUserID uuid.UUID) (*Us
 		return nil, err
 	}
 
-	isAdmin, _ := rbac.IsAdmin(user.ID)
+	isAdmin, _ := s.rbac.IsAdmin(user.ID)
 
 	if isAdmin {
-		if err := rbac.RevokeAdmin(user.ID); err != nil {
+		if err := s.rbac.RevokeAdmin(user.ID); err != nil {
 			return nil, fmt.Errorf("revoke admin: %w", err)
 		}
 		audit.LogAction(s.db, adminUserID, audit.ActionRevokeAdmin, "user:"+user.ID.String(), nil)
 	} else {
-		if err := rbac.MakeAdmin(user.ID); err != nil {
+		if err := s.rbac.MakeAdmin(user.ID); err != nil {
 			return nil, fmt.Errorf("make admin: %w", err)
 		}
 		audit.LogAction(s.db, adminUserID, audit.ActionMakeAdmin, "user:"+user.ID.String(), nil)
@@ -197,24 +198,32 @@ func (s *AdminService) GrantPermission(userID, workspaceID uuid.UUID, roleID uin
 		return nil, err
 	}
 
-	permission := models.Permission{
-		UserID:      userID,
-		WorkspaceID: workspaceID,
-		RoleID:      roleID,
-	}
-	if err := s.db.Create(&permission).Error; err != nil {
-		return nil, fmt.Errorf("create permission: %w", err)
+	var permission models.Permission
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		permission = models.Permission{
+			UserID:      userID,
+			WorkspaceID: workspaceID,
+			RoleID:      roleID,
+		}
+		if err := tx.Create(&permission).Error; err != nil {
+			return fmt.Errorf("create permission: %w", err)
+		}
+
+		audit.LogAction(tx, adminUserID, audit.ActionGrantPermission, fmt.Sprintf("permission:%d", permission.ID), map[string]any{
+			"user_id":      userID,
+			"workspace_id": workspaceID,
+			"role":         role.Name,
+		})
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	if err := rbac.GrantWorkspaceAccess(user.ID, ws.ID, role.Name); err != nil {
+	if err := s.rbac.GrantWorkspaceAccess(user.ID, ws.ID, role.Name); err != nil {
 		return nil, fmt.Errorf("grant RBAC permission: %w", err)
 	}
-
-	audit.LogAction(s.db, adminUserID, audit.ActionGrantPermission, fmt.Sprintf("permission:%d", permission.ID), map[string]any{
-		"user_id":      userID,
-		"workspace_id": workspaceID,
-		"role":         role.Name,
-	})
 
 	return &permission, nil
 }
@@ -231,25 +240,32 @@ func (s *AdminService) ListPermissions() ([]models.Permission, error) {
 // RevokePermission revokes a permission by ID and removes RBAC access.
 func (s *AdminService) RevokePermission(permissionID string, adminUserID uuid.UUID) error {
 	var permission models.Permission
-	if err := s.db.Preload("User").Preload("Workspace").First(&permission, permissionID).Error; err != nil {
+	if err := s.db.Preload("User").Preload("Workspace").First(&permission, "id = ?", permissionID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return ErrNotFound
 		}
 		return err
 	}
 
-	if err := rbac.RevokeWorkspaceAccess(permission.UserID, permission.WorkspaceID); err != nil {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Delete(&permission).Error; err != nil {
+			return fmt.Errorf("delete permission: %w", err)
+		}
+
+		audit.LogAction(tx, adminUserID, audit.ActionRevokePermission, "permission:"+permissionID, map[string]any{
+			"user_id":      permission.UserID,
+			"workspace_id": permission.WorkspaceID,
+		})
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	if err := s.rbac.RevokeWorkspaceAccess(permission.UserID, permission.WorkspaceID); err != nil {
 		return fmt.Errorf("revoke RBAC permission: %w", err)
 	}
-
-	if err := s.db.Delete(&permission).Error; err != nil {
-		return fmt.Errorf("delete permission: %w", err)
-	}
-
-	audit.LogAction(s.db, adminUserID, audit.ActionRevokePermission, "permission:"+permissionID, map[string]any{
-		"user_id":      permission.UserID,
-		"workspace_id": permission.WorkspaceID,
-	})
 
 	return nil
 }

@@ -13,7 +13,7 @@ import (
 
 // CreateDefaultAdmin creates a default admin user if ADMIN_USERNAME and ADMIN_PASSWORD are set
 // and no users exist in the database
-func CreateDefaultAdmin(db *gorm.DB) error {
+func CreateDefaultAdmin(db *gorm.DB, rbacProvider rbac.Provider) error {
 	username := os.Getenv("ADMIN_USERNAME")
 	password := os.Getenv("ADMIN_PASSWORD")
 	email := os.Getenv("ADMIN_EMAIL")
@@ -58,13 +58,8 @@ func CreateDefaultAdmin(db *gorm.DB) error {
 		return fmt.Errorf("failed to create admin user: %w", err)
 	}
 
-	// Initialize RBAC enforcer if not already done
-	if err := rbac.InitEnforcer(db, slog.Default()); err != nil {
-		return fmt.Errorf("failed to initialize RBAC: %w", err)
-	}
-
 	// Grant admin role in RBAC
-	if err := rbac.MakeAdmin(user.ID); err != nil {
+	if err := rbacProvider.MakeAdmin(user.ID); err != nil {
 		return fmt.Errorf("failed to grant admin role: %w", err)
 	}
 

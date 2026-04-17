@@ -14,6 +14,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/rbac"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -31,13 +32,15 @@ type BasicAuthenticator struct {
 	jwtSecret        []byte
 	proxyAdminGroups []string
 	idTokenVerifier  *oidc.IDTokenVerifier
+	rbac             rbac.Provider
 }
 
 // NewBasicAuthenticator creates a new basic authenticator
-func NewBasicAuthenticator(db *gorm.DB, jwtSecret string) *BasicAuthenticator {
+func NewBasicAuthenticator(db *gorm.DB, jwtSecret string, rbacProvider rbac.Provider) *BasicAuthenticator {
 	return &BasicAuthenticator{
 		db:        db,
 		jwtSecret: []byte(jwtSecret),
+		rbac:      rbacProvider,
 	}
 }
 
@@ -198,7 +201,7 @@ func (a *BasicAuthenticator) Middleware() gin.HandlerFunc {
 		}
 
 		// Sync admin role from proxy groups on every request
-		syncRolesFromGroups(user.ID, proxyClaims.Groups, a.proxyAdminGroups)
+		syncRolesFromGroups(user.ID, proxyClaims.Groups, a.proxyAdminGroups, a.rbac)
 
 		c.Set(UserContextKey, user)
 		c.Next()
@@ -238,7 +241,7 @@ func (a *BasicAuthenticator) SessionFromProxy(r *http.Request, adminGroups strin
 		return nil, fmt.Errorf("failed to find/create proxy user: %w", err)
 	}
 
-	syncRolesFromGroups(user.ID, proxyClaims.Groups, parseAdminGroups(adminGroups))
+	syncRolesFromGroups(user.ID, proxyClaims.Groups, parseAdminGroups(adminGroups), a.rbac)
 
 	token, err := a.generateToken(user)
 	if err != nil {
@@ -288,7 +291,7 @@ func (a *BasicAuthenticator) ExchangeIDToken(rawIDToken string, adminGroups stri
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
 
-	syncRolesFromGroups(user.ID, claims.Groups, parseAdminGroups(adminGroups))
+	syncRolesFromGroups(user.ID, claims.Groups, parseAdminGroups(adminGroups), a.rbac)
 
 	token, err := a.generateToken(user)
 	if err != nil {

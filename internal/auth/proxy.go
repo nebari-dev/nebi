@@ -108,7 +108,7 @@ func findOrCreateProxyUser(db *gorm.DB, claims *ProxyTokenClaims) (*models.User,
 
 // syncRolesFromGroups grants or revokes Nebi admin based on whether the
 // user belongs to any of the configured admin groups.
-func syncRolesFromGroups(userID uuid.UUID, groups []string, adminGroups []string) {
+func syncRolesFromGroups(userID uuid.UUID, groups []string, adminGroups []string, rbacProvider rbac.Provider) {
 	adminGroupSet := make(map[string]bool, len(adminGroups))
 	for _, g := range adminGroups {
 		g = strings.TrimSpace(g)
@@ -127,20 +127,20 @@ func syncRolesFromGroups(userID uuid.UUID, groups []string, adminGroups []string
 		}
 	}
 
-	isAdmin, err := rbac.IsAdmin(userID)
+	isAdmin, err := rbacProvider.IsAdmin(userID)
 	if err != nil {
 		slog.Warn("Failed to check admin status during proxy sync", "user_id", userID, "error", err)
 		return
 	}
 
 	if shouldBeAdmin && !isAdmin {
-		if err := rbac.MakeAdmin(userID); err != nil {
+		if err := rbacProvider.MakeAdmin(userID); err != nil {
 			slog.Warn("Failed to grant admin from proxy groups", "user_id", userID, "error", err)
 		} else {
 			slog.Info("Granted admin via proxy group membership", "user_id", userID)
 		}
 	} else if !shouldBeAdmin && isAdmin {
-		if err := rbac.RevokeAdmin(userID); err != nil {
+		if err := rbacProvider.RevokeAdmin(userID); err != nil {
 			slog.Warn("Failed to revoke admin from proxy groups", "user_id", userID, "error", err)
 		} else {
 			slog.Info("Revoked admin via proxy group membership", "user_id", userID)

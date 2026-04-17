@@ -5,9 +5,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -31,6 +34,7 @@ import (
 
 // Config holds the server configuration options.
 type Config struct {
+	Host    string // Bind host/IP (empty = config/default behavior)
 	Port    int    // Port to run the server on (0 = use config default)
 	Mode    string // Run mode: server, worker, or both
 	Version string // Version string to report
@@ -53,7 +57,10 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Override port from CLI flag if provided
+	// Override host/port from CLI flags if provided
+	if strings.TrimSpace(cfg.Host) != "" {
+		appCfg.Server.Host = strings.TrimSpace(cfg.Host)
+	}
 	if cfg.Port != 0 {
 		appCfg.Server.Port = cfg.Port
 	}
@@ -179,7 +186,7 @@ func Run(ctx context.Context, cfg Config) error {
 		var valkeyClientInterface interface{} = valkeyClient
 		router := api.NewRouter(appCfg, database, jobQueue, exec, broker, valkeyClientInterface, slog.Default())
 
-		addr := fmt.Sprintf(":%d", appCfg.Server.Port)
+		addr := listenAddress(appCfg.Server.Host, appCfg.Server.Port)
 		srv = &http.Server{
 			Addr:    addr,
 			Handler: router,
@@ -192,10 +199,7 @@ func Run(ctx context.Context, cfg Config) error {
 			}
 		}()
 
-		url := fmt.Sprintf("http://localhost:%d", appCfg.Server.Port)
-		if appCfg.Server.BasePath != "" {
-			url += appCfg.Server.BasePath
-		}
+		url := serverURL(appCfg.Server.Host, appCfg.Server.Port, appCfg.Server.BasePath)
 		fmt.Printf("\n  \033[32m✔\033[0m Server running at \033[1;36m%s\033[0m\n\n", url)
 	}
 
@@ -222,6 +226,30 @@ func Run(ctx context.Context, cfg Config) error {
 
 	slog.Info("Nebi exited")
 	return nil
+}
+
+func listenAddress(host string, port int) string {
+	if strings.TrimSpace(host) == "" {
+		return fmt.Sprintf(":%d", port)
+	}
+	return net.JoinHostPort(strings.TrimSpace(host), strconv.Itoa(port))
+}
+
+func displayHost(host string) string {
+	trimmed := strings.TrimSpace(host)
+	if trimmed == "" || trimmed == "0.0.0.0" || trimmed == "::" {
+		return "localhost"
+	}
+	return trimmed
+}
+
+func serverURL(host string, port int, basePath string) string {
+	hostPort := net.JoinHostPort(displayHost(host), strconv.Itoa(port))
+	url := "http://" + hostPort
+	if basePath != "" {
+		url += basePath
+	}
+	return url
 }
 
 // RunWithSignalHandling starts the server and handles OS signals for graceful shutdown.

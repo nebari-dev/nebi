@@ -25,7 +25,9 @@ func (c *Config) IsLocalMode() bool {
 }
 
 // ServerConfig holds HTTP server configuration
+// Host may be empty to allow "all interfaces" bind behavior.
 type ServerConfig struct {
+	Host     string `mapstructure:"host"` // Bind host/IP (e.g. "127.0.0.1", "0.0.0.0")
 	Port     int    `mapstructure:"port"`
 	Mode     string `mapstructure:"mode"`      // "development" or "production"
 	BasePath string `mapstructure:"base_path"` // URL path prefix (e.g. "/nebi")
@@ -83,6 +85,7 @@ func Load() (*Config, error) {
 
 	// Set defaults for local development
 	v.SetDefault("mode", "team")
+	v.SetDefault("server.host", "")
 	v.SetDefault("server.port", 8460)
 	v.SetDefault("server.mode", "development")
 	v.SetDefault("server.base_path", "")

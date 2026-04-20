@@ -31,11 +31,21 @@ Start the server:
 nebi serve
 ```
 
-By default the server starts on [localhost:8460](http://localhost:8460). To use a different port, use the `--port` flag:
+By default (`--host` unset), Nebi binds all interfaces on port `8460`.
+
+To use a different port:
 
 ```bash
 nebi serve --port 9000
 ```
+
+To explicitly bind a host/interface, use `--host` (or `NEBI_SERVER_HOST`):
+
+```bash
+nebi serve --host 127.0.0.1 --port 8460
+```
+
+For local-only usage (desktop/IPC scenarios), always set `--host 127.0.0.1` (or `NEBI_SERVER_HOST=127.0.0.1`).
 
 Once the server is running, authenticate from any client machine with [`nebi login`](./cli-team.md#connect-to-a-server).
 

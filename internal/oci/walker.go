@@ -269,4 +269,3 @@ func WalkBundle(root string, cfg BundleConfig) ([]AssetFile, error) {
 	sort.Slice(out, func(i, j int) bool { return out[i].RelPath < out[j].RelPath })
 	return out, nil
 }
-

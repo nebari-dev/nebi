@@ -202,7 +202,7 @@ func runPublishLocal(args []string) error {
 	}
 
 	// Build full repository path
-	host, namespace := oci.ParseRegistryURL(reg.URL)
+	host, namespace, plainHTTP := oci.ParseRegistryURLFull(reg.URL)
 	fullRepo := host
 	if reg.Namespace != "" {
 		fullRepo = host + "/" + reg.Namespace
@@ -242,6 +242,7 @@ func runPublishLocal(args []string) error {
 		RegistryHost: host,
 		Assets:       assets,
 		Concurrency:  publishConcurrency,
+		PlainHTTP:    plainHTTP,
 	}
 
 	fmt.Fprintf(os.Stderr, "Publishing %s to %s:%s (%d asset file(s))...\n",

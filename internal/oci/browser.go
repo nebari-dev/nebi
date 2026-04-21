@@ -76,9 +76,24 @@ type PullResult struct {
 // For example, "quay.io/nebari" returns host="quay.io", namespace="nebari".
 // A plain host like "quay.io" returns namespace="".
 func ParseRegistryURL(rawURL string) (host, namespace string) {
-	u := strings.TrimPrefix(strings.TrimPrefix(rawURL, "https://"), "http://")
-	u = strings.TrimSuffix(u, "/")
-	parts := strings.SplitN(u, "/", 2)
+	host, namespace, _ = ParseRegistryURLFull(rawURL)
+	return
+}
+
+// ParseRegistryURLFull is like ParseRegistryURL but also reports whether
+// the URL explicitly used the http:// scheme. Only an explicit http://
+// is treated as opt-in plaintext; a scheme-less URL defaults to HTTPS.
+// Intended so local/test registries can signal "plain HTTP" by writing
+// their URL with http://.
+func ParseRegistryURLFull(rawURL string) (host, namespace string, plainHTTP bool) {
+	if strings.HasPrefix(rawURL, "http://") {
+		plainHTTP = true
+		rawURL = strings.TrimPrefix(rawURL, "http://")
+	} else {
+		rawURL = strings.TrimPrefix(rawURL, "https://")
+	}
+	rawURL = strings.TrimSuffix(rawURL, "/")
+	parts := strings.SplitN(rawURL, "/", 2)
 	host = parts[0]
 	if len(parts) > 1 {
 		namespace = parts[1]

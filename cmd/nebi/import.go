@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/nebari-dev/nebi/internal/oci"
 	"github.com/spf13/cobra"
@@ -49,10 +50,18 @@ func runImport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("tag is required; use format registry/repository:tag (e.g., quay.io/nebari/my-env:v1)")
 	}
 
+	plainHTTP := strings.HasPrefix(repoRef, "http://")
+	if plainHTTP {
+		repoRef = strings.TrimPrefix(repoRef, "http://")
+	} else {
+		repoRef = strings.TrimPrefix(repoRef, "https://")
+	}
+
 	ctx := context.Background()
 	result, err := oci.PullBundle(ctx, repoRef, tag, oci.PullOptions{
 		Mode:        oci.PullModeFull,
 		Concurrency: importConcurrency,
+		PlainHTTP:   plainHTTP,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to pull from registry: %w", err)

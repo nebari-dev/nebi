@@ -182,6 +182,7 @@ func resetFlags() {
 	registryAddPwdStdin = false
 	registryRemoveForce = false
 	registryListJSON = false
+	registryLocal = false
 	// status.go
 	statusJSON = false
 	// info.go

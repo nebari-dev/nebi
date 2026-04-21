@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Trash2, FileCode } from 'lucide-react';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Plus, Trash2, FileCode, Loader2 } from 'lucide-react';
 
 interface Package {
   name: string;
@@ -12,7 +13,8 @@ interface Package {
 interface PixiTomlEditorProps {
   tomlValue: string;
   onTomlChange: (toml: string) => void;
-  workspaceName: string;
+  workspaceName?: string;
+  onReloadToml?: () => Promise<string>;
 }
 
 const buildPixiToml = (packages: Package[], wsName: string): string => {
@@ -64,12 +66,17 @@ const parsePixiTomlDependencies = (toml: string): Package[] => {
   return packages;
 };
 
-export const PixiTomlEditor = ({ tomlValue, onTomlChange, workspaceName }: PixiTomlEditorProps) => {
+export const PixiTomlEditor = ({ tomlValue, onTomlChange, workspaceName, onReloadToml }: PixiTomlEditorProps) => {
   const [mode, setMode] = useState<'ui' | 'toml'>('toml');
   const [packages, setPackages] = useState<Package[]>([{ name: 'python', version: '>=3.11' }]);
   const [newPackageName, setNewPackageName] = useState('');
   const [newPackageVersion, setNewPackageVersion] = useState('');
   const [initialized, setInitialized] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [showDiscardPrompt, setShowDiscardPrompt] = useState(false);
+  const pendingModeRef = useRef<'ui' | 'toml'>('ui');
+  const initialTomlRef = useRef<string>('');
 
   useEffect(() => {
     if (!initialized && tomlValue) {
@@ -77,48 +84,100 @@ export const PixiTomlEditor = ({ tomlValue, onTomlChange, workspaceName }: PixiT
       if (parsed.length > 0) {
         setPackages(parsed);
       }
+      initialTomlRef.current = tomlValue;
       setInitialized(true);
     }
   }, [tomlValue, initialized]);
 
-  const handleModeSwitch = (newMode: 'ui' | 'toml') => {
-    if (newMode === 'toml' && mode === 'ui') {
-      onTomlChange(buildPixiToml(packages, workspaceName));
-    } else if (newMode === 'ui' && mode === 'toml') {
-      const parsed = parsePixiTomlDependencies(tomlValue);
+  const performSwitch = async (newMode: 'ui' | 'toml') => {
+    if (newMode === 'toml') {
+      if (onReloadToml) {
+        setSwitching(true);
+        try {
+          const freshToml = await onReloadToml();
+          onTomlChange(freshToml);
+          initialTomlRef.current = freshToml;
+        } finally {
+          setSwitching(false);
+        }
+      } else {
+        onTomlChange(initialTomlRef.current);
+      }
+    } else {
+      const source = onReloadToml ? tomlValue : initialTomlRef.current;
+      const parsed = parsePixiTomlDependencies(source);
       if (parsed.length > 0) {
         setPackages(parsed);
       }
     }
+    setDirty(false);
     setMode(newMode);
+  };
+
+  const handleModeSwitch = async (newMode: 'ui' | 'toml') => {
+    if (newMode === mode) return;
+
+    if (dirty) {
+      pendingModeRef.current = newMode;
+      setShowDiscardPrompt(true);
+      return;
+    }
+
+    await performSwitch(newMode);
+  };
+
+  const handleConfirmDiscard = async () => {
+    setShowDiscardPrompt(false);
+    await performSwitch(pendingModeRef.current);
   };
 
   const handleAddPackage = () => {
     if (!newPackageName.trim()) return;
-    const updated = [...packages, { name: newPackageName, version: newPackageVersion }];
+    const updated = [...packages, { name: newPackageName.trim(), version: newPackageVersion.trim() }];
     setPackages(updated);
+    setDirty(true);
     setNewPackageName('');
     setNewPackageVersion('');
-    onTomlChange(buildPixiToml(updated, workspaceName));
+    if (!onReloadToml) {
+      onTomlChange(buildPixiToml(updated, workspaceName || 'my-project'));
+    }
   };
 
   const handleRemovePackage = (index: number) => {
     const updated = packages.filter((_, i) => i !== index);
     setPackages(updated);
-    onTomlChange(buildPixiToml(updated, workspaceName));
+    setDirty(true);
+    if (!onReloadToml) {
+      onTomlChange(buildPixiToml(updated, workspaceName || 'my-project'));
+    }
+  };
+
+  const handleTomlEdit = (value: string) => {
+    onTomlChange(value);
+    setDirty(value !== initialTomlRef.current);
   };
 
   return (
     <>
+      <ConfirmDialog
+        open={showDiscardPrompt}
+        onOpenChange={setShowDiscardPrompt}
+        title="Unsaved changes"
+        description="You have unsaved changes that will be lost if you switch modes. Do you want to continue?"
+        confirmText="Discard changes"
+        onConfirm={handleConfirmDiscard}
+      />
+
       <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
         <Button
           type="button"
           variant={mode === 'toml' ? 'default' : 'ghost'}
           size="sm"
           onClick={() => handleModeSwitch('toml')}
+          disabled={switching}
           className="gap-2"
         >
-          <FileCode className="h-4 w-4" />
+          {switching ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCode className="h-4 w-4" />}
           TOML Mode
         </Button>
         <Button
@@ -126,6 +185,7 @@ export const PixiTomlEditor = ({ tomlValue, onTomlChange, workspaceName }: PixiT
           variant={mode === 'ui' ? 'default' : 'ghost'}
           size="sm"
           onClick={() => handleModeSwitch('ui')}
+          disabled={switching}
           className="gap-2"
         >
           <Plus className="h-4 w-4" />
@@ -217,7 +277,7 @@ export const PixiTomlEditor = ({ tomlValue, onTomlChange, workspaceName }: PixiT
           <Textarea
             placeholder="Enter your pixi.toml content"
             value={tomlValue}
-            onChange={(e) => onTomlChange(e.target.value)}
+            onChange={(e) => handleTomlEdit(e.target.value)}
             rows={12}
             required
             className="font-mono text-sm"

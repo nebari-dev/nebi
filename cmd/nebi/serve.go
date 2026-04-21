@@ -9,6 +9,7 @@ import (
 )
 
 var (
+	serveHost string
 	servePort int
 	serveMode string
 )
@@ -31,8 +32,10 @@ Examples:
   nebi serve --mode server      # Run API server only
   nebi serve --mode worker      # Run worker only
   nebi serve --port 8080        # Override port
+  nebi serve --host 127.0.0.1   # Bind only to loopback
 
 Environment variables:
+  NEBI_SERVER_HOST         Bind host/IP (e.g. 127.0.0.1). If unset, bind all interfaces.
   NEBI_SERVER_PORT         Server port (default: 8460)
   NEBI_DATABASE_DRIVER     Database driver: sqlite, postgres
   NEBI_DATABASE_DSN        Database connection string
@@ -44,12 +47,14 @@ Environment variables:
 }
 
 func init() {
+	serveCmd.Flags().StringVar(&serveHost, "host", "", "Bind host/IP (overrides config), e.g. 127.0.0.1. Empty keeps all-interface bind")
 	serveCmd.Flags().IntVarP(&servePort, "port", "p", 0, "Port to run server on (overrides config)")
 	serveCmd.Flags().StringVarP(&serveMode, "mode", "m", "both", "Run mode: server, worker, or both")
 }
 
 func runServe(cmd *cobra.Command, args []string) {
 	cfg := server.Config{
+		Host:    serveHost,
 		Port:    servePort,
 		Mode:    serveMode,
 		Version: Version,

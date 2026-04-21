@@ -14,10 +14,11 @@ import (
 )
 
 var (
-	publishRegistry string
-	publishTag      string
-	publishRepo     string
-	publishLocal    bool
+	publishRegistry    string
+	publishTag         string
+	publishRepo        string
+	publishLocal       bool
+	publishConcurrency int
 )
 
 var publishCmd = &cobra.Command{
@@ -45,6 +46,7 @@ func init() {
 	publishCmd.Flags().StringVar(&publishTag, "tag", "", "OCI tag (auto-increments v1, v2, ... if not set)")
 	publishCmd.Flags().StringVar(&publishRepo, "repo", "", "OCI repository name (defaults to workspace name)")
 	publishCmd.Flags().BoolVar(&publishLocal, "local", false, "Publish directly to registry without a server")
+	publishCmd.Flags().IntVar(&publishConcurrency, "concurrency", 8, "Parallel blob push workers (only with --local)")
 }
 
 func runWorkspacePublish(cmd *cobra.Command, args []string) error {
@@ -211,6 +213,26 @@ func runPublishLocal(args []string) error {
 
 	ctx := context.Background()
 
+	// Collect bundle assets: workspace files filtered by [tool.nebi.bundle]
+	// include/exclude plus .gitignore. pixi.toml and pixi.lock are force-
+	// included by the walker; we strip them from the asset list because the
+	// publisher emits them as typed layers 0 and 1.
+	cfg, err := oci.LoadBundleConfig(pixiTomlPath)
+	if err != nil {
+		return fmt.Errorf("parsing bundle config: %w", err)
+	}
+	bundleFiles, err := oci.WalkBundle(ws.Path, cfg)
+	if err != nil {
+		return fmt.Errorf("walking workspace: %w", err)
+	}
+	assets := make([]oci.AssetFile, 0, len(bundleFiles))
+	for _, f := range bundleFiles {
+		if f.RelPath == "pixi.toml" || f.RelPath == "pixi.lock" {
+			continue
+		}
+		assets = append(assets, f)
+	}
+
 	opts := oci.PublishOptions{
 		Repository:   fullRepo,
 		Tag:          tag,
@@ -218,9 +240,12 @@ func runPublishLocal(args []string) error {
 		Username:     reg.Username,
 		Password:     password,
 		RegistryHost: host,
+		Assets:       assets,
+		Concurrency:  publishConcurrency,
 	}
 
-	fmt.Fprintf(os.Stderr, "Publishing %s to %s:%s...\n", ws.Name, fullRepo, tag)
+	fmt.Fprintf(os.Stderr, "Publishing %s to %s:%s (%d asset file(s))...\n",
+		ws.Name, fullRepo, tag, len(assets))
 	digest, err := oci.PublishWorkspace(ctx, ws.Path, opts)
 	if err != nil {
 		return fmt.Errorf("failed to publish: %w", err)

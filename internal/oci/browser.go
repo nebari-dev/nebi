@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"golang.org/x/sync/errgroup"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 )
@@ -33,10 +34,42 @@ type TagInfo struct {
 	Name string `json:"name"`
 }
 
+// PullMode controls which blobs a bundle pull fetches from the registry.
+type PullMode int
+
+const (
+	// PullModePixiOnly fetches manifest + pixi.toml + pixi.lock only. Asset
+	// layers are listed in PullResult.Assets (path only, no Bytes). This
+	// matches what the server, UI, and server-driven publish/import need.
+	PullModePixiOnly PullMode = iota
+	// PullModeFull fetches manifest + every layer including asset blobs.
+	// Used by `nebi import` on the CLI.
+	PullModeFull
+)
+
+// PullOptions controls an OCI bundle pull.
+type PullOptions struct {
+	Username    string
+	Password    string
+	Mode        PullMode // defaults to PullModePixiOnly
+	Concurrency int      // ≤ 0 uses default (8)
+	// PlainHTTP talks to the registry over HTTP. Test/local registries
+	// only.
+	PlainHTTP bool
+}
+
+// AssetBlob is a single asset layer. When fetched via PullModeFull, Bytes
+// holds the blob content; in PullModePixiOnly it is nil.
+type AssetBlob struct {
+	Path  string
+	Bytes []byte
+}
+
 // PullResult contains the content pulled from a registry tag
 type PullResult struct {
-	PixiToml string `json:"pixi_toml"`
-	PixiLock string `json:"pixi_lock"`
+	PixiToml string      `json:"pixi_toml"`
+	PixiLock string      `json:"pixi_lock"`
+	Assets   []AssetBlob `json:"assets,omitempty"`
 }
 
 // ParseRegistryURL splits a registry URL into its host and optional namespace.
@@ -172,68 +205,167 @@ func ListTags(ctx context.Context, repoRef string, opts BrowseOptions) ([]TagInf
 	return tags, nil
 }
 
-// PullEnvironment fetches pixi.toml and pixi.lock content from a registry tag
-func PullEnvironment(ctx context.Context, repoRef, tag string, opts BrowseOptions) (*PullResult, error) {
+// classifiedManifest is the result of splitting layers by role.
+type classifiedManifest struct {
+	pixiToml ocispec.Descriptor
+	pixiLock ocispec.Descriptor
+	assets   []ocispec.Descriptor // path stored in AnnotationTitle
+}
+
+// classifyBundleManifest inspects a parsed OCI manifest and returns its
+// classified layers. Rejects bundles that are missing a core layer,
+// contain a duplicate core layer, or carry asset layers with unsafe or
+// colliding title annotations. Unknown media types are ignored for
+// forward compatibility.
+func classifyBundleManifest(m ocispec.Manifest) (classifiedManifest, error) {
+	var out classifiedManifest
+	var haveToml, haveLock bool
+	for _, layer := range m.Layers {
+		switch layer.MediaType {
+		case MediaTypePixiToml:
+			if haveToml {
+				return out, fmt.Errorf("invalid bundle: duplicate core layer")
+			}
+			out.pixiToml = layer
+			haveToml = true
+		case MediaTypePixiLock:
+			if haveLock {
+				return out, fmt.Errorf("invalid bundle: duplicate core layer")
+			}
+			out.pixiLock = layer
+			haveLock = true
+		case MediaTypeNebiAsset:
+			out.assets = append(out.assets, layer)
+		default:
+			// Unknown media type — ignore for forward compat.
+		}
+	}
+	if !haveToml || !haveLock {
+		return out, fmt.Errorf("invalid bundle: missing pixi.{toml,lock}")
+	}
+	// Validate every asset title before fetch. This also rejects dupes
+	// and case-insensitive collisions.
+	paths := make([]string, 0, len(out.assets))
+	for _, a := range out.assets {
+		title := a.Annotations[ocispec.AnnotationTitle]
+		paths = append(paths, title)
+	}
+	if err := ValidateAssetPaths(paths); err != nil {
+		return out, fmt.Errorf("unsafe path in bundle: %w", err)
+	}
+	return out, nil
+}
+
+// PullBundle fetches a bundle from the registry in the requested mode.
+// Always returns pixi.toml and pixi.lock; in PullModeFull also populates
+// Assets with each layer's bytes. Asset blobs are fetched in parallel up
+// to opts.Concurrency workers. Manifest config media type is verified to
+// reject non-Nebi artifacts up front.
+func PullBundle(ctx context.Context, repoRef, tag string, opts PullOptions) (*PullResult, error) {
 	repo, err := remote.NewRepository(repoRef)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository client: %w", err)
 	}
-
+	repo.PlainHTTP = opts.PlainHTTP
 	if c := newAuthClient(opts.Username, opts.Password); c != nil {
 		repo.Client = c
 	}
 
-	// Resolve the tag to a manifest descriptor
 	desc, err := repo.Resolve(ctx, tag)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve tag %s: %w", tag, err)
 	}
 
-	// Fetch the manifest
 	manifestReader, err := repo.Fetch(ctx, desc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch manifest: %w", err)
 	}
-	defer manifestReader.Close()
-
 	manifestData, err := io.ReadAll(manifestReader)
+	manifestReader.Close()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read manifest: %w", err)
 	}
 
-	// Parse the manifest to find layers
 	var manifest ocispec.Manifest
 	if err := json.Unmarshal(manifestData, &manifest); err != nil {
 		return nil, fmt.Errorf("failed to parse manifest: %w", err)
 	}
+	if manifest.Config.MediaType != MediaTypePixiConfig {
+		return nil, fmt.Errorf("not a Nebi artifact")
+	}
 
-	result := &PullResult{}
+	cm, err := classifyBundleManifest(manifest)
+	if err != nil {
+		return nil, err
+	}
 
-	// Fetch each layer that matches our media types
-	for _, layer := range manifest.Layers {
-		switch layer.MediaType {
-		case MediaTypePixiToml:
-			content, err := fetchLayer(ctx, repo, layer)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch pixi.toml layer: %w", err)
-			}
-			result.PixiToml = content
-		case MediaTypePixiLock:
-			content, err := fetchLayer(ctx, repo, layer)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch pixi.lock layer: %w", err)
-			}
-			result.PixiLock = content
+	tomlBytes, err := fetchLayerBytes(ctx, repo, cm.pixiToml)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch pixi.toml layer: %w", err)
+	}
+	lockBytes, err := fetchLayerBytes(ctx, repo, cm.pixiLock)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch pixi.lock layer: %w", err)
+	}
+
+	result := &PullResult{
+		PixiToml: strings.TrimSpace(string(tomlBytes)),
+		PixiLock: strings.TrimSpace(string(lockBytes)),
+	}
+
+	// Always list asset paths; only populate Bytes in full mode.
+	result.Assets = make([]AssetBlob, len(cm.assets))
+	for i, a := range cm.assets {
+		result.Assets[i] = AssetBlob{Path: a.Annotations[ocispec.AnnotationTitle]}
+	}
+
+	if opts.Mode == PullModeFull && len(cm.assets) > 0 {
+		limit := opts.Concurrency
+		if limit <= 0 {
+			limit = defaultConcurrency
+		}
+		if err := fetchAssetsParallel(ctx, repo, cm.assets, result.Assets, limit); err != nil {
+			return nil, err
 		}
 	}
 
-	if result.PixiToml == "" {
-		return nil, fmt.Errorf("pixi.toml not found in manifest layers")
-	}
-
-	// Update the workspace name in pixi.toml to avoid conflicts
-	// The caller can override the name if needed
 	return result, nil
+}
+
+// PullEnvironment is a backward-compatible alias that fetches only the
+// pixi.toml + pixi.lock layers of a bundle. Asset layers (if any) are
+// listed in the returned result's Assets slice but never fetched.
+func PullEnvironment(ctx context.Context, repoRef, tag string, opts BrowseOptions) (*PullResult, error) {
+	return PullBundle(ctx, repoRef, tag, PullOptions{
+		Username: opts.Username,
+		Password: opts.Password,
+		Mode:     PullModePixiOnly,
+	})
+}
+
+// fetchAssetsParallel fetches each asset blob concurrently and writes its
+// bytes into the matching slot in out. First error cancels the rest.
+func fetchAssetsParallel(
+	ctx context.Context,
+	repo *remote.Repository,
+	assets []ocispec.Descriptor,
+	out []AssetBlob,
+	limit int,
+) error {
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(limit)
+	for i, a := range assets {
+		i, a := i, a
+		g.Go(func() error {
+			b, err := fetchLayerBytes(ctx, repo, a)
+			if err != nil {
+				return fmt.Errorf("fetch asset %s: %w", out[i].Path, err)
+			}
+			out[i].Bytes = b
+			return nil
+		})
+	}
+	return g.Wait()
 }
 
 // IsNebiRepository checks if a repository contains a Nebi OCI image by inspecting
@@ -363,18 +495,12 @@ func ChangeRepositoryVisibility(ctx context.Context, host, repoPath, apiToken st
 	return nil
 }
 
-// fetchLayer fetches content from a single layer descriptor
-func fetchLayer(ctx context.Context, repo *remote.Repository, desc ocispec.Descriptor) (string, error) {
+// fetchLayerBytes returns the full raw bytes for a layer descriptor.
+func fetchLayerBytes(ctx context.Context, repo *remote.Repository, desc ocispec.Descriptor) ([]byte, error) {
 	reader, err := repo.Fetch(ctx, desc)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer reader.Close()
-
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return "", err
-	}
-
-	return strings.TrimSpace(string(data)), nil
+	return io.ReadAll(reader)
 }

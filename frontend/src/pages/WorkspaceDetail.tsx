@@ -628,7 +628,10 @@ export const WorkspaceDetail = () => {
               <PixiTomlEditor
                 tomlValue={editedToml}
                 onTomlChange={setEditedToml}
-                workspaceName={workspace.name}
+                onReloadToml={async () => {
+                  const { content } = await workspacesApi.getPixiToml(wsId);
+                  return content;
+                }}
               />
             ) : pixiToml ? (
               <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto font-mono text-sm whitespace-pre">

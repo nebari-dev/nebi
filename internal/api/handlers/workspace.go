@@ -154,6 +154,27 @@ func (h *WorkspaceHandler) SavePixiToml(c *gin.Context) {
 	c.JSON(http.StatusOK, PixiTomlResponse(req))
 }
 
+// SolveWorkspace godoc
+// @Summary Solve and install environment from current pixi.toml
+// @Tags workspaces
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "Workspace ID"
+// @Success 202 {object} models.Job
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /workspaces/{id}/solve [post]
+func (h *WorkspaceHandler) SolveWorkspace(c *gin.Context) {
+	job, err := h.svc.SolveWorkspace(c.Request.Context(), c.Param("id"), getUserID(c))
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, job)
+}
+
 // PushVersion godoc
 // @Summary Push a new version to the server
 // @Description Create a new workspace version and assign a tag

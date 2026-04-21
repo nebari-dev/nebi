@@ -56,6 +56,14 @@ func (s *WorkspaceService) InstallPackages(ctx context.Context, wsID string, pac
 	return s.submitJob(ctx, wsID, userID, models.JobTypeInstall, metadata, audit.ActionInstallPackage)
 }
 
+// SolveWorkspace creates and enqueues a solve job (pixi install from current pixi.toml).
+func (s *WorkspaceService) SolveWorkspace(ctx context.Context, wsID string, userID uuid.UUID) (*models.Job, error) {
+	metadata := map[string]interface{}{
+		"user_id": userID.String(),
+	}
+	return s.submitJob(ctx, wsID, userID, models.JobTypeUpdate, metadata, audit.ActionSolveWorkspace)
+}
+
 // RemovePackage creates and enqueues a remove-package job.
 func (s *WorkspaceService) RemovePackage(ctx context.Context, wsID string, packageName string, userID uuid.UUID) (*models.Job, error) {
 	metadata := map[string]interface{}{

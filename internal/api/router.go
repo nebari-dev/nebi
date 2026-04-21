@@ -211,6 +211,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			ws.PUT("/pixi-toml", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.SavePixiToml)
 			ws.DELETE("", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.DeleteWorkspace)
 			ws.POST("/packages", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.InstallPackages)
+			ws.POST("/solve", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.SolveWorkspace)
 			ws.DELETE("/packages/:package", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.RemovePackages)
 			ws.POST("/rollback", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.RollbackToVersion)
 

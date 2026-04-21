@@ -67,7 +67,7 @@ const parsePixiTomlDependencies = (toml: string): Package[] => {
 };
 
 export const PixiTomlEditor = ({ tomlValue, onTomlChange, workspaceName, onReloadToml }: PixiTomlEditorProps) => {
-  const [mode, setMode] = useState<'ui' | 'toml'>('ui');
+  const [mode, setMode] = useState<'ui' | 'toml'>('toml');
   const [packages, setPackages] = useState<Package[]>([{ name: 'python', version: '>=3.11' }]);
   const [newPackageName, setNewPackageName] = useState('');
   const [newPackageVersion, setNewPackageVersion] = useState('');
@@ -171,17 +171,6 @@ export const PixiTomlEditor = ({ tomlValue, onTomlChange, workspaceName, onReloa
       <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
         <Button
           type="button"
-          variant={mode === 'ui' ? 'default' : 'ghost'}
-          size="sm"
-          onClick={() => handleModeSwitch('ui')}
-          disabled={switching}
-          className="gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          UI Mode
-        </Button>
-        <Button
-          type="button"
           variant={mode === 'toml' ? 'default' : 'ghost'}
           size="sm"
           onClick={() => handleModeSwitch('toml')}
@@ -190,6 +179,17 @@ export const PixiTomlEditor = ({ tomlValue, onTomlChange, workspaceName, onReloa
         >
           {switching ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCode className="h-4 w-4" />}
           TOML Mode
+        </Button>
+        <Button
+          type="button"
+          variant={mode === 'ui' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => handleModeSwitch('ui')}
+          disabled={switching}
+          className="gap-2"
+        >
+          <Plus className="h-4 w-4" />
+          UI Mode
         </Button>
       </div>
 

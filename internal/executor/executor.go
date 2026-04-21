@@ -21,6 +21,9 @@ type Executor interface {
 	// DeleteWorkspace removes a workspace
 	DeleteWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error
 
+	// SolveEnvironment runs pixi install to solve and install the current pixi.toml
+	SolveEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error
+
 	// GetWorkspacePath returns the filesystem path for a workspace
 	GetWorkspacePath(ws *models.Workspace) string
 }

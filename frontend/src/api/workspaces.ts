@@ -64,4 +64,9 @@ export const workspacesApi = {
   savePixiToml: async (id: string, content: string): Promise<void> => {
     await apiClient.put(`/workspaces/${id}/pixi-toml`, { content });
   },
+
+  solveWorkspace: async (id: string): Promise<Job> => {
+    const { data } = await apiClient.post(`/workspaces/${id}/solve`);
+    return data;
+  },
 };

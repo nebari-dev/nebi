@@ -52,8 +52,11 @@ func runImport(cmd *cobra.Command, args []string) error {
 	repoRef, plainHTTP := oci.StripScheme(repoRef)
 
 	ctx := context.Background()
-	result, err := oci.PullBundle(ctx, repoRef, tag, oci.PullOptions{
-		Mode:        oci.PullModeFull,
+
+	// Peek at manifest first so we can enforce the empty-destination
+	// policy before any bytes land on disk. This is cheap (one small
+	// GET) and avoids partial-extract state on a rejected destination.
+	peek, err := oci.PullBundle(ctx, repoRef, tag, oci.PullOptions{
 		Concurrency: importConcurrency,
 		PlainHTTP:   plainHTTP,
 	})
@@ -68,7 +71,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 	// follow the spec strictly: abort if the directory exists and is not
 	// empty, no --force bypass. For legacy zero-asset artifacts we keep
 	// the previous UX so existing users aren't broken.
-	hasAssets := len(result.Assets) > 0
+	hasAssets := len(peek.Assets) > 0
 	if hasAssets {
 		if nonEmpty, err := dirIsNonEmpty(absDir); err != nil {
 			return err
@@ -85,30 +88,14 @@ func runImport(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
-	}
-
-	if err := os.WriteFile(filepath.Join(outputDir, "pixi.toml"), []byte(result.PixiToml), 0644); err != nil {
+	// Stream every layer straight to disk via oras.Copy + file.Store.
+	// Asset blobs never land fully in RAM regardless of size.
+	result, err := oci.ExtractBundle(ctx, repoRef, tag, outputDir, oci.PullOptions{
+		Concurrency: importConcurrency,
+		PlainHTTP:   plainHTTP,
+	})
+	if err != nil {
 		return fmt.Errorf("import failed: %w; partial files at %s", err, absDir)
-	}
-
-	if result.PixiLock != "" {
-		if err := os.WriteFile(filepath.Join(outputDir, "pixi.lock"), []byte(result.PixiLock), 0644); err != nil {
-			return fmt.Errorf("import failed: %w; partial files at %s", err, absDir)
-		}
-	}
-
-	// Restore assets. The oci package already validated every title before
-	// returning, and the full-mode pull populated Bytes in parallel.
-	for _, asset := range result.Assets {
-		target := filepath.Join(outputDir, filepath.FromSlash(asset.Path))
-		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-			return fmt.Errorf("import failed: %w; partial files at %s", err, absDir)
-		}
-		if err := os.WriteFile(target, asset.Bytes, 0644); err != nil {
-			return fmt.Errorf("import failed: %w; partial files at %s", err, absDir)
-		}
 	}
 
 	absOutput, _ := filepath.Abs(outputDir)

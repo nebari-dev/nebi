@@ -14,12 +14,6 @@ import (
 	"github.com/google/go-containerregistry/pkg/registry"
 )
 
-// emptyBlobDigest is the canonical SHA-256 of a zero-byte payload. Some
-// real-world registries (Quay has been observed) refuse to serve this
-// blob back on GET, causing asset pulls that reference an empty file to
-// 404. The bundle module must paper over that.
-const emptyBlobDigest = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-
 // startTestRegistryRejectingEmptyBlob spins up an in-memory registry
 // wrapped with a shim that returns 404 for GET and HEAD on the empty
 // blob, faithfully reproducing the Quay behaviour. Upload of the empty
@@ -29,7 +23,7 @@ func startTestRegistryRejectingEmptyBlob(t *testing.T) string {
 	inner := registry.New()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
-			strings.Contains(r.URL.Path, "/blobs/"+emptyBlobDigest) {
+			strings.Contains(r.URL.Path, "/blobs/"+emptyBlobDigest.String()) {
 			http.Error(w, "blob not found", http.StatusNotFound)
 			return
 		}
@@ -73,6 +67,17 @@ func testRegistry(host, namespace string) Registry {
 	return Registry{Host: host, Namespace: namespace, PlainHTTP: true}
 }
 
+// readAsset reads an extracted asset from disk and compares against want.
+// Used by tests that verify round-trip byte-identity after ExtractBundle.
+func readAsset(t *testing.T, destDir, rel string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(destDir, rel))
+	if err != nil {
+		t.Fatalf("read %s: %v", rel, err)
+	}
+	return string(b)
+}
+
 func TestPublishBundle_RoundTrip(t *testing.T) {
 	host := startTestRegistry(t)
 	src := t.TempDir()
@@ -91,11 +96,12 @@ func TestPublishBundle_RoundTrip(t *testing.T) {
 		t.Fatalf("AssetCount: got %d want 4", res.AssetCount)
 	}
 
-	pull, err := PullBundle(context.Background(), res.Repository, "v1", PullOptions{
-		Mode: PullModeFull, PlainHTTP: true,
+	dest := t.TempDir()
+	pull, err := ExtractBundle(context.Background(), res.Repository, "v1", dest, PullOptions{
+		PlainHTTP: true,
 	})
 	if err != nil {
-		t.Fatalf("pull: %v", err)
+		t.Fatalf("extract: %v", err)
 	}
 	if !strings.Contains(pull.PixiToml, `name = "demo"`) {
 		t.Fatalf("unexpected pixi.toml: %q", pull.PixiToml)
@@ -112,13 +118,9 @@ func TestPublishBundle_RoundTrip(t *testing.T) {
 	if len(pull.Assets) != len(want) {
 		t.Fatalf("asset count: got %d want %d (%v)", len(pull.Assets), len(want), pull.Assets)
 	}
-	for _, a := range pull.Assets {
-		w, ok := want[a.Path]
-		if !ok {
-			t.Fatalf("unexpected asset path %q", a.Path)
-		}
-		if string(a.Bytes) != w {
-			t.Fatalf("asset %q mismatch: got %q want %q", a.Path, a.Bytes, w)
+	for rel, w := range want {
+		if got := readAsset(t, dest, rel); got != w {
+			t.Fatalf("asset %q mismatch: got %q want %q", rel, got, w)
 		}
 	}
 }
@@ -139,11 +141,12 @@ func TestPublishPixiOnly_LegacyTwoLayer(t *testing.T) {
 		t.Fatalf("AssetCount: got %d want 0", res.AssetCount)
 	}
 
-	pull, err := PullBundle(context.Background(), res.Repository, "v1", PullOptions{
-		Mode: PullModeFull, PlainHTTP: true,
+	dest := t.TempDir()
+	pull, err := ExtractBundle(context.Background(), res.Repository, "v1", dest, PullOptions{
+		PlainHTTP: true,
 	})
 	if err != nil {
-		t.Fatalf("pull: %v", err)
+		t.Fatalf("extract: %v", err)
 	}
 	if len(pull.Assets) != 0 {
 		t.Fatalf("want zero assets, got %d", len(pull.Assets))
@@ -153,7 +156,7 @@ func TestPublishPixiOnly_LegacyTwoLayer(t *testing.T) {
 	}
 }
 
-func TestPullBundle_PixiOnlyModeSkipsAssetBlobs(t *testing.T) {
+func TestPullBundle_ListsAssetsWithoutFetchingBytes(t *testing.T) {
 	host := startTestRegistry(t)
 	src := t.TempDir()
 	writeFile(t, src, "pixi.toml", "[workspace]\nname = \"x\"\n")
@@ -166,16 +169,13 @@ func TestPullBundle_PixiOnlyModeSkipsAssetBlobs(t *testing.T) {
 	}
 
 	pull, err := PullBundle(context.Background(), res.Repository, "v1", PullOptions{
-		Mode: PullModePixiOnly, PlainHTTP: true,
+		PlainHTTP: true,
 	})
 	if err != nil {
 		t.Fatalf("pull: %v", err)
 	}
 	if len(pull.Assets) != 1 {
 		t.Fatalf("expected 1 asset listed, got %d", len(pull.Assets))
-	}
-	if pull.Assets[0].Bytes != nil {
-		t.Fatalf("pixi-only mode should not populate Bytes; got %d bytes", len(pull.Assets[0].Bytes))
 	}
 	if pull.Assets[0].Path != "big.bin" {
 		t.Fatalf("unexpected asset path %q", pull.Assets[0].Path)
@@ -207,22 +207,19 @@ func TestPublishBundle_ManyAssetsParallel(t *testing.T) {
 		t.Fatalf("AssetCount: got %d want %d", res.AssetCount, n)
 	}
 
-	pull, err := PullBundle(context.Background(), res.Repository, "v1", PullOptions{
-		Mode: PullModeFull, Concurrency: 16, PlainHTTP: true,
+	dest := t.TempDir()
+	pull, err := ExtractBundle(context.Background(), res.Repository, "v1", dest, PullOptions{
+		Concurrency: 16, PlainHTTP: true,
 	})
 	if err != nil {
-		t.Fatalf("pull: %v", err)
+		t.Fatalf("extract: %v", err)
 	}
 	if len(pull.Assets) != n {
 		t.Fatalf("asset count: got %d want %d", len(pull.Assets), n)
 	}
-	got := make(map[string]string, n)
-	for _, a := range pull.Assets {
-		got[a.Path] = string(a.Bytes)
-	}
 	for k, v := range want {
-		if got[k] != v {
-			t.Fatalf("asset %q: got %q want %q", k, got[k], v)
+		if got := readAsset(t, dest, k); got != v {
+			t.Fatalf("asset %q: got %q want %q", k, got, v)
 		}
 	}
 }
@@ -250,10 +247,10 @@ func TestPublish_RejectsUnsafeAssetPath(t *testing.T) {
 
 // TestPublishBundle_EmptyAssetRoundTrip_RegistryRefusesEmptyBlob
 // reproduces the Quay-in-the-wild behaviour: a registry that refuses to
-// serve the canonical empty-blob digest on GET. The bundle module must
-// still return an empty asset on pull because the content is fully
-// determined by the descriptor — Size=0 means empty bytes, no network
-// fetch is needed.
+// serve the canonical empty-blob digest on GET. Extraction must still
+// produce a zero-byte file for the empty asset — oras.Copy's content
+// store short-circuits on the known empty-blob digest and writes the
+// file without ever issuing the blob GET.
 func TestPublishBundle_EmptyAssetRoundTrip_RegistryRefusesEmptyBlob(t *testing.T) {
 	host := startTestRegistryRejectingEmptyBlob(t)
 	src := t.TempDir()
@@ -269,11 +266,12 @@ func TestPublishBundle_EmptyAssetRoundTrip_RegistryRefusesEmptyBlob(t *testing.T
 		t.Fatalf("publish: %v", err)
 	}
 
-	pull, err := PullBundle(context.Background(), res.Repository, "v1", PullOptions{
-		Mode: PullModeFull, PlainHTTP: true,
+	dest := t.TempDir()
+	pull, err := ExtractBundle(context.Background(), res.Repository, "v1", dest, PullOptions{
+		PlainHTTP: true,
 	})
 	if err != nil {
-		t.Fatalf("pull: %v", err)
+		t.Fatalf("extract: %v", err)
 	}
 
 	want := map[string]string{
@@ -283,13 +281,9 @@ func TestPublishBundle_EmptyAssetRoundTrip_RegistryRefusesEmptyBlob(t *testing.T
 	if len(pull.Assets) != len(want) {
 		t.Fatalf("asset count: got %d want %d", len(pull.Assets), len(want))
 	}
-	for _, a := range pull.Assets {
-		w, ok := want[a.Path]
-		if !ok {
-			t.Fatalf("unexpected asset %q", a.Path)
-		}
-		if string(a.Bytes) != w {
-			t.Fatalf("asset %q: got %q want %q", a.Path, a.Bytes, w)
+	for rel, w := range want {
+		if got := readAsset(t, dest, rel); got != w {
+			t.Fatalf("asset %q: got %q want %q", rel, got, w)
 		}
 	}
 }
@@ -329,7 +323,7 @@ func TestPublish_ExtraTags_NoImplicitLatest(t *testing.T) {
 	}
 	// "latest" must not resolve — the implicit default is gone.
 	if _, err := PullBundle(context.Background(), res.Repository, "latest", PullOptions{
-		Mode: PullModePixiOnly, PlainHTTP: true,
+		PlainHTTP: true,
 	}); err == nil {
 		t.Fatal("expected 'latest' tag to be missing when WithExtraTags was not supplied")
 	}

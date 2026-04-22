@@ -1,20 +1,31 @@
 package oci
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"golang.org/x/sync/errgroup"
+	"oras.land/oras-go/v2"
+	"oras.land/oras-go/v2/content/file"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 )
+
+// emptyBlobDigest is the canonical sha256 of a zero-byte payload. Some
+// registries (Quay, observed) refuse to serve this blob on GET, so
+// ExtractBundle pre-pushes the empty content to the local store and
+// tells oras.Copy to skip the fetch (see the PreCopy hook).
+var emptyBlobDigest = digest.FromBytes(nil)
 
 // BrowseOptions contains options for browsing an OCI registry
 type BrowseOptions struct {
@@ -34,38 +45,28 @@ type TagInfo struct {
 	Name string `json:"name"`
 }
 
-// PullMode controls which blobs a bundle pull fetches from the registry.
-type PullMode int
-
-const (
-	// PullModePixiOnly fetches manifest + pixi.toml + pixi.lock only. Asset
-	// layers are listed in PullResult.Assets (path only, no Bytes). This
-	// matches what the server, UI, and server-driven publish/import need.
-	PullModePixiOnly PullMode = iota
-	// PullModeFull fetches manifest + every layer including asset blobs.
-	// Used by `nebi import` on the CLI.
-	PullModeFull
-)
-
 // PullOptions controls an OCI bundle pull.
 type PullOptions struct {
 	Username    string
 	Password    string
-	Mode        PullMode // defaults to PullModePixiOnly
-	Concurrency int      // ≤ 0 uses default (8)
+	Concurrency int // ≤ 0 uses default (8)
 	// PlainHTTP talks to the registry over HTTP. Test/local registries
 	// only.
 	PlainHTTP bool
 }
 
-// AssetBlob is a single asset layer. When fetched via PullModeFull, Bytes
-// holds the blob content; in PullModePixiOnly it is nil.
+// AssetBlob names a single asset layer in a bundle. It is a listing
+// entry; the blob bytes are never carried in-memory — ExtractBundle
+// streams each asset straight to disk.
 type AssetBlob struct {
-	Path  string
-	Bytes []byte
+	Path string
 }
 
-// PullResult contains the content pulled from a registry tag
+// PullResult contains the metadata pulled from a registry tag. PixiToml
+// and PixiLock hold the core layer contents (small text files, always
+// buffered). Assets lists every asset layer's path; the blob bytes are
+// not populated because asset payloads can be arbitrarily large and
+// only make sense as on-disk files (see ExtractBundle).
 type PullResult struct {
 	PixiToml string      `json:"pixi_toml"`
 	PixiLock string      `json:"pixi_lock"`
@@ -277,15 +278,20 @@ func classifyBundleManifest(m ocispec.Manifest) (classifiedManifest, error) {
 	return out, nil
 }
 
-// PullBundle fetches a bundle from the registry in the requested mode.
-// Always returns pixi.toml and pixi.lock; in PullModeFull also populates
-// Assets with each layer's bytes. Asset blobs are fetched in parallel up
-// to opts.Concurrency workers. Manifest config media type is verified to
-// reject non-Nebi artifacts up front.
-func PullBundle(ctx context.Context, repoRef, tag string, opts PullOptions) (*PullResult, error) {
+// resolveBundleManifest opens a remote repo, resolves the tag, fetches
+// the manifest, verifies it's a Nebi artifact, and classifies its
+// layers. Shared between PullBundle (metadata-only) and ExtractBundle
+// (streaming pull) so both hit exactly one source of truth for auth,
+// media-type gating, and path-safety validation.
+func resolveBundleManifest(
+	ctx context.Context,
+	repoRef, tag string,
+	opts PullOptions,
+) (*remote.Repository, classifiedManifest, error) {
+	var cm classifiedManifest
 	repo, err := remote.NewRepository(repoRef)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create repository client: %w", err)
+		return nil, cm, fmt.Errorf("failed to create repository client: %w", err)
 	}
 	repo.PlainHTTP = opts.PlainHTTP
 	if c := newAuthClient(opts.Username, opts.Password); c != nil {
@@ -294,28 +300,47 @@ func PullBundle(ctx context.Context, repoRef, tag string, opts PullOptions) (*Pu
 
 	desc, err := repo.Resolve(ctx, tag)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve tag %s: %w", tag, err)
+		return nil, cm, fmt.Errorf("failed to resolve tag %s: %w", tag, err)
 	}
-
 	manifestReader, err := repo.Fetch(ctx, desc)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch manifest: %w", err)
+		return nil, cm, fmt.Errorf("failed to fetch manifest: %w", err)
 	}
 	manifestData, err := io.ReadAll(manifestReader)
 	manifestReader.Close()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read manifest: %w", err)
+		return nil, cm, fmt.Errorf("failed to read manifest: %w", err)
 	}
-
 	var manifest ocispec.Manifest
 	if err := json.Unmarshal(manifestData, &manifest); err != nil {
-		return nil, fmt.Errorf("failed to parse manifest: %w", err)
+		return nil, cm, fmt.Errorf("failed to parse manifest: %w", err)
 	}
 	if manifest.Config.MediaType != MediaTypePixiConfig {
-		return nil, fmt.Errorf("not a Nebi artifact")
+		return nil, cm, fmt.Errorf("not a Nebi artifact")
 	}
+	cm, err = classifyBundleManifest(manifest)
+	if err != nil {
+		return nil, cm, err
+	}
+	return repo, cm, nil
+}
 
-	cm, err := classifyBundleManifest(manifest)
+// assetListing converts classified asset layers into the path-only
+// AssetBlob form returned by PullBundle and ExtractBundle.
+func assetListing(assets []ocispec.Descriptor) []AssetBlob {
+	out := make([]AssetBlob, len(assets))
+	for i, a := range assets {
+		out[i] = AssetBlob{Path: a.Annotations[ocispec.AnnotationTitle]}
+	}
+	return out
+}
+
+// PullBundle fetches a bundle's metadata from the registry: pixi.toml
+// and pixi.lock contents (small text files, always buffered) plus the
+// list of asset layer paths. Asset blob bytes are NOT fetched — callers
+// that need the bytes on disk should use ExtractBundle instead.
+func PullBundle(ctx context.Context, repoRef, tag string, opts PullOptions) (*PullResult, error) {
+	repo, cm, err := resolveBundleManifest(ctx, repoRef, tag, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -329,28 +354,83 @@ func PullBundle(ctx context.Context, repoRef, tag string, opts PullOptions) (*Pu
 		return nil, fmt.Errorf("failed to fetch pixi.lock layer: %w", err)
 	}
 
-	result := &PullResult{
+	return &PullResult{
 		PixiToml: strings.TrimSpace(string(tomlBytes)),
 		PixiLock: strings.TrimSpace(string(lockBytes)),
-	}
+		Assets:   assetListing(cm.assets),
+	}, nil
+}
 
-	// Always list asset paths; only populate Bytes in full mode.
-	result.Assets = make([]AssetBlob, len(cm.assets))
-	for i, a := range cm.assets {
-		result.Assets[i] = AssetBlob{Path: a.Annotations[ocispec.AnnotationTitle]}
+// ExtractBundle pulls a bundle from the registry and writes every
+// layer (pixi.toml, pixi.lock, each asset) to destDir, streaming each
+// blob straight from the network to disk — no asset ever lands fully
+// in RAM. Honors the layer's AnnotationTitle as the on-disk relative
+// path. destDir is created if missing; caller is responsible for the
+// "empty destination" policy (see cmd/nebi/import.go).
+//
+// Implementation delegates blob transfer to oras.Copy over a file.Store
+// rooted at destDir. That gives us streamed I/O, parallel fetches
+// configured via opts.Concurrency, and file.Store's
+// AllowPathTraversalOnWrite=false default as defense-in-depth over the
+// pre-validated titles.
+func ExtractBundle(ctx context.Context, repoRef, tag, destDir string, opts PullOptions) (*PullResult, error) {
+	repo, cm, err := resolveBundleManifest(ctx, repoRef, tag, opts)
+	if err != nil {
+		return nil, err
 	}
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create dest %s: %w", destDir, err)
+	}
+	fs, err := file.New(destDir)
+	if err != nil {
+		return nil, fmt.Errorf("create file store at %s: %w", destDir, err)
+	}
+	defer fs.Close()
 
-	if opts.Mode == PullModeFull && len(cm.assets) > 0 {
-		limit := opts.Concurrency
-		if limit <= 0 {
-			limit = defaultConcurrency
+	copyOpts := oras.DefaultCopyOptions
+	if opts.Concurrency > 0 {
+		copyOpts.Concurrency = opts.Concurrency
+	} else {
+		copyOpts.Concurrency = defaultConcurrency
+	}
+	// PreCopy short-circuits zero-byte blobs: we push the empty content
+	// into the local file store and return SkipNode so oras.Copy never
+	// issues the blob GET. This papers over registries that 404 the
+	// canonical empty-blob digest (Quay), and — because we also verify
+	// the descriptor's digest matches the canonical empty hash — it
+	// rejects malformed manifests that claim Size=0 for non-empty data.
+	copyOpts.PreCopy = func(ctx context.Context, desc ocispec.Descriptor) error {
+		if desc.Size != 0 {
+			return nil
 		}
-		if err := fetchAssetsParallel(ctx, repo, cm.assets, result.Assets, limit); err != nil {
-			return nil, err
+		if desc.Digest != emptyBlobDigest {
+			return fmt.Errorf("zero-size layer %q has non-empty digest %s", desc.Annotations[ocispec.AnnotationTitle], desc.Digest)
 		}
+		if err := fs.Push(ctx, desc, bytes.NewReader(nil)); err != nil {
+			return fmt.Errorf("write empty layer %q: %w", desc.Annotations[ocispec.AnnotationTitle], err)
+		}
+		return oras.SkipNode
+	}
+	if _, err := oras.Copy(ctx, repo, tag, fs, tag, copyOpts); err != nil {
+		return nil, fmt.Errorf("extract bundle: %w", err)
 	}
 
-	return result, nil
+	// pixi.toml / pixi.lock are written by oras.Copy via their
+	// AnnotationTitle. Read them back so callers get identical
+	// contract to PullBundle (whitespace-trimmed strings).
+	tomlBytes, err := os.ReadFile(filepath.Join(destDir, "pixi.toml"))
+	if err != nil {
+		return nil, fmt.Errorf("read extracted pixi.toml: %w", err)
+	}
+	lockBytes, err := os.ReadFile(filepath.Join(destDir, "pixi.lock"))
+	if err != nil {
+		return nil, fmt.Errorf("read extracted pixi.lock: %w", err)
+	}
+	return &PullResult{
+		PixiToml: strings.TrimSpace(string(tomlBytes)),
+		PixiLock: strings.TrimSpace(string(lockBytes)),
+		Assets:   assetListing(cm.assets),
+	}, nil
 }
 
 // PullEnvironment is a backward-compatible alias that fetches only the
@@ -360,40 +440,7 @@ func PullEnvironment(ctx context.Context, repoRef, tag string, opts BrowseOption
 	return PullBundle(ctx, repoRef, tag, PullOptions{
 		Username: opts.Username,
 		Password: opts.Password,
-		Mode:     PullModePixiOnly,
 	})
-}
-
-// fetchAssetsParallel fetches each asset blob concurrently and writes its
-// bytes into the matching slot in out. First error cancels the rest.
-// Zero-size descriptors skip the network fetch entirely — their content
-// is empty by definition, and some registries (Quay observed) 404 on GET
-// of the canonical empty-blob digest.
-func fetchAssetsParallel(
-	ctx context.Context,
-	repo *remote.Repository,
-	assets []ocispec.Descriptor,
-	out []AssetBlob,
-	limit int,
-) error {
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(limit)
-	for i, a := range assets {
-		i, a := i, a
-		if a.Size == 0 {
-			out[i].Bytes = []byte{}
-			continue
-		}
-		g.Go(func() error {
-			b, err := fetchLayerBytes(ctx, repo, a)
-			if err != nil {
-				return fmt.Errorf("fetch asset %s: %w", out[i].Path, err)
-			}
-			out[i].Bytes = b
-			return nil
-		})
-	}
-	return g.Wait()
 }
 
 // IsNebiRepository checks if a repository contains a Nebi OCI image by inspecting

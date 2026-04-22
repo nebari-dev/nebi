@@ -6,8 +6,19 @@ import (
 	"github.com/google/uuid"
 )
 
-// CreateRegistry creates a new local registry record.
+// CreateRegistry creates a new local registry record. If no default
+// registry exists yet, the new one is auto-marked default so a lone
+// registry doesn't force the user to re-run 'nebi registry add --default'.
 func (s *Store) CreateRegistry(reg *LocalRegistry) error {
+	if !reg.IsDefault {
+		var count int64
+		if err := s.db.Model(&LocalRegistry{}).Where("is_default = ?", true).Count(&count).Error; err != nil {
+			return err
+		}
+		if count == 0 {
+			reg.IsDefault = true
+		}
+	}
 	return s.db.Create(reg).Error
 }
 

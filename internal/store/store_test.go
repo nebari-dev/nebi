@@ -309,6 +309,66 @@ func TestGetDefaultRegistry_NoneSet(t *testing.T) {
 	}
 }
 
+func TestCreateRegistry_AutoDefaultOnFirst(t *testing.T) {
+	s := testStore(t)
+
+	reg := &LocalRegistry{Name: "quay", URL: "https://quay.io"}
+	if err := s.CreateRegistry(reg); err != nil {
+		t.Fatal(err)
+	}
+	if !reg.IsDefault {
+		t.Fatal("first registry should be auto-defaulted")
+	}
+	def, err := s.GetDefaultRegistry()
+	if err != nil {
+		t.Fatalf("GetDefaultRegistry: %v", err)
+	}
+	if def.Name != "quay" {
+		t.Fatalf("default name: got %q want %q", def.Name, "quay")
+	}
+}
+
+func TestCreateRegistry_DoesNotOverrideExistingDefault(t *testing.T) {
+	s := testStore(t)
+
+	first := &LocalRegistry{Name: "a", URL: "a.io"}
+	if err := s.CreateRegistry(first); err != nil {
+		t.Fatal(err)
+	}
+	second := &LocalRegistry{Name: "b", URL: "b.io"}
+	if err := s.CreateRegistry(second); err != nil {
+		t.Fatal(err)
+	}
+	if second.IsDefault {
+		t.Fatal("second registry must not claim default when one already exists")
+	}
+	def, err := s.GetDefaultRegistry()
+	if err != nil {
+		t.Fatalf("GetDefaultRegistry: %v", err)
+	}
+	if def.Name != "a" {
+		t.Fatalf("default name: got %q want %q", def.Name, "a")
+	}
+}
+
+func TestCreateRegistry_ExplicitDefaultHonored(t *testing.T) {
+	s := testStore(t)
+
+	// Pre-seed a non-default registry, then add one with IsDefault:true.
+	// The new one should win because the caller asked for it; old one
+	// stays non-default (caller responsible for flipping the flag via a
+	// separate path if they need to reset).
+	_ = s.CreateRegistry(&LocalRegistry{Name: "a", URL: "a.io"})
+	// 'a' is now auto-default; add a second with explicit IsDefault:true.
+	b := &LocalRegistry{Name: "b", URL: "b.io", IsDefault: true}
+	if err := s.CreateRegistry(b); err != nil {
+		t.Fatal(err)
+	}
+	if !b.IsDefault {
+		t.Fatal("explicit IsDefault must be preserved")
+	}
+}
+
 func TestRegistryUniqueName(t *testing.T) {
 	s := testStore(t)
 

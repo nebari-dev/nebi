@@ -14,7 +14,6 @@ import (
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content/file"
 	"oras.land/oras-go/v2/registry/remote"
-	"oras.land/oras-go/v2/registry/remote/auth"
 )
 
 const (
@@ -130,7 +129,9 @@ func Publish(
 		if err != nil {
 			return PublishResult{}, fmt.Errorf("walk workspace: %w", err)
 		}
-		assets = stripCoreFiles(files)
+		// publishBundle strips core files unconditionally; pass the
+		// walker output through.
+		assets = files
 	}
 	return publishBundle(ctx, workspaceDir, reg, repo, tag, assets, cfg)
 }
@@ -277,10 +278,8 @@ func publishBundle(
 		return PublishResult{}, fmt.Errorf("failed to create repository: %w", err)
 	}
 	remoteRepo.PlainHTTP = reg.PlainHTTP
-	remoteRepo.Client = &auth.Client{
-		Credential: func(ctx context.Context, hostname string) (auth.Credential, error) {
-			return auth.Credential{Username: reg.Username, Password: reg.Password}, nil
-		},
+	if c := newAuthClient(reg.Username, reg.Password); c != nil {
+		remoteRepo.Client = c
 	}
 
 	blobs := make([]blobJob, 0, 3+len(assetDescs))

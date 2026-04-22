@@ -86,19 +86,25 @@ func ParseRegistryURL(rawURL string) (host, namespace string) {
 // Intended so local/test registries can signal "plain HTTP" by writing
 // their URL with http://.
 func ParseRegistryURLFull(rawURL string) (host, namespace string, plainHTTP bool) {
-	if strings.HasPrefix(rawURL, "http://") {
-		plainHTTP = true
-		rawURL = strings.TrimPrefix(rawURL, "http://")
-	} else {
-		rawURL = strings.TrimPrefix(rawURL, "https://")
-	}
-	rawURL = strings.TrimSuffix(rawURL, "/")
-	parts := strings.SplitN(rawURL, "/", 2)
+	stripped, plainHTTP := StripScheme(rawURL)
+	stripped = strings.TrimSuffix(stripped, "/")
+	parts := strings.SplitN(stripped, "/", 2)
 	host = parts[0]
 	if len(parts) > 1 {
 		namespace = parts[1]
 	}
 	return
+}
+
+// StripScheme removes an http:// or https:// prefix from an OCI reference
+// and reports whether the original was plain HTTP. Scheme-less input is
+// returned as-is with plainHTTP=false (defaults to HTTPS). Shared by the
+// registry URL parser and the CLI import command.
+func StripScheme(ref string) (stripped string, plainHTTP bool) {
+	if strings.HasPrefix(ref, "http://") {
+		return strings.TrimPrefix(ref, "http://"), true
+	}
+	return strings.TrimPrefix(ref, "https://"), false
 }
 
 // newAuthClient returns an auth.Client for the given credentials, or nil

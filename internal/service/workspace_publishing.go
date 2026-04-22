@@ -48,17 +48,13 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 		return nil, fmt.Errorf("decrypt registry credentials: %w", err)
 	}
 
-	host, ns, plainHTTP := oci.ParseRegistryURLFull(registry.URL)
+	// Build full repository path
+	host, _ := oci.ParseRegistryURL(registry.URL)
+	repoPath := req.Repository
 	if registry.Namespace != "" {
-		ns = registry.Namespace
+		repoPath = registry.Namespace + "/" + req.Repository
 	}
-	reg := oci.Registry{
-		Host:      host,
-		Namespace: ns,
-		Username:  registry.Username,
-		Password:  password,
-		PlainHTTP: plainHTTP,
-	}
+	fullRepo := fmt.Sprintf("%s/%s", host, repoPath)
 
 	wsPath := s.executor.GetWorkspacePath(&ws)
 
@@ -75,13 +71,17 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 		extraTags = append(extraTags, t)
 	}
 
-	pubRes, err := oci.PublishPixiOnly(ctx, wsPath, reg, req.Repository, req.Tag,
-		oci.WithExtraTags(extraTags...),
-	)
+	digest, err := oci.PublishWorkspace(ctx, wsPath, oci.PublishOptions{
+		Repository:   fullRepo,
+		Tag:          req.Tag,
+		ExtraTags:    extraTags,
+		Username:     registry.Username,
+		Password:     password,
+		RegistryHost: host,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("publish failed: %w", err)
 	}
-	digest := pubRes.Digest
 
 	// Create publication record
 	publication := models.Publication{

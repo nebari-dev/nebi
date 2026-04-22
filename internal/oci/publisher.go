@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -314,6 +315,55 @@ func publishBundle(
 		Digest:     manifestDesc.Digest.String(),
 		AssetCount: len(assets),
 	}, nil
+}
+
+// PublishOptions is the pre-bundle publish option shape. Kept for the
+// server-side caller (internal/service/workspace_publishing.go) which
+// builds a concatenated repository string rather than a Registry struct.
+// New callers should use Publish / PublishPixiOnly instead.
+type PublishOptions struct {
+	Repository   string
+	Tag          string
+	ExtraTags    []string
+	Username     string
+	Password     string
+	RegistryHost string
+}
+
+// PublishWorkspace is a thin shim retained for the server caller. It
+// publishes pixi.toml + pixi.lock from envPath (no walker) — equivalent
+// to PublishPixiOnly applied to a pre-assembled repository string.
+// Returns the manifest digest so the caller's existing signature is
+// preserved.
+func PublishWorkspace(ctx context.Context, envPath string, opts PublishOptions) (string, error) {
+	host, ns, repoName := splitRepoRef(opts.Repository)
+	reg := Registry{
+		Host:      host,
+		Namespace: ns,
+		Username:  opts.Username,
+		Password:  opts.Password,
+	}
+	res, err := PublishPixiOnly(ctx, envPath, reg, repoName, opts.Tag,
+		WithExtraTags(opts.ExtraTags...),
+	)
+	if err != nil {
+		return "", err
+	}
+	return res.Digest, nil
+}
+
+// splitRepoRef inverts buildRepoRef for the legacy string-based API.
+// Input "host/ns/repo" → (host, ns, repo); "host/repo" → (host, "", repo).
+func splitRepoRef(full string) (host, namespace, repo string) {
+	parts := strings.SplitN(full, "/", 3)
+	switch len(parts) {
+	case 3:
+		return parts[0], parts[1], parts[2]
+	case 2:
+		return parts[0], "", parts[1]
+	default:
+		return full, "", ""
+	}
 }
 
 // buildRepoRef assembles the full repository reference "host[/namespace]/repo".

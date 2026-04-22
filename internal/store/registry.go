@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // CreateRegistry creates a new local registry record. If no default
@@ -52,4 +53,33 @@ func (s *Store) GetDefaultRegistry() (*LocalRegistry, error) {
 // DeleteRegistry removes a registry by ID (hard delete).
 func (s *Store) DeleteRegistry(id uuid.UUID) error {
 	return s.db.Unscoped().Where("id = ?", id).Delete(&LocalRegistry{}).Error
+}
+
+// SetDefaultRegistry marks the registry with the given name as the default
+// and clears the flag on every other registry. Atomic — runs in a single
+// transaction so the default slot never goes empty or double-filled.
+func (s *Store) SetDefaultRegistry(name string) (*LocalRegistry, error) {
+	var reg LocalRegistry
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("name = ?", name).First(&reg).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return fmt.Errorf("registry %q not found", name)
+			}
+			return err
+		}
+		if err := tx.Model(&LocalRegistry{}).
+			Where("name <> ? AND is_default = ?", name, true).
+			Update("is_default", false).Error; err != nil {
+			return err
+		}
+		if reg.IsDefault {
+			return nil
+		}
+		reg.IsDefault = true
+		return tx.Model(&reg).Update("is_default", true).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &reg, nil
 }

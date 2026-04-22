@@ -360,6 +360,9 @@ func PullEnvironment(ctx context.Context, repoRef, tag string, opts BrowseOption
 
 // fetchAssetsParallel fetches each asset blob concurrently and writes its
 // bytes into the matching slot in out. First error cancels the rest.
+// Zero-size descriptors skip the network fetch entirely — their content
+// is empty by definition, and some registries (Quay observed) 404 on GET
+// of the canonical empty-blob digest.
 func fetchAssetsParallel(
 	ctx context.Context,
 	repo *remote.Repository,
@@ -371,6 +374,10 @@ func fetchAssetsParallel(
 	g.SetLimit(limit)
 	for i, a := range assets {
 		i, a := i, a
+		if a.Size == 0 {
+			out[i].Bytes = []byte{}
+			continue
+		}
 		g.Go(func() error {
 			b, err := fetchLayerBytes(ctx, repo, a)
 			if err != nil {

@@ -3,6 +3,7 @@ package oci
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -12,6 +13,35 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/registry"
 )
+
+// emptyBlobDigest is the canonical SHA-256 of a zero-byte payload. Some
+// real-world registries (Quay has been observed) refuse to serve this
+// blob back on GET, causing asset pulls that reference an empty file to
+// 404. The bundle module must paper over that.
+const emptyBlobDigest = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+// startTestRegistryRejectingEmptyBlob spins up an in-memory registry
+// wrapped with a shim that returns 404 for GET and HEAD on the empty
+// blob, faithfully reproducing the Quay behaviour. Upload of the empty
+// blob still succeeds so publish isn't blocked.
+func startTestRegistryRejectingEmptyBlob(t *testing.T) string {
+	t.Helper()
+	inner := registry.New()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
+			strings.Contains(r.URL.Path, "/blobs/"+emptyBlobDigest) {
+			http.Error(w, "blob not found", http.StatusNotFound)
+			return
+		}
+		inner.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("parse server URL: %v", err)
+	}
+	return u.Host
+}
 
 // startTestRegistry spins up an in-memory OCI Distribution server for the
 // duration of the test. Returns the host (no scheme).
@@ -215,6 +245,52 @@ func TestPublish_RejectsUnsafeAssetPath(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unsafe path") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestPublishBundle_EmptyAssetRoundTrip_RegistryRefusesEmptyBlob
+// reproduces the Quay-in-the-wild behaviour: a registry that refuses to
+// serve the canonical empty-blob digest on GET. The bundle module must
+// still return an empty asset on pull because the content is fully
+// determined by the descriptor — Size=0 means empty bytes, no network
+// fetch is needed.
+func TestPublishBundle_EmptyAssetRoundTrip_RegistryRefusesEmptyBlob(t *testing.T) {
+	host := startTestRegistryRejectingEmptyBlob(t)
+	src := t.TempDir()
+	writeFile(t, src, "pixi.toml", "[workspace]\nname = \"empty\"\n")
+	writeFile(t, src, "pixi.lock", "version: 6\n")
+	// Zero-byte asset — the regression case.
+	writeFile(t, src, "empty.txt", "")
+	// Sibling non-empty asset so we still exercise the normal fetch path.
+	writeFile(t, src, "README.md", "hi\n")
+
+	res, err := Publish(context.Background(), src, testRegistry(host, "demo"), "empty", "v1")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	pull, err := PullBundle(context.Background(), res.Repository, "v1", PullOptions{
+		Mode: PullModeFull, PlainHTTP: true,
+	})
+	if err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+
+	want := map[string]string{
+		"empty.txt": "",
+		"README.md": "hi\n",
+	}
+	if len(pull.Assets) != len(want) {
+		t.Fatalf("asset count: got %d want %d", len(pull.Assets), len(want))
+	}
+	for _, a := range pull.Assets {
+		w, ok := want[a.Path]
+		if !ok {
+			t.Fatalf("unexpected asset %q", a.Path)
+		}
+		if string(a.Bytes) != w {
+			t.Fatalf("asset %q: got %q want %q", a.Path, a.Bytes, w)
+		}
 	}
 }
 

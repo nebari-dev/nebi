@@ -15,7 +15,7 @@ See the [Pixi installation docs](https://pixi.sh) for more options.
 Install the CLI (`nebi` package) and the desktop application (`nebi-desktop`) with [pixi global install](https://pixi.prefix.dev/latest/reference/cli/pixi/global/install/#pixi-global-install).
 
 ```bash
-pixi global install nebi nebi-desktop
+pixi global install nebi
 ```
 
 ## Installation script
@@ -39,7 +39,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ### Install only CLI
 
 ```bash
-curl -fsSL https://pixi.sh/install.sh | bash
+curl -fsSL https://nebi.nebari.dev/install.sh | bash
 ```
 
 ### Install a specific version
@@ -60,11 +60,10 @@ curl -fsSL https://nebi.nebari.dev/install.sh | sh -s -- --install-dir /usr/loca
 
 ## Install with conda
 
-Nebi CLI and desktop packages is distributed on conda-forge, you can install it with conda in your base environment:
+Nebi CLI and desktop packages is distributed on conda-forge, you can install it with cond (or mamba) in your base environment:
 
 ```bash
 conda install conda-forge::nebi
-conda install conda-forge::nebi-desktop
 ```
 
 ## Install from source

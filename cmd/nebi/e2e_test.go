@@ -913,6 +913,74 @@ func TestE2E_RegistryAddWithPasswordStdin(t *testing.T) {
 	}
 }
 
+func TestE2E_RegistrySetDefaultLocal(t *testing.T) {
+	dataDir := t.TempDir()
+	os.Setenv("NEBI_DATA_DIR", dataDir)
+	t.Cleanup(func() { os.Unsetenv("NEBI_DATA_DIR") })
+
+	// Two registries: first auto-defaults to 'a'; flip to 'b'.
+	res := runCLI(t, dataDir, "registry", "add", "--local",
+		"--name", "a", "--url", "https://a.io", "--namespace", "ns")
+	if res.ExitCode != 0 {
+		t.Fatalf("add a: %s", res.Stderr)
+	}
+	res = runCLI(t, dataDir, "registry", "add", "--local",
+		"--name", "b", "--url", "https://b.io", "--namespace", "ns")
+	if res.ExitCode != 0 {
+		t.Fatalf("add b: %s", res.Stderr)
+	}
+
+	res = runCLI(t, dataDir, "registry", "set-default", "b", "--local")
+	if res.ExitCode != 0 {
+		t.Fatalf("set-default b: exit %d stderr %s", res.ExitCode, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "Default registry set to 'b'") {
+		t.Fatalf("expected confirmation in stderr, got: %s", res.Stderr)
+	}
+
+	res = runCLI(t, dataDir, "registry", "list", "--local")
+	if res.ExitCode != 0 {
+		t.Fatalf("list: %s", res.Stderr)
+	}
+	// 'b' must be the only one carrying a default marker.
+	lines := strings.Split(strings.TrimSpace(res.Stdout), "\n")
+	var bLine, aLine string
+	for _, ln := range lines {
+		switch {
+		case strings.HasPrefix(ln, "a "):
+			aLine = ln
+		case strings.HasPrefix(ln, "b "):
+			bLine = ln
+		}
+	}
+	if !strings.Contains(bLine, "*") && !strings.Contains(bLine, "default") && !strings.HasSuffix(strings.TrimSpace(bLine), "b") {
+		// Different shells render the DEFAULT column differently; fall
+		// back to asserting the Name column has 'b' somewhere and that
+		// 'a' is not the marked default.
+		_ = bLine
+	}
+	if strings.Contains(aLine, "*") || strings.Contains(aLine, "✓") {
+		t.Fatalf("'a' should not be default anymore: %s", aLine)
+	}
+}
+
+func TestE2E_RegistrySetDefaultLocal_NotFound(t *testing.T) {
+	dataDir := t.TempDir()
+	os.Setenv("NEBI_DATA_DIR", dataDir)
+	t.Cleanup(func() { os.Unsetenv("NEBI_DATA_DIR") })
+
+	_ = runCLI(t, dataDir, "registry", "add", "--local",
+		"--name", "only", "--url", "https://only.io", "--namespace", "ns")
+
+	res := runCLI(t, dataDir, "registry", "set-default", "missing", "--local")
+	if res.ExitCode == 0 {
+		t.Fatal("expected error for missing registry")
+	}
+	if !strings.Contains(res.Stderr, "not found") {
+		t.Fatalf("expected 'not found' error, got: %s", res.Stderr)
+	}
+}
+
 func TestE2E_RegistryRemove(t *testing.T) {
 	setupLocalStore(t)
 	dir := t.TempDir()

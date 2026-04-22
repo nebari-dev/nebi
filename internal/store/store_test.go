@@ -369,6 +369,70 @@ func TestCreateRegistry_ExplicitDefaultHonored(t *testing.T) {
 	}
 }
 
+func TestSetDefaultRegistry_FlipsDefault(t *testing.T) {
+	s := testStore(t)
+
+	_ = s.CreateRegistry(&LocalRegistry{Name: "a", URL: "a.io"})
+	_ = s.CreateRegistry(&LocalRegistry{Name: "b", URL: "b.io"})
+	// 'a' was auto-defaulted (first registry); flip to 'b'.
+
+	got, err := s.SetDefaultRegistry("b")
+	if err != nil {
+		t.Fatalf("SetDefaultRegistry: %v", err)
+	}
+	if !got.IsDefault {
+		t.Fatal("returned registry should be default")
+	}
+
+	def, err := s.GetDefaultRegistry()
+	if err != nil {
+		t.Fatalf("GetDefaultRegistry: %v", err)
+	}
+	if def.Name != "b" {
+		t.Fatalf("default: got %q want %q", def.Name, "b")
+	}
+
+	// 'a' must no longer be default.
+	regs, _ := s.ListRegistries()
+	for _, r := range regs {
+		if r.Name == "a" && r.IsDefault {
+			t.Fatal("'a' should no longer be default")
+		}
+	}
+}
+
+func TestSetDefaultRegistry_Idempotent(t *testing.T) {
+	s := testStore(t)
+
+	_ = s.CreateRegistry(&LocalRegistry{Name: "only", URL: "u.io"})
+	got, err := s.SetDefaultRegistry("only")
+	if err != nil {
+		t.Fatalf("SetDefaultRegistry: %v", err)
+	}
+	if !got.IsDefault {
+		t.Fatal("lone registry should remain default")
+	}
+}
+
+func TestSetDefaultRegistry_NotFound(t *testing.T) {
+	s := testStore(t)
+	_ = s.CreateRegistry(&LocalRegistry{Name: "a", URL: "a.io"})
+
+	_, err := s.SetDefaultRegistry("missing")
+	if err == nil {
+		t.Fatal("expected error for missing registry")
+	}
+
+	// And the existing default must be untouched.
+	def, err := s.GetDefaultRegistry()
+	if err != nil {
+		t.Fatalf("GetDefaultRegistry: %v", err)
+	}
+	if def.Name != "a" {
+		t.Fatalf("default: got %q want %q", def.Name, "a")
+	}
+}
+
 func TestRegistryUniqueName(t *testing.T) {
 	s := testStore(t)
 

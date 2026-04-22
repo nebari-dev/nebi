@@ -60,6 +60,19 @@ Examples:
 	RunE: runRegistryAdd,
 }
 
+var registrySetDefaultCmd = &cobra.Command{
+	Use:   "set-default <name>",
+	Short: "Mark an existing OCI registry as the default",
+	Long: `Mark an existing OCI registry as the default. Any previously
+default registry is unset atomically.
+
+Examples:
+  nebi registry set-default quay
+  nebi registry set-default quay --local`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRegistrySetDefault,
+}
+
 var registryRemoveCmd = &cobra.Command{
 	Use:     "remove <name>",
 	Aliases: []string{"rm"},
@@ -82,6 +95,7 @@ func init() {
 	registryCmd.AddCommand(registryListCmd)
 	registryCmd.AddCommand(registryAddCmd)
 	registryCmd.AddCommand(registryRemoveCmd)
+	registryCmd.AddCommand(registrySetDefaultCmd)
 
 	registryAddCmd.Flags().StringVar(&registryAddName, "name", "", "Registry name (required)")
 	registryAddCmd.Flags().StringVar(&registryAddURL, "url", "", "Registry URL (required)")
@@ -97,6 +111,8 @@ func init() {
 
 	registryRemoveCmd.Flags().BoolVarP(&registryRemoveForce, "force", "f", false, "Skip confirmation prompt")
 	registryRemoveCmd.Flags().BoolVar(&registryLocal, "local", false, "Operate on local registry store instead of server")
+
+	registrySetDefaultCmd.Flags().BoolVar(&registryLocal, "local", false, "Operate on local registry store instead of server")
 }
 
 func runRegistryList(cmd *cobra.Command, args []string) error {
@@ -268,6 +284,51 @@ func runRegistryAddServer(password string) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "Added registry '%s' (%s)\n", registry.Name, registry.URL)
+	return nil
+}
+
+func runRegistrySetDefault(cmd *cobra.Command, args []string) error {
+	name := args[0]
+	if isLocalMode(cmd) {
+		return runRegistrySetDefaultLocal(name)
+	}
+	return runRegistrySetDefaultServer(name)
+}
+
+func runRegistrySetDefaultLocal(name string) error {
+	s, err := store.New()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	reg, err := s.SetDefaultRegistry(name)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "Default registry set to '%s' (%s)\n", reg.Name, reg.URL)
+	return nil
+}
+
+func runRegistrySetDefaultServer(name string) error {
+	client, err := getAuthenticatedClient()
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+
+	id, err := resolveRegistryID(client, ctx, name)
+	if err != nil {
+		return err
+	}
+	yes := true
+	reg, err := client.UpdateRegistry(ctx, id, cliclient.UpdateRegistryRequest{
+		IsDefault: &yes,
+	})
+	if err != nil {
+		return fmt.Errorf("set-default failed: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "Default registry set to '%s' (%s)\n", reg.Name, reg.URL)
 	return nil
 }
 

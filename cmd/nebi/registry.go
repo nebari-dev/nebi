@@ -370,7 +370,7 @@ func runRegistryRemoveLocal(name string) error {
 	cs := store.NewCredentialStore(s.DataDir())
 	cs.DeletePassword(name) // Ignore error — credential may not exist
 
-	fmt.Fprintf(os.Stderr, "Removed local registry '%s'\n", name)
+	fmt.Fprintf(os.Stderr, "Removed registry '%s'\n", name)
 	return nil
 }
 

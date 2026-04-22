@@ -11,14 +11,7 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 )
 
-// AssetFile is a single file to include in a bundle. RelPath is the
-// forward-slash path relative to the bundle root. AbsPath is the resolved
-// path on disk.
-type AssetFile struct {
-	RelPath string
-	AbsPath string
-	Size    int64
-}
+// Asset is defined in publisher.go and used across the package.
 
 // hardcodedDropDirs are directories always excluded from a bundle — they
 // either contain VCS metadata or local build/environment state that must
@@ -162,14 +155,14 @@ func matchAnyGlob(patterns []string, p string) bool {
 	return false
 }
 
-// WalkBundle returns the sorted list of files to include in a bundle,
+// walkBundle returns the sorted list of files to include in a bundle,
 // applying (in order): hardcoded drops, include filter, .gitignore,
 // exclude filter, force-includes.
 //
 // root must be the workspace directory. cfg controls include/exclude.
 // Errors surface for unreadable directory entries but not for missing
 // .gitignore (absent file is fine).
-func WalkBundle(root string, cfg BundleConfig) ([]AssetFile, error) {
+func walkBundle(root string, cfg bundleConfig) ([]Asset, error) {
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return nil, fmt.Errorf("resolve root: %w", err)
@@ -179,7 +172,7 @@ func WalkBundle(root string, cfg BundleConfig) ([]AssetFile, error) {
 		return nil, fmt.Errorf("read .gitignore: %w", err)
 	}
 
-	var out []AssetFile
+	var out []Asset
 	seen := make(map[string]struct{})
 
 	err = filepath.WalkDir(absRoot, func(path string, d os.DirEntry, walkErr error) error {
@@ -238,7 +231,7 @@ func WalkBundle(root string, cfg BundleConfig) ([]AssetFile, error) {
 			return nil
 		}
 		seen[rel] = struct{}{}
-		out = append(out, AssetFile{
+		out = append(out, Asset{
 			RelPath: rel,
 			AbsPath: path,
 			Size:    info.Size(),
@@ -262,7 +255,7 @@ func WalkBundle(root string, cfg BundleConfig) ([]AssetFile, error) {
 		if !info.Mode().IsRegular() {
 			continue
 		}
-		out = append(out, AssetFile{RelPath: name, AbsPath: abs, Size: info.Size()})
+		out = append(out, Asset{RelPath: name, AbsPath: abs, Size: info.Size()})
 		seen[name] = struct{}{}
 	}
 

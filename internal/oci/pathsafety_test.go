@@ -56,7 +56,7 @@ func TestValidateAssetPath(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := ValidateAssetPath(tc.path)
+			err := validateAssetPath(tc.path)
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Fatalf("expected nil, got %v", err)
@@ -86,7 +86,7 @@ func TestValidateAssetPaths_Collision(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := ValidateAssetPaths(tc.paths)
+			err := validateAssetPaths(tc.paths)
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Fatalf("expected nil, got %v", err)
@@ -101,7 +101,7 @@ func TestValidateAssetPaths_Collision(t *testing.T) {
 }
 
 func TestValidateAssetPaths_FirstFailWins(t *testing.T) {
-	err := ValidateAssetPaths([]string{"ok.txt", "../bad", "also_ok.txt"})
+	err := validateAssetPaths([]string{"ok.txt", "../bad", "also_ok.txt"})
 	if err == nil {
 		t.Fatal("expected error")
 	}

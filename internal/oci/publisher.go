@@ -29,102 +29,227 @@ const (
 )
 
 // defaultConcurrency is the fallback parallelism for blob transfers when
-// PublishOptions.Concurrency (or ImportOptions.Concurrency) is ≤ 0.
+// no concurrency option is provided.
 const defaultConcurrency = 8
 
-// PublishOptions contains options for publishing a workspace
-type PublishOptions struct {
-	Repository   string   // Full repository path (e.g., "ghcr.io/myorg/myenv")
-	Tag          string   // Primary tag for the manifest (e.g., "sha-a1b2c3d4e5f6")
-	ExtraTags    []string // Additional tags to apply (e.g., ["latest"])
-	Username     string   // Registry username
-	Password     string   // Registry password/token
-	RegistryHost string   // Registry hostname (e.g., "ghcr.io")
-
-	// Assets are additional files (relative path + absolute source path) to
-	// bundle as layers with MediaTypeNebiAsset. pixi.toml and pixi.lock must
-	// NOT appear here — they are always read from envPath and emitted as
-	// typed layers 0 and 1. When nil, the published artifact is a classic
-	// 2-layer bundle, byte-compatible with pre-bundle readers.
-	Assets []AssetFile
-
-	// Concurrency bounds parallel blob pushes. ≤ 0 means default (8).
-	Concurrency int
-
-	// PlainHTTP talks to the registry over HTTP instead of HTTPS. Only
-	// intended for local registries (dev, tests). Never set this for
-	// public registries.
+// Registry identifies an OCI registry endpoint plus credentials. Host is
+// the scheme-less hostname (e.g. "ghcr.io", "localhost:5000"). PlainHTTP
+// forces HTTP — dev/test registries only.
+type Registry struct {
+	Host      string
+	Namespace string
+	Username  string
+	Password  string
 	PlainHTTP bool
 }
 
-// PublishWorkspace publishes a workspace as an OCI bundle. The bundle
-// always contains pixi.toml and pixi.lock as the first two layers with
-// typed media types; opts.Assets contribute additional MediaTypeNebiAsset
-// layers. Blob pushes are parallelized up to opts.Concurrency.
-func PublishWorkspace(ctx context.Context, envPath string, opts PublishOptions) (string, error) {
-	pixiTomlPath := filepath.Join(envPath, "pixi.toml")
-	pixiLockPath := filepath.Join(envPath, "pixi.lock")
+// Asset is a single file bundled into a Nebi OCI artifact beyond the core
+// pixi.toml / pixi.lock layers. RelPath is the bundle-relative path (forward
+// slashes); AbsPath is the resolved on-disk source. Callers normally never
+// construct this — Preview and the internal walker do.
+type Asset struct {
+	RelPath string
+	AbsPath string
+	Size    int64
+}
 
+// PublishResult summarizes a successful publish.
+type PublishResult struct {
+	Repository string // fully-qualified host/namespace/repo
+	Tag        string
+	Digest     string // sha256:... of the manifest
+	AssetCount int    // files bundled beyond pixi.toml/pixi.lock
+}
+
+// PublishOption tunes Publish / PublishPixiOnly. Zero options = defaults.
+type PublishOption func(*publishConfig)
+
+type publishConfig struct {
+	extraTags      []string
+	concurrency    int
+	progress       func(label string, pushed, total int)
+	assetsOverride *[]Asset // non-nil when WithAssets was used
+}
+
+// WithExtraTags applies additional tags to the manifest after the primary
+// tag lands. There is no implicit "latest" — callers opt in explicitly.
+func WithExtraTags(tags ...string) PublishOption {
+	return func(c *publishConfig) { c.extraTags = append([]string(nil), tags...) }
+}
+
+// WithConcurrency bounds parallel blob pushes. Values ≤ 0 fall back to
+// the default (8).
+func WithConcurrency(n int) PublishOption {
+	return func(c *publishConfig) { c.concurrency = n }
+}
+
+// WithProgress installs a per-blob progress callback. Called once per
+// blob after it completes successfully. The callback must be safe to call
+// concurrently.
+func WithProgress(fn func(label string, pushed, total int)) PublishOption {
+	return func(c *publishConfig) { c.progress = fn }
+}
+
+// WithAssets bypasses the workspace walker and publishes the supplied
+// list verbatim. Any pixi.toml / pixi.lock entries in the slice are
+// silently dropped — those always ride as typed layers 0 and 1. Unsafe
+// paths still abort pre-network.
+func WithAssets(assets []Asset) PublishOption {
+	return func(c *publishConfig) {
+		cp := append([]Asset(nil), assets...)
+		c.assetsOverride = &cp
+	}
+}
+
+// Publish publishes the workspace at workspaceDir to reg/repo:tag. The
+// workspace is walked using hardcoded drops (.git/, .pixi/) →
+// [tool.nebi.bundle].include → .gitignore → [tool.nebi.bundle].exclude →
+// force-include of pixi.toml/pixi.lock. pixi.toml and pixi.lock always
+// become typed layers 0 and 1; every surviving file rides as a
+// MediaTypeNebiAsset layer. Unsafe asset paths abort before any blob
+// leaves the process.
+func Publish(
+	ctx context.Context,
+	workspaceDir string,
+	reg Registry,
+	repo, tag string,
+	opts ...PublishOption,
+) (PublishResult, error) {
+	cfg := resolveConfig(opts)
+
+	var assets []Asset
+	if cfg.assetsOverride != nil {
+		assets = *cfg.assetsOverride
+	} else {
+		bundleCfg, err := loadBundleConfig(filepath.Join(workspaceDir, "pixi.toml"))
+		if err != nil {
+			return PublishResult{}, fmt.Errorf("invalid bundle config: %w", err)
+		}
+		files, err := walkBundle(workspaceDir, bundleCfg)
+		if err != nil {
+			return PublishResult{}, fmt.Errorf("walk workspace: %w", err)
+		}
+		assets = stripCoreFiles(files)
+	}
+	return publishBundle(ctx, workspaceDir, reg, repo, tag, assets, cfg)
+}
+
+// PublishPixiOnly publishes only pixi.toml and pixi.lock from coreDir,
+// producing a legacy two-layer bundle byte-compatible with pre-bundle
+// artifacts. The walker is never invoked; stray files in coreDir are
+// ignored. Intended for server-side publish, where no user workspace
+// exists on disk.
+func PublishPixiOnly(
+	ctx context.Context,
+	coreDir string,
+	reg Registry,
+	repo, tag string,
+	opts ...PublishOption,
+) (PublishResult, error) {
+	cfg := resolveConfig(opts)
+	return publishBundle(ctx, coreDir, reg, repo, tag, nil, cfg)
+}
+
+// Preview returns the files Publish would bundle, in deterministic order,
+// without touching the network. Useful for pre-publish confirmation UI
+// and future "nebi bundle ls"-style commands.
+func Preview(ctx context.Context, workspaceDir string) ([]Asset, error) {
+	_ = ctx
+	bundleCfg, err := loadBundleConfig(filepath.Join(workspaceDir, "pixi.toml"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid bundle config: %w", err)
+	}
+	files, err := walkBundle(workspaceDir, bundleCfg)
+	if err != nil {
+		return nil, fmt.Errorf("walk workspace: %w", err)
+	}
+	return files, nil
+}
+
+func resolveConfig(opts []PublishOption) *publishConfig {
+	cfg := &publishConfig{}
+	for _, o := range opts {
+		o(cfg)
+	}
+	if cfg.concurrency <= 0 {
+		cfg.concurrency = defaultConcurrency
+	}
+	return cfg
+}
+
+// stripCoreFiles removes pixi.toml / pixi.lock from an asset slice so
+// they don't double up on the typed core layers the publisher emits.
+func stripCoreFiles(in []Asset) []Asset {
+	out := make([]Asset, 0, len(in))
+	for _, a := range in {
+		if a.RelPath == "pixi.toml" || a.RelPath == "pixi.lock" {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
+// publishBundle is the shared pipeline behind Publish and PublishPixiOnly.
+func publishBundle(
+	ctx context.Context,
+	dir string,
+	reg Registry,
+	repo, tag string,
+	assets []Asset,
+	cfg *publishConfig,
+) (PublishResult, error) {
+	pixiTomlPath := filepath.Join(dir, "pixi.toml")
+	pixiLockPath := filepath.Join(dir, "pixi.lock")
 	if _, err := os.Stat(pixiTomlPath); os.IsNotExist(err) {
-		return "", fmt.Errorf("pixi.toml not found in %s", envPath)
+		return PublishResult{}, fmt.Errorf("pixi files not found in %s: pixi.toml", dir)
 	}
 	if _, err := os.Stat(pixiLockPath); os.IsNotExist(err) {
-		return "", fmt.Errorf("pixi.lock not found in %s", envPath)
+		return PublishResult{}, fmt.Errorf("pixi files not found in %s: pixi.lock", dir)
 	}
 
-	// Validate every asset path pre-network. One violation aborts the
-	// whole publish. The validator also rejects dupes and case-insensitive
-	// collisions within the same bundle.
-	assetPaths := make([]string, 0, len(opts.Assets))
-	for _, a := range opts.Assets {
-		assetPaths = append(assetPaths, a.RelPath)
+	assets = stripCoreFiles(assets)
+	paths := make([]string, 0, len(assets))
+	for _, a := range assets {
+		paths = append(paths, a.RelPath)
 	}
-	if err := ValidateAssetPaths(assetPaths); err != nil {
-		return "", fmt.Errorf("unsafe path in bundle: %w", err)
+	if err := validateAssetPaths(paths); err != nil {
+		return PublishResult{}, fmt.Errorf("unsafe path in bundle: %w", err)
 	}
 
-	fs, err := file.New(envPath)
+	fullRepo := buildRepoRef(reg, repo)
+
+	fs, err := file.New(dir)
 	if err != nil {
-		return "", fmt.Errorf("failed to create file store: %w", err)
+		return PublishResult{}, fmt.Errorf("failed to create file store: %w", err)
 	}
 	defer fs.Close()
 
-	// Core layers.
 	tomlDesc, err := fs.Add(ctx, "pixi.toml", MediaTypePixiToml, "")
 	if err != nil {
-		return "", fmt.Errorf("failed to add pixi.toml: %w", err)
+		return PublishResult{}, fmt.Errorf("failed to add pixi.toml: %w", err)
 	}
 	tomlDesc.Annotations = map[string]string{ocispec.AnnotationTitle: "pixi.toml"}
 
 	lockDesc, err := fs.Add(ctx, "pixi.lock", MediaTypePixiLock, "")
 	if err != nil {
-		return "", fmt.Errorf("failed to add pixi.lock: %w", err)
+		return PublishResult{}, fmt.Errorf("failed to add pixi.lock: %w", err)
 	}
 	lockDesc.Annotations = map[string]string{ocispec.AnnotationTitle: "pixi.lock"}
 
-	layers := make([]ocispec.Descriptor, 0, 2+len(opts.Assets))
+	layers := make([]ocispec.Descriptor, 0, 2+len(assets))
 	layers = append(layers, tomlDesc, lockDesc)
-
-	// Asset layers. We pass the on-disk absolute path to the file store
-	// via its Add(name, mediaType, path) API, which hashes/sizes without
-	// copying. Annotation title holds the bundle-relative path.
-	assetDescs := make([]ocispec.Descriptor, 0, len(opts.Assets))
-	for _, asset := range opts.Assets {
-		// Skip core files if accidentally included by caller — they are
-		// already layers 0/1.
-		if asset.RelPath == "pixi.toml" || asset.RelPath == "pixi.lock" {
-			continue
-		}
+	assetDescs := make([]ocispec.Descriptor, 0, len(assets))
+	for _, asset := range assets {
 		desc, err := fs.Add(ctx, asset.RelPath, MediaTypeNebiAsset, asset.AbsPath)
 		if err != nil {
-			return "", fmt.Errorf("cannot read %s: %w", asset.RelPath, err)
+			return PublishResult{}, fmt.Errorf("cannot read %s: %w", asset.RelPath, err)
 		}
 		desc.Annotations = map[string]string{ocispec.AnnotationTitle: asset.RelPath}
 		layers = append(layers, desc)
 		assetDescs = append(assetDescs, desc)
 	}
 
-	// Config descriptor (empty JSON).
 	configData := []byte("{}")
 	configDesc := ocispec.Descriptor{
 		MediaType: MediaTypePixiConfig,
@@ -132,40 +257,31 @@ func PublishWorkspace(ctx context.Context, envPath string, opts PublishOptions) 
 		Size:      int64(len(configData)),
 	}
 	if err := fs.Push(ctx, configDesc, bytes.NewReader(configData)); err != nil {
-		return "", fmt.Errorf("failed to push config: %w", err)
+		return PublishResult{}, fmt.Errorf("failed to push config: %w", err)
 	}
 
 	manifestDesc, err := oras.Pack(ctx, fs, "", layers, oras.PackOptions{
 		ConfigDescriptor:  &configDesc,
 		PackImageManifest: true,
 		ManifestAnnotations: map[string]string{
-			ocispec.AnnotationDescription: fmt.Sprintf("%s:%s", opts.Repository, opts.Tag),
+			ocispec.AnnotationDescription: fmt.Sprintf("%s:%s", fullRepo, tag),
 		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to pack manifest: %w", err)
+		return PublishResult{}, fmt.Errorf("failed to pack manifest: %w", err)
 	}
 
-	repo, err := remote.NewRepository(opts.Repository)
+	remoteRepo, err := remote.NewRepository(fullRepo)
 	if err != nil {
-		return "", fmt.Errorf("failed to create repository: %w", err)
+		return PublishResult{}, fmt.Errorf("failed to create repository: %w", err)
 	}
-	repo.PlainHTTP = opts.PlainHTTP
-	repo.Client = &auth.Client{
+	remoteRepo.PlainHTTP = reg.PlainHTTP
+	remoteRepo.Client = &auth.Client{
 		Credential: func(ctx context.Context, hostname string) (auth.Credential, error) {
-			return auth.Credential{
-				Username: opts.Username,
-				Password: opts.Password,
-			}, nil
+			return auth.Credential{Username: reg.Username, Password: reg.Password}, nil
 		},
 	}
 
-	// Parallel blob push. Config, pixi.toml, pixi.lock, and every asset
-	// are pushed as independent jobs; first error aborts the rest.
-	concurrency := opts.Concurrency
-	if concurrency <= 0 {
-		concurrency = defaultConcurrency
-	}
 	blobs := make([]blobJob, 0, 3+len(assetDescs))
 	blobs = append(blobs,
 		blobJob{desc: configDesc, label: "config"},
@@ -173,47 +289,63 @@ func PublishWorkspace(ctx context.Context, envPath string, opts PublishOptions) 
 		blobJob{desc: lockDesc, label: "pixi.lock"},
 	)
 	for i, d := range assetDescs {
-		blobs = append(blobs, blobJob{desc: d, label: opts.Assets[i].RelPath})
+		blobs = append(blobs, blobJob{desc: d, label: assets[i].RelPath})
+	}
+	if err := pushBlobsParallel(ctx, fs, remoteRepo, blobs, cfg.concurrency, cfg.progress); err != nil {
+		return PublishResult{}, err
 	}
 
-	if err := pushBlobsParallel(ctx, fs, repo, blobs, concurrency); err != nil {
-		return "", err
-	}
-
-	// Push manifest with tag. Extra tags are applied sequentially after.
 	manifestReader, err := fs.Fetch(ctx, manifestDesc)
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch manifest: %w", err)
+		return PublishResult{}, fmt.Errorf("failed to fetch manifest: %w", err)
 	}
-	if err := repo.PushReference(ctx, manifestDesc, manifestReader, opts.Tag); err != nil {
-		return "", fmt.Errorf("failed to push manifest: %w", err)
+	if err := remoteRepo.PushReference(ctx, manifestDesc, manifestReader, tag); err != nil {
+		return PublishResult{}, fmt.Errorf("failed to push manifest: %w", err)
 	}
-	for _, extraTag := range opts.ExtraTags {
-		if err := repo.Tag(ctx, manifestDesc, extraTag); err != nil {
-			return "", fmt.Errorf("failed to tag manifest as %q: %w", extraTag, err)
+	for _, extraTag := range cfg.extraTags {
+		if err := remoteRepo.Tag(ctx, manifestDesc, extraTag); err != nil {
+			return PublishResult{}, fmt.Errorf("failed to tag manifest as %q: %w", extraTag, err)
 		}
 	}
-	return manifestDesc.Digest.String(), nil
+
+	return PublishResult{
+		Repository: fullRepo,
+		Tag:        tag,
+		Digest:     manifestDesc.Digest.String(),
+		AssetCount: len(assets),
+	}, nil
 }
 
-// blobJob is one blob to push from the file store to the remote repo.
+// buildRepoRef assembles the full repository reference "host[/namespace]/repo".
+func buildRepoRef(reg Registry, repo string) string {
+	base := reg.Host
+	if reg.Namespace != "" {
+		base = base + "/" + reg.Namespace
+	}
+	return base + "/" + repo
+}
+
 type blobJob struct {
 	desc  ocispec.Descriptor
-	label string // path or role for error messages
+	label string
 }
 
 // pushBlobsParallel pushes all blobs concurrently up to `limit` in flight.
-// First error cancels the rest via errgroup context; returned error is
-// annotated with the blob's label.
+// First error cancels the rest via errgroup context; the error is annotated
+// with the blob's label. Progress, if non-nil, is invoked once per
+// successful blob push.
 func pushBlobsParallel(
 	ctx context.Context,
 	fs *file.Store,
 	repo *remote.Repository,
 	jobs []blobJob,
 	limit int,
+	progress func(label string, pushed, total int),
 ) error {
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(limit)
+	total := len(jobs)
+	doneCh := make(chan string, total)
 	for _, j := range jobs {
 		j := j
 		g.Go(func() error {
@@ -225,8 +357,18 @@ func pushBlobsParallel(
 			if err := repo.Push(ctx, j.desc, r); err != nil {
 				return fmt.Errorf("failed to push %s: %w", j.label, err)
 			}
+			doneCh <- j.label
 			return nil
 		})
 	}
-	return g.Wait()
+	err := g.Wait()
+	close(doneCh)
+	if progress != nil {
+		pushed := 0
+		for label := range doneCh {
+			pushed++
+			progress(label, pushed, total)
+		}
+	}
+	return err
 }

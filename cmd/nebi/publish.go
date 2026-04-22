@@ -201,56 +201,29 @@ func runPublishLocal(args []string) error {
 		repo = publishRepo
 	}
 
-	// Build full repository path
-	host, namespace, plainHTTP := oci.ParseRegistryURLFull(reg.URL)
-	fullRepo := host
+	host, ns, plainHTTP := oci.ParseRegistryURLFull(reg.URL)
 	if reg.Namespace != "" {
-		fullRepo = host + "/" + reg.Namespace
-	} else if namespace != "" {
-		fullRepo = host + "/" + namespace
+		ns = reg.Namespace
 	}
-	fullRepo = fullRepo + "/" + repo
+	regEndpoint := oci.Registry{
+		Host:      host,
+		Namespace: ns,
+		Username:  reg.Username,
+		Password:  password,
+		PlainHTTP: plainHTTP,
+	}
 
 	ctx := context.Background()
-
-	// Collect bundle assets: workspace files filtered by [tool.nebi.bundle]
-	// include/exclude plus .gitignore. pixi.toml and pixi.lock are force-
-	// included by the walker; we strip them from the asset list because the
-	// publisher emits them as typed layers 0 and 1.
-	cfg, err := oci.LoadBundleConfig(pixiTomlPath)
-	if err != nil {
-		return fmt.Errorf("parsing bundle config: %w", err)
-	}
-	bundleFiles, err := oci.WalkBundle(ws.Path, cfg)
-	if err != nil {
-		return fmt.Errorf("walking workspace: %w", err)
-	}
-	assets := make([]oci.AssetFile, 0, len(bundleFiles))
-	for _, f := range bundleFiles {
-		if f.RelPath == "pixi.toml" || f.RelPath == "pixi.lock" {
-			continue
-		}
-		assets = append(assets, f)
-	}
-
-	opts := oci.PublishOptions{
-		Repository:   fullRepo,
-		Tag:          tag,
-		ExtraTags:    []string{"latest"},
-		Username:     reg.Username,
-		Password:     password,
-		RegistryHost: host,
-		Assets:       assets,
-		Concurrency:  publishConcurrency,
-		PlainHTTP:    plainHTTP,
-	}
-
-	fmt.Fprintf(os.Stderr, "Publishing %s to %s:%s (%d asset file(s))...\n",
-		ws.Name, fullRepo, tag, len(assets))
-	digest, err := oci.PublishWorkspace(ctx, ws.Path, opts)
+	fmt.Fprintf(os.Stderr, "Publishing %s to %s/%s/%s:%s...\n", ws.Name, host, ns, repo, tag)
+	res, err := oci.Publish(ctx, ws.Path, regEndpoint, repo, tag,
+		oci.WithExtraTags("latest"),
+		oci.WithConcurrency(publishConcurrency),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to publish: %w", err)
 	}
+	digest := res.Digest
+	fullRepo := res.Repository
 
 	// Record publication
 	pub := &store.LocalPublication{

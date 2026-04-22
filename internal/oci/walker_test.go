@@ -21,7 +21,7 @@ func mkfile(t *testing.T, root, rel string) {
 }
 
 // asRelPaths extracts RelPath field from a walk result for comparison.
-func asRelPaths(files []AssetFile) []string {
+func asRelPaths(files []Asset) []string {
 	out := make([]string, len(files))
 	for i, f := range files {
 		out[i] = f.RelPath
@@ -35,7 +35,7 @@ func TestWalkBundle_CoreFilesAlwaysIncluded(t *testing.T) {
 	mkfile(t, root, "pixi.toml")
 	mkfile(t, root, "pixi.lock")
 
-	files, err := WalkBundle(root, BundleConfig{})
+	files, err := walkBundle(root, bundleConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestWalkBundle_HardcodedDrops(t *testing.T) {
 	mkfile(t, root, ".pixi/envs/default/conda-meta/x.json")
 	mkfile(t, root, "README.md")
 
-	files, err := WalkBundle(root, BundleConfig{})
+	files, err := walkBundle(root, bundleConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestWalkBundle_Gitignore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files, err := WalkBundle(root, BundleConfig{})
+	files, err := walkBundle(root, bundleConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestWalkBundle_ExcludeGlob(t *testing.T) {
 	mkfile(t, root, "secrets/cert.pem")
 	mkfile(t, root, "src/app.go")
 
-	files, err := WalkBundle(root, BundleConfig{
+	files, err := walkBundle(root, bundleConfig{
 		Exclude: []string{"secrets/**"},
 	})
 	if err != nil {
@@ -119,7 +119,7 @@ func TestWalkBundle_IncludeGlob(t *testing.T) {
 	mkfile(t, root, "docs/guide.md")
 	mkfile(t, root, "scratch/tmp.py")
 
-	files, err := WalkBundle(root, BundleConfig{
+	files, err := walkBundle(root, bundleConfig{
 		Include: []string{"src/**"},
 	})
 	if err != nil {
@@ -139,7 +139,7 @@ func TestWalkBundle_IncludeAndExcludeCombine(t *testing.T) {
 	mkfile(t, root, "src/app.go")
 	mkfile(t, root, "src/debug.log")
 
-	files, err := WalkBundle(root, BundleConfig{
+	files, err := walkBundle(root, bundleConfig{
 		Include: []string{"src/**"},
 		Exclude: []string{"*.log"},
 	})
@@ -158,7 +158,7 @@ func TestWalkBundle_ExcludeCannotDropCoreFiles(t *testing.T) {
 	mkfile(t, root, "pixi.lock")
 	mkfile(t, root, "README.md")
 
-	files, err := WalkBundle(root, BundleConfig{
+	files, err := walkBundle(root, bundleConfig{
 		Exclude: []string{"pixi.toml", "pixi.lock", "README.md"},
 	})
 	if err != nil {
@@ -183,7 +183,7 @@ func TestWalkBundle_GitignoreCannotDropCoreFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files, err := WalkBundle(root, BundleConfig{})
+	files, err := walkBundle(root, bundleConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestWalkBundle_SymlinksSkipped(t *testing.T) {
 		t.Skipf("symlink not supported: %v", err)
 	}
 
-	files, err := WalkBundle(root, BundleConfig{})
+	files, err := walkBundle(root, bundleConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestWalkBundle_DeterministicOrder(t *testing.T) {
 	mkfile(t, root, "a.txt")
 	mkfile(t, root, "m/x.txt")
 
-	files, err := WalkBundle(root, BundleConfig{})
+	files, err := walkBundle(root, bundleConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}

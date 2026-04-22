@@ -21,14 +21,14 @@ var windowsReserved = map[string]struct{}{
 
 var controlCharRE = regexp.MustCompile(`[\x00-\x1f\x7f]`)
 
-// ValidateAssetPath checks a bundle asset's relative path for safety.
+// validateAssetPath checks a bundle asset's relative path for safety.
 // Rules: no absolute paths, no .. segments, no null/control chars, not a
 // reserved core name (pixi.toml / pixi.lock at root), no Windows-hostile
 // names, no trailing dot or space on any segment.
 //
 // Returns a descriptive error on rejection; nil on success. The returned
 // error is meant to be wrapped by the caller with the path prefix.
-func ValidateAssetPath(p string) error {
+func validateAssetPath(p string) error {
 	if p == "" {
 		return fmt.Errorf("empty path")
 	}
@@ -88,24 +88,24 @@ func ValidateAssetPath(p string) error {
 	return nil
 }
 
-// NormalizeForCollision returns a lowercased NFC form of p for collision
+// normalizeForCollision returns a lowercased NFC form of p for collision
 // detection within a bundle. Case-insensitive filesystems (macOS, Windows)
 // treat differently-cased paths as the same file, so we must reject them
 // before publish.
-func NormalizeForCollision(p string) string {
+func normalizeForCollision(p string) string {
 	return strings.ToLower(norm.NFC.String(p))
 }
 
-// ValidateAssetPaths runs ValidateAssetPath on each path and also checks
+// validateAssetPaths runs validateAssetPath on each path and also checks
 // for case-insensitive collisions across the set. Returns the first error
 // encountered.
-func ValidateAssetPaths(paths []string) error {
+func validateAssetPaths(paths []string) error {
 	seen := make(map[string]string, len(paths))
 	for _, p := range paths {
-		if err := ValidateAssetPath(p); err != nil {
+		if err := validateAssetPath(p); err != nil {
 			return fmt.Errorf("%s: %w", p, err)
 		}
-		key := NormalizeForCollision(p)
+		key := normalizeForCollision(p)
 		if prev, dup := seen[key]; dup {
 			return fmt.Errorf("%s: case-insensitive collision with %s", p, prev)
 		}

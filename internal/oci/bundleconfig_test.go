@@ -11,36 +11,36 @@ func TestLoadBundleConfig(t *testing.T) {
 	cases := []struct {
 		name string
 		body string
-		want BundleConfig
+		want bundleConfig
 	}{
 		{
 			name: "empty file",
 			body: "",
-			want: BundleConfig{},
+			want: bundleConfig{},
 		},
 		{
 			name: "no nebi section",
 			body: `[project]` + "\n" + `name = "x"` + "\n",
-			want: BundleConfig{},
+			want: bundleConfig{},
 		},
 		{
 			name: "include only",
 			body: `[tool.nebi.bundle]` + "\n" +
 				`include = ["src/**", "README.md"]` + "\n",
-			want: BundleConfig{Include: []string{"src/**", "README.md"}},
+			want: bundleConfig{Include: []string{"src/**", "README.md"}},
 		},
 		{
 			name: "exclude only",
 			body: `[tool.nebi.bundle]` + "\n" +
 				`exclude = ["*.log", "secrets/**"]` + "\n",
-			want: BundleConfig{Exclude: []string{"*.log", "secrets/**"}},
+			want: bundleConfig{Exclude: []string{"*.log", "secrets/**"}},
 		},
 		{
 			name: "both",
 			body: `[tool.nebi.bundle]` + "\n" +
 				`include = ["src/**"]` + "\n" +
 				`exclude = ["*.log"]` + "\n",
-			want: BundleConfig{Include: []string{"src/**"}, Exclude: []string{"*.log"}},
+			want: bundleConfig{Include: []string{"src/**"}, Exclude: []string{"*.log"}},
 		},
 		{
 			name: "unknown keys ignored",
@@ -49,7 +49,7 @@ func TestLoadBundleConfig(t *testing.T) {
 				`mystery = "value"` + "\n" +
 				`[tool.nebi.bundle.future]` + "\n" +
 				`key = 1` + "\n",
-			want: BundleConfig{Include: []string{"a"}},
+			want: bundleConfig{Include: []string{"a"}},
 		},
 	}
 	for _, tc := range cases {
@@ -59,7 +59,7 @@ func TestLoadBundleConfig(t *testing.T) {
 			if err := os.WriteFile(f, []byte(tc.body), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			got, err := LoadBundleConfig(f)
+			got, err := loadBundleConfig(f)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -71,11 +71,11 @@ func TestLoadBundleConfig(t *testing.T) {
 }
 
 func TestLoadBundleConfig_Missing(t *testing.T) {
-	got, err := LoadBundleConfig(filepath.Join(t.TempDir(), "nope.toml"))
+	got, err := loadBundleConfig(filepath.Join(t.TempDir(), "nope.toml"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !reflect.DeepEqual(got, BundleConfig{}) {
+	if !reflect.DeepEqual(got, bundleConfig{}) {
 		t.Fatalf("got %+v want zero", got)
 	}
 }

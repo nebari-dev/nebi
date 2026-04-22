@@ -265,7 +265,7 @@ func classifyBundleManifest(m ocispec.Manifest) (classifiedManifest, error) {
 		title := a.Annotations[ocispec.AnnotationTitle]
 		paths = append(paths, title)
 	}
-	if err := ValidateAssetPaths(paths); err != nil {
+	if err := validateAssetPaths(paths); err != nil {
 		return out, fmt.Errorf("unsafe path in bundle: %w", err)
 	}
 	return out, nil

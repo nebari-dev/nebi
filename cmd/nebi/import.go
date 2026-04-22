@@ -105,13 +105,9 @@ func runImport(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Restore assets. PullModeFull already populated Bytes in parallel and
-	// classifyBundleManifest already validated every title, but we re-run
-	// the per-path check here so offline code paths remain defence-in-depth.
+	// Restore assets. The oci package already validated every title before
+	// returning, and the full-mode pull populated Bytes in parallel.
 	for _, asset := range result.Assets {
-		if err := oci.ValidateAssetPath(asset.Path); err != nil {
-			return fmt.Errorf("unsafe path in bundle: %s: %w", asset.Path, err)
-		}
 		target := filepath.Join(outputDir, filepath.FromSlash(asset.Path))
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			return fmt.Errorf("import failed: %w; partial files at %s", err, absDir)

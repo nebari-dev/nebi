@@ -236,9 +236,11 @@ type classifiedManifest struct {
 
 // classifyBundleManifest inspects a parsed OCI manifest and returns its
 // classified layers. Rejects bundles that are missing a core layer,
-// contain a duplicate core layer, or carry asset layers with unsafe or
-// colliding title annotations. Unknown media types are ignored for
-// forward compatibility.
+// contain a duplicate core layer, carry asset layers with unsafe or
+// colliding title annotations, or carry an unknown media-type layer.
+// Unknown media types are rejected rather than tolerated: the extract
+// path delegates to oras.Copy which would still download them, so
+// silently classifying them away gives a false sense of safety.
 func classifyBundleManifest(m ocispec.Manifest) (classifiedManifest, error) {
 	var out classifiedManifest
 	var haveToml, haveLock bool
@@ -259,7 +261,7 @@ func classifyBundleManifest(m ocispec.Manifest) (classifiedManifest, error) {
 		case MediaTypeNebiAsset:
 			out.assets = append(out.assets, layer)
 		default:
-			// Unknown media type — ignore for forward compat.
+			return out, fmt.Errorf("invalid bundle: unknown media type %q", layer.MediaType)
 		}
 	}
 	if !haveToml || !haveLock {

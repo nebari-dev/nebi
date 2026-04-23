@@ -15,6 +15,26 @@ func layerDesc(mediaType, title string) ocispec.Descriptor {
 	return d
 }
 
+// TestClassifyBundleManifest_RejectsUnknownLayer isolates the unknown-
+// media-type case. Layers with unfamiliar types previously slipped
+// through classification but were still downloaded by oras.Copy in
+// ExtractBundle, writing arbitrary blobs to disk. Classifier must
+// reject the manifest instead of silently tolerating it.
+func TestClassifyBundleManifest_RejectsUnknownLayer(t *testing.T) {
+	m := ocispec.Manifest{Layers: []ocispec.Descriptor{
+		layerDesc(MediaTypePixiToml, "pixi.toml"),
+		layerDesc(MediaTypePixiLock, "pixi.lock"),
+		layerDesc("application/vnd.example.future.v2", "future.bin"),
+	}}
+	_, err := classifyBundleManifest(m)
+	if err == nil {
+		t.Fatal("expected unknown media type to be rejected")
+	}
+	if !strings.Contains(err.Error(), "unknown media type") {
+		t.Fatalf("expected 'unknown media type' in error, got %v", err)
+	}
+}
+
 func TestClassifyBundleManifest(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -76,13 +96,13 @@ func TestClassifyBundleManifest(t *testing.T) {
 			wantErr: "collision",
 		},
 		{
-			name: "unknown media type ignored",
+			name: "unknown media type rejected",
 			layers: []ocispec.Descriptor{
 				layerDesc(MediaTypePixiToml, "pixi.toml"),
 				layerDesc(MediaTypePixiLock, "pixi.lock"),
 				layerDesc("application/vnd.example.future.v2", "future.bin"),
 			},
-			wantAssets: nil,
+			wantErr: "unknown media type",
 		},
 	}
 	for _, tc := range cases {

@@ -213,6 +213,29 @@ func TestWalkBundle_SymlinksSkipped(t *testing.T) {
 	}
 }
 
+// TestWalkBundle_GitFileDropped covers the .git-as-file case (git
+// worktrees, submodules) where `.git` is a regular file containing a
+// `gitdir:` pointer to the real git directory. Shipping it leaks
+// filesystem layout; walker must drop it like the directory form.
+func TestWalkBundle_GitFileDropped(t *testing.T) {
+	root := t.TempDir()
+	mkfile(t, root, "pixi.toml")
+	mkfile(t, root, "pixi.lock")
+	if err := os.WriteFile(filepath.Join(root, ".git"), []byte("gitdir: /elsewhere/.git\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := walkBundle(root, bundleConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if f.RelPath == ".git" {
+			t.Fatalf(".git file must be dropped, got bundle: %v", asRelPaths(files))
+		}
+	}
+}
+
 func TestWalkBundle_DeterministicOrder(t *testing.T) {
 	root := t.TempDir()
 	mkfile(t, root, "pixi.toml")

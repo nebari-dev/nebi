@@ -13,10 +13,12 @@ import (
 
 // Asset is defined in publisher.go and used across the package.
 
-// hardcodedDropDirs are directories always excluded from a bundle — they
-// either contain VCS metadata or local build/environment state that must
-// not leak into shared artifacts.
-var hardcodedDropDirs = map[string]struct{}{
+// hardcodedDropNames are names always excluded from a bundle — VCS
+// metadata or local build/environment state that must not leak. Applies
+// whether the entry is a directory OR a regular file: `.git` is a file
+// (not a directory) in worktrees and submodules, where it holds a
+// `gitdir:` pointer.
+var hardcodedDropNames = map[string]struct{}{
 	".git":  {},
 	".pixi": {},
 }
@@ -188,12 +190,16 @@ func walkBundle(root string, cfg bundleConfig) ([]Asset, error) {
 		}
 		rel := filepath.ToSlash(relFS)
 
-		// Hardcoded drops at any depth (top-level only per spec wording,
-		// but treating .git/.pixi as always-drop at any depth is safer).
-		if d.IsDir() {
-			if _, drop := hardcodedDropDirs[d.Name()]; drop {
+		// Hardcoded drops at any depth. Applies to both the directory
+		// form and the file form (worktrees/submodules write `.git` as
+		// a file).
+		if _, drop := hardcodedDropNames[d.Name()]; drop {
+			if d.IsDir() {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if d.IsDir() {
 			// gitignore dir-only patterns may elide a whole subtree.
 			if gitignoreMatches(gi, rel, true) {
 				return filepath.SkipDir

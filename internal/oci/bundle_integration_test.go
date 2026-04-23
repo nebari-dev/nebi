@@ -258,11 +258,11 @@ func TestPublish_RejectsUnsafeAssetPath(t *testing.T) {
 	writeFile(t, src, "pixi.lock", "version: 6\n")
 	writeFile(t, src, "ok.txt", "ok")
 
-	// WithAssets bypasses the walker; we inject a malicious path to verify
+	// withAssets bypasses the walker; we inject a malicious path to verify
 	// the publisher's pre-network validation fires.
 	bad := []Asset{{RelPath: "../escape.txt", AbsPath: filepath.Join(src, "ok.txt"), Size: 2}}
 	_, err := Publish(context.Background(), src, testRegistry(host, "demo"), "unsafe", "v1",
-		WithAssets(bad),
+		withAssets(bad),
 	)
 	if err == nil {
 		t.Fatal("expected publish to reject unsafe path")

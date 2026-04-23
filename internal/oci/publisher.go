@@ -90,11 +90,13 @@ func WithProgress(fn func(label string, pushed, total int)) PublishOption {
 	return func(c *publishConfig) { c.progress = fn }
 }
 
-// WithAssets bypasses the workspace walker and publishes the supplied
-// list verbatim. Any pixi.toml / pixi.lock entries in the slice are
-// silently dropped — those always ride as typed layers 0 and 1. Unsafe
-// paths still abort pre-network.
-func WithAssets(assets []Asset) PublishOption {
+// withAssets bypasses the workspace walker and publishes the supplied
+// list verbatim. Unexported on purpose: the only legitimate callers are
+// the walker and Preview, both of which produce validated Asset values.
+// Leaving it exported would let Go callers supply AbsPaths that escape
+// the workspace — a non-threat today (package is `internal/`) but a
+// footgun worth not planting.
+func withAssets(assets []Asset) PublishOption {
 	return func(c *publishConfig) {
 		cp := append([]Asset(nil), assets...)
 		c.assetsOverride = &cp

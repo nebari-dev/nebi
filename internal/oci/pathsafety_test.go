@@ -56,6 +56,16 @@ func TestValidateAssetPath(t *testing.T) {
 		{"pixi toml case", "Pixi.toml", "core layer"},
 		{"pixi lock case", "PIXI.LOCK", "core layer"},
 
+		// Windows-invalid segment characters. `:` is especially
+		// dangerous on NTFS (alternate data streams).
+		{"colon in segment", "file:stream.txt", "invalid character"},
+		{"asterisk", "name*.txt", "invalid character"},
+		{"question mark", "name?.txt", "invalid character"},
+		{"pipe", "name|out.txt", "invalid character"},
+		{"less than", "a<b.txt", "invalid character"},
+		{"greater than", "a>b.txt", "invalid character"},
+		{"double quote", `a"b.txt`, "invalid character"},
+
 		// Empty
 		{"empty", "", "empty"},
 	}

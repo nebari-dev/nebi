@@ -21,6 +21,11 @@ var windowsReserved = map[string]struct{}{
 
 var controlCharRE = regexp.MustCompile(`[\x00-\x1f\x7f]`)
 
+// windowsInvalidSegmentChars are characters a path segment must not
+// contain on Windows. `:` is especially dangerous on NTFS due to
+// alternate data streams (e.g. "file.txt:stream").
+const windowsInvalidSegmentChars = `<>:"|?*`
+
 // validateAssetPath checks a bundle asset's relative path for safety.
 // Rules: no absolute paths, no .. segments, no null/control chars, not a
 // reserved core name (pixi.toml / pixi.lock at root), no Windows-hostile
@@ -70,6 +75,9 @@ func validateAssetPath(p string) error {
 		}
 		if strings.HasSuffix(seg, ".") || strings.HasSuffix(seg, " ") {
 			return fmt.Errorf("segment %q ends with dot or space", seg)
+		}
+		if strings.ContainsAny(seg, windowsInvalidSegmentChars) {
+			return fmt.Errorf("segment %q contains invalid character", seg)
 		}
 		// Windows reserved name check — strip extension.
 		base := seg

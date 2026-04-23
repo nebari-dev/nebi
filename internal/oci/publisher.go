@@ -117,6 +117,13 @@ func Publish(
 ) (PublishResult, error) {
 	cfg := resolveConfig(opts)
 
+	// Reject a symlinked pixi.toml up front — before we parse it — so
+	// a hostile link to a non-TOML target surfaces as a clear
+	// "regular file" error rather than a confusing parse error.
+	if err := assertCoreFile(filepath.Join(workspaceDir, "pixi.toml")); err != nil {
+		return PublishResult{}, err
+	}
+
 	var assets []Asset
 	if cfg.assetsOverride != nil {
 		assets = *cfg.assetsOverride
@@ -179,6 +186,24 @@ func resolveConfig(opts []PublishOption) *publishConfig {
 	return cfg
 }
 
+// assertCoreFile verifies that path exists and is a regular file
+// (not a symlink, device, or directory). Called for pixi.toml / pixi.lock
+// before the publisher hands them to file.Store, whose Add follows
+// symlinks when reading.
+func assertCoreFile(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("pixi files not found: %s", path)
+		}
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s must be a regular file, got mode %s", path, info.Mode())
+	}
+	return nil
+}
+
 // stripCoreFiles removes pixi.toml / pixi.lock from an asset slice so
 // they don't double up on the typed core layers the publisher emits.
 func stripCoreFiles(in []Asset) []Asset {
@@ -203,11 +228,16 @@ func publishBundle(
 ) (PublishResult, error) {
 	pixiTomlPath := filepath.Join(dir, "pixi.toml")
 	pixiLockPath := filepath.Join(dir, "pixi.lock")
-	if _, err := os.Stat(pixiTomlPath); os.IsNotExist(err) {
-		return PublishResult{}, fmt.Errorf("pixi files not found in %s: pixi.toml", dir)
+	// Lstat (not Stat) so a symlink at pixi.toml / pixi.lock pointing
+	// outside the workspace is rejected rather than silently bundled —
+	// file.Store.Add follows symlinks when it reads the file, so this
+	// check is the only thing between a hostile symlink and an artifact
+	// that leaks the target file's contents.
+	if err := assertCoreFile(pixiTomlPath); err != nil {
+		return PublishResult{}, err
 	}
-	if _, err := os.Stat(pixiLockPath); os.IsNotExist(err) {
-		return PublishResult{}, fmt.Errorf("pixi files not found in %s: pixi.lock", dir)
+	if err := assertCoreFile(pixiLockPath); err != nil {
+		return PublishResult{}, err
 	}
 
 	assets = stripCoreFiles(assets)

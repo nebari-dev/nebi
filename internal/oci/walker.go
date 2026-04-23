@@ -249,12 +249,15 @@ func walkBundle(root string, cfg bundleConfig) ([]Asset, error) {
 	}
 
 	// Ensure force-included files are present even if filters elided them.
+	// Use Lstat so a hostile symlink at pixi.toml (e.g. pointing outside
+	// the workspace) does not sneak into the bundle. Non-regular files
+	// (including symlinks) are silently skipped.
 	for name := range forceIncludeFiles {
 		if _, ok := seen[name]; ok {
 			continue
 		}
 		abs := filepath.Join(absRoot, name)
-		info, err := os.Stat(abs)
+		info, err := os.Lstat(abs)
 		if err != nil {
 			continue // caller asserts existence separately
 		}

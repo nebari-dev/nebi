@@ -224,6 +224,33 @@ func TestPublishBundle_ManyAssetsParallel(t *testing.T) {
 	}
 }
 
+// TestPublish_RejectsSymlinkedCoreFile covers the Lstat-on-core-files
+// fix. A workspace where pixi.toml is a symlink pointing outside the
+// workspace must be rejected — file.Store.Add follows symlinks when it
+// reads the core file, so without an Lstat guard the target's contents
+// would be bundled under the innocent pixi.toml title.
+func TestPublish_RejectsSymlinkedCoreFile(t *testing.T) {
+	host := startTestRegistry(t)
+	src := t.TempDir()
+	externalDir := t.TempDir()
+	external := filepath.Join(externalDir, "secret.txt")
+	if err := os.WriteFile(external, []byte("s3cret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(external, filepath.Join(src, "pixi.toml")); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+	writeFile(t, src, "pixi.lock", "version: 6\n")
+
+	_, err := Publish(context.Background(), src, testRegistry(host, "demo"), "symcore", "v1")
+	if err == nil {
+		t.Fatal("expected publish to reject symlinked pixi.toml")
+	}
+	if !strings.Contains(err.Error(), "regular file") {
+		t.Fatalf("expected 'regular file' error, got %v", err)
+	}
+}
+
 func TestPublish_RejectsUnsafeAssetPath(t *testing.T) {
 	host := startTestRegistry(t)
 	src := t.TempDir()

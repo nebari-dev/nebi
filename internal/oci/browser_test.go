@@ -1,6 +1,12 @@
 package oci
 
 import (
+	"context"
+	"crypto/tls"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -165,4 +171,65 @@ func TestClassifyBundleManifest(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestListRepositoriesViaQuayAPI_FollowsPagination verifies that the
+// Quay REST client follows the `next_page` cursor. The old
+// implementation fetched one page and returned, so namespaces with
+// >50 repos saw silently truncated browse lists.
+func TestListRepositoriesViaQuayAPI_FollowsPagination(t *testing.T) {
+	var hits int
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		next := r.URL.Query().Get("next_page")
+		w.Header().Set("Content-Type", "application/json")
+		if next == "" {
+			_, _ = io.WriteString(w, `{"repositories":[{"namespace":"ns","name":"r1","is_public":true}],"next_page":"cursor-2"}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"repositories":[{"namespace":"ns","name":"r2","is_public":false}]}`)
+	}))
+	defer srv.Close()
+
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{
+		RootCAs: srv.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs,
+	}}}
+
+	repos, err := ListRepositoriesViaQuayAPIWithClient(context.Background(), u.Host, "ns", "", client)
+	if err != nil {
+		t.Fatalf("list repos: %v", err)
+	}
+	if hits < 2 {
+		t.Fatalf("expected >=2 requests for pagination, got %d", hits)
+	}
+	if len(repos) != 2 {
+		t.Fatalf("expected 2 repos across pages, got %d (%v)", len(repos), repos)
+	}
+	names := make([]string, 0, len(repos))
+	for _, r := range repos {
+		names = append(names, r.Name)
+	}
+	if !containsAll(names, "ns/r1", "ns/r2") {
+		t.Fatalf("expected both pages' repos, got %v", names)
+	}
+}
+
+func containsAll(haystack []string, needles ...string) bool {
+	for _, n := range needles {
+		found := false
+		for _, h := range haystack {
+			if strings.EqualFold(h, n) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }

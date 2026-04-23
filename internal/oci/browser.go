@@ -155,56 +155,87 @@ func ListRepositories(ctx context.Context, opts BrowseOptions) ([]RepositoryInfo
 	return repos, nil
 }
 
-// ListRepositoriesViaQuayAPI lists repositories using Quay.io's REST API.
-// This is used as a fallback when the standard /v2/_catalog endpoint is not supported.
-// If an API token is provided, it is sent as a Bearer token to also list private repos.
-// Always includes public=true so public repos are returned regardless of auth.
+// ListRepositoriesViaQuayAPI lists repositories using Quay.io's REST
+// API, following pagination via the `next_page` cursor. Used as a
+// fallback when the standard /v2/_catalog endpoint isn't supported.
+// If an API token is provided, it is sent as a Bearer token so private
+// repos surface too; public=true is always set so public repos come
+// back regardless of auth.
 func ListRepositoriesViaQuayAPI(ctx context.Context, host, namespace, apiToken string) ([]RepositoryInfo, error) {
+	return ListRepositoriesViaQuayAPIWithClient(ctx, host, namespace, apiToken, http.DefaultClient)
+}
+
+// ListRepositoriesViaQuayAPIWithClient is the injectable-client form of
+// ListRepositoriesViaQuayAPI. The public entry point delegates here
+// with http.DefaultClient; tests aim at an httptest server by passing
+// a configured client.
+func ListRepositoriesViaQuayAPIWithClient(ctx context.Context, host, namespace, apiToken string, client *http.Client) ([]RepositoryInfo, error) {
 	if namespace == "" {
 		return nil, fmt.Errorf("namespace is required for Quay.io API")
 	}
-
-	apiURL := fmt.Sprintf("https://%s/api/v1/repository?namespace=%s&public=true", host, url.QueryEscape(namespace))
-
-	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	if apiToken != "" {
-		req.Header.Set("Authorization", "Bearer "+apiToken)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch from Quay.io API: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Quay.io API returned status %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Repositories []struct {
-			Namespace string `json:"namespace"`
-			Name      string `json:"name"`
-			IsPublic  bool   `json:"is_public"`
-		} `json:"repositories"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode Quay.io API response: %w", err)
+	if client == nil {
+		client = http.DefaultClient
 	}
 
 	var repos []RepositoryInfo
-	for _, r := range result.Repositories {
-		isPublic := r.IsPublic
-		repos = append(repos, RepositoryInfo{
-			Name:     fmt.Sprintf("%s/%s", r.Namespace, r.Name),
-			IsPublic: &isPublic,
-		})
+	nextPage := ""
+	// Quay paginates with a `next_page` cursor. An empty/missing cursor
+	// on the response marks the last page. Guard against a misbehaving
+	// server that never drops the cursor.
+	const maxPages = 1000
+	for i := 0; i < maxPages; i++ {
+		q := url.Values{}
+		q.Set("namespace", namespace)
+		q.Set("public", "true")
+		if nextPage != "" {
+			q.Set("next_page", nextPage)
+		}
+		apiURL := fmt.Sprintf("https://%s/api/v1/repository?%s", host, q.Encode())
+
+		req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+		if apiToken != "" {
+			req.Header.Set("Authorization", "Bearer "+apiToken)
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch from Quay.io API: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, fmt.Errorf("Quay.io API returned status %d", resp.StatusCode)
+		}
+
+		var page struct {
+			Repositories []struct {
+				Namespace string `json:"namespace"`
+				Name      string `json:"name"`
+				IsPublic  bool   `json:"is_public"`
+			} `json:"repositories"`
+			NextPage string `json:"next_page"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("failed to decode Quay.io API response: %w", err)
+		}
+		resp.Body.Close()
+
+		for _, r := range page.Repositories {
+			isPublic := r.IsPublic
+			repos = append(repos, RepositoryInfo{
+				Name:     fmt.Sprintf("%s/%s", r.Namespace, r.Name),
+				IsPublic: &isPublic,
+			})
+		}
+		if page.NextPage == "" {
+			return repos, nil
+		}
+		nextPage = page.NextPage
 	}
-	return repos, nil
+	return nil, fmt.Errorf("Quay.io API pagination exceeded %d pages", maxPages)
 }
 
 // ListTags lists all tags for a given repository reference

@@ -81,9 +81,13 @@ func validateAssetPath(p string) error {
 		}
 	}
 
-	// Reject reserved root paths. Subdirectory variants are allowed.
-	if cleaned == "pixi.toml" || cleaned == "pixi.lock" {
-		return fmt.Errorf("path collides with core layer %s", cleaned)
+	// Reject reserved root paths case-insensitively. Case-insensitive
+	// filesystems (Windows, default macOS) collapse `Pixi.toml` onto the
+	// core `pixi.toml` written at extract; the exact-match check misses
+	// those. Subdirectory variants are still allowed.
+	switch normalizeForCollision(cleaned) {
+	case "pixi.toml", "pixi.lock":
+		return fmt.Errorf("path %q collides with core layer", cleaned)
 	}
 	return nil
 }

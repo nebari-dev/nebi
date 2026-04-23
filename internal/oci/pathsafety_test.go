@@ -50,6 +50,11 @@ func TestValidateAssetPath(t *testing.T) {
 		// Reserved root
 		{"pixi toml root", "pixi.toml", "core layer"},
 		{"pixi lock root", "pixi.lock", "core layer"},
+		// Case-insensitive variants of core names: collide on
+		// case-insensitive filesystems (Windows, default macOS) with the
+		// core pixi.toml / pixi.lock written at extract time.
+		{"pixi toml case", "Pixi.toml", "core layer"},
+		{"pixi lock case", "PIXI.LOCK", "core layer"},
 
 		// Empty
 		{"empty", "", "empty"},

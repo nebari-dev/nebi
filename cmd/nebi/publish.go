@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -190,8 +193,17 @@ func runPublishLocal(args []string) error {
 		return fmt.Errorf("no credentials found for registry %q; re-add with 'nebi registry add --local'", reg.Name)
 	}
 
-	// Compute defaults
-	tag := contenthash.Hash(string(pixiToml), string(pixiLock))
+	// Compute defaults. The tag is content-addressed across the full
+	// bundle — pixi files + every asset's path and content SHA — so
+	// changing a bundled asset shifts the tag even when pixi.toml and
+	// pixi.lock are untouched. Preview walks the workspace with the
+	// same rules Publish will use, so both always agree on the asset
+	// set.
+	assetRefs, err := previewBundleForHash(ws.Path)
+	if err != nil {
+		return fmt.Errorf("preview bundle for tag hash: %w", err)
+	}
+	tag := contenthash.HashBundle(string(pixiToml), string(pixiLock), assetRefs)
 	if publishTag != "" {
 		tag = publishTag
 	}
@@ -239,6 +251,47 @@ func runPublishLocal(args []string) error {
 
 	fmt.Fprintf(os.Stderr, "Published %s:%s (digest: %s)\n", fullRepo, tag, digest)
 	return nil
+}
+
+// previewBundleForHash walks the workspace with the same filters
+// publishBundle will apply and returns each asset as a (path, digest)
+// pair suitable for contenthash.HashBundle. The "digest" is the SHA-256
+// of the file bytes — not the OCI blob digest — but that is fine: the
+// tag only needs to change when the bundle changes, and both sides
+// derive the hash the same way from file contents.
+func previewBundleForHash(workspaceDir string) ([]contenthash.AssetRef, error) {
+	assets, err := oci.Preview(context.Background(), workspaceDir)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contenthash.AssetRef, 0, len(assets))
+	for _, a := range assets {
+		// Skip core files — HashBundle already folds pixi.toml and
+		// pixi.lock in via its first two arguments, so counting them
+		// again here would just decorate the hash with no extra signal.
+		if a.RelPath == "pixi.toml" || a.RelPath == "pixi.lock" {
+			continue
+		}
+		sum, err := fileSHA256(a.AbsPath)
+		if err != nil {
+			return nil, fmt.Errorf("hash %s: %w", a.RelPath, err)
+		}
+		out = append(out, contenthash.AssetRef{Path: a.RelPath, Digest: "sha256:" + sum})
+	}
+	return out, nil
+}
+
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // resolveRegistryID resolves a registry name/ID or finds the default registry.

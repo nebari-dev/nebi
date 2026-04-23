@@ -213,6 +213,31 @@ func TestWalkBundle_SymlinksSkipped(t *testing.T) {
 	}
 }
 
+// TestWalkBundle_InvalidIncludeGlob covers the silent-doublestar-error
+// review comment. Malformed patterns currently matched nothing and the
+// user saw no warning — walker must surface the error.
+func TestWalkBundle_InvalidIncludeGlob(t *testing.T) {
+	root := t.TempDir()
+	mkfile(t, root, "pixi.toml")
+	mkfile(t, root, "pixi.lock")
+	mkfile(t, root, "src/app.go")
+
+	if _, err := walkBundle(root, bundleConfig{Include: []string{"[unterminated"}}); err == nil {
+		t.Fatal("expected error for malformed include glob, got nil")
+	}
+}
+
+func TestWalkBundle_InvalidExcludeGlob(t *testing.T) {
+	root := t.TempDir()
+	mkfile(t, root, "pixi.toml")
+	mkfile(t, root, "pixi.lock")
+	mkfile(t, root, "src/app.go")
+
+	if _, err := walkBundle(root, bundleConfig{Exclude: []string{"[unterminated"}}); err == nil {
+		t.Fatal("expected error for malformed exclude glob, got nil")
+	}
+}
+
 // TestWalkBundle_GitFileDropped covers the .git-as-file case (git
 // worktrees, submodules) where `.git` is a regular file containing a
 // `gitdir:` pointer to the real git directory. Shipping it leaks

@@ -142,6 +142,18 @@ func matchRule(r gitignorePattern, p string) bool {
 	return false
 }
 
+// validateGlobs rejects malformed doublestar patterns up front so users
+// see the error instead of silently missing files. kind is the field
+// label (include/exclude) used in the error message.
+func validateGlobs(kind string, patterns []string) error {
+	for _, p := range patterns {
+		if !doublestar.ValidatePattern(p) {
+			return fmt.Errorf("invalid %s glob %q", kind, p)
+		}
+	}
+	return nil
+}
+
 // matchAnyGlob reports whether p matches any glob in patterns.
 // Empty patterns slice → false. Uses doublestar syntax.
 func matchAnyGlob(patterns []string, p string) bool {
@@ -163,11 +175,18 @@ func matchAnyGlob(patterns []string, p string) bool {
 //
 // root must be the workspace directory. cfg controls include/exclude.
 // Errors surface for unreadable directory entries but not for missing
-// .gitignore (absent file is fine).
+// .gitignore (absent file is fine). Malformed include/exclude globs
+// are rejected up front so typos do not silently elide files.
 func walkBundle(root string, cfg bundleConfig) ([]Asset, error) {
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return nil, fmt.Errorf("resolve root: %w", err)
+	}
+	if err := validateGlobs("include", cfg.Include); err != nil {
+		return nil, err
+	}
+	if err := validateGlobs("exclude", cfg.Exclude); err != nil {
+		return nil, err
 	}
 	gi, err := parseGitignore(filepath.Join(absRoot, ".gitignore"))
 	if err != nil {

@@ -226,16 +226,9 @@ func walkBundle(root string, cfg bundleConfig) ([]Asset, error) {
 			return nil
 		}
 
-		// Regular files only. d.Type() reads the entry's type from the
-		// directory entry itself, which is populated on Linux, macOS,
-		// and Windows but may return 0 (a mode that is not IsRegular)
-		// on filesystems whose dirent omits type info (some NFS, exotic
-		// FUSE). On those, a legitimate regular file would be skipped;
-		// we accept the false negative here in exchange for avoiding a
-		// stat syscall per entry on every walk. If that becomes a real
-		// problem, fall back to d.Info().Mode().IsRegular().
+		// Regular files only.
 		if !d.Type().IsRegular() {
-			// Symlinks, devices, fifos: silently skip.
+			// Symlinks, devices, fifos — silently skip.
 			return nil
 		}
 

@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -112,14 +114,23 @@ func runImport(cmd *cobra.Command, args []string) error {
 }
 
 // dirIsNonEmpty reports whether path exists and contains at least one
-// entry. Missing directory returns (false, nil).
+// entry. Missing directory returns (false, nil). Reads a single dirent
+// via File.ReadDir(1) rather than slurping the whole directory, so the
+// check stays cheap even against a pathologically populated target.
 func dirIsNonEmpty(path string) (bool, error) {
-	entries, err := os.ReadDir(path)
+	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
+		return false, fmt.Errorf("opening %s: %w", path, err)
+	}
+	defer f.Close()
+	if _, err := f.ReadDir(1); err != nil {
+		if errors.Is(err, io.EOF) {
+			return false, nil
+		}
 		return false, fmt.Errorf("reading %s: %w", path, err)
 	}
-	return len(entries) > 0, nil
+	return true, nil
 }

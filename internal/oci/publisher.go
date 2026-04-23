@@ -329,6 +329,7 @@ func publishBundle(
 	if err != nil {
 		return PublishResult{}, fmt.Errorf("failed to fetch manifest: %w", err)
 	}
+	defer manifestReader.Close()
 	if err := remoteRepo.PushReference(ctx, manifestDesc, manifestReader, tag); err != nil {
 		return PublishResult{}, fmt.Errorf("failed to push manifest: %w", err)
 	}

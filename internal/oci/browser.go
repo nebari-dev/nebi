@@ -237,10 +237,11 @@ type classifiedManifest struct {
 // classifyBundleManifest inspects a parsed OCI manifest and returns its
 // classified layers. Rejects bundles that are missing a core layer,
 // contain a duplicate core layer, carry asset layers with unsafe or
-// colliding title annotations, or carry an unknown media-type layer.
-// Unknown media types are rejected rather than tolerated: the extract
-// path delegates to oras.Copy which would still download them, so
-// silently classifying them away gives a false sense of safety.
+// colliding title annotations, carry an unknown media-type layer, or
+// use the wrong AnnotationTitle on a core layer. Unknown media types
+// are rejected rather than tolerated: the extract path delegates to
+// oras.Copy which would still download them, so silently classifying
+// them away gives a false sense of safety.
 func classifyBundleManifest(m ocispec.Manifest) (classifiedManifest, error) {
 	var out classifiedManifest
 	var haveToml, haveLock bool
@@ -250,11 +251,17 @@ func classifyBundleManifest(m ocispec.Manifest) (classifiedManifest, error) {
 			if haveToml {
 				return out, fmt.Errorf("invalid bundle: duplicate core layer")
 			}
+			if title := layer.Annotations[ocispec.AnnotationTitle]; title != "pixi.toml" {
+				return out, fmt.Errorf("invalid bundle: pixi.toml core layer has title %q, expected \"pixi.toml\"", title)
+			}
 			out.pixiToml = layer
 			haveToml = true
 		case MediaTypePixiLock:
 			if haveLock {
 				return out, fmt.Errorf("invalid bundle: duplicate core layer")
+			}
+			if title := layer.Annotations[ocispec.AnnotationTitle]; title != "pixi.lock" {
+				return out, fmt.Errorf("invalid bundle: pixi.lock core layer has title %q, expected \"pixi.lock\"", title)
 			}
 			out.pixiLock = layer
 			haveLock = true

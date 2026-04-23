@@ -15,6 +15,39 @@ func layerDesc(mediaType, title string) ocispec.Descriptor {
 	return d
 }
 
+// TestClassifyBundleManifest_RejectsBadCoreTitle covers the core-title
+// validation fix. Publisher always sets AnnotationTitle to pixi.toml /
+// pixi.lock exactly; a crafted manifest could carry a hostile title
+// like "../evil" on the core layer. ExtractBundle writes via that title
+// through oras.Copy + file.Store. Belt-and-suspenders: reject at
+// classify time regardless of file.Store's traversal guard.
+func TestClassifyBundleManifest_RejectsBadCoreTitle(t *testing.T) {
+	cases := []struct {
+		name      string
+		tomlTitle string
+		lockTitle string
+	}{
+		{"toml title missing", "", "pixi.lock"},
+		{"toml title traversal", "../evil.toml", "pixi.lock"},
+		{"toml title absolute", "/etc/passwd", "pixi.lock"},
+		{"toml title wrong name", "not-pixi.toml", "pixi.lock"},
+		{"lock title missing", "pixi.toml", ""},
+		{"lock title traversal", "pixi.toml", "../evil.lock"},
+		{"lock title wrong name", "pixi.toml", "pixi.yaml"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := ocispec.Manifest{Layers: []ocispec.Descriptor{
+				layerDesc(MediaTypePixiToml, tc.tomlTitle),
+				layerDesc(MediaTypePixiLock, tc.lockTitle),
+			}}
+			if _, err := classifyBundleManifest(m); err == nil {
+				t.Fatalf("expected error for core titles %q/%q", tc.tomlTitle, tc.lockTitle)
+			}
+		})
+	}
+}
+
 // TestClassifyBundleManifest_RejectsUnknownLayer isolates the unknown-
 // media-type case. Layers with unfamiliar types previously slipped
 // through classification but were still downloaded by oras.Copy in

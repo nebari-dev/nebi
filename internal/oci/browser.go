@@ -71,6 +71,11 @@ type PullResult struct {
 	PixiToml string      `json:"pixi_toml"`
 	PixiLock string      `json:"pixi_lock"`
 	Assets   []AssetBlob `json:"assets,omitempty"`
+	// Digest is the sha256 of the manifest this result was built from.
+	// Callers that peeked via PullBundle can hand it back to a
+	// digest-pinned extract so a mutable tag cannot swap content out
+	// from under them between calls.
+	Digest string `json:"digest,omitempty"`
 }
 
 // ParseRegistryURL splits a registry URL into its host and optional namespace.
@@ -229,9 +234,10 @@ func ListTags(ctx context.Context, repoRef string, opts BrowseOptions) ([]TagInf
 
 // classifiedManifest is the result of splitting layers by role.
 type classifiedManifest struct {
-	pixiToml ocispec.Descriptor
-	pixiLock ocispec.Descriptor
-	assets   []ocispec.Descriptor // path stored in AnnotationTitle
+	manifestDesc ocispec.Descriptor // the manifest itself — used to pin Copy by digest
+	pixiToml     ocispec.Descriptor
+	pixiLock     ocispec.Descriptor
+	assets       []ocispec.Descriptor // path stored in AnnotationTitle
 }
 
 // classifyBundleManifest inspects a parsed OCI manifest and returns its
@@ -331,6 +337,7 @@ func resolveBundleManifest(
 	if err != nil {
 		return nil, cm, err
 	}
+	cm.manifestDesc = desc
 	return repo, cm, nil
 }
 
@@ -367,6 +374,7 @@ func PullBundle(ctx context.Context, repoRef, tag string, opts PullOptions) (*Pu
 		PixiToml: strings.TrimSpace(string(tomlBytes)),
 		PixiLock: strings.TrimSpace(string(lockBytes)),
 		Assets:   assetListing(cm.assets),
+		Digest:   cm.manifestDesc.Digest.String(),
 	}, nil
 }
 
@@ -420,7 +428,11 @@ func ExtractBundle(ctx context.Context, repoRef, tag, destDir string, opts PullO
 		}
 		return oras.SkipNode
 	}
-	if _, err := oras.Copy(ctx, repo, tag, fs, tag, copyOpts); err != nil {
+	// Copy by resolved manifest digest, not the original tag — pins the
+	// extract to exactly the manifest we validated above, so a tag move
+	// between classify and copy cannot swap in a different bundle.
+	srcRef := cm.manifestDesc.Digest.String()
+	if _, err := oras.Copy(ctx, repo, srcRef, fs, srcRef, copyOpts); err != nil {
 		return nil, fmt.Errorf("extract bundle: %w", err)
 	}
 
@@ -439,6 +451,7 @@ func ExtractBundle(ctx context.Context, repoRef, tag, destDir string, opts PullO
 		PixiToml: strings.TrimSpace(string(tomlBytes)),
 		PixiLock: strings.TrimSpace(string(lockBytes)),
 		Assets:   assetListing(cm.assets),
+		Digest:   cm.manifestDesc.Digest.String(),
 	}, nil
 }
 

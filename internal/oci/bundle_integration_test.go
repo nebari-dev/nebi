@@ -355,3 +355,29 @@ func TestPublish_ExtraTags_NoImplicitLatest(t *testing.T) {
 		t.Fatal("expected 'latest' tag to be missing when WithExtraTags was not supplied")
 	}
 }
+
+// TestPullBundle_ReturnsManifestDigest covers the TOCTOU fix. For
+// callers to pin the second network round (extract) to the same
+// content they peeked, PullBundle must expose the resolved manifest
+// digest so ExtractBundle can copy by digest instead of by tag.
+func TestPullBundle_ReturnsManifestDigest(t *testing.T) {
+	host := startTestRegistry(t)
+	src := t.TempDir()
+	writeFile(t, src, "pixi.toml", "[workspace]\nname = \"digest\"\n")
+	writeFile(t, src, "pixi.lock", "version: 6\n")
+
+	res, err := Publish(context.Background(), src, testRegistry(host, "demo"), "digest", "v1")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	pull, err := PullBundle(context.Background(), res.Repository, "v1", PullOptions{PlainHTTP: true})
+	if err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	if pull.Digest == "" {
+		t.Fatal("PullResult.Digest empty — callers need the digest to pin Extract across a tag move")
+	}
+	if pull.Digest != res.Digest {
+		t.Fatalf("digest mismatch: pull=%q publish=%q", pull.Digest, res.Digest)
+	}
+}

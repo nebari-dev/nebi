@@ -261,8 +261,17 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 		}
 
 		// Persist the resolved path so the CLI can find the workspace on disk
+		w.logger.Debug("workspace path before SetWorkspacePath", "workspace_id", ws.ID, "workspace_name", ws.Name, "current_path", ws.Path)
 		if ws.Path == "" {
-			w.svc.SetWorkspacePath(ws.ID, w.executor.GetWorkspacePath(ws))
+			resolvedPath := w.executor.GetWorkspacePath(ws)
+			w.logger.Debug("resolved workspace path", "workspace_id", ws.ID, "resolved_path", resolvedPath)
+			if err := w.svc.SetWorkspacePath(ws.ID, resolvedPath); err != nil {
+				w.logger.Error("failed to persist workspace path", "workspace_id", ws.ID, "resolved_path", resolvedPath, "error", err)
+			} else {
+				w.logger.Debug("workspace path persisted successfully", "workspace_id", ws.ID, "path", resolvedPath)
+			}
+		} else {
+			w.logger.Debug("workspace path already set, skipping", "workspace_id", ws.ID, "path", ws.Path)
 		}
 
 		// List installed packages and save to database

@@ -216,19 +216,22 @@ func (s *WorkspaceService) GetPublishDefaults(wsID string) (*PublishDefaultsResu
 	if hasVersion {
 		if s.isLocal {
 			wsPath := s.executor.GetWorkspacePath(&ws)
-			pixiToml, err := os.ReadFile(filepath.Join(wsPath, "pixi.toml"))
-			if err != nil {
-				return nil, fmt.Errorf("read pixi.toml for bundle hash: %w", err)
+			pixiToml, tomlErr := os.ReadFile(filepath.Join(wsPath, "pixi.toml"))
+			pixiLock, lockErr := os.ReadFile(filepath.Join(wsPath, "pixi.lock"))
+			// A workspace that has been pushed to but never installed yet
+			// has no pixi.lock on disk — return the "latest" fallback so
+			// the publish dialog stays usable instead of 500'ing.
+			if (tomlErr == nil || os.IsNotExist(tomlErr)) && (lockErr == nil || os.IsNotExist(lockErr)) {
+				refs, err := oci.PreviewAssetRefs(wsPath)
+				if err != nil {
+					return nil, fmt.Errorf("preview bundle for default tag: %w", err)
+				}
+				tag = contenthash.HashBundle(string(pixiToml), string(pixiLock), refs)
+			} else if tomlErr != nil {
+				return nil, fmt.Errorf("read pixi.toml for bundle hash: %w", tomlErr)
+			} else {
+				return nil, fmt.Errorf("read pixi.lock for bundle hash: %w", lockErr)
 			}
-			pixiLock, err := os.ReadFile(filepath.Join(wsPath, "pixi.lock"))
-			if err != nil {
-				return nil, fmt.Errorf("read pixi.lock for bundle hash: %w", err)
-			}
-			refs, err := oci.PreviewAssetRefs(wsPath)
-			if err != nil {
-				return nil, fmt.Errorf("preview bundle for default tag: %w", err)
-			}
-			tag = contenthash.HashBundle(string(pixiToml), string(pixiLock), refs)
 		} else if latestVersion.ContentHash != "" {
 			tag = latestVersion.ContentHash
 		}

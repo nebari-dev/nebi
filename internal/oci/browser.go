@@ -640,11 +640,23 @@ func ChangeRepositoryVisibility(ctx context.Context, host, repoPath, apiToken st
 }
 
 // fetchLayerBytes returns the full raw bytes for a layer descriptor.
+// The body is bounded to desc.Size+1 so a registry that omits
+// Content-Length and serves an oversized stream cannot exhaust RAM —
+// the size cap in resolveBundleManifest only sees the manifest's
+// declared sizes, not the actual transport bytes.
 func fetchLayerBytes(ctx context.Context, repo *remote.Repository, desc ocispec.Descriptor) ([]byte, error) {
 	reader, err := repo.Fetch(ctx, desc)
 	if err != nil {
 		return nil, err
 	}
 	defer reader.Close()
-	return io.ReadAll(reader)
+	limited := io.LimitReader(reader, desc.Size+1)
+	buf, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(buf)) > desc.Size {
+		return nil, fmt.Errorf("layer body exceeds declared size %d", desc.Size)
+	}
+	return buf, nil
 }

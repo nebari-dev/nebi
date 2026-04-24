@@ -79,6 +79,21 @@ platforms = ["linux-64"]
 	if string(lockBytes) != "version: 6\n# published\n" {
 		t.Errorf("published pixi.lock was not preserved in staging: %q", string(lockBytes))
 	}
+
+	// Audit row should record the import with the registry/repo/tag and
+	// manifest digest so IR can reconstruct what was pulled.
+	var audits []models.AuditLog
+	if err := db.Where("user_id = ? AND action = ?", userID, "import_workspace").Find(&audits).Error; err != nil {
+		t.Fatalf("query audit logs: %v", err)
+	}
+	if len(audits) != 1 {
+		t.Fatalf("expected exactly one import_workspace audit row, got %d", len(audits))
+	}
+	for _, want := range []string{`"registry":"import-src"`, `"repository":"bundle-import"`, `"tag":"v1"`, `"digest":"sha256:`} {
+		if !strings.Contains(audits[0].DetailsJSON, want) {
+			t.Errorf("audit details missing %s; got %s", want, audits[0].DetailsJSON)
+		}
+	}
 }
 
 func TestImportFromRegistry_TeamMode_PixiOnly(t *testing.T) {

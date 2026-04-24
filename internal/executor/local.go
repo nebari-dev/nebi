@@ -62,6 +62,13 @@ func normalizeEnvName(name string) string {
 	return name
 }
 
+// StagingRoot returns {baseDir}/.import-staging, creating it if missing.
+func (e *LocalExecutor) StagingRoot() string {
+	root := filepath.Join(e.baseDir, ".import-staging")
+	_ = os.MkdirAll(root, 0o755)
+	return root
+}
+
 // GetWorkspacePath returns the filesystem path for a workspace
 // For source=="local" workspaces with a path set, returns that path directly.
 // Otherwise: {baseDir}/{normalized-name}-{uuid}

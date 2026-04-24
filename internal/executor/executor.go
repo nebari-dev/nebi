@@ -26,4 +26,8 @@ type Executor interface {
 	DeleteWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error
 	SolveEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error
 	GetWorkspacePath(ws *models.Workspace) string
+	// StagingRoot returns a directory under the executor's storage root
+	// suitable for one-off staging (e.g. bundle import pre-extraction).
+	// The directory is ensured to exist.
+	StagingRoot() string
 }

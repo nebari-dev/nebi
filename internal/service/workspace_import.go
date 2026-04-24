@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
@@ -50,7 +51,19 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 		Username:  ep.Username,
 		Password:  ep.Password,
 		PlainHTTP: ep.PlainHTTP,
+		// Cap total bundle size to defend against a malicious or
+		// misconfigured registry serving a runaway asset layer. 5 GiB
+		// is well above any reasonable Pixi environment but small
+		// enough that exhausting disk requires deliberate effort.
+		MaxBundleBytes: 5 * 1024 * 1024 * 1024,
 	}
+
+	// Cap the synchronous OCI pull so a slow or malicious registry
+	// cannot hold an HTTP request open indefinitely. Generous enough
+	// for legitimate large bundles on slow networks; tight enough that
+	// hung requests free up server resources.
+	pullCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer cancel()
 
 	stagingDir, err := os.MkdirTemp(s.executor.StagingRoot(), "import-")
 	if err != nil {
@@ -59,14 +72,14 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 
 	var digest string
 	if s.isLocal {
-		result, err := oci.ExtractBundle(ctx, repoRef, req.Tag, stagingDir, pullOpts)
+		result, err := oci.ExtractBundle(pullCtx, repoRef, req.Tag, stagingDir, pullOpts)
 		if err != nil {
 			_ = os.RemoveAll(stagingDir)
 			return nil, fmt.Errorf("extract bundle: %w", err)
 		}
 		digest = result.Digest
 	} else {
-		result, err := oci.PullBundle(ctx, repoRef, req.Tag, pullOpts)
+		result, err := oci.PullBundle(pullCtx, repoRef, req.Tag, pullOpts)
 		if err != nil {
 			_ = os.RemoveAll(stagingDir)
 			return nil, fmt.Errorf("pull bundle: %w", err)

@@ -53,6 +53,12 @@ type PullOptions struct {
 	// PlainHTTP talks to the registry over HTTP. Test/local registries
 	// only.
 	PlainHTTP bool
+	// MaxBundleBytes caps the total size of all classified layers in the
+	// manifest (sum of pixi.toml + pixi.lock + every asset). Enforced
+	// before the first byte is fetched, so an attacker-controlled
+	// registry cannot exhaust disk by streaming a multi-GB asset blob.
+	// Zero or negative = no cap.
+	MaxBundleBytes int64
 }
 
 // AssetBlob names a single asset layer in a bundle. It is a listing
@@ -369,6 +375,16 @@ func resolveBundleManifest(
 		return nil, cm, err
 	}
 	cm.manifestDesc = desc
+	if opts.MaxBundleBytes > 0 {
+		var total int64
+		total += cm.pixiToml.Size + cm.pixiLock.Size
+		for _, a := range cm.assets {
+			total += a.Size
+		}
+		if total > opts.MaxBundleBytes {
+			return nil, cm, fmt.Errorf("bundle size %d bytes exceeds cap %d bytes", total, opts.MaxBundleBytes)
+		}
+	}
 	return repo, cm, nil
 }
 

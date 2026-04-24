@@ -182,6 +182,40 @@ func TestPullBundle_ListsAssetsWithoutFetchingBytes(t *testing.T) {
 	}
 }
 
+// TestPullBundle_RejectsOversizedBundle proves MaxBundleBytes is
+// enforced before any blob is fetched, so a registry serving a runaway
+// asset cannot exhaust disk through the import path.
+func TestPullBundle_RejectsOversizedBundle(t *testing.T) {
+	host := startTestRegistry(t)
+	src := t.TempDir()
+	writeFile(t, src, "pixi.toml", "[workspace]\nname = \"big\"\n")
+	writeFile(t, src, "pixi.lock", "version: 6\n")
+	writeFile(t, src, "asset.bin", strings.Repeat("Q", 8192))
+
+	res, err := Publish(context.Background(), src, testRegistry(host, "demo"), "big", "v1")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	_, err = PullBundle(context.Background(), res.Repository, "v1", PullOptions{
+		PlainHTTP:      true,
+		MaxBundleBytes: 4096, // less than the asset alone
+	})
+	if err == nil {
+		t.Fatalf("expected size-cap rejection, got nil")
+	}
+	if !strings.Contains(err.Error(), "exceeds cap") {
+		t.Fatalf("expected cap error, got: %v", err)
+	}
+
+	// Same call without cap should succeed.
+	if _, err := PullBundle(context.Background(), res.Repository, "v1", PullOptions{
+		PlainHTTP: true,
+	}); err != nil {
+		t.Fatalf("pull without cap: %v", err)
+	}
+}
+
 func TestPublishBundle_ManyAssetsParallel(t *testing.T) {
 	host := startTestRegistry(t)
 	src := t.TempDir()

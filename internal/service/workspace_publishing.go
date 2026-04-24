@@ -49,7 +49,7 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 	}
 
 	// Build full repository path
-	host, _ := oci.ParseRegistryURL(registry.URL)
+	host, _, plainHTTP := oci.ParseRegistryURLFull(registry.URL)
 	repoPath := req.Repository
 	if registry.Namespace != "" {
 		repoPath = registry.Namespace + "/" + req.Repository
@@ -71,16 +71,35 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 		extraTags = append(extraTags, t)
 	}
 
-	digest, err := oci.PublishWorkspace(ctx, wsPath, oci.PublishOptions{
-		Repository:   fullRepo,
-		Tag:          req.Tag,
-		ExtraTags:    extraTags,
-		Username:     registry.Username,
-		Password:     password,
-		RegistryHost: host,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("publish failed: %w", err)
+	var digest string
+	if s.isLocal {
+		regEndpoint := oci.Registry{
+			Host:      host,
+			Namespace: registry.Namespace,
+			Username:  registry.Username,
+			Password:  password,
+			PlainHTTP: plainHTTP,
+		}
+		res, err := oci.Publish(ctx, wsPath, regEndpoint, req.Repository, req.Tag,
+			oci.WithExtraTags(extraTags...),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("publish failed: %w", err)
+		}
+		digest = res.Digest
+	} else {
+		d, err := oci.PublishWorkspace(ctx, wsPath, oci.PublishOptions{
+			Repository:   fullRepo,
+			Tag:          req.Tag,
+			ExtraTags:    extraTags,
+			Username:     registry.Username,
+			Password:     password,
+			RegistryHost: host,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("publish failed: %w", err)
+		}
+		digest = d
 	}
 
 	// Create publication record

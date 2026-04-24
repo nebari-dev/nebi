@@ -69,9 +69,10 @@ type LogConfig struct {
 
 // PackageManagerConfig holds package manager configuration
 type PackageManagerConfig struct {
-	DefaultType string `mapstructure:"default_type"` // "pixi" or "uv"
-	PixiPath    string `mapstructure:"pixi_path"`    // Custom pixi binary path (optional)
-	UvPath      string `mapstructure:"uv_path"`      // Custom uv binary path (optional)
+	DefaultType     string   `mapstructure:"default_type"`     // "pixi" or "uv"
+	DefaultPackages []string `mapstructure:"default_packages"` // Packages injected into every workspace at creation time
+	PixiPath        string   `mapstructure:"pixi_path"`        // Custom pixi binary path (optional)
+	UvPath          string   `mapstructure:"uv_path"`          // Custom uv binary path (optional)
 }
 
 // StorageConfig holds storage configuration

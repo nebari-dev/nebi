@@ -25,6 +25,9 @@ log:
 
 package_manager:
   default_type: pixi  # "pixi" or "uv"
+  # default_packages:                 # Optional: packages injected into every workspace at creation time
+  #   - "ipykernel>=6"
+  #   - "ipywidgets>=8.1,<9"
   # pixi_path: /custom/path/to/pixi  # Optional: Custom pixi binary path
   # uv_path: /custom/path/to/uv      # Optional: Custom uv binary path
 

@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/registry"
@@ -114,16 +115,29 @@ platforms = ["linux-64"]
 		t.Fatalf("ImportFromRegistry: %v", err)
 	}
 
-	// Expect a JobTypeCreate job with pixi_toml set and NO import_staging_dir.
+	// Both modes stage to disk so the worker honours the published
+	// pixi.lock; team mode just stages fewer files (no asset layers).
 	var job models.Job
 	if err := db.Where("workspace_id = ? AND type = ?", ws.ID, models.JobTypeCreate).First(&job).Error; err != nil {
 		t.Fatalf("find create job: %v", err)
 	}
-	if _, ok := job.Metadata["import_staging_dir"]; ok {
-		t.Errorf("team mode should not set import_staging_dir in metadata; got %+v", job.Metadata)
+	stagingDir, _ := job.Metadata["import_staging_dir"].(string)
+	if stagingDir == "" {
+		t.Fatalf("team mode should stage pixi files for the worker, got %+v", job.Metadata)
 	}
-	got, _ := job.Metadata["pixi_toml"].(string)
-	if got == "" {
-		t.Errorf("team mode should stamp pixi_toml from registry; got empty, metadata=%+v", job.Metadata)
+	for _, rel := range []string{"pixi.toml", "pixi.lock"} {
+		if _, err := os.Stat(filepath.Join(stagingDir, rel)); err != nil {
+			t.Errorf("expected %s in team-mode staging dir, got %v", rel, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(stagingDir, "asset.txt")); !os.IsNotExist(err) {
+		t.Errorf("team mode must drop asset layers; asset.txt present in staging dir: %v", err)
+	}
+	// PullBundle whitespace-trims core layer bytes; the staged file
+	// must still carry the published lock content even after that
+	// transform (pixi tolerates the difference; both forms parse).
+	lockBytes, _ := os.ReadFile(filepath.Join(stagingDir, "pixi.lock"))
+	if !strings.Contains(string(lockBytes), "version: 6") {
+		t.Errorf("team mode should preserve published pixi.lock content, got %q", string(lockBytes))
 	}
 }

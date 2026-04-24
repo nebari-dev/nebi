@@ -42,6 +42,7 @@ const (
 	ActionRemovePackage    = "remove_package"
 	ActionSolveWorkspace   = "solve_workspace"
 	ActionPublishWorkspace = "publish_workspace"
+	ActionImportWorkspace  = "import_workspace"
 	ActionPush             = "push"
 	ActionReassignTag      = "reassign_tag"
 	ActionLogin            = "login"

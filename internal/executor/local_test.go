@@ -237,6 +237,58 @@ func TestLocalExecutor_CreateWorkspace_SeedDirPopulatesWorkspace(t *testing.T) {
 	}
 }
 
+// TestLocalExecutor_CreateWorkspace_SeedDirCleanedOnInstallFailure proves
+// the staging dir is removed even when pixi install errors out — otherwise
+// long-lived servers leak staging dirs on every failed import.
+func TestLocalExecutor_CreateWorkspace_SeedDirCleanedOnInstallFailure(t *testing.T) {
+	// Stub pixi: succeeds on `--version` (NewWithPath gate) but fails
+	// on every other invocation (i.e. `install`).
+	pixiBin := writeStubBinary(t, `#!/bin/sh
+case "$1" in
+  --version) echo "stub pixi 0.0.0"; exit 0 ;;
+  *) exit 1 ;;
+esac
+`)
+
+	cfg := &config.Config{
+		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PackageManager: config.PackageManagerConfig{
+			DefaultType: "pixi",
+			PixiPath:    pixiBin,
+		},
+	}
+	exec, err := NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+
+	stagingDir := t.TempDir()
+	writeSeedFile(t, stagingDir, "pixi.toml", "[project]\nname = \"x\"\n")
+	writeSeedFile(t, stagingDir, "pixi.lock", "version: 6\n")
+
+	ws := &models.Workspace{ID: uuid.New(), Name: "fail-seed", PackageManager: "pixi"}
+	var log bytes.Buffer
+	err = exec.CreateWorkspace(context.Background(), ws, &log, CreateWorkspaceOptions{SeedDir: stagingDir})
+	if err == nil {
+		t.Fatalf("expected pixi install failure, got nil; log: %s", log.String())
+	}
+
+	if _, err := os.Stat(stagingDir); !os.IsNotExist(err) {
+		t.Errorf("staging dir leaked after install failure: stat err=%v\nlog: %s", err, log.String())
+	}
+}
+
+// writeStubBinary writes an executable shell script to a temp file and
+// returns its path. Used to stub the pixi binary in tests.
+func writeStubBinary(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "stub")
+	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func writeSeedFile(t *testing.T, root, rel, body string) {
 	t.Helper()
 	full := filepath.Join(root, rel)

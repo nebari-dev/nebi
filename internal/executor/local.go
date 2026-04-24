@@ -107,15 +107,20 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 
 	switch {
 	case opts.SeedDir != "":
+		// Always clean up the staging dir, even on partial failure (e.g. a
+		// mid-walk error in seedWorkspaceFromDir leaves files behind).
+		// Owned by this branch end-to-end.
+		defer func() {
+			if rmErr := os.RemoveAll(opts.SeedDir); rmErr != nil {
+				fmt.Fprintf(logWriter, "Warning: staging cleanup failed: %v\n", rmErr)
+			}
+		}()
 		if err := os.MkdirAll(envPath, 0o755); err != nil {
 			return fmt.Errorf("create env dir: %w", err)
 		}
 		fmt.Fprintf(logWriter, "Seeding workspace from %s\n", opts.SeedDir)
 		if err := seedWorkspaceFromDir(opts.SeedDir, envPath); err != nil {
 			return fmt.Errorf("seed workspace: %w", err)
-		}
-		if err := os.RemoveAll(opts.SeedDir); err != nil {
-			fmt.Fprintf(logWriter, "Warning: staging cleanup failed: %v\n", err)
 		}
 		if err := runPixiInstall(ctx, pm, envPath, logWriter); err != nil {
 			return err

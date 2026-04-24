@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/google/uuid"
-	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
+	"github.com/nebari-dev/nebi/internal/audit"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/oci"
-	"gorm.io/gorm"
 )
 
 // ImportFromRegistryRequest selects the OCI bundle to import.
@@ -22,79 +22,85 @@ type ImportFromRegistryRequest struct {
 // ImportFromRegistry pulls an OCI bundle from a registered registry and
 // creates a new workspace populated from it.
 //
-// In local mode the full bundle (pixi.toml + pixi.lock + asset layers)
-// is extracted synchronously to a staging directory; the create job
-// metadata carries the path so the worker seeds the workspace directory
-// from it before pixi install runs. Network errors surface synchronously.
+// Flow is identical for both modes: resolve the registry, stage every
+// fetched artifact under the executor's import-staging root, then enqueue
+// a workspace-create job that points the worker at the staging dir
+// (CreateWorkspaceOptions.SeedDir). The mode difference is purely how
+// many bytes get staged:
 //
-// In team mode only pixi.toml is fetched (existing behavior); asset
-// layers and the published pixi.lock are dropped pending a team-mode
-// bundle design.
+//   - local mode: oci.ExtractBundle streams pixi.toml + pixi.lock + every
+//     asset layer to disk. The worker seeds the workspace from the full
+//     bundle, so asset files and the published lockfile both round-trip.
+//   - team mode: oci.PullBundle fetches only the two core layers; the
+//     handler writes them to the staging dir as plain files. Asset
+//     layers are listed in the manifest but not fetched. pixi.lock is
+//     still preserved on disk for the worker to use, fixing a latent
+//     bug where team-mode imports re-solved from pixi.toml alone.
+//
+// Network errors surface synchronously so the caller knows the import
+// did not start. On any failure after the staging dir is created, the
+// staging dir is removed before returning.
 func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID string, req ImportFromRegistryRequest, userID uuid.UUID) (*models.Workspace, error) {
-	var reg models.OCIRegistry
-	if err := s.db.Where("id = ?", registryID).First(&reg).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, ErrNotFound
-		}
+	ep, err := s.loadRegistryEndpoint(registryID)
+	if err != nil {
 		return nil, err
 	}
-
-	var password string
-	if reg.Password != "" {
-		var err error
-		password, err = nebicrypto.DecryptField(reg.Password, s.encKey)
-		if err != nil {
-			return nil, fmt.Errorf("decrypt registry credentials: %w", err)
-		}
+	repoRef := ep.RepoRef(req.Repository)
+	pullOpts := oci.PullOptions{
+		Username:  ep.Username,
+		Password:  ep.Password,
+		PlainHTTP: ep.PlainHTTP,
 	}
 
-	host, _, plainHTTP := oci.ParseRegistryURLFull(reg.URL)
-	repoPath := req.Repository
-	if reg.Namespace != "" {
-		repoPath = reg.Namespace + "/" + req.Repository
+	stagingDir, err := os.MkdirTemp(s.executor.StagingRoot(), "import-")
+	if err != nil {
+		return nil, fmt.Errorf("create staging dir: %w", err)
 	}
-	repoRef := fmt.Sprintf("%s/%s", host, repoPath)
 
+	var digest string
 	if s.isLocal {
-		stagingDir, err := os.MkdirTemp(s.executor.StagingRoot(), "import-")
+		result, err := oci.ExtractBundle(ctx, repoRef, req.Tag, stagingDir, pullOpts)
 		if err != nil {
-			return nil, fmt.Errorf("create staging dir: %w", err)
-		}
-
-		if _, err := oci.ExtractBundle(ctx, repoRef, req.Tag, stagingDir, oci.PullOptions{
-			Username:  reg.Username,
-			Password:  password,
-			PlainHTTP: plainHTTP,
-		}); err != nil {
 			_ = os.RemoveAll(stagingDir)
 			return nil, fmt.Errorf("extract bundle: %w", err)
 		}
-
-		ws, err := s.Create(ctx, CreateRequest{
-			Name:             req.Name,
-			PackageManager:   "pixi",
-			ImportStagingDir: stagingDir,
-		}, userID)
+		digest = result.Digest
+	} else {
+		result, err := oci.PullBundle(ctx, repoRef, req.Tag, pullOpts)
 		if err != nil {
 			_ = os.RemoveAll(stagingDir)
-			return nil, err
+			return nil, fmt.Errorf("pull bundle: %w", err)
 		}
-		return ws, nil
+		// Stage just the two core files; asset layers stay in the
+		// registry until team mode opts in to bundle support.
+		if err := os.WriteFile(filepath.Join(stagingDir, "pixi.toml"), []byte(result.PixiToml), 0o644); err != nil {
+			_ = os.RemoveAll(stagingDir)
+			return nil, fmt.Errorf("stage pixi.toml: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(stagingDir, "pixi.lock"), []byte(result.PixiLock), 0o644); err != nil {
+			_ = os.RemoveAll(stagingDir)
+			return nil, fmt.Errorf("stage pixi.lock: %w", err)
+		}
+		digest = result.Digest
 	}
 
-	// Team mode: pixi-only fallback (matches current ImportEnvironment
-	// handler behaviour).
-	result, err := oci.PullBundle(ctx, repoRef, req.Tag, oci.PullOptions{
-		Username:  reg.Username,
-		Password:  password,
-		PlainHTTP: plainHTTP,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("pull environment: %w", err)
-	}
-	return s.Create(ctx, CreateRequest{
-		Name:           req.Name,
-		PackageManager: "pixi",
-		PixiToml:       result.PixiToml,
+	ws, err := s.Create(ctx, CreateRequest{
+		Name:             req.Name,
+		PackageManager:   "pixi",
+		ImportStagingDir: stagingDir,
 	}, userID)
+	if err != nil {
+		_ = os.RemoveAll(stagingDir)
+		return nil, err
+	}
+
+	audit.LogAction(s.db, userID, audit.ActionImportWorkspace, fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
+		"name":       req.Name,
+		"registry":   ep.Registry.Name,
+		"repository": req.Repository,
+		"tag":        req.Tag,
+		"digest":     digest,
+	})
+
+	return ws, nil
 }

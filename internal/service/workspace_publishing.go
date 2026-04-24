@@ -36,28 +36,15 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 		return nil, &ValidationError{Message: "Workspace has no versions to publish"}
 	}
 
-	// Get registry
-	var registry models.OCIRegistry
-	if err := s.db.Where("id = ?", req.RegistryID).First(&registry).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+	ep, err := s.loadRegistryEndpoint(req.RegistryID)
+	if err != nil {
+		if err == ErrNotFound {
 			return nil, &ValidationError{Message: "Registry not found"}
 		}
 		return nil, err
 	}
-
-	// Decrypt registry password
-	password, err := nebicrypto.DecryptField(registry.Password, s.encKey)
-	if err != nil {
-		return nil, fmt.Errorf("decrypt registry credentials: %w", err)
-	}
-
-	// Build full repository path
-	host, _, plainHTTP := oci.ParseRegistryURLFull(registry.URL)
-	repoPath := req.Repository
-	if registry.Namespace != "" {
-		repoPath = registry.Namespace + "/" + req.Repository
-	}
-	fullRepo := fmt.Sprintf("%s/%s", host, repoPath)
+	registry := *ep.Registry
+	fullRepo := ep.RepoRef(req.Repository)
 
 	wsPath := s.executor.GetWorkspacePath(&ws)
 
@@ -77,11 +64,11 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 	var digest string
 	if s.isLocal {
 		regEndpoint := oci.Registry{
-			Host:      host,
-			Namespace: registry.Namespace,
-			Username:  registry.Username,
-			Password:  password,
-			PlainHTTP: plainHTTP,
+			Host:      ep.Host,
+			Namespace: ep.Namespace,
+			Username:  ep.Username,
+			Password:  ep.Password,
+			PlainHTTP: ep.PlainHTTP,
 		}
 		res, err := oci.Publish(ctx, wsPath, regEndpoint, req.Repository, req.Tag,
 			oci.WithExtraTags(extraTags...),
@@ -95,9 +82,9 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 			Repository:   fullRepo,
 			Tag:          req.Tag,
 			ExtraTags:    extraTags,
-			Username:     registry.Username,
-			Password:     password,
-			RegistryHost: host,
+			Username:     ep.Username,
+			Password:     ep.Password,
+			RegistryHost: ep.Host,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("publish failed: %w", err)

@@ -123,6 +123,9 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 		if req.PixiToml != "" {
 			metadata["pixi_toml"] = req.PixiToml
 		}
+		if req.ImportStagingDir != "" {
+			metadata["import_staging_dir"] = req.ImportStagingDir
+		}
 
 		job := &models.Job{
 			Type:        models.JobTypeCreate,

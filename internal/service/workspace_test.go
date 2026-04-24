@@ -513,3 +513,15 @@ func isConflictError(err error, target **ConflictError) bool {
 	}
 	return ok
 }
+
+func TestWorkspaceService_IsLocal(t *testing.T) {
+	localSvc, _ := testSetup(t, true)
+	if !localSvc.IsLocal() {
+		t.Error("expected IsLocal()=true when service constructed with isLocal=true")
+	}
+
+	teamSvc, _ := testSetup(t, false)
+	if teamSvc.IsLocal() {
+		t.Error("expected IsLocal()=false when service constructed with isLocal=false")
+	}
+}

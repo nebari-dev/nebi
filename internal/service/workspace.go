@@ -31,6 +31,9 @@ func New(db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool, encKe
 	return &WorkspaceService{db: db, queue: q, executor: exec, isLocal: isLocal, encKey: encKey, rbac: rbacProvider}
 }
 
+// IsLocal reports whether the service is running in local/desktop mode.
+func (s *WorkspaceService) IsLocal() bool { return s.isLocal }
+
 // List returns workspaces visible to the given user.
 // In local mode all workspaces are returned (no ownership filtering).
 func (s *WorkspaceService) List(userID uuid.UUID) ([]WorkspaceResponse, error) {

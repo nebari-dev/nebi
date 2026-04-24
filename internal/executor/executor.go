@@ -7,23 +7,23 @@ import (
 	"github.com/nebari-dev/nebi/internal/models"
 )
 
+// CreateWorkspaceOptions tunes CreateWorkspace. PixiToml seeds a newly
+// created workspace with a pinned manifest. SeedDir seeds a newly
+// created workspace from a pre-populated directory (used for bundle
+// imports); when non-empty, PixiToml is ignored because the seed's
+// pixi.toml is authoritative. SeedDir is removed after a successful
+// create to keep staging from leaking.
+type CreateWorkspaceOptions struct {
+	PixiToml string
+	SeedDir  string
+}
+
 // Executor interface for running workspace operations
 type Executor interface {
-	// CreateWorkspace creates a new workspace with optional pixi.toml content
-	CreateWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer, pixiToml ...string) error
-
-	// InstallPackages installs packages in a workspace
+	CreateWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer, opts CreateWorkspaceOptions) error
 	InstallPackages(ctx context.Context, ws *models.Workspace, packages []string, logWriter io.Writer) error
-
-	// RemovePackages removes packages from a workspace
 	RemovePackages(ctx context.Context, ws *models.Workspace, packages []string, logWriter io.Writer) error
-
-	// DeleteWorkspace removes a workspace
 	DeleteWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error
-
-	// SolveEnvironment runs pixi install to solve and install the current pixi.toml
 	SolveEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error
-
-	// GetWorkspacePath returns the filesystem path for a workspace
 	GetWorkspacePath(ws *models.Workspace) string
 }

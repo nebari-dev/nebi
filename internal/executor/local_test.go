@@ -182,6 +182,72 @@ func TestDeleteWorkspace_ManagedDirAlreadyGone(t *testing.T) {
 	}
 }
 
+func TestLocalExecutor_CreateWorkspace_SeedDirPopulatesWorkspace(t *testing.T) {
+	cfg := &config.Config{
+		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PackageManager: config.PackageManagerConfig{
+			DefaultType: "pixi",
+			PixiPath:    "/usr/bin/true", // no-op pixi install
+		},
+	}
+	exec, err := NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+
+	// Pre-stage an import directory with pixi + asset.
+	stagingDir := t.TempDir()
+	writeSeedFile(t, stagingDir, "pixi.toml", "[project]\nname = \"seed\"\n")
+	writeSeedFile(t, stagingDir, "pixi.lock", "version: 6\n")
+	writeSeedFile(t, stagingDir, "data/sample.csv", "a,b\n1,2\n")
+
+	ws := &models.Workspace{
+		ID:             uuid.New(),
+		Name:           "seeded",
+		PackageManager: "pixi",
+	}
+
+	var log bytes.Buffer
+	err = exec.CreateWorkspace(context.Background(), ws, &log, CreateWorkspaceOptions{
+		SeedDir: stagingDir,
+	})
+	if err != nil {
+		t.Fatalf("CreateWorkspace: %v\nlog: %s", err, log.String())
+	}
+
+	envPath := exec.GetWorkspacePath(ws)
+	for rel, want := range map[string]string{
+		"pixi.toml":       "[project]\nname = \"seed\"\n",
+		"pixi.lock":       "version: 6\n",
+		"data/sample.csv": "a,b\n1,2\n",
+	} {
+		got, err := os.ReadFile(filepath.Join(envPath, rel))
+		if err != nil {
+			t.Errorf("missing seeded file %s: %v", rel, err)
+			continue
+		}
+		if string(got) != want {
+			t.Errorf("seeded %s body mismatch:\ngot  %q\nwant %q", rel, got, want)
+		}
+	}
+
+	// Staging dir should be gone after successful seed.
+	if _, err := os.Stat(stagingDir); !os.IsNotExist(err) {
+		t.Errorf("staging dir still exists after CreateWorkspace")
+	}
+}
+
+func writeSeedFile(t *testing.T, root, rel, body string) {
+	t.Helper()
+	full := filepath.Join(root, rel)
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestNormalizeEnvName(t *testing.T) {
 	tests := []struct {
 		input    string

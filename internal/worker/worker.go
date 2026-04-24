@@ -249,13 +249,12 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 	case models.JobTypeCreate:
 		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusCreating)
 
-		// Check if pixi_toml content is provided in metadata
-		var pixiToml string
-		if pixiTomlInterface, ok := job.Metadata["pixi_toml"]; ok {
-			pixiToml, _ = pixiTomlInterface.(string)
+		opts := executor.CreateWorkspaceOptions{}
+		if v, ok := job.Metadata["pixi_toml"].(string); ok {
+			opts.PixiToml = v
 		}
 
-		if err := w.executor.CreateWorkspace(ctx, ws, logWriter, pixiToml); err != nil {
+		if err := w.executor.CreateWorkspace(ctx, ws, logWriter, opts); err != nil {
 			w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusFailed)
 			return err
 		}

@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
+	"github.com/nebari-dev/nebi/internal/contenthash"
 	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/oci"
@@ -221,8 +224,27 @@ func (s *WorkspaceService) GetPublishDefaults(wsID string) (*PublishDefaultsResu
 
 	tag := "latest"
 	var latestVersion models.WorkspaceVersion
-	if err := s.db.Where("workspace_id = ?", wsID).Order("version_number DESC").First(&latestVersion).Error; err == nil && latestVersion.ContentHash != "" {
-		tag = latestVersion.ContentHash
+	hasVersion := s.db.Where("workspace_id = ?", wsID).Order("version_number DESC").First(&latestVersion).Error == nil
+
+	if hasVersion {
+		if s.isLocal {
+			wsPath := s.executor.GetWorkspacePath(&ws)
+			pixiToml, err := os.ReadFile(filepath.Join(wsPath, "pixi.toml"))
+			if err != nil {
+				return nil, fmt.Errorf("read pixi.toml for bundle hash: %w", err)
+			}
+			pixiLock, err := os.ReadFile(filepath.Join(wsPath, "pixi.lock"))
+			if err != nil {
+				return nil, fmt.Errorf("read pixi.lock for bundle hash: %w", err)
+			}
+			refs, err := oci.PreviewAssetRefs(wsPath)
+			if err != nil {
+				return nil, fmt.Errorf("preview bundle for default tag: %w", err)
+			}
+			tag = contenthash.HashBundle(string(pixiToml), string(pixiLock), refs)
+		} else if latestVersion.ContentHash != "" {
+			tag = latestVersion.ContentHash
+		}
 	}
 
 	return &PublishDefaultsResult{

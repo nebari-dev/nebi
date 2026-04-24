@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/contenthash"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/oci"
 )
@@ -293,4 +294,38 @@ func mustParseHost(t *testing.T, rawURL string) string {
 		t.Fatal(err)
 	}
 	return u.Host
+}
+
+func TestGetPublishDefaults_LocalMode_UsesBundleHash(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "bundle-defaults", userID)
+
+	// Workspace on disk with pixi + one asset.
+	wsPath := svc.executor.GetWorkspacePath(ws)
+	os.MkdirAll(wsPath, 0o755)
+	pixiToml := "[project]\nname = \"bundle-defaults\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	pixiLock := "version: 6\n"
+	assetBody := `{"cells":[]}`
+	os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte(pixiToml), 0o644)
+	os.WriteFile(filepath.Join(wsPath, "pixi.lock"), []byte(pixiLock), 0o644)
+	os.WriteFile(filepath.Join(wsPath, "notebook.ipynb"), []byte(assetBody), 0o644)
+
+	db.Create(&models.OCIRegistry{Name: "r", URL: "https://ghcr.io", IsDefault: true})
+	// Seed a version so GetPublishDefaults doesn't short-circuit to "latest".
+	db.Create(&models.WorkspaceVersion{WorkspaceID: ws.ID, VersionNumber: 1, ContentHash: "sha-oldstyle"})
+
+	got, err := svc.GetPublishDefaults(ws.ID.String())
+	if err != nil {
+		t.Fatalf("GetPublishDefaults: %v", err)
+	}
+
+	refs, err := oci.PreviewAssetRefs(wsPath)
+	if err != nil {
+		t.Fatalf("PreviewAssetRefs: %v", err)
+	}
+	want := contenthash.HashBundle(pixiToml, pixiLock, refs)
+	if got.Tag != want {
+		t.Errorf("tag mismatch: got %q want %q", got.Tag, want)
+	}
 }

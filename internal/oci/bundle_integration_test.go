@@ -3,6 +3,7 @@ package oci
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -179,6 +180,126 @@ func TestPullBundle_ListsAssetsWithoutFetchingBytes(t *testing.T) {
 	}
 	if pull.Assets[0].Path != "big.bin" {
 		t.Fatalf("unexpected asset path %q", pull.Assets[0].Path)
+	}
+}
+
+// TestFetchLayerBytes_RejectsOversizedBody proves fetchLayerBytes rejects
+// a registry that declares a small layer Size but streams more bytes
+// (chunked, no Content-Length). Without the LimitReader bound the server
+// would buffer the full body into RAM regardless of the declared size.
+func TestFetchLayerBytes_RejectsOversizedBody(t *testing.T) {
+	host := startTestRegistry(t)
+	src := t.TempDir()
+	writeFile(t, src, "pixi.toml", "[workspace]\nname = \"x\"\n")
+	writeFile(t, src, "pixi.lock", "version: 6\n")
+
+	res, err := Publish(context.Background(), src, testRegistry(host, "demo"), "fakesize", "v1")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	// Wrap the inner registry with a shim that, on any blob fetch,
+	// strips Content-Length and appends extra bytes — simulating a
+	// hostile registry that lies about layer size.
+	innerHost := host
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if (r.Method == http.MethodGet) && strings.Contains(r.URL.Path, "/blobs/sha256:") {
+			// Proxy to inner registry, then append bogus bytes.
+			req, _ := http.NewRequestWithContext(r.Context(), r.Method, "http://"+innerHost+r.URL.RequestURI(), nil)
+			for k, vs := range r.Header {
+				for _, v := range vs {
+					req.Header.Add(k, v)
+				}
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+				return
+			}
+			defer resp.Body.Close()
+			// Drop Content-Length so client cannot pre-flight-reject;
+			// rely on chunked transfer.
+			for k, vs := range resp.Header {
+				if strings.EqualFold(k, "Content-Length") {
+					continue
+				}
+				for _, v := range vs {
+					w.Header().Add(k, v)
+				}
+			}
+			w.WriteHeader(resp.StatusCode)
+			body, _ := io.ReadAll(resp.Body)
+			w.Write(body)
+			// Append extra bytes — body now exceeds declared layer Size.
+			w.Write([]byte(strings.Repeat("X", 4096)))
+			return
+		}
+		req, _ := http.NewRequestWithContext(r.Context(), r.Method, "http://"+innerHost+r.URL.RequestURI(), nil)
+		for k, vs := range r.Header {
+			for _, v := range vs {
+				req.Header.Add(k, v)
+			}
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		for k, vs := range resp.Header {
+			for _, v := range vs {
+				w.Header().Add(k, v)
+			}
+		}
+		w.WriteHeader(resp.StatusCode)
+		io.Copy(w, resp.Body)
+	}))
+	t.Cleanup(srv.Close)
+	shimHost := strings.TrimPrefix(srv.URL, "http://")
+
+	// Rewrite repoRef from the original host to the shim host.
+	repoRef := strings.Replace(res.Repository, host, shimHost, 1)
+
+	_, err = PullBundle(context.Background(), repoRef, "v1", PullOptions{PlainHTTP: true})
+	if err == nil {
+		t.Fatalf("expected oversized-body rejection, got nil")
+	}
+	if !strings.Contains(err.Error(), "exceeds declared size") {
+		t.Fatalf("expected size-mismatch error, got: %v", err)
+	}
+}
+
+// TestPullBundle_RejectsOversizedBundle proves MaxBundleBytes is
+// enforced before any blob is fetched, so a registry serving a runaway
+// asset cannot exhaust disk through the import path.
+func TestPullBundle_RejectsOversizedBundle(t *testing.T) {
+	host := startTestRegistry(t)
+	src := t.TempDir()
+	writeFile(t, src, "pixi.toml", "[workspace]\nname = \"big\"\n")
+	writeFile(t, src, "pixi.lock", "version: 6\n")
+	writeFile(t, src, "asset.bin", strings.Repeat("Q", 8192))
+
+	res, err := Publish(context.Background(), src, testRegistry(host, "demo"), "big", "v1")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	_, err = PullBundle(context.Background(), res.Repository, "v1", PullOptions{
+		PlainHTTP:      true,
+		MaxBundleBytes: 4096, // less than the asset alone
+	})
+	if err == nil {
+		t.Fatalf("expected size-cap rejection, got nil")
+	}
+	if !strings.Contains(err.Error(), "exceeds cap") {
+		t.Fatalf("expected cap error, got: %v", err)
+	}
+
+	// Same call without cap should succeed.
+	if _, err := PullBundle(context.Background(), res.Repository, "v1", PullOptions{
+		PlainHTTP: true,
+	}); err != nil {
+		t.Fatalf("pull without cap: %v", err)
 	}
 }
 

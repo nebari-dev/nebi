@@ -37,8 +37,7 @@ var publishedRefRE = regexp.MustCompile(`Published (\S+) \(digest:`)
 func TestE2E_LocalBundlePublishImport(t *testing.T) {
 	// Isolate the local store for this test.
 	dataDir := t.TempDir()
-	os.Setenv("NEBI_DATA_DIR", dataDir)
-	t.Cleanup(func() { os.Unsetenv("NEBI_DATA_DIR") })
+	t.Setenv("NEBI_DATA_DIR", dataDir)
 
 	regHost := startE2ERegistry(t)
 	regURL := "http://" + regHost
@@ -153,8 +152,7 @@ func TestE2E_LocalBundlePublishImport(t *testing.T) {
 // with assets refuses to overwrite a non-empty destination.
 func TestE2E_LocalBundleRejectsNonEmptyDest(t *testing.T) {
 	dataDir := t.TempDir()
-	os.Setenv("NEBI_DATA_DIR", dataDir)
-	t.Cleanup(func() { os.Unsetenv("NEBI_DATA_DIR") })
+	t.Setenv("NEBI_DATA_DIR", dataDir)
 
 	regHost := startE2ERegistry(t)
 	regURL := "http://" + regHost

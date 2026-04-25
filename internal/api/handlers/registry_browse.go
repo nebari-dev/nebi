@@ -161,30 +161,10 @@ func (h *RegistryBrowseHandler) ImportEnvironment(c *gin.Context) {
 		return
 	}
 
-	regCreds, err := h.registrySvc.GetRegistryWithCredentials(registryID)
-	if err != nil {
-		handleServiceError(c, err)
-		return
-	}
-
-	host, _ := oci.ParseRegistryURL(regCreds.Registry.URL)
-	repoRef := fmt.Sprintf("%s/%s", host, req.Repository)
-	opts := oci.BrowseOptions{
-		RegistryHost: host,
-		Username:     regCreds.Registry.Username,
-		Password:     regCreds.Password,
-	}
-
-	result, err := oci.PullEnvironment(c.Request.Context(), repoRef, req.Tag, opts)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to pull environment"})
-		return
-	}
-
-	ws, err := h.wsSvc.Create(c.Request.Context(), service.CreateRequest{
-		Name:           req.Name,
-		PackageManager: "pixi",
-		PixiToml:       result.PixiToml,
+	ws, err := h.wsSvc.ImportFromRegistry(c.Request.Context(), registryID, service.ImportFromRegistryRequest{
+		Repository: req.Repository,
+		Tag:        req.Tag,
+		Name:       req.Name,
 	}, userID)
 	if err != nil {
 		handleServiceError(c, err)

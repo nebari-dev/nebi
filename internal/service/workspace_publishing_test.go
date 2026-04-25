@@ -2,10 +2,17 @@ package service
 
 import (
 	"context"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/contenthash"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/oci"
 )
 
 // --- GetPublishDefaults tests ---
@@ -220,5 +227,105 @@ func TestUpdatePublication_NotFound(t *testing.T) {
 	_, err := svc.UpdatePublication(context.Background(), ws.ID.String(), uuid.New().String(), true)
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestPublishWorkspace_LocalMode_UploadsAssets(t *testing.T) {
+	svc, db := testSetup(t, true) // isLocal=true
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "bundle-pub", userID)
+
+	// Seed the workspace on disk with pixi files + one asset.
+	wsPath := svc.executor.GetWorkspacePath(ws)
+	if err := os.MkdirAll(wsPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(wsPath, "pixi.toml"),
+		[]byte("[project]\nname = \"bundle-pub\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"), 0o644)
+	os.WriteFile(filepath.Join(wsPath, "pixi.lock"), []byte("version: 6\n"), 0o644)
+	os.WriteFile(filepath.Join(wsPath, "notebook.ipynb"), []byte(`{"cells":[]}`), 0o644)
+
+	// Seed a version row so PublishWorkspace finds a latest version.
+	db.Create(&models.WorkspaceVersion{
+		WorkspaceID:   ws.ID,
+		VersionNumber: 1,
+		ContentHash:   "sha-abcdef",
+	})
+
+	// Spin up the in-memory registry.
+	srv := httptest.NewServer(registry.New())
+	defer srv.Close()
+	regHost := mustParseHost(t, srv.URL)
+
+	reg := models.OCIRegistry{
+		Name:      "test-reg",
+		URL:       "http://" + regHost,
+		Namespace: "demo",
+		IsDefault: true,
+	}
+	db.Create(&reg)
+
+	_, err := svc.PublishWorkspace(context.Background(), ws.ID.String(), PublishWorkspaceRequest{
+		RegistryID: reg.ID,
+		Repository: "bundle-pub",
+		Tag:        "v1",
+	}, userID)
+	if err != nil {
+		t.Fatalf("PublishWorkspace: %v", err)
+	}
+
+	// Pull back via oci.PullBundle and verify the asset layer exists.
+	result, err := oci.PullBundle(context.Background(),
+		regHost+"/demo/bundle-pub", "v1",
+		oci.PullOptions{PlainHTTP: true},
+	)
+	if err != nil {
+		t.Fatalf("PullBundle: %v", err)
+	}
+	if len(result.Assets) != 1 || result.Assets[0].Path != "notebook.ipynb" {
+		t.Errorf("expected one asset notebook.ipynb, got %+v", result.Assets)
+	}
+}
+
+func mustParseHost(t *testing.T, rawURL string) string {
+	t.Helper()
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u.Host
+}
+
+func TestGetPublishDefaults_LocalMode_UsesBundleHash(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "bundle-defaults", userID)
+
+	// Workspace on disk with pixi + one asset.
+	wsPath := svc.executor.GetWorkspacePath(ws)
+	os.MkdirAll(wsPath, 0o755)
+	pixiToml := "[project]\nname = \"bundle-defaults\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
+	pixiLock := "version: 6\n"
+	assetBody := `{"cells":[]}`
+	os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte(pixiToml), 0o644)
+	os.WriteFile(filepath.Join(wsPath, "pixi.lock"), []byte(pixiLock), 0o644)
+	os.WriteFile(filepath.Join(wsPath, "notebook.ipynb"), []byte(assetBody), 0o644)
+
+	db.Create(&models.OCIRegistry{Name: "r", URL: "https://ghcr.io", IsDefault: true})
+	// Seed a version so GetPublishDefaults doesn't short-circuit to "latest".
+	db.Create(&models.WorkspaceVersion{WorkspaceID: ws.ID, VersionNumber: 1, ContentHash: "sha-oldstyle"})
+
+	got, err := svc.GetPublishDefaults(ws.ID.String())
+	if err != nil {
+		t.Fatalf("GetPublishDefaults: %v", err)
+	}
+
+	refs, err := oci.PreviewAssetRefs(wsPath)
+	if err != nil {
+		t.Fatalf("PreviewAssetRefs: %v", err)
+	}
+	want := contenthash.HashBundle(pixiToml, pixiLock, refs)
+	if got.Tag != want {
+		t.Errorf("tag mismatch: got %q want %q", got.Tag, want)
 	}
 }

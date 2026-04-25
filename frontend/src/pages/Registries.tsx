@@ -167,7 +167,7 @@ const RepositoryRow = ({
       await importMutation.mutateAsync({
         registryId,
         data: {
-          repository: repoName,
+          repository_path: repoName,
           tag: effectiveTag,
           name: importName.trim(),
         },

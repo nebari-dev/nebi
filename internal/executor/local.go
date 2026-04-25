@@ -151,6 +151,18 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 		}
 	}
 
+	if len(e.config.PackageManager.DefaultPackages) > 0 {
+		fmt.Fprintf(logWriter, "Installing default packages: %v\n", e.config.PackageManager.DefaultPackages)
+		installOpts := pkgmgr.InstallOptions{
+			EnvPath:   envPath,
+			Packages:  e.config.PackageManager.DefaultPackages,
+			LogWriter: logWriter,
+		}
+		if err := pm.Install(ctx, installOpts); err != nil {
+			return fmt.Errorf("failed to install default packages: %w", err)
+		}
+	}
+
 	fmt.Fprintf(logWriter, "Environment created successfully\n")
 	return nil
 }

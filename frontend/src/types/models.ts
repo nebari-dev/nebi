@@ -257,7 +257,8 @@ export interface RegistryTag {
 }
 
 export interface ImportEnvironmentRequest {
-  repository: string;
+  repository?: string;
+  repository_path?: string;
   tag: string;
   name: string;
 }

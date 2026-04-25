@@ -3,6 +3,8 @@ package service
 import (
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/models"
 	"gorm.io/gorm"
 )
 
@@ -198,5 +200,42 @@ func TestRegistryDelete_NotFound(t *testing.T) {
 	err := svc.DeleteRegistry("nonexistent")
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestFallbackRepositories_ReturnsNamespaceQualifiedPaths(t *testing.T) {
+	svc, db := registryTestSetup(t)
+
+	created, err := svc.CreateRegistry(CreateRegistryReq{Name: "fallback", URL: "https://quay.io", Namespace: "demo"})
+	if err != nil {
+		t.Fatalf("CreateRegistry: %v", err)
+	}
+
+	publishedBy := uuid.New()
+	for _, repository := range []string{"notebook", "demo/already-qualified"} {
+		if err := db.Create(&models.Publication{
+			WorkspaceID:   uuid.New(),
+			VersionNumber: 1,
+			RegistryID:    created.ID,
+			Repository:    repository,
+			Tag:           "v1",
+			PublishedBy:   publishedBy,
+		}).Error; err != nil {
+			t.Fatalf("create publication: %v", err)
+		}
+	}
+
+	repositories := svc.FallbackRepositories(created.ID.String())
+	seen := make(map[string]bool, len(repositories))
+	for _, repository := range repositories {
+		seen[repository] = true
+	}
+	for _, want := range []string{"demo/notebook", "demo/already-qualified"} {
+		if !seen[want] {
+			t.Fatalf("expected fallback repository %q in %v", want, repositories)
+		}
+	}
+	if seen["demo/demo/already-qualified"] {
+		t.Fatalf("did not expect namespace to be duplicated in %v", repositories)
 	}
 }

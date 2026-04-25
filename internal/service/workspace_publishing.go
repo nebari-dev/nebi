@@ -44,7 +44,7 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 		return nil, err
 	}
 	registry := *ep.Registry
-	fullRepo := ep.RepoRef(req.Repository)
+	fullRepo := ep.NamespaceRelativeRepoRef(req.Repository)
 
 	wsPath := s.executor.GetWorkspacePath(&ws)
 

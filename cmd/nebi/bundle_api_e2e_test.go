@@ -159,9 +159,9 @@ func TestE2E_BundlePublishImportViaAPI_LocalMode(t *testing.T) {
 
 	// ---- Import via POST /registries/:id/import ----
 	wsID := importViaAPI(t, serverURL, token, registryID, map[string]interface{}{
-		"repository": repoName,
-		"tag":        bundleTag,
-		"name":       "notebook-imported",
+		"repository_path": ociNS + "/" + repoName,
+		"tag":             bundleTag,
+		"name":            "notebook-imported",
 	})
 
 	// ---- Poll workspace until ready (or fail after 30s) ----

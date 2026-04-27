@@ -249,13 +249,9 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 	case models.JobTypeCreate:
 		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusCreating)
 
-		// Check if pixi_toml content is provided in metadata
-		var pixiToml string
-		if pixiTomlInterface, ok := job.Metadata["pixi_toml"]; ok {
-			pixiToml, _ = pixiTomlInterface.(string)
-		}
+		opts := buildCreateWorkspaceOptions(job.Metadata)
 
-		if err := w.executor.CreateWorkspace(ctx, ws, logWriter, pixiToml); err != nil {
+		if err := w.executor.CreateWorkspace(ctx, ws, logWriter, opts); err != nil {
 			w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusFailed)
 			return err
 		}
@@ -415,6 +411,20 @@ func (w *Worker) executeRollback(ctx context.Context, ws *models.Workspace, vers
 
 	fmt.Fprintf(logWriter, "Workspace restored successfully\n")
 	return nil
+}
+
+// buildCreateWorkspaceOptions converts JobTypeCreate metadata into the
+// executor's CreateWorkspaceOptions. It is lenient — missing keys or
+// non-string values yield zero-value fields rather than errors.
+func buildCreateWorkspaceOptions(metadata map[string]interface{}) executor.CreateWorkspaceOptions {
+	opts := executor.CreateWorkspaceOptions{}
+	if v, ok := metadata["pixi_toml"].(string); ok {
+		opts.PixiToml = v
+	}
+	if v, ok := metadata["import_staging_dir"].(string); ok {
+		opts.SeedDir = v
+	}
+	return opts
 }
 
 // parsePackagesFromMetadata extracts the packages list from job metadata,

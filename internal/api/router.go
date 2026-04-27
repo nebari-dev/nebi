@@ -27,10 +27,17 @@ import (
 
 // NewRouter creates and configures the Gin router
 func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Executor, logBroker *logstream.LogBroker, valkeyClient interface{}, logger *slog.Logger) *gin.Engine {
-	// Initialize RBAC enforcer and provider
-	if err := rbac.InitEnforcer(db, logger); err != nil {
-		logger.Error("Failed to initialize RBAC", "error", err)
-		panic(err)
+	// Initialize RBAC enforcer and provider.
+	// In local mode the admin and workspace RBAC checks are unconditionally
+	// skipped (see RequireAdmin / RequireWorkspaceAccess middleware), so
+	// there is no need to re-initialise the global casbin enforcer — and
+	// doing so would clobber the enforcer that was already set up by a
+	// concurrently-running team-mode server (relevant in tests).
+	if !cfg.IsLocalMode() {
+		if err := rbac.InitEnforcer(db, logger); err != nil {
+			logger.Error("Failed to initialize RBAC", "error", err)
+			panic(err)
+		}
 	}
 	rbacProvider := rbac.NewDefaultProvider()
 

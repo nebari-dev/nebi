@@ -513,3 +513,37 @@ func isConflictError(err error, target **ConflictError) bool {
 	}
 	return ok
 }
+
+func TestCreate_ForwardsImportStagingDirToJob(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+
+	ws, err := svc.Create(context.Background(), CreateRequest{
+		Name:             "import-seeded",
+		ImportStagingDir: "/tmp/fake-staging-path",
+	}, userID)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	var job models.Job
+	if err := db.Where("workspace_id = ? AND type = ?", ws.ID, models.JobTypeCreate).First(&job).Error; err != nil {
+		t.Fatalf("find create job: %v", err)
+	}
+	got, _ := job.Metadata["import_staging_dir"].(string)
+	if got != "/tmp/fake-staging-path" {
+		t.Errorf("job metadata import_staging_dir = %q, want %q", got, "/tmp/fake-staging-path")
+	}
+}
+
+func TestWorkspaceService_IsLocal(t *testing.T) {
+	localSvc, _ := testSetup(t, true)
+	if !localSvc.IsLocal() {
+		t.Error("expected IsLocal()=true when service constructed with isLocal=true")
+	}
+
+	teamSvc, _ := testSetup(t, false)
+	if teamSvc.IsLocal() {
+		t.Error("expected IsLocal()=false when service constructed with isLocal=false")
+	}
+}

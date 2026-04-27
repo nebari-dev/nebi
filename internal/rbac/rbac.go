@@ -50,18 +50,33 @@ func GetEnforcer() *casbin.Enforcer {
 	return enforcer
 }
 
-// CanReadWorkspace checks if user can read a workspace
+// CanReadWorkspace checks if user can read a workspace.
+// Local mode (cfg.IsLocalMode()) skips InitEnforcer because the
+// middleware bypasses RBAC anyway, so the enforcer global stays nil.
+// The data-layer functions defend against that explicitly: nothing to
+// enforce against = treat as allowed. Without this guard
+// WorkspaceService.Create nil-derefs through GrantWorkspaceAccess on
+// a fresh local-mode boot.
 func CanReadWorkspace(userID uuid.UUID, wsID uuid.UUID) (bool, error) {
+	if enforcer == nil {
+		return true, nil
+	}
 	return enforcer.Enforce(userID.String(), fmt.Sprintf("ws:%s", wsID.String()), "read")
 }
 
 // CanWriteWorkspace checks if user can write to a workspace
 func CanWriteWorkspace(userID uuid.UUID, wsID uuid.UUID) (bool, error) {
+	if enforcer == nil {
+		return true, nil
+	}
 	return enforcer.Enforce(userID.String(), fmt.Sprintf("ws:%s", wsID.String()), "write")
 }
 
 // IsAdmin checks if user has admin privileges
 func IsAdmin(userID uuid.UUID) (bool, error) {
+	if enforcer == nil {
+		return true, nil
+	}
 	return enforcer.Enforce(userID.String(), "admin", "admin")
 }
 
@@ -77,6 +92,10 @@ func GrantWorkspaceAccess(userID uuid.UUID, wsID uuid.UUID, role string) error {
 		return fmt.Errorf("invalid role: %s", role)
 	}
 
+	if enforcer == nil {
+		return nil
+	}
+
 	_, err := enforcer.AddPolicy(userID.String(), fmt.Sprintf("ws:%s", wsID.String()), action)
 	if err != nil {
 		return err
@@ -87,6 +106,10 @@ func GrantWorkspaceAccess(userID uuid.UUID, wsID uuid.UUID, role string) error {
 
 // RevokeWorkspaceAccess revokes access to a workspace
 func RevokeWorkspaceAccess(userID uuid.UUID, wsID uuid.UUID) error {
+	if enforcer == nil {
+		return nil
+	}
+
 	obj := fmt.Sprintf("ws:%s", wsID.String())
 
 	// Remove both read and write permissions

@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
+	"github.com/nebari-dev/nebi/internal/contenthash"
 	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/oci"
@@ -33,28 +36,15 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 		return nil, &ValidationError{Message: "Workspace has no versions to publish"}
 	}
 
-	// Get registry
-	var registry models.OCIRegistry
-	if err := s.db.Where("id = ?", req.RegistryID).First(&registry).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+	ep, err := s.loadRegistryEndpoint(req.RegistryID)
+	if err != nil {
+		if err == ErrNotFound {
 			return nil, &ValidationError{Message: "Registry not found"}
 		}
 		return nil, err
 	}
-
-	// Decrypt registry password
-	password, err := nebicrypto.DecryptField(registry.Password, s.encKey)
-	if err != nil {
-		return nil, fmt.Errorf("decrypt registry credentials: %w", err)
-	}
-
-	// Build full repository path
-	host, _ := oci.ParseRegistryURL(registry.URL)
-	repoPath := req.Repository
-	if registry.Namespace != "" {
-		repoPath = registry.Namespace + "/" + req.Repository
-	}
-	fullRepo := fmt.Sprintf("%s/%s", host, repoPath)
+	registry := *ep.Registry
+	fullRepo := ep.RepoRef(req.Repository)
 
 	wsPath := s.executor.GetWorkspacePath(&ws)
 
@@ -71,16 +61,35 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 		extraTags = append(extraTags, t)
 	}
 
-	digest, err := oci.PublishWorkspace(ctx, wsPath, oci.PublishOptions{
-		Repository:   fullRepo,
-		Tag:          req.Tag,
-		ExtraTags:    extraTags,
-		Username:     registry.Username,
-		Password:     password,
-		RegistryHost: host,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("publish failed: %w", err)
+	var digest string
+	if s.isLocal {
+		regEndpoint := oci.Registry{
+			Host:      ep.Host,
+			Namespace: ep.Namespace,
+			Username:  ep.Username,
+			Password:  ep.Password,
+			PlainHTTP: ep.PlainHTTP,
+		}
+		res, err := oci.Publish(ctx, wsPath, regEndpoint, req.Repository, req.Tag,
+			oci.WithExtraTags(extraTags...),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("publish failed: %w", err)
+		}
+		digest = res.Digest
+	} else {
+		d, err := oci.PublishWorkspace(ctx, wsPath, oci.PublishOptions{
+			Repository:   fullRepo,
+			Tag:          req.Tag,
+			ExtraTags:    extraTags,
+			Username:     ep.Username,
+			Password:     ep.Password,
+			RegistryHost: ep.Host,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("publish failed: %w", err)
+		}
+		digest = d
 	}
 
 	// Create publication record
@@ -202,8 +211,30 @@ func (s *WorkspaceService) GetPublishDefaults(wsID string) (*PublishDefaultsResu
 
 	tag := "latest"
 	var latestVersion models.WorkspaceVersion
-	if err := s.db.Where("workspace_id = ?", wsID).Order("version_number DESC").First(&latestVersion).Error; err == nil && latestVersion.ContentHash != "" {
-		tag = latestVersion.ContentHash
+	hasVersion := s.db.Where("workspace_id = ?", wsID).Order("version_number DESC").First(&latestVersion).Error == nil
+
+	if hasVersion {
+		if s.isLocal {
+			wsPath := s.executor.GetWorkspacePath(&ws)
+			pixiToml, tomlErr := os.ReadFile(filepath.Join(wsPath, "pixi.toml"))
+			pixiLock, lockErr := os.ReadFile(filepath.Join(wsPath, "pixi.lock"))
+			// A workspace that has been pushed to but never installed yet
+			// has no pixi.lock on disk — return the "latest" fallback so
+			// the publish dialog stays usable instead of 500'ing.
+			if (tomlErr == nil || os.IsNotExist(tomlErr)) && (lockErr == nil || os.IsNotExist(lockErr)) {
+				refs, err := oci.PreviewAssetRefs(wsPath)
+				if err != nil {
+					return nil, fmt.Errorf("preview bundle for default tag: %w", err)
+				}
+				tag = contenthash.HashBundle(string(pixiToml), string(pixiLock), refs)
+			} else if tomlErr != nil {
+				return nil, fmt.Errorf("read pixi.toml for bundle hash: %w", tomlErr)
+			} else {
+				return nil, fmt.Errorf("read pixi.lock for bundle hash: %w", lockErr)
+			}
+		} else if latestVersion.ContentHash != "" {
+			tag = latestVersion.ContentHash
+		}
 	}
 
 	return &PublishDefaultsResult{

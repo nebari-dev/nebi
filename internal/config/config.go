@@ -128,6 +128,30 @@ func Load() (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
+	// viper's AutomaticEnv + Unmarshal does not propagate env vars into
+	// nested structs without explicit BindEnv. Bind each nested key so that
+	// e.g. NEBI_PACKAGE_MANAGER_PIXI_PATH overrides the pixi_path field.
+	_ = v.BindEnv("package_manager.default_type", "NEBI_PACKAGE_MANAGER_DEFAULT_TYPE")
+	_ = v.BindEnv("package_manager.pixi_path", "NEBI_PACKAGE_MANAGER_PIXI_PATH")
+	_ = v.BindEnv("package_manager.uv_path", "NEBI_PACKAGE_MANAGER_UV_PATH")
+	_ = v.BindEnv("storage.workspaces_dir", "NEBI_STORAGE_WORKSPACES_DIR")
+	_ = v.BindEnv("server.host", "NEBI_SERVER_HOST")
+	_ = v.BindEnv("server.port", "NEBI_SERVER_PORT")
+	_ = v.BindEnv("server.mode", "NEBI_SERVER_MODE")
+	_ = v.BindEnv("server.base_path", "NEBI_SERVER_BASE_PATH")
+	_ = v.BindEnv("database.driver", "NEBI_DATABASE_DRIVER")
+	_ = v.BindEnv("database.dsn", "NEBI_DATABASE_DSN")
+	_ = v.BindEnv("auth.type", "NEBI_AUTH_TYPE")
+	_ = v.BindEnv("auth.jwt_secret", "NEBI_AUTH_JWT_SECRET")
+	_ = v.BindEnv("auth.oidc_issuer_url", "NEBI_AUTH_OIDC_ISSUER_URL")
+	_ = v.BindEnv("auth.oidc_client_id", "NEBI_AUTH_OIDC_CLIENT_ID")
+	_ = v.BindEnv("auth.oidc_client_secret", "NEBI_AUTH_OIDC_CLIENT_SECRET")
+	_ = v.BindEnv("auth.oidc_redirect_url", "NEBI_AUTH_OIDC_REDIRECT_URL")
+	_ = v.BindEnv("queue.type", "NEBI_QUEUE_TYPE")
+	_ = v.BindEnv("queue.valkey_addr", "NEBI_QUEUE_VALKEY_ADDR")
+	_ = v.BindEnv("log.format", "NEBI_LOG_FORMAT")
+	_ = v.BindEnv("log.level", "NEBI_LOG_LEVEL")
+
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)

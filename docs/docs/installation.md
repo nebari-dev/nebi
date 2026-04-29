@@ -27,7 +27,7 @@ Supported platforms: **macOS** and **Linux**
 This installs the latest release of `nebi` to `~/.local/bin` (CLI and desktop app):
 
 ```bash
-curl -fsSL https://nebi.nebari.dev/install.sh | sh -s --desktop
+curl -fsSL https://nebi.nebari.dev/install.sh | sh -s -- --desktop
 ```
 
 Make sure it's on your `PATH`:

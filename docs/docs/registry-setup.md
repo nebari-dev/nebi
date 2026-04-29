@@ -4,7 +4,7 @@ sidebar_position: 6
 
 # Registry Setup
 
-An OCI registry is a server that stores and distributes packages using the [Open Container Initiative](https://opencontainers.org/) standard. Nebi uses OCI registries to publish environment specs (`pixi.toml` and `pixi.lock`) so anyone can import them without needing access to your Nebi server.
+An OCI registry is a server that stores and distributes packages using the [Open Container Initiative](https://opencontainers.org/) standard. Nebi uses OCI registries to publish workspace bundles (`pixi.toml`, `pixi.lock`, and any project files you choose to include as asset layers) so anyone can import them without needing access to your Nebi server.
 
 Nebi works with any OCI-compliant registry, for example:
 
@@ -91,4 +91,14 @@ For example:
 nebi import quay.io/nebari_environments/data-science-demo:0.1.0
 ```
 
-This writes `pixi.toml` and `pixi.lock` into the current directory, ready to run with `pixi run`. To discover public environments visually, see [Browse Public Registries](./ui.md#browse-public-registries).
+This writes `pixi.toml`, `pixi.lock`, and any asset files in the bundle into the current directory, ready to run with `pixi run`.
+
+:::note Imports do not overwrite existing files
+When a bundle contains asset layers, the output directory must be empty (or not yet exist) to avoid clobbering files you already have. Use `-o ./some-new-dir` to import into a fresh location:
+
+```bash
+nebi import quay.io/nebari_environments/data-science-demo:0.1.0 -o ./demo
+```
+:::
+
+To discover public environments visually, see [Browse Public Registries](./ui.md#browse-public-registries).

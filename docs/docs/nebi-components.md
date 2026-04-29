@@ -12,7 +12,7 @@ The CLI is a standalone tool for managing and tracking Pixi workspaces on your l
 
 - **Local database**: Track workspace names, paths, and versions in a local database
 - **Pixi shell/run**: Open a pixi shell or run pixi tasks by workspace name
-- **Publish/import - OCI registries**: Push workspace specs directly to OCI registries, and import specs from published registries
+- **Publish/import - OCI registries**: Push workspace bundles (specs plus optional asset layers) directly to OCI registries, and import them on another machine
 - **Push/pull - Nebi server**: Sync (push) versioned `pixi.toml` and `pixi.lock` specs to a Nebi server, and pull from a different machine
 - **Track state (diff)**: Compare specs between local directories, workspace names, or server versions
 
@@ -22,12 +22,12 @@ The [desktop app](./ui.md) is another tool for managing Pixi workspaces on your 
 
 ## OCI Registries
 
-Nebi can publish workspace specifications (`pixi.toml` & `pixi.lock`) as OCI artifacts to any [OCI-compliant registry](./registry-setup.md) such as GitHub Container Registry, Quay.io, or self-hosted registries.
+Nebi can publish **workspace bundles** to any [OCI-compliant registry](./registry-setup.md) such as GitHub Container Registry, Quay.io, or self-hosted registries. A bundle always contains `pixi.toml` and `pixi.lock`, and may also include other project files (READMEs, source code, data).
 
 - Publishing can be done from the CLI (`nebi publish`) or triggered from the desktop app or server
-- The desktop app and server UI includes a registry browser for discovering and pulling published workspaces
+- The desktop app and server UI include a registry browser for discovering and pulling published bundles
 
-Specs are packed into an OCI Image Manifest with custom media types (`application/vnd.pixi.toml.v1+toml`, `application/vnd.pixi.lock.v1+yaml`). Each push creates a content-addressed tag (`sha-<hash>`) plus a `latest` tag and any user-specified tags.
+Bundles are packed into an OCI Image Manifest with custom media types for the spec and for each asset layer. Each push creates a content-addressed tag (`sha-<hash>`) plus a `latest` tag and any user-specified tags.
 
 ## Nebi Server
 

@@ -2,6 +2,13 @@
 
 Nebi's CLI is organized into command groups: **Workspace**, **Sync**, **Connection**, and **Admin**.
 
+## Specs vs. Bundles
+
+Two terms appear throughout these commands:
+
+- **Workspace spec**: `pixi.toml` and `pixi.lock`. The minimal environment definition. Stored on the Nebi server.
+- **Workspace bundle**: `pixi.toml` + `pixi.lock` + any project files (READMEs, source code, data), packaged for an OCI registry.
+
 ## Workspace Commands
 
 | Command | Description |
@@ -21,8 +28,8 @@ Nebi's CLI is organized into command groups: **Workspace**, **Sync**, **Connecti
 | `nebi push [<name>][:<tag>]` | Push workspace specs to a server (tag optional, auto-tags with content hash + latest) |
 | `nebi pull [<name>[:<tag>]]` | Pull workspace specs from a server |
 | `nebi diff [<ref-a>] [<ref-b>]` | Compare workspace specs |
-| `nebi publish [name]` | Publish to an OCI registry (uses content hash tag by default) |
-| `nebi import <oci-reference>` | Import a workspace from a public OCI registry |
+| `nebi publish [name]` | Publish a workspace bundle to an OCI registry (uses content hash tag by default) |
+| `nebi import <oci-reference>` | Import a workspace bundle from an OCI registry, restoring pixi files and asset layers |
 
 ## Connection Commands
 
@@ -42,4 +49,5 @@ Nebi's CLI is organized into command groups: **Workspace**, **Sync**, **Connecti
 ## Common Flags
 
 - `-r, --remote` — Target the server instead of local workspaces (on `workspace list` and `workspace remove`)
+- `--concurrency N` — On `publish` and `import`, the number of files uploaded or downloaded at the same time (default 8)
 - `--version` — Print version information

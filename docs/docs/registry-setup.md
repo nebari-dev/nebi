@@ -94,7 +94,7 @@ nebi import quay.io/nebari_environments/data-science-demo:0.1.0
 This writes `pixi.toml`, `pixi.lock`, and any asset files in the bundle into the current directory, ready to run with `pixi run`.
 
 :::note Imports do not overwrite existing files
-When a bundle contains asset layers, the output directory must be empty (or not yet exist) to avoid clobbering files you already have. Use `-o ./some-new-dir` to import into a fresh location:
+When a bundle contains asset layers, the output directory must be empty (or not yet exist) to avoid clobbering files you already have. Use `-o ./some-new-dir` to import into a fresh location, for example:
 
 ```bash
 nebi import quay.io/nebari_environments/data-science-demo:0.1.0 -o ./demo

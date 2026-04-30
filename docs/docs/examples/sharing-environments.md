@@ -179,6 +179,9 @@ nebi registry add \
   --namespace alice \
   --username alice \
   --default
+```
+
+```bash title="Output"
 Password:
 Added local registry 'dockerhub' (docker.io)
 ```

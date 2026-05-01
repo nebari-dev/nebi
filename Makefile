@@ -6,7 +6,8 @@ FRONTEND_DIR=frontend
 BUILD_DIR=bin
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.Commit=$(COMMIT)"
+LDFLAGS=-ldflags "-s -w -X main.Version=$(VERSION) -X main.Commit=$(COMMIT)"
+BUILDFLAGS=-trimpath
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -40,7 +41,7 @@ build-frontend: ## Build frontend and copy to internal/web/dist
 build-backend: swagger ## Build nebi binary
 	@echo "Building nebi..."
 	@mkdir -p $(BUILD_DIR)
-	@go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/nebi
+	@go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/nebi
 	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)"
 
 build: build-frontend build-backend ## Build complete single binary (frontend + backend)
@@ -131,15 +132,15 @@ build-all: build-frontend ## Build binaries for all platforms
 	@echo "Building for all platforms..."
 	@mkdir -p $(BUILD_DIR)
 	@echo "Building linux/amd64..."
-	@GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/nebi
+	@GOOS=linux GOARCH=amd64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/nebi
 	@echo "Building linux/arm64..."
-	@GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/nebi
+	@GOOS=linux GOARCH=arm64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/nebi
 	@echo "Building darwin/amd64..."
-	@GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/nebi
+	@GOOS=darwin GOARCH=amd64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/nebi
 	@echo "Building darwin/arm64..."
-	@GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/nebi
+	@GOOS=darwin GOARCH=arm64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/nebi
 	@echo "Building windows/amd64..."
-	@GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/nebi
+	@GOOS=windows GOARCH=amd64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/nebi
 	@echo "All platform builds complete"
 
 build-desktop: build-frontend ## Build Wails desktop app with version info

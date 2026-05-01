@@ -14,6 +14,7 @@ env:
   REGISTRY: ${{ vars.DOCKER_REGISTRY }}
   PROJECT: ${{ vars.DOCKER_PROJECT }}
   IMAGE_NAME: nebi
+  IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
 
 jobs:
   build:
@@ -49,6 +50,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
 
       - name: Login to Quay.io
+        if: env.IS_FORK_PR != 'true'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
@@ -64,7 +66,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
-          push: true
+          push: ${{ env.IS_FORK_PR != 'true' }}
+          load: ${{ env.IS_FORK_PR == 'true' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -73,8 +76,10 @@ jobs:
           IMAGE_TAG="${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}"
           echo "Testing image: ${IMAGE_TAG}"
 
-          # Pull the image we just pushed
-          docker pull ${IMAGE_TAG}
+          # On fork PRs the image is loaded locally (not pushed); skip pull.
+          if [ "${IS_FORK_PR}" != "true" ]; then
+            docker pull ${IMAGE_TAG}
+          fi
 
           # Start container with port mapping
           docker run --rm -d --name test-nebi \

@@ -94,7 +94,7 @@ pixi install
 
 ### Share environments across your team
 
-Instead of sharing environments through git repos, the Nebi server lets you publish them to an OCI registry (the same standard behind Docker Hub). Anyone on your team can pull and reproduce your setup from anywhere:
+Instead of sharing environments through git repos, Nebi publishes them to an OCI registry (the same standard behind Docker Hub). Anyone on your team can pull and reproduce your setup from anywhere:
 
 ```bash
 # Publish to an OCI registry

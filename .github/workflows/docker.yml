@@ -11,8 +11,10 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  REGISTRY: ${{ vars.DOCKER_REGISTRY }}
-  PROJECT: ${{ vars.DOCKER_PROJECT }}
+  # vars.* are not exposed to fork-PR runs on public repos, so fallbacks
+  # keep the image tag valid for the local build + smoke test.
+  REGISTRY: ${{ vars.DOCKER_REGISTRY || 'localhost' }}
+  PROJECT: ${{ vars.DOCKER_PROJECT || 'fork-pr' }}
   IMAGE_NAME: nebi
   IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
 

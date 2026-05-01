@@ -95,30 +95,22 @@ nebi run ml-pipeline train -- --epochs 100
 
 ## Publish a Workspace Bundle
 
-`nebi publish --local` pushes the workspace directly to an OCI registry as a
-self-contained bundle. The artifact always contains `pixi.toml` and
-`pixi.lock`; any additional files in the workspace become opaque asset
-layers in the bundle.
+`nebi publish` packages your workspace and pushes it to an OCI registry.
+Every bundle includes `pixi.toml` and `pixi.lock`, plus any other
+workspace files (READMEs, source code, data) as additional layers.
 
 ```bash
-nebi publish --local --registry my-registry --tag v1
+nebi publish --registry my-registry --tag v1
 ```
 
 ### Selecting what goes into the bundle
 
-By default the walker includes every regular file in the workspace
-directory, with these rules applied in order:
+By default, the bundle includes everything in your workspace except
+`.git/` and `.pixi/`. `pixi.toml` and `pixi.lock` are always included
+no matter what.
 
-1. `.git/` and `.pixi/` are always dropped.
-2. If `[tool.nebi.bundle].include` is set in `pixi.toml`, only files
-   matching those globs are candidates.
-3. Files matched by `.gitignore` are dropped.
-4. Files matched by `[tool.nebi.bundle].exclude` are dropped.
-5. `pixi.toml` and `pixi.lock` are force-included even if earlier rules
-   would have dropped them.
-6. Symlinks, devices, and FIFOs are skipped silently.
-
-Configure the filters from `pixi.toml`:
+To customize what gets bundled, add a `[tool.nebi.bundle]` table to
+`pixi.toml`:
 
 ```toml
 [tool.nebi.bundle]
@@ -126,14 +118,19 @@ include = ["src/**", "assets/**", "README.md"]
 exclude = ["*.log", "secrets/**", "notes.md"]
 ```
 
-`include` and `exclude` work together: `include` whitelists candidates,
-and `exclude` further narrows them down. When only `exclude` is set,
-everything is a candidate minus the excluded paths.
+- **`include`**: turn the default into a strict allowlist. Only files
+  matching these patterns are kept.
+- **`exclude`**: drop additional files (for example, `nebi.db*`) from
+  what's been kept so far.
+
+`.gitignore` rules also apply: files git ignores are kept out of
+bundles. Symlinks, device files, and named pipes are skipped silently.
 
 ### Parallelism
 
-`--concurrency N` bounds parallel blob pushes. Default is 8. Raise it for
-high-latency registries; lower it to be gentle on constrained networks.
+`--concurrency N` sets how many files upload or download at the same
+time. Default is 8. Raise it (e.g., 16 or 32) when the registry is slow
+to respond. Lower it (e.g., 2 or 4) on slow or rate-limited networks.
 
 ## Import from an OCI Registry
 
@@ -150,12 +147,16 @@ Tracking workspace 'data-science' at /home/user/my-project
 Imported quay.io/nebari/data-science:v1.0 -> /home/user/my-project (3 asset file(s))
 ```
 
-Use `--concurrency N` to tune parallel blob fetches (default 8).
+Use `--concurrency N` to set how many files download at the same time (default 8).
 
-When a bundle contains asset layers, the output directory must not
-already exist or must be empty — imports do not overwrite existing
-files. Legacy two-layer artifacts (no assets) keep the `--force` escape
-hatch.
+:::note Imports do not overwrite existing files
+If the bundle includes asset files, `nebi import` refuses to write
+into a non-empty output directory. Use `-o ./some-new-dir` to land
+it in a fresh folder.
+
+Older bundles that contain only `pixi.toml` and `pixi.lock` still
+accept `--force` to overwrite.
+:::
 
 ## Remove Tracking
 

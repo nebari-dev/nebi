@@ -7,7 +7,6 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
-	gormadapter "github.com/casbin/gorm-adapter/v3"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -19,7 +18,7 @@ var enforcer *casbin.Enforcer
 
 // InitEnforcer initializes the Casbin enforcer
 func InitEnforcer(db *gorm.DB, logger *slog.Logger) error {
-	adapter, err := gormadapter.NewAdapterByDB(db)
+	adapter, err := newGormAdapter(db)
 	if err != nil {
 		return fmt.Errorf("failed to create casbin adapter: %w", err)
 	}

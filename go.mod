@@ -3,11 +3,13 @@ module github.com/nebari-dev/nebi
 go 1.24.0
 
 require (
+	github.com/bmatcuk/doublestar/v4 v4.6.1
 	github.com/casbin/casbin/v2 v2.128.0
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/gin-gonic/gin v1.11.0
 	github.com/glebarez/sqlite v1.7.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
+	github.com/google/go-containerregistry v0.20.6
 	github.com/google/uuid v1.6.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
@@ -22,7 +24,9 @@ require (
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/crypto v0.43.0
 	golang.org/x/oauth2 v0.33.0
+	golang.org/x/sync v0.17.0
 	golang.org/x/term v0.39.0
+	golang.org/x/text v0.30.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.0
@@ -32,13 +36,12 @@ require (
 require (
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
-	github.com/bmatcuk/doublestar/v4 v4.6.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.14.1 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
 	github.com/casbin/govaluate v1.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
-	github.com/cpuguy83/go-md2man/v2 v2.0.6 // indirect
+	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
@@ -118,9 +121,7 @@ require (
 	golang.org/x/arch v0.22.0 // indirect
 	golang.org/x/mod v0.29.0 // indirect
 	golang.org/x/net v0.46.0 // indirect
-	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
-	golang.org/x/text v0.30.0 // indirect
 	golang.org/x/tools v0.38.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

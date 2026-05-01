@@ -248,13 +248,30 @@ func (s *RegistryService) GetRegistryWithCredentials(id string) (*RegistryWithCr
 	}, nil
 }
 
-// FallbackRepositories returns distinct repository names from publication records for a registry.
+// FallbackRepositories returns distinct repository paths from publication records for a registry.
 func (s *RegistryService) FallbackRepositories(registryID string) []string {
 	var repositories []string
 	s.db.Model(&models.Publication{}).
 		Where("registry_id = ?", registryID).
 		Distinct("repository").
 		Pluck("repository", &repositories)
+
+	var registry models.OCIRegistry
+	if err := s.db.Select("namespace").Where("id = ?", registryID).First(&registry).Error; err != nil {
+		return repositories
+	}
+
+	namespace := strings.TrimSpace(registry.Namespace)
+	if namespace == "" {
+		return repositories
+	}
+	for index, repository := range repositories {
+		repository = strings.TrimSpace(repository)
+		if repository != "" && !strings.HasPrefix(repository, namespace+"/") {
+			repository = namespace + "/" + repository
+		}
+		repositories[index] = repository
+	}
 	return repositories
 }
 

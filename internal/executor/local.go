@@ -62,6 +62,13 @@ func normalizeEnvName(name string) string {
 	return name
 }
 
+// StagingRoot returns {baseDir}/.import-staging, creating it if missing.
+func (e *LocalExecutor) StagingRoot() string {
+	root := filepath.Join(e.baseDir, ".import-staging")
+	_ = os.MkdirAll(root, 0o755)
+	return root
+}
+
 // GetWorkspacePath returns the filesystem path for a workspace
 // For source=="local" workspaces with a path set, returns that path directly.
 // Otherwise: {baseDir}/{normalized-name}-{uuid}
@@ -75,18 +82,15 @@ func (e *LocalExecutor) GetWorkspacePath(ws *models.Workspace) string {
 }
 
 // CreateWorkspace creates a new workspace on the local filesystem
-func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer, pixiToml ...string) error {
+func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer, opts CreateWorkspaceOptions) error {
 	envPath := e.GetWorkspacePath(ws)
-
 	fmt.Fprintf(logWriter, "Creating environment at: %s\n", envPath)
 
-	// Create package manager instance
 	pmType := ws.PackageManager
 	if pmType == "" {
 		pmType = e.config.PackageManager.DefaultType
 	}
 
-	// Use custom path if configured
 	var pm pkgmgr.PackageManager
 	var err error
 	if pmType == "pixi" && e.config.PackageManager.PixiPath != "" {
@@ -96,66 +100,127 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 	} else {
 		pm, err = pkgmgr.New(pmType)
 	}
-
 	if err != nil {
 		return fmt.Errorf("failed to create package manager: %w", err)
 	}
-
 	fmt.Fprintf(logWriter, "Using package manager: %s\n", pm.Name())
 
-	// Check if custom pixi.toml content is provided
-	if len(pixiToml) > 0 && pixiToml[0] != "" {
-		// Create environment directory
-		if err := os.MkdirAll(envPath, 0755); err != nil {
-			return fmt.Errorf("failed to create environment directory: %w", err)
+	switch {
+	case opts.SeedDir != "":
+		// Always clean up the staging dir, even on partial failure (e.g. a
+		// mid-walk error in seedWorkspaceFromDir leaves files behind).
+		// Owned by this branch end-to-end.
+		defer func() {
+			if rmErr := os.RemoveAll(opts.SeedDir); rmErr != nil {
+				fmt.Fprintf(logWriter, "Warning: staging cleanup failed: %v\n", rmErr)
+			}
+		}()
+		if err := os.MkdirAll(envPath, 0o755); err != nil {
+			return fmt.Errorf("create env dir: %w", err)
+		}
+		fmt.Fprintf(logWriter, "Seeding workspace from %s\n", opts.SeedDir)
+		if err := seedWorkspaceFromDir(opts.SeedDir, envPath); err != nil {
+			return fmt.Errorf("seed workspace: %w", err)
+		}
+		if err := runPixiInstall(ctx, pm, envPath, logWriter); err != nil {
+			return err
 		}
 
-		// Write custom pixi.toml content
+	case opts.PixiToml != "":
+		if err := os.MkdirAll(envPath, 0o755); err != nil {
+			return fmt.Errorf("create env dir: %w", err)
+		}
 		pixiTomlPath := filepath.Join(envPath, "pixi.toml")
 		fmt.Fprintf(logWriter, "Writing custom pixi.toml content\n")
-		if err := os.WriteFile(pixiTomlPath, []byte(pixiToml[0]), 0644); err != nil {
+		if err := os.WriteFile(pixiTomlPath, []byte(opts.PixiToml), 0o644); err != nil {
 			return fmt.Errorf("failed to write pixi.toml: %w", err)
 		}
-		fmt.Fprintf(logWriter, "Custom pixi.toml written successfully\n")
-
-		// Run pixi install to create the actual environment
-		// This will read the pixi.toml and create the .pixi directory with the conda environment
-		fmt.Fprintf(logWriter, "Installing environment from pixi.toml\n")
-
-		// Get pixi binary path from package manager
-		pixiBinary := "pixi" // Default fallback
-		if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
-			pixiBinary = pixiMgr.BinaryPath()
+		if err := runPixiInstall(ctx, pm, envPath, logWriter); err != nil {
+			return err
 		}
 
-		installCmd := exec.CommandContext(ctx, pixiBinary, "install", "-v")
-		installCmd.Dir = envPath
-		installCmd.Stdout = logWriter
-		installCmd.Stderr = logWriter
-
-		fmt.Fprintf(logWriter, "Running: pixi install -v\n")
-		if err := installCmd.Run(); err != nil {
-			return fmt.Errorf("failed to install pixi environment: %w", err)
-		}
-		fmt.Fprintf(logWriter, "Pixi environment installed successfully\n")
-	} else {
-		// Initialize environment with default configuration
-		// Note: For pixi, the Name parameter is used as the project name in pixi.toml
-		// The environment is created in EnvPath directory itself
-		opts := pkgmgr.InitOptions{
+	default:
+		initOpts := pkgmgr.InitOptions{
 			EnvPath:   envPath,
 			Name:      ws.Name,
-			Channels:  []string{"conda-forge"}, // Default channel for pixi
+			Channels:  []string{"conda-forge"},
 			LogWriter: logWriter,
 		}
-
-		if err := pm.Init(ctx, opts); err != nil {
+		if err := pm.Init(ctx, initOpts); err != nil {
 			return fmt.Errorf("failed to initialize environment: %w", err)
 		}
 	}
 
 	fmt.Fprintf(logWriter, "Environment created successfully\n")
 	return nil
+}
+
+// runPixiInstall runs `pixi install -v` in envPath. Extracted so the
+// pixi.toml-only and seed-dir branches share the install step.
+func runPixiInstall(ctx context.Context, pm pkgmgr.PackageManager, envPath string, logWriter io.Writer) error {
+	pixiBinary := "pixi"
+	if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
+		pixiBinary = pixiMgr.BinaryPath()
+	}
+	installCmd := exec.CommandContext(ctx, pixiBinary, "install", "-v")
+	installCmd.Dir = envPath
+	installCmd.Stdout = logWriter
+	installCmd.Stderr = logWriter
+	fmt.Fprintf(logWriter, "Running: %s install -v\n", pixiBinary)
+	if err := installCmd.Run(); err != nil {
+		return fmt.Errorf("failed to install pixi environment: %w", err)
+	}
+	fmt.Fprintf(logWriter, "Pixi environment installed successfully\n")
+	return nil
+}
+
+// seedWorkspaceFromDir recursively moves every entry under srcDir into
+// dstDir, preserving relative paths. Rejects any cleaned relative path
+// that escapes dstDir as defense-in-depth. Uses os.Rename when possible;
+// falls back to copy when the rename fails (cross-filesystem, etc.).
+func seedWorkspaceFromDir(srcDir, dstDir string) error {
+	return filepath.WalkDir(srcDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == srcDir {
+			return nil
+		}
+		rel, err := filepath.Rel(srcDir, path)
+		if err != nil {
+			return err
+		}
+		cleaned := filepath.Clean(rel)
+		if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) || filepath.IsAbs(cleaned) {
+			return fmt.Errorf("unsafe seed path %q", rel)
+		}
+		dst := filepath.Join(dstDir, cleaned)
+
+		if d.IsDir() {
+			return os.MkdirAll(dst, 0o755)
+		}
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+		if err := os.Rename(path, dst); err == nil {
+			return nil
+		}
+		// Fallback: copy bytes.
+		in, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer in.Close()
+		out, err := os.Create(dst)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(out, in); err != nil {
+			out.Close()
+			return err
+		}
+		return out.Close()
+	})
 }
 
 // InstallPackages installs packages in a workspace

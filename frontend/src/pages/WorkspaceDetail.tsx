@@ -65,7 +65,7 @@ export const WorkspaceDetail = () => {
 
   // Load pixi.toml when switching to that tab
   useEffect(() => {
-    if (activeTab === 'toml' && !pixiToml && workspace?.status === 'ready') {
+    if (activeTab === 'toml' && !pixiToml) {
       loadPixiToml();
     }
   }, [activeTab, workspace?.status]);
@@ -162,7 +162,6 @@ export const WorkspaceDetail = () => {
             variant="outline"
             size="sm"
             className="gap-2"
-            disabled={workspace.status !== 'ready'}
             onClick={async () => {
               if (!pixiToml) {
                 setLoadingToml(true);
@@ -527,11 +526,7 @@ export const WorkspaceDetail = () => {
                 )}
               </div>
             </div>
-            {workspace.status !== 'ready' ? (
-              <div className="text-center py-8 text-muted-foreground">
-                Workspace must be ready to view pixi.toml
-              </div>
-            ) : loadingToml ? (
+            {loadingToml ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>

@@ -8,11 +8,12 @@ import (
 
 // CreateRequest holds parameters for creating a workspace.
 type CreateRequest struct {
-	Name           string
-	PackageManager string
-	PixiToml       string
-	Source         string
-	Path           string
+	Name             string
+	PackageManager   string
+	PixiToml         string
+	Source           string
+	Path             string
+	ImportStagingDir string // absolute path to a pre-extracted bundle directory; worker hands it to the executor as SeedDir
 }
 
 // PushRequest holds parameters for pushing a new version.

@@ -167,6 +167,12 @@ func resetFlags() {
 	publishRegistry = ""
 	publishTag = ""
 	publishRepo = ""
+	publishLocal = false
+	publishConcurrency = 8
+	// import.go
+	importOutput = "."
+	importForce = false
+	importConcurrency = 8
 	// registry.go
 	registryAddName = ""
 	registryAddURL = ""
@@ -176,6 +182,7 @@ func resetFlags() {
 	registryAddPwdStdin = false
 	registryRemoveForce = false
 	registryListJSON = false
+	registryLocal = false
 	// status.go
 	statusJSON = false
 	// info.go

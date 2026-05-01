@@ -14,10 +14,11 @@ import (
 )
 
 var (
-	publishRegistry string
-	publishTag      string
-	publishRepo     string
-	publishLocal    bool
+	publishRegistry    string
+	publishTag         string
+	publishRepo        string
+	publishLocal       bool
+	publishConcurrency int
 )
 
 var publishCmd = &cobra.Command{
@@ -45,6 +46,7 @@ func init() {
 	publishCmd.Flags().StringVar(&publishTag, "tag", "", "OCI tag (auto-increments v1, v2, ... if not set)")
 	publishCmd.Flags().StringVar(&publishRepo, "repo", "", "OCI repository name (defaults to workspace name)")
 	publishCmd.Flags().BoolVar(&publishLocal, "local", false, "Publish directly to registry without a server")
+	publishCmd.Flags().IntVar(&publishConcurrency, "concurrency", 8, "Parallel blob push workers (only with --local)")
 }
 
 func runWorkspacePublish(cmd *cobra.Command, args []string) error {
@@ -188,8 +190,17 @@ func runPublishLocal(args []string) error {
 		return fmt.Errorf("no credentials found for registry %q; re-add with 'nebi registry add --local'", reg.Name)
 	}
 
-	// Compute defaults
-	tag := contenthash.Hash(string(pixiToml), string(pixiLock))
+	// Compute defaults. The tag is content-addressed across the full
+	// bundle — pixi files + every asset's path and content SHA — so
+	// changing a bundled asset shifts the tag even when pixi.toml and
+	// pixi.lock are untouched. Preview walks the workspace with the
+	// same rules Publish will use, so both always agree on the asset
+	// set.
+	assetRefs, err := oci.PreviewAssetRefs(ws.Path)
+	if err != nil {
+		return fmt.Errorf("preview bundle for tag hash: %w", err)
+	}
+	tag := contenthash.HashBundle(string(pixiToml), string(pixiLock), assetRefs)
 	if publishTag != "" {
 		tag = publishTag
 	}
@@ -199,32 +210,29 @@ func runPublishLocal(args []string) error {
 		repo = publishRepo
 	}
 
-	// Build full repository path
-	host, namespace := oci.ParseRegistryURL(reg.URL)
-	fullRepo := host
+	host, ns, plainHTTP := oci.ParseRegistryURLFull(reg.URL)
 	if reg.Namespace != "" {
-		fullRepo = host + "/" + reg.Namespace
-	} else if namespace != "" {
-		fullRepo = host + "/" + namespace
+		ns = reg.Namespace
 	}
-	fullRepo = fullRepo + "/" + repo
+	regEndpoint := oci.Registry{
+		Host:      host,
+		Namespace: ns,
+		Username:  reg.Username,
+		Password:  password,
+		PlainHTTP: plainHTTP,
+	}
 
 	ctx := context.Background()
-
-	opts := oci.PublishOptions{
-		Repository:   fullRepo,
-		Tag:          tag,
-		ExtraTags:    []string{"latest"},
-		Username:     reg.Username,
-		Password:     password,
-		RegistryHost: host,
-	}
-
-	fmt.Fprintf(os.Stderr, "Publishing %s to %s:%s...\n", ws.Name, fullRepo, tag)
-	digest, err := oci.PublishWorkspace(ctx, ws.Path, opts)
+	fmt.Fprintf(os.Stderr, "Publishing %s to %s/%s/%s:%s...\n", ws.Name, host, ns, repo, tag)
+	res, err := oci.Publish(ctx, ws.Path, regEndpoint, repo, tag,
+		oci.WithExtraTags("latest"),
+		oci.WithConcurrency(publishConcurrency),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to publish: %w", err)
 	}
+	digest := res.Digest
+	fullRepo := res.Repository
 
 	// Record publication
 	pub := &store.LocalPublication{

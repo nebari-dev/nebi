@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,9 +16,14 @@ import (
 
 // ImportFromRegistryRequest selects the OCI bundle to import.
 type ImportFromRegistryRequest struct {
+	// Repository is the existing namespace-relative repository name. It is
+	// resolved against the registry's configured namespace.
 	Repository string
-	Tag        string
-	Name       string
+	// RepositoryPath is the full OCI repository path below the registry host,
+	// for example "namespace/repository" in "host/namespace/repository:tag".
+	RepositoryPath string
+	Tag            string
+	Name           string
 }
 
 // ImportFromRegistry pulls an OCI bundle from a registered registry and
@@ -46,7 +52,22 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 	if err != nil {
 		return nil, err
 	}
-	repoRef := ep.RepoRef(req.Repository)
+	repository := strings.TrimSpace(req.Repository)
+	repositoryPath := strings.TrimSpace(req.RepositoryPath)
+	if repository != "" && repositoryPath != "" {
+		return nil, &ValidationError{Message: "provide either repository or repository_path, not both"}
+	}
+
+	auditRepository := repository
+	var repoRef string
+	if repositoryPath != "" {
+		auditRepository = repositoryPath
+		repoRef = ep.RepositoryPathRef(repositoryPath)
+	} else if repository != "" {
+		repoRef = ep.NamespaceRelativeRepoRef(repository)
+	} else {
+		return nil, &ValidationError{Message: "repository or repository_path is required"}
+	}
 	pullOpts := oci.PullOptions{
 		Username:  ep.Username,
 		Password:  ep.Password,
@@ -110,7 +131,7 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 	audit.LogAction(s.db, userID, audit.ActionImportWorkspace, fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
 		"name":       req.Name,
 		"registry":   ep.Registry.Name,
-		"repository": req.Repository,
+		"repository": auditRepository,
 		"tag":        req.Tag,
 		"digest":     digest,
 	})

@@ -22,12 +22,19 @@ type registryEndpoint struct {
 	PlainHTTP bool
 }
 
-// RepoRef composes "host/[namespace/]repo" — the form oras-go expects.
-func (e *registryEndpoint) RepoRef(repo string) string {
+// NamespaceRelativeRepoRef composes "host/[namespace/]repo" for callers
+// whose repository value is relative to the registry's configured namespace.
+func (e *registryEndpoint) NamespaceRelativeRepoRef(repo string) string {
 	if e.Namespace != "" {
 		return fmt.Sprintf("%s/%s/%s", e.Host, e.Namespace, repo)
 	}
 	return fmt.Sprintf("%s/%s", e.Host, repo)
+}
+
+// RepositoryPathRef composes "host/repository" when repository is already
+// the full OCI repository path under the registry host, e.g. "org/name".
+func (e *registryEndpoint) RepositoryPathRef(repository string) string {
+	return fmt.Sprintf("%s/%s", e.Host, repository)
 }
 
 // loadRegistryEndpoint loads a registry by ID, decrypts its password

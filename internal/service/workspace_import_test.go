@@ -124,7 +124,7 @@ platforms = ["linux-64"]
 	db.Create(&dbReg)
 
 	ws, err := svc.ImportFromRegistry(context.Background(), dbReg.ID.String(), ImportFromRegistryRequest{
-		Repository: "team-import", Tag: "v1", Name: "imported-team",
+		RepositoryPath: "demo/team-import", Tag: "v1", Name: "imported-team",
 	}, userID)
 	if err != nil {
 		t.Fatalf("ImportFromRegistry: %v", err)

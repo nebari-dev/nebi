@@ -21,11 +21,15 @@ func NewRegistryBrowseHandler(registrySvc *service.RegistryService, wsSvc *servi
 	return &RegistryBrowseHandler{registrySvc: registrySvc, wsSvc: wsSvc}
 }
 
-// ImportRequest is the JSON body for the import endpoint
+// ImportRequest is the JSON body for the import endpoint.
+// Repository is the existing namespace-relative name. RepositoryPath is the full
+// OCI repository path below the registry host, for example
+// "namespace/repository" in "host/namespace/repository:tag".
 type ImportRequest struct {
-	Repository string `json:"repository" binding:"required"`
-	Tag        string `json:"tag" binding:"required"`
-	Name       string `json:"name" binding:"required"`
+	Repository     string `json:"repository"`
+	RepositoryPath string `json:"repository_path"`
+	Tag            string `json:"tag" binding:"required"`
+	Name           string `json:"name" binding:"required"`
 }
 
 // ListRepositories lists repositories in a registry.
@@ -161,10 +165,22 @@ func (h *RegistryBrowseHandler) ImportEnvironment(c *gin.Context) {
 		return
 	}
 
+	repository := strings.TrimSpace(req.Repository)
+	repositoryPath := strings.TrimSpace(req.RepositoryPath)
+	if repository == "" && repositoryPath == "" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "repository or repository_path is required"})
+		return
+	}
+	if repository != "" && repositoryPath != "" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "provide either repository or repository_path, not both"})
+		return
+	}
+
 	ws, err := h.wsSvc.ImportFromRegistry(c.Request.Context(), registryID, service.ImportFromRegistryRequest{
-		Repository: req.Repository,
-		Tag:        req.Tag,
-		Name:       req.Name,
+		Repository:     repository,
+		RepositoryPath: repositoryPath,
+		Tag:            req.Tag,
+		Name:           req.Name,
 	}, userID)
 	if err != nil {
 		handleServiceError(c, err)

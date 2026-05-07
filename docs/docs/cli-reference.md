@@ -46,8 +46,22 @@ Two terms appear throughout these commands:
 |---------|-------------|
 | `nebi serve` | Run a Nebi server instance |
 
-## Common Flags
+## Flags
 
-- `-r, --remote` — Target the server instead of local workspaces (on `workspace list` and `workspace remove`)
-- `--concurrency N` — On `publish` and `import`, the number of files uploaded or downloaded at the same time (default 8)
-- `--version` — Print version information
+**`publish`**
+
+- `--local`: Publish directly to registry without a server
+- `--tag <tag>`: Set the OCI tag (default: content hash with `--local`, auto-incrementing `v1`, `v2`, ... otherwise)
+- `--repo <name>`: Set the OCI repository name (defaults to the workspace name)
+- `--registry <name>`: Registry name or ID to publish to (defaults to the configured default registry)
+- `--concurrency N`: Number of files uploaded at the same time (only with `--local`, default 8)
+
+**`import`**
+
+- `-o, --output <dir>`: Output directory (defaults to current directory)
+- `--concurrency N`: Number of files downloaded at the same time (default 8)
+- `--force`: Overwrite an existing `pixi.toml` without asking. Only applies when the bundle contains just pixi files; bundles with other files always refuse to overwrite.
+
+**`workspace list`, `workspace remove`**
+
+- `-r, --remote`: Use workspaces from the Nebi server instead of local workspaces

@@ -3657,6 +3657,14 @@ In `docs/docs/ui.md`, add a short Groups section under the Admin docs (mirror th
 
 In `docs/docs/server-setup.md`, mention that nebi now requests the `groups` scope, that the IdP must return a `groups` claim in the ID token, and that group reconciliation happens on every login.
 
+- [ ] **Step 16.2.5: Frontend polish (optional, batched here for one PR)**
+
+Two Task 13 follow-ups flagged in code review but deferred for velocity:
+1. **Extract `CollaboratorRow` subcomponent** in `frontend/src/components/sharing/ShareDialog.tsx`. The "Current Access" loop currently inlines a ~55-line `c.kind === 'user' ? (...) : (...)` ternary. Pull out a `CollaboratorRow` that takes `{ title, subtitle, role, canRemove, onRemove }` props and the two branches reduce to ~10 lines.
+2. **Add a group-share submit-flow test** to `frontend/src/components/sharing/ShareDialog.test.tsx`. Mirror the existing user-share submit happy-path test (e.g. "calls the share endpoint after selecting a group and role") — fires a POST to `/api/v1/workspaces/:id/share-group` and asserts the body shape. The mutation code is currently uncovered by a happy-path test.
+
+Optional — skip if PR-ready otherwise.
+
 - [ ] **Step 16.3: Sweep Swagger godoc blocks on new handlers**
 
 Tasks 6 and 7 added handler methods with only minimal `@Router` annotations. Other handlers in the package (e.g. `workspace.go`'s `ShareWorkspace`, `admin.go`'s `CreateUser`) use full godoc blocks: `@Summary`, `@Tags`, `@Security BearerAuth`, `@Accept json`, `@Produce json`, `@Param`, `@Success`, `@Failure`. Bring the new handlers up to parity so generated Swagger UI shows useful tags + schemas.

@@ -53,6 +53,18 @@ Once the server is running, authenticate from any client machine with [`nebi log
 
 The Swagger API docs are available at [http://localhost:8460/docs](http://localhost:8460/docs).
 
+## Groups
+
+### OIDC group sync
+
+When OIDC authentication is configured, nebi requests the `groups` scope alongside `openid profile email`. The IdP must return a `groups` claim in the ID token (a JSON array of strings). On every login, nebi reconciles the user's group memberships:
+
+- For each name in the claim, an OIDC-source group is created (if missing) and the user is added to it.
+- Memberships in OIDC-source groups that aren't in this login's claim are removed.
+- Native groups (created via the admin UI) are **never** modified by OIDC sync — even if a claim name happens to collide with a native group name.
+
+OIDC groups with zero members are kept so existing workspace shares survive temporary churn. There is no background reconcile worker; all updates happen at login time.
+
 ## What's Next
 
 - See the [CLI Team Workflows](./cli-team.md) for push/pull examples

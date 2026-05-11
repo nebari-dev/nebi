@@ -24,3 +24,14 @@ Pick a tag, click **nebi import** next to the repository you want, and paste the
 ```bash
 nebi import quay.io/nebari_environments/data-science-demo:0.1.0
 ```
+
+## Groups (Admin)
+
+Admins can manage **groups** to grant workspace, registry, and admin access to multiple users at once. Open the **Admin → Groups** page in the sidebar.
+
+- **Create a native group**: click **Create Group**, give it a name + optional description. The group appears in the table with a "native" source badge.
+- **Manage members**: click the *people* icon on a row to open the members dialog. Add or remove users.
+- **Delete a group**: click the *trash* icon. OIDC-synced groups cannot be deleted from the UI — they're managed by the IdP.
+- **Grant access**: share a workspace with a group via the workspace's Share dialog (User/Group toggle). Registry and admin grants for groups are admin-only operations.
+
+OIDC groups (where the `groups` claim in the user's ID token creates them automatically) display with a blue "oidc" badge and are read-only in the UI.

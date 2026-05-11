@@ -2668,7 +2668,7 @@ git commit -m "auth: OIDC group sync on login (JIT upsert + stale reconcile)"
 - [ ] **Step 10.1: Run the server in native mode**
 
 ```bash
-make build && ./bin/nebi serve --config config.yaml.example &
+make build && cp -n config.yaml.example config.yaml && ./bin/nebi serve &
 SERVER_PID=$!
 sleep 2
 ```
@@ -3607,7 +3607,7 @@ git commit -m "frontend: surface user's groups in admin user-management"
 ```bash
 rm -f nebi.db
 make build
-./bin/nebi serve --config config.yaml.example &
+cp -n config.yaml.example config.yaml && ./bin/nebi serve &
 SERVER_PID=$!
 cd frontend && npm run dev &
 DEV_PID=$!

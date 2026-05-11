@@ -2138,7 +2138,7 @@ type GrantRegistryToGroupRequest struct {
 
 // GrantRegistryToGroup grants a group access to a registry. Admin-only.
 // @Router /admin/registries/{id}/grant-group [post]
-func (h *RegistryHandler) GrantRegistryToGroup(c *gin.Context, adminSvc *service.AdminService) {
+func (h *RegistryHandler) GrantRegistryToGroup(c *gin.Context) {
 	regID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid registry ID"})
@@ -2158,7 +2158,7 @@ func (h *RegistryHandler) GrantRegistryToGroup(c *gin.Context, adminSvc *service
 
 // RevokeRegistryFromGroup revokes a group's access to a registry. Admin-only.
 // @Router /admin/registries/{id}/grant-group/{group_id} [delete]
-func (h *RegistryHandler) RevokeRegistryFromGroup(c *gin.Context, adminSvc *service.AdminService) {
+func (h *RegistryHandler) RevokeRegistryFromGroup(c *gin.Context) {
 	regID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid registry ID"})

@@ -105,6 +105,22 @@ func (h *AdminHandler) ToggleAdmin(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// ListUserGroups returns the groups a user belongs to. Admin-only.
+// @Router /admin/users/{id}/groups [get]
+func (h *AdminHandler) ListUserGroups(c *gin.Context) {
+	uid, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid user ID"})
+		return
+	}
+	groups, err := h.svc.ListUserGroups(uid)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, groups)
+}
+
 // DeleteUser godoc
 // @Summary Delete a user (admin only)
 // @Tags admin

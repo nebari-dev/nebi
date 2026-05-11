@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { User, CreateUserRequest, AuditLog, Collaborator, ShareWorkspaceRequest, DashboardStats } from '@/types/models';
+import type { User, CreateUserRequest, AuditLog, Collaborator, ShareWorkspaceRequest, DashboardStats, Group } from '@/types/models';
 
 export const adminApi = {
   // User Management
@@ -19,6 +19,11 @@ export const adminApi = {
 
   deleteUser: async (userId: string): Promise<void> => {
     await apiClient.delete(`/admin/users/${userId}`);
+  },
+
+  getUserGroups: async (userId: string): Promise<Group[]> => {
+    const r = await apiClient.get(`/admin/users/${userId}/groups`);
+    return r.data;
   },
 
   // Audit Logs

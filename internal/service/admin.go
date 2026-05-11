@@ -164,6 +164,19 @@ func (s *AdminService) DeleteUser(userID uuid.UUID, adminUserID uuid.UUID) error
 	return nil
 }
 
+// ListUserGroups returns every group the given user belongs to (native + OIDC).
+func (s *AdminService) ListUserGroups(userID uuid.UUID) ([]models.Group, error) {
+	var groups []models.Group
+	err := s.db.
+		Joins("JOIN group_members gm ON gm.group_id = groups.id").
+		Where("gm.user_id = ?", userID).
+		Find(&groups).Error
+	if err != nil {
+		return nil, fmt.Errorf("list user groups: %w", err)
+	}
+	return groups, nil
+}
+
 // ListRoles returns all roles.
 func (s *AdminService) ListRoles() ([]models.Role, error) {
 	var roles []models.Role

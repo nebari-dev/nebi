@@ -378,3 +378,30 @@ func TestGrantRegistryToGroup_GivesTransitiveAccess(t *testing.T) {
 		t.Fatalf("alice should have write on registry, err=%v can=%v", err, can)
 	}
 }
+
+func TestListUserGroups_ReturnsOnlyTheirs(t *testing.T) {
+	svc, _, db := adminTestSetup(t)
+	groupSvc := NewGroupService(db, rbac.NewDefaultProvider())
+	admin := createTestUser(t, db, "admin")
+	alice := createTestUser(t, db, "alice")
+	bob := createTestUser(t, db, "bob")
+
+	g, _ := groupSvc.CreateGroup(CreateGroupRequest{Name: "ds"}, admin)
+	_ = groupSvc.AddMember(g.ID, alice, admin)
+
+	aliceGroups, err := svc.ListUserGroups(alice)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(aliceGroups) != 1 || aliceGroups[0].ID != g.ID {
+		t.Fatalf("expected alice in 1 group %s, got %+v", g.ID, aliceGroups)
+	}
+
+	bobGroups, _ := svc.ListUserGroups(bob)
+	if len(bobGroups) != 0 {
+		t.Fatalf("expected bob in 0 groups, got %d", len(bobGroups))
+	}
+
+	// silence unused (admin is only used for setup actorID)
+	_ = admin
+}

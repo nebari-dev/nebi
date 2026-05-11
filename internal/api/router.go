@@ -270,6 +270,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			admin.GET("/users", adminHandler.ListUsers)
 			admin.POST("/users", adminHandler.CreateUser)
 			admin.GET("/users/:id", adminHandler.GetUser)
+			admin.GET("/users/:id/groups", adminHandler.ListUserGroups)
 			admin.POST("/users/:id/toggle-admin", adminHandler.ToggleAdmin)
 			admin.DELETE("/users/:id", adminHandler.DeleteUser)
 

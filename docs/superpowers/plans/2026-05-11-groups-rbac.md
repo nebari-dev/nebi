@@ -3360,7 +3360,16 @@ git commit -m "frontend: admin Groups page with CRUD and member management"
 **Files:**
 - Modify: `frontend/src/components/sharing/ShareDialog.tsx`
 - Modify: `frontend/src/components/sharing/ShareDialog.test.tsx` — add group tests
+- Modify: `frontend/src/pages/WorkspaceDetail.tsx` — fix stale `collaborators?.length` counts (Task 11 narrowing filters groups out, so the count badges currently disagree with rendered rows once groups exist)
 - Modify: `frontend/src/hooks/` — if no `useCollaborators` group mutation exists, add it (see Step 13.4)
+
+**Stale counts to fix in `WorkspaceDetail.tsx`** (Task 11 introduced `userCollaborators` filter but left these reading the raw `collaborators?.length`):
+- Line ~324: collaborators tab badge count
+- Line ~329: sidebar collaborators heading count
+- Line ~336: "+N more" math
+- Line ~704: collaborators tab count
+
+Replace each with either `userCollaborators?.length` (if the count should reflect only user rows) or with a combined "X users + Y groups" display.
 
 - [ ] **Step 13.1: Read the current ShareDialog end-to-end**
 

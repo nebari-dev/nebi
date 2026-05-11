@@ -353,3 +353,37 @@ func TestCollaboratorResult_JSON_OmitsIrrelevantIDs(t *testing.T) {
 		t.Errorf("group JSON leaked user_id: %s", groupJSON)
 	}
 }
+
+func TestListWorkspaces_IncludesGroupShared(t *testing.T) {
+	svc, db := testSetup(t, false)
+	groupSvc := NewGroupService(db, rbac.NewDefaultProvider())
+
+	alice := createTestUser(t, db, "alice")
+	bob := createTestUser(t, db, "bob")
+	ws := createReadyWorkspace(t, svc, db, "shared-via-group", alice)
+
+	db.Create(&models.Role{Name: "viewer"})
+	db.Create(&models.Role{Name: "editor"})
+
+	g, _ := groupSvc.CreateGroup(CreateGroupRequest{Name: "team"}, alice)
+	_ = groupSvc.AddMember(g.ID, alice, alice)
+	_ = groupSvc.AddMember(g.ID, bob, alice)
+	if _, err := svc.ShareWorkspaceWithGroup(ws.ID.String(), alice, g.ID, "viewer"); err != nil {
+		t.Fatalf("share with group: %v", err)
+	}
+
+	results, err := svc.List(bob)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	var sawIt bool
+	for _, r := range results {
+		if r.ID == ws.ID {
+			sawIt = true
+			break
+		}
+	}
+	if !sawIt {
+		t.Fatalf("bob should see workspace %s shared via group, got %+v", ws.ID, results)
+	}
+}

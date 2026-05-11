@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { useCollaborators, useShareWorkspace, useUnshareWorkspace } from '@/hooks/useAdmin';
+import { useCollaborators, useShareWorkspace, useUnshareWorkspace, useIsAdmin } from '@/hooks/useAdmin';
 import { useUsers } from '@/hooks/useAdmin';
 import { useMyGroups, useGroups } from '@/hooks/useGroups';
-import { useAuthStore } from '@/store/authStore';
 import { groupsApi } from '@/api/groups';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -40,8 +39,7 @@ export const ShareDialog = ({ open, onOpenChange, environmentId }: ShareDialogPr
 
   const { data: collaborators, isLoading: collaboratorsLoading } = useCollaborators(environmentId, open);
   const { data: allUsers } = useUsers();
-  const currentUser = useAuthStore((state) => state.user);
-  const isAdmin = !!currentUser?.is_admin;
+  const { data: isAdmin = false } = useIsAdmin();
   const showGroupPicker = open && mode === 'group';
   // Admins can share with any group; non-admin owners can only share with groups they belong to.
   const { data: myGroups } = useMyGroups(showGroupPicker && !isAdmin);

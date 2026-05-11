@@ -58,7 +58,7 @@ export const useDeleteUser = () => {
 
 export const useUserGroups = (userId: string | undefined) =>
   useQuery({
-    queryKey: ['admin-user-groups', userId],
+    queryKey: ['admin', 'users', userId, 'groups'],
     queryFn: () => adminApi.getUserGroups(userId!),
     enabled: !!userId,
   });

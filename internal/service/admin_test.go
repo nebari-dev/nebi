@@ -401,7 +401,4 @@ func TestListUserGroups_ReturnsOnlyTheirs(t *testing.T) {
 	if len(bobGroups) != 0 {
 		t.Fatalf("expected bob in 0 groups, got %d", len(bobGroups))
 	}
-
-	// silence unused (admin is only used for setup actorID)
-	_ = admin
 }

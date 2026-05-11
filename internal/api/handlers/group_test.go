@@ -36,7 +36,6 @@ func setupGroupTestRouter(t *testing.T) (*gin.Engine, *gorm.DB, uuid.UUID) {
 	if err := rbac.InitEnforcer(db, slog.Default()); err != nil {
 		t.Fatalf("rbac: %v", err)
 	}
-	t.Cleanup(func() {})
 
 	groupSvc := service.NewGroupService(db, rbac.NewDefaultProvider())
 	h := NewGroupHandler(groupSvc)

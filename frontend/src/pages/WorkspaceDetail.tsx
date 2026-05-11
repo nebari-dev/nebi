@@ -22,7 +22,7 @@ import { VersionHistory } from '@/components/versions/VersionHistory';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
 import { Jobs } from '@/components/jobs/Jobs';
 import { UserBadge } from '@/components/ui/user-badge';
-import { ArrowLeft, Loader2, Package, Copy, Check, ExternalLink, Save, HardDrive, Pencil, Globe, Lock, User, Boxes, Users, Calendar, History, Fingerprint, FolderOpen, GitBranch, CircleQuestionMark, IdCard } from 'lucide-react';
+import { ArrowLeft, Loader2, Package, Copy, Check, ExternalLink, Save, HardDrive, Pencil, Globe, Lock, User, Boxes, Users, Users2, Calendar, History, Fingerprint, FolderOpen, GitBranch, CircleQuestionMark, IdCard } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -43,6 +43,9 @@ export const WorkspaceDetail = () => {
   const { data: collaborators } = useCollaborators(wsId);
   const userCollaborators = collaborators?.filter(
     (c): c is Extract<Collaborator, { kind: 'user' }> => c.kind === 'user'
+  );
+  const groupCollaborators = collaborators?.filter(
+    (c): c is Extract<Collaborator, { kind: 'group' }> => c.kind === 'group'
   );
   const { data: publications, isLoading: publicationsLoading } = usePublications(wsId);
   const updatePubMutation = useUpdatePublication();
@@ -335,6 +338,40 @@ export const WorkspaceDetail = () => {
                     ))}
                     {(userCollaborators?.length || 0) > 3 && (
                       <span className="text-xs text-muted-foreground self-center">+{(userCollaborators?.length || 0) - 3} more</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Groups — only shown when the workspace has any group shares */}
+              {!isLocalWs && (groupCollaborators?.length || 0) > 0 && (
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                  {!isLocalMode ? (
+                    <button
+                      className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-left"
+                      onClick={() => setActiveTab('collaborators')}
+                    >
+                      <Users2 className="h-3 w-3 shrink-0" />
+                      <span className="text-sm font-medium underline decoration-dotted underline-offset-2">Groups ({groupCollaborators?.length || 0})</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <Users2 className="h-3 w-3 shrink-0" />
+                      <span className="text-sm font-medium">Groups ({groupCollaborators?.length || 0})</span>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    {groupCollaborators?.slice(0, 3).map((g) => (
+                      <Badge
+                        key={g.group_id}
+                        variant="outline"
+                        className={g.source === 'oidc' ? 'border-blue-500/40 text-blue-500' : ''}
+                      >
+                        {g.name}
+                      </Badge>
+                    ))}
+                    {(groupCollaborators?.length || 0) > 3 && (
+                      <span className="text-xs text-muted-foreground self-center">+{(groupCollaborators?.length || 0) - 3} more</span>
                     )}
                   </div>
                 </div>

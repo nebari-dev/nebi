@@ -291,6 +291,10 @@ func (a *BasicAuthenticator) ExchangeIDToken(rawIDToken string, adminGroups stri
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
 
+	if err := SyncOIDCGroups(a.db, user.ID, claims.Groups); err != nil {
+		slog.Warn("OIDC group sync failed; continuing login", "user_id", user.ID, "err", err)
+	}
+
 	syncRolesFromGroups(user.ID, claims.Groups, parseAdminGroups(adminGroups), a.rbac)
 
 	token, err := a.generateToken(user)

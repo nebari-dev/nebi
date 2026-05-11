@@ -133,6 +133,12 @@ func TestDeleteGroup_OIDCRejected(t *testing.T) {
 	if !isConflictError(err, &ce) {
 		t.Fatalf("expected ConflictError, got %T: %v", err, err)
 	}
+
+	var auditCount int64
+	db.Model(&models.AuditLog{}).Where("action = ?", "delete_group").Count(&auditCount)
+	if auditCount != 0 {
+		t.Errorf("expected no audit log for rejected OIDC delete, got %d", auditCount)
+	}
 }
 
 func TestUpdateGroup_OIDCRejected(t *testing.T) {
@@ -146,6 +152,16 @@ func TestUpdateGroup_OIDCRejected(t *testing.T) {
 	_, err := svc.UpdateGroup(g.ID, UpdateGroupRequest{Description: ptr("new")}, admin)
 	if err == nil {
 		t.Fatal("expected ConflictError for OIDC group, got nil")
+	}
+	var ce *ConflictError
+	if !isConflictError(err, &ce) {
+		t.Fatalf("expected ConflictError, got %T: %v", err, err)
+	}
+
+	var auditCount int64
+	db.Model(&models.AuditLog{}).Where("action = ?", "update_group").Count(&auditCount)
+	if auditCount != 0 {
+		t.Errorf("expected no audit log for rejected OIDC update, got %d", auditCount)
 	}
 }
 

@@ -80,12 +80,18 @@ export const Groups = () => {
                       </td>
                       <td className="p-4">
                         <div className="flex justify-end gap-2">
-                          <Button variant="ghost" size="sm" onClick={() => setMembersOf(g)}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="View members"
+                            onClick={() => setMembersOf(g)}
+                          >
                             <Users className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
+                            title={g.source === 'oidc' ? 'OIDC groups cannot be deleted' : 'Delete group'}
                             disabled={g.source === 'oidc'}
                             onClick={() => setConfirm({ id: g.id, name: g.name })}
                           >

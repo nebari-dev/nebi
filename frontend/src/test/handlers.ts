@@ -58,6 +58,15 @@ export const mockOwnerCollaborator: Extract<Collaborator, { kind: 'user' }> = {
   is_owner: true,
 };
 
+export const mockGroupCollaborator: Extract<Collaborator, { kind: 'group' }> = {
+  kind: 'group',
+  group_id: 'g-1',
+  name: 'data-science',
+  source: 'native',
+  role: 'editor',
+  is_owner: false,
+};
+
 export const mockRegistry: OCIRegistry = {
   id: 'reg-1',
   name: 'My Registry',
@@ -183,6 +192,11 @@ export const handlers = [
   // Registries
   http.get(`${BASE}/registries`, () =>
     HttpResponse.json([mockRegistry])
+  ),
+
+  // Groups
+  http.get(`${BASE}/groups/me`, () =>
+    HttpResponse.json([])
   ),
 ];
 

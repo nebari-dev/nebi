@@ -209,7 +209,7 @@ export const WorkspaceDetail = () => {
           </TabsTrigger>
           {!isLocalWs && !isLocalMode && (
             <TabsTrigger value="collaborators">
-              Collaborators ({collaborators?.length || 0})
+              Collaborators ({userCollaborators?.length || 0})
             </TabsTrigger>
           )}
         </TabsList>
@@ -321,20 +321,20 @@ export const WorkspaceDetail = () => {
                       onClick={() => setActiveTab('collaborators')}
                     >
                       <Users className="h-3 w-3 shrink-0" />
-                      <span className="text-sm font-medium underline decoration-dotted underline-offset-2">Collaborators ({collaborators?.length || 0})</span>
+                      <span className="text-sm font-medium underline decoration-dotted underline-offset-2">Collaborators ({userCollaborators?.length || 0})</span>
                     </button>
                   ) : (
                     <div className="flex items-center gap-1.5 text-muted-foreground">
                       <Users className="h-3 w-3 shrink-0" />
-                      <span className="text-sm font-medium">Collaborators ({collaborators?.length || 0})</span>
+                      <span className="text-sm font-medium">Collaborators ({userCollaborators?.length || 0})</span>
                     </div>
                   )}
                   <div className="flex flex-wrap gap-1.5">
                     {userCollaborators?.slice(0, 3).map((c) => (
                       <UserBadge key={c.user_id} username={c.username} />
                     ))}
-                    {(collaborators?.length || 0) > 3 && (
-                      <span className="text-xs text-muted-foreground self-center">+{(collaborators?.length || 0) - 3} more</span>
+                    {(userCollaborators?.length || 0) > 3 && (
+                      <span className="text-xs text-muted-foreground self-center">+{(userCollaborators?.length || 0) - 3} more</span>
                     )}
                   </div>
                 </div>
@@ -701,7 +701,7 @@ export const WorkspaceDetail = () => {
                 </div>
               ))}
             </div>
-            {(!collaborators || collaborators.length === 0) && (
+            {(!userCollaborators || userCollaborators.length === 0) && (
               <p className="text-sm text-muted-foreground text-center py-8">
                 No collaborators yet
               </p>

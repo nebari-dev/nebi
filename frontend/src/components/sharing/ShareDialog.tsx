@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useCollaborators, useShareWorkspace, useUnshareWorkspace } from '@/hooks/useAdmin';
 import { useUsers } from '@/hooks/useAdmin';
-import { useMyGroups } from '@/hooks/useGroups';
+import { useMyGroups, useGroups } from '@/hooks/useGroups';
+import { useAuthStore } from '@/store/authStore';
 import { groupsApi } from '@/api/groups';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -39,7 +40,15 @@ export const ShareDialog = ({ open, onOpenChange, environmentId }: ShareDialogPr
 
   const { data: collaborators, isLoading: collaboratorsLoading } = useCollaborators(environmentId, open);
   const { data: allUsers } = useUsers();
-  const { data: myGroups } = useMyGroups(open && mode === 'group');
+  const currentUser = useAuthStore((state) => state.user);
+  const isAdmin = !!currentUser?.is_admin;
+  const showGroupPicker = open && mode === 'group';
+  // Admins can share with any group; non-admin owners can only share with groups they belong to.
+  const { data: myGroups } = useMyGroups(showGroupPicker && !isAdmin);
+  const { data: allGroups } = useGroups(showGroupPicker && isAdmin);
+  const pickableGroups: { id: string; name: string; source: 'native' | 'oidc' }[] = isAdmin
+    ? allGroups ?? []
+    : myGroups ?? [];
   const qc = useQueryClient();
   const shareMutation = useShareWorkspace(environmentId);
   const unshareMutation = useUnshareWorkspace(environmentId);
@@ -68,7 +77,7 @@ export const ShareDialog = ({ open, onOpenChange, environmentId }: ShareDialogPr
       ?.filter((c): c is GroupCollaboratorEntry => c.kind === 'group')
       .map((c) => c.group_id) ?? [],
   );
-  const availableGroups = (myGroups ?? []).filter((g) => !groupCollaboratorIds.has(g.id));
+  const availableGroups = pickableGroups.filter((g) => !groupCollaboratorIds.has(g.id));
 
   const handleShare = async (e: React.FormEvent) => {
     e.preventDefault();

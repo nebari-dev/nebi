@@ -4,8 +4,8 @@ import type { CreateGroupRequest, UpdateGroupRequest } from '@/types/models';
 
 const groupsKey = ['groups'] as const;
 
-export const useGroups = () =>
-  useQuery({ queryKey: groupsKey, queryFn: groupsApi.list });
+export const useGroups = (enabled = true) =>
+  useQuery({ queryKey: groupsKey, queryFn: groupsApi.list, enabled });
 
 export const useGroup = (id: string | undefined) =>
   useQuery({

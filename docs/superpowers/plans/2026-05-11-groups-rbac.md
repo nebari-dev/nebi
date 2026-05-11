@@ -3578,14 +3578,26 @@ In `docs/docs/ui.md`, add a short Groups section under the Admin docs (mirror th
 
 In `docs/docs/server-setup.md`, mention that nebi now requests the `groups` scope, that the IdP must return a `groups` claim in the ID token, and that group reconciliation happens on every login.
 
-- [ ] **Step 16.3: Commit docs**
+- [ ] **Step 16.3: Sweep Swagger godoc blocks on new handlers**
+
+Tasks 6 and 7 added handler methods with only minimal `@Router` annotations. Other handlers in the package (e.g. `workspace.go`'s `ShareWorkspace`, `admin.go`'s `CreateUser`) use full godoc blocks: `@Summary`, `@Tags`, `@Security BearerAuth`, `@Accept json`, `@Produce json`, `@Param`, `@Success`, `@Failure`. Bring the new handlers up to parity so generated Swagger UI shows useful tags + schemas.
+
+Files to update (each function in each file):
+- `internal/api/handlers/group.go` — 9 methods.
+- `internal/api/handlers/workspace.go` — `ShareWorkspaceWithGroup`, `UnshareWorkspaceWithGroup`.
+- `internal/api/handlers/registry.go` — `GrantRegistryToGroup`, `RevokeRegistryFromGroup`.
+- `internal/api/handlers/admin.go` — `GrantGroupAdmin`, `RevokeGroupAdmin`, `ListUserGroups`.
+
+Use `internal/api/handlers/workspace.go::ShareWorkspace` (around line 406) as the template. Then run `make swagger` (or whatever the project's regen target is) to refresh `internal/swagger/docs.go`. Commit with `docs(swagger): annotate group handlers and regenerate`.
+
+- [ ] **Step 16.4: Commit docs**
 
 ```bash
 git add docs/docs/ui.md docs/docs/server-setup.md
 git commit -m "docs: document groups feature and OIDC scope"
 ```
 
-- [ ] **Step 16.4: Open the PR**
+- [ ] **Step 16.5: Open the PR**
 
 ```bash
 git push -u origin <branch>

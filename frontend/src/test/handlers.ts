@@ -40,7 +40,8 @@ export const mockJob: Job = {
   created_at: '2024-01-01T00:00:00Z',
 };
 
-export const mockCollaborator: Collaborator = {
+export const mockCollaborator: Extract<Collaborator, { kind: 'user' }> = {
+  kind: 'user',
   user_id: 'user-2',
   username: 'collaborator',
   email: 'collab@example.com',
@@ -48,7 +49,8 @@ export const mockCollaborator: Collaborator = {
   is_owner: false,
 };
 
-export const mockOwnerCollaborator: Collaborator = {
+export const mockOwnerCollaborator: Extract<Collaborator, { kind: 'user' }> = {
+  kind: 'user',
   user_id: 'user-1',
   username: 'testuser',
   email: 'test@example.com',

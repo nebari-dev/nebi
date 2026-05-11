@@ -8,6 +8,7 @@ import { usePackages } from '@/hooks/usePackages';
 import { useCollaborators } from '@/hooks/useAdmin';
 import { usePublications, useUpdatePublication } from '@/hooks/useRegistries';
 import { workspacesApi } from '@/api/workspaces';
+import type { Collaborator } from '@/types/models';
 import { useAuthStore } from '@/store/authStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
 import { Button } from '@/components/ui/button';
@@ -40,6 +41,9 @@ export const WorkspaceDetail = () => {
   const { data: workspace, isLoading: wsLoading } = useWorkspace(wsId);
   const { data: packages, isLoading: packagesLoading } = usePackages(wsId);
   const { data: collaborators } = useCollaborators(wsId);
+  const userCollaborators = collaborators?.filter(
+    (c): c is Extract<Collaborator, { kind: 'user' }> => c.kind === 'user'
+  );
   const { data: publications, isLoading: publicationsLoading } = usePublications(wsId);
   const updatePubMutation = useUpdatePublication();
   const currentUser = useAuthStore((state) => state.user);
@@ -326,7 +330,7 @@ export const WorkspaceDetail = () => {
                     </div>
                   )}
                   <div className="flex flex-wrap gap-1.5">
-                    {collaborators?.slice(0, 3).map((c) => (
+                    {userCollaborators?.slice(0, 3).map((c) => (
                       <UserBadge key={c.user_id} username={c.username} />
                     ))}
                     {(collaborators?.length || 0) > 3 && (
@@ -684,7 +688,7 @@ export const WorkspaceDetail = () => {
               </p>
             </div>
             <div className="space-y-2">
-              {collaborators?.map((collab) => (
+              {userCollaborators?.map((collab) => (
                 <div
                   key={collab.user_id}
                   className="flex justify-between items-center p-3 rounded-lg border"

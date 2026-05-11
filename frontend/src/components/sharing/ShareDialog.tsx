@@ -13,6 +13,9 @@ import {
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { RoleBadge } from './RoleBadge';
 import { Loader2, X } from 'lucide-react';
+import type { Collaborator } from '@/types/models';
+
+type UserCollaborator = Extract<Collaborator, { kind: 'user' }>;
 
 interface ShareDialogProps {
   open: boolean;
@@ -31,8 +34,12 @@ export const ShareDialog = ({ open, onOpenChange, environmentId }: ShareDialogPr
   const shareMutation = useShareWorkspace(environmentId);
   const unshareMutation = useUnshareWorkspace(environmentId);
 
+  const userCollaborators = collaborators?.filter(
+    (c): c is UserCollaborator => c.kind === 'user'
+  );
+
   const availableUsers = allUsers?.filter(
-    (user) => !collaborators?.some((c) => c.user_id === user.id)
+    (user) => !userCollaborators?.some((c) => c.user_id === user.id)
   );
 
   const handleShare = async (e: React.FormEvent) => {
@@ -95,7 +102,7 @@ export const ShareDialog = ({ open, onOpenChange, environmentId }: ShareDialogPr
             <div className="space-y-3">
               <h3 className="text-sm font-semibold">Current Access</h3>
               <div className="space-y-2 max-h-64 overflow-y-auto">
-                {collaborators?.map((collab) => (
+                {userCollaborators?.map((collab) => (
                   <div
                     key={collab.user_id}
                     className="flex justify-between items-center p-3 border rounded-lg"

@@ -1,10 +1,12 @@
 package service
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/rbac"
 )
 
 // --- ShareWorkspace tests ---
@@ -235,4 +237,91 @@ func isForbiddenError(err error, target **ForbiddenError) bool {
 		*target = fe
 	}
 	return ok
+}
+
+// --- ShareWorkspaceWithGroup / UnshareWorkspaceFromGroup tests ---
+
+func TestShareWorkspaceWithGroup_GrantsTransitiveAccess(t *testing.T) {
+	svc, db := testSetup(t, false)
+	groupSvc := NewGroupService(db, rbac.NewDefaultProvider())
+
+	alice := createTestUser(t, db, "alice")
+	bob := createTestUser(t, db, "bob")
+	ws := createReadyWorkspace(t, svc, db, "share-grp", alice)
+
+	db.Create(&models.Role{Name: "viewer", Description: "read"})
+	db.Create(&models.Role{Name: "editor", Description: "write"})
+
+	g, _ := groupSvc.CreateGroup(CreateGroupRequest{Name: "team"}, alice)
+	// alice (owner) must be a member of the group to share with it.
+	_ = groupSvc.AddMember(g.ID, alice, alice)
+	_ = groupSvc.AddMember(g.ID, bob, alice)
+
+	perm, err := svc.ShareWorkspaceWithGroup(ws.ID.String(), alice, g.ID, "editor", groupSvc)
+	if err != nil {
+		t.Fatalf("share with group: %v", err)
+	}
+	if perm.GroupID != g.ID || perm.WorkspaceID != ws.ID {
+		t.Fatalf("permission shape wrong: %+v", perm)
+	}
+
+	canWrite, err := svc.rbac.CanWriteWorkspace(bob, ws.ID)
+	if err != nil || !canWrite {
+		t.Fatalf("bob should have transitive write access, err=%v can=%v", err, canWrite)
+	}
+}
+
+func TestShareWorkspaceWithGroup_OwnerNotInGroupRejected(t *testing.T) {
+	svc, db := testSetup(t, false)
+	groupSvc := NewGroupService(db, rbac.NewDefaultProvider())
+
+	alice := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "share-grp", alice)
+	db.Create(&models.Role{Name: "viewer"})
+	db.Create(&models.Role{Name: "editor"})
+
+	g, _ := groupSvc.CreateGroup(CreateGroupRequest{Name: "outsiders"}, alice)
+	// Note: alice is NOT a member of `g`.
+
+	_, err := svc.ShareWorkspaceWithGroup(ws.ID.String(), alice, g.ID, "viewer", groupSvc)
+	if err == nil {
+		t.Fatal("expected ForbiddenError when owner is not a member of the group")
+	}
+	var fe *ForbiddenError
+	if !errors.As(err, &fe) {
+		t.Fatalf("expected ForbiddenError, got %T: %v", err, err)
+	}
+}
+
+func TestListCollaborators_IncludesGroups(t *testing.T) {
+	svc, db := testSetup(t, false)
+	groupSvc := NewGroupService(db, rbac.NewDefaultProvider())
+	alice := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "x", alice)
+	db.Create(&models.Role{Name: "viewer"})
+	db.Create(&models.Role{Name: "editor"})
+
+	g, _ := groupSvc.CreateGroup(CreateGroupRequest{Name: "ds"}, alice)
+	_ = groupSvc.AddMember(g.ID, alice, alice)
+	_, _ = svc.ShareWorkspaceWithGroup(ws.ID.String(), alice, g.ID, "viewer", groupSvc)
+
+	cs, err := svc.ListCollaborators(ws.ID.String())
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	var sawGroup bool
+	for _, c := range cs {
+		if c.Kind == CollaboratorKindGroup && c.GroupID == g.ID {
+			sawGroup = true
+			if c.Role != "viewer" {
+				t.Errorf("expected role viewer, got %q", c.Role)
+			}
+			if c.Source != "native" {
+				t.Errorf("expected source native, got %q", c.Source)
+			}
+		}
+	}
+	if !sawGroup {
+		t.Fatalf("expected group collaborator in list, got %+v", cs)
+	}
 }

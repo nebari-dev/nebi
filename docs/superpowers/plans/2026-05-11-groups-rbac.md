@@ -1310,12 +1310,9 @@ Append to `internal/service/workspace_permissions.go`:
 ```go
 // ShareWorkspaceWithGroup grants a group access to a workspace.
 // Authorization: caller must be admin OR (owner AND member of the group).
-// The handler performs the admin check; the service performs the
-// owner+member check (which it can do without re-deriving admin state).
-//
-// `groupSvc` is injected so we can query membership without importing the
-// group service at type-level (which would create a cycle).
-func (s *WorkspaceService) ShareWorkspaceWithGroup(wsID string, callerID uuid.UUID, groupID uuid.UUID, role string, groupSvc *GroupService) (*models.GroupPermission, error) {
+// Membership is resolved via Casbin grouping rules, so the GroupService
+// dependency is not needed here.
+func (s *WorkspaceService) ShareWorkspaceWithGroup(wsID string, callerID uuid.UUID, groupID uuid.UUID, role string) (*models.GroupPermission, error) {
 	wsUUID, err := uuid.Parse(wsID)
 	if err != nil {
 		return nil, &ValidationError{Message: "Invalid workspace ID"}
@@ -2097,13 +2094,13 @@ type ShareWorkspaceWithGroupRequest struct {
 
 // ShareWorkspaceWithGroup grants a group access to a workspace.
 // @Router /workspaces/{id}/share-group [post]
-func (h *WorkspaceHandler) ShareWorkspaceWithGroup(c *gin.Context, groupSvc *service.GroupService) {
+func (h *WorkspaceHandler) ShareWorkspaceWithGroup(c *gin.Context) {
 	var req ShareWorkspaceWithGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
-	perm, err := h.svc.ShareWorkspaceWithGroup(c.Param("id"), getUserID(c), req.GroupID, req.Role, groupSvc)
+	perm, err := h.svc.ShareWorkspaceWithGroup(c.Param("id"), getUserID(c), req.GroupID, req.Role)
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -2127,42 +2124,7 @@ func (h *WorkspaceHandler) UnshareWorkspaceWithGroup(c *gin.Context) {
 }
 ```
 
-Because `ShareWorkspaceWithGroup` needs `*service.GroupService`, you have two options:
-- **A (preferred):** pass the GroupService to the handler at construction. Modify `WorkspaceHandler` (around `workspace.go:12-18`) to hold `groupSvc *service.GroupService` and update `NewWorkspaceHandler` to accept it.
-- **B:** wire the dependency via a closure in the router.
-
-Use option A. Replace the existing handler factory:
-
-```go
-type WorkspaceHandler struct {
-	svc      *service.WorkspaceService
-	groupSvc *service.GroupService
-}
-
-func NewWorkspaceHandler(svc *service.WorkspaceService, groupSvc *service.GroupService) *WorkspaceHandler {
-	return &WorkspaceHandler{svc: svc, groupSvc: groupSvc}
-}
-```
-
-…and change the new handler signature to:
-
-```go
-func (h *WorkspaceHandler) ShareWorkspaceWithGroup(c *gin.Context) {
-	var req ShareWorkspaceWithGroupRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-		return
-	}
-	perm, err := h.svc.ShareWorkspaceWithGroup(c.Param("id"), getUserID(c), req.GroupID, req.Role, h.groupSvc)
-	if err != nil {
-		handleServiceError(c, err)
-		return
-	}
-	c.JSON(http.StatusCreated, perm)
-}
-```
-
-Then update every call site of `NewWorkspaceHandler` (`grep -rn NewWorkspaceHandler /Users/tylerman/gh/nebi/`) to pass the GroupService. The router will be the main caller — the route-wiring task below covers that.
+`ShareWorkspaceWithGroup` resolves membership through Casbin grouping rules, so the handler does NOT need to hold a `*service.GroupService` for this method. Leave `WorkspaceHandler` and `NewWorkspaceHandler` unchanged — no extra dependency, no new constructor argument, no call-site updates required for this method.
 
 - [ ] **Step 7.2: Registry-group handlers**
 
@@ -2286,13 +2248,9 @@ In `internal/api/router.go`, find where `WorkspaceService` and `AdminService` ar
 	groupHandler := handlers.NewGroupHandler(groupSvc)
 ```
 
-Then update the existing `wsHandler := handlers.NewWorkspaceHandler(wsSvc)` call to:
+The existing `wsHandler := handlers.NewWorkspaceHandler(wsSvc)` call does NOT need to change — `ShareWorkspaceWithGroup` does not need the GroupService.
 
-```go
-	wsHandler := handlers.NewWorkspaceHandler(wsSvc, groupSvc)
-```
-
-Same change for `registryHandler` if you adopted Option A for registry (passing `adminSvc`).
+For `registryHandler`, if you adopted Option A (passing `adminSvc`), update its constructor call accordingly.
 
 - [ ] **Step 8.2: Register `/admin/groups/*` routes**
 
@@ -3658,6 +3616,6 @@ EOF
 1. **Matcher change is the most fragile step.** If Task 1 fails the full suite, the `g(r.sub, p.sub)` change is the suspect — verify the existing per-user policies still match in `TestDirectUserPolicyStillWorksAfterMatcherChange`. Casbin treats `g(x, x)` as true by default, so this should work, but pin it down before moving on.
 2. **`workspace_test.go` migration list is hand-maintained.** Step 2.5 keeps it in sync with `db.Migrate`. If you add new models in the future, remember both places.
 3. **OIDC sync is best-effort by design** (Step 9.4 — log and continue). If your team prefers strict-failure, change the policy and add a test.
-4. **`ShareWorkspaceWithGroup` takes `*GroupService` as a parameter** to avoid a service-layer import cycle. This is mildly awkward but cheaper than restructuring. The handler holds both services and threads the dependency.
+4. **`ShareWorkspaceWithGroup` resolves group membership via Casbin grouping rules** (`s.rbac.GetUserGroups`), so it does not need a `*GroupService` dependency. The handler stays slim — no extra service to inject.
 5. **Frontend `Collaborator` type becomes a discriminated union.** Every consumer must branch on `kind`. The TypeScript compiler will surface every site that needs updating.
 6. **Casbin `SavePolicy` rewrites the whole policy table on every helper call.** That mirrors the pre-existing pattern in `rbac.go` and is fine for the volumes involved. If profiling shows it becomes a bottleneck, switch the rbac module to `enforcer.AddPolicy` + per-call adapter writes (a separate refactor).

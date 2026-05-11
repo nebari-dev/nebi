@@ -158,7 +158,7 @@ func (s *WorkspaceService) ListCollaborators(wsID string) ([]CollaboratorResult,
 	if err := s.db.First(&owner, "id = ?", ws.OwnerID).Error; err == nil {
 		collaborators = append(collaborators, CollaboratorResult{
 			Kind:     CollaboratorKindUser,
-			UserID:   ws.OwnerID,
+			UserID:   &ws.OwnerID,
 			Username: owner.Username,
 			Email:    owner.Email,
 			Role:     "owner",
@@ -177,7 +177,7 @@ func (s *WorkspaceService) ListCollaborators(wsID string) ([]CollaboratorResult,
 		}
 		collaborators = append(collaborators, CollaboratorResult{
 			Kind:     CollaboratorKindUser,
-			UserID:   p.UserID,
+			UserID:   &p.UserID,
 			Username: p.User.Username,
 			Email:    p.User.Email,
 			Role:     p.Role.Name,
@@ -193,7 +193,7 @@ func (s *WorkspaceService) ListCollaborators(wsID string) ([]CollaboratorResult,
 	for _, gp := range groupPerms {
 		collaborators = append(collaborators, CollaboratorResult{
 			Kind:    CollaboratorKindGroup,
-			GroupID: gp.GroupID,
+			GroupID: &gp.GroupID,
 			Name:    gp.Group.Name,
 			Source:  string(gp.Group.Source),
 			Role:    gp.Role.Name,
@@ -206,12 +206,9 @@ func (s *WorkspaceService) ListCollaborators(wsID string) ([]CollaboratorResult,
 
 // ShareWorkspaceWithGroup grants a group access to a workspace.
 // Authorization: caller must be admin OR (owner AND member of the group).
-// The handler performs the admin check; the service performs the
-// owner+member check (which it can do without re-deriving admin state).
-//
-// `groupSvc` is injected so we can query membership without importing the
-// group service at type-level (which would create a cycle).
-func (s *WorkspaceService) ShareWorkspaceWithGroup(wsID string, callerID uuid.UUID, groupID uuid.UUID, role string, groupSvc *GroupService) (*models.GroupPermission, error) {
+// Membership is resolved via Casbin grouping rules, so the GroupService
+// dependency is not needed here.
+func (s *WorkspaceService) ShareWorkspaceWithGroup(wsID string, callerID uuid.UUID, groupID uuid.UUID, role string) (*models.GroupPermission, error) {
 	wsUUID, err := uuid.Parse(wsID)
 	if err != nil {
 		return nil, &ValidationError{Message: "Invalid workspace ID"}

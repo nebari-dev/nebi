@@ -58,10 +58,10 @@ const (
 // CollaboratorResult is the result type for ListCollaborators.
 type CollaboratorResult struct {
 	Kind     CollaboratorKind `json:"kind"`
-	UserID   uuid.UUID        `json:"user_id,omitempty"`
+	UserID   *uuid.UUID       `json:"user_id,omitempty"`
 	Username string           `json:"username,omitempty"`
 	Email    string           `json:"email,omitempty"`
-	GroupID  uuid.UUID        `json:"group_id,omitempty"`
+	GroupID  *uuid.UUID       `json:"group_id,omitempty"`
 	Name     string           `json:"name,omitempty"`
 	Source   string           `json:"source,omitempty"` // "" for users, "native"/"oidc" for groups
 	Role     string           `json:"role"`

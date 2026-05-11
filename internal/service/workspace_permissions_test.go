@@ -1,6 +1,8 @@
 package service
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -257,7 +259,7 @@ func TestShareWorkspaceWithGroup_GrantsTransitiveAccess(t *testing.T) {
 	_ = groupSvc.AddMember(g.ID, alice, alice)
 	_ = groupSvc.AddMember(g.ID, bob, alice)
 
-	perm, err := svc.ShareWorkspaceWithGroup(ws.ID.String(), alice, g.ID, "editor", groupSvc)
+	perm, err := svc.ShareWorkspaceWithGroup(ws.ID.String(), alice, g.ID, "editor")
 	if err != nil {
 		t.Fatalf("share with group: %v", err)
 	}
@@ -283,7 +285,7 @@ func TestShareWorkspaceWithGroup_OwnerNotInGroupRejected(t *testing.T) {
 	g, _ := groupSvc.CreateGroup(CreateGroupRequest{Name: "outsiders"}, alice)
 	// Note: alice is NOT a member of `g`.
 
-	_, err := svc.ShareWorkspaceWithGroup(ws.ID.String(), alice, g.ID, "viewer", groupSvc)
+	_, err := svc.ShareWorkspaceWithGroup(ws.ID.String(), alice, g.ID, "viewer")
 	if err == nil {
 		t.Fatal("expected ForbiddenError when owner is not a member of the group")
 	}
@@ -303,7 +305,7 @@ func TestListCollaborators_IncludesGroups(t *testing.T) {
 
 	g, _ := groupSvc.CreateGroup(CreateGroupRequest{Name: "ds"}, alice)
 	_ = groupSvc.AddMember(g.ID, alice, alice)
-	_, _ = svc.ShareWorkspaceWithGroup(ws.ID.String(), alice, g.ID, "viewer", groupSvc)
+	_, _ = svc.ShareWorkspaceWithGroup(ws.ID.String(), alice, g.ID, "viewer")
 
 	cs, err := svc.ListCollaborators(ws.ID.String())
 	if err != nil {
@@ -311,7 +313,7 @@ func TestListCollaborators_IncludesGroups(t *testing.T) {
 	}
 	var sawGroup bool
 	for _, c := range cs {
-		if c.Kind == CollaboratorKindGroup && c.GroupID == g.ID {
+		if c.Kind == CollaboratorKindGroup && c.GroupID != nil && *c.GroupID == g.ID {
 			sawGroup = true
 			if c.Role != "viewer" {
 				t.Errorf("expected role viewer, got %q", c.Role)
@@ -323,5 +325,31 @@ func TestListCollaborators_IncludesGroups(t *testing.T) {
 	}
 	if !sawGroup {
 		t.Fatalf("expected group collaborator in list, got %+v", cs)
+	}
+}
+
+func TestCollaboratorResult_JSON_OmitsIrrelevantIDs(t *testing.T) {
+	userID := uuid.New()
+	userEntry := CollaboratorResult{
+		Kind: CollaboratorKindUser, UserID: &userID, Username: "alice", Role: "viewer",
+	}
+	userJSON, err := json.Marshal(userEntry)
+	if err != nil {
+		t.Fatalf("marshal user: %v", err)
+	}
+	if bytes.Contains(userJSON, []byte("group_id")) {
+		t.Errorf("user JSON leaked group_id: %s", userJSON)
+	}
+
+	groupID := uuid.New()
+	groupEntry := CollaboratorResult{
+		Kind: CollaboratorKindGroup, GroupID: &groupID, Name: "ds", Source: "native", Role: "viewer",
+	}
+	groupJSON, err := json.Marshal(groupEntry)
+	if err != nil {
+		t.Fatalf("marshal group: %v", err)
+	}
+	if bytes.Contains(groupJSON, []byte("user_id")) {
+		t.Errorf("group JSON leaked user_id: %s", groupJSON)
 	}
 }

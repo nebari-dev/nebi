@@ -4,18 +4,20 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/service"
 )
 
 // RegistryHandler handles OCI registry operations
 type RegistryHandler struct {
-	svc *service.RegistryService
+	svc      *service.RegistryService
+	adminSvc *service.AdminService
 }
 
 // NewRegistryHandler creates a new registry handler
-func NewRegistryHandler(svc *service.RegistryService) *RegistryHandler {
-	return &RegistryHandler{svc: svc}
+func NewRegistryHandler(svc *service.RegistryService, adminSvc *service.AdminService) *RegistryHandler {
+	return &RegistryHandler{svc: svc, adminSvc: adminSvc}
 }
 
 // ListRegistries godoc
@@ -189,4 +191,49 @@ type UpdateRegistryRequest struct {
 	APIToken  *string `json:"api_token"`
 	IsDefault *bool   `json:"is_default"`
 	Namespace *string `json:"namespace"`
+}
+
+type GrantRegistryToGroupRequest struct {
+	GroupID uuid.UUID `json:"group_id" binding:"required"`
+	Action  string    `json:"action" binding:"required"` // "read" or "write"
+}
+
+// GrantRegistryToGroup grants a group access to a registry. Admin-only.
+// @Router /admin/registries/{id}/grant-group [post]
+func (h *RegistryHandler) GrantRegistryToGroup(c *gin.Context) {
+	regID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid registry ID"})
+		return
+	}
+	var req GrantRegistryToGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	if err := h.adminSvc.GrantRegistryToGroup(regID, req.GroupID, req.Action, getUserID(c)); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.Status(http.StatusCreated)
+}
+
+// RevokeRegistryFromGroup revokes a group's access to a registry. Admin-only.
+// @Router /admin/registries/{id}/grant-group/{group_id} [delete]
+func (h *RegistryHandler) RevokeRegistryFromGroup(c *gin.Context) {
+	regID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid registry ID"})
+		return
+	}
+	groupID, err := uuid.Parse(c.Param("group_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid group ID"})
+		return
+	}
+	if err := h.adminSvc.RevokeRegistryFromGroup(regID, groupID, getUserID(c)); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }

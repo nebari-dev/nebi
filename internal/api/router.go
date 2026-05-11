@@ -247,7 +247,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		protected.POST("/templates", handlers.NotImplemented)
 
 		// OCI Registry endpoints (for users to view available registries)
-		registryHandler := handlers.NewRegistryHandler(registrySvc)
+		registryHandler := handlers.NewRegistryHandler(registrySvc, adminSvc)
 		protected.GET("/registries", registryHandler.ListPublicRegistries)
 
 		// Registry browse & import endpoints (for all authenticated users)

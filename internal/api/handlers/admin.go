@@ -248,3 +248,33 @@ type GrantPermissionRequest struct {
 
 // getAdminUserID reuses getUserID from helpers.go.
 var getAdminUserID = getUserID
+
+// GrantGroupAdmin promotes a group to admin. Admin-only.
+// @Router /admin/groups/{id}/grant-admin [post]
+func (h *AdminHandler) GrantGroupAdmin(c *gin.Context) {
+	groupID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid group ID"})
+		return
+	}
+	if err := h.svc.GrantGroupAdmin(groupID, getUserID(c)); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.Status(http.StatusCreated)
+}
+
+// RevokeGroupAdmin removes the group's admin grant. Admin-only.
+// @Router /admin/groups/{id}/grant-admin [delete]
+func (h *AdminHandler) RevokeGroupAdmin(c *gin.Context) {
+	groupID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid group ID"})
+		return
+	}
+	if err := h.svc.RevokeGroupAdmin(groupID, getUserID(c)); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}

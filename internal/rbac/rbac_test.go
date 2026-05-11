@@ -26,7 +26,7 @@ func TestGroupGrantsWorkspaceAccessTransitively(t *testing.T) {
 	if err := InitEnforcer(db, slog.Default()); err != nil {
 		t.Fatalf("init enforcer: %v", err)
 	}
-	defer func() { enforcer = nil }()
+	t.Cleanup(func() { enforcer = nil })
 
 	user := uuid.New()
 	group := uuid.New()
@@ -53,7 +53,7 @@ func TestGroupAdminTransitive(t *testing.T) {
 	if err := InitEnforcer(db, slog.Default()); err != nil {
 		t.Fatalf("init enforcer: %v", err)
 	}
-	defer func() { enforcer = nil }()
+	t.Cleanup(func() { enforcer = nil })
 
 	user := uuid.New()
 	group := uuid.New()
@@ -79,7 +79,7 @@ func TestDirectUserPolicyStillWorksAfterMatcherChange(t *testing.T) {
 	if err := InitEnforcer(db, slog.Default()); err != nil {
 		t.Fatalf("init enforcer: %v", err)
 	}
-	defer func() { enforcer = nil }()
+	t.Cleanup(func() { enforcer = nil })
 
 	user := uuid.New()
 	ws := uuid.New()
@@ -102,7 +102,7 @@ func TestRemoveAllGroupPoliciesCleansEverything(t *testing.T) {
 	if err := InitEnforcer(db, slog.Default()); err != nil {
 		t.Fatalf("init enforcer: %v", err)
 	}
-	defer func() { enforcer = nil }()
+	t.Cleanup(func() { enforcer = nil })
 
 	user := uuid.New()
 	group := uuid.New()
@@ -125,5 +125,9 @@ func TestRemoveAllGroupPoliciesCleansEverything(t *testing.T) {
 	isAdmin, _ := IsAdmin(user)
 	if isAdmin {
 		t.Fatalf("expected admin to be revoked")
+	}
+	canWriteReg, _ := CanWriteRegistry(user, reg)
+	if canWriteReg {
+		t.Fatalf("expected registry write access to be revoked")
 	}
 }

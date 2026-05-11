@@ -16,6 +16,12 @@ import (
 // login. Only affects groups with source=oidc; native memberships are
 // untouched. Zero-member OIDC groups are preserved so existing workspace
 // shares survive churn.
+//
+// Name collision with native groups: If an OIDC claim names a group that
+// already exists with source=native, the membership is NOT added — native
+// groups are administered explicitly in nebi, and silently merging IdP claims
+// into them would create permanent untracked grants (phase-2 reconcile only
+// considers source=oidc memberships).
 func SyncOIDCGroups(db *gorm.DB, userID uuid.UUID, claimGroups []string) error {
 	desired := make(map[string]struct{}, len(claimGroups))
 	for _, name := range claimGroups {
@@ -31,7 +37,16 @@ func SyncOIDCGroups(db *gorm.DB, userID uuid.UUID, claimGroups []string) error {
 		err := db.Where("name = ?", name).First(&g).Error
 		switch {
 		case err == nil:
-			// already exists; if it was native, leave it alone (don't reclassify it)
+			// If this name already exists as a native group, do NOT merge OIDC claims
+			// into it. Native group membership is administered explicitly in nebi; an
+			// OIDC claim that happens to share the name must not silently grant
+			// permanent access (phase-2 reconcile only looks at source=oidc, so any
+			// membership added here would never be removed).
+			if g.Source == models.GroupSourceNative {
+				slog.Warn("OIDC claim names a native group; skipping membership",
+					"group_name", name, "group_id", g.ID, "user_id", userID)
+				continue
+			}
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			g = models.Group{Name: name, Source: models.GroupSourceOIDC}
 			if err := db.Create(&g).Error; err != nil {
@@ -79,6 +94,6 @@ func SyncOIDCGroups(db *gorm.DB, userID uuid.UUID, claimGroups []string) error {
 		}
 	}
 
-	slog.Info("OIDC groups synced", "user_id", userID, "claim_count", len(desired))
+	slog.Debug("OIDC groups synced", "user_id", userID, "claim_count", len(desired))
 	return nil
 }

@@ -2429,6 +2429,61 @@ func TestSyncOIDCGroups_DoesNotTouchNativeMemberships(t *testing.T) {
 	if len(memberships) != 2 {
 		t.Fatalf("expected 2 memberships (1 native + 1 oidc), got %d: %v", len(memberships), memberships)
 	}
+	nativeStillPresent := false
+	for _, id := range memberships {
+		if id == native.ID {
+			nativeStillPresent = true
+			break
+		}
+	}
+	if !nativeStillPresent {
+		t.Fatalf("native group %s missing from casbin memberships: %v", native.ID, memberships)
+	}
+}
+
+// Regression test for the silent-merge security issue: if an OIDC claim names
+// a group that already exists as `source=native`, we must refuse to add the
+// user to it. Phase 2 reconcile only sees source=oidc rows, so any membership
+// created here would become permanent untracked access from external IdP data.
+func TestSyncOIDCGroups_RefusesToMergeIntoNativeGroup(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+
+	// Operator pre-creates a native group with a name that an IdP could collide with.
+	native := models.Group{Name: "engineering", Source: models.GroupSourceNative}
+	if err := db.Create(&native).Error; err != nil {
+		t.Fatalf("seed native: %v", err)
+	}
+
+	// OIDC claim arrives with the same name.
+	if err := SyncOIDCGroups(db, u.ID, []string{"engineering"}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	// Alice must NOT be a member of the native group via DB.
+	var mem models.GroupMember
+	err := db.Where("group_id = ? AND user_id = ?", native.ID, u.ID).First(&mem).Error
+	if err == nil {
+		t.Fatalf("expected no GroupMember row for native group, found one")
+	}
+
+	// And NOT a member via Casbin.
+	memberships, _ := rbac.GetUserGroups(u.ID)
+	for _, id := range memberships {
+		if id == native.ID {
+			t.Fatalf("expected user NOT to be in casbin grouping rule for native group, got %v", memberships)
+		}
+	}
+
+	// The native group's source must remain unchanged.
+	var refetched models.Group
+	if err := db.First(&refetched, "id = ?", native.ID).Error; err != nil {
+		t.Fatalf("refetch native: %v", err)
+	}
+	if refetched.Source != models.GroupSourceNative {
+		t.Fatalf("native group's source was reclassified to %q", refetched.Source)
+	}
 }
 
 func _testUUID() uuid.UUID { return uuid.New() }
@@ -2462,6 +2517,12 @@ import (
 // login. Only affects groups with source=oidc; native memberships are
 // untouched. Zero-member OIDC groups are preserved so existing workspace
 // shares survive churn.
+//
+// Name collision with native groups: If an OIDC claim names a group that
+// already exists with source=native, the membership is NOT added — native
+// groups are administered explicitly in nebi, and silently merging IdP claims
+// into them would create permanent untracked grants (phase-2 reconcile only
+// considers source=oidc memberships).
 func SyncOIDCGroups(db *gorm.DB, userID uuid.UUID, claimGroups []string) error {
 	desired := make(map[string]struct{}, len(claimGroups))
 	for _, name := range claimGroups {
@@ -2477,7 +2538,16 @@ func SyncOIDCGroups(db *gorm.DB, userID uuid.UUID, claimGroups []string) error {
 		err := db.Where("name = ?", name).First(&g).Error
 		switch {
 		case err == nil:
-			// already exists; if it was native, leave it alone (don't reclassify it)
+			// If this name already exists as a native group, do NOT merge OIDC claims
+			// into it. Native group membership is administered explicitly in nebi; an
+			// OIDC claim that happens to share the name must not silently grant
+			// permanent access (phase-2 reconcile only looks at source=oidc, so any
+			// membership added here would never be removed).
+			if g.Source == models.GroupSourceNative {
+				slog.Warn("OIDC claim names a native group; skipping membership",
+					"group_name", name, "group_id", g.ID, "user_id", userID)
+				continue
+			}
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			g = models.Group{Name: name, Source: models.GroupSourceOIDC}
 			if err := db.Create(&g).Error; err != nil {
@@ -2525,7 +2595,7 @@ func SyncOIDCGroups(db *gorm.DB, userID uuid.UUID, claimGroups []string) error {
 		}
 	}
 
-	slog.Info("OIDC groups synced", "user_id", userID, "claim_count", len(desired))
+	slog.Debug("OIDC groups synced", "user_id", userID, "claim_count", len(desired))
 	return nil
 }
 ```

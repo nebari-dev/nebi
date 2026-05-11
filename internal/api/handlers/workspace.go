@@ -651,7 +651,19 @@ type ShareWorkspaceWithGroupRequest struct {
 	Role    string    `json:"role" binding:"required"` // "viewer" or "editor"
 }
 
-// ShareWorkspaceWithGroup grants a group access to a workspace.
+// ShareWorkspaceWithGroup godoc
+// @Summary Share workspace with a group (owner only)
+// @Tags workspaces
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path string true "Workspace ID"
+// @Param share body ShareWorkspaceWithGroupRequest true "Group share details"
+// @Success 201 {object} models.GroupPermission
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
 // @Router /workspaces/{id}/share-group [post]
 func (h *WorkspaceHandler) ShareWorkspaceWithGroup(c *gin.Context) {
 	var req ShareWorkspaceWithGroupRequest
@@ -667,7 +679,17 @@ func (h *WorkspaceHandler) ShareWorkspaceWithGroup(c *gin.Context) {
 	c.JSON(http.StatusCreated, perm)
 }
 
-// UnshareWorkspaceWithGroup revokes a group's access.
+// UnshareWorkspaceWithGroup godoc
+// @Summary Revoke a group's access to a workspace (owner only)
+// @Tags workspaces
+// @Security BearerAuth
+// @Param id path string true "Workspace ID"
+// @Param group_id path string true "Group ID to revoke"
+// @Success 204
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
 // @Router /workspaces/{id}/share-group/{group_id} [delete]
 func (h *WorkspaceHandler) UnshareWorkspaceWithGroup(c *gin.Context) {
 	groupID, err := uuid.Parse(c.Param("group_id"))

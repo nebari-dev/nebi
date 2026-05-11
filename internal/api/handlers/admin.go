@@ -105,7 +105,17 @@ func (h *AdminHandler) ToggleAdmin(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// ListUserGroups returns the groups a user belongs to. Admin-only.
+// ListUserGroups godoc
+// @Summary List the groups a user belongs to (admin only)
+// @Tags admin
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "User UUID"
+// @Success 200 {array} models.Group
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
 // @Router /admin/users/{id}/groups [get]
 func (h *AdminHandler) ListUserGroups(c *gin.Context) {
 	uid, err := uuid.Parse(c.Param("id"))
@@ -265,7 +275,17 @@ type GrantPermissionRequest struct {
 // getAdminUserID reuses getUserID from helpers.go.
 var getAdminUserID = getUserID
 
-// GrantGroupAdmin promotes a group to admin. Admin-only.
+// GrantGroupAdmin godoc
+// @Summary Promote a group to admin (admin only)
+// @Description Every current and future member of the group gains effective admin via Casbin role inheritance.
+// @Tags admin
+// @Security BearerAuth
+// @Param id path string true "Group ID"
+// @Success 201
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
 // @Router /admin/groups/{id}/grant-admin [post]
 func (h *AdminHandler) GrantGroupAdmin(c *gin.Context) {
 	groupID, err := uuid.Parse(c.Param("id"))
@@ -280,7 +300,16 @@ func (h *AdminHandler) GrantGroupAdmin(c *gin.Context) {
 	c.Status(http.StatusCreated)
 }
 
-// RevokeGroupAdmin removes the group's admin grant. Admin-only.
+// RevokeGroupAdmin godoc
+// @Summary Revoke admin from a group (admin only)
+// @Tags admin
+// @Security BearerAuth
+// @Param id path string true "Group ID"
+// @Success 204
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
 // @Router /admin/groups/{id}/grant-admin [delete]
 func (h *AdminHandler) RevokeGroupAdmin(c *gin.Context) {
 	groupID, err := uuid.Parse(c.Param("id"))

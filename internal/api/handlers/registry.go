@@ -198,7 +198,18 @@ type GrantRegistryToGroupRequest struct {
 	Action  string    `json:"action" binding:"required"` // "read" or "write"
 }
 
-// GrantRegistryToGroup grants a group access to a registry. Admin-only.
+// GrantRegistryToGroup godoc
+// @Summary Grant a group read or write access to a registry (admin only)
+// @Tags admin
+// @Security BearerAuth
+// @Accept json
+// @Param id path string true "Registry ID"
+// @Param grant body GrantRegistryToGroupRequest true "Group + action (read|write)"
+// @Success 201
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
 // @Router /admin/registries/{id}/grant-group [post]
 func (h *RegistryHandler) GrantRegistryToGroup(c *gin.Context) {
 	regID, err := uuid.Parse(c.Param("id"))
@@ -218,7 +229,17 @@ func (h *RegistryHandler) GrantRegistryToGroup(c *gin.Context) {
 	c.Status(http.StatusCreated)
 }
 
-// RevokeRegistryFromGroup revokes a group's access to a registry. Admin-only.
+// RevokeRegistryFromGroup godoc
+// @Summary Revoke a group's access to a registry (admin only)
+// @Tags admin
+// @Security BearerAuth
+// @Param id path string true "Registry ID"
+// @Param group_id path string true "Group ID to revoke"
+// @Success 204
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
 // @Router /admin/registries/{id}/grant-group/{group_id} [delete]
 func (h *RegistryHandler) RevokeRegistryFromGroup(c *gin.Context) {
 	regID, err := uuid.Parse(c.Param("id"))

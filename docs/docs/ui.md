@@ -2,7 +2,7 @@
 
 Nebi has a graphical interface you can use in two ways:
 
-- **Desktop app**: a locally-installed application, started from your system Application drawer. See [installation](./installation.md) for how to get it.
+- **Desktop app**: a locally-installed application, started from your system Application drawer or from the CLI with `nebi-desktop`. See [installation](./installation.md) for how to get it.
 - **Nebi server**: the web UI served by a running Nebi server at `http://localhost:8460`. See [Server Setup](./server-setup.md).
 
 The screenshots and instructions below apply to either option.

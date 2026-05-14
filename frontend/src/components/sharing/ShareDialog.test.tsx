@@ -133,18 +133,21 @@ describe('ShareDialog', () => {
   });
 
   it('switches to group mode and shows the group form', async () => {
+    // useIsAdmin returns true in tests (default /admin/users handler returns 200),
+    // so ShareDialog sources the picker from /admin/groups. Mock both endpoints
+    // so the test works regardless of admin-detection drift.
+    const group = {
+      id: 'g-1',
+      name: 'data-science',
+      description: '',
+      source: 'native',
+      created_at: '',
+      updated_at: '',
+    };
     server.use(
-      http.get('/api/v1/groups/me', () =>
-        HttpResponse.json([
-          {
-            id: 'g-1',
-            name: 'data-science',
-            description: '',
-            source: 'native',
-            created_at: '',
-            updated_at: '',
-          },
-        ]),
+      http.get('/api/v1/groups/me', () => HttpResponse.json([group])),
+      http.get('/api/v1/admin/groups', () =>
+        HttpResponse.json([{ ...group, member_count: 0 }]),
       ),
     );
     renderWithProviders(<ShareDialog {...defaultProps} />);

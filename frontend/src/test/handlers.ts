@@ -198,6 +198,9 @@ export const handlers = [
   http.get(`${BASE}/groups/me`, () =>
     HttpResponse.json([])
   ),
+  http.get(`${BASE}/admin/groups`, () =>
+    HttpResponse.json([])
+  ),
 ];
 
 export const server = setupServer(...handlers);

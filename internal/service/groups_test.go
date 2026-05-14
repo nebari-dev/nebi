@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/nebari-dev/nebi/internal/models"
@@ -107,14 +108,38 @@ func TestDeleteGroup_HardRemovesCasbinRules(t *testing.T) {
 		t.Fatalf("expected casbin membership removed, got %v", groups)
 	}
 
+	// Group must be hard-deleted so its name is freed for re-creation
+	// (the unique index on name does not honour gorm.DeletedAt).
 	var dbGroup models.Group
 	err := db.Unscoped().First(&dbGroup, "id = ?", g.ID).Error
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("expected group row hard-deleted, got err=%v dbGroup=%+v", err, dbGroup)
+	}
+}
+
+func TestDeleteGroup_FreesNameForRecreate(t *testing.T) {
+	svc, db := groupTestSetup(t)
+	admin := createTestUser(t, db, "admin")
+
+	first, err := svc.CreateGroup(CreateGroupRequest{Name: "engineers"}, admin)
 	if err != nil {
-		t.Fatalf("expected soft-deleted row to still exist, got error: %v", err)
+		t.Fatalf("first create: %v", err)
 	}
-	if !dbGroup.DeletedAt.Valid {
-		t.Fatalf("expected DeletedAt to be set")
+	if err := svc.DeleteGroup(first.ID, admin); err != nil {
+		t.Fatalf("delete: %v", err)
 	}
+	// Recreating with the same name must not fail with a unique-constraint
+	// violation from a lingering soft-deleted row. This is the scenario the
+	// OIDC sync hits when an admin deletes a native group that an IdP claim
+	// later re-introduces.
+	second, err := svc.CreateGroup(CreateGroupRequest{Name: "engineers"}, admin)
+	if err != nil {
+		t.Fatalf("recreate after delete: %v", err)
+	}
+	if second.ID == first.ID {
+		t.Fatalf("expected fresh group row (new ID), got same ID %s", first.ID)
+	}
+	_ = db
 }
 
 func TestDeleteGroup_OIDCRejected(t *testing.T) {

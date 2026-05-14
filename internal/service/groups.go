@@ -162,10 +162,14 @@ func (s *GroupService) DeleteGroup(id uuid.UUID, actorID uuid.UUID) error {
 		if err := tx.Where("group_id = ?", g.ID).Delete(&models.GroupMember{}).Error; err != nil {
 			return fmt.Errorf("delete members: %w", err)
 		}
-		if err := tx.Where("group_id = ?", g.ID).Delete(&models.GroupPermission{}).Error; err != nil {
+		if err := tx.Unscoped().Where("group_id = ?", g.ID).Delete(&models.GroupPermission{}).Error; err != nil {
 			return fmt.Errorf("delete group permissions: %w", err)
 		}
-		if err := tx.Delete(&g).Error; err != nil {
+		// Hard-delete the group row so its name is freed for re-creation (the
+		// unique index on name doesn't honour gorm.DeletedAt — a soft-deleted
+		// row blocks any future create with the same name, including OIDC sync
+		// re-creating a group after the admin deletes the native version).
+		if err := tx.Unscoped().Delete(&g).Error; err != nil {
 			return fmt.Errorf("delete group: %w", err)
 		}
 		audit.LogAction(tx, actorID, audit.ActionDeleteGroup, fmt.Sprintf("group:%s", g.ID), map[string]interface{}{"name": g.Name})

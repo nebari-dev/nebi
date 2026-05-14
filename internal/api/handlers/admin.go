@@ -105,6 +105,32 @@ func (h *AdminHandler) ToggleAdmin(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// ListUserGroups godoc
+// @Summary List the groups a user belongs to (admin only)
+// @Tags admin
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "User UUID"
+// @Success 200 {array} models.Group
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /admin/users/{id}/groups [get]
+func (h *AdminHandler) ListUserGroups(c *gin.Context) {
+	uid, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid user ID"})
+		return
+	}
+	groups, err := h.svc.ListUserGroups(uid)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, groups)
+}
+
 // DeleteUser godoc
 // @Summary Delete a user (admin only)
 // @Tags admin
@@ -248,3 +274,52 @@ type GrantPermissionRequest struct {
 
 // getAdminUserID reuses getUserID from helpers.go.
 var getAdminUserID = getUserID
+
+// GrantGroupAdmin godoc
+// @Summary Promote a group to admin (admin only)
+// @Description Every current and future member of the group gains effective admin via Casbin role inheritance.
+// @Tags admin
+// @Security BearerAuth
+// @Param id path string true "Group ID"
+// @Success 201
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /admin/groups/{id}/grant-admin [post]
+func (h *AdminHandler) GrantGroupAdmin(c *gin.Context) {
+	groupID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid group ID"})
+		return
+	}
+	if err := h.svc.GrantGroupAdmin(groupID, getUserID(c)); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.Status(http.StatusCreated)
+}
+
+// RevokeGroupAdmin godoc
+// @Summary Revoke admin from a group (admin only)
+// @Tags admin
+// @Security BearerAuth
+// @Param id path string true "Group ID"
+// @Success 204
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /admin/groups/{id}/grant-admin [delete]
+func (h *AdminHandler) RevokeGroupAdmin(c *gin.Context) {
+	groupID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid group ID"})
+		return
+	}
+	if err := h.svc.RevokeGroupAdmin(groupID, getUserID(c)); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}

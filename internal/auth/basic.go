@@ -200,6 +200,11 @@ func (a *BasicAuthenticator) Middleware() gin.HandlerFunc {
 			return
 		}
 
+		// Reconcile OIDC group memberships from proxy claim.
+		if err := SyncOIDCGroups(a.db, user.ID, proxyClaims.Groups); err != nil {
+			slog.Warn("OIDC group sync failed; continuing request", "user_id", user.ID, "err", err)
+		}
+
 		// Sync admin role from proxy groups on every request
 		syncRolesFromGroups(user.ID, proxyClaims.Groups, a.proxyAdminGroups, a.rbac)
 
@@ -239,6 +244,11 @@ func (a *BasicAuthenticator) SessionFromProxy(r *http.Request, adminGroups strin
 	user, err := findOrCreateProxyUser(a.db, proxyClaims)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find/create proxy user: %w", err)
+	}
+
+	// Reconcile OIDC group memberships from proxy claim.
+	if err := SyncOIDCGroups(a.db, user.ID, proxyClaims.Groups); err != nil {
+		slog.Warn("OIDC group sync failed; continuing session", "user_id", user.ID, "err", err)
 	}
 
 	syncRolesFromGroups(user.ID, proxyClaims.Groups, parseAdminGroups(adminGroups), a.rbac)
@@ -289,6 +299,10 @@ func (a *BasicAuthenticator) ExchangeIDToken(rawIDToken string, adminGroups stri
 	user, err := findOrCreateProxyUser(a.db, &claims)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
+	}
+
+	if err := SyncOIDCGroups(a.db, user.ID, claims.Groups); err != nil {
+		slog.Warn("OIDC group sync failed; continuing login", "user_id", user.ID, "err", err)
 	}
 
 	syncRolesFromGroups(user.ID, claims.Groups, parseAdminGroups(adminGroups), a.rbac)

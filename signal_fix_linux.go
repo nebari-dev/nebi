@@ -20,6 +20,7 @@ static void fix_webkit_signal_handlers(void) {
 	fix_signal_sa_onstack(SIGFPE);
 	fix_signal_sa_onstack(SIGILL);
 	fix_signal_sa_onstack(SIGABRT);
+	fix_signal_sa_onstack(SIGUSR1); // JSC GC thread sync — see wails#5507
 }
 */
 import "C"
@@ -33,6 +34,12 @@ import "time"
 // first JavaScript context is created — usually after that idle pass. We
 // re-apply SA_ONSTACK on a short interval so JSC's late install gets corrected
 // regardless of when it lands.
+//
+// REMOVE WHEN: wailsapp/wails#5507 ships in a tagged Wails release and we've
+// bumped to it. That PR adds an equivalent g_timeout_add_full re-fix loop +
+// a DomReady-hooked re-fix upstream, making this Go-side workaround redundant.
+// Upstream tracking: https://github.com/wailsapp/wails/issues/5506
+// Downstream tracking: https://github.com/nebari-dev/nebi/issues/350
 func init() {
 	go func() {
 		t := time.NewTicker(50 * time.Millisecond)

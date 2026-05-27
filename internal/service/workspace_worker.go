@@ -120,6 +120,8 @@ func (s *WorkspaceService) CreateVersionSnapshot(ctx context.Context, ws *models
 }
 
 // UpdateWorkspaceSize calculates and updates the workspace size in the database.
+// Uses a column-scoped UPDATE rather than db.Save so a stale in-memory ws
+// cannot clobber other columns (see #294 for the path-clobber bug this avoids).
 func (s *WorkspaceService) UpdateWorkspaceSize(ws *models.Workspace) {
 	envPath := s.executor.GetWorkspacePath(ws)
 	sizeBytes, err := utils.GetDirectorySize(envPath)
@@ -128,8 +130,11 @@ func (s *WorkspaceService) UpdateWorkspaceSize(ws *models.Workspace) {
 		return
 	}
 
+	if err := s.db.Model(&models.Workspace{}).Where("id = ?", ws.ID).Update("size_bytes", sizeBytes).Error; err != nil {
+		slog.Warn("Failed to update workspace size", "ws_id", ws.ID, "error", err)
+		return
+	}
 	ws.SizeBytes = sizeBytes
-	s.db.Save(ws)
 	slog.Info("Updated workspace size", "ws_id", ws.ID, "size", utils.FormatBytes(sizeBytes))
 }
 

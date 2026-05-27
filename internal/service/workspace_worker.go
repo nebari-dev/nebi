@@ -119,23 +119,27 @@ func (s *WorkspaceService) CreateVersionSnapshot(ctx context.Context, ws *models
 	return nil
 }
 
-// UpdateWorkspaceSize calculates and updates the workspace size in the database.
-// Uses a column-scoped UPDATE rather than db.Save so a stale in-memory ws
-// cannot clobber other columns (see #294 for the path-clobber bug this avoids).
-func (s *WorkspaceService) UpdateWorkspaceSize(ws *models.Workspace) {
-	envPath := s.executor.GetWorkspacePath(ws)
-	sizeBytes, err := utils.GetDirectorySize(envPath)
-	if err != nil {
-		slog.Warn("Failed to calculate workspace size", "ws_id", ws.ID, "error", err)
-		return
+// RecomputeWorkspaceSize measures the workspace's on-disk size and persists it.
+// Loads the workspace fresh by ID so callers do not need to maintain an
+// up-to-date struct, and writes only the size_bytes column so other fields
+// cannot be clobbered (see #294 for the path-clobber bug this shape avoids).
+func (s *WorkspaceService) RecomputeWorkspaceSize(wsID uuid.UUID) error {
+	var ws models.Workspace
+	if err := s.db.First(&ws, "id = ?", wsID).Error; err != nil {
+		return fmt.Errorf("load workspace: %w", err)
 	}
 
-	if err := s.db.Model(&models.Workspace{}).Where("id = ?", ws.ID).Update("size_bytes", sizeBytes).Error; err != nil {
-		slog.Warn("Failed to update workspace size", "ws_id", ws.ID, "error", err)
-		return
+	envPath := s.executor.GetWorkspacePath(&ws)
+	sizeBytes, err := utils.GetDirectorySize(envPath)
+	if err != nil {
+		return fmt.Errorf("measure workspace dir: %w", err)
 	}
-	ws.SizeBytes = sizeBytes
-	slog.Info("Updated workspace size", "ws_id", ws.ID, "size", utils.FormatBytes(sizeBytes))
+
+	if err := s.db.Model(&models.Workspace{}).Where("id = ?", wsID).Update("size_bytes", sizeBytes).Error; err != nil {
+		return fmt.Errorf("update size_bytes: %w", err)
+	}
+	slog.Info("Updated workspace size", "ws_id", wsID, "size", utils.FormatBytes(sizeBytes))
+	return nil
 }
 
 // SetWorkspaceStatus updates the workspace status in the database.

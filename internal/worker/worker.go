@@ -266,7 +266,9 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			w.logger.Error("Failed to sync packages", "error", err)
 		}
 
-		w.svc.UpdateWorkspaceSize(ws)
+		if err := w.svc.RecomputeWorkspaceSize(ws.ID); err != nil {
+			w.logger.Warn("Failed to recompute workspace size", "error", err)
+		}
 		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusReady)
 
 		// Create version snapshot
@@ -285,7 +287,9 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 		}
 
 		w.svc.SaveInstalledPackages(ws.ID, packages)
-		w.svc.UpdateWorkspaceSize(ws)
+		if err := w.svc.RecomputeWorkspaceSize(ws.ID); err != nil {
+			w.logger.Warn("Failed to recompute workspace size", "error", err)
+		}
 
 		if err := w.svc.CreateVersionSnapshot(ctx, ws, job.ID, userID, fmt.Sprintf("Installed packages: %v", packages)); err != nil {
 			w.logger.Error("Failed to create version snapshot", "error", err)
@@ -302,7 +306,9 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 		}
 
 		w.svc.DeletePackagesByName(ws.ID, packages)
-		w.svc.UpdateWorkspaceSize(ws)
+		if err := w.svc.RecomputeWorkspaceSize(ws.ID); err != nil {
+			w.logger.Warn("Failed to recompute workspace size", "error", err)
+		}
 
 		if err := w.svc.CreateVersionSnapshot(ctx, ws, job.ID, userID, fmt.Sprintf("Removed packages: %v", packages)); err != nil {
 			w.logger.Error("Failed to create version snapshot", "error", err)
@@ -319,7 +325,9 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			w.logger.Error("Failed to sync packages after solve", "error", err)
 		}
 
-		w.svc.UpdateWorkspaceSize(ws)
+		if err := w.svc.RecomputeWorkspaceSize(ws.ID); err != nil {
+			w.logger.Warn("Failed to recompute workspace size", "error", err)
+		}
 
 		if err := w.svc.CreateVersionSnapshot(ctx, ws, job.ID, userID, "Solved environment from updated pixi.toml"); err != nil {
 			w.logger.Error("Failed to create version snapshot", "error", err)
@@ -366,7 +374,9 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			w.logger.Error("Failed to sync packages after rollback", "error", err)
 		}
 
-		w.svc.UpdateWorkspaceSize(ws)
+		if err := w.svc.RecomputeWorkspaceSize(ws.ID); err != nil {
+			w.logger.Warn("Failed to recompute workspace size after rollback", "error", err)
+		}
 
 		if err := w.svc.CreateVersionSnapshot(ctx, ws, job.ID, userID, fmt.Sprintf("Rolled back to version %d", version.VersionNumber)); err != nil {
 			w.logger.Error("Failed to create version snapshot after rollback", "error", err)

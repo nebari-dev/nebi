@@ -96,11 +96,7 @@ func GrantWorkspaceAccess(userID uuid.UUID, wsID uuid.UUID, role string) error {
 	}
 
 	_, err := enforcer.AddPolicy(userID.String(), fmt.Sprintf("ws:%s", wsID.String()), action)
-	if err != nil {
-		return err
-	}
-
-	return enforcer.SavePolicy()
+	return err
 }
 
 // RevokeWorkspaceAccess revokes access to a workspace
@@ -111,29 +107,23 @@ func RevokeWorkspaceAccess(userID uuid.UUID, wsID uuid.UUID) error {
 
 	obj := fmt.Sprintf("ws:%s", wsID.String())
 
-	// Remove both read and write permissions
-	enforcer.RemovePolicy(userID.String(), obj, "read")
-	enforcer.RemovePolicy(userID.String(), obj, "write")
-
-	return enforcer.SavePolicy()
+	if _, err := enforcer.RemovePolicy(userID.String(), obj, "read"); err != nil {
+		return err
+	}
+	_, err := enforcer.RemovePolicy(userID.String(), obj, "write")
+	return err
 }
 
 // MakeAdmin grants admin privileges to a user
 func MakeAdmin(userID uuid.UUID) error {
 	_, err := enforcer.AddPolicy(userID.String(), "admin", "admin")
-	if err != nil {
-		return err
-	}
-	return enforcer.SavePolicy()
+	return err
 }
 
 // RevokeAdmin removes admin privileges from a user
 func RevokeAdmin(userID uuid.UUID) error {
 	_, err := enforcer.RemovePolicy(userID.String(), "admin", "admin")
-	if err != nil {
-		return err
-	}
-	return enforcer.SavePolicy()
+	return err
 }
 
 // GetAllAdminUserIDs returns a set of all user IDs that have admin privileges

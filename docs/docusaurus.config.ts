@@ -7,7 +7,7 @@ const darkCodeTheme = prismThemes.nightOwl;
 
 const config: Config = {
   title: 'Nebi',
-  tagline: 'Multi-user environment management for Pixi',
+  tagline: 'Environment management for teams and collaborators',
   favicon: 'img/nebi-icon.svg',
 
   future: {

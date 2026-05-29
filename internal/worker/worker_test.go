@@ -34,10 +34,10 @@ func init() {
 
 type noopPackageManager struct{}
 
-func (noopPackageManager) Name() string                                                   { return testPackageManager }
-func (noopPackageManager) Init(context.Context, pkgmgr.InitOptions) error                 { return nil }
-func (noopPackageManager) Install(context.Context, pkgmgr.InstallOptions) error           { return nil }
-func (noopPackageManager) Remove(context.Context, pkgmgr.RemoveOptions) error             { return nil }
+func (noopPackageManager) Name() string                                         { return testPackageManager }
+func (noopPackageManager) Init(context.Context, pkgmgr.InitOptions) error       { return nil }
+func (noopPackageManager) Install(context.Context, pkgmgr.InstallOptions) error { return nil }
+func (noopPackageManager) Remove(context.Context, pkgmgr.RemoveOptions) error   { return nil }
 func (noopPackageManager) List(context.Context, pkgmgr.ListOptions) ([]pkgmgr.Package, error) {
 	return nil, nil
 }

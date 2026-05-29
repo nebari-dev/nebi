@@ -12,6 +12,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/nebari-dev/nebi/internal/service"
@@ -19,15 +20,50 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// testPackageManager is a registered no-op manager used by worker tests.
+// Keeping the create flow on its happy path means the test reaches db.Save(ws)
+// via UpdateWorkspaceSize regardless of how the worker's error handling around
+// SyncPackagesFromWorkspace / CreateVersionSnapshot is refactored later.
+const testPackageManager = "test-noop"
+
+func init() {
+	pkgmgr.Register(testPackageManager, func(string) (pkgmgr.PackageManager, error) {
+		return noopPackageManager{}, nil
+	})
+}
+
+type noopPackageManager struct{}
+
+func (noopPackageManager) Name() string                                                   { return testPackageManager }
+func (noopPackageManager) Init(context.Context, pkgmgr.InitOptions) error                 { return nil }
+func (noopPackageManager) Install(context.Context, pkgmgr.InstallOptions) error           { return nil }
+func (noopPackageManager) Remove(context.Context, pkgmgr.RemoveOptions) error             { return nil }
+func (noopPackageManager) List(context.Context, pkgmgr.ListOptions) ([]pkgmgr.Package, error) {
+	return nil, nil
+}
+func (noopPackageManager) Update(context.Context, pkgmgr.UpdateOptions) error { return nil }
+func (noopPackageManager) GetManifest(context.Context, string) (*pkgmgr.Manifest, error) {
+	return &pkgmgr.Manifest{}, nil
+}
+
 // fakeExecutor is a minimal Executor stub for worker tests. CreateWorkspace
-// creates the workspace directory so UpdateWorkspaceSize's directory-size
-// calculation reaches db.Save(ws); the rest are no-ops.
+// creates the workspace directory and writes empty manifest/lock files so
+// CreateVersionSnapshot reads them successfully; the rest are no-ops.
 type fakeExecutor struct {
 	rootDir string
 }
 
 func (e *fakeExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspace, w io.Writer, opts executor.CreateWorkspaceOptions) error {
-	return os.MkdirAll(e.GetWorkspacePath(ws), 0o755)
+	p := e.GetWorkspacePath(ws)
+	if err := os.MkdirAll(p, 0o755); err != nil {
+		return err
+	}
+	for _, name := range []string{"pixi.toml", "pixi.lock"} {
+		if err := os.WriteFile(filepath.Join(p, name), nil, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 func (e *fakeExecutor) InstallPackages(context.Context, *models.Workspace, []string, io.Writer) error {
 	return nil
@@ -65,14 +101,11 @@ func TestExecuteJob_CreatePersistsWorkspacePath(t *testing.T) {
 		t.Fatalf("create user: %v", err)
 	}
 
-	// PackageManager is an unregistered name so SyncPackagesFromWorkspace and
-	// CreateVersionSnapshot fail fast (their errors are logged and ignored by
-	// the worker), keeping the test free of pixi/network side effects.
 	ws := &models.Workspace{
 		Name:           "regr-294",
 		OwnerID:        user.ID,
 		Status:         models.WsStatusPending,
-		PackageManager: "test-pm-not-registered",
+		PackageManager: testPackageManager,
 	}
 	if err := db.Create(ws).Error; err != nil {
 		t.Fatalf("create ws: %v", err)

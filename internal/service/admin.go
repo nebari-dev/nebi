@@ -329,6 +329,9 @@ func (s *AdminService) GrantGroupAdmin(groupID uuid.UUID, actorID uuid.UUID) err
 		}
 		return err
 	}
+	if g.Source == models.GroupSourceOIDC {
+		return &ConflictError{Message: "cannot grant admin to an OIDC-synced group; its membership is controlled by the identity provider"}
+	}
 	if err := s.rbac.MakeGroupAdmin(groupID); err != nil {
 		return fmt.Errorf("make group admin: %w", err)
 	}

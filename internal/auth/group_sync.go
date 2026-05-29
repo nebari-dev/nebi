@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/audit"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"gorm.io/gorm"
@@ -52,6 +53,8 @@ func SyncOIDCGroups(db *gorm.DB, userID uuid.UUID, claimGroups []string) error {
 			if err := db.Create(&g).Error; err != nil {
 				return fmt.Errorf("create oidc group %q: %w", name, err)
 			}
+			audit.LogAction(db, userID, audit.ActionCreateGroup, fmt.Sprintf("group:%s", g.ID),
+				map[string]any{"origin": "oidc", "name": g.Name})
 		default:
 			return fmt.Errorf("lookup group %q: %w", name, err)
 		}
@@ -62,6 +65,8 @@ func SyncOIDCGroups(db *gorm.DB, userID uuid.UUID, claimGroups []string) error {
 			if err := db.Create(&models.GroupMember{GroupID: g.ID, UserID: userID}).Error; err != nil {
 				return fmt.Errorf("create membership for %q: %w", name, err)
 			}
+			audit.LogAction(db, userID, audit.ActionAddGroupMember, fmt.Sprintf("group:%s", g.ID),
+				map[string]any{"origin": "oidc", "user_id": userID})
 		} else if err != nil {
 			return fmt.Errorf("lookup membership for %q: %w", name, err)
 		}
@@ -89,6 +94,8 @@ func SyncOIDCGroups(db *gorm.DB, userID uuid.UUID, claimGroups []string) error {
 		if err := db.Where("group_id = ? AND user_id = ?", m.GroupID, userID).Delete(&models.GroupMember{}).Error; err != nil {
 			return fmt.Errorf("delete stale membership: %w", err)
 		}
+		audit.LogAction(db, userID, audit.ActionRemoveGroupMember, fmt.Sprintf("group:%s", m.GroupID),
+			map[string]any{"origin": "oidc", "user_id": userID})
 		if err := rbac.RemoveUserFromGroup(userID, m.GroupID); err != nil {
 			return fmt.Errorf("casbin remove stale: %w", err)
 		}

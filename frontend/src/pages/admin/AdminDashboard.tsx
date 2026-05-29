@@ -1,190 +1,205 @@
+import {
+	Activity,
+	AlertTriangle,
+	Boxes,
+	HardDrive,
+	Loader2,
+	Package,
+	UserPlus,
+	Users,
+} from 'lucide-react';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { useUsers, useDashboardStats } from '@/hooks/useAdmin';
-import { useWorkspaces } from '@/hooks/useWorkspaces';
+import { Card, CardContent } from '@/components/ui/card';
+import { useDashboardStats, useUsers } from '@/hooks/useAdmin';
 import { useJobs } from '@/hooks/useJobs';
+import {
+	useRemoteDashboardStats,
+	useRemoteJobs,
+	useRemoteServer,
+	useRemoteWorkspaces,
+} from '@/hooks/useRemote';
+import { useWorkspaces } from '@/hooks/useWorkspaces';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
-import { useRemoteServer, useRemoteWorkspaces, useRemoteJobs, useRemoteDashboardStats } from '@/hooks/useRemote';
-import { Card, CardContent } from '@/components/ui/card';
-import {
-  Loader2,
-  Users,
-  Boxes,
-  Activity,
-  HardDrive,
-  AlertTriangle,
-  UserPlus,
-  Package,
-} from 'lucide-react';
 
 const StatCard = ({
-  title,
-  value,
-  icon: Icon,
+	title,
+	value,
+	icon: Icon,
 }: {
-  title: string;
-  value: number | string;
-  icon: React.ElementType;
+	title: string;
+	value: number | string;
+	icon: React.ElementType;
 }) => {
-  return (
-    <Card>
-      <CardContent className="p-6">
-        <div className="flex items-center gap-4">
-          <div className="rounded-lg bg-[#F5EFFE] p-3">
-            <Icon className="h-5 w-5 text-[#9B3DCC]" />
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">{title}</p>
-            <p className="text-2xl font-bold">{value}</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+	return (
+		<Card>
+			<CardContent className="p-6">
+				<div className="flex items-center gap-4">
+					<div className="rounded-lg bg-[#F5EFFE] p-3">
+						<Icon className="h-5 w-5 text-[#9B3DCC]" />
+					</div>
+					<div>
+						<p className="text-sm text-muted-foreground">{title}</p>
+						<p className="text-2xl font-bold">{value}</p>
+					</div>
+				</div>
+			</CardContent>
+		</Card>
+	);
 };
 
 const quickActions = [
-  {
-    title: 'Manage Users',
-    description: 'Add users and manage permissions',
-    icon: UserPlus,
-    to: '/admin/users',
-  },
-  {
-    title: 'Manage Registries',
-    description: 'Configure package registries',
-    icon: Package,
-    to: '/admin/registries',
-  },
-  {
-    title: 'View Audit Logs',
-    description: 'Review system activity and events',
-    icon: Activity,
-    to: '/admin/audit-logs',
-  },
+	{
+		title: 'Manage Users',
+		description: 'Add users and manage permissions',
+		icon: UserPlus,
+		to: '/admin/users',
+	},
+	{
+		title: 'Manage Registries',
+		description: 'Configure package registries',
+		icon: Package,
+		to: '/admin/registries',
+	},
+	{
+		title: 'View Audit Logs',
+		description: 'Review system activity and events',
+		icon: Activity,
+		to: '/admin/audit-logs',
+	},
 ];
 
 export const AdminDashboard = () => {
-  const { data: users, isLoading: usersLoading } = useUsers();
-  const { data: workspaces, isLoading: wsLoading } = useWorkspaces();
-  const { data: jobs, isLoading: jobsLoading } = useJobs();
-  const { data: dashboardStats, isLoading: statsLoading } = useDashboardStats();
+	const { data: users, isLoading: usersLoading } = useUsers();
+	const { data: workspaces, isLoading: wsLoading } = useWorkspaces();
+	const { data: jobs, isLoading: jobsLoading } = useJobs();
+	const { data: dashboardStats, isLoading: statsLoading } = useDashboardStats();
 
-  // View mode support
-  const isLocalMode = useModeStore((s) => s.isLocalMode());
-  const viewMode = useViewModeStore((state) => state.viewMode);
-  const { data: serverStatus } = useRemoteServer();
-  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
-  const shouldShowRemote = isRemoteConnected && viewMode === 'remote';
+	// View mode support
+	const isLocalMode = useModeStore((s) => s.isLocalMode());
+	const viewMode = useViewModeStore((state) => state.viewMode);
+	const { data: serverStatus } = useRemoteServer();
+	const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
+	const shouldShowRemote = isRemoteConnected && viewMode === 'remote';
 
-  // Remote data
-  const { data: remoteWorkspaces, isLoading: remoteWsLoading } = useRemoteWorkspaces(shouldShowRemote);
-  const { data: remoteJobs, isLoading: remoteJobsLoading } = useRemoteJobs(shouldShowRemote);
-  const { data: remoteDashboardStats, isLoading: remoteStatsLoading } = useRemoteDashboardStats(shouldShowRemote);
+	// Remote data
+	const { data: remoteWorkspaces, isLoading: remoteWsLoading } =
+		useRemoteWorkspaces(shouldShowRemote);
+	const { data: remoteJobs, isLoading: remoteJobsLoading } =
+		useRemoteJobs(shouldShowRemote);
+	const { data: remoteDashboardStats, isLoading: remoteStatsLoading } =
+		useRemoteDashboardStats(shouldShowRemote);
 
-  // Select data based on view mode
-  const displayedWorkspaces = useMemo(() => {
-    if (!isRemoteConnected || viewMode === 'local') {
-      return workspaces || [];
-    }
-    return remoteWorkspaces || [];
-  }, [workspaces, remoteWorkspaces, isRemoteConnected, viewMode]);
+	// Select data based on view mode
+	const displayedWorkspaces = useMemo(() => {
+		if (!isRemoteConnected || viewMode === 'local') {
+			return workspaces || [];
+		}
+		return remoteWorkspaces || [];
+	}, [workspaces, remoteWorkspaces, isRemoteConnected, viewMode]);
 
-  const displayedJobs = useMemo(() => {
-    if (!isRemoteConnected || viewMode === 'local') {
-      return jobs || [];
-    }
-    return remoteJobs || [];
-  }, [jobs, remoteJobs, isRemoteConnected, viewMode]);
+	const displayedJobs = useMemo(() => {
+		if (!isRemoteConnected || viewMode === 'local') {
+			return jobs || [];
+		}
+		return remoteJobs || [];
+	}, [jobs, remoteJobs, isRemoteConnected, viewMode]);
 
-  const displayedStats = useMemo(() => {
-    if (!isRemoteConnected || viewMode === 'local') {
-      return dashboardStats;
-    }
-    return remoteDashboardStats;
-  }, [dashboardStats, remoteDashboardStats, isRemoteConnected, viewMode]);
+	const displayedStats = useMemo(() => {
+		if (!isRemoteConnected || viewMode === 'local') {
+			return dashboardStats;
+		}
+		return remoteDashboardStats;
+	}, [dashboardStats, remoteDashboardStats, isRemoteConnected, viewMode]);
 
-  const activeJobs =
-    displayedJobs.filter(
-      (job) => job.status === 'running' || job.status === 'pending',
-    ).length;
+	const activeJobs = displayedJobs.filter(
+		(job) => job.status === 'running' || job.status === 'pending',
+	).length;
 
-  const failedJobs =
-    displayedJobs.filter((job) => job.status === 'failed').length;
+	const failedJobs = displayedJobs.filter(
+		(job) => job.status === 'failed',
+	).length;
 
-  const isLoading = usersLoading || wsLoading || jobsLoading || statsLoading ||
-    (shouldShowRemote && (remoteWsLoading || remoteJobsLoading || remoteStatsLoading));
+	const isLoading =
+		usersLoading ||
+		wsLoading ||
+		jobsLoading ||
+		statsLoading ||
+		(shouldShowRemote &&
+			(remoteWsLoading || remoteJobsLoading || remoteStatsLoading));
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+	if (isLoading) {
+		return (
+			<div className="flex items-center justify-center h-96">
+				<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+			</div>
+		);
+	}
 
-  const alerts: string[] = [];
-  if (failedJobs > 0) {
-    alerts.push(`${failedJobs} job${failedJobs > 1 ? 's' : ''} failed recently`);
-  }
+	const alerts: string[] = [];
+	if (failedJobs > 0) {
+		alerts.push(
+			`${failedJobs} job${failedJobs > 1 ? 's' : ''} failed recently`,
+		);
+	}
 
-  return (
-    <div className="space-y-6">
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Users" value={users?.length || 0} icon={Users} />
-        <StatCard
-          title="Environments"
-          value={displayedWorkspaces.length}
-          icon={Boxes}
-        />
-        <StatCard title="Active Jobs" value={activeJobs} icon={Activity} />
-        <StatCard
-          title="Disk Usage"
-          value={displayedStats?.total_disk_usage_formatted || 'N/A'}
-          icon={HardDrive}
-        />
-      </div>
+	return (
+		<div className="space-y-6">
+			{/* Stat Cards */}
+			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+				<StatCard title="Total Users" value={users?.length || 0} icon={Users} />
+				<StatCard
+					title="Environments"
+					value={displayedWorkspaces.length}
+					icon={Boxes}
+				/>
+				<StatCard title="Active Jobs" value={activeJobs} icon={Activity} />
+				<StatCard
+					title="Disk Usage"
+					value={displayedStats?.total_disk_usage_formatted || 'N/A'}
+					icon={HardDrive}
+				/>
+			</div>
 
-      {/* Alert Banner */}
-      {alerts.length > 0 && (
-        <Card className="border-amber-300 bg-amber-50">
-          <CardContent className="flex items-center gap-3 p-4">
-            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
-            <div>
-              <p className="text-sm font-medium text-amber-800">
-                System Alerts
-              </p>
-              <p className="text-sm text-amber-700">
-                {alerts.join(' \u00B7 ')}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+			{/* Alert Banner */}
+			{alerts.length > 0 && (
+				<Card className="border-amber-300 bg-amber-50">
+					<CardContent className="flex items-center gap-3 p-4">
+						<AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
+						<div>
+							<p className="text-sm font-medium text-amber-800">
+								System Alerts
+							</p>
+							<p className="text-sm text-amber-700">
+								{alerts.join(' \u00B7 ')}
+							</p>
+						</div>
+					</CardContent>
+				</Card>
+			)}
 
-      {/* Quick Actions */}
-      <div>
-        <h3 className="text-lg font-semibold mb-3">Quick Actions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {quickActions.map(({ title, description, icon: Icon, to }) => (
-            <Link key={title} to={to}>
-              <Card className="h-full transition-colors hover:border-[#9B3DCC]/30 hover:bg-[#F5EFFE]/50">
-                <CardContent className="p-5">
-                  <div className="rounded-lg bg-[#F5EFFE] p-2 w-fit mb-3">
-                    <Icon className="h-4 w-4 text-[#9B3DCC]" />
-                  </div>
-                  <p className="text-sm font-medium">{title}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {description}
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+			{/* Quick Actions */}
+			<div>
+				<h3 className="text-lg font-semibold mb-3">Quick Actions</h3>
+				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+					{quickActions.map(({ title, description, icon: Icon, to }) => (
+						<Link key={title} to={to}>
+							<Card className="h-full transition-colors hover:border-[#9B3DCC]/30 hover:bg-[#F5EFFE]/50">
+								<CardContent className="p-5">
+									<div className="rounded-lg bg-[#F5EFFE] p-2 w-fit mb-3">
+										<Icon className="h-4 w-4 text-[#9B3DCC]" />
+									</div>
+									<p className="text-sm font-medium">{title}</p>
+									<p className="text-xs text-muted-foreground mt-1">
+										{description}
+									</p>
+								</CardContent>
+							</Card>
+						</Link>
+					))}
+				</div>
+			</div>
+		</div>
+	);
 };

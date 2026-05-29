@@ -1,200 +1,232 @@
-import { useState, useEffect } from 'react';
-import { useUpdateRegistry } from '@/hooks/useRegistries';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+	Dialog,
+	DialogContent,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { useUpdateRegistry } from '@/hooks/useRegistries';
 import type { OCIRegistry } from '@/types';
 
 interface EditRegistryDialogProps {
-  registry: OCIRegistry;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+	registry: OCIRegistry;
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
 }
 
-export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistryDialogProps) => {
-  const [name, setName] = useState('');
-  const [url, setUrl] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [apiToken, setApiToken] = useState('');
-  const [namespace, setNamespace] = useState('');
-  const [isDefault, setIsDefault] = useState(false);
-  const [error, setError] = useState('');
+export const EditRegistryDialog = ({
+	registry,
+	open,
+	onOpenChange,
+}: EditRegistryDialogProps) => {
+	const [name, setName] = useState('');
+	const [url, setUrl] = useState('');
+	const [username, setUsername] = useState('');
+	const [password, setPassword] = useState('');
+	const [apiToken, setApiToken] = useState('');
+	const [namespace, setNamespace] = useState('');
+	const [isDefault, setIsDefault] = useState(false);
+	const [error, setError] = useState('');
 
-  const updateMutation = useUpdateRegistry();
+	const updateMutation = useUpdateRegistry();
 
-  // Initialize form with registry data
-  useEffect(() => {
-    if (registry) {
-      setName(registry.name);
-      setUrl(registry.url);
-      setUsername(registry.username || '');
-      setPassword(''); // Don't pre-fill password for security
-      setApiToken(''); // Don't pre-fill token for security
-      setNamespace(registry.namespace || '');
-      setIsDefault(registry.is_default);
-    }
-  }, [registry]);
+	// Initialize form with registry data
+	useEffect(() => {
+		if (registry) {
+			setName(registry.name);
+			setUrl(registry.url);
+			setUsername(registry.username || '');
+			setPassword(''); // Don't pre-fill password for security
+			setApiToken(''); // Don't pre-fill token for security
+			setNamespace(registry.namespace || '');
+			setIsDefault(registry.is_default);
+		}
+	}, [registry]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+	const handleSubmit = async (e: React.FormEvent) => {
+		e.preventDefault();
+		setError('');
 
-    try {
-      await updateMutation.mutateAsync({
-        id: registry.id,
-        data: {
-          name,
-          url,
-          username: username || undefined,
-          password: password || undefined, // Only update if provided
-          api_token: apiToken || undefined, // Only update if provided
-          namespace: namespace || undefined,
-          is_default: isDefault,
-        },
-      });
-      onOpenChange(false);
-      setError('');
-    } catch (err) {
-      const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage = error?.response?.data?.error || 'Failed to update registry. Please try again.';
-      setError(errorMessage);
-      console.error('Failed to update registry:', err);
-    }
-  };
+		try {
+			await updateMutation.mutateAsync({
+				id: registry.id,
+				data: {
+					name,
+					url,
+					username: username || undefined,
+					password: password || undefined, // Only update if provided
+					api_token: apiToken || undefined, // Only update if provided
+					namespace: namespace || undefined,
+					is_default: isDefault,
+				},
+			});
+			onOpenChange(false);
+			setError('');
+		} catch (err) {
+			const error = err as { response?: { data?: { error?: string } } };
+			const errorMessage =
+				error?.response?.data?.error ||
+				'Failed to update registry. Please try again.';
+			setError(errorMessage);
+			console.error('Failed to update registry:', err);
+		}
+	};
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Edit Registry</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Registry</h3>
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Edit Registry</DialogTitle>
+				</DialogHeader>
+				<form onSubmit={handleSubmit} className="space-y-4 mt-4">
+					<div className="space-y-4">
+						<h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+							Registry
+						</h3>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Name</label>
-              <Input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., GitHub Container Registry"
-                required
-                autoFocus
-              />
-            </div>
+						<div className="space-y-2">
+							<label className="text-sm font-medium">Name</label>
+							<Input
+								type="text"
+								value={name}
+								onChange={(e) => setName(e.target.value)}
+								placeholder="e.g., GitHub Container Registry"
+								required
+								autoFocus
+							/>
+						</div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Registry URL</label>
-              <Input
-                type="text"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="e.g., ghcr.io or quay.io"
-                required
-              />
-            </div>
+						<div className="space-y-2">
+							<label className="text-sm font-medium">Registry URL</label>
+							<Input
+								type="text"
+								value={url}
+								onChange={(e) => setUrl(e.target.value)}
+								placeholder="e.g., ghcr.io or quay.io"
+								required
+							/>
+						</div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Namespace</label>
-              <Input
-                type="text"
-                value={namespace}
-                onChange={(e) => setNamespace(e.target.value)}
-                placeholder="e.g., nebari"
-                required
-              />
-              <p className="text-xs text-muted-foreground">
-                Organization or namespace on the registry.
-              </p>
-            </div>
+						<div className="space-y-2">
+							<label className="text-sm font-medium">Namespace</label>
+							<Input
+								type="text"
+								value={namespace}
+								onChange={(e) => setNamespace(e.target.value)}
+								placeholder="e.g., nebari"
+								required
+							/>
+							<p className="text-xs text-muted-foreground">
+								Organization or namespace on the registry.
+							</p>
+						</div>
 
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="edit_is_default"
-                checked={isDefault}
-                onChange={(e) => setIsDefault(e.target.checked)}
-                className="h-4 w-4 rounded border-input"
-              />
-              <label htmlFor="edit_is_default" className="text-sm font-medium cursor-pointer">
-                Set as default registry
-              </label>
-            </div>
-          </div>
+						<div className="flex items-center gap-2">
+							<input
+								type="checkbox"
+								id="edit_is_default"
+								checked={isDefault}
+								onChange={(e) => setIsDefault(e.target.checked)}
+								className="h-4 w-4 rounded border-input"
+							/>
+							<label
+								htmlFor="edit_is_default"
+								className="text-sm font-medium cursor-pointer"
+							>
+								Set as default registry
+							</label>
+						</div>
+					</div>
 
-          <div className="border-t pt-4 mt-4 space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Authentication</h3>
-              <p className="text-xs text-muted-foreground mt-1">Optional — needed for private repositories and publishing</p>
-            </div>
+					<div className="border-t pt-4 mt-4 space-y-4">
+						<div>
+							<h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+								Authentication
+							</h3>
+							<p className="text-xs text-muted-foreground mt-1">
+								Optional — needed for private repositories and publishing
+							</p>
+						</div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">
-                Username <span className="text-muted-foreground">(optional)</span>
-              </label>
-              <Input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Registry username"
-              />
-            </div>
+						<div className="space-y-2">
+							<label className="text-sm font-medium">
+								Username{' '}
+								<span className="text-muted-foreground">(optional)</span>
+							</label>
+							<Input
+								type="text"
+								value={username}
+								onChange={(e) => setUsername(e.target.value)}
+								placeholder="Registry username"
+							/>
+						</div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">
-                Password/Token <span className="text-muted-foreground">(leave blank to keep current)</span>
-              </label>
-              <Input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Leave blank to keep current password"
-              />
-            </div>
+						<div className="space-y-2">
+							<label className="text-sm font-medium">
+								Password/Token{' '}
+								<span className="text-muted-foreground">
+									(leave blank to keep current)
+								</span>
+							</label>
+							<Input
+								type="password"
+								value={password}
+								onChange={(e) => setPassword(e.target.value)}
+								placeholder="Leave blank to keep current password"
+							/>
+						</div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">
-                API Token <span className="text-muted-foreground">(leave blank to keep current)</span>
-              </label>
-              <Input
-                type="password"
-                value={apiToken}
-                onChange={(e) => setApiToken(e.target.value)}
-                placeholder="Leave blank to keep current token"
-              />
-              <p className="text-xs text-muted-foreground">
-                For Quay.io: an OAuth Application Token to list private repositories.
-                {registry.has_api_token && ' A token is currently configured.'}
-              </p>
-            </div>
-          </div>
+						<div className="space-y-2">
+							<label className="text-sm font-medium">
+								API Token{' '}
+								<span className="text-muted-foreground">
+									(leave blank to keep current)
+								</span>
+							</label>
+							<Input
+								type="password"
+								value={apiToken}
+								onChange={(e) => setApiToken(e.target.value)}
+								placeholder="Leave blank to keep current token"
+							/>
+							<p className="text-xs text-muted-foreground">
+								For Quay.io: an OAuth Application Token to list private
+								repositories.
+								{registry.has_api_token && ' A token is currently configured.'}
+							</p>
+						</div>
+					</div>
 
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-3 py-2 rounded text-sm">
-              {error}
-            </div>
-          )}
+					{error && (
+						<div className="bg-red-500/10 border border-red-500/20 text-red-500 px-3 py-2 rounded text-sm">
+							{error}
+						</div>
+					)}
 
-          <div className="flex gap-2 justify-end pt-4">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Updating...
-                </>
-              ) : (
-                'Update Registry'
-              )}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
+					<div className="flex gap-2 justify-end pt-4">
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => onOpenChange(false)}
+						>
+							Cancel
+						</Button>
+						<Button type="submit" disabled={updateMutation.isPending}>
+							{updateMutation.isPending ? (
+								<>
+									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									Updating...
+								</>
+							) : (
+								'Update Registry'
+							)}
+						</Button>
+					</div>
+				</form>
+			</DialogContent>
+		</Dialog>
+	);
 };

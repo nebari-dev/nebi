@@ -1,76 +1,78 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: hsl(0 0% 100%);
-  --color-foreground: hsl(222.2 84% 4.9%);
-  --color-card: hsl(0 0% 100%);
-  --color-card-foreground: hsl(222.2 84% 4.9%);
-  --color-popover: hsl(0 0% 100%);
-  --color-popover-foreground: hsl(222.2 84% 4.9%);
-  --color-primary: #9B3DCC;
-  --color-primary-foreground: hsl(210 40% 98%);
-  --color-primary-hover: #8232AA;
-  --color-nav-hover: #F5EFFE;
-  --color-secondary: hsl(210 40% 96.1%);
-  --color-secondary-foreground: hsl(222.2 47.4% 11.2%);
-  --color-muted: hsl(210 40% 96.1%);
-  --color-muted-foreground: hsl(215.4 16.3% 46.9%);
-  --color-accent: hsl(210 40% 96.1%);
-  --color-accent-foreground: hsl(222.2 47.4% 11.2%);
-  --color-destructive: hsl(0 84.2% 60.2%);
-  --color-destructive-foreground: hsl(210 40% 98%);
-  --color-border: hsl(214.3 31.8% 91.4%);
-  --color-input: hsl(214.3 31.8% 91.4%);
-  --color-ring: hsl(222.2 84% 4.9%);
-  --radius: 0.5rem;
-  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
-  --font-mono: 'Fira Code', monospace;
+	--color-background: hsl(0 0% 100%);
+	--color-foreground: hsl(222.2 84% 4.9%);
+	--color-card: hsl(0 0% 100%);
+	--color-card-foreground: hsl(222.2 84% 4.9%);
+	--color-popover: hsl(0 0% 100%);
+	--color-popover-foreground: hsl(222.2 84% 4.9%);
+	--color-primary: #9b3dcc;
+	--color-primary-foreground: hsl(210 40% 98%);
+	--color-primary-hover: #8232aa;
+	--color-nav-hover: #f5effe;
+	--color-secondary: hsl(210 40% 96.1%);
+	--color-secondary-foreground: hsl(222.2 47.4% 11.2%);
+	--color-muted: hsl(210 40% 96.1%);
+	--color-muted-foreground: hsl(215.4 16.3% 46.9%);
+	--color-accent: hsl(210 40% 96.1%);
+	--color-accent-foreground: hsl(222.2 47.4% 11.2%);
+	--color-destructive: hsl(0 84.2% 60.2%);
+	--color-destructive-foreground: hsl(210 40% 98%);
+	--color-border: hsl(214.3 31.8% 91.4%);
+	--color-input: hsl(214.3 31.8% 91.4%);
+	--color-ring: hsl(222.2 84% 4.9%);
+	--radius: 0.5rem;
+	--font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+	--font-mono: "Fira Code", monospace;
 }
 
 .dark {
-  --color-background: hsl(222.2 84% 4.9%);
-  --color-foreground: hsl(210 40% 98%);
-  --color-card: hsl(222.2 84% 4.9%);
-  --color-card-foreground: hsl(210 40% 98%);
-  --color-popover: hsl(222.2 84% 4.9%);
-  --color-popover-foreground: hsl(210 40% 98%);
-  --color-primary: #9B3DCC;
-  --color-primary-foreground: hsl(210 40% 98%);
-  --color-primary-hover: #8232AA;
-  --color-nav-hover: #F5EFFE;
-  --color-secondary: hsl(217.2 32.6% 17.5%);
-  --color-secondary-foreground: hsl(210 40% 98%);
-  --color-muted: hsl(217.2 32.6% 17.5%);
-  --color-muted-foreground: hsl(215 20.2% 65.1%);
-  --color-accent: hsl(217.2 32.6% 17.5%);
-  --color-accent-foreground: hsl(210 40% 98%);
-  --color-destructive: hsl(0 62.8% 30.6%);
-  --color-destructive-foreground: hsl(210 40% 98%);
-  --color-border: hsl(217.2 32.6% 17.5%);
-  --color-input: hsl(217.2 32.6% 17.5%);
-  --color-ring: hsl(212.7 26.8% 83.9%);
+	--color-background: hsl(222.2 84% 4.9%);
+	--color-foreground: hsl(210 40% 98%);
+	--color-card: hsl(222.2 84% 4.9%);
+	--color-card-foreground: hsl(210 40% 98%);
+	--color-popover: hsl(222.2 84% 4.9%);
+	--color-popover-foreground: hsl(210 40% 98%);
+	--color-primary: #9b3dcc;
+	--color-primary-foreground: hsl(210 40% 98%);
+	--color-primary-hover: #8232aa;
+	--color-nav-hover: #f5effe;
+	--color-secondary: hsl(217.2 32.6% 17.5%);
+	--color-secondary-foreground: hsl(210 40% 98%);
+	--color-muted: hsl(217.2 32.6% 17.5%);
+	--color-muted-foreground: hsl(215 20.2% 65.1%);
+	--color-accent: hsl(217.2 32.6% 17.5%);
+	--color-accent-foreground: hsl(210 40% 98%);
+	--color-destructive: hsl(0 62.8% 30.6%);
+	--color-destructive-foreground: hsl(210 40% 98%);
+	--color-border: hsl(217.2 32.6% 17.5%);
+	--color-input: hsl(217.2 32.6% 17.5%);
+	--color-ring: hsl(212.7 26.8% 83.9%);
 }
 
 body {
-  font-family: var(--font-sans);
+	font-family: var(--font-sans);
 }
 
-pre, code, .font-mono {
-  font-family: var(--font-mono);
-  font-size: 0.875rem; /* 14px */
+pre,
+code,
+.font-mono {
+	font-family: var(--font-mono);
+	font-size: 0.875rem; /* 14px */
 }
 
 pre {
-  font-size: 0.9375rem; /* 15px for better readability in logs */
+	font-size: 0.9375rem; /* 15px for better readability in logs */
 }
 
 /* Hide scrollbars while keeping scroll behavior */
 .no-scrollbar {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+	scrollbar-width: none;
+	-ms-overflow-style: none;
 }
 .no-scrollbar::-webkit-scrollbar {
-  display: none;
+	display: none;
 }
 
 /* Cursor pointer for all interactive elements */
@@ -87,5 +89,5 @@ input[type="reset"],
 input[type="checkbox"],
 input[type="radio"],
 .cursor-pointer {
-  cursor: pointer;
+	cursor: pointer;
 }

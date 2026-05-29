@@ -1,47 +1,47 @@
 import axios from 'axios';
+import { getApiBaseUrl, getBasePath } from '@/lib/basePath';
 import { queryClient } from '@/lib/queryClient';
 import { useModeStore } from '@/store/modeStore';
-import { getBasePath, getApiBaseUrl } from '@/lib/basePath';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || getApiBaseUrl();
 
 export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+	baseURL: API_BASE_URL,
+	headers: {
+		'Content-Type': 'application/json',
+	},
 });
 
 // Request interceptor to add auth token
 apiClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
+	(config) => {
+		const token = localStorage.getItem('auth_token');
+		if (token) {
+			config.headers.Authorization = `Bearer ${token}`;
+		}
+		return config;
+	},
+	(error) => Promise.reject(error),
 );
 
 // Response interceptor for error handling
 apiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Don't redirect for /auth/session — it's expected to return 401 when no proxy
-      if (error.config?.url === '/auth/session') {
-        return Promise.reject(error);
-      }
-      // In local mode, don't redirect to login
-      const { mode } = useModeStore.getState();
-      if (mode !== 'local') {
-        localStorage.removeItem('auth_token');
-        // Clear all query cache to prevent stale data
-        queryClient.clear();
-        window.location.href = `${getBasePath()}/login`;
-      }
-    }
-    return Promise.reject(error);
-  }
+	(response) => response,
+	(error) => {
+		if (error.response?.status === 401) {
+			// Don't redirect for /auth/session — it's expected to return 401 when no proxy
+			if (error.config?.url === '/auth/session') {
+				return Promise.reject(error);
+			}
+			// In local mode, don't redirect to login
+			const { mode } = useModeStore.getState();
+			if (mode !== 'local') {
+				localStorage.removeItem('auth_token');
+				// Clear all query cache to prevent stale data
+				queryClient.clear();
+				window.location.href = `${getBasePath()}/login`;
+			}
+		}
+		return Promise.reject(error);
+	},
 );

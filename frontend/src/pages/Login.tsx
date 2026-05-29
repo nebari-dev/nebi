@@ -1,175 +1,181 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuthStore } from '@/store/authStore';
-import { useModeStore } from '@/store/modeStore';
 import { authApi } from '@/api/auth';
-import { getBasePath, getApiBaseUrl } from '@/lib/basePath';
+import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { apiClient } from '@/api/client';
+import { getApiBaseUrl, getBasePath } from '@/lib/basePath';
+import { useAuthStore } from '@/store/authStore';
+import { useModeStore } from '@/store/modeStore';
 
 export const Login = () => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [sessionChecked, setSessionChecked] = useState(false);
-  const [searchParams] = useSearchParams();
+	const [username, setUsername] = useState('');
+	const [password, setPassword] = useState('');
+	const [error, setError] = useState('');
+	const [loading, setLoading] = useState(false);
+	const [sessionChecked, setSessionChecked] = useState(false);
+	const [searchParams] = useSearchParams();
 
-  const setAuth = useAuthStore((state) => state.setAuth);
-  const isLocalMode = useModeStore((s) => s.isLocalMode());
-  const navigate = useNavigate();
+	const setAuth = useAuthStore((state) => state.setAuth);
+	const isLocalMode = useModeStore((s) => s.isLocalMode());
+	const navigate = useNavigate();
 
-  // In local mode, redirect straight to workspaces
-  useEffect(() => {
-    if (isLocalMode) {
-      navigate('/workspaces');
-    }
-  }, [isLocalMode, navigate]);
+	// In local mode, redirect straight to workspaces
+	useEffect(() => {
+		if (isLocalMode) {
+			navigate('/workspaces');
+		}
+	}, [isLocalMode, navigate]);
 
-  // Auto-login via OIDC gateway proxy (RFC 6749 §4.1 authorization code pattern):
-  // 1. Redirect to /auth/session (outside /api/, so gateway preserves cookies)
-  // 2. Backend reads IdToken cookie → generates single-use code → redirects to /login?code=xxx
-  // 3. Frontend exchanges code for JWT via POST /api/v1/auth/code/exchange
-  useEffect(() => {
-    if (isLocalMode) return;
-    if (searchParams.get('code') || searchParams.get('error')) return;
-    if (sessionStorage.getItem('nebi_logout')) {
-      sessionStorage.removeItem('nebi_logout');
-      setSessionChecked(true);
-      return;
-    }
-    const logoutUrl = useModeStore.getState().logoutUrl;
-    if (logoutUrl) {
-      window.location.href = `${getBasePath()}/auth/session`;
-      return;
-    }
-    // No gateway detected — show login form
-    setSessionChecked(true);
-  }, [isLocalMode, searchParams]);
+	// Auto-login via OIDC gateway proxy (RFC 6749 §4.1 authorization code pattern):
+	// 1. Redirect to /auth/session (outside /api/, so gateway preserves cookies)
+	// 2. Backend reads IdToken cookie → generates single-use code → redirects to /login?code=xxx
+	// 3. Frontend exchanges code for JWT via POST /api/v1/auth/code/exchange
+	useEffect(() => {
+		if (isLocalMode) return;
+		if (searchParams.get('code') || searchParams.get('error')) return;
+		if (sessionStorage.getItem('nebi_logout')) {
+			sessionStorage.removeItem('nebi_logout');
+			setSessionChecked(true);
+			return;
+		}
+		const logoutUrl = useModeStore.getState().logoutUrl;
+		if (logoutUrl) {
+			window.location.href = `${getBasePath()}/auth/session`;
+			return;
+		}
+		// No gateway detected — show login form
+		setSessionChecked(true);
+	}, [isLocalMode, searchParams]);
 
-  // Don't render login form in local mode
-  if (isLocalMode) return null;
+	// Don't render login form in local mode
+	if (isLocalMode) return null;
 
-  // Exchange single-use authorization code for JWT.
-  // Used by both gateway auto-login (/auth/session) and direct OIDC callback
-  // (/api/v1/auth/oidc/callback). Both redirect here with ?code=<single-use-code>.
-  useEffect(() => {
-    const code = searchParams.get('code');
-    const oauthError = searchParams.get('error');
+	// Exchange single-use authorization code for JWT.
+	// Used by both gateway auto-login (/auth/session) and direct OIDC callback
+	// (/api/v1/auth/oidc/callback). Both redirect here with ?code=<single-use-code>.
+	useEffect(() => {
+		const code = searchParams.get('code');
+		const oauthError = searchParams.get('error');
 
-    if (oauthError) {
-      setError('Authentication failed');
-      setSessionChecked(true);
-      return;
-    }
+		if (oauthError) {
+			setError('Authentication failed');
+			setSessionChecked(true);
+			return;
+		}
 
-    if (code) {
-      const exchangeCode = async () => {
-        try {
-          setLoading(true);
-          const { data } = await apiClient.post('/auth/code/exchange', { code });
-          setAuth(data.token, data.user);
-          navigate('/');
-        } catch {
-          setError('Failed to complete login');
-          setSessionChecked(true);
-        } finally {
-          setLoading(false);
-        }
-      };
-      exchangeCode();
-    }
-  }, [searchParams, setAuth, navigate]);
+		if (code) {
+			const exchangeCode = async () => {
+				try {
+					setLoading(true);
+					const { data } = await apiClient.post('/auth/code/exchange', {
+						code,
+					});
+					setAuth(data.token, data.user);
+					navigate('/');
+				} catch {
+					setError('Failed to complete login');
+					setSessionChecked(true);
+				} finally {
+					setLoading(false);
+				}
+			};
+			exchangeCode();
+		}
+	}, [searchParams, setAuth, navigate]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
+	const handleSubmit = async (e: React.FormEvent) => {
+		e.preventDefault();
+		setError('');
+		setLoading(true);
 
-    try {
-      const response = await authApi.login({ username, password });
-      setAuth(response.token, response.user);
-      navigate('/');
-    } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: string } } };
-      setError(error.response?.data?.error || 'Login failed');
-    } finally {
-      setLoading(false);
-    }
-  };
+		try {
+			const response = await authApi.login({ username, password });
+			setAuth(response.token, response.user);
+			navigate('/');
+		} catch (err: unknown) {
+			const error = err as { response?: { data?: { error?: string } } };
+			setError(error.response?.data?.error || 'Login failed');
+		} finally {
+			setLoading(false);
+		}
+	};
 
-  // Wait for session check before showing the form
-  if (!sessionChecked) return null;
+	// Wait for session check before showing the form
+	if (!sessionChecked) return null;
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-white">
-      <div className="w-full max-w-lg">
-        <div className="space-y-6 pb-8">
-          <div className="flex justify-center">
-            <img
-              src={`${getBasePath()}/nebi-logo.svg`}
-              alt="Nebi Logo"
-              className="h-24 w-auto"
-            />
-          </div>
-          <p className="text-center text-muted-foreground text-base">
-            Workspace Management System
-          </p>
-        </div>
-        <div className="px-8 pb-8">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="bg-destructive/10 text-destructive p-4 rounded-md text-sm">
-                {error}
-              </div>
-            )}
+	return (
+		<div className="min-h-screen flex items-center justify-center bg-white">
+			<div className="w-full max-w-lg">
+				<div className="space-y-6 pb-8">
+					<div className="flex justify-center">
+						<img
+							src={`${getBasePath()}/nebi-logo.svg`}
+							alt="Nebi Logo"
+							className="h-24 w-auto"
+						/>
+					</div>
+					<p className="text-center text-muted-foreground text-base">
+						Workspace Management System
+					</p>
+				</div>
+				<div className="px-8 pb-8">
+					<form onSubmit={handleSubmit} className="space-y-4">
+						{error && (
+							<div className="bg-destructive/10 text-destructive p-4 rounded-md text-sm">
+								{error}
+							</div>
+						)}
 
-            <Input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Username"
-              required
-              className="h-12 text-base"
-            />
+						<Input
+							type="text"
+							value={username}
+							onChange={(e) => setUsername(e.target.value)}
+							placeholder="Username"
+							required
+							className="h-12 text-base"
+						/>
 
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
-              required
-              className="h-12 text-base"
-            />
+						<Input
+							type="password"
+							value={password}
+							onChange={(e) => setPassword(e.target.value)}
+							placeholder="Password"
+							required
+							className="h-12 text-base"
+						/>
 
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full h-12 text-base font-medium"
-            >
-              {loading ? 'Signing in...' : 'Sign in'}
-            </Button>
-          </form>
+						<Button
+							type="submit"
+							disabled={loading}
+							className="w-full h-12 text-base font-medium"
+						>
+							{loading ? 'Signing in...' : 'Sign in'}
+						</Button>
+					</form>
 
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">Or continue with</span>
-            </div>
-          </div>
+					<div className="relative my-6">
+						<div className="absolute inset-0 flex items-center">
+							<div className="w-full border-t border-gray-300"></div>
+						</div>
+						<div className="relative flex justify-center text-sm">
+							<span className="px-2 bg-white text-gray-500">
+								Or continue with
+							</span>
+						</div>
+					</div>
 
-          <Button
-            onClick={() => window.location.href = `${getApiBaseUrl()}/auth/oidc/login`}
-            variant="outline"
-            className="w-full h-12 text-base font-medium"
-          >
-            Sign in with OAuth
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
+					<Button
+						onClick={() =>
+							(window.location.href = `${getApiBaseUrl()}/auth/oidc/login`)
+						}
+						variant="outline"
+						className="w-full h-12 text-base font-medium"
+					>
+						Sign in with OAuth
+					</Button>
+				</div>
+			</div>
+		</div>
+	);
 };

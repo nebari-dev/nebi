@@ -47,6 +47,8 @@ platforms = ["osx-arm64", "linux-64"]
 python = ">=3.11"
 `;
 
+const PULL_HELP_TEXT = 'nebi pull downloads pixi.toml and pixi.lock from this server workspace into your local directory.';
+
 export const Workspaces = () => {
   const navigate = useNavigate();
   const setPendingTab = useWorkspaceNavStore((s) => s.setPendingTab);
@@ -354,7 +356,7 @@ export const Workspaces = () => {
                             size="sm"
                             className="gap-1.5"
                             onClick={(e) => handleCopyPull(e, ws.name, ws.id)}
-                            title="Copy nebi pull command"
+                            title={`${PULL_HELP_TEXT} Click to copy the command.`}
                           >
                             {copiedPullId === ws.id ? (
                               <Check className="h-4 w-4" />

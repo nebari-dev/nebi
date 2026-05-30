@@ -21,6 +21,7 @@ import { VersionHistory } from '@/components/versions/VersionHistory';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
 import { Jobs } from '@/components/jobs/Jobs';
 import { UserBadge } from '@/components/ui/user-badge';
+import { openExternal } from '@/lib/openExternal';
 import { ArrowLeft, Loader2, Package, Copy, Check, ExternalLink, Save, HardDrive, Pencil, Globe, Lock, User, Boxes, Users, Calendar, History, Fingerprint, FolderOpen, GitBranch, CircleQuestionMark, IdCard } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
@@ -30,6 +31,9 @@ const statusColors: Record<string, string> = {
   failed: 'bg-red-500/10 text-red-500 border-red-500/20',
   deleting: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
 };
+
+const PULL_DOCS_URL = 'https://nebi.nebari.dev/docs/cli-team#pull';
+const PULL_HELP_TEXT = 'nebi pull downloads pixi.toml and pixi.lock from this server workspace into your local directory.';
 
 export const WorkspaceDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -139,24 +143,36 @@ export const WorkspaceDetail = () => {
             {capitalize(workspace.status)}
           </Badge>
           {!isLocalWs && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={handleCopyPull}
-            >
-              {copiedPull ? (
-                <>
-                  <Check className="h-4 w-4" />
-                  Copied
-                </>
-              ) : (
-                <>
-                  <Copy className="h-4 w-4" />
-                  nebi pull
-                </>
-              )}
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={handleCopyPull}
+                title={`${PULL_HELP_TEXT} Click to copy the command.`}
+              >
+                {copiedPull ? (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-4 w-4" />
+                    Copy nebi pull
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => openExternal(PULL_DOCS_URL)}
+                title="Learn how nebi pull works"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+            </div>
           )}
           <Button
             variant="outline"

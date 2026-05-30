@@ -116,6 +116,14 @@ config:
   logLevel: info
   logFormat: json
 
+## Runtime theming/branding configuration
+theme:
+  title: ""
+  logoUrl: ""
+  faviconUrl: ""
+  light: {}
+  dark: {}
+
 ## Health probes
 livenessProbe:
   httpGet:

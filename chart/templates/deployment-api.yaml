@@ -80,6 +80,9 @@ spec:
           value: {{ .Values.config.logLevel | quote }}
         - name: NEBI_LOG_FORMAT
           value: {{ .Values.config.logFormat | quote }}
+        # Runtime branding/theming configuration path
+        - name: NEBI_THEME_CONFIG_PATH
+          value: "/app/public/config.json"
         {{- if .Values.admin }}
         # Admin user bootstrap
         - name: ADMIN_USERNAME
@@ -94,7 +97,13 @@ spec:
         volumeMounts:
         - name: environments
           mountPath: /app/data/environments
+        - name: theme-config
+          mountPath: /app/public
+          readOnly: true
       volumes:
       - name: environments
         persistentVolumeClaim:
           claimName: {{ include "nebi.fullname" . }}-environments
+      - name: theme-config
+        configMap:
+          name: {{ include "nebi.fullname" . }}-theme-config

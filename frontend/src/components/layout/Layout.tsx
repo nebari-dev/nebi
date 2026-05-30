@@ -1,12 +1,12 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
-import { getBasePath } from '@/lib/basePath';
 import { useViewModeStore } from '@/store/viewModeStore';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import { useRemoteServer } from '@/hooks/useRemote';
 import { useVersion } from '@/hooks/useVersion';
 import { Button } from '@/components/ui/button';
+import { getLogoUrl } from '@/lib/themeConfig';
 
 import { LogOut, Boxes, Shield, Settings, ExternalLink } from 'lucide-react';
 import { openExternal } from '@/lib/openExternal';
@@ -49,7 +49,7 @@ export const Layout = () => {
             <div className="flex items-center gap-8">
               <NavLink to="/workspaces">
                 <img
-                  src={`${getBasePath()}/nebi-logo.svg`}
+                  src={getLogoUrl()}
                   alt="Nebi"
                   className="h-10 w-auto"
                 />

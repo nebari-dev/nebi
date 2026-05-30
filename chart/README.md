@@ -33,6 +33,9 @@ helm install nebi ./chart -f custom-values.yaml --namespace nebi
 | `image.repository` | Image repository | `nebi` |
 | `image.tag` | Image tag | `latest` |
 | `image.pullPolicy` | Image pull policy | `IfNotPresent` |
+| `theme.title` | Browser tab title override | `""` |
+| `theme.logoUrl` | Header/login logo URL override | `""` |
+| `theme.faviconUrl` | Favicon URL override | `""` |
 | `replicaCount` | Number of replicas | `1` |
 | `service.type` | Service type | `ClusterIP` |
 | `service.port` | Service port | `80` |
@@ -88,6 +91,19 @@ helm install nebi ./chart \
 helm install nebi ./chart \
   --set ingress.enabled=true \
   --set ingress.hosts[0].host=nebi.example.com \
+  --namespace nebi
+```
+
+### Configure runtime branding and colors
+
+```bash
+helm upgrade --install nebi ./chart \
+  --set theme.title="Acme Nebi" \
+  --set theme.logoUrl="https://assets.example.com/acme-logo.svg" \
+  --set theme.faviconUrl="https://assets.example.com/acme-favicon.ico" \
+  --set theme.light.primary="#0b63f6" \
+  --set theme.light.primaryHover="#094fc2" \
+  --set theme.light.navHover="#e9f0ff" \
   --namespace nebi
 ```
 

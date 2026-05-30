@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nebi.fullname" . }}-theme-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nebi.labels" . | nindent 4 }}
+data:
+  config.json: |
+    {
+      "title": {{ .Values.theme.title | quote }},
+      "logoUrl": {{ .Values.theme.logoUrl | quote }},
+      "faviconUrl": {{ .Values.theme.faviconUrl | quote }},
+      "theme": {
+        "light": {{ .Values.theme.light | default dict | toJson }},
+        "dark": {{ .Values.theme.dark | default dict | toJson }}
+      }
+    }

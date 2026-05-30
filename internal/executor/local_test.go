@@ -125,6 +125,23 @@ func TestGetWorkspacePath_ManagedReturnsDerivedPath(t *testing.T) {
 	}
 }
 
+func TestGetWorkspacePath_ManagedWithPersistedPathUsesPath(t *testing.T) {
+	exec := testExecutor(t)
+
+	persisted := filepath.Join(t.TempDir(), "existing-managed")
+	ws := &models.Workspace{
+		ID:     uuid.New(),
+		Name:   "managed",
+		Source: "managed",
+		Path:   persisted,
+	}
+
+	got := exec.GetWorkspacePath(ws)
+	if got != persisted {
+		t.Errorf("expected persisted path %q, got %q", persisted, got)
+	}
+}
+
 func TestGetWorkspacePath_LocalEmptyPathFallsBackToManaged(t *testing.T) {
 	exec := testExecutor(t)
 

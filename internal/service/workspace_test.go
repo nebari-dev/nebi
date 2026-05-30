@@ -377,6 +377,45 @@ func TestPixiToml_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestGetPixiToml_UsesPersistedPathForManagedWorkspace(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "persisted-path", userID)
+
+	wsPath := svc.executor.GetWorkspacePath(ws)
+	if err := os.MkdirAll(wsPath, 0o755); err != nil {
+		t.Fatalf("mkdir ws path: %v", err)
+	}
+
+	content := "[workspace]\nname = \"persisted-path\"\n"
+	if err := os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write pixi.toml: %v", err)
+	}
+
+	// Simulate worker-persisted path in DB.
+	if err := db.Model(&models.Workspace{}).Where("id = ?", ws.ID).Update("path", wsPath).Error; err != nil {
+		t.Fatalf("persist path: %v", err)
+	}
+
+	// Simulate a later process with a different configured base dir.
+	cfg := &config.Config{Storage: config.StorageConfig{WorkspacesDir: t.TempDir()}}
+	exec2, err := executor.NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("new executor: %v", err)
+	}
+	q := queue.NewMemoryQueue(10)
+	t.Cleanup(func() { q.Close() })
+	svc2 := New(db, q, exec2, true, nil, rbac.NewDefaultProvider())
+
+	got, err := svc2.GetPixiToml(ws.ID.String())
+	if err != nil {
+		t.Fatalf("get pixi.toml via second executor: %v", err)
+	}
+	if got != content {
+		t.Errorf("persisted-path read mismatch: got %q, want %q", got, content)
+	}
+}
+
 func TestGetPixiToml_NotFoundWorkspace(t *testing.T) {
 	svc, _ := testSetup(t, true)
 

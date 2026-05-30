@@ -34,7 +34,7 @@ channels = ["conda-forge"]
 platforms = ["osx-arm64", "linux-64", "win-64"]
 
 [dependencies]
-${dependenciesLines || 'python = ">=3.11"'}
+${dependenciesLines || 'python = ">=3.11"\nipykernel = "*"'}
 `;
 };
 
@@ -68,7 +68,10 @@ const parsePixiTomlDependencies = (toml: string): Package[] => {
 
 export const PixiTomlEditor = ({ tomlValue, onTomlChange, workspaceName, onReloadToml }: PixiTomlEditorProps) => {
   const [mode, setMode] = useState<'ui' | 'toml'>('toml');
-  const [packages, setPackages] = useState<Package[]>([{ name: 'python', version: '>=3.11' }]);
+  const [packages, setPackages] = useState<Package[]>([
+    { name: 'python', version: '>=3.11' },
+    { name: 'ipykernel', version: '' },
+  ]);
   const [newPackageName, setNewPackageName] = useState('');
   const [newPackageVersion, setNewPackageVersion] = useState('');
   const [initialized, setInitialized] = useState(false);

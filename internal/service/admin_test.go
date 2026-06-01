@@ -315,3 +315,90 @@ func TestAdminGetDashboardStats(t *testing.T) {
 		t.Errorf("expected 0 bytes with no workspaces, got %d", stats.TotalDiskUsageBytes)
 	}
 }
+
+// --- Group admin & registry grants ---
+
+func TestGrantGroupAdmin_MembersBecomeEffectiveAdmins(t *testing.T) {
+	svc, _, db := adminTestSetup(t)
+	groupSvc := NewGroupService(db, rbac.NewDefaultProvider())
+	admin := createTestUser(t, db, "admin")
+	alice := createTestUser(t, db, "alice")
+	g, _ := groupSvc.CreateGroup(CreateGroupRequest{Name: "admins"}, admin)
+	_ = groupSvc.AddMember(g.ID, alice, admin)
+
+	if err := svc.GrantGroupAdmin(g.ID, admin); err != nil {
+		t.Fatalf("grant group admin: %v", err)
+	}
+
+	provider := rbac.NewDefaultProvider()
+	isAdmin, err := provider.IsAdmin(alice)
+	if err != nil || !isAdmin {
+		t.Fatalf("alice should be admin via group, err=%v admin=%v", err, isAdmin)
+	}
+}
+
+func TestRevokeGroupAdmin_RemovesEffectiveAdmin(t *testing.T) {
+	svc, _, db := adminTestSetup(t)
+	groupSvc := NewGroupService(db, rbac.NewDefaultProvider())
+	admin := createTestUser(t, db, "admin")
+	alice := createTestUser(t, db, "alice")
+	g, _ := groupSvc.CreateGroup(CreateGroupRequest{Name: "admins"}, admin)
+	_ = groupSvc.AddMember(g.ID, alice, admin)
+	_ = svc.GrantGroupAdmin(g.ID, admin)
+
+	if err := svc.RevokeGroupAdmin(g.ID, admin); err != nil {
+		t.Fatalf("revoke group admin: %v", err)
+	}
+
+	isAdmin, _ := rbac.NewDefaultProvider().IsAdmin(alice)
+	if isAdmin {
+		t.Fatalf("alice should no longer be admin")
+	}
+}
+
+func TestGrantRegistryToGroup_GivesTransitiveAccess(t *testing.T) {
+	svc, _, db := adminTestSetup(t)
+	groupSvc := NewGroupService(db, rbac.NewDefaultProvider())
+	admin := createTestUser(t, db, "admin")
+	alice := createTestUser(t, db, "alice")
+	g, _ := groupSvc.CreateGroup(CreateGroupRequest{Name: "reg-team"}, admin)
+	_ = groupSvc.AddMember(g.ID, alice, admin)
+
+	reg := models.OCIRegistry{Name: "private", URL: "ghcr.io", Namespace: "ns"}
+	if err := db.Create(&reg).Error; err != nil {
+		t.Fatalf("seed registry: %v", err)
+	}
+
+	if err := svc.GrantRegistryToGroup(reg.ID, g.ID, "write", admin); err != nil {
+		t.Fatalf("grant registry: %v", err)
+	}
+
+	can, err := rbac.NewDefaultProvider().CanWriteRegistry(alice, reg.ID)
+	if err != nil || !can {
+		t.Fatalf("alice should have write on registry, err=%v can=%v", err, can)
+	}
+}
+
+func TestListUserGroups_ReturnsOnlyTheirs(t *testing.T) {
+	svc, _, db := adminTestSetup(t)
+	groupSvc := NewGroupService(db, rbac.NewDefaultProvider())
+	admin := createTestUser(t, db, "admin")
+	alice := createTestUser(t, db, "alice")
+	bob := createTestUser(t, db, "bob")
+
+	g, _ := groupSvc.CreateGroup(CreateGroupRequest{Name: "ds"}, admin)
+	_ = groupSvc.AddMember(g.ID, alice, admin)
+
+	aliceGroups, err := svc.ListUserGroups(alice)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(aliceGroups) != 1 || aliceGroups[0].ID != g.ID {
+		t.Fatalf("expected alice in 1 group %s, got %+v", g.ID, aliceGroups)
+	}
+
+	bobGroups, _ := svc.ListUserGroups(bob)
+	if len(bobGroups) != 0 {
+		t.Fatalf("expected bob in 0 groups, got %d", len(bobGroups))
+	}
+}

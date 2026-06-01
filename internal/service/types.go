@@ -47,13 +47,25 @@ func NewWorkspaceResponse(ws models.Workspace) WorkspaceResponse {
 	}
 }
 
+// CollaboratorKind identifies whether a collaborator entry is a user or a group.
+type CollaboratorKind string
+
+const (
+	CollaboratorKindUser  CollaboratorKind = "user"
+	CollaboratorKindGroup CollaboratorKind = "group"
+)
+
 // CollaboratorResult is the result type for ListCollaborators.
 type CollaboratorResult struct {
-	UserID   uuid.UUID `json:"user_id"`
-	Username string    `json:"username"`
-	Email    string    `json:"email,omitempty"`
-	Role     string    `json:"role"`
-	IsOwner  bool      `json:"is_owner"`
+	Kind     CollaboratorKind `json:"kind"`
+	UserID   *uuid.UUID       `json:"user_id,omitempty"`
+	Username string           `json:"username,omitempty"`
+	Email    string           `json:"email,omitempty"`
+	GroupID  *uuid.UUID       `json:"group_id,omitempty"`
+	Name     string           `json:"name,omitempty"`
+	Source   string           `json:"source,omitempty"` // "" for users, "native"/"oidc" for groups
+	Role     string           `json:"role"`
+	IsOwner  bool             `json:"is_owner"`
 }
 
 // PublishWorkspaceRequest holds parameters for publishing to an OCI registry.

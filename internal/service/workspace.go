@@ -54,6 +54,18 @@ func (s *WorkspaceService) List(userID uuid.UUID) ([]WorkspaceResponse, error) {
 		for _, p := range permissions {
 			wsIDs = append(wsIDs, p.WorkspaceID)
 		}
+
+		// Group-mediated permissions: include workspaces shared with any
+		// group the caller belongs to. Casbin grouping rules are the source
+		// of truth for membership (same query the matcher uses transitively).
+		if userGroups, err := s.rbac.GetUserGroups(userID); err == nil && len(userGroups) > 0 {
+			var groupPerms []models.GroupPermission
+			s.db.Where("group_id IN ?", userGroups).Find(&groupPerms)
+			for _, gp := range groupPerms {
+				wsIDs = append(wsIDs, gp.WorkspaceID)
+			}
+		}
+
 		if len(wsIDs) > 0 {
 			query = query.Or("id IN ?", wsIDs)
 		}

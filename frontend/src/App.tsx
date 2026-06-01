@@ -15,6 +15,7 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { UserManagement } from './pages/admin/UserManagement';
 import { AuditLogs } from './pages/admin/AuditLogs';
 import { RegistryManagement } from './pages/admin/RegistryManagement';
+import { Groups } from './pages/admin/Groups';
 import { Layout } from './components/layout/Layout';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { adminApi } from './api/admin';
@@ -104,6 +105,7 @@ function App() {
                 <Route element={<AdminLayout />}>
                   <Route path="admin" element={<AdminDashboard />} />
                   <Route path="admin/users" element={<UserManagement />} />
+                  <Route path="admin/groups" element={<Groups />} />
                   <Route path="admin/audit-logs" element={<AuditLogs />} />
                   <Route path="admin/registries" element={<RegistryManagement />} />
                 </Route>

@@ -65,35 +65,3 @@ Generate the namespace name
 {{- define "darb.namespace" -}}
 {{- default .Release.Name .Values.namespaceOverride }}
 {{- end }}
-
-{{/*
-Backwards-compatible helper aliases.
-Existing templates reference "nebi.*" names, so map them to darb.* helpers.
-*/}}
-{{- define "nebi.name" -}}
-{{ include "darb.name" . }}
-{{- end }}
-
-{{- define "nebi.fullname" -}}
-{{ include "darb.fullname" . }}
-{{- end }}
-
-{{- define "nebi.chart" -}}
-{{ include "darb.chart" . }}
-{{- end }}
-
-{{- define "nebi.labels" -}}
-{{ include "darb.labels" . }}
-{{- end }}
-
-{{- define "nebi.selectorLabels" -}}
-{{ include "darb.selectorLabels" . }}
-{{- end }}
-
-{{- define "nebi.serviceAccountName" -}}
-{{ include "darb.serviceAccountName" . }}
-{{- end }}
-
-{{- define "nebi.namespace" -}}
-{{ include "darb.namespace" . }}
-{{- end }}

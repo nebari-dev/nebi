@@ -50,12 +50,13 @@ jobs:
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
-      # Linux dependencies for wails (Ubuntu 24.04 uses webkit2gtk-4.1)
+      # Linux dependencies for wails (Ubuntu 24.04 uses webkit2gtk-4.1).
+      # xvfb is needed for the post-build smoke test below.
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev xvfb
 
       - name: Build frontend
         shell: bash
@@ -94,6 +95,52 @@ jobs:
         with:
           name: nebi-windows
           path: build/bin/Nebi.exe
+
+      # Smoke test: launch the built binary and confirm it doesn't crash within
+      # 10s. Catches runtime regressions a build-only step misses — e.g. the
+      # WebKitGTK/JSC signal-handler SIGSEGV fixed in #351, which only triggers
+      # once the JS context lazy-inits at runtime.
+      - name: Smoke test (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          set +e
+          xvfb-run -a timeout 10 ./build/bin/Nebi
+          code=$?
+          set -e
+          # `timeout` exits 124 when it kills the still-running process, which
+          # is the success case here — the GUI is expected to stay alive.
+          if [ "$code" -ne 124 ]; then
+            echo "Smoke test failed: binary exited with code $code within 10s (expected 124)"
+            exit 1
+          fi
+          echo "Smoke test passed: binary stayed alive for 10s"
+
+      - name: Smoke test (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          open ./build/bin/Nebi.app
+          sleep 10
+          if pgrep -x Nebi > /dev/null; then
+            echo "Smoke test passed: binary stayed alive for 10s"
+            pkill -x Nebi || true
+          else
+            echo "Smoke test failed: Nebi.app exited or crashed within 10s"
+            exit 1
+          fi
+
+      - name: Smoke test (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $proc = Start-Process -FilePath "build/bin/Nebi.exe" -PassThru
+          Start-Sleep -Seconds 10
+          if (-not $proc.HasExited) {
+            Write-Host "Smoke test passed: binary stayed alive for 10s"
+            Stop-Process -Id $proc.Id
+          } else {
+            Write-Host "Smoke test failed: exited with code $($proc.ExitCode) within 10s"
+            exit 1
+          }
 
       # For releases: compress and upload to GitHub release
       - name: Compress for release (Linux)

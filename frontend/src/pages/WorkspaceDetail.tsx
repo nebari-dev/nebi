@@ -103,8 +103,6 @@ export const WorkspaceDetail = () => {
     setTimeout(() => setCopiedImportId(null), 2000);
   };
 
-
-
   if (wsLoading) {
     return (
       <div className="flex items-center justify-center h-96">

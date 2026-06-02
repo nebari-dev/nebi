@@ -49,7 +49,7 @@ func NewOIDCAuthenticator(ctx context.Context, cfg OIDCConfig, db *gorm.DB, jwtS
 	// Default scopes if none provided
 	scopes := cfg.Scopes
 	if len(scopes) == 0 {
-		scopes = []string{oidc.ScopeOpenID, "profile", "email"}
+		scopes = []string{oidc.ScopeOpenID, "profile", "email", "groups"}
 	}
 
 	// Configure OAuth2
@@ -111,12 +111,13 @@ func (a *OIDCAuthenticator) HandleCallback(ctx context.Context, code string) (*L
 
 	// Extract claims
 	var claims struct {
-		Email             string `json:"email"`
-		EmailVerified     bool   `json:"email_verified"`
-		Name              string `json:"name"`
-		PreferredUsername string `json:"preferred_username"`
-		Sub               string `json:"sub"`
-		Picture           string `json:"picture"`
+		Email             string   `json:"email"`
+		EmailVerified     bool     `json:"email_verified"`
+		Name              string   `json:"name"`
+		PreferredUsername string   `json:"preferred_username"`
+		Sub               string   `json:"sub"`
+		Picture           string   `json:"picture"`
+		Groups            []string `json:"groups"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		return nil, fmt.Errorf("failed to parse claims: %w", err)
@@ -137,6 +138,10 @@ func (a *OIDCAuthenticator) HandleCallback(ctx context.Context, code string) (*L
 	user, err := a.findOrCreateUser(username, claims.Email, claims.Name, claims.Picture, claims.Sub)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find or create user: %w", err)
+	}
+
+	if err := SyncOIDCGroups(a.db, user.ID, claims.Groups); err != nil {
+		slog.Warn("OIDC group sync failed; continuing login", "user_id", user.ID, "err", err)
 	}
 
 	// Generate JWT token using existing system

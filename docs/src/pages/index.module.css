@@ -72,9 +72,9 @@
 }
 
 .demoItem {
-  flex: 1;
-  min-width: 300px;
-  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .demoLabel {
@@ -83,7 +83,9 @@
 }
 
 .demoImage {
-  width: 100%;
+  height: 320px;
+  width: auto;
+  max-width: 100%;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }

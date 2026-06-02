@@ -5,7 +5,7 @@
 </div>
 
 <p align="center">
-  Multi-user environment management for Pixi
+  Environment management for teams
 </p>
 
 <p align="center">

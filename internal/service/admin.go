@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -163,6 +164,19 @@ func (s *AdminService) DeleteUser(userID uuid.UUID, adminUserID uuid.UUID) error
 	return nil
 }
 
+// ListUserGroups returns every group the given user belongs to (native + OIDC).
+func (s *AdminService) ListUserGroups(userID uuid.UUID) ([]models.Group, error) {
+	var groups []models.Group
+	err := s.db.
+		Joins("JOIN group_members gm ON gm.group_id = groups.id").
+		Where("gm.user_id = ?", userID).
+		Find(&groups).Error
+	if err != nil {
+		return nil, fmt.Errorf("list user groups: %w", err)
+	}
+	return groups, nil
+}
+
 // ListRoles returns all roles.
 func (s *AdminService) ListRoles() ([]models.Role, error) {
 	var roles []models.Role
@@ -303,4 +317,84 @@ func (s *AdminService) GetDashboardStats() (*DashboardStats, error) {
 		TotalDiskUsageBytes:     result.TotalBytes,
 		TotalDiskUsageFormatted: utils.FormatBytes(result.TotalBytes),
 	}, nil
+}
+
+// GrantGroupAdmin promotes a group to admin. Every current and future member
+// of the group becomes an effective admin via Casbin g + p rules.
+func (s *AdminService) GrantGroupAdmin(groupID uuid.UUID, actorID uuid.UUID) error {
+	var g models.Group
+	if err := s.db.First(&g, "id = ?", groupID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if g.Source == models.GroupSourceOIDC {
+		return &ConflictError{Message: "cannot grant admin to an OIDC-synced group; its membership is controlled by the identity provider"}
+	}
+	if err := s.rbac.MakeGroupAdmin(groupID); err != nil {
+		return fmt.Errorf("make group admin: %w", err)
+	}
+	audit.LogAction(s.db, actorID, audit.ActionGrantGroupAdmin, fmt.Sprintf("group:%s", groupID), map[string]interface{}{
+		"group_name": g.Name,
+	})
+	return nil
+}
+
+// RevokeGroupAdmin removes the group's admin grant.
+func (s *AdminService) RevokeGroupAdmin(groupID uuid.UUID, actorID uuid.UUID) error {
+	var g models.Group
+	if err := s.db.First(&g, "id = ?", groupID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if err := s.rbac.RevokeGroupAdmin(groupID); err != nil {
+		return fmt.Errorf("revoke group admin: %w", err)
+	}
+	audit.LogAction(s.db, actorID, audit.ActionRevokeGroupAdmin, fmt.Sprintf("group:%s", groupID), map[string]interface{}{
+		"group_name": g.Name,
+	})
+	return nil
+}
+
+// GrantRegistryToGroup grants a group access to a registry (read or write).
+func (s *AdminService) GrantRegistryToGroup(regID, groupID uuid.UUID, action string, actorID uuid.UUID) error {
+	if action != "read" && action != "write" {
+		return &ValidationError{Message: "action must be 'read' or 'write'"}
+	}
+	var reg models.OCIRegistry
+	if err := s.db.First(&reg, "id = ?", regID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return &ValidationError{Message: "Registry not found"}
+		}
+		return err
+	}
+	var g models.Group
+	if err := s.db.First(&g, "id = ?", groupID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return &ValidationError{Message: "Group not found"}
+		}
+		return err
+	}
+	if err := s.rbac.GrantGroupRegistryAccess(groupID, regID, action); err != nil {
+		return fmt.Errorf("grant registry: %w", err)
+	}
+	audit.LogAction(s.db, actorID, audit.ActionGrantGroupPerm, fmt.Sprintf("reg:%s", regID), map[string]interface{}{
+		"group_id": groupID,
+		"action":   action,
+	})
+	return nil
+}
+
+// RevokeRegistryFromGroup removes a group's access to a registry.
+func (s *AdminService) RevokeRegistryFromGroup(regID, groupID uuid.UUID, actorID uuid.UUID) error {
+	if err := s.rbac.RevokeGroupRegistryAccess(groupID, regID); err != nil {
+		return fmt.Errorf("revoke registry: %w", err)
+	}
+	audit.LogAction(s.db, actorID, audit.ActionRevokeGroupPerm, fmt.Sprintf("reg:%s", regID), map[string]interface{}{
+		"group_id": groupID,
+	})
+	return nil
 }

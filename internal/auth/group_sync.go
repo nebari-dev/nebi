@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
@@ -26,6 +27,12 @@ import (
 func SyncOIDCGroups(db *gorm.DB, userID uuid.UUID, claimGroups []string) error {
 	desired := make(map[string]struct{}, len(claimGroups))
 	for _, name := range claimGroups {
+		// Keycloak's group-membership mapper emits a leading-slash full path
+		// ("/developer") when full.path=true and the bare name ("developer")
+		// when false. A client can carry both mappers, so the same group
+		// arrives twice. Normalize to the bare name so the two forms collapse
+		// to one group instead of creating "/developer" and "developer".
+		name = strings.TrimPrefix(name, "/")
 		if name == "" {
 			continue
 		}

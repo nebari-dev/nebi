@@ -8,7 +8,7 @@ const defaultHead = `
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 `;
 
-describe('themeConfig', () => {
+describe('brandingConfig', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.unstubAllGlobals();
@@ -21,29 +21,31 @@ describe('themeConfig', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        title: 'Acme Nebi',
-        logoUrl: '/assets/acme-logo.svg',
-        faviconUrl: '/assets/acme-favicon.ico',
-        theme: {
-          light: { primary: '#123456', navHover: '#eef3ff', '': '#ffffff' },
-          dark: { primary: '#89abef' },
+        branding: {
+          title: 'Acme Nebi',
+          logoUrl: '/assets/acme-logo.svg',
+          faviconUrl: '/assets/acme-favicon.ico',
+          theme: {
+            light: { primary: '#123456', navHover: '#eef3ff', '': '#ffffff' },
+            dark: { primary: '#89abef' },
+          },
         },
       }),
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { loadThemeConfig, getLogoUrl } = await import('./themeConfig');
-    const config = await loadThemeConfig();
+    const { loadBrandingConfig, getLogoUrl } = await import('./themeConfig');
+    const config = await loadBrandingConfig();
 
     expect(fetchMock).toHaveBeenCalledWith('/public/config.json', { cache: 'no-store' });
     expect(document.title).toBe('Acme Nebi');
     expect(getLogoUrl()).toBe('/assets/acme-logo.svg');
-    expect(config.title).toBe('Acme Nebi');
+    expect(config.branding?.title).toBe('Acme Nebi');
 
     const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
     expect(favicon?.getAttribute('href')).toBe('/assets/acme-favicon.ico');
 
-    const style = document.getElementById('nebi-runtime-theme');
+    const style = document.getElementById('nebi-runtime-branding');
     expect(style?.textContent).toContain('--color-primary: #123456;');
     expect(style?.textContent).toContain('--color-nav-hover: #eef3ff;');
     expect(style?.textContent).not.toContain('--color-: #ffffff;');
@@ -55,14 +57,16 @@ describe('themeConfig', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        logoUrl: '/brand/logo.svg',
-        faviconUrl: '/brand/favicon.ico',
+        branding: {
+          logoUrl: '/brand/logo.svg',
+          faviconUrl: '/brand/favicon.ico',
+        },
       }),
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { loadThemeConfig, getLogoUrl } = await import('./themeConfig');
-    await loadThemeConfig();
+    const { loadBrandingConfig, getLogoUrl } = await import('./themeConfig');
+    await loadBrandingConfig();
 
     expect(fetchMock).toHaveBeenCalledWith('/nebi/public/config.json', { cache: 'no-store' });
     expect(getLogoUrl()).toBe('/nebi/brand/logo.svg');
@@ -76,8 +80,8 @@ describe('themeConfig', () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error('boom'));
     vi.stubGlobal('fetch', fetchMock);
 
-    const { loadThemeConfig, getLogoUrl } = await import('./themeConfig');
-    const config = await loadThemeConfig();
+    const { loadBrandingConfig, getLogoUrl } = await import('./themeConfig');
+    const config = await loadBrandingConfig();
 
     expect(config).toEqual({});
     expect(document.title).toBe('Nebi - Environment Management');
@@ -89,15 +93,17 @@ describe('themeConfig', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        title: 'Unsafe assets',
-        logoUrl: 'javascript:alert(1)',
-        faviconUrl: 'data:image/svg+xml;base64,PHN2Zy8+',
+        branding: {
+          title: 'Unsafe assets',
+          logoUrl: 'javascript:alert(1)',
+          faviconUrl: 'data:image/svg+xml;base64,PHN2Zy8+',
+        },
       }),
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { loadThemeConfig, getLogoUrl } = await import('./themeConfig');
-    await loadThemeConfig();
+    const { loadBrandingConfig, getLogoUrl } = await import('./themeConfig');
+    await loadBrandingConfig();
 
     expect(getLogoUrl()).toBe('/nebi-logo.svg');
     expect(document.title).toBe('Unsafe assets');
@@ -109,14 +115,16 @@ describe('themeConfig', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        logoUrl: 'brand/logo.svg',
-        faviconUrl: 'brand/favicon.ico',
+        branding: {
+          logoUrl: 'brand/logo.svg',
+          faviconUrl: 'brand/favicon.ico',
+        },
       }),
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { loadThemeConfig, getLogoUrl } = await import('./themeConfig');
-    await loadThemeConfig();
+    const { loadBrandingConfig, getLogoUrl } = await import('./themeConfig');
+    await loadBrandingConfig();
 
     expect(getLogoUrl()).toBe('/nebi-logo.svg');
     const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');

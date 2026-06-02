@@ -349,7 +349,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	if err != nil {
 		logger.Warn("Failed to load embedded frontend, frontend will not be served", "error", err)
 	} else {
-		runtimeThemeConfigPath := resolveThemeConfigPath()
+		runtimeBrandingConfigPath := resolveBrandingConfigPath()
 
 		// SPA fallback - serve files from embedded filesystem for all non-API, non-docs routes
 		router.NoRoute(func(c *gin.Context) {
@@ -368,16 +368,16 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				}
 			}
 
-			// Runtime theming config override:
+			// Runtime branding config override:
 			// if a Helm-mounted file exists on disk, serve it instead of embedded assets.
 			if relPath == "/public/config.json" {
-				content, err := os.ReadFile(runtimeThemeConfigPath)
+				content, err := os.ReadFile(runtimeBrandingConfigPath)
 				if err == nil {
 					c.Data(http.StatusOK, "application/json", content)
 					return
 				}
 				if !os.IsNotExist(err) {
-					logger.Warn("Failed to read runtime theme config", "path", runtimeThemeConfigPath, "error", err)
+					logger.Warn("Failed to read runtime branding config", "path", runtimeBrandingConfigPath, "error", err)
 				}
 			}
 
@@ -479,8 +479,11 @@ func retryOIDCInit(cfg auth.OIDCConfig, db *gorm.DB, jwtSecret string, rbacProvi
 	}
 }
 
-func resolveThemeConfigPath() string {
-	path := strings.TrimSpace(os.Getenv("NEBI_THEME_CONFIG_PATH"))
+func resolveBrandingConfigPath() string {
+	path := strings.TrimSpace(os.Getenv("NEBI_BRANDING_CONFIG_PATH"))
+	if path == "" {
+		path = strings.TrimSpace(os.Getenv("NEBI_THEME_CONFIG_PATH"))
+	}
 	if path == "" {
 		return "/app/public/config.json"
 	}

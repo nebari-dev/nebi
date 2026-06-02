@@ -2,7 +2,7 @@ import { getBasePath } from './basePath';
 
 export type ThemeTokens = Record<string, string>;
 
-export type RuntimeThemeConfig = {
+export type BrandingConfig = {
   title?: string;
   logoUrl?: string;
   faviconUrl?: string;
@@ -12,14 +12,18 @@ export type RuntimeThemeConfig = {
   };
 };
 
+export type RuntimeBrandingConfig = {
+  branding?: BrandingConfig;
+};
+
 const DEFAULT_TITLE = 'Nebi - Environment Management';
 const DEFAULT_LOGO_URL = '/nebi-logo.svg';
-const THEME_CONFIG_PATH = '/public/config.json';
-const THEME_STYLE_ID = 'nebi-runtime-theme';
+const BRANDING_CONFIG_PATH = '/public/config.json';
+const BRANDING_STYLE_ID = 'nebi-runtime-branding';
 const UNSAFE_CSS_VALUE = /[;<>{}"'\\]|url\s*\(|expression\s*\(|javascript:/i;
 
-let cachedConfig: RuntimeThemeConfig | null = null;
-let loadConfigPromise: Promise<RuntimeThemeConfig> | null = null;
+let cachedConfig: RuntimeBrandingConfig | null = null;
+let loadConfigPromise: Promise<RuntimeBrandingConfig> | null = null;
 
 const normalizeString = (value: unknown): string | undefined => {
   if (typeof value !== 'string') {
@@ -105,28 +109,36 @@ const sanitizeThemeTokens = (tokens: unknown): ThemeTokens | undefined => {
   return Object.fromEntries(sanitizedEntries);
 };
 
-const sanitizeThemeConfig = (rawConfig: unknown): RuntimeThemeConfig => {
+const sanitizeBrandingConfig = (rawConfig: unknown): RuntimeBrandingConfig => {
   if (typeof rawConfig !== 'object' || rawConfig === null || Array.isArray(rawConfig)) {
     return {};
   }
 
   const configObj = rawConfig as Record<string, unknown>;
-  const rawTheme = configObj.theme;
+  const rawBranding =
+    typeof configObj.branding === 'object' && configObj.branding !== null && !Array.isArray(configObj.branding)
+      ? (configObj.branding as Record<string, unknown>)
+      : configObj;
+  const rawTheme = rawBranding.theme;
   const themeObject =
     typeof rawTheme === 'object' && rawTheme !== null && !Array.isArray(rawTheme)
       ? (rawTheme as Record<string, unknown>)
       : undefined;
   const light = sanitizeThemeTokens(themeObject?.light);
   const dark = sanitizeThemeTokens(themeObject?.dark);
-  const logoUrl = normalizeString(configObj.logoUrl);
-  const faviconUrl = normalizeString(configObj.faviconUrl);
+  const title = normalizeString(rawBranding.title);
+  const logoUrl = normalizeString(rawBranding.logoUrl);
+  const faviconUrl = normalizeString(rawBranding.faviconUrl);
+  const branding = title || logoUrl || faviconUrl || light || dark
+    ? {
+        title,
+        logoUrl: logoUrl && isSafeAssetUrl(logoUrl) ? logoUrl : undefined,
+        faviconUrl: faviconUrl && isSafeAssetUrl(faviconUrl) ? faviconUrl : undefined,
+        theme: light || dark ? { light, dark } : undefined,
+      }
+    : undefined;
 
-  return {
-    title: normalizeString(configObj.title),
-    logoUrl: logoUrl && isSafeAssetUrl(logoUrl) ? logoUrl : undefined,
-    faviconUrl: faviconUrl && isSafeAssetUrl(faviconUrl) ? faviconUrl : undefined,
-    theme: light || dark ? { light, dark } : undefined,
-  };
+  return branding ? { branding } : {};
 };
 
 const buildCssBlock = (selector: ':root' | '.dark', tokens?: ThemeTokens): string => {
@@ -140,9 +152,9 @@ const buildCssBlock = (selector: ':root' | '.dark', tokens?: ThemeTokens): strin
   return `${selector} {\n${lines.join('\n')}\n}\n`;
 };
 
-const applyThemeStyles = (theme?: RuntimeThemeConfig['theme']): void => {
+const applyThemeStyles = (theme?: BrandingConfig['theme']): void => {
   const css = `${buildCssBlock(':root', theme?.light)}${buildCssBlock('.dark', theme?.dark)}`.trim();
-  const existingStyle = document.getElementById(THEME_STYLE_ID);
+  const existingStyle = document.getElementById(BRANDING_STYLE_ID);
 
   if (!css) {
     existingStyle?.remove();
@@ -150,7 +162,7 @@ const applyThemeStyles = (theme?: RuntimeThemeConfig['theme']): void => {
   }
 
   const style = existingStyle ?? document.createElement('style');
-  style.id = THEME_STYLE_ID;
+  style.id = BRANDING_STYLE_ID;
   style.textContent = `${css}\n`;
   if (!existingStyle) {
     document.head.appendChild(style);
@@ -175,17 +187,18 @@ const applyFavicon = (faviconUrl: string): void => {
   }
 };
 
-const applyThemeConfig = (config: RuntimeThemeConfig): void => {
-  document.title = config.title || DEFAULT_TITLE;
+const applyBrandingConfig = (config: RuntimeBrandingConfig): void => {
+  const branding = config.branding;
+  document.title = branding?.title || DEFAULT_TITLE;
 
-  if (config.faviconUrl) {
-    applyFavicon(config.faviconUrl);
+  if (branding?.faviconUrl) {
+    applyFavicon(branding.faviconUrl);
   }
 
-  applyThemeStyles(config.theme);
+  applyThemeStyles(branding?.theme);
 };
 
-export const loadThemeConfig = async (): Promise<RuntimeThemeConfig> => {
+export const loadBrandingConfig = async (): Promise<RuntimeBrandingConfig> => {
   if (cachedConfig) {
     return cachedConfig;
   }
@@ -194,19 +207,19 @@ export const loadThemeConfig = async (): Promise<RuntimeThemeConfig> => {
   }
 
   loadConfigPromise = (async () => {
-    const configUrl = resolveBasePathUrl(THEME_CONFIG_PATH);
+    const configUrl = resolveBasePathUrl(BRANDING_CONFIG_PATH);
     try {
       const response = await fetch(configUrl, { cache: 'no-store' });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
-      cachedConfig = sanitizeThemeConfig(await response.json());
+      cachedConfig = sanitizeBrandingConfig(await response.json());
     } catch (error) {
-      console.warn(`Failed to load theme config from ${configUrl}`, error);
+      console.warn(`Failed to load branding config from ${configUrl}`, error);
       cachedConfig = {};
     }
 
-    applyThemeConfig(cachedConfig);
+    applyBrandingConfig(cachedConfig);
     return cachedConfig;
   })();
 
@@ -218,6 +231,6 @@ export const loadThemeConfig = async (): Promise<RuntimeThemeConfig> => {
 };
 
 export const getLogoUrl = (): string => {
-  const configuredLogo = cachedConfig?.logoUrl;
+  const configuredLogo = cachedConfig?.branding?.logoUrl;
   return resolveBasePathUrl(configuredLogo || DEFAULT_LOGO_URL);
 };

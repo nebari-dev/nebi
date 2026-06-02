@@ -8,10 +8,10 @@ import '@fontsource/fira-code/400.css'
 import '@fontsource/fira-code/500.css'
 import './index.css'
 import App from './App.tsx'
-import { loadThemeConfig } from './lib/themeConfig'
+import { loadBrandingConfig } from './lib/themeConfig'
 
 async function bootstrap(): Promise<void> {
-  await loadThemeConfig()
+  await loadBrandingConfig()
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>

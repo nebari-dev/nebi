@@ -1,9 +1,11 @@
 {
-  "title": "",
-  "logoUrl": "",
-  "faviconUrl": "",
-  "theme": {
-    "light": {},
-    "dark": {}
+  "branding": {
+    "title": "",
+    "logoUrl": "",
+    "faviconUrl": "",
+    "theme": {
+      "light": {},
+      "dark": {}
+    }
   }
 }

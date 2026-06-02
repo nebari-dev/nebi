@@ -5,7 +5,7 @@
 </div>
 
 <p align="center">
-  Environment management for teams and collaborators
+  Environment management for teams
 </p>
 
 <p align="center">

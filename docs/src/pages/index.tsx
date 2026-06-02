@@ -69,7 +69,7 @@ export default function Home(): ReactNode {
   return (
     <Layout
       title="Home"
-      description="Nebi - Environment management for teams and collaborators">
+      description="Nebi - Environment management for teams">
       <HomepageHeader />
       <main>
         <HomepageDemo />

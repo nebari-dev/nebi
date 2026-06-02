@@ -20,9 +20,9 @@ import { PublishButton } from '@/components/publishing/PublishButton';
 import { RoleBadge } from '@/components/sharing/RoleBadge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
+import { UseLocallyButton } from '@/components/workspace/UseLocallyButton';
 import { Jobs } from '@/components/jobs/Jobs';
 import { UserBadge } from '@/components/ui/user-badge';
-import { openExternal } from '@/lib/openExternal';
 import { ArrowLeft, Loader2, Package, Copy, Check, ExternalLink, Save, HardDrive, Pencil, Globe, Lock, User, Boxes, Users, Users2, Calendar, History, Fingerprint, FolderOpen, GitBranch, CircleQuestionMark, IdCard } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
@@ -32,9 +32,6 @@ const statusColors: Record<string, string> = {
   failed: 'bg-red-500/10 text-red-500 border-red-500/20',
   deleting: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
 };
-
-const PULL_DOCS_URL = 'https://nebi.nebari.dev/docs/cli-team#pull';
-const PULL_HELP_TEXT = 'nebi pull downloads pixi.toml and pixi.lock from this server workspace into your local directory.';
 
 export const WorkspaceDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -63,7 +60,6 @@ export const WorkspaceDetail = () => {
   const [savingToml, setSavingToml] = useState(false);
   const [loadingToml, setLoadingToml] = useState(false);
   const [copiedToml, setCopiedToml] = useState(false);
-  const [copiedPull, setCopiedPull] = useState(false);
   const [copiedImportId, setCopiedImportId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
 
@@ -97,14 +93,6 @@ export const WorkspaceDetail = () => {
     await navigator.clipboard.writeText(pixiToml);
     setCopiedToml(true);
     setTimeout(() => setCopiedToml(false), 2000);
-  };
-
-  const handleCopyPull = async () => {
-    const serverUrl = window.location.origin;
-    const cmd = `nebi login ${serverUrl} && nebi pull ${workspace?.name || ''}`;
-    await navigator.clipboard.writeText(cmd);
-    setCopiedPull(true);
-    setTimeout(() => setCopiedPull(false), 2000);
   };
 
   const handleCopyImport = async (pub: { registry_url: string; registry_namespace: string; repository: string; tag: string; id: string }) => {
@@ -149,38 +137,7 @@ export const WorkspaceDetail = () => {
           <Badge className={statusColors[workspace.status]}>
             {capitalize(workspace.status)}
           </Badge>
-          {!isLocalWs && (
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={handleCopyPull}
-                title={`${PULL_HELP_TEXT} Click to copy the command.`}
-              >
-                {copiedPull ? (
-                  <>
-                    <Check className="h-4 w-4" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-4 w-4" />
-                    Copy nebi pull
-                  </>
-                )}
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={() => openExternal(PULL_DOCS_URL)}
-                title="Learn how nebi pull works"
-              >
-                <ExternalLink className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
+          {!isLocalWs && <UseLocallyButton workspaceName={workspace.name} />}
           <Button
             variant="outline"
             size="sm"

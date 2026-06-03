@@ -1,14 +1,14 @@
 import { getBasePath } from './basePath';
 
-export type ThemeTokens = Record<string, string>;
+export type BrandingThemeTokens = Record<string, string>;
 
 export type BrandingConfig = {
   title?: string;
   logoUrl?: string;
   faviconUrl?: string;
   theme?: {
-    light?: ThemeTokens;
-    dark?: ThemeTokens;
+    light?: BrandingThemeTokens;
+    dark?: BrandingThemeTokens;
   };
 };
 
@@ -17,7 +17,7 @@ export type RuntimeBrandingConfig = {
 };
 
 const DEFAULT_TITLE = 'Nebi - Environment Management';
-const DEFAULT_LOGO_URL = '/nebi-logo.svg';
+const DEFAULT_BRANDING_LOGO_URL = '/nebi-logo.svg';
 const BRANDING_CONFIG_PATH = '/public/config.json';
 const BRANDING_STYLE_ID = 'nebi-runtime-branding';
 const UNSAFE_CSS_VALUE = /[;<>{}"'\\]|url\s*\(|expression\s*\(|javascript:/i;
@@ -75,7 +75,7 @@ const toCssVariableName = (tokenName: string): string | undefined => {
   return `--color-${kebabCase}`;
 };
 
-const sanitizeThemeTokens = (tokens: unknown): ThemeTokens | undefined => {
+const sanitizeBrandingThemeTokens = (tokens: unknown): BrandingThemeTokens | undefined => {
   if (typeof tokens !== 'object' || tokens === null || Array.isArray(tokens)) {
     return undefined;
   }
@@ -115,17 +115,18 @@ const sanitizeBrandingConfig = (rawConfig: unknown): RuntimeBrandingConfig => {
   }
 
   const configObj = rawConfig as Record<string, unknown>;
-  const rawBranding =
-    typeof configObj.branding === 'object' && configObj.branding !== null && !Array.isArray(configObj.branding)
-      ? (configObj.branding as Record<string, unknown>)
-      : configObj;
+  if (typeof configObj.branding !== 'object' || configObj.branding === null || Array.isArray(configObj.branding)) {
+    return {};
+  }
+
+  const rawBranding = configObj.branding as Record<string, unknown>;
   const rawTheme = rawBranding.theme;
   const themeObject =
     typeof rawTheme === 'object' && rawTheme !== null && !Array.isArray(rawTheme)
       ? (rawTheme as Record<string, unknown>)
       : undefined;
-  const light = sanitizeThemeTokens(themeObject?.light);
-  const dark = sanitizeThemeTokens(themeObject?.dark);
+  const light = sanitizeBrandingThemeTokens(themeObject?.light);
+  const dark = sanitizeBrandingThemeTokens(themeObject?.dark);
   const title = normalizeString(rawBranding.title);
   const logoUrl = normalizeString(rawBranding.logoUrl);
   const faviconUrl = normalizeString(rawBranding.faviconUrl);
@@ -141,7 +142,7 @@ const sanitizeBrandingConfig = (rawConfig: unknown): RuntimeBrandingConfig => {
   return branding ? { branding } : {};
 };
 
-const buildCssBlock = (selector: ':root' | '.dark', tokens?: ThemeTokens): string => {
+const buildCssBlock = (selector: ':root' | '.dark', tokens?: BrandingThemeTokens): string => {
   if (!tokens) {
     return '';
   }
@@ -152,7 +153,7 @@ const buildCssBlock = (selector: ':root' | '.dark', tokens?: ThemeTokens): strin
   return `${selector} {\n${lines.join('\n')}\n}\n`;
 };
 
-const applyThemeStyles = (theme?: BrandingConfig['theme']): void => {
+const applyBrandingThemeStyles = (theme?: BrandingConfig['theme']): void => {
   const css = `${buildCssBlock(':root', theme?.light)}${buildCssBlock('.dark', theme?.dark)}`.trim();
   const existingStyle = document.getElementById(BRANDING_STYLE_ID);
 
@@ -195,7 +196,7 @@ const applyBrandingConfig = (config: RuntimeBrandingConfig): void => {
     applyFavicon(branding.faviconUrl);
   }
 
-  applyThemeStyles(branding?.theme);
+  applyBrandingThemeStyles(branding?.theme);
 };
 
 export const loadBrandingConfig = async (): Promise<RuntimeBrandingConfig> => {
@@ -230,7 +231,7 @@ export const loadBrandingConfig = async (): Promise<RuntimeBrandingConfig> => {
   }
 };
 
-export const getLogoUrl = (): string => {
+export const getBrandingLogoUrl = (): string => {
   const configuredLogo = cachedConfig?.branding?.logoUrl;
-  return resolveBasePathUrl(configuredLogo || DEFAULT_LOGO_URL);
+  return resolveBasePathUrl(configuredLogo || DEFAULT_BRANDING_LOGO_URL);
 };

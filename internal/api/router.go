@@ -482,9 +482,6 @@ func retryOIDCInit(cfg auth.OIDCConfig, db *gorm.DB, jwtSecret string, rbacProvi
 func resolveBrandingConfigPath() string {
 	path := strings.TrimSpace(os.Getenv("NEBI_BRANDING_CONFIG_PATH"))
 	if path == "" {
-		path = strings.TrimSpace(os.Getenv("NEBI_THEME_CONFIG_PATH"))
-	}
-	if path == "" {
 		return "/app/public/config.json"
 	}
 	return path

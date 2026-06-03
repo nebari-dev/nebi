@@ -34,12 +34,12 @@ describe('brandingConfig', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { loadBrandingConfig, getLogoUrl } = await import('./themeConfig');
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import('./brandingConfig');
     const config = await loadBrandingConfig();
 
     expect(fetchMock).toHaveBeenCalledWith('/public/config.json', { cache: 'no-store' });
     expect(document.title).toBe('Acme Nebi');
-    expect(getLogoUrl()).toBe('/assets/acme-logo.svg');
+    expect(getBrandingLogoUrl()).toBe('/assets/acme-logo.svg');
     expect(config.branding?.title).toBe('Acme Nebi');
 
     const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
@@ -65,11 +65,11 @@ describe('brandingConfig', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { loadBrandingConfig, getLogoUrl } = await import('./themeConfig');
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import('./brandingConfig');
     await loadBrandingConfig();
 
     expect(fetchMock).toHaveBeenCalledWith('/nebi/public/config.json', { cache: 'no-store' });
-    expect(getLogoUrl()).toBe('/nebi/brand/logo.svg');
+    expect(getBrandingLogoUrl()).toBe('/nebi/brand/logo.svg');
 
     const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
     expect(favicon?.getAttribute('href')).toBe('/nebi/brand/favicon.ico');
@@ -80,12 +80,12 @@ describe('brandingConfig', () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error('boom'));
     vi.stubGlobal('fetch', fetchMock);
 
-    const { loadBrandingConfig, getLogoUrl } = await import('./themeConfig');
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import('./brandingConfig');
     const config = await loadBrandingConfig();
 
     expect(config).toEqual({});
     expect(document.title).toBe('Nebi - Environment Management');
-    expect(getLogoUrl()).toBe('/nebi-logo.svg');
+    expect(getBrandingLogoUrl()).toBe('/nebi-logo.svg');
     expect(warnSpy).toHaveBeenCalled();
   });
 
@@ -102,10 +102,10 @@ describe('brandingConfig', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { loadBrandingConfig, getLogoUrl } = await import('./themeConfig');
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import('./brandingConfig');
     await loadBrandingConfig();
 
-    expect(getLogoUrl()).toBe('/nebi-logo.svg');
+    expect(getBrandingLogoUrl()).toBe('/nebi-logo.svg');
     expect(document.title).toBe('Unsafe assets');
     const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
     expect(favicon?.getAttribute('href')).toBe('/favicon.ico');
@@ -123,10 +123,10 @@ describe('brandingConfig', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { loadBrandingConfig, getLogoUrl } = await import('./themeConfig');
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import('./brandingConfig');
     await loadBrandingConfig();
 
-    expect(getLogoUrl()).toBe('/nebi-logo.svg');
+    expect(getBrandingLogoUrl()).toBe('/nebi-logo.svg');
     const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
     expect(favicon?.getAttribute('href')).toBe('/favicon.ico');
   });

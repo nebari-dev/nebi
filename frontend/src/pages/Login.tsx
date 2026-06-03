@@ -7,7 +7,7 @@ import { getBasePath, getApiBaseUrl } from '@/lib/basePath';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { apiClient } from '@/api/client';
-import { getLogoUrl } from '@/lib/themeConfig';
+import { getBrandingLogoUrl } from '@/lib/brandingConfig';
 
 export const Login = () => {
   const [username, setUsername] = useState('');
@@ -109,7 +109,7 @@ export const Login = () => {
         <div className="space-y-6 pb-8">
           <div className="flex justify-center">
             <img
-              src={getLogoUrl()}
+              src={getBrandingLogoUrl()}
               alt="Nebi Logo"
               className="h-24 w-auto"
             />

@@ -52,6 +52,33 @@ func TestSyncOIDCGroups_CreatesGroupAndMembership(t *testing.T) {
 	}
 }
 
+func TestSyncOIDCGroups_StripsLeadingSlashAndDedups(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+
+	// Keycloak can emit the same group twice in the `groups` claim: once as a
+	// full path ("/developer", from a full.path=true mapper) and once as the
+	// bare name ("developer"). Both refer to one group and must collapse.
+	if err := SyncOIDCGroups(db, u.ID, []string{"/developer", "developer"}); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	var groups []models.Group
+	db.Find(&groups)
+	if len(groups) != 1 {
+		t.Fatalf("expected 1 group after dedup, got %d: %+v", len(groups), groups)
+	}
+	if groups[0].Name != "developer" {
+		t.Errorf("expected normalized name 'developer', got %q", groups[0].Name)
+	}
+
+	memberships, _ := rbac.GetUserGroups(u.ID)
+	if len(memberships) != 1 {
+		t.Fatalf("expected 1 casbin membership, got %d", len(memberships))
+	}
+}
+
 func TestSyncOIDCGroups_RemovesStaleMemberships(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}

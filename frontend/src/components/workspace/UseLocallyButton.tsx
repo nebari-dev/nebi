@@ -67,7 +67,7 @@ export const UseLocallyButton = ({ workspaceName }: UseLocallyButtonProps) => {
           id={panelId}
           role="dialog"
           aria-labelledby={titleId}
-          className="absolute right-0 top-full z-50 mt-2 w-[360px] rounded-md border bg-popover text-popover-foreground shadow-xl"
+          className="absolute right-0 top-full z-50 mt-2 w-[360px] rounded-md border border-input bg-popover text-popover-foreground shadow-xl"
         >
           <div className="space-y-3 p-4 pr-10">
             <h2 id={titleId} className="text-sm font-semibold">
@@ -84,7 +84,7 @@ export const UseLocallyButton = ({ workspaceName }: UseLocallyButtonProps) => {
             <p className="text-sm leading-6 text-muted-foreground">
               Run this in your terminal to download the workspace spec to your machine. Sync again whenever a teammate pushes changes.
             </p>
-            <div className="flex items-center gap-2 rounded-md border bg-muted/60 p-1.5">
+            <div className="flex items-center gap-2 rounded-md border border-input bg-muted/60 p-1.5">
               <code className="flex-1 overflow-x-auto whitespace-nowrap px-2 py-1.5 font-mono text-sm">
                 <span className="text-muted-foreground">$ </span>
                 {command}
@@ -101,7 +101,7 @@ export const UseLocallyButton = ({ workspaceName }: UseLocallyButtonProps) => {
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 border-t px-4 py-3 text-xs">
+          <div className="flex items-center justify-between gap-3 border-t border-input px-4 py-3 text-xs">
             <button
               type="button"
               className="inline-flex items-center gap-1 text-primary transition-colors hover:underline"

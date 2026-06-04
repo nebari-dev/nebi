@@ -48,7 +48,8 @@ export const mockJob: Job = {
 	created_at: '2024-01-01T00:00:00Z',
 };
 
-export const mockCollaborator: Collaborator = {
+export const mockCollaborator: Extract<Collaborator, { kind: 'user' }> = {
+	kind: 'user',
 	user_id: 'user-2',
 	username: 'collaborator',
 	email: 'collab@example.com',
@@ -56,12 +57,22 @@ export const mockCollaborator: Collaborator = {
 	is_owner: false,
 };
 
-export const mockOwnerCollaborator: Collaborator = {
+export const mockOwnerCollaborator: Extract<Collaborator, { kind: 'user' }> = {
+	kind: 'user',
 	user_id: 'user-1',
 	username: 'testuser',
 	email: 'test@example.com',
 	role: 'owner',
 	is_owner: true,
+};
+
+export const mockGroupCollaborator: Extract<Collaborator, { kind: 'group' }> = {
+	kind: 'group',
+	group_id: 'g-1',
+	name: 'data-science',
+	source: 'native',
+	role: 'editor',
+	is_owner: false,
 };
 
 export const mockRegistry: OCIRegistry = {
@@ -189,6 +200,10 @@ export const handlers = [
 
 	// Registries
 	http.get(`${BASE}/registries`, () => HttpResponse.json([mockRegistry])),
+
+	// Groups
+	http.get(`${BASE}/groups/me`, () => HttpResponse.json([])),
+	http.get(`${BASE}/admin/groups`, () => HttpResponse.json([])),
 ];
 
 export const server = setupServer(...handlers);

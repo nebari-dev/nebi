@@ -26,6 +26,14 @@ auth:
   # oidc_client_id: your-client-id.apps.googleusercontent.com
   # oidc_client_secret: your-client-secret
   # oidc_redirect_url: http://localhost:8460/api/v1/auth/oidc/callback
+  #
+  # Optional: separate discovery URL for split-horizon deployments where the
+  # issuer (the public URL browsers use, validated in the token's "iss" claim)
+  # is not reachable from where nebi runs. nebi fetches
+  # .well-known/openid-configuration from oidc_discovery_url while still
+  # validating "iss" against oidc_issuer_url. Defaults to oidc_issuer_url.
+  # Example (in-cluster Keycloak Service):
+  # oidc_discovery_url: http://keycloak-http.keycloak.svc.cluster.local/realms/nebari
 
 queue:
   type: memory  # or "valkey"

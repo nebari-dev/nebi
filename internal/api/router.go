@@ -88,6 +88,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		if cfg.Auth.OIDCIssuerURL != "" && cfg.Auth.OIDCClientID != "" {
 			oidcCfg := auth.OIDCConfig{
 				IssuerURL:    cfg.Auth.OIDCIssuerURL,
+				DiscoveryURL: cfg.Auth.OIDCDiscoveryURL,
 				ClientID:     cfg.Auth.OIDCClientID,
 				ClientSecret: cfg.Auth.OIDCClientSecret,
 				RedirectURL:  cfg.Auth.OIDCRedirectURL,
@@ -182,10 +183,12 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	// Initialize services and handlers
 	svc := service.New(db, q, exec, localMode, encKey, rbacProvider)
 	adminSvc := service.NewAdminService(db, rbacProvider)
+	groupSvc := service.NewGroupService(db, rbacProvider)
 	registrySvc := service.NewRegistryService(db, encKey)
 	jobSvc := service.NewJobService(db)
 
 	wsHandler := handlers.NewWorkspaceHandler(svc)
+	groupHandler := handlers.NewGroupHandler(groupSvc)
 	jobHandler := handlers.NewJobHandler(jobSvc, logBroker, valkeyClient)
 
 	// Protected routes (require authentication)
@@ -194,6 +197,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	{
 		// User info
 		protected.GET("/auth/me", handlers.GetCurrentUser(authenticator))
+		protected.GET("/groups/me", groupHandler.MyGroups)
 
 		// Workspace endpoints
 		protected.GET("/workspaces", wsHandler.ListWorkspaces)
@@ -225,6 +229,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			// Sharing operations (owner only - checked in handler)
 			ws.POST("/share", wsHandler.ShareWorkspace)
 			ws.DELETE("/share/:user_id", wsHandler.UnshareWorkspace)
+			ws.POST("/share-group", wsHandler.ShareWorkspaceWithGroup)
+			ws.DELETE("/share-group/:group_id", wsHandler.UnshareWorkspaceWithGroup)
 
 			// Tags (read permission)
 			ws.GET("/tags", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.ListTags)
@@ -247,7 +253,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		protected.POST("/templates", handlers.NotImplemented)
 
 		// OCI Registry endpoints (for users to view available registries)
-		registryHandler := handlers.NewRegistryHandler(registrySvc)
+		registryHandler := handlers.NewRegistryHandler(registrySvc, adminSvc)
 		protected.GET("/registries", registryHandler.ListPublicRegistries)
 
 		// Registry browse & import endpoints (for all authenticated users)
@@ -265,6 +271,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			admin.GET("/users", adminHandler.ListUsers)
 			admin.POST("/users", adminHandler.CreateUser)
 			admin.GET("/users/:id", adminHandler.GetUser)
+			admin.GET("/users/:id/groups", adminHandler.ListUserGroups)
 			admin.POST("/users/:id/toggle-admin", adminHandler.ToggleAdmin)
 			admin.DELETE("/users/:id", adminHandler.DeleteUser)
 
@@ -288,6 +295,20 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			admin.GET("/registries/:id", registryHandler.GetRegistry)
 			admin.PUT("/registries/:id", registryHandler.UpdateRegistry)
 			admin.DELETE("/registries/:id", registryHandler.DeleteRegistry)
+
+			// Groups
+			admin.GET("/groups", groupHandler.ListGroups)
+			admin.POST("/groups", groupHandler.CreateGroup)
+			admin.GET("/groups/:id", groupHandler.GetGroup)
+			admin.PATCH("/groups/:id", groupHandler.UpdateGroup)
+			admin.DELETE("/groups/:id", groupHandler.DeleteGroup)
+			admin.GET("/groups/:id/members", groupHandler.ListMembers)
+			admin.POST("/groups/:id/members", groupHandler.AddMember)
+			admin.DELETE("/groups/:id/members/:user_id", groupHandler.RemoveMember)
+			admin.POST("/groups/:id/grant-admin", adminHandler.GrantGroupAdmin)
+			admin.DELETE("/groups/:id/grant-admin", adminHandler.RevokeGroupAdmin)
+			admin.POST("/registries/:id/grant-group", registryHandler.GrantRegistryToGroup)
+			admin.DELETE("/registries/:id/grant-group/:group_id", registryHandler.RevokeRegistryFromGroup)
 		}
 
 		// Remote proxy endpoints (local mode only)

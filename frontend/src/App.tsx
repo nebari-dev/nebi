@@ -15,6 +15,7 @@ import { getBasePath } from './lib/basePath';
 import { queryClient } from './lib/queryClient';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AuditLogs } from './pages/admin/AuditLogs';
+import { Groups } from './pages/admin/Groups';
 import { RegistryManagement } from './pages/admin/RegistryManagement';
 import { UserManagement } from './pages/admin/UserManagement';
 import { Login } from './pages/Login';
@@ -116,6 +117,7 @@ function App() {
 								<Route element={<AdminLayout />}>
 									<Route path="admin" element={<AdminDashboard />} />
 									<Route path="admin/users" element={<UserManagement />} />
+									<Route path="admin/groups" element={<Groups />} />
 									<Route path="admin/audit-logs" element={<AuditLogs />} />
 									<Route
 										path="admin/registries"

@@ -47,6 +47,7 @@ type AuthConfig struct {
 	Type               string `mapstructure:"type"`                  // "basic" or "oidc"
 	JWTSecret          string `mapstructure:"jwt_secret"`            // Secret for JWT signing
 	OIDCIssuerURL      string `mapstructure:"oidc_issuer_url"`       // OIDC provider issuer URL (e.g., https://accounts.google.com)
+	OIDCDiscoveryURL   string `mapstructure:"oidc_discovery_url"`    // Optional: URL for fetching .well-known/openid-configuration when it differs from the issuer (e.g. in-cluster Keycloak Service for back-channel calls); falls back to oidc_issuer_url when unset
 	OIDCClientID       string `mapstructure:"oidc_client_id"`        // OIDC client ID
 	OIDCClientSecret   string `mapstructure:"oidc_client_secret"`    // OIDC client secret
 	OIDCRedirectURL    string `mapstructure:"oidc_redirect_url"`     // OIDC redirect URL (e.g., http://localhost:8460/auth/oidc/callback)
@@ -97,6 +98,7 @@ func Load() (*Config, error) {
 	v.SetDefault("auth.type", "basic")
 	v.SetDefault("auth.jwt_secret", "change-me-in-production")
 	v.SetDefault("auth.oidc_issuer_url", "")
+	v.SetDefault("auth.oidc_discovery_url", "")
 	v.SetDefault("auth.oidc_client_id", "")
 	v.SetDefault("auth.oidc_client_secret", "")
 	v.SetDefault("auth.oidc_redirect_url", "http://localhost:8460/api/v1/auth/oidc/callback")
@@ -144,6 +146,7 @@ func Load() (*Config, error) {
 	_ = v.BindEnv("auth.type", "NEBI_AUTH_TYPE")
 	_ = v.BindEnv("auth.jwt_secret", "NEBI_AUTH_JWT_SECRET")
 	_ = v.BindEnv("auth.oidc_issuer_url", "NEBI_AUTH_OIDC_ISSUER_URL")
+	_ = v.BindEnv("auth.oidc_discovery_url", "NEBI_AUTH_OIDC_DISCOVERY_URL")
 	_ = v.BindEnv("auth.oidc_client_id", "NEBI_AUTH_OIDC_CLIENT_ID")
 	_ = v.BindEnv("auth.oidc_client_secret", "NEBI_AUTH_OIDC_CLIENT_SECRET")
 	_ = v.BindEnv("auth.oidc_redirect_url", "NEBI_AUTH_OIDC_REDIRECT_URL")

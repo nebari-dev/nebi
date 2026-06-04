@@ -8,6 +8,7 @@ import {
 	mockOwnerCollaborator,
 	mockUser,
 	server,
+	mockGroupCollaborator
 } from "@/test/handlers";
 import { renderWithProviders } from "@/test/utils";
 import { ShareDialog } from "./ShareDialog";
@@ -75,21 +76,19 @@ describe("ShareDialog", () => {
 		);
 	});
 
-	it("hides the Add Collaborator form when all users are already collaborators", async () => {
-		// Make all users already collaborators
-		server.use(
-			http.get("/api/v1/admin/users", () =>
-				HttpResponse.json([mockUser, { ...mockAdminUser, id: "user-2" }]),
-			),
-		);
-		renderWithProviders(<ShareDialog {...defaultProps} />);
-		await waitFor(() =>
-			expect(
-				screen.getByText(mockOwnerCollaborator.username),
-			).toBeInTheDocument(),
-		);
-		expect(screen.queryByText("Add Collaborator")).not.toBeInTheDocument();
-	});
+  it('hides the Add Collaborator form when all users are already collaborators', async () => {
+    // Make all users already collaborators
+    server.use(
+      http.get('/api/v1/admin/users', () =>
+        HttpResponse.json([mockUser, { ...mockAdminUser, id: 'user-2' }])
+      )
+    );
+    renderWithProviders(<ShareDialog {...defaultProps} />);
+    await waitFor(() => expect(screen.getByText(mockOwnerCollaborator.username)).toBeInTheDocument());
+    // The section heading and toggle still render, but the user-form submit button does not
+    expect(screen.queryByRole('button', { name: 'Add Collaborator' })).not.toBeInTheDocument();
+    expect(screen.getByText('All users are already collaborators.')).toBeInTheDocument();
+  });
 
 	it("shows a confirm dialog when remove button is clicked", async () => {
 		const user = userEvent.setup();
@@ -163,8 +162,45 @@ describe("ShareDialog", () => {
 		);
 		await user.click(screen.getByRole("button", { name: "Remove" }));
 
-		await waitFor(() =>
-			expect(screen.getByText("Permission denied")).toBeInTheDocument(),
-		);
-	});
+    await waitFor(() => expect(screen.getByText('Permission denied')).toBeInTheDocument());
+  });
+
+  it('switches to group mode and shows the group form', async () => {
+    // useIsAdmin returns true in tests (default /admin/users handler returns 200),
+    // so ShareDialog sources the picker from /admin/groups. Mock both endpoints
+    // so the test works regardless of admin-detection drift.
+    const group = {
+      id: 'g-1',
+      name: 'data-science',
+      description: '',
+      source: 'native',
+      created_at: '',
+      updated_at: '',
+    };
+    server.use(
+      http.get('/api/v1/groups/me', () => HttpResponse.json([group])),
+      http.get('/api/v1/admin/groups', () =>
+        HttpResponse.json([{ ...group, member_count: 0 }]),
+      ),
+    );
+    renderWithProviders(<ShareDialog {...defaultProps} />);
+    await waitFor(() => expect(screen.getByText(mockOwnerCollaborator.username)).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Group' }));
+
+    // After switching to group mode the group placeholder and submit button render
+    await waitFor(() => expect(screen.getByText(/Select group/i)).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /Add Group/ })).toBeInTheDocument();
+  });
+
+  it('renders a group collaborator with its source badge', async () => {
+    server.use(
+      http.get('/api/v1/workspaces/:id/collaborators', () =>
+        HttpResponse.json([mockOwnerCollaborator, mockGroupCollaborator]),
+      ),
+    );
+    renderWithProviders(<ShareDialog {...defaultProps} />);
+    await waitFor(() => expect(screen.getByText('data-science')).toBeInTheDocument());
+    expect(screen.getByText(/Native group/i)).toBeInTheDocument();
+  });
 });

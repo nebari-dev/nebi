@@ -3,6 +3,7 @@ import type {
 	Collaborator,
 	CreateUserRequest,
 	DashboardStats,
+	Group,
 	ShareWorkspaceRequest,
 	User,
 } from '@/types/models';
@@ -26,6 +27,11 @@ export const adminApi = {
 
 	deleteUser: async (userId: string): Promise<void> => {
 		await apiClient.delete(`/admin/users/${userId}`);
+	},
+
+	getUserGroups: async (userId: string): Promise<Group[]> => {
+		const r = await apiClient.get(`/admin/users/${userId}/groups`);
+		return r.data;
 	},
 
 	// Audit Logs

@@ -5,11 +5,43 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { useDeleteUser, useToggleAdmin, useUsers } from '@/hooks/useAdmin';
+import {
+	useDeleteUser,
+	useToggleAdmin,
+	useUserGroups,
+	useUsers,
+} from '@/hooks/useAdmin';
 import { useRemoteServer, useRemoteUsers } from '@/hooks/useRemote';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
+
+interface UserGroupsCellProps {
+	userId: string;
+}
+
+const UserGroupsCell = ({ userId }: UserGroupsCellProps) => {
+	const { data: groups, isLoading } = useUserGroups(userId);
+	if (isLoading)
+		return <span className="text-xs text-muted-foreground">…</span>;
+	if (!groups || groups.length === 0)
+		return <span className="text-xs text-muted-foreground">—</span>;
+	return (
+		<div className="flex flex-wrap gap-1">
+			{groups.map((g) => (
+				<Badge
+					key={g.id}
+					variant="outline"
+					className={
+						g.source === 'oidc' ? 'border-blue-500/40 text-blue-500' : ''
+					}
+				>
+					{g.name}
+				</Badge>
+			))}
+		</div>
+	);
+};
 
 export const UserManagement = () => {
 	const { data: users, isLoading: usersLoading } = useUsers();
@@ -105,6 +137,7 @@ export const UserManagement = () => {
 									<th className="text-left p-4 font-medium">Username</th>
 									<th className="text-left p-4 font-medium">Email</th>
 									<th className="text-left p-4 font-medium">Role</th>
+									<th className="text-left p-4 font-medium">Groups</th>
 									<th className="text-left p-4 font-medium">Created</th>
 									<th className="text-right p-4 font-medium">Actions</th>
 								</tr>
@@ -135,6 +168,9 @@ export const UserManagement = () => {
 											) : (
 												<Badge variant="outline">User</Badge>
 											)}
+										</td>
+										<td className="p-4">
+											<UserGroupsCell userId={user.id} />
 										</td>
 										<td className="p-4 text-sm text-muted-foreground">
 											{new Date(user.created_at).toLocaleDateString()}

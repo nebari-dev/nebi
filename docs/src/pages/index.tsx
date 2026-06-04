@@ -42,19 +42,19 @@ function HomepageDemo() {
         </Heading>
         <div className={styles.demoGrid}>
           <div className={styles.demoItem}>
-            <Heading as="h3" className={styles.demoLabel}>Web UI</Heading>
+            <Heading as="h3" className={styles.demoLabel}>CLI</Heading>
             <img
-              src="https://raw.githubusercontent.com/nebari-dev/nebi-video-demo-automation/25e0139cf70cc0e9f8a2cf938fddd85ecd83adee/assets/demo.gif"
-              alt="Nebi Web UI Demo"
+              src="/nebi-demo.gif"
+              alt="Nebi CLI Demo"
               className={styles.demoImage}
               loading="lazy"
             />
           </div>
           <div className={styles.demoItem}>
-            <Heading as="h3" className={styles.demoLabel}>CLI</Heading>
+            <Heading as="h3" className={styles.demoLabel}>Web UI</Heading>
             <img
-              src="/nebi-demo.gif"
-              alt="Nebi CLI Demo"
+              src="https://raw.githubusercontent.com/nebari-dev/nebi-video-demo-automation/25e0139cf70cc0e9f8a2cf938fddd85ecd83adee/assets/demo.gif"
+              alt="Nebi Web UI Demo"
               className={styles.demoImage}
               loading="lazy"
             />
@@ -69,7 +69,7 @@ export default function Home(): ReactNode {
   return (
     <Layout
       title="Home"
-      description="Nebi - Multi-user environment management for Pixi">
+      description="Nebi - Environment management for teams">
       <HomepageHeader />
       <main>
         <HomepageDemo />

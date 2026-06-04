@@ -56,6 +56,13 @@ export const useDeleteUser = () => {
 	});
 };
 
+export const useUserGroups = (userId: string | undefined) =>
+	useQuery({
+		queryKey: ['admin', 'users', userId, 'groups'],
+		queryFn: () => adminApi.getUserGroups(userId!),
+		enabled: !!userId,
+	});
+
 // Audit Logs Hooks
 export const useAuditLogs = (filters?: {
 	user_id?: string;

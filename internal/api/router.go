@@ -89,6 +89,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		if cfg.Auth.OIDCIssuerURL != "" && cfg.Auth.OIDCClientID != "" {
 			oidcCfg := auth.OIDCConfig{
 				IssuerURL:    cfg.Auth.OIDCIssuerURL,
+				DiscoveryURL: cfg.Auth.OIDCDiscoveryURL,
 				ClientID:     cfg.Auth.OIDCClientID,
 				ClientSecret: cfg.Auth.OIDCClientSecret,
 				RedirectURL:  cfg.Auth.OIDCRedirectURL,

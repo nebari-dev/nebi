@@ -4,77 +4,77 @@ import { describe, expect, it } from 'vitest';
 import { mockWorkspace, server } from '@/test/handlers';
 import { createWrapper } from '@/test/utils';
 import {
-	useCreateWorkspace,
-	useDeleteWorkspace,
-	useWorkspace,
-	useWorkspaces,
+  useCreateWorkspace,
+  useDeleteWorkspace,
+  useWorkspace,
+  useWorkspaces,
 } from './useWorkspaces';
 
 describe('useWorkspaces', () => {
-	it('fetches and returns the workspace list', async () => {
-		const { result } = renderHook(() => useWorkspaces(), {
-			wrapper: createWrapper(),
-		});
-		await waitFor(() => expect(result.current.isSuccess).toBe(true));
-		expect(result.current.data).toEqual([mockWorkspace]);
-	});
+  it('fetches and returns the workspace list', async () => {
+    const { result } = renderHook(() => useWorkspaces(), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([mockWorkspace]);
+  });
 
-	it('reflects an error state when the request fails', async () => {
-		server.use(http.get('/api/v1/workspaces', () => HttpResponse.error()));
-		const { result } = renderHook(() => useWorkspaces(), {
-			wrapper: createWrapper(),
-		});
-		await waitFor(() => expect(result.current.isError).toBe(true));
-	});
+  it('reflects an error state when the request fails', async () => {
+    server.use(http.get('/api/v1/workspaces', () => HttpResponse.error()));
+    const { result } = renderHook(() => useWorkspaces(), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+  });
 });
 
 describe('useWorkspace', () => {
-	it('fetches a single workspace by id', async () => {
-		const { result } = renderHook(() => useWorkspace('ws-1'), {
-			wrapper: createWrapper(),
-		});
-		await waitFor(() => expect(result.current.isSuccess).toBe(true));
-		expect(result.current.data?.id).toBe('ws-1');
-	});
+  it('fetches a single workspace by id', async () => {
+    const { result } = renderHook(() => useWorkspace('ws-1'), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.id).toBe('ws-1');
+  });
 
-	it('does not fetch when id is empty', () => {
-		const { result } = renderHook(() => useWorkspace(''), {
-			wrapper: createWrapper(),
-		});
-		expect(result.current.fetchStatus).toBe('idle');
-	});
+  it('does not fetch when id is empty', () => {
+    const { result } = renderHook(() => useWorkspace(''), {
+      wrapper: createWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe('idle');
+  });
 });
 
 describe('useCreateWorkspace', () => {
-	it('calls the create endpoint and returns the new workspace', async () => {
-		const { result } = renderHook(() => useCreateWorkspace(), {
-			wrapper: createWrapper(),
-		});
-		result.current.mutate({ name: 'new-workspace' });
-		await waitFor(() => expect(result.current.isSuccess).toBe(true));
-		expect(result.current.data?.name).toBe('new-workspace');
-	});
+  it('calls the create endpoint and returns the new workspace', async () => {
+    const { result } = renderHook(() => useCreateWorkspace(), {
+      wrapper: createWrapper(),
+    });
+    result.current.mutate({ name: 'new-workspace' });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.name).toBe('new-workspace');
+  });
 
-	it('enters error state when the request fails', async () => {
-		server.use(
-			http.post('/api/v1/workspaces', () =>
-				HttpResponse.json({ error: 'conflict' }, { status: 409 }),
-			),
-		);
-		const { result } = renderHook(() => useCreateWorkspace(), {
-			wrapper: createWrapper(),
-		});
-		result.current.mutate({ name: 'bad' });
-		await waitFor(() => expect(result.current.isError).toBe(true));
-	});
+  it('enters error state when the request fails', async () => {
+    server.use(
+      http.post('/api/v1/workspaces', () =>
+        HttpResponse.json({ error: 'conflict' }, { status: 409 }),
+      ),
+    );
+    const { result } = renderHook(() => useCreateWorkspace(), {
+      wrapper: createWrapper(),
+    });
+    result.current.mutate({ name: 'bad' });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+  });
 });
 
 describe('useDeleteWorkspace', () => {
-	it('calls the delete endpoint successfully', async () => {
-		const { result } = renderHook(() => useDeleteWorkspace(), {
-			wrapper: createWrapper(),
-		});
-		result.current.mutate('ws-1');
-		await waitFor(() => expect(result.current.isSuccess).toBe(true));
-	});
+  it('calls the delete endpoint successfully', async () => {
+    const { result } = renderHook(() => useDeleteWorkspace(), {
+      wrapper: createWrapper(),
+    });
+    result.current.mutate('ws-1');
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  });
 });

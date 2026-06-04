@@ -4,115 +4,115 @@ import type { CreateUserRequest, ShareWorkspaceRequest } from '@/types/models';
 
 // Check if current user is admin
 export const useIsAdmin = () => {
-	return useQuery({
-		queryKey: ['user', 'is_admin'],
-		queryFn: async () => {
-			try {
-				await adminApi.getUsers();
-				return true;
-			} catch {
-				return false;
-			}
-		},
-		retry: false,
-	});
+  return useQuery({
+    queryKey: ['user', 'is_admin'],
+    queryFn: async () => {
+      try {
+        await adminApi.getUsers();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    retry: false,
+  });
 };
 
 // User Management Hooks
 export const useUsers = () => {
-	return useQuery({
-		queryKey: ['admin', 'users'],
-		queryFn: adminApi.getUsers,
-	});
+  return useQuery({
+    queryKey: ['admin', 'users'],
+    queryFn: adminApi.getUsers,
+  });
 };
 
 export const useCreateUser = () => {
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: (data: CreateUserRequest) => adminApi.createUser(data),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
-		},
-	});
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateUserRequest) => adminApi.createUser(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+  });
 };
 
 export const useToggleAdmin = () => {
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: (userId: string) => adminApi.toggleAdmin(userId),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
-		},
-	});
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => adminApi.toggleAdmin(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+  });
 };
 
 export const useDeleteUser = () => {
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: (userId: string) => adminApi.deleteUser(userId),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
-		},
-	});
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => adminApi.deleteUser(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+  });
 };
 
 export const useUserGroups = (userId: string | undefined) =>
-	useQuery({
-		queryKey: ['admin', 'users', userId, 'groups'],
-		queryFn: () => adminApi.getUserGroups(userId!),
-		enabled: !!userId,
-	});
+  useQuery({
+    queryKey: ['admin', 'users', userId, 'groups'],
+    queryFn: () => adminApi.getUserGroups(userId!),
+    enabled: !!userId,
+  });
 
 // Audit Logs Hooks
 export const useAuditLogs = (filters?: {
-	user_id?: string;
-	action?: string;
+  user_id?: string;
+  action?: string;
 }) => {
-	return useQuery({
-		queryKey: ['admin', 'audit-logs', filters],
-		queryFn: () => adminApi.getAuditLogs(filters),
-	});
+  return useQuery({
+    queryKey: ['admin', 'audit-logs', filters],
+    queryFn: () => adminApi.getAuditLogs(filters),
+  });
 };
 
 // Collaborators Hooks
 export const useCollaborators = (environmentId: string, enabled = true) => {
-	return useQuery({
-		queryKey: ['collaborators', environmentId],
-		queryFn: () => adminApi.getCollaborators(environmentId),
-		enabled,
-	});
+  return useQuery({
+    queryKey: ['collaborators', environmentId],
+    queryFn: () => adminApi.getCollaborators(environmentId),
+    enabled,
+  });
 };
 
 export const useShareWorkspace = (workspaceId: string) => {
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: (data: ShareWorkspaceRequest) =>
-			adminApi.shareWorkspace(workspaceId, data),
-		onSuccess: () => {
-			queryClient.invalidateQueries({
-				queryKey: ['collaborators', workspaceId],
-			});
-		},
-	});
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: ShareWorkspaceRequest) =>
+      adminApi.shareWorkspace(workspaceId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['collaborators', workspaceId],
+      });
+    },
+  });
 };
 
 export const useUnshareWorkspace = (workspaceId: string) => {
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: (userId: string) =>
-			adminApi.unshareWorkspace(workspaceId, userId),
-		onSuccess: () => {
-			queryClient.invalidateQueries({
-				queryKey: ['collaborators', workspaceId],
-			});
-		},
-	});
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      adminApi.unshareWorkspace(workspaceId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['collaborators', workspaceId],
+      });
+    },
+  });
 };
 
 // Dashboard Stats Hooks
 export const useDashboardStats = () => {
-	return useQuery({
-		queryKey: ['admin', 'dashboard', 'stats'],
-		queryFn: adminApi.getDashboardStats,
-	});
+  return useQuery({
+    queryKey: ['admin', 'dashboard', 'stats'],
+    queryFn: adminApi.getDashboardStats,
+  });
 };

@@ -9,15 +9,15 @@ import { Input } from '@/components/ui/input';
 import { SplitButton } from '@/components/ui/split-button';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
 import {
-	useCreateRemoteWorkspace,
-	useDeleteRemoteWorkspace,
-	useRemoteServer,
-	useRemoteWorkspaces,
+  useCreateRemoteWorkspace,
+  useDeleteRemoteWorkspace,
+  useRemoteServer,
+  useRemoteWorkspaces,
 } from '@/hooks/useRemote';
 import {
-	useCreateWorkspace,
-	useDeleteWorkspace,
-	useWorkspaces,
+  useCreateWorkspace,
+  useDeleteWorkspace,
+  useWorkspaces,
 } from '@/hooks/useWorkspaces';
 import { capitalize } from '@/lib/utils';
 import { useModeStore } from '@/store/modeStore';
@@ -25,26 +25,26 @@ import { useViewModeStore } from '@/store/viewModeStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
 
 type UnifiedWorkspace = {
-	id: string;
-	name: string;
-	status: string;
-	package_manager: string;
-	created_at: string;
-	location: 'local' | 'remote';
-	// Local-only fields
-	source?: 'local' | 'managed';
-	path?: string;
-	owner_id?: string;
-	owner?: { id: string; username: string; email: string };
-	size_formatted?: string;
+  id: string;
+  name: string;
+  status: string;
+  package_manager: string;
+  created_at: string;
+  location: 'local' | 'remote';
+  // Local-only fields
+  source?: 'local' | 'managed';
+  path?: string;
+  owner_id?: string;
+  owner?: { id: string; username: string; email: string };
+  size_formatted?: string;
 };
 
 const statusColors: Record<string, string> = {
-	pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-	creating: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-	ready: 'bg-green-500/10 text-green-500 border-green-500/20',
-	failed: 'bg-red-500/10 text-red-500 border-red-500/20',
-	deleting: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+  pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+  creating: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+  ready: 'bg-green-500/10 text-green-500 border-green-500/20',
+  failed: 'bg-red-500/10 text-red-500 border-red-500/20',
+  deleting: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
 };
 
 const DEFAULT_PIXI_TOML = `[workspace]
@@ -57,405 +57,405 @@ python = ">=3.11"
 `;
 
 export const Workspaces = () => {
-	const navigate = useNavigate();
-	const setPendingTab = useWorkspaceNavStore((s) => s.setPendingTab);
-	const { data: workspaces, isLoading } = useWorkspaces();
-	const createMutation = useCreateWorkspace();
-	const deleteMutation = useDeleteWorkspace();
-	const createRemoteMutation = useCreateRemoteWorkspace();
-	const deleteRemoteMutation = useDeleteRemoteWorkspace();
-	const isLocal = useModeStore((state) => state.mode === 'local');
-	const { data: serverStatus } = useRemoteServer();
-	const isRemoteConnected = isLocal && serverStatus?.status === 'connected';
-	const { data: remoteWorkspaces, isLoading: remoteLoading } =
-		useRemoteWorkspaces(isRemoteConnected);
-	const viewMode = useViewModeStore((state) => state.viewMode);
+  const navigate = useNavigate();
+  const setPendingTab = useWorkspaceNavStore((s) => s.setPendingTab);
+  const { data: workspaces, isLoading } = useWorkspaces();
+  const createMutation = useCreateWorkspace();
+  const deleteMutation = useDeleteWorkspace();
+  const createRemoteMutation = useCreateRemoteWorkspace();
+  const deleteRemoteMutation = useDeleteRemoteWorkspace();
+  const isLocal = useModeStore((state) => state.mode === 'local');
+  const { data: serverStatus } = useRemoteServer();
+  const isRemoteConnected = isLocal && serverStatus?.status === 'connected';
+  const { data: remoteWorkspaces, isLoading: remoteLoading } =
+    useRemoteWorkspaces(isRemoteConnected);
+  const viewMode = useViewModeStore((state) => state.viewMode);
 
-	const [showCreate, setShowCreate] = useState(false);
-	const [createTarget, setCreateTarget] = useState<'local' | 'server'>('local');
-	const [newWsName, setNewWsName] = useState('');
-	const [localPath, setLocalPath] = useState('');
-	const [pixiToml, setPixiToml] = useState(DEFAULT_PIXI_TOML);
+  const [showCreate, setShowCreate] = useState(false);
+  const [createTarget, setCreateTarget] = useState<'local' | 'server'>('local');
+  const [newWsName, setNewWsName] = useState('');
+  const [localPath, setLocalPath] = useState('');
+  const [pixiToml, setPixiToml] = useState(DEFAULT_PIXI_TOML);
 
-	const [confirmDelete, setConfirmDelete] = useState<{
-		id: string;
-		name: string;
-		location: 'local' | 'remote';
-	} | null>(null);
-	const [error, setError] = useState('');
-	const [copiedPullId, setCopiedPullId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{
+    id: string;
+    name: string;
+    location: 'local' | 'remote';
+  } | null>(null);
+  const [error, setError] = useState('');
+  const [copiedPullId, setCopiedPullId] = useState<string | null>(null);
 
-	// Filter workspaces based on view mode (when remote connected) or show all local (when not)
-	const displayedWorkspaces = useMemo<UnifiedWorkspace[]>(() => {
-		// If not connected to remote, always show local workspaces
-		if (!isRemoteConnected) {
-			if (!workspaces) return [];
-			return workspaces.map((ws) => ({
-				id: ws.id,
-				name: ws.name,
-				status: ws.status,
-				package_manager: ws.package_manager,
-				created_at: ws.created_at,
-				location: 'local' as const,
-				source: ws.source,
-				path: ws.path,
-				owner_id: ws.owner_id,
-				owner: ws.owner,
-				size_formatted: ws.size_formatted,
-			}));
-		}
+  // Filter workspaces based on view mode (when remote connected) or show all local (when not)
+  const displayedWorkspaces = useMemo<UnifiedWorkspace[]>(() => {
+    // If not connected to remote, always show local workspaces
+    if (!isRemoteConnected) {
+      if (!workspaces) return [];
+      return workspaces.map((ws) => ({
+        id: ws.id,
+        name: ws.name,
+        status: ws.status,
+        package_manager: ws.package_manager,
+        created_at: ws.created_at,
+        location: 'local' as const,
+        source: ws.source,
+        path: ws.path,
+        owner_id: ws.owner_id,
+        owner: ws.owner,
+        size_formatted: ws.size_formatted,
+      }));
+    }
 
-		// When connected, show based on viewMode
-		if (viewMode === 'local') {
-			if (!workspaces) return [];
-			return workspaces.map((ws) => ({
-				id: ws.id,
-				name: ws.name,
-				status: ws.status,
-				package_manager: ws.package_manager,
-				created_at: ws.created_at,
-				location: 'local' as const,
-				source: ws.source,
-				path: ws.path,
-				owner_id: ws.owner_id,
-				owner: ws.owner,
-				size_formatted: ws.size_formatted,
-			}));
-		} else {
-			if (!remoteWorkspaces) return [];
-			return remoteWorkspaces.map((ws) => ({
-				id: ws.id,
-				name: ws.name,
-				status: ws.status,
-				package_manager: ws.package_manager,
-				created_at: ws.created_at,
-				location: 'remote' as const,
-				owner: ws.owner,
-			}));
-		}
-	}, [workspaces, remoteWorkspaces, isRemoteConnected, viewMode]);
+    // When connected, show based on viewMode
+    if (viewMode === 'local') {
+      if (!workspaces) return [];
+      return workspaces.map((ws) => ({
+        id: ws.id,
+        name: ws.name,
+        status: ws.status,
+        package_manager: ws.package_manager,
+        created_at: ws.created_at,
+        location: 'local' as const,
+        source: ws.source,
+        path: ws.path,
+        owner_id: ws.owner_id,
+        owner: ws.owner,
+        size_formatted: ws.size_formatted,
+      }));
+    } else {
+      if (!remoteWorkspaces) return [];
+      return remoteWorkspaces.map((ws) => ({
+        id: ws.id,
+        name: ws.name,
+        status: ws.status,
+        package_manager: ws.package_manager,
+        created_at: ws.created_at,
+        location: 'remote' as const,
+        owner: ws.owner,
+      }));
+    }
+  }, [workspaces, remoteWorkspaces, isRemoteConnected, viewMode]);
 
-	const handleCreate = async (e: React.FormEvent) => {
-		e.preventDefault();
-		if (!newWsName.trim()) return;
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newWsName.trim()) return;
 
-		setError('');
-		try {
-			const tomlContent = pixiToml;
+    setError('');
+    try {
+      const tomlContent = pixiToml;
 
-			if (createTarget === 'server' && isRemoteConnected) {
-				await createRemoteMutation.mutateAsync({
-					name: newWsName,
-					package_manager: 'pixi',
-					pixi_toml: tomlContent,
-				});
-			} else {
-				const ws = await createMutation.mutateAsync({
-					name: newWsName,
-					package_manager: 'pixi',
-					pixi_toml: tomlContent,
-					...(localPath.trim()
-						? { path: localPath.trim(), source: 'local' as const }
-						: {}),
-				});
+      if (createTarget === 'server' && isRemoteConnected) {
+        await createRemoteMutation.mutateAsync({
+          name: newWsName,
+          package_manager: 'pixi',
+          pixi_toml: tomlContent,
+        });
+      } else {
+        const ws = await createMutation.mutateAsync({
+          name: newWsName,
+          package_manager: 'pixi',
+          pixi_toml: tomlContent,
+          ...(localPath.trim()
+            ? { path: localPath.trim(), source: 'local' as const }
+            : {}),
+        });
 
-				// Reset form
-				setNewWsName('');
-				setLocalPath('');
-				setPixiToml(DEFAULT_PIXI_TOML);
-				setShowCreate(false);
+        // Reset form
+        setNewWsName('');
+        setLocalPath('');
+        setPixiToml(DEFAULT_PIXI_TOML);
+        setShowCreate(false);
 
-				setPendingTab('jobs');
-				navigate(`/workspaces/${ws.id}`);
-				return;
-			}
+        setPendingTab('jobs');
+        navigate(`/workspaces/${ws.id}`);
+        return;
+      }
 
-			// Reset form
-			setNewWsName('');
-			setLocalPath('');
-			setPixiToml(DEFAULT_PIXI_TOML);
-			setShowCreate(false);
-		} catch (err) {
-			const error = err as { response?: { data?: { error?: string } } };
-			const errorMessage =
-				error?.response?.data?.error ||
-				'Failed to create workspace. Please try again.';
-			setError(errorMessage);
-		}
-	};
+      // Reset form
+      setNewWsName('');
+      setLocalPath('');
+      setPixiToml(DEFAULT_PIXI_TOML);
+      setShowCreate(false);
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } };
+      const errorMessage =
+        error?.response?.data?.error ||
+        'Failed to create workspace. Please try again.';
+      setError(errorMessage);
+    }
+  };
 
-	const handleDelete = async () => {
-		if (!confirmDelete) return;
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
 
-		setError('');
-		try {
-			if (confirmDelete.location === 'remote') {
-				await deleteRemoteMutation.mutateAsync(confirmDelete.id);
-			} else {
-				await deleteMutation.mutateAsync(confirmDelete.id);
-			}
-			setConfirmDelete(null);
-		} catch (err) {
-			const error = err as { response?: { data?: { error?: string } } };
-			const errorMessage =
-				error?.response?.data?.error ||
-				'Failed to delete workspace. Please try again.';
-			setError(errorMessage);
-			setConfirmDelete(null);
-		}
-	};
+    setError('');
+    try {
+      if (confirmDelete.location === 'remote') {
+        await deleteRemoteMutation.mutateAsync(confirmDelete.id);
+      } else {
+        await deleteMutation.mutateAsync(confirmDelete.id);
+      }
+      setConfirmDelete(null);
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } };
+      const errorMessage =
+        error?.response?.data?.error ||
+        'Failed to delete workspace. Please try again.';
+      setError(errorMessage);
+      setConfirmDelete(null);
+    }
+  };
 
-	const handleCopyPull = async (
-		e: React.MouseEvent,
-		wsName: string,
-		wsId: string,
-	) => {
-		e.stopPropagation();
-		const serverUrl = window.location.origin;
-		const cmd = `nebi login ${serverUrl} && nebi pull ${wsName}`;
-		await navigator.clipboard.writeText(cmd);
-		setCopiedPullId(wsId);
-		setTimeout(() => setCopiedPullId(null), 2000);
-	};
+  const handleCopyPull = async (
+    e: React.MouseEvent,
+    wsName: string,
+    wsId: string,
+  ) => {
+    e.stopPropagation();
+    const serverUrl = window.location.origin;
+    const cmd = `nebi login ${serverUrl} && nebi pull ${wsName}`;
+    await navigator.clipboard.writeText(cmd);
+    setCopiedPullId(wsId);
+    setTimeout(() => setCopiedPullId(null), 2000);
+  };
 
-	const isCreatePending =
-		createMutation.isPending || createRemoteMutation.isPending;
-	const isDeletePending =
-		deleteMutation.isPending || deleteRemoteMutation.isPending;
+  const isCreatePending =
+    createMutation.isPending || createRemoteMutation.isPending;
+  const isDeletePending =
+    deleteMutation.isPending || deleteRemoteMutation.isPending;
 
-	if (isLoading || (isRemoteConnected && remoteLoading)) {
-		return (
-			<div className="flex items-center justify-center h-96">
-				<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-			</div>
-		);
-	}
+  if (isLoading || (isRemoteConnected && remoteLoading)) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
-	return (
-		<div className="space-y-6">
-			<div className="flex justify-between items-center">
-				<div>
-					<h1 className="text-3xl font-bold">Workspaces</h1>
-					<p className="text-muted-foreground">
-						Manage your development workspaces
-					</p>
-				</div>
-				<SplitButton
-					onPrimary={() => {
-						setShowCreate(!showCreate);
-						setCreateTarget(
-							isRemoteConnected && viewMode === 'remote' ? 'server' : 'local',
-						);
-						setError('');
-					}}
-					primaryLabel={
-						<>
-							<Plus className="h-4 w-4 mr-2" />
-							New Workspace
-						</>
-					}
-					menuItems={[
-						{
-							label: 'Import Workspace from Registry',
-							icon: <Download className="h-4 w-4" />,
-							onClick: () => navigate('/registries'),
-						},
-					]}
-				/>
-			</div>
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold">Workspaces</h1>
+          <p className="text-muted-foreground">
+            Manage your development workspaces
+          </p>
+        </div>
+        <SplitButton
+          onPrimary={() => {
+            setShowCreate(!showCreate);
+            setCreateTarget(
+              isRemoteConnected && viewMode === 'remote' ? 'server' : 'local',
+            );
+            setError('');
+          }}
+          primaryLabel={
+            <>
+              <Plus className="h-4 w-4 mr-2" />
+              New Workspace
+            </>
+          }
+          menuItems={[
+            {
+              label: 'Import Workspace from Registry',
+              icon: <Download className="h-4 w-4" />,
+              onClick: () => navigate('/registries'),
+            },
+          ]}
+        />
+      </div>
 
-			{error && (
-				<div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded">
-					{error}
-				</div>
-			)}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded">
+          {error}
+        </div>
+      )}
 
-			{showCreate && (
-				<Card>
-					<CardHeader>
-						<div className="flex justify-between items-center">
-							<CardTitle>Create New Workspace</CardTitle>
-							<Button
-								variant="ghost"
-								size="icon"
-								onClick={() => setShowCreate(false)}
-							>
-								<X className="h-4 w-4" />
-							</Button>
-						</div>
-					</CardHeader>
-					<CardContent>
-						<form onSubmit={handleCreate} className="space-y-4">
-							<div className="space-y-2">
-								<label className="text-sm font-medium">Workspace Name</label>
-								<Input
-									placeholder="e.g., my-data-project"
-									value={newWsName}
-									onChange={(e) => setNewWsName(e.target.value)}
-									autoFocus
-									required
-								/>
-							</div>
+      {showCreate && (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <CardTitle>Create New Workspace</CardTitle>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowCreate(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Workspace Name</label>
+                <Input
+                  placeholder="e.g., my-data-project"
+                  value={newWsName}
+                  onChange={(e) => setNewWsName(e.target.value)}
+                  autoFocus
+                  required
+                />
+              </div>
 
-							{/* Path field — only for local target in local mode */}
-							{createTarget === 'local' && isLocal && (
-								<div className="space-y-2">
-									<label className="text-sm font-medium">Path (optional)</label>
-									<Input
-										placeholder="e.g., /home/user/projects/my-project"
-										value={localPath}
-										onChange={(e) => setLocalPath(e.target.value)}
-									/>
-									<p className="text-xs text-muted-foreground">
-										Specify a local directory path for this workspace.
-									</p>
-								</div>
-							)}
+              {/* Path field — only for local target in local mode */}
+              {createTarget === 'local' && isLocal && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Path (optional)</label>
+                  <Input
+                    placeholder="e.g., /home/user/projects/my-project"
+                    value={localPath}
+                    onChange={(e) => setLocalPath(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Specify a local directory path for this workspace.
+                  </p>
+                </div>
+              )}
 
-							<PixiTomlEditor
-								tomlValue={pixiToml}
-								onTomlChange={setPixiToml}
-								workspaceName={newWsName || 'my-project'}
-							/>
+              <PixiTomlEditor
+                tomlValue={pixiToml}
+                onTomlChange={setPixiToml}
+                workspaceName={newWsName || 'my-project'}
+              />
 
-							<div className="flex gap-2 justify-end">
-								<Button
-									type="button"
-									variant="outline"
-									onClick={() => setShowCreate(false)}
-								>
-									Cancel
-								</Button>
-								<Button type="submit" disabled={isCreatePending}>
-									{isCreatePending ? (
-										<>
-											<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-											Creating...
-										</>
-									) : (
-										'Create & Save'
-									)}
-								</Button>
-							</div>
-						</form>
-					</CardContent>
-				</Card>
-			)}
+              <div className="flex gap-2 justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowCreate(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isCreatePending}>
+                  {isCreatePending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    'Create & Save'
+                  )}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
-			<Card>
-				<CardContent className="p-0">
-					<div className="overflow-x-auto">
-						<table className="w-full">
-							<thead
-								className={`bg-muted/50 ${displayedWorkspaces.length > 0 ? 'border-b' : ''}`}
-							>
-								<tr>
-									<th className="text-left p-4 font-medium">Name</th>
-									<th className="text-left p-4 font-medium">Status</th>
-									<th className="text-left p-4 font-medium">Size</th>
-									<th className="text-left p-4 font-medium">Created</th>
-									<th className="text-right p-4 font-medium">Actions</th>
-								</tr>
-							</thead>
-							<tbody>
-								{displayedWorkspaces.map((ws) => (
-									<tr
-										key={`${ws.location}-${ws.id}`}
-										className="border-b last:border-0 hover:bg-muted/50 cursor-pointer transition-colors"
-										onClick={() =>
-											ws.location === 'remote'
-												? navigate(`/remote/workspaces/${ws.id}`)
-												: navigate(`/workspaces/${ws.id}`)
-										}
-									>
-										<td className="p-4 font-medium">
-											<div className="flex items-center gap-2">{ws.name}</div>
-											{ws.location === 'local' && ws.path && (
-												<div
-													className="text-xs text-muted-foreground font-normal mt-0.5 font-mono truncate max-w-sm"
-													title={ws.path}
-												>
-													{ws.path}
-												</div>
-											)}
-										</td>
-										<td className="p-4">
-											<Badge
-												className={
-													statusColors[ws.status] ||
-													'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
-												}
-											>
-												{capitalize(ws.status)}
-											</Badge>
-										</td>
-										<td className="p-4 text-sm text-muted-foreground">
-											{ws.location === 'local' ? ws.size_formatted || '-' : '-'}
-										</td>
-										<td className="p-4 text-sm text-muted-foreground">
-											{new Date(ws.created_at).toLocaleDateString()}
-										</td>
-										<td className="p-4">
-											<div className="flex justify-end gap-2">
-												{ws.location === 'local' && ws.source !== 'local' && (
-													<Button
-														variant="ghost"
-														size="sm"
-														className="gap-1.5"
-														onClick={(e) => handleCopyPull(e, ws.name, ws.id)}
-														title="Copy nebi pull command"
-													>
-														{copiedPullId === ws.id ? (
-															<Check className="h-4 w-4" />
-														) : (
-															<Copy className="h-4 w-4" />
-														)}
-													</Button>
-												)}
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead
+                className={`bg-muted/50 ${displayedWorkspaces.length > 0 ? 'border-b' : ''}`}
+              >
+                <tr>
+                  <th className="text-left p-4 font-medium">Name</th>
+                  <th className="text-left p-4 font-medium">Status</th>
+                  <th className="text-left p-4 font-medium">Size</th>
+                  <th className="text-left p-4 font-medium">Created</th>
+                  <th className="text-right p-4 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayedWorkspaces.map((ws) => (
+                  <tr
+                    key={`${ws.location}-${ws.id}`}
+                    className="border-b last:border-0 hover:bg-muted/50 cursor-pointer transition-colors"
+                    onClick={() =>
+                      ws.location === 'remote'
+                        ? navigate(`/remote/workspaces/${ws.id}`)
+                        : navigate(`/workspaces/${ws.id}`)
+                    }
+                  >
+                    <td className="p-4 font-medium">
+                      <div className="flex items-center gap-2">{ws.name}</div>
+                      {ws.location === 'local' && ws.path && (
+                        <div
+                          className="text-xs text-muted-foreground font-normal mt-0.5 font-mono truncate max-w-sm"
+                          title={ws.path}
+                        >
+                          {ws.path}
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      <Badge
+                        className={
+                          statusColors[ws.status] ||
+                          'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
+                        }
+                      >
+                        {capitalize(ws.status)}
+                      </Badge>
+                    </td>
+                    <td className="p-4 text-sm text-muted-foreground">
+                      {ws.location === 'local' ? ws.size_formatted || '-' : '-'}
+                    </td>
+                    <td className="p-4 text-sm text-muted-foreground">
+                      {new Date(ws.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="p-4">
+                      <div className="flex justify-end gap-2">
+                        {ws.location === 'local' && ws.source !== 'local' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={(e) => handleCopyPull(e, ws.name, ws.id)}
+                            title="Copy nebi pull command"
+                          >
+                            {copiedPullId === ws.id ? (
+                              <Check className="h-4 w-4" />
+                            ) : (
+                              <Copy className="h-4 w-4" />
+                            )}
+                          </Button>
+                        )}
 
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={(e) => {
-														e.stopPropagation();
-														setConfirmDelete({
-															id: ws.id,
-															name: ws.name,
-															location: ws.location,
-														});
-													}}
-													disabled={isDeletePending}
-												>
-													<Trash2 className="h-4 w-4" />
-												</Button>
-											</div>
-										</td>
-									</tr>
-								))}
-							</tbody>
-						</table>
-					</div>
-				</CardContent>
-			</Card>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDelete({
+                              id: ws.id,
+                              name: ws.name,
+                              location: ws.location,
+                            });
+                          }}
+                          disabled={isDeletePending}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
 
-			{displayedWorkspaces.length === 0 && !showCreate && (
-				<div className="text-center py-12">
-					<p className="text-muted-foreground">
-						No workspaces yet. Create your first one!
-					</p>
-				</div>
-			)}
+      {displayedWorkspaces.length === 0 && !showCreate && (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">
+            No workspaces yet. Create your first one!
+          </p>
+        </div>
+      )}
 
-			<ConfirmDialog
-				open={!!confirmDelete}
-				onOpenChange={(open) => !open && setConfirmDelete(null)}
-				onConfirm={handleDelete}
-				title="Delete Workspace"
-				description={`Are you sure you want to delete "${confirmDelete?.name}"${confirmDelete?.location === 'remote' ? ' from the remote server' : ''}? This action cannot be undone. All data associated with this workspace will be permanently removed.`}
-				confirmText="Delete"
-				cancelText="Cancel"
-				variant="destructive"
-			/>
-		</div>
-	);
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onOpenChange={(open) => !open && setConfirmDelete(null)}
+        onConfirm={handleDelete}
+        title="Delete Workspace"
+        description={`Are you sure you want to delete "${confirmDelete?.name}"${confirmDelete?.location === 'remote' ? ' from the remote server' : ''}? This action cannot be undone. All data associated with this workspace will be permanently removed.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+      />
+    </div>
+  );
 };

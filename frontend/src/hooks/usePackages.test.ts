@@ -6,40 +6,40 @@ import { createWrapper } from '@/test/utils';
 import { usePackages } from './usePackages';
 
 const mockPackages = [
-	{ name: 'numpy', version: '1.26.0', platform: 'linux-64' },
+  { name: 'numpy', version: '1.26.0', platform: 'linux-64' },
 ];
 
 describe('usePackages', () => {
-	beforeEach(() => {
-		server.use(
-			http.get('/api/v1/workspaces/:id/packages', () =>
-				HttpResponse.json(mockPackages),
-			),
-		);
-	});
+  beforeEach(() => {
+    server.use(
+      http.get('/api/v1/workspaces/:id/packages', () =>
+        HttpResponse.json(mockPackages),
+      ),
+    );
+  });
 
-	it('fetches packages for a workspace', async () => {
-		const { result } = renderHook(() => usePackages('ws-1'), {
-			wrapper: createWrapper(),
-		});
-		await waitFor(() => expect(result.current.isSuccess).toBe(true));
-		expect(result.current.data).toEqual(mockPackages);
-	});
+  it('fetches packages for a workspace', async () => {
+    const { result } = renderHook(() => usePackages('ws-1'), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual(mockPackages);
+  });
 
-	it('does not fetch when environmentId is empty', () => {
-		const { result } = renderHook(() => usePackages(''), {
-			wrapper: createWrapper(),
-		});
-		expect(result.current.fetchStatus).toBe('idle');
-	});
+  it('does not fetch when environmentId is empty', () => {
+    const { result } = renderHook(() => usePackages(''), {
+      wrapper: createWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe('idle');
+  });
 
-	it('reflects an error state when the request fails', async () => {
-		server.use(
-			http.get('/api/v1/workspaces/:id/packages', () => HttpResponse.error()),
-		);
-		const { result } = renderHook(() => usePackages('ws-1'), {
-			wrapper: createWrapper(),
-		});
-		await waitFor(() => expect(result.current.isError).toBe(true));
-	});
+  it('reflects an error state when the request fails', async () => {
+    server.use(
+      http.get('/api/v1/workspaces/:id/packages', () => HttpResponse.error()),
+    );
+    const { result } = renderHook(() => usePackages('ws-1'), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+  });
 });

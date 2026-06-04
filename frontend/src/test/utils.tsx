@@ -4,38 +4,38 @@ import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
 function makeQueryClient() {
-	return new QueryClient({
-		defaultOptions: {
-			queries: { retry: false, gcTime: 0 },
-			mutations: { retry: false },
-		},
-	});
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  });
 }
 
 export function createWrapper({
-	initialEntries = ['/'],
+  initialEntries = ['/'],
 }: {
-	initialEntries?: string[];
+  initialEntries?: string[];
 } = {}) {
-	const queryClient = makeQueryClient();
-	return function Wrapper({ children }: { children: React.ReactNode }) {
-		return (
-			<QueryClientProvider client={queryClient}>
-				<MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
-			</QueryClientProvider>
-		);
-	};
+  const queryClient = makeQueryClient();
+  return function Wrapper({ children }: { children: React.ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
+      </QueryClientProvider>
+    );
+  };
 }
 
 export function renderWithProviders(
-	ui: React.ReactElement,
-	options?: Omit<RenderOptions, 'wrapper'> & { initialEntries?: string[] },
+  ui: React.ReactElement,
+  options?: Omit<RenderOptions, 'wrapper'> & { initialEntries?: string[] },
 ) {
-	const { initialEntries, ...renderOptions } = options ?? {};
-	return render(ui, {
-		wrapper: createWrapper({ initialEntries }),
-		...renderOptions,
-	});
+  const { initialEntries, ...renderOptions } = options ?? {};
+  return render(ui, {
+    wrapper: createWrapper({ initialEntries }),
+    ...renderOptions,
+  });
 }
 
 // Re-export everything from testing-library for convenience

@@ -9,13 +9,7 @@
 
   "files": {
     "ignoreUnknown": false,
-    "includes": [
-      "**",
-      "!!**/dist",
-      "!wailsjs",
-      "!src/components/ui",
-      "!**/*.test.tsx"
-    ]
+    "includes": ["**", "!!**/dist", "!wailsjs", "!src/components/ui"]
   },
 
   "formatter": {
@@ -48,7 +42,8 @@
         "noSvgWithoutTitle": "off",
         "noLabelWithoutControl": "off",
         "useButtonType": "off",
-        "noAutofocus": "off"
+        "noAutofocus": "off",
+        "useValidAriaRole": "off"
       },
 
       "suspicious": {

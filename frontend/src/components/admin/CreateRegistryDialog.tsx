@@ -1,9 +1,15 @@
+import { Loader2, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { useCreateRegistry } from '@/hooks/useRegistries';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Plus, Loader2 } from 'lucide-react';
+import { useCreateRegistry } from '@/hooks/useRegistries';
 
 export const CreateRegistryDialog = () => {
   const [open, setOpen] = useState(false);
@@ -47,7 +53,9 @@ export const CreateRegistryDialog = () => {
       setError('');
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage = error?.response?.data?.error || 'Failed to create registry. Please try again.';
+      const errorMessage =
+        error?.response?.data?.error ||
+        'Failed to create registry. Please try again.';
       setError(errorMessage);
       console.error('Failed to create registry:', err);
     }
@@ -67,7 +75,9 @@ export const CreateRegistryDialog = () => {
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Registry</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Registry
+            </h3>
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Name</label>
@@ -114,7 +124,10 @@ export const CreateRegistryDialog = () => {
                 onChange={(e) => setIsDefault(e.target.checked)}
                 className="h-4 w-4 rounded border-input"
               />
-              <label htmlFor="is_default" className="text-sm font-medium cursor-pointer">
+              <label
+                htmlFor="is_default"
+                className="text-sm font-medium cursor-pointer"
+              >
                 Set as default registry
               </label>
             </div>
@@ -122,13 +135,18 @@ export const CreateRegistryDialog = () => {
 
           <div className="border-t pt-4 mt-4 space-y-4">
             <div>
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Authentication</h3>
-              <p className="text-xs text-muted-foreground mt-1">Optional — needed for private repositories and publishing</p>
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Authentication
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Optional — needed for private repositories and publishing
+              </p>
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                Username <span className="text-muted-foreground">(optional)</span>
+                Username{' '}
+                <span className="text-muted-foreground">(optional)</span>
               </label>
               <Input
                 type="text"
@@ -140,7 +158,8 @@ export const CreateRegistryDialog = () => {
 
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                Password/Token <span className="text-muted-foreground">(optional)</span>
+                Password/Token{' '}
+                <span className="text-muted-foreground">(optional)</span>
               </label>
               <Input
                 type="password"
@@ -152,7 +171,8 @@ export const CreateRegistryDialog = () => {
 
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                API Token <span className="text-muted-foreground">(optional)</span>
+                API Token{' '}
+                <span className="text-muted-foreground">(optional)</span>
               </label>
               <Input
                 type="password"
@@ -161,8 +181,9 @@ export const CreateRegistryDialog = () => {
                 placeholder="Registry API token for browsing private repos"
               />
               <p className="text-xs text-muted-foreground">
-                For Quay.io: generate an OAuth Application Token to list private repositories.
-                This is separate from the push/pull credentials above.
+                For Quay.io: generate an OAuth Application Token to list private
+                repositories. This is separate from the push/pull credentials
+                above.
               </p>
             </div>
           </div>
@@ -174,7 +195,11 @@ export const CreateRegistryDialog = () => {
           )}
 
           <div className="flex gap-2 justify-end pt-4">
-            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={createMutation.isPending}>

@@ -1,45 +1,73 @@
+import {
+  ChevronRight,
+  Clock,
+  Eye,
+  FileCode,
+  FileText,
+  Loader2,
+  RotateCcw,
+} from 'lucide-react';
 import { useState } from 'react';
-import { useVersions, useRollback, useDownloadLockFile, useDownloadManifest } from '@/hooks/useVersions';
+import { workspacesApi } from '@/api/workspaces';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Loader2, Clock, RotateCcw, FileCode, FileText, ChevronRight, Eye } from 'lucide-react';
+import {
+  useDownloadLockFile,
+  useDownloadManifest,
+  useRollback,
+  useVersions,
+} from '@/hooks/useVersions';
 import type { WorkspaceVersion } from '@/types';
-import { workspacesApi } from '@/api/workspaces';
 
 interface VersionHistoryProps {
   environmentId: string;
   environmentStatus: string;
 }
 
-export const VersionHistory = ({ environmentId, environmentStatus }: VersionHistoryProps) => {
+export const VersionHistory = ({
+  environmentId,
+  environmentStatus,
+}: VersionHistoryProps) => {
   const { data: versions, isLoading } = useVersions(environmentId);
   const rollbackMutation = useRollback(environmentId);
   const downloadLock = useDownloadLockFile();
   const downloadManifest = useDownloadManifest();
 
-  const [confirmRollback, setConfirmRollback] = useState<WorkspaceVersion | null>(null);
+  const [confirmRollback, setConfirmRollback] =
+    useState<WorkspaceVersion | null>(null);
   const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
 
   const handleRollback = async () => {
     if (confirmRollback) {
-      await rollbackMutation.mutateAsync({ version_number: confirmRollback.version_number });
+      await rollbackMutation.mutateAsync({
+        version_number: confirmRollback.version_number,
+      });
       setConfirmRollback(null);
     }
   };
 
   const handleDownloadLock = (version: WorkspaceVersion) => {
-    downloadLock.mutate({ environmentId, versionNumber: version.version_number });
+    downloadLock.mutate({
+      environmentId,
+      versionNumber: version.version_number,
+    });
   };
 
   const handleDownloadManifest = (version: WorkspaceVersion) => {
-    downloadManifest.mutate({ environmentId, versionNumber: version.version_number });
+    downloadManifest.mutate({
+      environmentId,
+      versionNumber: version.version_number,
+    });
   };
 
   const handleViewLock = async (version: WorkspaceVersion) => {
     try {
-      const content = await workspacesApi.downloadLockFile(environmentId, version.version_number);
+      const content = await workspacesApi.downloadLockFile(
+        environmentId,
+        version.version_number,
+      );
       const blob = new Blob([content], { type: 'text/plain' });
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
@@ -51,7 +79,10 @@ export const VersionHistory = ({ environmentId, environmentStatus }: VersionHist
 
   const handleViewManifest = async (version: WorkspaceVersion) => {
     try {
-      const content = await workspacesApi.downloadManifest(environmentId, version.version_number);
+      const content = await workspacesApi.downloadManifest(
+        environmentId,
+        version.version_number,
+      );
       const blob = new Blob([content], { type: 'text/plain' });
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
@@ -79,9 +110,12 @@ export const VersionHistory = ({ environmentId, environmentStatus }: VersionHist
         <CardContent className="pt-6">
           <div className="text-center py-12">
             <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No Version History Yet</h3>
+            <h3 className="text-lg font-semibold mb-2">
+              No Version History Yet
+            </h3>
             <p className="text-muted-foreground text-sm">
-              Version snapshots will be created automatically when you install or remove packages.
+              Version snapshots will be created automatically when you install
+              or remove packages.
             </p>
           </div>
         </CardContent>
@@ -221,7 +255,8 @@ export const VersionHistory = ({ environmentId, environmentStatus }: VersionHist
                                   size="sm"
                                   onClick={() => setConfirmRollback(version)}
                                   disabled={
-                                    rollbackMutation.isPending || environmentStatus !== 'ready'
+                                    rollbackMutation.isPending ||
+                                    environmentStatus !== 'ready'
                                   }
                                 >
                                   <RotateCcw className="h-4 w-4 mr-2" />

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { cn, capitalize } from './utils';
+import { describe, expect, it } from 'vitest';
+import { capitalize, cn } from './utils';
 
 describe('cn', () => {
   it('merges class names', () => {
@@ -16,7 +16,9 @@ describe('cn', () => {
   });
 
   it('handles conditional objects', () => {
-    expect(cn({ 'text-red-500': true, 'text-blue-500': false })).toBe('text-red-500');
+    expect(cn({ 'text-red-500': true, 'text-blue-500': false })).toBe(
+      'text-red-500',
+    );
   });
 
   it('returns empty string when called with no arguments', () => {

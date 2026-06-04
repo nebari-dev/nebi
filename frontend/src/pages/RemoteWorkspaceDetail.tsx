@@ -1,13 +1,27 @@
-import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import {
+  ArrowLeft,
+  Calendar,
+  Check,
+  CircleQuestionMark,
+  Cloud,
+  Copy,
+  Fingerprint,
+  HardDrive,
+  History,
+  IdCard,
+  Loader2,
+  Package,
+  User,
+} from 'lucide-react';
+import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { remoteApi } from '@/api/remote';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserBadge } from '@/components/ui/user-badge';
-import { ArrowLeft, Loader2, Cloud, Copy, Check, IdCard, User, CircleQuestionMark, Package, HardDrive, Calendar, History, Fingerprint } from 'lucide-react';
 import { capitalize } from '@/lib/utils';
 import type { RemoteWorkspaceTag, RemoteWorkspaceVersion } from '@/types';
 
@@ -75,19 +89,33 @@ export const RemoteWorkspaceDetail = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/workspaces')}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => navigate('/workspaces')}
+        >
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
           <h1 className="text-3xl font-bold">{workspace.name}</h1>
-          <p className="text-muted-foreground">Remote workspace details (read-only)</p>
+          <p className="text-muted-foreground">
+            Remote workspace details (read-only)
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="bg-purple-500/10 text-purple-500 border-purple-500/20">
+          <Badge
+            variant="outline"
+            className="bg-purple-500/10 text-purple-500 border-purple-500/20"
+          >
             <Cloud className="h-3 w-3 mr-1" />
             Remote
           </Badge>
-          <Badge className={statusColors[workspace.status] || 'bg-gray-500/10 text-gray-500 border-gray-500/20'}>
+          <Badge
+            className={
+              statusColors[workspace.status] ||
+              'bg-gray-500/10 text-gray-500 border-gray-500/20'
+            }
+          >
             {capitalize(workspace.status)}
           </Badge>
         </div>
@@ -110,7 +138,6 @@ export const RemoteWorkspaceDetail = () => {
           </div>
           <div>
             <div>
-
               {/* Name */}
               <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
                 <div className="flex items-center gap-1.5 text-muted-foreground">
@@ -140,7 +167,12 @@ export const RemoteWorkspaceDetail = () => {
                   <span className="text-sm font-medium">Status</span>
                 </div>
                 <div>
-                  <Badge className={statusColors[workspace.status] || 'bg-gray-500/10 text-gray-500 border-gray-500/20'}>
+                  <Badge
+                    className={
+                      statusColors[workspace.status] ||
+                      'bg-gray-500/10 text-gray-500 border-gray-500/20'
+                    }
+                  >
                     {capitalize(workspace.status)}
                   </Badge>
                 </div>
@@ -152,7 +184,9 @@ export const RemoteWorkspaceDetail = () => {
                   <Package className="h-3 w-3 shrink-0" />
                   <span className="text-sm font-medium">Package Manager</span>
                 </div>
-                <code className="text-sm font-mono">{workspace.package_manager || 'pixi'}</code>
+                <code className="text-sm font-mono">
+                  {workspace.package_manager || 'pixi'}
+                </code>
               </div>
 
               {/* Size */}
@@ -162,7 +196,9 @@ export const RemoteWorkspaceDetail = () => {
                     <HardDrive className="h-3 w-3 shrink-0" />
                     <span className="text-sm font-medium">Size</span>
                   </div>
-                  <span className="text-sm">{(workspace.size_bytes / 1024 / 1024).toFixed(1)} MB</span>
+                  <span className="text-sm">
+                    {(workspace.size_bytes / 1024 / 1024).toFixed(1)} MB
+                  </span>
                 </div>
               )}
 
@@ -173,7 +209,9 @@ export const RemoteWorkspaceDetail = () => {
                     <Calendar className="h-3 w-3 shrink-0" />
                     <span className="text-sm font-medium">Created</span>
                   </div>
-                  <span className="text-sm">{new Date(workspace.created_at).toLocaleString()}</span>
+                  <span className="text-sm">
+                    {new Date(workspace.created_at).toLocaleString()}
+                  </span>
                 </div>
               )}
 
@@ -184,7 +222,9 @@ export const RemoteWorkspaceDetail = () => {
                     <History className="h-3 w-3 shrink-0" />
                     <span className="text-sm font-medium">Last Updated</span>
                   </div>
-                  <span className="text-sm">{new Date(workspace.updated_at).toLocaleString()}</span>
+                  <span className="text-sm">
+                    {new Date(workspace.updated_at).toLocaleString()}
+                  </span>
                 </div>
               )}
 
@@ -195,7 +235,9 @@ export const RemoteWorkspaceDetail = () => {
                   <span className="text-sm font-medium">ID</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <code className="text-xs font-mono text-muted-foreground">{workspace.id}</code>
+                  <code className="text-xs font-mono text-muted-foreground">
+                    {workspace.id}
+                  </code>
                   <button
                     className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground"
                     onClick={async () => {
@@ -205,11 +247,14 @@ export const RemoteWorkspaceDetail = () => {
                     }}
                     title="Copy ID"
                   >
-                    {copiedId ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                    {copiedId ? (
+                      <Check className="h-3 w-3" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
                   </button>
                 </div>
               </div>
-
             </div>
           </div>
         </TabsContent>
@@ -275,13 +320,18 @@ export const RemoteWorkspaceDetail = () => {
                     <thead className="border-b bg-muted/50">
                       <tr>
                         <th className="text-left p-4 font-medium">Version</th>
-                        <th className="text-left p-4 font-medium">Description</th>
+                        <th className="text-left p-4 font-medium">
+                          Description
+                        </th>
                         <th className="text-left p-4 font-medium">Created</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {versions.map((v: RemoteWorkspaceVersion) => (
-                        <tr key={v.id || v.version_number} className="hover:bg-muted/50">
+                        <tr
+                          key={v.id || v.version_number}
+                          className="hover:bg-muted/50"
+                        >
                           <td className="p-4">
                             <Badge variant="outline">v{v.version_number}</Badge>
                           </td>
@@ -289,7 +339,9 @@ export const RemoteWorkspaceDetail = () => {
                             {v.description || '-'}
                           </td>
                           <td className="p-4 text-sm text-muted-foreground">
-                            {v.created_at ? new Date(v.created_at).toLocaleString() : '-'}
+                            {v.created_at
+                              ? new Date(v.created_at).toLocaleString()
+                              : '-'}
                           </td>
                         </tr>
                       ))}
@@ -335,7 +387,9 @@ export const RemoteWorkspaceDetail = () => {
                             v{t.version_number}
                           </td>
                           <td className="p-4 text-sm text-muted-foreground">
-                            {t.created_at ? new Date(t.created_at).toLocaleString() : '-'}
+                            {t.created_at
+                              ? new Date(t.created_at).toLocaleString()
+                              : '-'}
                           </td>
                         </tr>
                       ))}

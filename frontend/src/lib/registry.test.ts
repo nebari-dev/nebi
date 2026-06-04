@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { buildImportCommand } from './registry';
 
 describe('buildImportCommand', () => {
@@ -6,16 +6,18 @@ describe('buildImportCommand', () => {
     const cmd = buildImportCommand(
       'https://quay.io',
       'nebari_environments/data-science-demo',
-      '0.1.0'
+      '0.1.0',
     );
-    expect(cmd).toBe('nebi import quay.io/nebari_environments/data-science-demo:0.1.0');
+    expect(cmd).toBe(
+      'nebi import quay.io/nebari_environments/data-science-demo:0.1.0',
+    );
   });
 
   it('does not double the namespace', () => {
     const cmd = buildImportCommand(
       'https://quay.io',
       'nebari_environments/data-science-demo',
-      'latest'
+      'latest',
     );
     expect(cmd).not.toContain('nebari_environments/nebari_environments');
   });
@@ -41,7 +43,9 @@ describe('buildImportCommand', () => {
     const repository = 'data-science-demo';
     const repo = namespace ? `${namespace}/${repository}` : repository;
     const cmd = buildImportCommand('https://quay.io', repo, 'v1.0.0');
-    expect(cmd).toBe('nebi import quay.io/nebari_environments/data-science-demo:v1.0.0');
+    expect(cmd).toBe(
+      'nebi import quay.io/nebari_environments/data-science-demo:v1.0.0',
+    );
   });
 
   it('works with bare repo when no namespace', () => {

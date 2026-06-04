@@ -1,5 +1,5 @@
-import { apiClient } from './client';
 import type { Job } from '@/types';
+import { apiClient } from './client';
 
 export const jobsApi = {
   list: async (): Promise<Job[]> => {

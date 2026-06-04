@@ -74,6 +74,19 @@ jobs:
       - name: Build desktop app
         run: wails build -platform ${{ matrix.platform }} ${{ matrix.build_tags }}
 
+      # macOS .app bundles must be packaged into a single archive before they
+      # leave the runner. Uploading the raw Nebi.app directory strips the
+      # bundle wrapper (upload-artifact roots the archive at the dir's
+      # contents, so it unzips to a bare Contents/ folder) and loses the
+      # executable bit and symlinks. `ditto` is Apple's bundle-aware archiver:
+      # it preserves the wrapper, permissions, symlinks, and xattrs so the
+      # downloaded zip unzips to a launchable Nebi.app.
+      - name: Package macOS app
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd build/bin
+          ditto -c -k --keepParent Nebi.app ${{ matrix.asset_name }}.zip
+
       # For PRs and main branch pushes: upload as artifacts
       - name: Upload artifact (Linux)
         if: matrix.os == 'ubuntu-latest' && !startsWith(github.ref, 'refs/tags/')
@@ -87,7 +100,7 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: nebi-macos
-          path: build/bin/Nebi.app
+          path: build/bin/${{ matrix.asset_name }}.zip
 
       - name: Upload artifact (Windows)
         if: matrix.os == 'windows-latest' && !startsWith(github.ref, 'refs/tags/')
@@ -148,12 +161,6 @@ jobs:
         run: |
           cd build/bin
           tar -czvf ${{ matrix.asset_name }}.tar.gz Nebi
-
-      - name: Compress for release (macOS)
-        if: matrix.os == 'macos-latest' && startsWith(github.ref, 'refs/tags/')
-        run: |
-          cd build/bin
-          zip -r ${{ matrix.asset_name }}.zip Nebi.app
 
       - name: Upload to release (Linux)
         if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/')

@@ -1,6 +1,6 @@
-import React from 'react';
-import { render, type RenderOptions } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { type RenderOptions, render } from '@testing-library/react';
+import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
 function makeQueryClient() {
@@ -12,14 +12,16 @@ function makeQueryClient() {
   });
 }
 
-export function createWrapper({ initialEntries = ['/'] }: { initialEntries?: string[] } = {}) {
+export function createWrapper({
+  initialEntries = ['/'],
+}: {
+  initialEntries?: string[];
+} = {}) {
   const queryClient = makeQueryClient();
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={initialEntries}>
-          {children}
-        </MemoryRouter>
+        <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
       </QueryClientProvider>
     );
   };
@@ -27,12 +29,15 @@ export function createWrapper({ initialEntries = ['/'] }: { initialEntries?: str
 
 export function renderWithProviders(
   ui: React.ReactElement,
-  options?: Omit<RenderOptions, 'wrapper'> & { initialEntries?: string[] }
+  options?: Omit<RenderOptions, 'wrapper'> & { initialEntries?: string[] },
 ) {
   const { initialEntries, ...renderOptions } = options ?? {};
-  return render(ui, { wrapper: createWrapper({ initialEntries }), ...renderOptions });
+  return render(ui, {
+    wrapper: createWrapper({ initialEntries }),
+    ...renderOptions,
+  });
 }
 
 // Re-export everything from testing-library for convenience
-// eslint-disable-next-line react-refresh/only-export-components
+// react-refresh/only-export-components
 export * from '@testing-library/react';

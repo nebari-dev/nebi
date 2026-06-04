@@ -1,13 +1,13 @@
-import { useState, useMemo } from 'react';
+import { Loader2, Search } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { useAuditLogs } from '@/hooks/useAdmin';
+import { useRemoteAuditLogs, useRemoteServer } from '@/hooks/useRemote';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
-import { useRemoteServer, useRemoteAuditLogs } from '@/hooks/useRemote';
-import { Card, CardContent } from '@/components/ui/card';
-import { Select } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, Search } from 'lucide-react';
 
 const ACTION_COLORS: Record<string, string> = {
   create_user: 'bg-green-500/10 text-green-500 border-green-500/20',
@@ -34,12 +34,12 @@ export const AuditLogs = () => {
   const shouldShowRemote = isRemoteConnected && viewMode === 'remote';
 
   const { data: logs, isLoading: logsLoading } = useAuditLogs(
-    filters.user_id || filters.action ? filters : undefined
+    filters.user_id || filters.action ? filters : undefined,
   );
 
   const { data: remoteLogs, isLoading: remoteLoading } = useRemoteAuditLogs(
     shouldShowRemote,
-    filters.user_id || filters.action ? filters : undefined
+    filters.user_id || filters.action ? filters : undefined,
   );
 
   // Show logs based on view mode
@@ -68,7 +68,9 @@ export const AuditLogs = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Audit Logs</h1>
-        <p className="text-muted-foreground">View all system activity and changes</p>
+        <p className="text-muted-foreground">
+          View all system activity and changes
+        </p>
       </div>
 
       <div className="flex gap-4">
@@ -78,7 +80,9 @@ export const AuditLogs = () => {
             <Input
               placeholder="Filter by user ID..."
               value={filters.user_id}
-              onChange={(e) => setFilters({ ...filters, user_id: e.target.value })}
+              onChange={(e) =>
+                setFilters({ ...filters, user_id: e.target.value })
+              }
               className="pl-9"
             />
           </div>
@@ -115,7 +119,10 @@ export const AuditLogs = () => {
               </thead>
               <tbody>
                 {displayedLogs.map((log) => (
-                  <tr key={log.id} className="border-b last:border-0 hover:bg-muted/50">
+                  <tr
+                    key={log.id}
+                    className="border-b last:border-0 hover:bg-muted/50"
+                  >
                     <td className="p-4 text-sm text-muted-foreground whitespace-nowrap">
                       {new Date(log.timestamp).toLocaleString()}
                     </td>
@@ -123,7 +130,12 @@ export const AuditLogs = () => {
                       {log.user?.username || log.user_id}
                     </td>
                     <td className="p-4">
-                      <Badge className={ACTION_COLORS[log.action] || 'bg-gray-500/10 text-gray-500 border-gray-500/20'}>
+                      <Badge
+                        className={
+                          ACTION_COLORS[log.action] ||
+                          'bg-gray-500/10 text-gray-500 border-gray-500/20'
+                        }
+                      >
                         {log.action.replace(/_/g, ' ')}
                       </Badge>
                     </td>
@@ -131,7 +143,9 @@ export const AuditLogs = () => {
                     <td className="p-4 text-sm text-muted-foreground">
                       {log.details_json && (
                         <details className="cursor-pointer">
-                          <summary className="hover:text-foreground">View Details</summary>
+                          <summary className="hover:text-foreground">
+                            View Details
+                          </summary>
                           <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto max-w-md">
                             {JSON.stringify(log.details_json, null, 2)}
                           </pre>

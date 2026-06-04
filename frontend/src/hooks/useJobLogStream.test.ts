@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import { useJobLogStream } from './useJobLogStream';
+import { act, renderHook } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/store/authStore';
 import { mockUser } from '@/test/handlers';
+import { useJobLogStream } from './useJobLogStream';
 
 // Minimal EventSource mock
 class MockEventSource {
@@ -34,7 +34,8 @@ let originalEventSource: typeof EventSource;
 beforeEach(() => {
   MockEventSource.instances = [];
   originalEventSource = globalThis.EventSource;
-  (globalThis as unknown as Record<string, unknown>).EventSource = MockEventSource;
+  (globalThis as unknown as Record<string, unknown>).EventSource =
+    MockEventSource;
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
   act(() => {
@@ -43,7 +44,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  (globalThis as unknown as Record<string, unknown>).EventSource = originalEventSource;
+  (globalThis as unknown as Record<string, unknown>).EventSource =
+    originalEventSource;
   act(() => {
     useAuthStore.setState({ token: null, user: null });
   });
@@ -64,7 +66,9 @@ describe('useJobLogStream', () => {
   it('opens an EventSource for a running job', () => {
     renderHook(() => useJobLogStream('job-1', 'running'));
     expect(MockEventSource.instances).toHaveLength(1);
-    expect(MockEventSource.instances[0].url).toContain('/jobs/job-1/logs/stream');
+    expect(MockEventSource.instances[0].url).toContain(
+      '/jobs/job-1/logs/stream',
+    );
   });
 
   it('opens an EventSource for a pending job', () => {
@@ -81,10 +85,14 @@ describe('useJobLogStream', () => {
     const { result } = renderHook(() => useJobLogStream('job-1', 'running'));
 
     act(() => {
-      MockEventSource.instances[0].onmessage?.(new MessageEvent('message', { data: 'line 1' }));
+      MockEventSource.instances[0].onmessage?.(
+        new MessageEvent('message', { data: 'line 1' }),
+      );
     });
     act(() => {
-      MockEventSource.instances[0].onmessage?.(new MessageEvent('message', { data: 'line 2' }));
+      MockEventSource.instances[0].onmessage?.(
+        new MessageEvent('message', { data: 'line 2' }),
+      );
     });
 
     expect(result.current.logs).toContain('line 1');
@@ -93,7 +101,7 @@ describe('useJobLogStream', () => {
 
   it('initialises logs from the initialLogs prop', () => {
     const { result } = renderHook(() =>
-      useJobLogStream('job-1', 'running', 'prior output\n')
+      useJobLogStream('job-1', 'running', 'prior output\n'),
     );
     expect(result.current.logs).toBe('prior output\n');
   });

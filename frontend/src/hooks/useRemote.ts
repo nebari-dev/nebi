@@ -1,6 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { remoteApi } from '@/api/remote';
-import type { ConnectServerRequest, CreateRemoteWorkspaceRequest } from '@/types';
+import type {
+  ConnectServerRequest,
+  CreateRemoteWorkspaceRequest,
+} from '@/types';
 
 export const useRemoteServer = () => {
   return useQuery({
@@ -69,7 +72,8 @@ export const useCreateRemoteWorkspace = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (req: CreateRemoteWorkspaceRequest) => remoteApi.createWorkspace(req),
+    mutationFn: (req: CreateRemoteWorkspaceRequest) =>
+      remoteApi.createWorkspace(req),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['remote', 'workspaces'] });
     },
@@ -120,7 +124,10 @@ export const useRemoteAdminRegistries = (enabled: boolean) => {
   });
 };
 
-export const useRemoteAuditLogs = (enabled: boolean, filters?: { user_id?: string; action?: string }) => {
+export const useRemoteAuditLogs = (
+  enabled: boolean,
+  filters?: { user_id?: string; action?: string },
+) => {
   return useQuery({
     queryKey: ['remote', 'admin', 'audit-logs', filters],
     queryFn: () => remoteApi.listAuditLogs(filters),

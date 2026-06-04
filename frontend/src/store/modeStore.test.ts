@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { http, HttpResponse } from 'msw';
+import { HttpResponse, http } from 'msw';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { server } from '@/test/handlers';
 import { useModeStore } from './modeStore';
 
@@ -11,8 +11,12 @@ describe('fetchMode', () => {
   it('sets mode and features from the /version response', async () => {
     server.use(
       http.get('/api/v1/version', () =>
-        HttpResponse.json({ mode: 'local', features: { registries: true }, version: '1.0.0' })
-      )
+        HttpResponse.json({
+          mode: 'local',
+          features: { registries: true },
+          version: '1.0.0',
+        }),
+      ),
     );
 
     await useModeStore.getState().fetchMode();
@@ -24,9 +28,7 @@ describe('fetchMode', () => {
   });
 
   it('defaults to team mode when the request fails', async () => {
-    server.use(
-      http.get('/api/v1/version', () => HttpResponse.error())
-    );
+    server.use(http.get('/api/v1/version', () => HttpResponse.error()));
 
     await useModeStore.getState().fetchMode();
 
@@ -38,8 +40,8 @@ describe('fetchMode', () => {
   it('defaults features to empty object when not present in response', async () => {
     server.use(
       http.get('/api/v1/version', () =>
-        HttpResponse.json({ mode: 'team', version: '1.0.0' })
-      )
+        HttpResponse.json({ mode: 'team', version: '1.0.0' }),
+      ),
     );
 
     await useModeStore.getState().fetchMode();

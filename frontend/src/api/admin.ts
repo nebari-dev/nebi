@@ -1,5 +1,13 @@
+import type {
+  AuditLog,
+  Collaborator,
+  CreateUserRequest,
+  DashboardStats,
+  Group,
+  ShareWorkspaceRequest,
+  User,
+} from '@/types/models';
 import { apiClient } from './client';
-import type { User, CreateUserRequest, AuditLog, Collaborator, ShareWorkspaceRequest, DashboardStats, Group } from '@/types/models';
 
 export const adminApi = {
   // User Management
@@ -27,22 +35,33 @@ export const adminApi = {
   },
 
   // Audit Logs
-  getAuditLogs: async (params?: { user_id?: string; action?: string }): Promise<AuditLog[]> => {
+  getAuditLogs: async (params?: {
+    user_id?: string;
+    action?: string;
+  }): Promise<AuditLog[]> => {
     const response = await apiClient.get('/admin/audit-logs', { params });
     return response.data;
   },
 
   // Workspace Sharing
   getCollaborators: async (workspaceId: string): Promise<Collaborator[]> => {
-    const response = await apiClient.get(`/workspaces/${workspaceId}/collaborators`);
+    const response = await apiClient.get(
+      `/workspaces/${workspaceId}/collaborators`,
+    );
     return response.data;
   },
 
-  shareWorkspace: async (workspaceId: string, data: ShareWorkspaceRequest): Promise<void> => {
+  shareWorkspace: async (
+    workspaceId: string,
+    data: ShareWorkspaceRequest,
+  ): Promise<void> => {
     await apiClient.post(`/workspaces/${workspaceId}/share`, data);
   },
 
-  unshareWorkspace: async (workspaceId: string, userId: string): Promise<void> => {
+  unshareWorkspace: async (
+    workspaceId: string,
+    userId: string,
+  ): Promise<void> => {
     await apiClient.delete(`/workspaces/${workspaceId}/share/${userId}`);
   },
 

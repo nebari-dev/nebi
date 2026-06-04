@@ -1,9 +1,20 @@
-import { useState, useEffect } from 'react';
-import { usePublicRegistries, usePublishWorkspace, usePublishDefaults, usePublications } from '@/hooks/useRegistries';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { AlertCircle, Loader2, Upload } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Loader2, Upload, AlertCircle } from 'lucide-react';
+import {
+  usePublications,
+  usePublicRegistries,
+  usePublishDefaults,
+  usePublishWorkspace,
+} from '@/hooks/useRegistries';
 
 interface PublishDialogProps {
   open: boolean;
@@ -12,9 +23,15 @@ interface PublishDialogProps {
   environmentName: string;
 }
 
-export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDialogProps) => {
-  const { data: registries, isLoading: registriesLoading } = usePublicRegistries();
-  const { data: defaults, isLoading: defaultsLoading } = usePublishDefaults(environmentId);
+export const PublishDialog = ({
+  open,
+  onOpenChange,
+  environmentId,
+}: PublishDialogProps) => {
+  const { data: registries, isLoading: registriesLoading } =
+    usePublicRegistries();
+  const { data: defaults, isLoading: defaultsLoading } =
+    usePublishDefaults(environmentId);
   const { data: publications } = usePublications(environmentId);
   const publishMutation = usePublishWorkspace();
 
@@ -72,7 +89,9 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
       }, 2000);
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage = error?.response?.data?.error || 'Failed to publish workspace. Please try again.';
+      const errorMessage =
+        error?.response?.data?.error ||
+        'Failed to publish workspace. Please try again.';
       setError(errorMessage);
       console.error('Failed to publish:', err);
     }
@@ -92,7 +111,8 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
         <DialogHeader>
           <DialogTitle>Publish Workspace to OCI Registry</DialogTitle>
           <DialogDescription>
-            Publish the workspace's pixi.toml and pixi.lock files as an OCI artifact.
+            Publish the workspace's pixi.toml and pixi.lock files as an OCI
+            artifact.
           </DialogDescription>
         </DialogHeader>
 
@@ -120,7 +140,8 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
                 <div>
                   <p className="font-medium">No registries configured</p>
                   <p className="text-sm mt-1">
-                    Contact your administrator to set up OCI registries for publishing.
+                    Contact your administrator to set up OCI registries for
+                    publishing.
                   </p>
                 </div>
               </div>
@@ -176,7 +197,15 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
                   <p className="text-xs text-muted-foreground">
                     Version tag for this publication
                     {publications && publications.length > 0 && (
-                      <> (existing: {publications.slice(0, 3).map(p => p.tag).join(', ')}{publications.length > 3 ? '...' : ''})</>
+                      <>
+                        {' '}
+                        (existing:{' '}
+                        {publications
+                          .slice(0, 3)
+                          .map((p) => p.tag)
+                          .join(', ')}
+                        {publications.length > 3 ? '...' : ''})
+                      </>
                     )}
                   </p>
                 </div>
@@ -188,7 +217,12 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
                 )}
 
                 <div className="flex gap-2 justify-end pt-4">
-                  <Button type="button" variant="outline" onClick={handleClose} disabled={publishMutation.isPending}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleClose}
+                    disabled={publishMutation.isPending}
+                  >
                     Cancel
                   </Button>
                   <Button

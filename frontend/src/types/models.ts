@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 export interface User {
   id: string; // UUID
   username: string;
@@ -9,7 +8,12 @@ export interface User {
   updated_at: string;
 }
 
-export type WorkspaceStatus = 'pending' | 'creating' | 'ready' | 'failed' | 'deleting';
+export type WorkspaceStatus =
+  | 'pending'
+  | 'creating'
+  | 'ready'
+  | 'failed'
+  | 'deleting';
 
 export interface Workspace {
   id: string; // UUID

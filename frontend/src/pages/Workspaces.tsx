@@ -40,11 +40,11 @@ type UnifiedWorkspace = {
 };
 
 const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-  creating: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  ready: 'bg-green-500/10 text-green-500 border-green-500/20',
-  failed: 'bg-red-500/10 text-red-500 border-red-500/20',
-  deleting: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+  pending: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  creating: 'bg-blue-100 text-blue-800 border-blue-300',
+  ready: 'bg-green-100 text-green-800 border-green-300',
+  failed: 'bg-red-100 text-red-800 border-red-300',
+  deleting: 'bg-orange-100 text-orange-800 border-orange-300',
 };
 
 const DEFAULT_PIXI_TOML = `[workspace]
@@ -254,6 +254,7 @@ export const Workspaces = () => {
               New Workspace
             </>
           }
+          menuLabel="Open workspace actions"
           menuItems={[
             {
               label: 'Import Workspace from Registry',
@@ -279,6 +280,7 @@ export const Workspaces = () => {
                 variant="ghost"
                 size="icon"
                 onClick={() => setShowCreate(false)}
+                aria-label="Close create workspace form"
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -287,8 +289,11 @@ export const Workspaces = () => {
           <CardContent>
             <form onSubmit={handleCreate} className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Workspace Name</label>
+                <label className="text-sm font-medium" htmlFor="workspace-name">
+                  Workspace Name
+                </label>
                 <Input
+                  id="workspace-name"
                   placeholder="e.g., my-data-project"
                   value={newWsName}
                   onChange={(e) => setNewWsName(e.target.value)}
@@ -383,7 +388,7 @@ export const Workspaces = () => {
                       <Badge
                         className={
                           statusColors[ws.status] ||
-                          'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
+                          'bg-zinc-100 text-zinc-800 border-zinc-300'
                         }
                       >
                         {capitalize(ws.status)}
@@ -403,6 +408,7 @@ export const Workspaces = () => {
                             size="sm"
                             className="gap-1.5"
                             onClick={(e) => handleCopyPull(e, ws.name, ws.id)}
+                            aria-label={`Copy pull command for ${ws.name}`}
                             title="Copy nebi pull command"
                           >
                             {copiedPullId === ws.id ? (
@@ -425,6 +431,7 @@ export const Workspaces = () => {
                             });
                           }}
                           disabled={isDeletePending}
+                          aria-label={`Delete ${ws.name}`}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

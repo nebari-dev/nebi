@@ -11,6 +11,15 @@ on:
 permissions:
   contents: write
 
+# Serialize against the Release (GoReleaser) workflow, which fires on the same
+# v* tags and writes to the same GitHub release. Sharing one ref-keyed group
+# across both workflows means whichever starts first creates the release and
+# the other only appends its assets — eliminating the concurrent-create race.
+# cancel-in-progress: false so a queued run waits rather than being dropped.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Build (${{ matrix.os }})

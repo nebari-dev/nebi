@@ -1,10 +1,14 @@
-import { useEffect, useState, useRef } from 'react';
-import { useAuthStore } from '@/store/authStore';
+import { useEffect, useRef, useState } from 'react';
 import { getApiBaseUrl } from '@/lib/basePath';
+import { useAuthStore } from '@/store/authStore';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || getApiBaseUrl();
 
-export const useJobLogStream = (jobId: string, jobStatus: string, initialLogs: string = '') => {
+export const useJobLogStream = (
+  jobId: string,
+  jobStatus: string,
+  initialLogs: string = '',
+) => {
   const [logs, setLogs] = useState<string>(initialLogs);
   const [isStreaming, setIsStreaming] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);

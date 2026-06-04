@@ -1,6 +1,11 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { registriesApi } from '@/api/registries';
-import type { CreateRegistryRequest, UpdateRegistryRequest, PublishRequest, ImportEnvironmentRequest } from '@/types';
+import type {
+  CreateRegistryRequest,
+  ImportEnvironmentRequest,
+  PublishRequest,
+  UpdateRegistryRequest,
+} from '@/types';
 
 // Query hook for public registries (all authenticated users)
 export const usePublicRegistries = () => {
@@ -69,11 +74,18 @@ export const usePublishWorkspace = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ workspaceId, data }: { workspaceId: string; data: PublishRequest }) =>
-      registriesApi.publish(workspaceId, data),
+    mutationFn: ({
+      workspaceId,
+      data,
+    }: {
+      workspaceId: string;
+      data: PublishRequest;
+    }) => registriesApi.publish(workspaceId, data),
     onSuccess: (_, variables) => {
       // Invalidate publications for this workspace and jobs list
-      queryClient.invalidateQueries({ queryKey: ['publications', variables.workspaceId] });
+      queryClient.invalidateQueries({
+        queryKey: ['publications', variables.workspaceId],
+      });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
   });
@@ -102,16 +114,28 @@ export const useUpdatePublication = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ workspaceId, pubId, isPublic }: { workspaceId: string; pubId: string; isPublic: boolean }) =>
-      registriesApi.updatePublication(workspaceId, pubId, isPublic),
+    mutationFn: ({
+      workspaceId,
+      pubId,
+      isPublic,
+    }: {
+      workspaceId: string;
+      pubId: string;
+      isPublic: boolean;
+    }) => registriesApi.updatePublication(workspaceId, pubId, isPublic),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['publications', variables.workspaceId] });
+      queryClient.invalidateQueries({
+        queryKey: ['publications', variables.workspaceId],
+      });
     },
   });
 };
 
 // Query hook for registry repositories (browse)
-export const useRegistryRepositories = (registryId: string, search?: string) => {
+export const useRegistryRepositories = (
+  registryId: string,
+  search?: string,
+) => {
   return useQuery({
     queryKey: ['registries', registryId, 'repositories', search],
     queryFn: () => registriesApi.listRepositories(registryId, search),
@@ -133,8 +157,13 @@ export const useImportEnvironment = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ registryId, data }: { registryId: string; data: ImportEnvironmentRequest }) =>
-      registriesApi.importEnvironment(registryId, data),
+    mutationFn: ({
+      registryId,
+      data,
+    }: {
+      registryId: string;
+      data: ImportEnvironmentRequest;
+    }) => registriesApi.importEnvironment(registryId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspaces'] });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });

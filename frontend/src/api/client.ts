@@ -1,7 +1,7 @@
 import axios from 'axios';
+import { getApiBaseUrl, getBasePath } from '@/lib/basePath';
 import { queryClient } from '@/lib/queryClient';
 import { useModeStore } from '@/store/modeStore';
-import { getBasePath, getApiBaseUrl } from '@/lib/basePath';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || getApiBaseUrl();
 
@@ -21,7 +21,7 @@ apiClient.interceptors.request.use(
     }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => Promise.reject(error),
 );
 
 // Response interceptor for error handling
@@ -43,5 +43,5 @@ apiClient.interceptors.response.use(
       }
     }
     return Promise.reject(error);
-  }
+  },
 );

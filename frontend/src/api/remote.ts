@@ -1,17 +1,17 @@
-import { apiClient } from './client';
 import type {
-  RemoteServer,
-  ConnectServerRequest,
-  RemoteWorkspace,
-  RemoteWorkspaceVersion,
-  RemoteWorkspaceTag,
-  CreateRemoteWorkspaceRequest,
-  OCIRegistry,
-  Job,
-  User,
   AuditLog,
+  ConnectServerRequest,
+  CreateRemoteWorkspaceRequest,
   DashboardStats,
+  Job,
+  OCIRegistry,
+  RemoteServer,
+  RemoteWorkspace,
+  RemoteWorkspaceTag,
+  RemoteWorkspaceVersion,
+  User,
 } from '@/types';
+import { apiClient } from './client';
 
 export const remoteApi = {
   // Server connection management
@@ -56,20 +56,28 @@ export const remoteApi = {
   },
 
   getVersionPixiToml: async (id: string, version: number): Promise<string> => {
-    const { data } = await apiClient.get(`/remote/workspaces/${id}/versions/${version}/pixi-toml`, {
-      responseType: 'text',
-    });
+    const { data } = await apiClient.get(
+      `/remote/workspaces/${id}/versions/${version}/pixi-toml`,
+      {
+        responseType: 'text',
+      },
+    );
     return data;
   },
 
   getVersionPixiLock: async (id: string, version: number): Promise<string> => {
-    const { data } = await apiClient.get(`/remote/workspaces/${id}/versions/${version}/pixi-lock`, {
-      responseType: 'text',
-    });
+    const { data } = await apiClient.get(
+      `/remote/workspaces/${id}/versions/${version}/pixi-lock`,
+      {
+        responseType: 'text',
+      },
+    );
     return data;
   },
 
-  createWorkspace: async (req: CreateRemoteWorkspaceRequest): Promise<RemoteWorkspace> => {
+  createWorkspace: async (
+    req: CreateRemoteWorkspaceRequest,
+  ): Promise<RemoteWorkspace> => {
     const { data } = await apiClient.post('/remote/workspaces', req);
     return data;
   },
@@ -101,8 +109,13 @@ export const remoteApi = {
     return data;
   },
 
-  listAuditLogs: async (params?: { user_id?: string; action?: string }): Promise<AuditLog[]> => {
-    const { data } = await apiClient.get('/remote/admin/audit-logs', { params });
+  listAuditLogs: async (params?: {
+    user_id?: string;
+    action?: string;
+  }): Promise<AuditLog[]> => {
+    const { data } = await apiClient.get('/remote/admin/audit-logs', {
+      params,
+    });
     return data;
   },
 

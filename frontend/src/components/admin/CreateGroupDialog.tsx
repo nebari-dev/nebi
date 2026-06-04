@@ -1,8 +1,14 @@
-import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-react';
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { useCreateGroup } from '@/hooks/useGroups';
 
 export const CreateGroupDialog = () => {
@@ -21,7 +27,9 @@ export const CreateGroupDialog = () => {
       setDescription('');
       setOpen(false);
     } catch (err) {
-      const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to create group';
+      const message =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error ?? 'Failed to create group';
       setError(message);
     }
   };
@@ -39,18 +47,43 @@ export const CreateGroupDialog = () => {
           <DialogTitle>Create New Group</DialogTitle>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
-          {error && <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-3 py-2 rounded text-sm">{error}</div>}
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-3 py-2 rounded text-sm">
+              {error}
+            </div>
+          )}
           <div className="space-y-2">
-            <label htmlFor="grp-name" className="text-sm font-medium">Name</label>
-            <Input id="grp-name" required value={name} onChange={(e) => setName(e.target.value)} />
+            <label htmlFor="grp-name" className="text-sm font-medium">
+              Name
+            </label>
+            <Input
+              id="grp-name"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
           </div>
           <div className="space-y-2">
-            <label htmlFor="grp-desc" className="text-sm font-medium">Description</label>
-            <Input id="grp-desc" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <label htmlFor="grp-desc" className="text-sm font-medium">
+              Description
+            </label>
+            <Input
+              id="grp-desc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
           </div>
           <div className="flex gap-2 justify-end pt-4">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="submit" disabled={createMutation.isPending}>Create</Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={createMutation.isPending}>
+              Create
+            </Button>
           </div>
         </form>
       </DialogContent>

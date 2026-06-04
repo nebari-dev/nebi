@@ -1,7 +1,12 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Loader2, Copy, Download } from 'lucide-react';
+import { Copy, Download, Loader2 } from 'lucide-react';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface FileViewerDialogProps {
   open: boolean;
@@ -77,9 +82,7 @@ export const FileViewerDialog = ({
           )}
         </div>
 
-        <div className="text-xs text-muted-foreground">
-          {fileName}
-        </div>
+        <div className="text-xs text-muted-foreground">{fileName}</div>
       </DialogContent>
     </Dialog>
   );

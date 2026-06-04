@@ -1,5 +1,12 @@
+import type {
+  CreateWorkspaceRequest,
+  Job,
+  RollbackRequest,
+  Workspace,
+  WorkspaceTag,
+  WorkspaceVersion,
+} from '@/types';
 import { apiClient } from './client';
-import type { Workspace, CreateWorkspaceRequest, WorkspaceVersion, RollbackRequest, Job, WorkspaceTag } from '@/types';
 
 export const workspacesApi = {
   list: async (): Promise<Workspace[]> => {
@@ -32,22 +39,39 @@ export const workspacesApi = {
     return data;
   },
 
-  getVersion: async (id: string, versionNumber: number): Promise<WorkspaceVersion> => {
-    const { data } = await apiClient.get(`/workspaces/${id}/versions/${versionNumber}`);
+  getVersion: async (
+    id: string,
+    versionNumber: number,
+  ): Promise<WorkspaceVersion> => {
+    const { data } = await apiClient.get(
+      `/workspaces/${id}/versions/${versionNumber}`,
+    );
     return data;
   },
 
-  downloadLockFile: async (id: string, versionNumber: number): Promise<string> => {
-    const { data } = await apiClient.get(`/workspaces/${id}/versions/${versionNumber}/pixi-lock`, {
-      responseType: 'text'
-    });
+  downloadLockFile: async (
+    id: string,
+    versionNumber: number,
+  ): Promise<string> => {
+    const { data } = await apiClient.get(
+      `/workspaces/${id}/versions/${versionNumber}/pixi-lock`,
+      {
+        responseType: 'text',
+      },
+    );
     return data;
   },
 
-  downloadManifest: async (id: string, versionNumber: number): Promise<string> => {
-    const { data } = await apiClient.get(`/workspaces/${id}/versions/${versionNumber}/pixi-toml`, {
-      responseType: 'text'
-    });
+  downloadManifest: async (
+    id: string,
+    versionNumber: number,
+  ): Promise<string> => {
+    const { data } = await apiClient.get(
+      `/workspaces/${id}/versions/${versionNumber}/pixi-toml`,
+      {
+        responseType: 'text',
+      },
+    );
     return data;
   },
 

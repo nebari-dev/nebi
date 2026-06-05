@@ -1,5 +1,17 @@
+import type {
+  CreateRegistryRequest,
+  ImportEnvironmentRequest,
+  Job,
+  OCIRegistry,
+  Publication,
+  PublishDefaults,
+  PublishRequest,
+  RegistryRepository,
+  RegistryTag,
+  UpdateRegistryRequest,
+  Workspace,
+} from '@/types';
 import { apiClient } from './client';
-import type { OCIRegistry, CreateRegistryRequest, UpdateRegistryRequest, Publication, PublishDefaults, PublishRequest, Job, RegistryRepository, RegistryTag, ImportEnvironmentRequest, Workspace } from '@/types';
 
 export const registriesApi = {
   // Public endpoints (for all authenticated users)
@@ -24,7 +36,10 @@ export const registriesApi = {
     return data;
   },
 
-  update: async (id: string, req: UpdateRegistryRequest): Promise<OCIRegistry> => {
+  update: async (
+    id: string,
+    req: UpdateRegistryRequest,
+  ): Promise<OCIRegistry> => {
     const { data } = await apiClient.put(`/admin/registries/${id}`, req);
     return data;
   },
@@ -35,39 +50,70 @@ export const registriesApi = {
 
   // Publishing endpoints (require write permission on workspace)
   getPublishDefaults: async (workspaceId: string): Promise<PublishDefaults> => {
-    const { data } = await apiClient.get(`/workspaces/${workspaceId}/publish-defaults`);
+    const { data } = await apiClient.get(
+      `/workspaces/${workspaceId}/publish-defaults`,
+    );
     return data;
   },
 
   publish: async (workspaceId: string, req: PublishRequest): Promise<Job> => {
-    const { data } = await apiClient.post(`/workspaces/${workspaceId}/publish`, req);
+    const { data } = await apiClient.post(
+      `/workspaces/${workspaceId}/publish`,
+      req,
+    );
     return data;
   },
 
   listPublications: async (workspaceId: string): Promise<Publication[]> => {
-    const { data } = await apiClient.get(`/workspaces/${workspaceId}/publications`);
+    const { data } = await apiClient.get(
+      `/workspaces/${workspaceId}/publications`,
+    );
     return data;
   },
 
-  updatePublication: async (workspaceId: string, pubId: string, isPublic: boolean): Promise<Publication> => {
-    const { data } = await apiClient.patch(`/workspaces/${workspaceId}/publications/${pubId}`, { is_public: isPublic });
+  updatePublication: async (
+    workspaceId: string,
+    pubId: string,
+    isPublic: boolean,
+  ): Promise<Publication> => {
+    const { data } = await apiClient.patch(
+      `/workspaces/${workspaceId}/publications/${pubId}`,
+      { is_public: isPublic },
+    );
     return data;
   },
 
   // Browse endpoints (for all authenticated users)
-  listRepositories: async (registryId: string, search?: string): Promise<{ repositories: RegistryRepository[]; fallback: boolean }> => {
+  listRepositories: async (
+    registryId: string,
+    search?: string,
+  ): Promise<{ repositories: RegistryRepository[]; fallback: boolean }> => {
     const params = search ? { search } : {};
-    const { data } = await apiClient.get(`/registries/${registryId}/repositories`, { params });
+    const { data } = await apiClient.get(
+      `/registries/${registryId}/repositories`,
+      { params },
+    );
     return data;
   },
 
-  listTags: async (registryId: string, repo: string): Promise<{ tags: RegistryTag[] }> => {
-    const { data } = await apiClient.get(`/registries/${registryId}/tags`, { params: { repo } });
+  listTags: async (
+    registryId: string,
+    repo: string,
+  ): Promise<{ tags: RegistryTag[] }> => {
+    const { data } = await apiClient.get(`/registries/${registryId}/tags`, {
+      params: { repo },
+    });
     return data;
   },
 
-  importEnvironment: async (registryId: string, req: ImportEnvironmentRequest): Promise<Workspace> => {
-    const { data } = await apiClient.post(`/registries/${registryId}/import`, req);
+  importEnvironment: async (
+    registryId: string,
+    req: ImportEnvironmentRequest,
+  ): Promise<Workspace> => {
+    const { data } = await apiClient.post(
+      `/registries/${registryId}/import`,
+      req,
+    );
     return data;
   },
 };

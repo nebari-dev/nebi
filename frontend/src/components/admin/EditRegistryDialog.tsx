@@ -1,9 +1,14 @@
-import { useState, useEffect } from 'react';
-import { useUpdateRegistry } from '@/hooks/useRegistries';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { useUpdateRegistry } from '@/hooks/useRegistries';
 import type { OCIRegistry } from '@/types';
 
 interface EditRegistryDialogProps {
@@ -12,7 +17,11 @@ interface EditRegistryDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistryDialogProps) => {
+export const EditRegistryDialog = ({
+  registry,
+  open,
+  onOpenChange,
+}: EditRegistryDialogProps) => {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [username, setUsername] = useState('');
@@ -58,7 +67,9 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
       setError('');
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage = error?.response?.data?.error || 'Failed to update registry. Please try again.';
+      const errorMessage =
+        error?.response?.data?.error ||
+        'Failed to update registry. Please try again.';
       setError(errorMessage);
       console.error('Failed to update registry:', err);
     }
@@ -72,7 +83,9 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Registry</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Registry
+            </h3>
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Name</label>
@@ -119,7 +132,10 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
                 onChange={(e) => setIsDefault(e.target.checked)}
                 className="h-4 w-4 rounded border-input"
               />
-              <label htmlFor="edit_is_default" className="text-sm font-medium cursor-pointer">
+              <label
+                htmlFor="edit_is_default"
+                className="text-sm font-medium cursor-pointer"
+              >
                 Set as default registry
               </label>
             </div>
@@ -127,13 +143,18 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
 
           <div className="border-t pt-4 mt-4 space-y-4">
             <div>
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Authentication</h3>
-              <p className="text-xs text-muted-foreground mt-1">Optional — needed for private repositories and publishing</p>
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Authentication
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Optional — needed for private repositories and publishing
+              </p>
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                Username <span className="text-muted-foreground">(optional)</span>
+                Username{' '}
+                <span className="text-muted-foreground">(optional)</span>
               </label>
               <Input
                 type="text"
@@ -145,7 +166,10 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
 
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                Password/Token <span className="text-muted-foreground">(leave blank to keep current)</span>
+                Password/Token{' '}
+                <span className="text-muted-foreground">
+                  (leave blank to keep current)
+                </span>
               </label>
               <Input
                 type="password"
@@ -157,7 +181,10 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
 
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                API Token <span className="text-muted-foreground">(leave blank to keep current)</span>
+                API Token{' '}
+                <span className="text-muted-foreground">
+                  (leave blank to keep current)
+                </span>
               </label>
               <Input
                 type="password"
@@ -166,7 +193,8 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
                 placeholder="Leave blank to keep current token"
               />
               <p className="text-xs text-muted-foreground">
-                For Quay.io: an OAuth Application Token to list private repositories.
+                For Quay.io: an OAuth Application Token to list private
+                repositories.
                 {registry.has_api_token && ' A token is currently configured.'}
               </p>
             </div>
@@ -179,7 +207,11 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
           )}
 
           <div className="flex gap-2 justify-end pt-4">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={updateMutation.isPending}>

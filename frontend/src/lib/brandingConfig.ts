@@ -75,7 +75,9 @@ const toCssVariableName = (tokenName: string): string | undefined => {
   return `--color-${kebabCase}`;
 };
 
-const sanitizeBrandingThemeTokens = (tokens: unknown): BrandingThemeTokens | undefined => {
+const sanitizeBrandingThemeTokens = (
+  tokens: unknown,
+): BrandingThemeTokens | undefined => {
   if (typeof tokens !== 'object' || tokens === null || Array.isArray(tokens)) {
     return undefined;
   }
@@ -87,7 +89,9 @@ const sanitizeBrandingThemeTokens = (tokens: unknown): BrandingThemeTokens | und
     return a < b ? -1 : 1;
   };
   // Sort keys to keep generated CSS deterministic across runs/environments.
-  const tokenEntries = Object.entries(tokens).sort(([a], [b]) => compareKeys(a, b));
+  const tokenEntries = Object.entries(tokens).sort(([a], [b]) =>
+    compareKeys(a, b),
+  );
   const sanitizedEntries: Array<[string, string]> = [];
   for (const [tokenName, value] of tokenEntries) {
     const normalizedValue = normalizeString(value);
@@ -110,19 +114,29 @@ const sanitizeBrandingThemeTokens = (tokens: unknown): BrandingThemeTokens | und
 };
 
 const sanitizeBrandingConfig = (rawConfig: unknown): RuntimeBrandingConfig => {
-  if (typeof rawConfig !== 'object' || rawConfig === null || Array.isArray(rawConfig)) {
+  if (
+    typeof rawConfig !== 'object' ||
+    rawConfig === null ||
+    Array.isArray(rawConfig)
+  ) {
     return {};
   }
 
   const configObj = rawConfig as Record<string, unknown>;
-  if (typeof configObj.branding !== 'object' || configObj.branding === null || Array.isArray(configObj.branding)) {
+  if (
+    typeof configObj.branding !== 'object' ||
+    configObj.branding === null ||
+    Array.isArray(configObj.branding)
+  ) {
     return {};
   }
 
   const rawBranding = configObj.branding as Record<string, unknown>;
   const rawTheme = rawBranding.theme;
   const themeObject =
-    typeof rawTheme === 'object' && rawTheme !== null && !Array.isArray(rawTheme)
+    typeof rawTheme === 'object' &&
+    rawTheme !== null &&
+    !Array.isArray(rawTheme)
       ? (rawTheme as Record<string, unknown>)
       : undefined;
   const light = sanitizeBrandingThemeTokens(themeObject?.light);
@@ -130,23 +144,30 @@ const sanitizeBrandingConfig = (rawConfig: unknown): RuntimeBrandingConfig => {
   const title = normalizeString(rawBranding.title);
   const logoUrl = normalizeString(rawBranding.logoUrl);
   const faviconUrl = normalizeString(rawBranding.faviconUrl);
-  const branding = title || logoUrl || faviconUrl || light || dark
-    ? {
-        title,
-        logoUrl: logoUrl && isSafeAssetUrl(logoUrl) ? logoUrl : undefined,
-        faviconUrl: faviconUrl && isSafeAssetUrl(faviconUrl) ? faviconUrl : undefined,
-        theme: light || dark ? { light, dark } : undefined,
-      }
-    : undefined;
+  const branding =
+    title || logoUrl || faviconUrl || light || dark
+      ? {
+          title,
+          logoUrl: logoUrl && isSafeAssetUrl(logoUrl) ? logoUrl : undefined,
+          faviconUrl:
+            faviconUrl && isSafeAssetUrl(faviconUrl) ? faviconUrl : undefined,
+          theme: light || dark ? { light, dark } : undefined,
+        }
+      : undefined;
 
   return branding ? { branding } : {};
 };
 
-const buildCssBlock = (selector: ':root' | '.dark', tokens?: BrandingThemeTokens): string => {
+const buildCssBlock = (
+  selector: ':root' | '.dark',
+  tokens?: BrandingThemeTokens,
+): string => {
   if (!tokens) {
     return '';
   }
-  const lines = Object.entries(tokens).map(([tokenName, value]) => `  ${tokenName}: ${value};`);
+  const lines = Object.entries(tokens).map(
+    ([tokenName, value]) => `  ${tokenName}: ${value};`,
+  );
   if (lines.length === 0) {
     return '';
   }
@@ -154,7 +175,8 @@ const buildCssBlock = (selector: ':root' | '.dark', tokens?: BrandingThemeTokens
 };
 
 const applyBrandingThemeStyles = (theme?: BrandingConfig['theme']): void => {
-  const css = `${buildCssBlock(':root', theme?.light)}${buildCssBlock('.dark', theme?.dark)}`.trim();
+  const css =
+    `${buildCssBlock(':root', theme?.light)}${buildCssBlock('.dark', theme?.dark)}`.trim();
   const existingStyle = document.getElementById(BRANDING_STYLE_ID);
 
   if (!css) {
@@ -179,7 +201,8 @@ const applyFavicon = (faviconUrl: string): void => {
     link.href = resolvedUrl;
   }
 
-  const fallbackLink = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+  const fallbackLink =
+    document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
   if (!fallbackLink) {
     const link = document.createElement('link');
     link.rel = 'icon';

@@ -34,10 +34,14 @@ describe('brandingConfig', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { loadBrandingConfig, getBrandingLogoUrl } = await import('./brandingConfig');
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import(
+      './brandingConfig'
+    );
     const config = await loadBrandingConfig();
 
-    expect(fetchMock).toHaveBeenCalledWith('/public/config.json', { cache: 'no-store' });
+    expect(fetchMock).toHaveBeenCalledWith('/public/config.json', {
+      cache: 'no-store',
+    });
     expect(document.title).toBe('Acme Nebi');
     expect(getBrandingLogoUrl()).toBe('/assets/acme-logo.svg');
     expect(config.branding?.title).toBe('Acme Nebi');
@@ -65,10 +69,14 @@ describe('brandingConfig', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { loadBrandingConfig, getBrandingLogoUrl } = await import('./brandingConfig');
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import(
+      './brandingConfig'
+    );
     await loadBrandingConfig();
 
-    expect(fetchMock).toHaveBeenCalledWith('/nebi/public/config.json', { cache: 'no-store' });
+    expect(fetchMock).toHaveBeenCalledWith('/nebi/public/config.json', {
+      cache: 'no-store',
+    });
     expect(getBrandingLogoUrl()).toBe('/nebi/brand/logo.svg');
 
     const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
@@ -76,11 +84,15 @@ describe('brandingConfig', () => {
   });
 
   it('falls back to defaults when config cannot be loaded', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
     const fetchMock = vi.fn().mockRejectedValue(new Error('boom'));
     vi.stubGlobal('fetch', fetchMock);
 
-    const { loadBrandingConfig, getBrandingLogoUrl } = await import('./brandingConfig');
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import(
+      './brandingConfig'
+    );
     const config = await loadBrandingConfig();
 
     expect(config).toEqual({});
@@ -102,7 +114,9 @@ describe('brandingConfig', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { loadBrandingConfig, getBrandingLogoUrl } = await import('./brandingConfig');
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import(
+      './brandingConfig'
+    );
     await loadBrandingConfig();
 
     expect(getBrandingLogoUrl()).toBe('/nebi-logo.svg');
@@ -123,7 +137,9 @@ describe('brandingConfig', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { loadBrandingConfig, getBrandingLogoUrl } = await import('./brandingConfig');
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import(
+      './brandingConfig'
+    );
     await loadBrandingConfig();
 
     expect(getBrandingLogoUrl()).toBe('/nebi-logo.svg');

@@ -35,6 +35,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
+      - name: Compute version
+        id: version
+        # git describe matches the format internal/api/handlers/version.go parses
+        # (e.g. v0.12-rc3-4-ge8f6759 -> 0.12-rc3.dev+e8f6759). fetch-depth: 0 above
+        # makes tags available. Without this the image bakes VERSION=dev and the
+        # UI shows "vdev".
+        run: echo "version=$(git describe --tags --always --dirty)" >> "$GITHUB_OUTPUT"
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
@@ -65,6 +73,8 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
@@ -101,6 +111,17 @@ jobs:
 
           # Test health endpoint from host (pixi image has no wget/curl)
           curl -sf http://localhost:8460/api/v1/health || exit 1
+
+          # Guard: the image must report a real version, not the "dev" default.
+          # Catches a dropped VERSION build-arg (the bug that made the UI show "vdev").
+          VERSION_JSON=$(curl -sf http://localhost:8460/api/v1/version)
+          echo "Version endpoint: ${VERSION_JSON}"
+          REPORTED=$(echo "${VERSION_JSON}" | python3 -c 'import sys,json; print(json.load(sys.stdin)["version"])')
+          echo "Reported version: ${REPORTED}"
+          if [ "${REPORTED}" = "dev" ] || [ -z "${REPORTED}" ]; then
+            echo "ERROR: image reports version '${REPORTED}' — VERSION build-arg was not injected"
+            exit 1
+          fi
 
           # Cleanup
           docker stop test-nebi

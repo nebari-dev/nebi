@@ -9,6 +9,12 @@ permissions:
   contents: write
   id-token: write
 
+# Shares a ref-keyed concurrency group with the Desktop App workflow so the two
+# don't race to create the same GitHub release for a v* tag. See desktop.yml.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   goreleaser:
     runs-on: ubuntu-latest

@@ -1,11 +1,26 @@
-import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Trash2, UserPlus } from 'lucide-react';
-import { SelectRoot, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select-v2';
-import { useGroupMembers, useAddGroupMember, useRemoveGroupMember } from '@/hooks/useGroups';
+import { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  SelectContent,
+  SelectItem,
+  SelectRoot,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select-v2';
 import { useUsers } from '@/hooks/useAdmin';
+import {
+  useAddGroupMember,
+  useGroupMembers,
+  useRemoveGroupMember,
+} from '@/hooks/useGroups';
 import type { GroupWithMemberCount } from '@/types/models';
 
 interface Props {
@@ -35,8 +50,8 @@ export const GroupMembersDialog = ({ group, open, onOpenChange }: Props) => {
       setSelectedUser('');
     } catch (err) {
       setError(
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
-          'Failed to add member',
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error ?? 'Failed to add member',
       );
     }
   };
@@ -47,8 +62,8 @@ export const GroupMembersDialog = ({ group, open, onOpenChange }: Props) => {
       await removeMutation.mutateAsync({ id: group.id, userId });
     } catch (err) {
       setError(
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
-          'Failed to remove member',
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error ?? 'Failed to remove member',
       );
     }
   };
@@ -61,7 +76,10 @@ export const GroupMembersDialog = ({ group, open, onOpenChange }: Props) => {
             <span className="flex items-center gap-2">
               {group.name}
               {isOIDC && (
-                <Badge variant="outline" className="border-blue-500/40 text-blue-500">
+                <Badge
+                  variant="outline"
+                  className="border-blue-500/40 text-blue-500"
+                >
                   OIDC-synced
                 </Badge>
               )}
@@ -83,11 +101,18 @@ export const GroupMembersDialog = ({ group, open, onOpenChange }: Props) => {
             ) : members && members.length > 0 ? (
               <ul className="divide-y border rounded">
                 {members.map((m) => (
-                  <li key={m.user_id} className="flex items-center justify-between p-2">
+                  <li
+                    key={m.user_id}
+                    className="flex items-center justify-between p-2"
+                  >
                     <div>
-                      <div className="font-medium text-sm">{m.user?.username ?? m.user_id}</div>
+                      <div className="font-medium text-sm">
+                        {m.user?.username ?? m.user_id}
+                      </div>
                       {m.user?.email && (
-                        <div className="text-xs text-muted-foreground">{m.user.email}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {m.user.email}
+                        </div>
                       )}
                     </div>
                     {!isOIDC && (
@@ -112,7 +137,10 @@ export const GroupMembersDialog = ({ group, open, onOpenChange }: Props) => {
             <div className="space-y-2">
               <h3 className="text-sm font-medium">Add member</h3>
               <div className="flex gap-2">
-                <SelectRoot value={selectedUser} onValueChange={setSelectedUser}>
+                <SelectRoot
+                  value={selectedUser}
+                  onValueChange={setSelectedUser}
+                >
                   <SelectTrigger className="flex-1">
                     <SelectValue placeholder="Select a user" />
                   </SelectTrigger>
@@ -124,7 +152,10 @@ export const GroupMembersDialog = ({ group, open, onOpenChange }: Props) => {
                     ))}
                   </SelectContent>
                 </SelectRoot>
-                <Button onClick={handleAdd} disabled={!selectedUser || addMutation.isPending}>
+                <Button
+                  onClick={handleAdd}
+                  disabled={!selectedUser || addMutation.isPending}
+                >
                   <UserPlus className="h-4 w-4 mr-1" /> Add
                 </Button>
               </div>

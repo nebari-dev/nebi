@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuthStore } from '@/store/authStore';
-import { useModeStore } from '@/store/modeStore';
 import { authApi } from '@/api/auth';
-import { getBasePath, getApiBaseUrl } from '@/lib/basePath';
+import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { apiClient } from '@/api/client';
+import { getApiBaseUrl, getBasePath } from '@/lib/basePath';
 import { getBrandingLogoUrl } from '@/lib/brandingConfig';
+import { useAuthStore } from '@/store/authStore';
+import { useModeStore } from '@/store/modeStore';
 
 export const Login = () => {
   const [username, setUsername] = useState('');
@@ -69,7 +69,9 @@ export const Login = () => {
       const exchangeCode = async () => {
         try {
           setLoading(true);
-          const { data } = await apiClient.post('/auth/code/exchange', { code });
+          const { data } = await apiClient.post('/auth/code/exchange', {
+            code,
+          });
           setAuth(data.token, data.user);
           navigate('/');
         } catch {
@@ -158,12 +160,16 @@ export const Login = () => {
               <div className="w-full border-t border-gray-300"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">Or continue with</span>
+              <span className="px-2 bg-white text-gray-500">
+                Or continue with
+              </span>
             </div>
           </div>
 
           <Button
-            onClick={() => window.location.href = `${getApiBaseUrl()}/auth/oidc/login`}
+            onClick={() =>
+              (window.location.href = `${getApiBaseUrl()}/auth/oidc/login`)
+            }
             variant="outline"
             className="w-full h-12 text-base font-medium"
           >

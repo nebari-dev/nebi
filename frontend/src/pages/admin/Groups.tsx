@@ -1,18 +1,20 @@
+import { Trash2, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Users, Trash2 } from 'lucide-react';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { CreateGroupDialog } from '@/components/admin/CreateGroupDialog';
 import { GroupMembersDialog } from '@/components/admin/GroupMembersDialog';
-import { useGroups, useDeleteGroup } from '@/hooks/useGroups';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useDeleteGroup, useGroups } from '@/hooks/useGroups';
 import type { GroupWithMemberCount } from '@/types/models';
 
 export const Groups = () => {
   const { data: groups, isLoading } = useGroups();
   const deleteMutation = useDeleteGroup();
-  const [confirm, setConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [confirm, setConfirm] = useState<{ id: string; name: string } | null>(
+    null,
+  );
   const [membersOf, setMembersOf] = useState<GroupWithMemberCount | null>(null);
   const [error, setError] = useState('');
 
@@ -25,7 +27,10 @@ export const Groups = () => {
       await deleteMutation.mutateAsync(confirm.id);
       setConfirm(null);
     } catch (err) {
-      setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to delete group');
+      setError(
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error ?? 'Failed to delete group',
+      );
     }
   };
 
@@ -42,15 +47,21 @@ export const Groups = () => {
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded">{error}</div>
+        <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded">
+          {error}
+        </div>
       )}
 
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Loading…</div>
+            <div className="p-8 text-center text-muted-foreground">
+              Loading…
+            </div>
           ) : rows.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">No groups yet.</div>
+            <div className="p-8 text-center text-muted-foreground">
+              No groups yet.
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -66,11 +77,23 @@ export const Groups = () => {
                 </thead>
                 <tbody>
                   {rows.map((g) => (
-                    <tr key={g.id} className="border-b last:border-0 hover:bg-muted/50">
+                    <tr
+                      key={g.id}
+                      className="border-b last:border-0 hover:bg-muted/50"
+                    >
                       <td className="p-4 font-medium">{g.name}</td>
-                      <td className="p-4 text-sm text-muted-foreground">{g.description}</td>
+                      <td className="p-4 text-sm text-muted-foreground">
+                        {g.description}
+                      </td>
                       <td className="p-4">
-                        <Badge variant="outline" className={g.source === 'oidc' ? 'border-blue-500/40 text-blue-500' : ''}>
+                        <Badge
+                          variant="outline"
+                          className={
+                            g.source === 'oidc'
+                              ? 'border-blue-500/40 text-blue-500'
+                              : ''
+                          }
+                        >
                           {g.source}
                         </Badge>
                       </td>
@@ -91,9 +114,15 @@ export const Groups = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            title={g.source === 'oidc' ? 'OIDC groups cannot be deleted' : 'Delete group'}
+                            title={
+                              g.source === 'oidc'
+                                ? 'OIDC groups cannot be deleted'
+                                : 'Delete group'
+                            }
                             disabled={g.source === 'oidc'}
-                            onClick={() => setConfirm({ id: g.id, name: g.name })}
+                            onClick={() =>
+                              setConfirm({ id: g.id, name: g.name })
+                            }
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { FileCode, Loader2, Plus, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Plus, Trash2, FileCode, Loader2 } from 'lucide-react';
 
 interface Package {
   name: string;
@@ -19,8 +19,8 @@ interface PixiTomlEditorProps {
 
 const buildPixiToml = (packages: Package[], wsName: string): string => {
   const dependenciesLines = packages
-    .filter(pkg => pkg.name.trim())
-    .map(pkg => {
+    .filter((pkg) => pkg.name.trim())
+    .map((pkg) => {
       if (pkg.version.trim()) {
         return `${pkg.name} = "${pkg.version}"`;
       }
@@ -58,7 +58,10 @@ const parsePixiTomlDependencies = (toml: string): Package[] => {
     if (inDependencies && trimmed && !trimmed.startsWith('#')) {
       const match = trimmed.match(/^([^\s=]+)\s*=\s*"([^"]*)"$/);
       if (match) {
-        packages.push({ name: match[1], version: match[2] === '*' ? '' : match[2] });
+        packages.push({
+          name: match[1],
+          version: match[2] === '*' ? '' : match[2],
+        });
       }
     }
   }
@@ -66,9 +69,16 @@ const parsePixiTomlDependencies = (toml: string): Package[] => {
   return packages;
 };
 
-export const PixiTomlEditor = ({ tomlValue, onTomlChange, workspaceName, onReloadToml }: PixiTomlEditorProps) => {
+export const PixiTomlEditor = ({
+  tomlValue,
+  onTomlChange,
+  workspaceName,
+  onReloadToml,
+}: PixiTomlEditorProps) => {
   const [mode, setMode] = useState<'ui' | 'toml'>('toml');
-  const [packages, setPackages] = useState<Package[]>([{ name: 'python', version: '>=3.11' }]);
+  const [packages, setPackages] = useState<Package[]>([
+    { name: 'python', version: '>=3.11' },
+  ]);
   const [newPackageName, setNewPackageName] = useState('');
   const [newPackageVersion, setNewPackageVersion] = useState('');
   const [initialized, setInitialized] = useState(false);
@@ -133,7 +143,10 @@ export const PixiTomlEditor = ({ tomlValue, onTomlChange, workspaceName, onReloa
 
   const handleAddPackage = () => {
     if (!newPackageName.trim()) return;
-    const updated = [...packages, { name: newPackageName.trim(), version: newPackageVersion.trim() }];
+    const updated = [
+      ...packages,
+      { name: newPackageName.trim(), version: newPackageVersion.trim() },
+    ];
     setPackages(updated);
     setDirty(true);
     setNewPackageName('');
@@ -177,7 +190,11 @@ export const PixiTomlEditor = ({ tomlValue, onTomlChange, workspaceName, onReloa
           disabled={switching}
           className="gap-2"
         >
-          {switching ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCode className="h-4 w-4" />}
+          {switching ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <FileCode className="h-4 w-4" />
+          )}
           TOML Mode
         </Button>
         <Button
@@ -196,13 +213,17 @@ export const PixiTomlEditor = ({ tomlValue, onTomlChange, workspaceName, onReloa
       {mode === 'ui' ? (
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium block pt-2 pb-0">Packages</label>
+            <label className="text-sm font-medium block pt-2 pb-0">
+              Packages
+            </label>
             <div className="border rounded-lg overflow-hidden">
               <table className="w-full">
                 <thead className="bg-muted/50 border-b">
                   <tr>
                     <th className="text-left p-3 text-sm font-medium">Name</th>
-                    <th className="text-left p-3 text-sm font-medium">Version Constraint</th>
+                    <th className="text-left p-3 text-sm font-medium">
+                      Version Constraint
+                    </th>
                     <th className="w-16"></th>
                   </tr>
                 </thead>
@@ -268,12 +289,15 @@ export const PixiTomlEditor = ({ tomlValue, onTomlChange, workspaceName, onReloa
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Add packages with optional version constraints (e.g., {'>'}=1.24.0, ~=2.0.0, 3.11.*)
+            Add packages with optional version constraints (e.g., {'>'}=1.24.0,
+            ~=2.0.0, 3.11.*)
           </p>
         </div>
       ) : (
         <div className="space-y-2">
-          <label className="text-sm font-medium block pt-2 pb-0">pixi.toml Configuration</label>
+          <label className="text-sm font-medium block pt-2 pb-0">
+            pixi.toml Configuration
+          </label>
           <Textarea
             placeholder="Enter your pixi.toml content"
             value={tomlValue}

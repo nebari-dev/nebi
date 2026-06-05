@@ -1,11 +1,15 @@
-import { useState } from 'react';
-import { useRemoteServer, useConnectServer, useDisconnectServer } from '@/hooks/useRemote';
-import { useViewModeStore } from '@/store/viewModeStore';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Loader2, Wifi, WifiOff } from 'lucide-react';
+import { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import {
+  useConnectServer,
+  useDisconnectServer,
+  useRemoteServer,
+} from '@/hooks/useRemote';
+import { useViewModeStore } from '@/store/viewModeStore';
 
 export const Settings = () => {
   const { data: serverStatus, isLoading } = useRemoteServer();
@@ -40,7 +44,9 @@ export const Settings = () => {
       setViewMode('local'); // Switch back to local view on disconnect
     } catch (err: unknown) {
       const apiError = err as { response?: { data?: { error?: string } } };
-      setError(apiError.response?.data?.error || 'Failed to disconnect from server');
+      setError(
+        apiError.response?.data?.error || 'Failed to disconnect from server',
+      );
     }
   };
 
@@ -57,10 +63,10 @@ export const Settings = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold flex items-center gap-3">
-          Settings
-        </h1>
-        <p className="text-muted-foreground">Configure your local Nebi instance</p>
+        <h1 className="text-3xl font-bold flex items-center gap-3">Settings</h1>
+        <p className="text-muted-foreground">
+          Configure your local Nebi instance
+        </p>
       </div>
 
       {error && (
@@ -94,11 +100,15 @@ export const Settings = () => {
             <div className="space-y-4">
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-muted-foreground w-24">Server URL</span>
+                  <span className="text-sm font-medium text-muted-foreground w-24">
+                    Server URL
+                  </span>
                   <span className="text-sm font-mono">{serverStatus?.url}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-muted-foreground w-24">Username</span>
+                  <span className="text-sm font-medium text-muted-foreground w-24">
+                    Username
+                  </span>
                   <span className="text-sm">{serverStatus?.username}</span>
                 </div>
               </div>
@@ -122,7 +132,8 @@ export const Settings = () => {
           ) : (
             <form onSubmit={handleConnect} className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Connect to a remote Nebi server to sync workspaces and access shared resources.
+                Connect to a remote Nebi server to sync workspaces and access
+                shared resources.
               </p>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Server URL</label>

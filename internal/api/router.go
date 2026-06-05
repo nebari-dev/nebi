@@ -510,11 +510,17 @@ func loggingMiddleware() gin.HandlerFunc {
 	}
 }
 
-// corsMiddleware adds CORS headers
+// corsMiddleware adds CORS headers.
+//
+// The API is reached with a bearer Authorization header (CLI and the
+// same-origin SPA), never with cross-origin cookies, so we do not set
+// Access-Control-Allow-Credentials. A credentialed response is required by the
+// CORS spec to name an explicit origin, and combining it with the "*" wildcard
+// is invalid: browsers reject any such response, which in turn blocks the SPA's
+// <script type="module" crossorigin> bundle from loading.
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		// Prevent WebView (WKWebView) from caching API responses,

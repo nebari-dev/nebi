@@ -48,13 +48,12 @@ export const Login = () => {
     setSessionChecked(true);
   }, [isLocalMode, searchParams]);
 
-  // Don't render login form in local mode
-  if (isLocalMode) return null;
-
   // Exchange single-use authorization code for JWT.
   // Used by both gateway auto-login (/auth/session) and direct OIDC callback
   // (/api/v1/auth/oidc/callback). Both redirect here with ?code=<single-use-code>.
   useEffect(() => {
+    if (isLocalMode) return;
+
     const code = searchParams.get('code');
     const oauthError = searchParams.get('error');
 
@@ -82,7 +81,7 @@ export const Login = () => {
       };
       exchangeCode();
     }
-  }, [searchParams, setAuth, navigate]);
+  }, [isLocalMode, searchParams, setAuth, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,6 +99,9 @@ export const Login = () => {
       setLoading(false);
     }
   };
+
+  // Don't render login form in local mode
+  if (isLocalMode) return null;
 
   // Wait for session check before showing the form
   if (!sessionChecked) return null;

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, X } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { groupsApi } from '@/api/groups';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -55,6 +55,10 @@ export const ShareDialog = ({
     label: string;
   } | null>(null);
   const [error, setError] = useState('');
+  const userSelectId = useId();
+  const userRoleSelectId = useId();
+  const groupSelectId = useId();
+  const groupRoleSelectId = useId();
 
   const { data: collaborators, isLoading: collaboratorsLoading } =
     useCollaborators(environmentId, open);
@@ -209,6 +213,7 @@ export const ShareDialog = ({
                           <Button
                             variant="ghost"
                             size="sm"
+                            aria-label={`Remove ${collab.username}`}
                             onClick={() =>
                               setConfirmRemove({
                                 kind: 'user',
@@ -241,6 +246,7 @@ export const ShareDialog = ({
                         <Button
                           variant="ghost"
                           size="sm"
+                          aria-label={`Remove ${collab.name}`}
                           onClick={() =>
                             setConfirmRemove({
                               kind: 'group',
@@ -285,12 +291,17 @@ export const ShareDialog = ({
                 availableUsers.length > 0 && (
                   <form onSubmit={handleShare} className="space-y-3">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">User</label>
+                      <label
+                        htmlFor={userSelectId}
+                        className="text-sm font-medium"
+                      >
+                        User
+                      </label>
                       <SelectRoot
                         value={selectedUser}
                         onValueChange={setSelectedUser}
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger id={userSelectId} className="w-full">
                           <SelectValue placeholder="Select user..." />
                         </SelectTrigger>
                         <SelectContent>
@@ -304,7 +315,10 @@ export const ShareDialog = ({
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">
+                      <label
+                        htmlFor={userRoleSelectId}
+                        className="text-sm font-medium"
+                      >
                         Access Level
                       </label>
                       <SelectRoot
@@ -313,7 +327,7 @@ export const ShareDialog = ({
                           setSelectedRole(value as 'editor' | 'viewer')
                         }
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger id={userRoleSelectId} className="w-full">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -354,12 +368,17 @@ export const ShareDialog = ({
               {mode === 'group' && availableGroups.length > 0 && (
                 <form onSubmit={handleShareGroup} className="space-y-3">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Group</label>
+                    <label
+                      htmlFor={groupSelectId}
+                      className="text-sm font-medium"
+                    >
+                      Group
+                    </label>
                     <SelectRoot
                       value={selectedGroup}
                       onValueChange={setSelectedGroup}
                     >
-                      <SelectTrigger className="w-full">
+                      <SelectTrigger id={groupSelectId} className="w-full">
                         <SelectValue placeholder="Select group..." />
                       </SelectTrigger>
                       <SelectContent>
@@ -373,14 +392,19 @@ export const ShareDialog = ({
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Access Level</label>
+                    <label
+                      htmlFor={groupRoleSelectId}
+                      className="text-sm font-medium"
+                    >
+                      Access Level
+                    </label>
                     <SelectRoot
                       value={selectedRole}
                       onValueChange={(value) =>
                         setSelectedRole(value as 'editor' | 'viewer')
                       }
                     >
-                      <SelectTrigger className="w-full">
+                      <SelectTrigger id={groupRoleSelectId} className="w-full">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>

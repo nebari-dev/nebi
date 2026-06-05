@@ -8,6 +8,7 @@ import '@fontsource/fira-code/400.css';
 import '@fontsource/fira-code/500.css';
 import './index.css';
 import App from './App.tsx';
+import { loadBrandingConfig } from './lib/brandingConfig';
 
 const rootElement = document.getElementById('root');
 
@@ -15,8 +16,14 @@ if (!rootElement) {
   throw new Error('Root element #root was not found');
 }
 
-createRoot(rootElement).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+async function bootstrap(root: HTMLElement): Promise<void> {
+  await loadBrandingConfig();
+
+  createRoot(root).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}
+
+void bootstrap(rootElement);

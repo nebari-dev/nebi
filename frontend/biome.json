@@ -1,0 +1,86 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+
+  "files": {
+    "ignoreUnknown": false,
+    "includes": [
+      "src/**",
+      "biome.json",
+      "package.json",
+      "tsconfig*.json",
+      "vite.config.ts",
+      "!!**/dist",
+      "!wailsjs",
+      "!src/components/ui"
+    ]
+  },
+
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space"
+  },
+
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+
+      "correctness": {
+        "noUndeclaredVariables": "error",
+        "useExhaustiveDependencies": "off",
+        "useHookAtTopLevel": "off"
+      },
+
+      "style": {
+        "noNonNullAssertion": "off",
+        "useComponentExportOnlyModules": {
+          "level": "warn",
+          "options": {
+            "allowConstantExport": true
+          }
+        }
+      },
+
+      "a11y": {
+        "noSvgWithoutTitle": "off",
+        "noLabelWithoutControl": "off",
+        "useButtonType": "off",
+        "noAutofocus": "off",
+        "useValidAriaRole": "off"
+      },
+
+      "suspicious": {
+        "noArrayIndexKey": "off",
+        "noExplicitAny": "off",
+        "noDuplicateObjectKeys": "off"
+      }
+    }
+  },
+
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single"
+    }
+  },
+
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
+
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  }
+}

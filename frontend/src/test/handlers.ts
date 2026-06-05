@@ -1,6 +1,14 @@
-import { http, HttpResponse } from 'msw';
+import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
-import type { Workspace, Job, User, Collaborator, OCIRegistry, PublishDefaults, Publication } from '@/types';
+import type {
+  Collaborator,
+  Job,
+  OCIRegistry,
+  Publication,
+  PublishDefaults,
+  User,
+  Workspace,
+} from '@/types';
 
 export const mockUser: User = {
   id: 'user-1',
@@ -40,7 +48,8 @@ export const mockJob: Job = {
   created_at: '2024-01-01T00:00:00Z',
 };
 
-export const mockCollaborator: Collaborator = {
+export const mockCollaborator: Extract<Collaborator, { kind: 'user' }> = {
+  kind: 'user',
   user_id: 'user-2',
   username: 'collaborator',
   email: 'collab@example.com',
@@ -48,12 +57,22 @@ export const mockCollaborator: Collaborator = {
   is_owner: false,
 };
 
-export const mockOwnerCollaborator: Collaborator = {
+export const mockOwnerCollaborator: Extract<Collaborator, { kind: 'user' }> = {
+  kind: 'user',
   user_id: 'user-1',
   username: 'testuser',
   email: 'test@example.com',
   role: 'owner',
   is_owner: true,
+};
+
+export const mockGroupCollaborator: Extract<Collaborator, { kind: 'group' }> = {
+  kind: 'group',
+  group_id: 'g-1',
+  name: 'data-science',
+  source: 'native',
+  role: 'editor',
+  is_owner: false,
 };
 
 export const mockRegistry: OCIRegistry = {
@@ -92,96 +111,99 @@ const BASE = '/api/v1';
 
 export const handlers = [
   http.get(`${BASE}/version`, () =>
-    HttpResponse.json({ mode: 'team', features: {}, version: '0.0.1' })
+    HttpResponse.json({ mode: 'team', features: {}, version: '0.0.1' }),
   ),
 
   // Auth
   http.get(`${BASE}/auth/session`, () =>
-    HttpResponse.json({ message: 'no session' }, { status: 401 })
+    HttpResponse.json({ message: 'no session' }, { status: 401 }),
   ),
 
-  http.get(`${BASE}/auth/me`, () =>
-    HttpResponse.json(mockUser)
-  ),
+  http.get(`${BASE}/auth/me`, () => HttpResponse.json(mockUser)),
 
   http.post(`${BASE}/auth/login`, () =>
-    HttpResponse.json({ token: 'test-token', user: mockUser })
+    HttpResponse.json({ token: 'test-token', user: mockUser }),
   ),
 
   // Workspaces
-  http.get(`${BASE}/workspaces`, () =>
-    HttpResponse.json([mockWorkspace])
-  ),
+  http.get(`${BASE}/workspaces`, () => HttpResponse.json([mockWorkspace])),
 
   http.get(`${BASE}/workspaces/:id`, ({ params }) =>
-    HttpResponse.json({ ...mockWorkspace, id: params.id as string })
+    HttpResponse.json({ ...mockWorkspace, id: params.id as string }),
   ),
 
   http.post(`${BASE}/workspaces`, async ({ request }) => {
-    const body = await request.json() as Record<string, unknown>;
-    return HttpResponse.json({ ...mockWorkspace, name: body.name as string }, { status: 201 });
+    const body = (await request.json()) as Record<string, unknown>;
+    return HttpResponse.json(
+      { ...mockWorkspace, name: body.name as string },
+      { status: 201 },
+    );
   }),
 
-  http.delete(`${BASE}/workspaces/:id`, () =>
-    new HttpResponse(null, { status: 204 })
+  http.delete(
+    `${BASE}/workspaces/:id`,
+    () => new HttpResponse(null, { status: 204 }),
   ),
 
-  http.get(`${BASE}/workspaces/:id/tags`, () =>
-    HttpResponse.json([])
-  ),
+  http.get(`${BASE}/workspaces/:id/tags`, () => HttpResponse.json([])),
 
   // Collaborators
   http.get(`${BASE}/workspaces/:id/collaborators`, () =>
-    HttpResponse.json([mockOwnerCollaborator, mockCollaborator])
+    HttpResponse.json([mockOwnerCollaborator, mockCollaborator]),
   ),
 
-  http.post(`${BASE}/workspaces/:id/share`, () =>
-    new HttpResponse(null, { status: 204 })
+  http.post(
+    `${BASE}/workspaces/:id/share`,
+    () => new HttpResponse(null, { status: 204 }),
   ),
 
-  http.delete(`${BASE}/workspaces/:id/share/:userId`, () =>
-    new HttpResponse(null, { status: 204 })
+  http.delete(
+    `${BASE}/workspaces/:id/share/:userId`,
+    () => new HttpResponse(null, { status: 204 }),
   ),
 
   // Publishing
   http.get(`${BASE}/workspaces/:id/publish-defaults`, () =>
-    HttpResponse.json(mockPublishDefaults)
+    HttpResponse.json(mockPublishDefaults),
   ),
 
   http.get(`${BASE}/workspaces/:id/publications`, () =>
-    HttpResponse.json([mockPublication])
+    HttpResponse.json([mockPublication]),
   ),
 
   http.post(`${BASE}/workspaces/:id/publish`, () =>
-    HttpResponse.json(mockJob, { status: 201 })
+    HttpResponse.json(mockJob, { status: 201 }),
   ),
 
   // Jobs
-  http.get(`${BASE}/jobs`, () =>
-    HttpResponse.json([mockJob])
-  ),
+  http.get(`${BASE}/jobs`, () => HttpResponse.json([mockJob])),
 
   http.get(`${BASE}/jobs/:id`, ({ params }) =>
-    HttpResponse.json({ ...mockJob, id: params.id as string })
+    HttpResponse.json({ ...mockJob, id: params.id as string }),
   ),
 
   // Admin
   http.get(`${BASE}/admin/users`, () =>
-    HttpResponse.json([mockUser, mockAdminUser])
+    HttpResponse.json([mockUser, mockAdminUser]),
   ),
 
   http.get(`${BASE}/admin/audit-logs`, () =>
-    HttpResponse.json({ logs: [], total: 0 })
+    HttpResponse.json({ logs: [], total: 0 }),
   ),
 
   http.get(`${BASE}/admin/dashboard/stats`, () =>
-    HttpResponse.json({ total_disk_usage_bytes: 0, total_disk_usage_formatted: '0 B' })
+    HttpResponse.json({
+      total_disk_usage_bytes: 0,
+      total_disk_usage_formatted: '0 B',
+    }),
   ),
 
   // Registries
-  http.get(`${BASE}/registries`, () =>
-    HttpResponse.json([mockRegistry])
-  ),
+  http.get(`${BASE}/registries`, () => HttpResponse.json([mockRegistry])),
+
+  // Groups
+  http.get(`${BASE}/groups/me`, () => HttpResponse.json([])),
+  http.get(`${BASE}/admin/groups`, () => HttpResponse.json([])),
 ];
 
 export const server = setupServer(...handlers);

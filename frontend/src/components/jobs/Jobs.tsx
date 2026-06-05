@@ -1,15 +1,22 @@
-import { useState, useMemo } from 'react';
-import { useJobs } from '@/hooks/useJobs';
-import { useJobLogStream } from '@/hooks/useJobLogStream';
-import { useRemoteServer, useRemoteJobs } from '@/hooks/useRemote';
-import { useModeStore } from '@/store/modeStore';
-import { useViewModeStore } from '@/store/viewModeStore';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  Loader2,
+  Radio,
+} from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, ChevronDown, ChevronRight, Radio, Copy, Check } from 'lucide-react';
-import type { Job } from '@/types';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useJobLogStream } from '@/hooks/useJobLogStream';
+import { useJobs } from '@/hooks/useJobs';
+import { useRemoteJobs, useRemoteServer } from '@/hooks/useRemote';
 import { capitalize } from '@/lib/utils';
+import { useModeStore } from '@/store/modeStore';
+import { useViewModeStore } from '@/store/viewModeStore';
+import type { Job } from '@/types';
 
 const statusColors = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -57,32 +64,49 @@ const CopyButton = ({ text }: { text: string }) => {
   );
 };
 
-const JobCard = ({ job, isFirst, isRemote }: { job: Job; isFirst: boolean; isRemote: boolean }) => {
+const JobCard = ({
+  job,
+  isFirst,
+  isRemote,
+}: {
+  job: Job;
+  isFirst: boolean;
+  isRemote: boolean;
+}) => {
   const [expanded, setExpanded] = useState(isFirst);
   // Initialize hook with existing logs from database so SSE appends instead of replacing
   // Only use streaming for local jobs - remote jobs don't support SSE
   const { logs: streamedLogs, isStreaming } = useJobLogStream(
     isRemote ? '' : job.id, // Disable streaming for remote jobs
     isRemote ? 'completed' : job.status,
-    job.logs || ''
+    job.logs || '',
   );
 
   // For remote jobs, just use static logs; for local jobs, use streamed logs
-  const displayLogs = isRemote ? (job.logs || '') : streamedLogs;
+  const displayLogs = isRemote ? job.logs || '' : streamedLogs;
 
   return (
     <Card>
-      <CardHeader className="cursor-pointer" onClick={() => setExpanded(!expanded)}>
+      <CardHeader
+        className="cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            {expanded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
             <CardTitle className="text-lg">Job #{job.id}</CardTitle>
             <Badge className={typeColors[job.type]}>
               {capitalize(job.type)}
             </Badge>
             <Badge className={statusColors[job.status]}>
               {capitalize(job.status)}
-              {isStreaming && <Radio className="h-3 w-3 ml-1 inline animate-pulse" />}
+              {isStreaming && (
+                <Radio className="h-3 w-3 ml-1 inline animate-pulse" />
+              )}
             </Badge>
           </div>
           <span className="text-sm text-muted-foreground">
@@ -99,18 +123,24 @@ const JobCard = ({ job, isFirst, isRemote }: { job: Job; isFirst: boolean; isRem
             </div>
             <div>
               <span className="text-muted-foreground">Created:</span>
-              <span className="ml-2">{new Date(job.created_at).toLocaleString()}</span>
+              <span className="ml-2">
+                {new Date(job.created_at).toLocaleString()}
+              </span>
             </div>
             {job.started_at && (
               <div>
                 <span className="text-muted-foreground">Started:</span>
-                <span className="ml-2">{new Date(job.started_at).toLocaleString()}</span>
+                <span className="ml-2">
+                  {new Date(job.started_at).toLocaleString()}
+                </span>
               </div>
             )}
             {job.completed_at && (
               <div>
                 <span className="text-muted-foreground">Completed:</span>
-                <span className="ml-2">{new Date(job.completed_at).toLocaleString()}</span>
+                <span className="ml-2">
+                  {new Date(job.completed_at).toLocaleString()}
+                </span>
               </div>
             )}
           </div>
@@ -151,7 +181,10 @@ const JobCard = ({ job, isFirst, isRemote }: { job: Job; isFirst: boolean; isRem
             <div className="space-y-3">
               <h4 className="font-semibold">Metadata</h4>
               {Object.entries(job.metadata).map(([key, value]) => {
-                const content = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+                const content =
+                  typeof value === 'string'
+                    ? value
+                    : JSON.stringify(value, null, 2);
 
                 return (
                   <div key={key}>
@@ -183,7 +216,8 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
   const viewMode = useViewModeStore((state) => state.viewMode);
   const { data: serverStatus } = useRemoteServer();
   const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
-  const { data: remoteJobs, isLoading: remoteLoading } = useRemoteJobs(isRemoteConnected);
+  const { data: remoteJobs, isLoading: remoteLoading } =
+    useRemoteJobs(isRemoteConnected);
 
   // Show jobs based on view mode when connected to remote
   const { displayedJobs, isRemote } = useMemo(() => {
@@ -200,7 +234,9 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
       remote = true;
     }
     return {
-      displayedJobs: workspaceId ? (base || []).filter((j) => j.workspace_id === workspaceId) : (base || []),
+      displayedJobs: workspaceId
+        ? (base || []).filter((j) => j.workspace_id === workspaceId)
+        : base || [],
       isRemote: remote,
     };
   }, [jobs, remoteJobs, isRemoteConnected, viewMode, workspaceId]);
@@ -226,7 +262,12 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
 
       <div className="space-y-4">
         {displayedJobs.map((job, index) => (
-          <JobCard key={job.id} job={job} isFirst={index === 0} isRemote={isRemote} />
+          <JobCard
+            key={job.id}
+            job={job}
+            isFirst={index === 0}
+            isRemote={isRemote}
+          />
         ))}
       </div>
 

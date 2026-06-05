@@ -1,16 +1,15 @@
-import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { useAuthStore } from '@/store/authStore';
-import { useModeStore } from '@/store/modeStore';
-import { getBasePath } from '@/lib/basePath';
-import { useViewModeStore } from '@/store/viewModeStore';
+import { Boxes, ExternalLink, LogOut, Settings, Shield } from 'lucide-react';
+import { useState } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import { useRemoteServer } from '@/hooks/useRemote';
 import { useVersion } from '@/hooks/useVersion';
-import { Button } from '@/components/ui/button';
-
-import { LogOut, Boxes, Shield, Settings, ExternalLink } from 'lucide-react';
+import { getBasePath } from '@/lib/basePath';
 import { openExternal } from '@/lib/openExternal';
-import { useState } from 'react';
+import { useAuthStore } from '@/store/authStore';
+import { useModeStore } from '@/store/modeStore';
+import { useViewModeStore } from '@/store/viewModeStore';
 
 export const Layout = () => {
   const { user, clearAuth } = useAuthStore();
@@ -44,7 +43,9 @@ export const Layout = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b bg-card">
-        <div className={isAdminPage ? 'px-4 py-4' : 'container mx-auto px-4 py-4'}>
+        <div
+          className={isAdminPage ? 'px-4 py-4' : 'container mx-auto px-4 py-4'}
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-8">
               <NavLink to="/workspaces">
@@ -72,7 +73,23 @@ export const Layout = () => {
                       variant={isActive ? 'secondary' : 'ghost'}
                       className="gap-2"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M11.5 20h-6.5a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v5.5" /><path d="M9 17h2" /><path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /><path d="M20.2 20.2l1.8 1.8" /></svg>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="h-4 w-4"
+                      >
+                        <path d="M11.5 20h-6.5a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v5.5" />
+                        <path d="M9 17h2" />
+                        <path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+                        <path d="M20.2 20.2l1.8 1.8" />
+                      </svg>
                       Registries
                     </Button>
                   )}
@@ -98,7 +115,6 @@ export const Layout = () => {
                   <ExternalLink className="h-4 w-4" />
                   Docs
                 </Button>
-
               </nav>
             </div>
             <div className="flex items-center gap-4">
@@ -184,7 +200,13 @@ export const Layout = () => {
           </div>
         </div>
       </header>
-      <main className={isAdminPage ? 'flex-1 overflow-hidden' : 'container mx-auto px-4 py-8 flex-1'}>
+      <main
+        className={
+          isAdminPage
+            ? 'flex-1 overflow-hidden'
+            : 'container mx-auto px-4 py-8 flex-1'
+        }
+      >
         <Outlet />
       </main>
       {versionInfo?.version && (

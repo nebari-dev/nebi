@@ -7,10 +7,10 @@
   --color-card-foreground: hsl(222.2 84% 4.9%);
   --color-popover: hsl(0 0% 100%);
   --color-popover-foreground: hsl(222.2 84% 4.9%);
-  --color-primary: #9B3DCC;
+  --color-primary: #9b3dcc;
   --color-primary-foreground: hsl(210 40% 98%);
-  --color-primary-hover: #8232AA;
-  --color-nav-hover: #F5EFFE;
+  --color-primary-hover: #8232aa;
+  --color-nav-hover: #f5effe;
   --color-secondary: hsl(210 40% 96.1%);
   --color-secondary-foreground: hsl(222.2 47.4% 11.2%);
   --color-muted: hsl(210 40% 96.1%);
@@ -23,8 +23,8 @@
   --color-input: hsl(214.3 31.8% 91.4%);
   --color-ring: hsl(222.2 84% 4.9%);
   --radius: 0.5rem;
-  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
-  --font-mono: 'Fira Code', monospace;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "Fira Code", monospace;
 }
 
 .dark {
@@ -34,10 +34,10 @@
   --color-card-foreground: hsl(210 40% 98%);
   --color-popover: hsl(222.2 84% 4.9%);
   --color-popover-foreground: hsl(210 40% 98%);
-  --color-primary: #9B3DCC;
+  --color-primary: #9b3dcc;
   --color-primary-foreground: hsl(210 40% 98%);
-  --color-primary-hover: #8232AA;
-  --color-nav-hover: #F5EFFE;
+  --color-primary-hover: #8232aa;
+  --color-nav-hover: #f5effe;
   --color-secondary: hsl(217.2 32.6% 17.5%);
   --color-secondary-foreground: hsl(210 40% 98%);
   --color-muted: hsl(217.2 32.6% 17.5%);
@@ -55,7 +55,9 @@ body {
   font-family: var(--font-sans);
 }
 
-pre, code, .font-mono {
+pre,
+code,
+.font-mono {
   font-family: var(--font-mono);
   font-size: 0.875rem; /* 14px */
 }

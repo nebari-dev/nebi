@@ -1,9 +1,15 @@
+import { Loader2, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { useCreateUser } from '@/hooks/useAdmin';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Plus, Loader2 } from 'lucide-react';
+import { useCreateUser } from '@/hooks/useAdmin';
 
 export const CreateUserDialog = () => {
   const [open, setOpen] = useState(false);
@@ -41,7 +47,9 @@ export const CreateUserDialog = () => {
       setError('');
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage = error?.response?.data?.error || 'Failed to create user. Please try again.';
+      const errorMessage =
+        error?.response?.data?.error ||
+        'Failed to create user. Please try again.';
       setError(errorMessage);
       console.error('Failed to create user:', err);
     }
@@ -118,13 +126,20 @@ export const CreateUserDialog = () => {
               onChange={(e) => setIsAdmin(e.target.checked)}
               className="h-4 w-4 rounded border-input"
             />
-            <label htmlFor="is_admin" className="text-sm font-medium cursor-pointer">
+            <label
+              htmlFor="is_admin"
+              className="text-sm font-medium cursor-pointer"
+            >
               Make Admin
             </label>
           </div>
 
           <div className="flex gap-2 justify-end pt-4">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={createMutation.isPending}>

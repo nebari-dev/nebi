@@ -1,19 +1,28 @@
-import { useState, useMemo } from 'react';
+import { Check, Copy, Download, Loader2, Plus, Trash2, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useWorkspaces, useCreateWorkspace, useDeleteWorkspace } from '@/hooks/useWorkspaces';
-import { useRemoteServer, useRemoteWorkspaces, useCreateRemoteWorkspace, useDeleteRemoteWorkspace } from '@/hooks/useRemote';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Input } from '@/components/ui/input';
+import { SplitButton } from '@/components/ui/split-button';
+import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
+import {
+  useCreateRemoteWorkspace,
+  useDeleteRemoteWorkspace,
+  useRemoteServer,
+  useRemoteWorkspaces,
+} from '@/hooks/useRemote';
+import {
+  useCreateWorkspace,
+  useDeleteWorkspace,
+  useWorkspaces,
+} from '@/hooks/useWorkspaces';
+import { capitalize } from '@/lib/utils';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
-import { Loader2, Plus, Trash2, X, Copy, Check, Download } from 'lucide-react';
-import { SplitButton } from '@/components/ui/split-button';
-import { capitalize } from '@/lib/utils';
 
 type UnifiedWorkspace = {
   id: string;
@@ -58,7 +67,8 @@ export const Workspaces = () => {
   const isLocal = useModeStore((state) => state.mode === 'local');
   const { data: serverStatus } = useRemoteServer();
   const isRemoteConnected = isLocal && serverStatus?.status === 'connected';
-  const { data: remoteWorkspaces, isLoading: remoteLoading } = useRemoteWorkspaces(isRemoteConnected);
+  const { data: remoteWorkspaces, isLoading: remoteLoading } =
+    useRemoteWorkspaces(isRemoteConnected);
   const viewMode = useViewModeStore((state) => state.viewMode);
 
   const [showCreate, setShowCreate] = useState(false);
@@ -67,7 +77,11 @@ export const Workspaces = () => {
   const [localPath, setLocalPath] = useState('');
   const [pixiToml, setPixiToml] = useState(DEFAULT_PIXI_TOML);
 
-  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string; location: 'local' | 'remote' } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{
+    id: string;
+    name: string;
+    location: 'local' | 'remote';
+  } | null>(null);
   const [error, setError] = useState('');
   const [copiedPullId, setCopiedPullId] = useState<string | null>(null);
 
@@ -140,7 +154,9 @@ export const Workspaces = () => {
           name: newWsName,
           package_manager: 'pixi',
           pixi_toml: tomlContent,
-          ...(localPath.trim() ? { path: localPath.trim(), source: 'local' as const } : {}),
+          ...(localPath.trim()
+            ? { path: localPath.trim(), source: 'local' as const }
+            : {}),
         });
 
         // Reset form
@@ -161,7 +177,9 @@ export const Workspaces = () => {
       setShowCreate(false);
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage = error?.response?.data?.error || 'Failed to create workspace. Please try again.';
+      const errorMessage =
+        error?.response?.data?.error ||
+        'Failed to create workspace. Please try again.';
       setError(errorMessage);
     }
   };
@@ -179,14 +197,19 @@ export const Workspaces = () => {
       setConfirmDelete(null);
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage = error?.response?.data?.error || 'Failed to delete workspace. Please try again.';
+      const errorMessage =
+        error?.response?.data?.error ||
+        'Failed to delete workspace. Please try again.';
       setError(errorMessage);
       setConfirmDelete(null);
     }
   };
 
-
-  const handleCopyPull = async (e: React.MouseEvent, wsName: string, wsId: string) => {
+  const handleCopyPull = async (
+    e: React.MouseEvent,
+    wsName: string,
+    wsId: string,
+  ) => {
     e.stopPropagation();
     const serverUrl = window.location.origin;
     const cmd = `nebi login ${serverUrl} && nebi pull ${wsName}`;
@@ -195,8 +218,10 @@ export const Workspaces = () => {
     setTimeout(() => setCopiedPullId(null), 2000);
   };
 
-  const isCreatePending = createMutation.isPending || createRemoteMutation.isPending;
-  const isDeletePending = deleteMutation.isPending || deleteRemoteMutation.isPending;
+  const isCreatePending =
+    createMutation.isPending || createRemoteMutation.isPending;
+  const isDeletePending =
+    deleteMutation.isPending || deleteRemoteMutation.isPending;
 
   if (isLoading || (isRemoteConnected && remoteLoading)) {
     return (
@@ -211,15 +236,24 @@ export const Workspaces = () => {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Workspaces</h1>
-          <p className="text-muted-foreground">Manage your development workspaces</p>
+          <p className="text-muted-foreground">
+            Manage your development workspaces
+          </p>
         </div>
         <SplitButton
           onPrimary={() => {
             setShowCreate(!showCreate);
-            setCreateTarget(isRemoteConnected && viewMode === 'remote' ? 'server' : 'local');
+            setCreateTarget(
+              isRemoteConnected && viewMode === 'remote' ? 'server' : 'local',
+            );
             setError('');
           }}
-          primaryLabel={<><Plus className="h-4 w-4 mr-2" />New Workspace</>}
+          primaryLabel={
+            <>
+              <Plus className="h-4 w-4 mr-2" />
+              New Workspace
+            </>
+          }
           menuItems={[
             {
               label: 'Import Workspace from Registry',
@@ -278,10 +312,18 @@ export const Workspaces = () => {
                 </div>
               )}
 
-              <PixiTomlEditor tomlValue={pixiToml} onTomlChange={setPixiToml} workspaceName={newWsName || 'my-project'} />
+              <PixiTomlEditor
+                tomlValue={pixiToml}
+                onTomlChange={setPixiToml}
+                workspaceName={newWsName || 'my-project'}
+              />
 
               <div className="flex gap-2 justify-end">
-                <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowCreate(false)}
+                >
                   Cancel
                 </Button>
                 <Button type="submit" disabled={isCreatePending}>
@@ -300,12 +342,13 @@ export const Workspaces = () => {
         </Card>
       )}
 
-
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className={`bg-muted/50 ${displayedWorkspaces.length > 0 ? 'border-b' : ''}`}>
+              <thead
+                className={`bg-muted/50 ${displayedWorkspaces.length > 0 ? 'border-b' : ''}`}
+              >
                 <tr>
                   <th className="text-left p-4 font-medium">Name</th>
                   <th className="text-left p-4 font-medium">Status</th>
@@ -326,22 +369,28 @@ export const Workspaces = () => {
                     }
                   >
                     <td className="p-4 font-medium">
-                      <div className="flex items-center gap-2">
-                        {ws.name}
-                      </div>
+                      <div className="flex items-center gap-2">{ws.name}</div>
                       {ws.location === 'local' && ws.path && (
-                        <div className="text-xs text-muted-foreground font-normal mt-0.5 font-mono truncate max-w-sm" title={ws.path}>
+                        <div
+                          className="text-xs text-muted-foreground font-normal mt-0.5 font-mono truncate max-w-sm"
+                          title={ws.path}
+                        >
                           {ws.path}
                         </div>
                       )}
                     </td>
                     <td className="p-4">
-                      <Badge className={statusColors[ws.status] || 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'}>
+                      <Badge
+                        className={
+                          statusColors[ws.status] ||
+                          'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
+                        }
+                      >
                         {capitalize(ws.status)}
                       </Badge>
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">
-                      {ws.location === 'local' ? (ws.size_formatted || '-') : '-'}
+                      {ws.location === 'local' ? ws.size_formatted || '-' : '-'}
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">
                       {new Date(ws.created_at).toLocaleDateString()}
@@ -369,7 +418,11 @@ export const Workspaces = () => {
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setConfirmDelete({ id: ws.id, name: ws.name, location: ws.location });
+                            setConfirmDelete({
+                              id: ws.id,
+                              name: ws.name,
+                              location: ws.location,
+                            });
                           }}
                           disabled={isDeletePending}
                         >
@@ -387,7 +440,9 @@ export const Workspaces = () => {
 
       {displayedWorkspaces.length === 0 && !showCreate && (
         <div className="text-center py-12">
-          <p className="text-muted-foreground">No workspaces yet. Create your first one!</p>
+          <p className="text-muted-foreground">
+            No workspaces yet. Create your first one!
+          </p>
         </div>
       )}
 
@@ -401,7 +456,6 @@ export const Workspaces = () => {
         cancelText="Cancel"
         variant="destructive"
       />
-
     </div>
   );
 };

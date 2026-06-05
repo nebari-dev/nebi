@@ -27,7 +27,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { workspacesApi } from '@/api/workspaces';
 import { Jobs } from '@/components/jobs/Jobs';
 import { PublishButton } from '@/components/publishing/PublishButton';
-import { RoleBadge } from '@/components/sharing/RoleBadge';
+import { CollaboratorsList } from '@/components/sharing/CollaboratorsList';
 import { ShareButton } from '@/components/sharing/ShareButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -260,7 +260,7 @@ export const WorkspaceDetail = () => {
           </TabsTrigger>
           {!isLocalWs && !isLocalMode && (
             <TabsTrigger value="collaborators">
-              Collaborators ({userCollaborators?.length || 0})
+              Collaborators ({collaborators?.length || 0})
             </TabsTrigger>
           )}
         </TabsList>
@@ -843,27 +843,7 @@ export const WorkspaceDetail = () => {
                 View all collaborators for this workspace
               </p>
             </div>
-            <div className="space-y-2">
-              {userCollaborators?.map((collab) => (
-                <div
-                  key={collab.user_id}
-                  className="flex justify-between items-center p-3 rounded-lg border"
-                >
-                  <div className="flex-1">
-                    <div className="font-medium">{collab.username}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {collab.email}
-                    </div>
-                  </div>
-                  <RoleBadge role={collab.role} />
-                </div>
-              ))}
-            </div>
-            {(!userCollaborators || userCollaborators.length === 0) && (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                No collaborators yet
-              </p>
-            )}
+            <CollaboratorsList collaborators={collaborators || []} />
           </TabsContent>
         )}
       </Tabs>

@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/utils';
 import { UseLocallyButton } from './UseLocallyButton';
 
@@ -18,14 +18,22 @@ describe('UseLocallyButton', () => {
 
     await user.click(screen.getByRole('button', { name: /use locally/i }));
 
-    expect(screen.getByRole('dialog', { name: /use this workspace locally/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('dialog', { name: /use this workspace locally/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText(command)).toBeInTheDocument();
     expect(screen.getByText('No nebi CLI?')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /install it/i })).toHaveClass('text-primary');
+    expect(screen.getByRole('button', { name: /install it/i })).toHaveClass(
+      'text-primary',
+    );
 
-    await user.click(screen.getByRole('button', { name: /copy nebi pull command/i }));
+    await user.click(
+      screen.getByRole('button', { name: /copy nebi pull command/i }),
+    );
 
     expect(writeText).toHaveBeenCalledWith(command);
-    expect(screen.getByRole('button', { name: /copied nebi pull command/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /copied nebi pull command/i }),
+    ).toBeInTheDocument();
   });
 });

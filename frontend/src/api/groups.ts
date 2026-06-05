@@ -1,12 +1,12 @@
-import { apiClient } from './client';
 import type {
-  Group,
-  GroupWithMemberCount,
-  GroupMember,
   CreateGroupRequest,
-  UpdateGroupRequest,
+  Group,
+  GroupMember,
+  GroupWithMemberCount,
   ShareWorkspaceWithGroupRequest,
+  UpdateGroupRequest,
 } from '@/types/models';
+import { apiClient } from './client';
 
 export const groupsApi = {
   list: async (): Promise<GroupWithMemberCount[]> => {
@@ -52,10 +52,16 @@ export const groupsApi = {
     return r.data;
   },
 
-  shareWorkspace: async (workspaceId: string, body: ShareWorkspaceWithGroupRequest): Promise<void> => {
+  shareWorkspace: async (
+    workspaceId: string,
+    body: ShareWorkspaceWithGroupRequest,
+  ): Promise<void> => {
     await apiClient.post(`/workspaces/${workspaceId}/share-group`, body);
   },
-  unshareWorkspace: async (workspaceId: string, groupId: string): Promise<void> => {
+  unshareWorkspace: async (
+    workspaceId: string,
+    groupId: string,
+  ): Promise<void> => {
     await apiClient.delete(`/workspaces/${workspaceId}/share-group/${groupId}`);
   },
 };

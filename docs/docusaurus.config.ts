@@ -35,7 +35,15 @@ const config: Config = {
 
   themes: ['@docusaurus/theme-mermaid'],
 
-  plugins: ['docusaurus-plugin-sass'],
+  plugins: [
+    'docusaurus-plugin-sass',
+    [
+      require.resolve('@easyops-cn/docusaurus-search-local'),
+      {
+        indexBlog: false,
+      },
+    ],
+  ],
 
   clientModules: [require.resolve('./src/cookieConsent.ts')],
 

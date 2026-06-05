@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef, useState } from 'react';
 import { BookOpen, Check, ChevronDown, Code, Copy, X } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { openExternal } from '@/lib/openExternal';
 
@@ -22,7 +22,10 @@ export const UseLocallyButton = ({ workspaceName }: UseLocallyButtonProps) => {
     if (!open) return;
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
         setOpen(false);
       }
     };
@@ -59,7 +62,9 @@ export const UseLocallyButton = ({ workspaceName }: UseLocallyButtonProps) => {
       >
         <Code className="h-4 w-4" />
         Use locally
-        <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
       </Button>
 
       {open && (
@@ -82,7 +87,8 @@ export const UseLocallyButton = ({ workspaceName }: UseLocallyButtonProps) => {
               <X className="h-4 w-4" />
             </button>
             <p className="text-sm leading-6 text-muted-foreground">
-              Run this in your terminal to download the workspace spec to your machine. Sync again whenever a teammate pushes changes.
+              Run this in your terminal to download the workspace spec to your
+              machine. Sync again whenever a teammate pushes changes.
             </p>
             <div className="flex items-center gap-2 rounded-md border border-input bg-muted/60 p-1.5">
               <code className="flex-1 overflow-x-auto whitespace-nowrap px-2 py-1.5 font-mono text-sm">
@@ -94,9 +100,15 @@ export const UseLocallyButton = ({ workspaceName }: UseLocallyButtonProps) => {
                 size="icon"
                 className="h-8 w-8 shrink-0 bg-background"
                 onClick={handleCopy}
-                aria-label={copied ? 'Copied nebi pull command' : 'Copy nebi pull command'}
+                aria-label={
+                  copied ? 'Copied nebi pull command' : 'Copy nebi pull command'
+                }
               >
-                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copied ? (
+                  <Check className="h-4 w-4" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
               </Button>
             </div>
           </div>

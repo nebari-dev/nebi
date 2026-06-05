@@ -1,15 +1,15 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
+import react from '@vitejs/plugin-react';
+import path from 'path';
+import { defineConfig } from 'vite';
 
 // https://vite.dev/config/
-const backendPort = process.env.NEBI_SERVER_PORT || '8460'
+const backendPort = process.env.NEBI_SERVER_PORT || '8460';
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      '@': path.resolve(__dirname, './src'),
     },
   },
   server: {
@@ -21,4 +21,4 @@ export default defineConfig({
       },
     },
   },
-})
+});

@@ -18,7 +18,12 @@ export const useModeStore = create<ModeState>()((set, get) => ({
   fetchMode: async () => {
     try {
       const { data } = await apiClient.get('/version');
-      set({ mode: data.mode, features: data.features || {}, logoutUrl: data.logout_url || null, loading: false });
+      set({
+        mode: data.mode,
+        features: data.features || {},
+        logoutUrl: data.logout_url || null,
+        loading: false,
+      });
     } catch {
       // Default to team mode on error
       set({ mode: 'team', features: {}, logoutUrl: null, loading: false });

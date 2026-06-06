@@ -5,6 +5,7 @@ import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { getApiBaseUrl, getBasePath } from '@/lib/basePath';
+import { getBrandingLogoUrl } from '@/lib/brandingConfig';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
 
@@ -110,7 +111,7 @@ export const Login = () => {
         <div className="space-y-6 pb-8">
           <div className="flex justify-center">
             <img
-              src={`${getBasePath()}/nebi-logo.svg`}
+              src={getBrandingLogoUrl()}
               alt="Nebi Logo"
               className="h-24 w-auto"
             />

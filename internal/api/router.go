@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -349,6 +350,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	if err != nil {
 		logger.Warn("Failed to load embedded frontend, frontend will not be served", "error", err)
 	} else {
+		runtimeBrandingConfigPath := resolveBrandingConfigPath()
+
 		// SPA fallback - serve files from embedded filesystem for all non-API, non-docs routes
 		router.NoRoute(func(c *gin.Context) {
 			path := c.Request.URL.Path
@@ -363,6 +366,19 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				relPath = strings.TrimPrefix(path, basePath)
 				if relPath == "" {
 					relPath = "/"
+				}
+			}
+
+			// Runtime branding config override:
+			// if a Helm-mounted file exists on disk, serve it instead of embedded assets.
+			if relPath == "/public/config.json" {
+				content, err := os.ReadFile(runtimeBrandingConfigPath)
+				if err == nil {
+					c.Data(http.StatusOK, "application/json", content)
+					return
+				}
+				if !os.IsNotExist(err) {
+					logger.Warn("Failed to read runtime branding config", "path", runtimeBrandingConfigPath, "error", err)
 				}
 			}
 
@@ -475,6 +491,14 @@ func retryOIDCInit(cfg auth.OIDCConfig, db *gorm.DB, jwtSecret string, rbacProvi
 		}
 		return
 	}
+}
+
+func resolveBrandingConfigPath() string {
+	path := strings.TrimSpace(os.Getenv("NEBI_BRANDING_CONFIG_PATH"))
+	if path == "" {
+		return "/app/public/config.json"
+	}
+	return path
 }
 
 // loggingMiddleware logs HTTP requests

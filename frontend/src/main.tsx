@@ -8,9 +8,16 @@ import '@fontsource/fira-code/400.css';
 import '@fontsource/fira-code/500.css';
 import './index.css';
 import App from './App.tsx';
+import { loadBrandingConfig } from './lib/brandingConfig';
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+async function bootstrap(): Promise<void> {
+  await loadBrandingConfig();
+
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}
+
+void bootstrap();

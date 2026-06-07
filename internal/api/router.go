@@ -418,6 +418,19 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				contentType = "image/png"
 			} else if strings.HasSuffix(fsPath, ".jpg") || strings.HasSuffix(fsPath, ".jpeg") {
 				contentType = "image/jpeg"
+			} else if strings.HasSuffix(fsPath, ".woff2") {
+				contentType = "font/woff2"
+			} else if strings.HasSuffix(fsPath, ".woff") {
+				contentType = "font/woff"
+			} else if strings.HasSuffix(fsPath, ".ttf") {
+				contentType = "font/ttf"
+			}
+
+			// Rewrite absolute url(/...) references in bundled CSS (e.g. self-hosted
+			// fonts) to include the base path. Without this they resolve against the
+			// domain root and 404 when Nebi is served under a path prefix (proxy).
+			if strings.HasSuffix(fsPath, ".css") && basePath != "" {
+				content = []byte(strings.ReplaceAll(string(content), `url(/`, `url(`+basePath+`/`))
 			}
 
 			// For index.html, inject base path and rewrite asset URLs

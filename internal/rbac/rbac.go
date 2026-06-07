@@ -116,18 +116,27 @@ func RevokeWorkspaceAccess(userID uuid.UUID, wsID uuid.UUID) error {
 
 // MakeAdmin grants admin privileges to a user
 func MakeAdmin(userID uuid.UUID) error {
+	if enforcer == nil {
+		return nil
+	}
 	_, err := enforcer.AddPolicy(userID.String(), "admin", "admin")
 	return err
 }
 
 // RevokeAdmin removes admin privileges from a user
 func RevokeAdmin(userID uuid.UUID) error {
+	if enforcer == nil {
+		return nil
+	}
 	_, err := enforcer.RemovePolicy(userID.String(), "admin", "admin")
 	return err
 }
 
 // GetAllAdminUserIDs returns a set of all user IDs that have admin privileges
 func GetAllAdminUserIDs() (map[uuid.UUID]bool, error) {
+	if enforcer == nil {
+		return map[uuid.UUID]bool{}, nil
+	}
 	// Get all policies where object="admin" and action="admin" in ONE call
 	policies, err := enforcer.GetFilteredPolicy(1, "admin", "admin")
 	if err != nil {
@@ -148,6 +157,9 @@ func GetAllAdminUserIDs() (map[uuid.UUID]bool, error) {
 
 // GetUserWorkspaces returns all workspace IDs that a user has access to
 func GetUserWorkspaces(userID uuid.UUID) ([]uuid.UUID, error) {
+	if enforcer == nil {
+		return []uuid.UUID{}, nil
+	}
 	policies, err := enforcer.GetFilteredPolicy(0, userID.String())
 	if err != nil {
 		return nil, err

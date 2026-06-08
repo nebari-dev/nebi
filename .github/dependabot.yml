@@ -24,3 +24,28 @@ updates:
           - "minor"
           - "patch"
     # Major updates are not grouped, so each opens its own PR
+
+  - package-ecosystem: "npm"
+    directory: "/docs"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "08:00"
+      timezone: "US/Eastern"
+    ignore:
+      # Ignore all React updates
+      - dependency-name: "react"
+      - dependency-name: "react-dom"
+    groups:
+      # Keep Docusaurus packages together so compatible versions move in one PR
+      docusaurus:
+        applies-to: version-updates
+        patterns:
+          - "@docusaurus/*"
+      # Group all patch and minor updates into a single PR
+      patch-and-minor:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+    # Non-Docusaurus major updates are not grouped, so each opens its own PR

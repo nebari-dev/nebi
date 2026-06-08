@@ -16,7 +16,6 @@ env:
   REGISTRY: ${{ vars.DOCKER_REGISTRY || 'localhost' }}
   PROJECT: ${{ vars.DOCKER_PROJECT || 'fork-pr' }}
   IMAGE_NAME: nebi
-  IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
 
 jobs:
   build:
@@ -59,8 +58,24 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
+      - name: Determine registry publishing
+        id: registry
+        shell: bash
+        env:
+          DOCKER_REGISTRY_USERNAME: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
+          DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
+        run: |
+          PUBLISH=false
+          if [[ '${{ github.event_name }}' != 'pull_request' ]]; then
+            PUBLISH=true
+          elif [[ -n "${DOCKER_REGISTRY_USERNAME}" && -n "${DOCKER_REGISTRY_PASSWORD}" ]]; then
+            PUBLISH=true
+          fi
+
+          echo "publish=${PUBLISH}" | tee --append "${GITHUB_OUTPUT}"
+
       - name: Login to Quay.io
-        if: env.IS_FORK_PR != 'true'
+        if: steps.registry.outputs.publish == 'true'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
@@ -78,18 +93,18 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
-          push: ${{ env.IS_FORK_PR != 'true' }}
-          load: ${{ env.IS_FORK_PR == 'true' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          push: ${{ steps.registry.outputs.publish == 'true' }}
+          load: ${{ steps.registry.outputs.publish != 'true' }}
+          cache-from: ${{ steps.registry.outputs.publish == 'true' && 'type=gha' || '' }}
+          cache-to: ${{ steps.registry.outputs.publish == 'true' && 'type=gha,mode=max' || '' }}
 
       - name: Smoke test
         run: |
           IMAGE_TAG="${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}"
           echo "Testing image: ${IMAGE_TAG}"
 
-          # On fork PRs the image is loaded locally (not pushed); skip pull.
-          if [ "${IS_FORK_PR}" != "true" ]; then
+          # Unauthenticated PR builds are loaded locally (not pushed); skip pull.
+          if [ "${{ steps.registry.outputs.publish }}" = "true" ]; then
             docker pull ${IMAGE_TAG}
           fi
 

@@ -46,6 +46,7 @@ describe('PublishDialog', () => {
     );
     expect(screen.getByPlaceholderText(/e\.g\., myenv/)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/e\.g\., v1/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Registry')).toHaveFocus();
   });
 
   it('auto-populates form fields from publish defaults', async () => {

@@ -1,5 +1,6 @@
 import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
+import type { ReactElement } from 'react';
 import { useEffect } from 'react';
 import {
   BrowserRouter,
@@ -28,7 +29,7 @@ import { useAuthStore } from './store/authStore';
 import { useModeStore } from './store/modeStore';
 
 // Load mode before rendering any routes
-const ModeLoader = ({ children }: { children: React.ReactNode }) => {
+const ModeLoader = ({ children }: { children: ReactElement }) => {
   const { loading, fetchMode } = useModeStore();
 
   useEffect(() => {
@@ -42,17 +43,17 @@ const ModeLoader = ({ children }: { children: React.ReactNode }) => {
       </div>
     );
   }
-  return <>{children}</>;
+  return children;
 };
 
-const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
+const PrivateRoute = ({ children }: { children: ReactElement }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
   const isLocalMode = useModeStore((state) => state.isLocalMode());
 
   // In local mode, auth is bypassed
-  if (isLocalMode) return <>{children}</>;
+  if (isLocalMode) return children;
 
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
+  return isAuthenticated ? children : <Navigate to="/login" />;
 };
 
 const AdminRoute = () => {

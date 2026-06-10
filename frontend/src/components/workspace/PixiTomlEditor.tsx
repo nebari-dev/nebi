@@ -69,11 +69,6 @@ const parsePixiTomlDependencies = (toml: string): Package[] => {
   return packages;
 };
 
-const getTomlName = (toml: string): string | null => {
-  const match = toml.match(/^name\s*=\s*"([^"]*)"/m);
-  return match ? match[1] : null;
-};
-
 export const PixiTomlEditor = ({
   tomlValue,
   onTomlChange,
@@ -92,10 +87,6 @@ export const PixiTomlEditor = ({
   const [showDiscardPrompt, setShowDiscardPrompt] = useState(false);
   const pendingModeRef = useRef<'ui' | 'toml'>('ui');
   const initialTomlRef = useRef<string>('');
-  const tomlValueRef = useRef(tomlValue);
-  tomlValueRef.current = tomlValue;
-  const onTomlChangeRef = useRef(onTomlChange);
-  onTomlChangeRef.current = onTomlChange;
 
   useEffect(() => {
     if (!initialized && tomlValue) {
@@ -107,26 +98,6 @@ export const PixiTomlEditor = ({
       setInitialized(true);
     }
   }, [tomlValue, initialized]);
-
-  useEffect(() => {
-    if (!initialized || !workspaceName) return;
-
-    const currentToml = tomlValueRef.current;
-    const currentTomlName = getTomlName(currentToml);
-    const initialTomlName = getTomlName(initialTomlRef.current);
-
-    // Only auto-update if the user hasn't manually changed the name in TOML
-    if (currentTomlName === initialTomlName) {
-      const updated = currentToml.replace(
-        /^name\s*=\s*"[^"]*"/m,
-        `name = "${workspaceName}"`
-      );
-      if (updated !== currentToml) {
-        onTomlChangeRef.current(updated);
-        initialTomlRef.current = updated;
-      }
-    }
-  }, [workspaceName, initialized]);
 
   const performSwitch = async (newMode: 'ui' | 'toml') => {
     if (newMode === 'toml') {

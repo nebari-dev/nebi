@@ -586,7 +586,7 @@ func (h *WorkspaceHandler) GetPublishDefaults(c *gin.Context) {
 // --- Request/Response types ---
 
 type CreateWorkspaceRequest struct {
-	Name           string `json:"name" binding:"required"`
+	Name           string `json:"name"`
 	PackageManager string `json:"package_manager"`
 	PixiToml       string `json:"pixi_toml"`
 	Source         string `json:"source"`

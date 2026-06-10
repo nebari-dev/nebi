@@ -11,6 +11,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/contenthash"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"gorm.io/gorm"
@@ -116,8 +117,20 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 		packageManager = "pixi"
 	}
 
+	name := req.Name
+	if name == "" && req.PixiToml != "" {
+		var err error
+		name, err = pixi.ExtractWorkspaceName(req.PixiToml)
+		if err != nil {
+			return nil, &ValidationError{Message: fmt.Sprintf("invalid pixi.toml: %v", err)}
+		}
+	}
+	if name == "" {
+		return nil, &ValidationError{Message: "workspace name is required"}
+	}
+
 	ws := models.Workspace{
-		Name:           req.Name,
+		Name:           name,
 		OwnerID:        userID,
 		Status:         models.WsStatusPending,
 		PackageManager: packageManager,

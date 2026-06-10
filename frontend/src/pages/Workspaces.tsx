@@ -142,8 +142,10 @@ export const Workspaces = () => {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     const wsName = getTomlName(pixiToml);
-    if (!wsName || !wsName.trim()) {
-      setError('Workspace name is required in the pixi.toml [workspace] section.');
+    if (!wsName?.trim()) {
+      setError(
+        'Workspace name is required in the pixi.toml [workspace] section.',
+      );
       return;
     }
 

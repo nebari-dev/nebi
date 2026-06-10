@@ -214,6 +214,21 @@ export const PixiTomlEditor = ({
         <div className="space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium block pt-2 pb-0">
+              Workspace Name
+            </label>
+            <Input
+              value={workspaceName || 'my-project'}
+              onChange={(e) => {
+                const newName = e.target.value;
+                const updated = buildPixiToml(packages, newName);
+                onTomlChange(updated);
+              }}
+              placeholder="Workspace name"
+              className="font-mono"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium block pt-2 pb-0">
               Packages
             </label>
             <div className="border rounded-lg overflow-hidden">

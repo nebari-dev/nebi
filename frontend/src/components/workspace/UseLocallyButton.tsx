@@ -90,11 +90,13 @@ export const UseLocallyButton = ({ workspaceName }: UseLocallyButtonProps) => {
               Run this in your terminal to download the workspace spec to your
               machine. Sync again whenever a teammate pushes changes.
             </p>
-            <div className="flex items-center gap-2 rounded-md border border-input bg-muted/60 p-1.5">
-              <code className="flex-1 overflow-x-auto whitespace-nowrap px-2 py-1.5 font-mono text-sm">
-                <span className="text-muted-foreground">$ </span>
-                {command}
-              </code>
+            <div className="flex items-start gap-2 rounded-md border border-input bg-muted/60 p-1.5">
+              <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-1.5 font-mono text-sm leading-6">
+                <code>
+                  <span className="text-muted-foreground">$ </span>
+                  {command}
+                </code>
+              </pre>
               <Button
                 variant="outline"
                 size="icon"

@@ -253,15 +253,9 @@ func (a *App) CreateWorkspace(name string, pixiToml string) (*WailsWorkspace, er
 		return nil, fmt.Errorf("database not connected")
 	}
 
-	if name == "" && pixiToml != "" {
-		var err error
-		name, err = pixi.ExtractWorkspaceName(pixiToml)
-		if err != nil {
-			return nil, fmt.Errorf("invalid pixi.toml: %w", err)
-		}
-	}
-	if name == "" {
-		return nil, fmt.Errorf("workspace name is required")
+	name, err := pixi.ResolveWorkspaceName(name, pixiToml)
+	if err != nil {
+		return nil, err
 	}
 
 	ws := models.Workspace{

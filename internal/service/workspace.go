@@ -117,16 +117,9 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 		packageManager = "pixi"
 	}
 
-	name := req.Name
-	if name == "" && req.PixiToml != "" {
-		var err error
-		name, err = pixi.ExtractWorkspaceName(req.PixiToml)
-		if err != nil {
-			return nil, &ValidationError{Message: fmt.Sprintf("invalid pixi.toml: %v", err)}
-		}
-	}
-	if name == "" {
-		return nil, &ValidationError{Message: "workspace name is required"}
+	name, err := pixi.ResolveWorkspaceName(req.Name, req.PixiToml)
+	if err != nil {
+		return nil, &ValidationError{Message: fmt.Sprintf("invalid pixi.toml: %v", err)}
 	}
 
 	ws := models.Workspace{
@@ -138,7 +131,7 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 		Path:           req.Path,
 	}
 
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err = s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&ws).Error; err != nil {
 			return fmt.Errorf("create workspace: %w", err)
 		}

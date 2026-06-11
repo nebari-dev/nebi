@@ -56,6 +56,7 @@ platforms = ["osx-arm64", "linux-64"]
 python = ">=3.11"
 `;
 
+// TODO: Robustify. Maybe use a proper TOML parser?
 const getTomlName = (toml: string): string | null => {
   const match = toml.match(/^name\s*=\s*"([^"]*)"/m);
   return match ? match[1] : null;

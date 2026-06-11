@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import { useRemoteServer } from '@/hooks/useRemote';
 import { useVersion } from '@/hooks/useVersion';
-import { getBasePath } from '@/lib/basePath';
+import { getBrandingLogoUrl } from '@/lib/brandingConfig';
 import { openExternal } from '@/lib/openExternal';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
@@ -50,7 +50,7 @@ export const Layout = () => {
             <div className="flex items-center gap-8">
               <NavLink to="/workspaces">
                 <img
-                  src={`${getBasePath()}/nebi-logo.svg`}
+                  src={getBrandingLogoUrl()}
                   alt="Nebi"
                   className="h-10 w-auto"
                 />

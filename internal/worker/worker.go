@@ -319,9 +319,12 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 		}
 
 	case models.JobTypeUpdate:
+		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusCreating)
+
 		fmt.Fprintf(logWriter, "Solving environment from current pixi.toml...\n")
 
 		if err := w.executor.SolveEnvironment(ctx, ws, logWriter); err != nil {
+			w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusFailed)
 			return err
 		}
 
@@ -330,6 +333,7 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 		}
 
 		w.svc.UpdateWorkspaceSize(ws)
+		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusReady)
 
 		if err := w.svc.CreateVersionSnapshot(ctx, ws, job.ID, userID, "Solved environment from updated pixi.toml"); err != nil {
 			w.logger.Error("Failed to create version snapshot", "error", err)

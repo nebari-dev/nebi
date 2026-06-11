@@ -151,18 +151,14 @@ export const PixiTomlEditor = ({
     setDirty(true);
     setNewPackageName('');
     setNewPackageVersion('');
-    if (!onReloadToml) {
-      onTomlChange(buildPixiToml(updated, workspaceName || 'my-project'));
-    }
+    onTomlChange(buildPixiToml(updated, workspaceName || 'my-project'));
   };
 
   const handleRemovePackage = (index: number) => {
     const updated = packages.filter((_, i) => i !== index);
     setPackages(updated);
     setDirty(true);
-    if (!onReloadToml) {
-      onTomlChange(buildPixiToml(updated, workspaceName || 'my-project'));
-    }
+    onTomlChange(buildPixiToml(updated, workspaceName || 'my-project'));
   };
 
   const handleTomlEdit = (value: string) => {

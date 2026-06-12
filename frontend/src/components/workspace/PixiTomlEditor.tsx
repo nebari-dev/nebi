@@ -323,9 +323,13 @@ export const PixiTomlEditor = ({
           <p className="text-sm text-muted-foreground">
             Workspace will be created as:{' '}
             {workspaceName ? (
-              <span className="font-medium text-foreground">{workspaceName}</span>
+              <span className="font-medium text-foreground">
+                {workspaceName}
+              </span>
             ) : (
-              <span className="text-yellow-600">(add a name under [workspace] to continue)</span>
+              <span className="text-yellow-600">
+                (add a name under [workspace] to continue)
+              </span>
             )}
           </p>
         </div>

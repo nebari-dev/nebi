@@ -324,7 +324,10 @@ export const Workspaces = () => {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isCreatePending || !getTomlName(pixiToml)?.trim()}>
+                <Button
+                  type="submit"
+                  disabled={isCreatePending || !getTomlName(pixiToml)?.trim()}
+                >
                   {isCreatePending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />

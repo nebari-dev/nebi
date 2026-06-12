@@ -48,12 +48,12 @@ const statusColors: Record<string, string> = {
 };
 
 const DEFAULT_PIXI_TOML = `[workspace]
-name = "my-project"
+name = ""
 channels = ["conda-forge"]
 platforms = ["osx-arm64", "linux-64"]
 
 [dependencies]
-python = ">=3.11"
+
 `;
 
 // TODO: Robustify. Maybe use a proper TOML parser?
@@ -295,6 +295,12 @@ export const Workspaces = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreate} className="space-y-4">
+              <PixiTomlEditor
+                tomlValue={pixiToml}
+                onTomlChange={setPixiToml}
+                workspaceName={getTomlName(pixiToml) || ''}
+              />
+
               {/* Path field — only for local target in local mode */}
               {createTarget === 'local' && isLocal && (
                 <div className="space-y-2">
@@ -310,12 +316,6 @@ export const Workspaces = () => {
                 </div>
               )}
 
-              <PixiTomlEditor
-                tomlValue={pixiToml}
-                onTomlChange={setPixiToml}
-                workspaceName={getTomlName(pixiToml) || 'my-project'}
-              />
-
               <div className="flex gap-2 justify-end">
                 <Button
                   type="button"
@@ -324,7 +324,7 @@ export const Workspaces = () => {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isCreatePending}>
+                <Button type="submit" disabled={isCreatePending || !getTomlName(pixiToml)?.trim()}>
                   {isCreatePending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />

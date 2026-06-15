@@ -34,7 +34,7 @@ export interface Workspace {
 }
 
 export interface CreateWorkspaceRequest {
-  name: string;
+  name?: string;
   package_manager?: string;
   pixi_toml?: string;
   path?: string;

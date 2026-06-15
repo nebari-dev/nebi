@@ -52,7 +52,7 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   // In local mode, auth is bypassed
   if (isLocalMode) return <>{children}</>;
 
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
+  return isAuthenticated ? children : <Navigate to="/login" />;
 };
 
 const AdminRoute = () => {

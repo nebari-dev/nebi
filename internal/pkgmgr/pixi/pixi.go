@@ -539,3 +539,18 @@ func ExtractWorkspaceName(content string) (string, error) {
 
 	return name, nil
 }
+
+// ResolveWorkspaceName returns the workspace name to use, preferring an explicit
+// name argument over extracting one from pixi.toml content. If both are empty,
+// it returns an error.
+func ResolveWorkspaceName(name string, pixiToml string) (string, error) {
+	if name != "" {
+		return name, nil
+	}
+
+	if pixiToml != "" {
+		return ExtractWorkspaceName(pixiToml)
+	}
+
+	return "", fmt.Errorf("workspace name is required")
+}

@@ -671,6 +671,7 @@ export const WorkspaceDetail = () => {
             <PixiTomlEditor
               tomlValue={editedToml}
               onTomlChange={setEditedToml}
+              workspaceName={workspace.name}
               onReloadToml={async () => {
                 const { content } = await workspacesApi.getPixiToml(wsId);
                 return content;
@@ -717,7 +718,7 @@ export const WorkspaceDetail = () => {
                     <div className="flex-1 space-y-2">
                       <div className="flex items-center gap-2">
                         <a
-                          href={`https://${pub.registry_url.replace(/^https?:\/\//, '').replace(/\/$/, '')}/repository/${pub.registry_namespace ? pub.registry_namespace + '/' : ''}${pub.repository}?tab=tags`}
+                          href={`https://${pub.registry_url.replace(/^https?:\/\//, '').replace(/\/$/, '')}/repository/${pub.registry_namespace ? `${pub.registry_namespace}/` : ''}${pub.repository}?tab=tags`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="font-medium text-lg hover:underline text-primary flex items-center gap-1"

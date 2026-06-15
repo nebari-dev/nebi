@@ -2004,3 +2004,34 @@ func TestE2E_InfoNoServer(t *testing.T) {
 		t.Errorf("expected 'Logged in: no', got: %s", res.Stdout)
 	}
 }
+
+func TestE2E_InfoWorkspacesDir(t *testing.T) {
+	dir := t.TempDir()
+
+	wsDir := filepath.Join(dir, "ws-storage")
+	os.Setenv("NEBI_STORAGE_WORKSPACES_DIR", wsDir)
+	defer os.Unsetenv("NEBI_STORAGE_WORKSPACES_DIR")
+
+	res := runCLI(t, dir, "info")
+	if res.ExitCode != 0 {
+		t.Fatalf("info failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, "Workspaces dir") {
+		t.Errorf("expected 'Workspaces dir' field in output, got: %s", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, wsDir) {
+		t.Errorf("expected workspaces dir %q in output, got: %s", wsDir, res.Stdout)
+	}
+
+	res = runCLI(t, dir, "info", "--json")
+	if res.ExitCode != 0 {
+		t.Fatalf("info --json failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(res.Stdout), &result); err != nil {
+		t.Fatalf("failed to parse JSON output: %v\nstdout: %s", err, res.Stdout)
+	}
+	if result["workspaces_dir"] != wsDir {
+		t.Errorf("expected workspaces_dir=%q, got: %v", wsDir, result["workspaces_dir"])
+	}
+}

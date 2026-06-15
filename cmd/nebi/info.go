@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
+	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -36,9 +37,10 @@ Examples:
 
 type infoResult struct {
 	// Nebi section
-	Version  string `json:"version"`
-	Platform string `json:"platform"`
-	DataDir  string `json:"data_dir"`
+	Version       string `json:"version"`
+	Platform      string `json:"platform"`
+	DataDir       string `json:"data_dir"`
+	WorkspacesDir string `json:"workspaces_dir,omitempty"`
 
 	// Server section
 	ServerURL      string `json:"server_url"`
@@ -71,6 +73,13 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	if err == nil {
 		home, _ := os.UserHomeDir()
 		result.DataDir = shortenPath(dataDir, home)
+	}
+
+	// Workspaces dir — same resolution `nebi serve` uses (config file,
+	// NEBI_STORAGE_WORKSPACES_DIR, or the built-in default)
+	if cfg, err := config.Load(); err == nil && cfg.Storage.WorkspacesDir != "" {
+		home, _ := os.UserHomeDir()
+		result.WorkspacesDir = shortenPath(cfg.Storage.WorkspacesDir, home)
 	}
 
 	// Resolve server URL, token, username from local sources (no API calls)
@@ -228,6 +237,9 @@ func printInfo(r infoResult) {
 	printField("Version", r.Version)
 	printField("Platform", r.Platform)
 	printField("Data dir", r.DataDir)
+	if r.WorkspacesDir != "" {
+		printField("Workspaces dir", r.WorkspacesDir)
+	}
 
 	fmt.Println()
 	fmt.Println("Server")

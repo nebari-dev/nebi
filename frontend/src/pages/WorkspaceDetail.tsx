@@ -644,6 +644,7 @@ export const WorkspaceDetail = () => {
             <PixiTomlEditor
               tomlValue={editedToml}
               onTomlChange={setEditedToml}
+              workspaceName={workspace.name}
               onReloadToml={async () => {
                 const { content } = await workspacesApi.getPixiToml(wsId);
                 return content;

@@ -11,6 +11,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/contenthash"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"gorm.io/gorm"
@@ -116,8 +117,13 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 		packageManager = "pixi"
 	}
 
+	name, err := pixi.ResolveWorkspaceName(req.Name, req.PixiToml)
+	if err != nil {
+		return nil, &ValidationError{Message: fmt.Sprintf("invalid pixi.toml: %v", err)}
+	}
+
 	ws := models.Workspace{
-		Name:           req.Name,
+		Name:           name,
 		OwnerID:        userID,
 		Status:         models.WsStatusPending,
 		PackageManager: packageManager,
@@ -125,7 +131,7 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 		Path:           req.Path,
 	}
 
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err = s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&ws).Error; err != nil {
 			return fmt.Errorf("create workspace: %w", err)
 		}

@@ -210,6 +210,21 @@ export const PixiTomlEditor = ({
         <div className="space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium block pt-2 pb-0">
+              Workspace Name
+            </label>
+            <Input
+              value={workspaceName || ''}
+              onChange={(e) => {
+                const newName = e.target.value;
+                const updated = buildPixiToml(packages, newName);
+                onTomlChange(updated);
+              }}
+              placeholder="Workspace name"
+              className="font-mono"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium block pt-2 pb-0">
               Packages
             </label>
             <div className="border rounded-lg overflow-hidden">
@@ -304,6 +319,18 @@ export const PixiTomlEditor = ({
           />
           <p className="text-xs text-muted-foreground">
             Define your project dependencies and configuration in TOML format
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Workspace will be created as:{' '}
+            {workspaceName ? (
+              <span className="font-medium text-foreground">
+                {workspaceName}
+              </span>
+            ) : (
+              <span className="text-yellow-600">
+                (add a name under [workspace] to continue)
+              </span>
+            )}
           </p>
         </div>
       )}

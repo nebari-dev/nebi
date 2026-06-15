@@ -38,6 +38,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserBadge } from '@/components/ui/user-badge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
+import { UseLocallyButton } from '@/components/workspace/UseLocallyButton';
 import { useCollaborators } from '@/hooks/useAdmin';
 import { usePackages } from '@/hooks/usePackages';
 import { usePublications, useUpdatePublication } from '@/hooks/useRegistries';
@@ -89,7 +90,6 @@ export const WorkspaceDetail = () => {
   const [savingToml, setSavingToml] = useState(false);
   const [loadingToml, setLoadingToml] = useState(false);
   const [copiedToml, setCopiedToml] = useState(false);
-  const [copiedPull, setCopiedPull] = useState(false);
   const [copiedImportId, setCopiedImportId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
   const [saveInstallJobId, setSaveInstallJobId] = useState<string | null>(null);
@@ -124,14 +124,6 @@ export const WorkspaceDetail = () => {
     await navigator.clipboard.writeText(pixiToml);
     setCopiedToml(true);
     setTimeout(() => setCopiedToml(false), 2000);
-  };
-
-  const handleCopyPull = async () => {
-    const serverUrl = window.location.origin;
-    const cmd = `nebi login ${serverUrl} && nebi pull ${workspace?.name || ''}`;
-    await navigator.clipboard.writeText(cmd);
-    setCopiedPull(true);
-    setTimeout(() => setCopiedPull(false), 2000);
   };
 
   const handleCopyImport = async (pub: {
@@ -196,26 +188,7 @@ export const WorkspaceDetail = () => {
           >
             {capitalize(workspace.status)}
           </Badge>
-          {!isLocalWs && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={handleCopyPull}
-            >
-              {copiedPull ? (
-                <>
-                  <Check className="h-4 w-4" />
-                  Copied
-                </>
-              ) : (
-                <>
-                  <Copy className="h-4 w-4" />
-                  nebi pull
-                </>
-              )}
-            </Button>
-          )}
+          {!isLocalWs && <UseLocallyButton workspaceName={workspace.name} />}
           <Button
             variant="outline"
             size="sm"

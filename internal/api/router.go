@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -88,6 +89,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		if cfg.Auth.OIDCIssuerURL != "" && cfg.Auth.OIDCClientID != "" {
 			oidcCfg := auth.OIDCConfig{
 				IssuerURL:    cfg.Auth.OIDCIssuerURL,
+				DiscoveryURL: cfg.Auth.OIDCDiscoveryURL,
 				ClientID:     cfg.Auth.OIDCClientID,
 				ClientSecret: cfg.Auth.OIDCClientSecret,
 				RedirectURL:  cfg.Auth.OIDCRedirectURL,
@@ -182,10 +184,12 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	// Initialize services and handlers
 	svc := service.New(db, q, exec, localMode, encKey, rbacProvider)
 	adminSvc := service.NewAdminService(db, rbacProvider)
+	groupSvc := service.NewGroupService(db, rbacProvider)
 	registrySvc := service.NewRegistryService(db, encKey)
 	jobSvc := service.NewJobService(db)
 
 	wsHandler := handlers.NewWorkspaceHandler(svc)
+	groupHandler := handlers.NewGroupHandler(groupSvc)
 	jobHandler := handlers.NewJobHandler(jobSvc, logBroker, valkeyClient)
 
 	// Protected routes (require authentication)
@@ -194,6 +198,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	{
 		// User info
 		protected.GET("/auth/me", handlers.GetCurrentUser(authenticator))
+		protected.GET("/groups/me", groupHandler.MyGroups)
 
 		// Workspace endpoints
 		protected.GET("/workspaces", wsHandler.ListWorkspaces)
@@ -225,6 +230,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			// Sharing operations (owner only - checked in handler)
 			ws.POST("/share", wsHandler.ShareWorkspace)
 			ws.DELETE("/share/:user_id", wsHandler.UnshareWorkspace)
+			ws.POST("/share-group", wsHandler.ShareWorkspaceWithGroup)
+			ws.DELETE("/share-group/:group_id", wsHandler.UnshareWorkspaceWithGroup)
 
 			// Tags (read permission)
 			ws.GET("/tags", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.ListTags)
@@ -247,7 +254,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		protected.POST("/templates", handlers.NotImplemented)
 
 		// OCI Registry endpoints (for users to view available registries)
-		registryHandler := handlers.NewRegistryHandler(registrySvc)
+		registryHandler := handlers.NewRegistryHandler(registrySvc, adminSvc)
 		protected.GET("/registries", registryHandler.ListPublicRegistries)
 
 		// Registry browse & import endpoints (for all authenticated users)
@@ -265,6 +272,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			admin.GET("/users", adminHandler.ListUsers)
 			admin.POST("/users", adminHandler.CreateUser)
 			admin.GET("/users/:id", adminHandler.GetUser)
+			admin.GET("/users/:id/groups", adminHandler.ListUserGroups)
 			admin.POST("/users/:id/toggle-admin", adminHandler.ToggleAdmin)
 			admin.DELETE("/users/:id", adminHandler.DeleteUser)
 
@@ -288,6 +296,20 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			admin.GET("/registries/:id", registryHandler.GetRegistry)
 			admin.PUT("/registries/:id", registryHandler.UpdateRegistry)
 			admin.DELETE("/registries/:id", registryHandler.DeleteRegistry)
+
+			// Groups
+			admin.GET("/groups", groupHandler.ListGroups)
+			admin.POST("/groups", groupHandler.CreateGroup)
+			admin.GET("/groups/:id", groupHandler.GetGroup)
+			admin.PATCH("/groups/:id", groupHandler.UpdateGroup)
+			admin.DELETE("/groups/:id", groupHandler.DeleteGroup)
+			admin.GET("/groups/:id/members", groupHandler.ListMembers)
+			admin.POST("/groups/:id/members", groupHandler.AddMember)
+			admin.DELETE("/groups/:id/members/:user_id", groupHandler.RemoveMember)
+			admin.POST("/groups/:id/grant-admin", adminHandler.GrantGroupAdmin)
+			admin.DELETE("/groups/:id/grant-admin", adminHandler.RevokeGroupAdmin)
+			admin.POST("/registries/:id/grant-group", registryHandler.GrantRegistryToGroup)
+			admin.DELETE("/registries/:id/grant-group/:group_id", registryHandler.RevokeRegistryFromGroup)
 		}
 
 		// Remote proxy endpoints (local mode only)
@@ -328,6 +350,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	if err != nil {
 		logger.Warn("Failed to load embedded frontend, frontend will not be served", "error", err)
 	} else {
+		runtimeBrandingConfigPath := resolveBrandingConfigPath()
+
 		// SPA fallback - serve files from embedded filesystem for all non-API, non-docs routes
 		router.NoRoute(func(c *gin.Context) {
 			path := c.Request.URL.Path
@@ -342,6 +366,19 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				relPath = strings.TrimPrefix(path, basePath)
 				if relPath == "" {
 					relPath = "/"
+				}
+			}
+
+			// Runtime branding config override:
+			// if a Helm-mounted file exists on disk, serve it instead of embedded assets.
+			if relPath == "/public/config.json" {
+				content, err := os.ReadFile(runtimeBrandingConfigPath)
+				if err == nil {
+					c.Data(http.StatusOK, "application/json", content)
+					return
+				}
+				if !os.IsNotExist(err) {
+					logger.Warn("Failed to read runtime branding config", "path", runtimeBrandingConfigPath, "error", err)
 				}
 			}
 
@@ -397,6 +434,19 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				contentType = "image/png"
 			} else if strings.HasSuffix(fsPath, ".jpg") || strings.HasSuffix(fsPath, ".jpeg") {
 				contentType = "image/jpeg"
+			} else if strings.HasSuffix(fsPath, ".woff2") {
+				contentType = "font/woff2"
+			} else if strings.HasSuffix(fsPath, ".woff") {
+				contentType = "font/woff"
+			} else if strings.HasSuffix(fsPath, ".ttf") {
+				contentType = "font/ttf"
+			}
+
+			// Rewrite absolute url(/...) references in bundled CSS (e.g. self-hosted
+			// fonts) to include the base path. Without this they resolve against the
+			// domain root and 404 when Nebi is served under a path prefix (proxy).
+			if strings.HasSuffix(fsPath, ".css") && basePath != "" {
+				content = []byte(strings.ReplaceAll(string(content), `url(/`, `url(`+basePath+`/`))
 			}
 
 			// For index.html, inject base path and rewrite asset URLs
@@ -443,6 +493,14 @@ func retryOIDCInit(cfg auth.OIDCConfig, db *gorm.DB, jwtSecret string, rbacProvi
 	}
 }
 
+func resolveBrandingConfigPath() string {
+	path := strings.TrimSpace(os.Getenv("NEBI_BRANDING_CONFIG_PATH"))
+	if path == "" {
+		return "/app/public/config.json"
+	}
+	return path
+}
+
 // loggingMiddleware logs HTTP requests
 func loggingMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -465,11 +523,17 @@ func loggingMiddleware() gin.HandlerFunc {
 	}
 }
 
-// corsMiddleware adds CORS headers
+// corsMiddleware adds CORS headers.
+//
+// The API is reached with a bearer Authorization header (CLI and the
+// same-origin SPA), never with cross-origin cookies, so we do not set
+// Access-Control-Allow-Credentials. A credentialed response is required by the
+// CORS spec to name an explicit origin, and combining it with the "*" wildcard
+// is invalid: browsers reject any such response, which in turn blocks the SPA's
+// <script type="module" crossorigin> bundle from loading.
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		// Prevent WebView (WKWebView) from caching API responses,

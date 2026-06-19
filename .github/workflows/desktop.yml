@@ -11,6 +11,15 @@ on:
 permissions:
   contents: write
 
+# Serialize against the Release (GoReleaser) workflow, which fires on the same
+# v* tags and writes to the same GitHub release. Sharing one ref-keyed group
+# across both workflows means whichever starts first creates the release and
+# the other only appends its assets — eliminating the concurrent-create race.
+# cancel-in-progress: false so a queued run waits rather than being dropped.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Build (${{ matrix.os }})
@@ -35,6 +44,16 @@ jobs:
             build_tags: ""
 
     runs-on: ${{ matrix.os }}
+    # macOS code-signing / notarization secrets. Surfaced as env so the signing
+    # steps can be conditionally skipped (e.g. on fork PRs, where secrets are
+    # empty) via `env.MACOS_SIGNING_CERT_B64 != ''`.
+    env:
+      MACOS_SIGNING_CERT_B64: ${{ secrets.MACOS_SIGNING_CERT_B64 }}
+      MACOS_SIGNING_CERT_PASSWORD: ${{ secrets.MACOS_SIGNING_CERT_PASSWORD }}
+      MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -50,12 +69,13 @@ jobs:
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
-      # Linux dependencies for wails (Ubuntu 24.04 uses webkit2gtk-4.1)
+      # Linux dependencies for wails (Ubuntu 24.04 uses webkit2gtk-4.1).
+      # xvfb is needed for the post-build smoke test below.
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev xvfb
 
       - name: Build frontend
         shell: bash
@@ -73,6 +93,73 @@ jobs:
       - name: Build desktop app
         run: wails build -platform ${{ matrix.platform }} ${{ matrix.build_tags }}
 
+      # Import the Developer ID Application cert into a throwaway keychain so
+      # codesign can use it. Skipped automatically when secrets are absent
+      # (e.g. fork PRs), leaving the Wails ad-hoc signature in place.
+      - name: Import signing certificate (macOS)
+        if: matrix.os == 'macos-latest' && env.MACOS_SIGNING_CERT_B64 != ''
+        run: |
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          # The temp keychain is ephemeral (deleted with the runner), so its
+          # password just needs to be non-empty — generate one rather than
+          # require a secret.
+          KEYCHAIN_PWD="$(uuidgen)"
+          echo "$MACOS_SIGNING_CERT_B64" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$MACOS_SIGNING_CERT_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
+
+      # Re-sign with the Developer ID cert under the hardened runtime (required
+      # for notarization), replacing Wails' ad-hoc signature.
+      - name: Sign macOS app
+        if: matrix.os == 'macos-latest' && env.MACOS_SIGNING_CERT_B64 != ''
+        run: |
+          set -euo pipefail
+          codesign --force --options runtime --timestamp \
+            --entitlements build/darwin/entitlements.plist \
+            --sign "$MACOS_SIGNING_IDENTITY" \
+            build/bin/Nebi.app
+          codesign --verify --deep --strict --verbose=2 build/bin/Nebi.app
+
+      # Submit to Apple's notary service, wait for the verdict, then staple the
+      # ticket onto the .app so Gatekeeper accepts it offline. notarytool needs
+      # a zip to submit; the final distribution zip is rebuilt from the stapled
+      # bundle by the "Package macOS app" step below.
+      - name: Notarize macOS app
+        if: matrix.os == 'macos-latest' && env.MACOS_SIGNING_CERT_B64 != ''
+        run: |
+          set -euo pipefail
+          KEY_PATH="$RUNNER_TEMP/api_key.p8"
+          echo "$APPLE_API_KEY_B64" | base64 --decode > "$KEY_PATH"
+          ditto -c -k --keepParent build/bin/Nebi.app "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --key "$KEY_PATH" \
+            --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER_ID" \
+            --wait
+          xcrun stapler staple build/bin/Nebi.app
+          xcrun stapler validate build/bin/Nebi.app
+
+      # macOS .app bundles must be packaged into a single archive before they
+      # leave the runner. Uploading the raw Nebi.app directory strips the
+      # bundle wrapper (upload-artifact roots the archive at the dir's
+      # contents, so it unzips to a bare Contents/ folder) and loses the
+      # executable bit and symlinks. `ditto` is Apple's bundle-aware archiver:
+      # it preserves the wrapper, permissions, symlinks, and xattrs so the
+      # downloaded zip unzips to a launchable Nebi.app.
+      - name: Package macOS app
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd build/bin
+          ditto -c -k --keepParent Nebi.app ${{ matrix.asset_name }}.zip
+
       # For PRs and main branch pushes: upload as artifacts
       - name: Upload artifact (Linux)
         if: matrix.os == 'ubuntu-latest' && !startsWith(github.ref, 'refs/tags/')
@@ -86,7 +173,7 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: nebi-macos
-          path: build/bin/Nebi.app
+          path: build/bin/${{ matrix.asset_name }}.zip
 
       - name: Upload artifact (Windows)
         if: matrix.os == 'windows-latest' && !startsWith(github.ref, 'refs/tags/')
@@ -95,18 +182,58 @@ jobs:
           name: nebi-windows
           path: build/bin/Nebi.exe
 
+      # Smoke test: launch the built binary and confirm it doesn't crash within
+      # 10s. Catches runtime regressions a build-only step misses — e.g. the
+      # WebKitGTK/JSC signal-handler SIGSEGV fixed in #351, which only triggers
+      # once the JS context lazy-inits at runtime.
+      - name: Smoke test (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          set +e
+          xvfb-run -a timeout 10 ./build/bin/Nebi
+          code=$?
+          set -e
+          # `timeout` exits 124 when it kills the still-running process, which
+          # is the success case here — the GUI is expected to stay alive.
+          if [ "$code" -ne 124 ]; then
+            echo "Smoke test failed: binary exited with code $code within 10s (expected 124)"
+            exit 1
+          fi
+          echo "Smoke test passed: binary stayed alive for 10s"
+
+      - name: Smoke test (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          open ./build/bin/Nebi.app
+          sleep 10
+          if pgrep -x Nebi > /dev/null; then
+            echo "Smoke test passed: binary stayed alive for 10s"
+            pkill -x Nebi || true
+          else
+            echo "Smoke test failed: Nebi.app exited or crashed within 10s"
+            exit 1
+          fi
+
+      - name: Smoke test (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $proc = Start-Process -FilePath "build/bin/Nebi.exe" -PassThru
+          Start-Sleep -Seconds 10
+          if (-not $proc.HasExited) {
+            Write-Host "Smoke test passed: binary stayed alive for 10s"
+            Stop-Process -Id $proc.Id
+          } else {
+            Write-Host "Smoke test failed: exited with code $($proc.ExitCode) within 10s"
+            exit 1
+          }
+
       # For releases: compress and upload to GitHub release
       - name: Compress for release (Linux)
         if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/')
         run: |
           cd build/bin
           tar -czvf ${{ matrix.asset_name }}.tar.gz Nebi
-
-      - name: Compress for release (macOS)
-        if: matrix.os == 'macos-latest' && startsWith(github.ref, 'refs/tags/')
-        run: |
-          cd build/bin
-          zip -r ${{ matrix.asset_name }}.zip Nebi.app
 
       - name: Upload to release (Linux)
         if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/')

@@ -7,7 +7,7 @@ const darkCodeTheme = prismThemes.nightOwl;
 
 const config: Config = {
   title: 'Nebi',
-  tagline: 'Multi-user environment management for Pixi',
+  tagline: 'Environment management for teams',
   favicon: 'img/nebi-icon.svg',
 
   future: {
@@ -35,7 +35,15 @@ const config: Config = {
 
   themes: ['@docusaurus/theme-mermaid'],
 
-  plugins: ['docusaurus-plugin-sass'],
+  plugins: [
+    'docusaurus-plugin-sass',
+    [
+      require.resolve('@easyops-cn/docusaurus-search-local'),
+      {
+        indexBlog: false,
+      },
+    ],
+  ],
 
   clientModules: [require.resolve('./src/cookieConsent.ts')],
 

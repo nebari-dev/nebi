@@ -1,28 +1,47 @@
-import { useState, useMemo } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
-import { buildImportCommand } from '@/lib/registry';
+import {
+  ArrowLeft,
+  Check,
+  ChevronRight,
+  Copy,
+  Download,
+  Globe,
+  Loader2,
+  Lock,
+  Package,
+  Search,
+  Settings,
+} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { useIsAdmin } from '@/hooks/useAdmin';
-import { usePublicRegistries, useRegistryRepositories, useRepositoryTags, useImportEnvironment } from '@/hooks/useRegistries';
-import { useRemoteServer, useRemoteRegistries } from '@/hooks/useRemote';
+import {
+  useImportEnvironment,
+  usePublicRegistries,
+  useRegistryRepositories,
+  useRepositoryTags,
+} from '@/hooks/useRegistries';
+import { useRemoteRegistries, useRemoteServer } from '@/hooks/useRemote';
+import { buildImportCommand } from '@/lib/registry';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, ArrowLeft, Search, Download, Package, ChevronRight, Globe, Lock, Settings, Copy, Check } from 'lucide-react';
 
 export const Registries = () => {
   const navigate = useNavigate();
   const { data: isAdmin } = useIsAdmin();
-  const { data: registries, isLoading: registriesLoading } = usePublicRegistries();
+  const { data: registries, isLoading: registriesLoading } =
+    usePublicRegistries();
 
   // View mode support for local desktop app
   const isLocalMode = useModeStore((s) => s.isLocalMode());
   const viewMode = useViewModeStore((state) => state.viewMode);
   const { data: serverStatus } = useRemoteServer();
   const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
-  const { data: remoteRegistries, isLoading: remoteLoading } = useRemoteRegistries(isRemoteConnected);
+  const { data: remoteRegistries, isLoading: remoteLoading } =
+    useRemoteRegistries(isRemoteConnected);
 
   // Show registries based on view mode when connected to remote
   const displayedRegistries = useMemo(() => {
@@ -52,10 +71,15 @@ export const Registries = () => {
       <div className="flex items-center gap-4">
         <div className="flex-1">
           <h1 className="text-3xl font-bold">Registries</h1>
-          <p className="text-muted-foreground">Browse OCI registries and import environments</p>
+          <p className="text-muted-foreground">
+            Browse OCI registries and import environments
+          </p>
         </div>
         {isAdmin && (
-          <Button variant="outline" onClick={() => navigate('/admin/registries')}>
+          <Button
+            variant="outline"
+            onClick={() => navigate('/admin/registries')}
+          >
             <Settings className="h-4 w-4 mr-2" />
             Manage Registries
           </Button>
@@ -76,9 +100,14 @@ export const Registries = () => {
               </thead>
               <tbody>
                 {displayedRegistries.map((registry) => (
-                  <tr key={registry.id} className="border-b last:border-0 hover:bg-muted/50">
+                  <tr
+                    key={registry.id}
+                    className="border-b last:border-0 hover:bg-muted/50"
+                  >
                     <td className="p-4 font-medium">{registry.name}</td>
-                    <td className="p-4 font-mono text-sm text-muted-foreground">{registry.url}</td>
+                    <td className="p-4 font-mono text-sm text-muted-foreground">
+                      {registry.url}
+                    </td>
                     <td className="p-4">
                       {registry.is_default && (
                         <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20">
@@ -87,7 +116,10 @@ export const Registries = () => {
                       )}
                     </td>
                     <td className="p-4 text-right">
-                      <Button size="sm" onClick={() => navigate(`/registries/${registry.id}`)}>
+                      <Button
+                        size="sm"
+                        onClick={() => navigate(`/registries/${registry.id}`)}
+                      >
                         <Package className="mr-2 h-4 w-4" />
                         Browse
                       </Button>
@@ -105,7 +137,10 @@ export const Registries = () => {
           <p className="text-muted-foreground">
             No registries configured.{' '}
             {isAdmin ? (
-              <Link to="/admin/registries" className="text-primary hover:underline">
+              <Link
+                to="/admin/registries"
+                className="text-primary hover:underline"
+              >
                 Add one in Admin &rarr; Registries.
               </Link>
             ) : (
@@ -132,7 +167,10 @@ const RepositoryRow = ({
   showVisibility: boolean;
 }) => {
   const navigate = useNavigate();
-  const { data: tagData, isLoading: tagsLoading } = useRepositoryTags(registryId, repoName);
+  const { data: tagData, isLoading: tagsLoading } = useRepositoryTags(
+    registryId,
+    repoName,
+  );
   const importMutation = useImportEnvironment();
 
   const [selectedTag, setSelectedTag] = useState('');
@@ -189,7 +227,9 @@ const RepositoryRow = ({
         {showVisibility && (
           <td className="p-4">
             {isPublic === undefined ? (
-              <Badge variant="outline" className="text-muted-foreground">Unknown</Badge>
+              <Badge variant="outline" className="text-muted-foreground">
+                Unknown
+              </Badge>
             ) : isPublic ? (
               <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
                 <Globe className="mr-1 h-3 w-3" />
@@ -213,7 +253,9 @@ const RepositoryRow = ({
               onChange={(e) => setSelectedTag(e.target.value)}
             >
               {tags.map((tag) => (
-                <option key={tag.name} value={tag.name}>{tag.name}</option>
+                <option key={tag.name} value={tag.name}>
+                  {tag.name}
+                </option>
               ))}
             </select>
           ) : (
@@ -280,7 +322,9 @@ const RepositoryRow = ({
                 </div>
               </div>
               <div className="space-y-3">
-                <label className="text-sm font-medium mb-2 block">Workspace Name</label>
+                <label className="text-sm font-medium mb-2 block">
+                  Workspace Name
+                </label>
                 <Input
                   value={importName}
                   onChange={(e) => setImportName(e.target.value)}
@@ -320,14 +364,15 @@ const RepositoryRow = ({
 export const RegistryRepositories = () => {
   const navigate = useNavigate();
   const { registryId } = useParams<{ registryId: string }>();
-  const { data: registries, isLoading: registriesLoading } = usePublicRegistries();
+  const { data: registries, isLoading: registriesLoading } =
+    usePublicRegistries();
 
   const [searchQuery, setSearchQuery] = useState('');
   const selectedRegistry = registries?.find((r) => r.id === registryId);
 
   const { data: repoData, isLoading: reposLoading } = useRegistryRepositories(
     registryId || '',
-    searchQuery || undefined
+    searchQuery || undefined,
   );
 
   if (registriesLoading) {
@@ -343,19 +388,32 @@ export const RegistryRepositories = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/registries')}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => navigate('/registries')}
+        >
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Link to="/registries" className="hover:text-foreground transition-colors">
+            <Link
+              to="/registries"
+              className="hover:text-foreground transition-colors"
+            >
               Registries
             </Link>
             <ChevronRight className="h-3 w-3" />
-            <span className="text-foreground">{selectedRegistry?.name || 'Registry'}</span>
+            <span className="text-foreground">
+              {selectedRegistry?.name || 'Registry'}
+            </span>
           </div>
-          <h1 className="text-3xl font-bold">{selectedRegistry?.name || 'Registry'}</h1>
-          <p className="text-muted-foreground">Browse repositories in this registry</p>
+          <h1 className="text-3xl font-bold">
+            {selectedRegistry?.name || 'Registry'}
+          </h1>
+          <p className="text-muted-foreground">
+            Browse repositories in this registry
+          </p>
         </div>
       </div>
 
@@ -379,7 +437,8 @@ export const RegistryRepositories = () => {
         <>
           {repoData?.fallback && (
             <div className="bg-yellow-500/10 border border-yellow-500/20 text-yellow-600 dark:text-yellow-400 px-4 py-3 rounded text-sm">
-              Catalog API not available for this registry. Showing known publications below.
+              Catalog API not available for this registry. Showing known
+              publications below.
             </div>
           )}
 
@@ -390,8 +449,12 @@ export const RegistryRepositories = () => {
                   <table className="w-full">
                     <thead className="border-b bg-muted/50">
                       <tr>
-                        <th className="text-left p-4 font-medium">Repository</th>
-                        <th className="text-left p-4 font-medium">Visibility</th>
+                        <th className="text-left p-4 font-medium">
+                          Repository
+                        </th>
+                        <th className="text-left p-4 font-medium">
+                          Visibility
+                        </th>
                         <th className="text-left p-4 font-medium">Tag</th>
                         <th className="text-left p-4 font-medium">Command</th>
                         <th className="text-right p-4 font-medium">Actions</th>
@@ -415,7 +478,9 @@ export const RegistryRepositories = () => {
             </Card>
           ) : (
             <div className="text-center py-8">
-              <p className="text-muted-foreground">No repositories found in this registry.</p>
+              <p className="text-muted-foreground">
+                No repositories found in this registry.
+              </p>
             </div>
           )}
         </>

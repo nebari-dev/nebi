@@ -1,5 +1,5 @@
-import { Badge } from '@/components/ui/badge';
 import { Crown, Edit, Eye } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 interface RoleBadgeProps {
   role: 'owner' | 'editor' | 'viewer';

@@ -3,6 +3,7 @@ package worker
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -50,7 +51,8 @@ func (noopPackageManager) GetManifest(context.Context, string) (*pkgmgr.Manifest
 // creates the workspace directory and writes empty manifest/lock files so
 // CreateVersionSnapshot reads them successfully; the rest are no-ops.
 type fakeExecutor struct {
-	rootDir string
+	rootDir  string
+	solveErr error
 }
 
 func (e *fakeExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspace, w io.Writer, opts executor.CreateWorkspaceOptions) error {
@@ -75,7 +77,7 @@ func (e *fakeExecutor) DeleteWorkspace(context.Context, *models.Workspace, io.Wr
 	return nil
 }
 func (e *fakeExecutor) SolveEnvironment(context.Context, *models.Workspace, io.Writer) error {
-	return nil
+	return e.solveErr
 }
 func (e *fakeExecutor) GetWorkspacePath(ws *models.Workspace) string {
 	return filepath.Join(e.rootDir, ws.Name+"-"+ws.ID.String())
@@ -134,6 +136,93 @@ func TestExecuteJob_CreatePersistsWorkspacePath(t *testing.T) {
 	}
 	if stored.Path != want {
 		t.Errorf("workspace path was not persisted: want %q, got %q", want, stored.Path)
+	}
+}
+
+func TestExecuteJob_UpdateSetsWorkspaceReady(t *testing.T) {
+	db, svc, jobSvc, exec := setupWorkerTest(t)
+
+	user := models.User{Username: "alice", Email: "alice@test.com"}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	ws := &models.Workspace{
+		Name:           "update-ready",
+		OwnerID:        user.ID,
+		Status:         models.WsStatusPending,
+		PackageManager: testPackageManager,
+	}
+	if err := db.Create(ws).Error; err != nil {
+		t.Fatalf("create ws: %v", err)
+	}
+
+	job := &models.Job{
+		WorkspaceID: ws.ID,
+		Type:        models.JobTypeUpdate,
+		Status:      models.JobStatusPending,
+		Metadata:    map[string]interface{}{},
+	}
+	if err := db.Create(job).Error; err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+
+	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
+		t.Fatalf("executeJob: %v", err)
+	}
+
+	var updated models.Workspace
+	if err := db.First(&updated, "id = ?", ws.ID).Error; err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if updated.Status != models.WsStatusReady {
+		t.Errorf("workspace status not updated to ready: got %q", updated.Status)
+	}
+}
+
+func TestExecuteJob_UpdateSetsWorkspaceFailedOnSolveError(t *testing.T) {
+	db, svc, jobSvc, exec := setupWorkerTest(t)
+	exec.solveErr = errors.New("solve failed")
+
+	user := models.User{Username: "alice", Email: "alice@test.com"}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	ws := &models.Workspace{
+		Name:           "update-failed",
+		OwnerID:        user.ID,
+		Status:         models.WsStatusReady,
+		PackageManager: testPackageManager,
+	}
+	if err := db.Create(ws).Error; err != nil {
+		t.Fatalf("create ws: %v", err)
+	}
+
+	job := &models.Job{
+		WorkspaceID: ws.ID,
+		Type:        models.JobTypeUpdate,
+		Status:      models.JobStatusPending,
+		Metadata:    map[string]interface{}{},
+	}
+	if err := db.Create(job).Error; err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+
+	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err == nil {
+		t.Fatal("expected executeJob to fail, got nil")
+	}
+
+	var updated models.Workspace
+	if err := db.First(&updated, "id = ?", ws.ID).Error; err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if updated.Status != models.WsStatusFailed {
+		t.Errorf("workspace status not updated to failed: got %q", updated.Status)
 	}
 }
 

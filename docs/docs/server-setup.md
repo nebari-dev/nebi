@@ -4,9 +4,9 @@ The Nebi server is a hosted web interface to manage Nebi workspaces in a team. I
 
 This page covers how to run and configure it.
 
-<!-- TODO: Embed video walkthrough of server UI, created with https://github.com/nebari-dev/nebi-video-demo-automation. Update the link in the following iframe. -->
+{/* TODO: Embed video walkthrough of server UI, created with https://github.com/nebari-dev/nebi-video-demo-automation. Update the link in the following iframe. */}
 
-<!-- <iframe width="560" height="315" src="" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe> -->
+{/* <iframe width="560" height="315" src="" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe> */}
 
 ## Admin Credentials
 
@@ -52,6 +52,18 @@ Once the server is running, authenticate from any client machine with [`nebi log
 ## API Documentation
 
 The Swagger API docs are available at [http://localhost:8460/docs](http://localhost:8460/docs).
+
+## Groups
+
+### OIDC group sync
+
+When OIDC authentication is configured, nebi requests the `groups` scope alongside `openid profile email`. The IdP must return a `groups` claim in the ID token (a JSON array of strings). On every login, nebi reconciles the user's group memberships:
+
+- For each name in the claim, an OIDC-source group is created (if missing) and the user is added to it.
+- Memberships in OIDC-source groups that aren't in this login's claim are removed.
+- Native groups (created via the admin UI) are **never** modified by OIDC sync — even if a claim name happens to collide with a native group name.
+
+OIDC groups with zero members are kept so existing workspace shares survive temporary churn. There is no background reconcile worker; all updates happen at login time.
 
 ## What's Next
 

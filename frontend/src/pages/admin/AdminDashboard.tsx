@@ -1,22 +1,27 @@
+import {
+  Activity,
+  AlertTriangle,
+  Boxes,
+  HardDrive,
+  Loader2,
+  Package,
+  UserPlus,
+  Users,
+} from 'lucide-react';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { useUsers, useDashboardStats } from '@/hooks/useAdmin';
-import { useWorkspaces } from '@/hooks/useWorkspaces';
+import { Card, CardContent } from '@/components/ui/card';
+import { useDashboardStats, useUsers } from '@/hooks/useAdmin';
 import { useJobs } from '@/hooks/useJobs';
+import {
+  useRemoteDashboardStats,
+  useRemoteJobs,
+  useRemoteServer,
+  useRemoteWorkspaces,
+} from '@/hooks/useRemote';
+import { useWorkspaces } from '@/hooks/useWorkspaces';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
-import { useRemoteServer, useRemoteWorkspaces, useRemoteJobs, useRemoteDashboardStats } from '@/hooks/useRemote';
-import { Card, CardContent } from '@/components/ui/card';
-import {
-  Loader2,
-  Users,
-  Boxes,
-  Activity,
-  HardDrive,
-  AlertTriangle,
-  UserPlus,
-  Package,
-} from 'lucide-react';
 
 const StatCard = ({
   title,
@@ -79,9 +84,12 @@ export const AdminDashboard = () => {
   const shouldShowRemote = isRemoteConnected && viewMode === 'remote';
 
   // Remote data
-  const { data: remoteWorkspaces, isLoading: remoteWsLoading } = useRemoteWorkspaces(shouldShowRemote);
-  const { data: remoteJobs, isLoading: remoteJobsLoading } = useRemoteJobs(shouldShowRemote);
-  const { data: remoteDashboardStats, isLoading: remoteStatsLoading } = useRemoteDashboardStats(shouldShowRemote);
+  const { data: remoteWorkspaces, isLoading: remoteWsLoading } =
+    useRemoteWorkspaces(shouldShowRemote);
+  const { data: remoteJobs, isLoading: remoteJobsLoading } =
+    useRemoteJobs(shouldShowRemote);
+  const { data: remoteDashboardStats, isLoading: remoteStatsLoading } =
+    useRemoteDashboardStats(shouldShowRemote);
 
   // Select data based on view mode
   const displayedWorkspaces = useMemo(() => {
@@ -105,16 +113,21 @@ export const AdminDashboard = () => {
     return remoteDashboardStats;
   }, [dashboardStats, remoteDashboardStats, isRemoteConnected, viewMode]);
 
-  const activeJobs =
-    displayedJobs.filter(
-      (job) => job.status === 'running' || job.status === 'pending',
-    ).length;
+  const activeJobs = displayedJobs.filter(
+    (job) => job.status === 'running' || job.status === 'pending',
+  ).length;
 
-  const failedJobs =
-    displayedJobs.filter((job) => job.status === 'failed').length;
+  const failedJobs = displayedJobs.filter(
+    (job) => job.status === 'failed',
+  ).length;
 
-  const isLoading = usersLoading || wsLoading || jobsLoading || statsLoading ||
-    (shouldShowRemote && (remoteWsLoading || remoteJobsLoading || remoteStatsLoading));
+  const isLoading =
+    usersLoading ||
+    wsLoading ||
+    jobsLoading ||
+    statsLoading ||
+    (shouldShowRemote &&
+      (remoteWsLoading || remoteJobsLoading || remoteStatsLoading));
 
   if (isLoading) {
     return (
@@ -126,7 +139,9 @@ export const AdminDashboard = () => {
 
   const alerts: string[] = [];
   if (failedJobs > 0) {
-    alerts.push(`${failedJobs} job${failedJobs > 1 ? 's' : ''} failed recently`);
+    alerts.push(
+      `${failedJobs} job${failedJobs > 1 ? 's' : ''} failed recently`,
+    );
   }
 
   return (

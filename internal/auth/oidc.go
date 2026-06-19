@@ -27,6 +27,7 @@ type OIDCAuthenticator struct {
 // OIDCConfig holds OIDC configuration
 type OIDCConfig struct {
 	IssuerURL    string
+	DiscoveryURL string
 	ClientID     string
 	ClientSecret string
 	RedirectURL  string
@@ -40,8 +41,24 @@ func NewOIDCAuthenticator(ctx context.Context, cfg OIDCConfig, db *gorm.DB, jwtS
 		ctx = context.Background()
 	}
 
-	// Discover OIDC provider configuration
-	provider, err := oidc.NewProvider(ctx, cfg.IssuerURL)
+	// Discover OIDC provider configuration.
+	//
+	// In split-horizon deployments (e.g. Keycloak behind an external gateway
+	// while pods reach it via an in-cluster Service) the URL nebi uses to fetch
+	// .well-known/openid-configuration differs from the issuer that appears in
+	// the token's "iss" claim. When DiscoveryURL is set we fetch discovery from
+	// it but keep validating "iss" against IssuerURL, using
+	// oidc.InsecureIssuerURLContext to tell go-oidc the two are intentionally
+	// different. When DiscoveryURL is empty the behavior is unchanged: discovery
+	// and issuer validation both use IssuerURL.
+	discoveryURL := cfg.DiscoveryURL
+	if discoveryURL != "" && discoveryURL != cfg.IssuerURL {
+		ctx = oidc.InsecureIssuerURLContext(ctx, cfg.IssuerURL)
+	} else {
+		discoveryURL = cfg.IssuerURL
+	}
+
+	provider, err := oidc.NewProvider(ctx, discoveryURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to discover OIDC provider: %w", err)
 	}
@@ -49,7 +66,7 @@ func NewOIDCAuthenticator(ctx context.Context, cfg OIDCConfig, db *gorm.DB, jwtS
 	// Default scopes if none provided
 	scopes := cfg.Scopes
 	if len(scopes) == 0 {
-		scopes = []string{oidc.ScopeOpenID, "profile", "email"}
+		scopes = []string{oidc.ScopeOpenID, "profile", "email", "groups"}
 	}
 
 	// Configure OAuth2
@@ -111,12 +128,13 @@ func (a *OIDCAuthenticator) HandleCallback(ctx context.Context, code string) (*L
 
 	// Extract claims
 	var claims struct {
-		Email             string `json:"email"`
-		EmailVerified     bool   `json:"email_verified"`
-		Name              string `json:"name"`
-		PreferredUsername string `json:"preferred_username"`
-		Sub               string `json:"sub"`
-		Picture           string `json:"picture"`
+		Email             string   `json:"email"`
+		EmailVerified     bool     `json:"email_verified"`
+		Name              string   `json:"name"`
+		PreferredUsername string   `json:"preferred_username"`
+		Sub               string   `json:"sub"`
+		Picture           string   `json:"picture"`
+		Groups            []string `json:"groups"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		return nil, fmt.Errorf("failed to parse claims: %w", err)
@@ -137,6 +155,10 @@ func (a *OIDCAuthenticator) HandleCallback(ctx context.Context, code string) (*L
 	user, err := a.findOrCreateUser(username, claims.Email, claims.Name, claims.Picture, claims.Sub)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find or create user: %w", err)
+	}
+
+	if err := SyncOIDCGroups(a.db, user.ID, claims.Groups); err != nil {
+		slog.Warn("OIDC group sync failed; continuing login", "user_id", user.ID, "err", err)
 	}
 
 	// Generate JWT token using existing system

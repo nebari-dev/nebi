@@ -586,7 +586,7 @@ func (h *WorkspaceHandler) GetPublishDefaults(c *gin.Context) {
 // --- Request/Response types ---
 
 type CreateWorkspaceRequest struct {
-	Name           string `json:"name" binding:"required"`
+	Name           string `json:"name"`
 	PackageManager string `json:"package_manager"`
 	PixiToml       string `json:"pixi_toml"`
 	Source         string `json:"source"`
@@ -644,6 +644,64 @@ type PublishRequest struct {
 
 type UpdatePublicationRequest struct {
 	IsPublic *bool `json:"is_public" binding:"required"`
+}
+
+type ShareWorkspaceWithGroupRequest struct {
+	GroupID uuid.UUID `json:"group_id" binding:"required"`
+	Role    string    `json:"role" binding:"required"` // "viewer" or "editor"
+}
+
+// ShareWorkspaceWithGroup godoc
+// @Summary Share workspace with a group (owner only)
+// @Tags workspaces
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path string true "Workspace ID"
+// @Param share body ShareWorkspaceWithGroupRequest true "Group share details"
+// @Success 201 {object} models.GroupPermission
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /workspaces/{id}/share-group [post]
+func (h *WorkspaceHandler) ShareWorkspaceWithGroup(c *gin.Context) {
+	var req ShareWorkspaceWithGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	perm, err := h.svc.ShareWorkspaceWithGroup(c.Param("id"), getUserID(c), req.GroupID, req.Role)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, perm)
+}
+
+// UnshareWorkspaceWithGroup godoc
+// @Summary Revoke a group's access to a workspace (owner only)
+// @Tags workspaces
+// @Security BearerAuth
+// @Param id path string true "Workspace ID"
+// @Param group_id path string true "Group ID to revoke"
+// @Success 204
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /workspaces/{id}/share-group/{group_id} [delete]
+func (h *WorkspaceHandler) UnshareWorkspaceWithGroup(c *gin.Context) {
+	groupID, err := uuid.Parse(c.Param("group_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid group ID"})
+		return
+	}
+	if err := h.svc.UnshareWorkspaceFromGroup(c.Param("id"), getUserID(c), groupID); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 // getUserID is in helpers.go

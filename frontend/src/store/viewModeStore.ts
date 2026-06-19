@@ -14,6 +14,6 @@ export const useViewModeStore = create<ViewModeState>()(
       viewMode: 'remote',
       setViewMode: (mode) => set({ viewMode: mode }),
     }),
-    { name: 'nebi-view-mode' }
-  )
+    { name: 'nebi-view-mode' },
+  ),
 );

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 export interface User {
   id: string; // UUID
   username: string;
@@ -9,7 +8,12 @@ export interface User {
   updated_at: string;
 }
 
-export type WorkspaceStatus = 'pending' | 'creating' | 'ready' | 'failed' | 'deleting';
+export type WorkspaceStatus =
+  | 'pending'
+  | 'creating'
+  | 'ready'
+  | 'failed'
+  | 'deleting';
 
 export interface Workspace {
   id: string; // UUID
@@ -30,7 +34,7 @@ export interface Workspace {
 }
 
 export interface CreateWorkspaceRequest {
-  name: string;
+  name?: string;
   package_manager?: string;
   pixi_toml?: string;
   path?: string;
@@ -93,13 +97,16 @@ export interface AuditLog {
   user?: User;
 }
 
-export interface Collaborator {
-  user_id: string;
-  username: string;
-  email: string;
-  role: 'owner' | 'editor' | 'viewer';
-  is_owner: boolean;
-}
+export type Collaborator =
+  | {
+      kind: 'user';
+      user_id: string;
+      username: string;
+      email: string;
+      role: 'owner' | 'editor' | 'viewer';
+      is_owner: boolean;
+    }
+  | GroupCollaborator;
 
 export interface ShareWorkspaceRequest {
   user_id: string;
@@ -261,4 +268,51 @@ export interface ImportEnvironmentRequest {
   repository_path?: string;
   tag: string;
   name: string;
+}
+
+// Group types
+export type GroupSource = 'native' | 'oidc';
+
+export interface Group {
+  id: string;
+  name: string;
+  description: string;
+  source: GroupSource;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupWithMemberCount extends Group {
+  member_count: number;
+}
+
+export interface GroupMember {
+  group_id: string;
+  user_id: string;
+  created_at: string;
+  user?: User;
+}
+
+export interface GroupCollaborator {
+  kind: 'group';
+  group_id: string;
+  name: string;
+  source: GroupSource;
+  role: 'editor' | 'viewer';
+  is_owner: false;
+}
+
+export interface CreateGroupRequest {
+  name: string;
+  description?: string;
+}
+
+export interface UpdateGroupRequest {
+  name?: string;
+  description?: string;
+}
+
+export interface ShareWorkspaceWithGroupRequest {
+  group_id: string;
+  role: 'editor' | 'viewer';
 }

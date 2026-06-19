@@ -11,6 +11,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/contenthash"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"gorm.io/gorm"
@@ -54,6 +55,18 @@ func (s *WorkspaceService) List(userID uuid.UUID) ([]WorkspaceResponse, error) {
 		for _, p := range permissions {
 			wsIDs = append(wsIDs, p.WorkspaceID)
 		}
+
+		// Group-mediated permissions: include workspaces shared with any
+		// group the caller belongs to. Casbin grouping rules are the source
+		// of truth for membership (same query the matcher uses transitively).
+		if userGroups, err := s.rbac.GetUserGroups(userID); err == nil && len(userGroups) > 0 {
+			var groupPerms []models.GroupPermission
+			s.db.Where("group_id IN ?", userGroups).Find(&groupPerms)
+			for _, gp := range groupPerms {
+				wsIDs = append(wsIDs, gp.WorkspaceID)
+			}
+		}
+
 		if len(wsIDs) > 0 {
 			query = query.Or("id IN ?", wsIDs)
 		}
@@ -104,8 +117,13 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 		packageManager = "pixi"
 	}
 
+	name, err := pixi.ResolveWorkspaceName(req.Name, req.PixiToml)
+	if err != nil {
+		return nil, &ValidationError{Message: fmt.Sprintf("invalid pixi.toml: %v", err)}
+	}
+
 	ws := models.Workspace{
-		Name:           req.Name,
+		Name:           name,
 		OwnerID:        userID,
 		Status:         models.WsStatusPending,
 		PackageManager: packageManager,
@@ -113,7 +131,7 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 		Path:           req.Path,
 	}
 
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err = s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&ws).Error; err != nil {
 			return fmt.Errorf("create workspace: %w", err)
 		}

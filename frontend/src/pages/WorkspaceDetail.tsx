@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   Boxes,
@@ -21,6 +22,7 @@ import {
   User,
   Users,
   Users2,
+  X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -36,6 +38,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserBadge } from '@/components/ui/user-badge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
+import { UseLocallyButton } from '@/components/workspace/UseLocallyButton';
 import { useCollaborators } from '@/hooks/useAdmin';
 import { usePackages } from '@/hooks/usePackages';
 import { usePublications, useUpdatePublication } from '@/hooks/useRegistries';
@@ -50,6 +53,7 @@ import type { Collaborator } from '@/types/models';
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
   creating: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+  running: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
   ready: 'bg-green-500/10 text-green-500 border-green-500/20',
   failed: 'bg-red-500/10 text-red-500 border-red-500/20',
   deleting: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
@@ -58,6 +62,7 @@ const statusColors: Record<string, string> = {
 export const WorkspaceDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const consumePendingTab = useWorkspaceNavStore((s) => s.consumePendingTab);
   const wsId = id || '';
 
@@ -85,9 +90,9 @@ export const WorkspaceDetail = () => {
   const [savingToml, setSavingToml] = useState(false);
   const [loadingToml, setLoadingToml] = useState(false);
   const [copiedToml, setCopiedToml] = useState(false);
-  const [copiedPull, setCopiedPull] = useState(false);
   const [copiedImportId, setCopiedImportId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
+  const [saveInstallJobId, setSaveInstallJobId] = useState<string | null>(null);
 
   // Determine if this is a local workspace
   const isLocalWs = workspace?.source === 'local';
@@ -119,14 +124,6 @@ export const WorkspaceDetail = () => {
     await navigator.clipboard.writeText(pixiToml);
     setCopiedToml(true);
     setTimeout(() => setCopiedToml(false), 2000);
-  };
-
-  const handleCopyPull = async () => {
-    const serverUrl = window.location.origin;
-    const cmd = `nebi login ${serverUrl} && nebi pull ${workspace?.name || ''}`;
-    await navigator.clipboard.writeText(cmd);
-    setCopiedPull(true);
-    setTimeout(() => setCopiedPull(false), 2000);
   };
 
   const handleCopyImport = async (pub: {
@@ -183,29 +180,15 @@ export const WorkspaceDetail = () => {
               Local
             </Badge>
           )}
-          <Badge className={statusColors[workspace.status]}>
+          <Badge
+            className={
+              statusColors[workspace.status] ||
+              'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
+            }
+          >
             {capitalize(workspace.status)}
           </Badge>
-          {!isLocalWs && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={handleCopyPull}
-            >
-              {copiedPull ? (
-                <>
-                  <Check className="h-4 w-4" />
-                  Copied
-                </>
-              ) : (
-                <>
-                  <Copy className="h-4 w-4" />
-                  nebi pull
-                </>
-              )}
-            </Button>
-          )}
+          {!isLocalWs && <UseLocallyButton workspaceName={workspace.name} />}
           <Button
             variant="outline"
             size="sm"
@@ -305,7 +288,12 @@ export const WorkspaceDetail = () => {
                   <span className="text-sm font-medium">Status</span>
                 </div>
                 <div>
-                  <Badge className={statusColors[workspace.status]}>
+                  <Badge
+                    className={
+                      statusColors[workspace.status] ||
+                      'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
+                    }
+                  >
                     {capitalize(workspace.status)}
                   </Badge>
                 </div>
@@ -589,6 +577,33 @@ export const WorkspaceDetail = () => {
               Configuration defined in the pixi.toml for the current version
             </p>
           </div>
+          {saveInstallJobId && (
+            <div className="mb-4 rounded-md border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-700">
+              <div className="flex items-center justify-between gap-3">
+                <span>
+                  Save complete. Install job started (ID: {saveInstallJobId}).
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveTab('jobs')}
+                  >
+                    View logs
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-blue-700 hover:bg-blue-500/10 hover:text-blue-700"
+                    onClick={() => setSaveInstallJobId(null)}
+                    aria-label="Dismiss notification"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between pb-2">
             <div className="flex items-center gap-2">
               {pixiToml && !isEditingToml && (
@@ -597,6 +612,7 @@ export const WorkspaceDetail = () => {
                   size="sm"
                   onClick={() => {
                     setEditedToml(pixiToml);
+                    setSaveInstallJobId(null);
                     setIsEditingToml(true);
                   }}
                   className="gap-2"
@@ -617,12 +633,26 @@ export const WorkspaceDetail = () => {
                   <Button
                     size="sm"
                     onClick={async () => {
+                      setError('');
+                      setSaveInstallJobId(null);
                       setSavingToml(true);
                       try {
                         await workspacesApi.savePixiToml(wsId, editedToml);
-                        await workspacesApi.solveWorkspace(wsId);
+                        const job = await workspacesApi.solveWorkspace(wsId);
                         setPixiToml(editedToml);
                         setIsEditingToml(false);
+                        setSaveInstallJobId(job.id);
+                        await Promise.all([
+                          queryClient.invalidateQueries({
+                            queryKey: ['workspaces'],
+                          }),
+                          queryClient.invalidateQueries({
+                            queryKey: ['workspaces', wsId],
+                          }),
+                          queryClient.invalidateQueries({
+                            queryKey: ['jobs'],
+                          }),
+                        ]);
                       } catch {
                         setError('Failed to save and install pixi.toml');
                       } finally {

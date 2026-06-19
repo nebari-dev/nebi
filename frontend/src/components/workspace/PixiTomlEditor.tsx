@@ -355,7 +355,7 @@ export const PixiTomlEditor = ({
               Workspace Name
             </label>
             <Input
-              value={workspaceName || 'my-project'}
+              value={workspaceName || ''}
               onChange={(e) => {
                 const newName = e.target.value;
                 setDirty(true);
@@ -463,6 +463,18 @@ export const PixiTomlEditor = ({
           />
           <p className="text-xs text-muted-foreground">
             Define your project dependencies and configuration in TOML format
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Workspace will be created as:{' '}
+            {workspaceName ? (
+              <span className="font-medium text-foreground">
+                {workspaceName}
+              </span>
+            ) : (
+              <span className="text-yellow-600">
+                (add a name under [workspace] to continue)
+              </span>
+            )}
           </p>
         </div>
       )}

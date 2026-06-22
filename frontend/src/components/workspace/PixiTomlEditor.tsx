@@ -87,6 +87,8 @@ export const PixiTomlEditor = ({
   const [showDiscardPrompt, setShowDiscardPrompt] = useState(false);
   const pendingModeRef = useRef<'ui' | 'toml'>('ui');
   const initialTomlRef = useRef<string>('');
+  const workspaceNameId = useId();
+  const packagesHeadingId = useId();
   const tomlEditorId = useId();
 
   useEffect(() => {
@@ -155,18 +157,14 @@ export const PixiTomlEditor = ({
     setDirty(true);
     setNewPackageName('');
     setNewPackageVersion('');
-    if (!onReloadToml) {
-      onTomlChange(buildPixiToml(updated, workspaceName || 'my-project'));
-    }
+    onTomlChange(buildPixiToml(updated, workspaceName || 'my-project'));
   };
 
   const handleRemovePackage = (name: string) => {
     const updated = packages.filter((pkg) => pkg.name !== name);
     setPackages(updated);
     setDirty(true);
-    if (!onReloadToml) {
-      onTomlChange(buildPixiToml(updated, workspaceName || 'my-project'));
-    }
+    onTomlChange(buildPixiToml(updated, workspaceName || 'my-project'));
   };
 
   const handleTomlEdit = (value: string) => {
@@ -217,9 +215,33 @@ export const PixiTomlEditor = ({
       {mode === 'ui' ? (
         <div className="space-y-4">
           <div className="space-y-2">
-            <h3 className="text-sm font-medium block pt-2 pb-0">Packages</h3>
+            <label
+              htmlFor={workspaceNameId}
+              className="text-sm font-medium block pt-2 pb-0"
+            >
+              Workspace Name
+            </label>
+            <Input
+              id={workspaceNameId}
+              value={workspaceName || ''}
+              onChange={(e) => {
+                const newName = e.target.value;
+                const updated = buildPixiToml(packages, newName);
+                onTomlChange(updated);
+              }}
+              placeholder="Workspace name"
+              className="font-mono"
+            />
+          </div>
+          <div className="space-y-2">
+            <h3
+              id={packagesHeadingId}
+              className="text-sm font-medium block pt-2 pb-0"
+            >
+              Packages
+            </h3>
             <div className="border rounded-lg overflow-hidden">
-              <table className="w-full">
+              <table className="w-full" aria-labelledby={packagesHeadingId}>
                 <thead className="bg-muted/50 border-b">
                   <tr>
                     <th className="text-left p-3 text-sm font-medium">Name</th>
@@ -314,6 +336,18 @@ export const PixiTomlEditor = ({
           />
           <p className="text-xs text-muted-foreground">
             Define your project dependencies and configuration in TOML format
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Workspace will be created as:{' '}
+            {workspaceName ? (
+              <span className="font-medium text-foreground">
+                {workspaceName}
+              </span>
+            ) : (
+              <span className="text-yellow-600">
+                (add a name under [workspace] to continue)
+              </span>
+            )}
           </p>
         </div>
       )}

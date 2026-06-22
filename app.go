@@ -16,6 +16,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/nebari-dev/nebi/internal/service"
@@ -250,6 +251,11 @@ func (a *App) ListWorkspaces() ([]WailsWorkspace, error) {
 func (a *App) CreateWorkspace(name string, pixiToml string) (*WailsWorkspace, error) {
 	if a.db == nil {
 		return nil, fmt.Errorf("database not connected")
+	}
+
+	name, err := pixi.ResolveWorkspaceName(name, pixiToml)
+	if err != nil {
+		return nil, err
 	}
 
 	ws := models.Workspace{

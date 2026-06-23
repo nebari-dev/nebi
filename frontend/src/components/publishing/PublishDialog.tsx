@@ -1,5 +1,5 @@
 import { AlertCircle, Loader2, Upload } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -41,6 +41,10 @@ export const PublishDialog = ({
   const [error, setError] = useState('');
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [hasAutoPopulated, setHasAutoPopulated] = useState(false);
+  const registryId = useId();
+  const repositoryId = useId();
+  const tagId = useId();
+  const registrySelectRef = useRef<HTMLSelectElement>(null);
 
   // Auto-populate from server-provided defaults
   useEffect(() => {
@@ -105,6 +109,12 @@ export const PublishDialog = ({
 
   const isLoading = registriesLoading || defaultsLoading;
 
+  useEffect(() => {
+    if (open && !isLoading && registries?.length) {
+      registrySelectRef.current?.focus();
+    }
+  }, [open, isLoading, registries?.length]);
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent>
@@ -148,13 +158,16 @@ export const PublishDialog = ({
             ) : (
               <>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Registry</label>
+                  <label htmlFor={registryId} className="text-sm font-medium">
+                    Registry
+                  </label>
                   <select
+                    ref={registrySelectRef}
+                    id={registryId}
                     value={selectedRegistry}
                     onChange={(e) => setSelectedRegistry(e.target.value)}
                     className="w-full h-10 px-3 rounded-md border border-input bg-background"
                     required
-                    autoFocus
                   >
                     <option value="">Select a registry</option>
                     {registries?.map((registry) => (
@@ -167,7 +180,9 @@ export const PublishDialog = ({
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Repository</label>
+                  <label htmlFor={repositoryId} className="text-sm font-medium">
+                    Repository
+                  </label>
                   <div className="flex items-center gap-0">
                     {defaults?.namespace && (
                       <span className="inline-flex items-center px-3 h-10 rounded-l-md border border-r-0 border-input bg-muted text-muted-foreground text-sm">
@@ -175,6 +190,7 @@ export const PublishDialog = ({
                       </span>
                     )}
                     <Input
+                      id={repositoryId}
                       type="text"
                       value={repository}
                       onChange={(e) => setRepository(e.target.value)}
@@ -186,8 +202,11 @@ export const PublishDialog = ({
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Tag</label>
+                  <label htmlFor={tagId} className="text-sm font-medium">
+                    Tag
+                  </label>
                   <Input
+                    id={tagId}
                     type="text"
                     value={tag}
                     onChange={(e) => setTag(e.target.value)}

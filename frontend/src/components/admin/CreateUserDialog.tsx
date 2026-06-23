@@ -1,5 +1,5 @@
 import { Loader2, Plus } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -19,8 +19,20 @@ export const CreateUserDialog = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [error, setError] = useState('');
+  const usernameId = useId();
+  const emailId = useId();
+  const passwordId = useId();
+  const confirmPasswordId = useId();
+  const isAdminId = useId();
+  const usernameInputRef = useRef<HTMLInputElement>(null);
 
   const createMutation = useCreateUser();
+
+  useEffect(() => {
+    if (open) {
+      usernameInputRef.current?.focus();
+    }
+  }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,19 +81,25 @@ export const CreateUserDialog = () => {
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Username</label>
+            <label htmlFor={usernameId} className="text-sm font-medium">
+              Username
+            </label>
             <Input
+              ref={usernameInputRef}
+              id={usernameId}
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
-              autoFocus
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Email</label>
+            <label htmlFor={emailId} className="text-sm font-medium">
+              Email
+            </label>
             <Input
+              id={emailId}
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -90,8 +108,11 @@ export const CreateUserDialog = () => {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Password</label>
+            <label htmlFor={passwordId} className="text-sm font-medium">
+              Password
+            </label>
             <Input
+              id={passwordId}
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -100,8 +121,11 @@ export const CreateUserDialog = () => {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Confirm Password</label>
+            <label htmlFor={confirmPasswordId} className="text-sm font-medium">
+              Confirm Password
+            </label>
             <Input
+              id={confirmPasswordId}
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
@@ -121,13 +145,13 @@ export const CreateUserDialog = () => {
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
-              id="is_admin"
+              id={isAdminId}
               checked={isAdmin}
               onChange={(e) => setIsAdmin(e.target.checked)}
               className="h-4 w-4 rounded border-input"
             />
             <label
-              htmlFor="is_admin"
+              htmlFor={isAdminId}
               className="text-sm font-medium cursor-pointer"
             >
               Make Admin

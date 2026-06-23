@@ -24,7 +24,7 @@ import {
   Users2,
   X,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { workspacesApi } from '@/api/workspaces';
 import { Jobs } from '@/components/jobs/Jobs';
@@ -101,14 +101,7 @@ export const WorkspaceDetail = () => {
   // User can only share if it's not a local workspace and they are the owner
   const isOwner = workspace?.owner_id === currentUser?.id;
 
-  // Load pixi.toml when switching to that tab
-  useEffect(() => {
-    if (activeTab === 'toml' && !pixiToml) {
-      loadPixiToml();
-    }
-  }, [activeTab, workspace?.status]);
-
-  const loadPixiToml = async () => {
+  const loadPixiToml = useCallback(async () => {
     setLoadingToml(true);
     try {
       const { content } = await workspacesApi.getPixiToml(wsId);
@@ -118,7 +111,14 @@ export const WorkspaceDetail = () => {
     } finally {
       setLoadingToml(false);
     }
-  };
+  }, [wsId]);
+
+  // Load pixi.toml when switching to that tab
+  useEffect(() => {
+    if (activeTab === 'toml' && !pixiToml) {
+      void loadPixiToml();
+    }
+  }, [activeTab, pixiToml, loadPixiToml]);
 
   const handleCopyToml = async () => {
     await navigator.clipboard.writeText(pixiToml);
@@ -355,6 +355,7 @@ export const WorkspaceDetail = () => {
               {/* Packages — links to packages tab */}
               <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
                 <button
+                  type="button"
                   className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-left"
                   onClick={() => setActiveTab('packages')}
                 >
@@ -373,6 +374,7 @@ export const WorkspaceDetail = () => {
                 <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
                   {!isLocalMode ? (
                     <button
+                      type="button"
                       className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-left"
                       onClick={() => setActiveTab('collaborators')}
                     >
@@ -407,6 +409,7 @@ export const WorkspaceDetail = () => {
                 <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
                   {!isLocalMode ? (
                     <button
+                      type="button"
                       className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-left"
                       onClick={() => setActiveTab('collaborators')}
                     >
@@ -479,6 +482,7 @@ export const WorkspaceDetail = () => {
                     {workspace.id}
                   </code>
                   <button
+                    type="button"
                     className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground"
                     onClick={async () => {
                       await navigator.clipboard.writeText(workspace.id);

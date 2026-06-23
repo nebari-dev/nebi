@@ -99,22 +99,30 @@ export const PixiTomlEditor = ({
     }
   }, [tomlValue, initialized]);
 
-  const performSwitch = async (newMode: 'ui' | 'toml') => {
-    if (newMode === 'toml') {
+  const performSwitch = async (
+    newMode: 'ui' | 'toml',
+    discardChanges = false,
+  ) => {
+    let source = onReloadToml ? tomlValue : initialTomlRef.current;
+
+    if (newMode === 'toml' || discardChanges) {
       if (onReloadToml) {
         setSwitching(true);
         try {
           const freshToml = await onReloadToml();
           onTomlChange(freshToml);
           initialTomlRef.current = freshToml;
+          source = freshToml;
         } finally {
           setSwitching(false);
         }
       } else {
-        onTomlChange(initialTomlRef.current);
+        source = initialTomlRef.current;
+        onTomlChange(source);
       }
-    } else {
-      const source = onReloadToml ? tomlValue : initialTomlRef.current;
+    }
+
+    if (newMode === 'ui') {
       const parsed = parsePixiTomlDependencies(source);
       if (parsed.length > 0) {
         setPackages(parsed);
@@ -138,7 +146,7 @@ export const PixiTomlEditor = ({
 
   const handleConfirmDiscard = async () => {
     setShowDiscardPrompt(false);
-    await performSwitch(pendingModeRef.current);
+    await performSwitch(pendingModeRef.current, true);
   };
 
   const handleAddPackage = () => {

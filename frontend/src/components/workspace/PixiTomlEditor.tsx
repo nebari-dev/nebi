@@ -1,5 +1,5 @@
 import { FileCode, Loader2, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
@@ -40,7 +40,7 @@ ${dependenciesLines || 'python = ">=3.11"'}
 
 const parsePixiTomlDependencies = (toml: string): Package[] => {
   const lines = toml.split('\n');
-  const packages: Package[] = [];
+  const packages = new Map<string, Package>();
   let inDependencies = false;
 
   for (const line of lines) {
@@ -58,7 +58,7 @@ const parsePixiTomlDependencies = (toml: string): Package[] => {
     if (inDependencies && trimmed && !trimmed.startsWith('#')) {
       const match = trimmed.match(/^([^\s=]+)\s*=\s*"([^"]*)"$/);
       if (match) {
-        packages.push({
+        packages.set(match[1], {
           name: match[1],
           version: match[2] === '*' ? '' : match[2],
         });
@@ -66,7 +66,7 @@ const parsePixiTomlDependencies = (toml: string): Package[] => {
     }
   }
 
-  return packages;
+  return Array.from(packages.values());
 };
 
 export const PixiTomlEditor = ({
@@ -87,6 +87,9 @@ export const PixiTomlEditor = ({
   const [showDiscardPrompt, setShowDiscardPrompt] = useState(false);
   const pendingModeRef = useRef<'ui' | 'toml'>('ui');
   const initialTomlRef = useRef<string>('');
+  const workspaceNameId = useId();
+  const packagesHeadingId = useId();
+  const tomlEditorId = useId();
 
   useEffect(() => {
     if (!initialized && tomlValue) {
@@ -150,11 +153,14 @@ export const PixiTomlEditor = ({
   };
 
   const handleAddPackage = () => {
-    if (!newPackageName.trim()) return;
-    const updated = [
-      ...packages,
-      { name: newPackageName.trim(), version: newPackageVersion.trim() },
-    ];
+    const name = newPackageName.trim();
+    if (!name) return;
+
+    const version = newPackageVersion.trim();
+    const existingPackage = packages.some((pkg) => pkg.name === name);
+    const updated = existingPackage
+      ? packages.map((pkg) => (pkg.name === name ? { name, version } : pkg))
+      : [...packages, { name, version }];
     setPackages(updated);
     setDirty(true);
     setNewPackageName('');
@@ -162,8 +168,8 @@ export const PixiTomlEditor = ({
     onTomlChange(buildPixiToml(updated, workspaceName || 'my-project'));
   };
 
-  const handleRemovePackage = (index: number) => {
-    const updated = packages.filter((_, i) => i !== index);
+  const handleRemovePackage = (name: string) => {
+    const updated = packages.filter((pkg) => pkg.name !== name);
     setPackages(updated);
     setDirty(true);
     onTomlChange(buildPixiToml(updated, workspaceName || 'my-project'));
@@ -217,10 +223,14 @@ export const PixiTomlEditor = ({
       {mode === 'ui' ? (
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium block pt-2 pb-0">
+            <label
+              htmlFor={workspaceNameId}
+              className="text-sm font-medium block pt-2 pb-0"
+            >
               Workspace Name
             </label>
             <Input
+              id={workspaceNameId}
               value={workspaceName || ''}
               onChange={(e) => {
                 const newName = e.target.value;
@@ -232,11 +242,14 @@ export const PixiTomlEditor = ({
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium block pt-2 pb-0">
+            <h3
+              id={packagesHeadingId}
+              className="text-sm font-medium block pt-2 pb-0"
+            >
               Packages
-            </label>
+            </h3>
             <div className="border rounded-lg overflow-hidden">
-              <table className="w-full">
+              <table className="w-full" aria-labelledby={packagesHeadingId}>
                 <thead className="bg-muted/50 border-b">
                   <tr>
                     <th className="text-left p-3 text-sm font-medium">Name</th>
@@ -247,8 +260,8 @@ export const PixiTomlEditor = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {packages.map((pkg, index) => (
-                    <tr key={index} className="hover:bg-muted/30">
+                  {packages.map((pkg) => (
+                    <tr key={pkg.name} className="hover:bg-muted/30">
                       <td className="p-3">
                         <span className="font-mono text-sm">{pkg.name}</span>
                       </td>
@@ -262,7 +275,7 @@ export const PixiTomlEditor = ({
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleRemovePackage(index)}
+                          onClick={() => handleRemovePackage(pkg.name)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -314,10 +327,14 @@ export const PixiTomlEditor = ({
         </div>
       ) : (
         <div className="space-y-2">
-          <label className="text-sm font-medium block pt-2 pb-0">
+          <label
+            htmlFor={tomlEditorId}
+            className="text-sm font-medium block pt-2 pb-0"
+          >
             pixi.toml Configuration
           </label>
           <Textarea
+            id={tomlEditorId}
             placeholder="Enter your pixi.toml content"
             value={tomlValue}
             onChange={(e) => handleTomlEdit(e.target.value)}

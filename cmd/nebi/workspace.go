@@ -77,6 +77,13 @@ Examples:
 	ValidArgsFunction: completeWorkspaceRemove,
 }
 
+// workspaceDirMissing returns true if neither pixi.toml nor pixi.lock exist under the given path.
+func workspaceDirMissing(path string) bool {
+	_, tomlErr := os.Stat(filepath.Join(path, "pixi.toml"))
+	_, lockErr := os.Stat(filepath.Join(path, "pixi.lock"))
+	return os.IsNotExist(tomlErr) && os.IsNotExist(lockErr)
+}
+
 var workspacePruneCmd = &cobra.Command{
 	Use:   "prune",
 	Short: "Remove workspaces whose paths no longer exist",
@@ -142,10 +149,9 @@ func runWorkspaceListLocal() error {
 		}
 		items := make([]item, len(wss))
 		for i, ws := range wss {
-			_, statErr := os.Stat(ws.Path)
 			items[i] = item{
 				LocalWorkspace: ws,
-				Missing:        os.IsNotExist(statErr),
+				Missing:        workspaceDirMissing(ws.Path),
 			}
 		}
 		return writeJSON(items)
@@ -156,7 +162,7 @@ func runWorkspaceListLocal() error {
 	var missing int
 	for _, ws := range wss {
 		path := ws.Path
-		if _, err := os.Stat(ws.Path); os.IsNotExist(err) {
+		if workspaceDirMissing(ws.Path) {
 			path += " (missing)"
 			missing++
 		}
@@ -381,7 +387,7 @@ func runWorkspacePrune(cmd *cobra.Command, args []string) error {
 
 	var pruned []string
 	for _, ws := range wss {
-		if _, err := os.Stat(ws.Path); os.IsNotExist(err) {
+		if workspaceDirMissing(ws.Path) {
 			if err := s.DeleteWorkspace(ws.ID); err != nil {
 				return fmt.Errorf("removing workspace %q: %w", ws.Name, err)
 			}

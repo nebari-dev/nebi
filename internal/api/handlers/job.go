@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -102,19 +103,15 @@ func (h *JobHandler) StreamJobLogs(c *gin.Context) {
 
 	// If job is already completed or failed, send historical logs and close
 	if job.Status == models.JobStatusCompleted || job.Status == models.JobStatusFailed {
-		if job.Logs != "" {
-			fmt.Fprintf(c.Writer, "data: %s\n\n", job.Logs)
-		}
+		writeSSEData(c.Writer, job.Logs)
 		fmt.Fprintf(c.Writer, "event: done\ndata: Job already completed\n\n")
 		c.Writer.Flush()
 		return
 	}
 
 	// Send historical logs if any exist
-	if job.Logs != "" {
-		fmt.Fprintf(c.Writer, "data: %s\n\n", job.Logs)
-		c.Writer.Flush()
-	}
+	writeSSEData(c.Writer, job.Logs)
+	c.Writer.Flush()
 
 	// Stream real-time logs
 	if h.valkeyClient != nil {
@@ -137,7 +134,7 @@ func (h *JobHandler) streamLogsFromValkey(c *gin.Context, jobID uuid.UUID) {
 	err := h.valkeyClient.Receive(ctx, subscribeCmd, func(msg valkey.PubSubMessage) {
 		logLine := msg.Message
 
-		fmt.Fprintf(c.Writer, "data: %s\n\n", logLine)
+		writeSSEData(c.Writer, logLine)
 		if flusher, ok := c.Writer.(http.Flusher); ok {
 			flusher.Flush()
 		}
@@ -174,10 +171,22 @@ func (h *JobHandler) streamLogsFromBroker(c *gin.Context, jobID uuid.UUID) {
 				return
 			}
 
-			fmt.Fprintf(c.Writer, "data: %s\n\n", logLine)
+			writeSSEData(c.Writer, logLine)
 			if flusher, ok := c.Writer.(http.Flusher); ok {
 				flusher.Flush()
 			}
 		}
 	}
+}
+
+// writeSSEData writes text as SSE data: lines, splitting on newlines so
+// each line gets its own data: prefix. An empty text is a no-op.
+func writeSSEData(w http.ResponseWriter, text string) {
+	if text == "" {
+		return
+	}
+	for _, line := range strings.Split(text, "\n") {
+		fmt.Fprintf(w, "data: %s\n", line)
+	}
+	fmt.Fprint(w, "\n")
 }

@@ -90,6 +90,11 @@ func createReadyWorkspace(t *testing.T, svc *WorkspaceService, db *gorm.DB, name
 	}
 	db.Model(ws).Update("status", models.WsStatusReady)
 	ws.Status = models.WsStatusReady
+	// svc.Create enqueues a pending create job; mark it completed so
+	// the workspace can accept further operations (no lingering active job).
+	db.Model(&models.Job{}).
+		Where("workspace_id = ? AND type = ? AND status = ?", ws.ID, models.JobTypeCreate, models.JobStatusPending).
+		Update("status", models.JobStatusCompleted)
 	return ws
 }
 

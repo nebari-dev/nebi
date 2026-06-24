@@ -24,7 +24,7 @@ func (b *LogBroker) Subscribe(jobID uuid.UUID) chan string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	ch := make(chan string, 100) // Buffered channel to prevent blocking
+	ch := make(chan string, 4096) // Buffered channel to prevent blocking
 
 	if b.subscribers[jobID] == nil {
 		b.subscribers[jobID] = make(map[chan string]bool)

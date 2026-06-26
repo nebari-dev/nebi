@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { useAuthStore } from './authStore';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { mockUser } from '@/test/handlers';
+import { useAuthStore } from './authStore';
 
 beforeEach(() => {
   useAuthStore.setState({ token: null, user: null });

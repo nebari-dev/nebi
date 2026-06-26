@@ -1,28 +1,35 @@
-import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
-import { getBasePath } from './lib/basePath';
 import { QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
+import type { ReactElement } from 'react';
+import { useEffect } from 'react';
+import {
+  BrowserRouter,
+  Navigate,
+  Outlet,
+  Route,
+  Routes,
+} from 'react-router-dom';
+import { adminApi } from './api/admin';
+import { AdminLayout } from './components/layout/AdminLayout';
+import { Layout } from './components/layout/Layout';
+import { getBasePath } from './lib/basePath';
 import { queryClient } from './lib/queryClient';
+import { AdminDashboard } from './pages/admin/AdminDashboard';
+import { AuditLogs } from './pages/admin/AuditLogs';
+import { Groups } from './pages/admin/Groups';
+import { RegistryManagement } from './pages/admin/RegistryManagement';
+import { UserManagement } from './pages/admin/UserManagement';
+import { Login } from './pages/Login';
+import { Registries, RegistryRepositories } from './pages/Registries';
+import { RemoteWorkspaceDetail } from './pages/RemoteWorkspaceDetail';
+import { Settings } from './pages/Settings';
+import { WorkspaceDetail } from './pages/WorkspaceDetail';
+import { Workspaces } from './pages/Workspaces';
 import { useAuthStore } from './store/authStore';
 import { useModeStore } from './store/modeStore';
-import { Login } from './pages/Login';
-import { Workspaces } from './pages/Workspaces';
-import { WorkspaceDetail } from './pages/WorkspaceDetail';
-import { RemoteWorkspaceDetail } from './pages/RemoteWorkspaceDetail';
-import { Registries, RegistryRepositories } from './pages/Registries';
-import { Settings } from './pages/Settings';
-import { AdminDashboard } from './pages/admin/AdminDashboard';
-import { UserManagement } from './pages/admin/UserManagement';
-import { AuditLogs } from './pages/admin/AuditLogs';
-import { RegistryManagement } from './pages/admin/RegistryManagement';
-import { Groups } from './pages/admin/Groups';
-import { Layout } from './components/layout/Layout';
-import { AdminLayout } from './components/layout/AdminLayout';
-import { adminApi } from './api/admin';
-import { Loader2 } from 'lucide-react';
 
 // Load mode before rendering any routes
-const ModeLoader = ({ children }: { children: React.ReactNode }) => {
+const ModeLoader = ({ children }: { children: ReactElement }) => {
   const { loading, fetchMode } = useModeStore();
 
   useEffect(() => {
@@ -36,17 +43,17 @@ const ModeLoader = ({ children }: { children: React.ReactNode }) => {
       </div>
     );
   }
-  return <>{children}</>;
+  return children;
 };
 
-const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
+const PrivateRoute = ({ children }: { children: ReactElement }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
   const isLocalMode = useModeStore((state) => state.isLocalMode());
 
   // In local mode, auth is bypassed
-  if (isLocalMode) return <>{children}</>;
+  if (isLocalMode) return children;
 
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
+  return isAuthenticated ? children : <Navigate to="/login" />;
 };
 
 const AdminRoute = () => {
@@ -96,9 +103,15 @@ function App() {
               <Route index element={<Navigate to="/workspaces" replace />} />
               <Route path="workspaces" element={<Workspaces />} />
               <Route path="workspaces/:id" element={<WorkspaceDetail />} />
-              <Route path="remote/workspaces/:id" element={<RemoteWorkspaceDetail />} />
+              <Route
+                path="remote/workspaces/:id"
+                element={<RemoteWorkspaceDetail />}
+              />
               <Route path="registries" element={<Registries />} />
-              <Route path="registries/:registryId" element={<RegistryRepositories />} />
+              <Route
+                path="registries/:registryId"
+                element={<RegistryRepositories />}
+              />
               <Route path="settings" element={<Settings />} />
 
               <Route element={<AdminRoute />}>
@@ -107,7 +120,10 @@ function App() {
                   <Route path="admin/users" element={<UserManagement />} />
                   <Route path="admin/groups" element={<Groups />} />
                   <Route path="admin/audit-logs" element={<AuditLogs />} />
-                  <Route path="admin/registries" element={<RegistryManagement />} />
+                  <Route
+                    path="admin/registries"
+                    element={<RegistryManagement />}
+                  />
                 </Route>
               </Route>
             </Route>

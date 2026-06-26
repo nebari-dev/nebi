@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
 import { screen } from '@testing-library/react';
-import { RoleBadge } from './RoleBadge';
+import { describe, expect, it } from 'vitest';
 import { renderWithProviders } from '@/test/utils';
+import { RoleBadge } from './RoleBadge';
 
 describe('RoleBadge', () => {
   it('renders "Owner" for owner role', () => {

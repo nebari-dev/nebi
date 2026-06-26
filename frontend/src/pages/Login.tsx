@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuthStore } from '@/store/authStore';
-import { useModeStore } from '@/store/modeStore';
 import { authApi } from '@/api/auth';
-import { getBasePath, getApiBaseUrl } from '@/lib/basePath';
+import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { apiClient } from '@/api/client';
+import { getApiBaseUrl, getBasePath } from '@/lib/basePath';
+import { getBrandingLogoUrl } from '@/lib/brandingConfig';
+import { useAuthStore } from '@/store/authStore';
+import { useModeStore } from '@/store/modeStore';
 
 export const Login = () => {
   const [username, setUsername] = useState('');
@@ -48,13 +49,12 @@ export const Login = () => {
     setSessionChecked(true);
   }, [isLocalMode, searchParams]);
 
-  // Don't render login form in local mode
-  if (isLocalMode) return null;
-
   // Exchange single-use authorization code for JWT.
   // Used by both gateway auto-login (/auth/session) and direct OIDC callback
   // (/api/v1/auth/oidc/callback). Both redirect here with ?code=<single-use-code>.
   useEffect(() => {
+    if (isLocalMode) return;
+
     const code = searchParams.get('code');
     const oauthError = searchParams.get('error');
 
@@ -68,7 +68,9 @@ export const Login = () => {
       const exchangeCode = async () => {
         try {
           setLoading(true);
-          const { data } = await apiClient.post('/auth/code/exchange', { code });
+          const { data } = await apiClient.post('/auth/code/exchange', {
+            code,
+          });
           setAuth(data.token, data.user);
           navigate('/');
         } catch {
@@ -80,7 +82,7 @@ export const Login = () => {
       };
       exchangeCode();
     }
-  }, [searchParams, setAuth, navigate]);
+  }, [isLocalMode, searchParams, setAuth, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,6 +101,9 @@ export const Login = () => {
     }
   };
 
+  // Don't render login form in local mode
+  if (isLocalMode) return null;
+
   // Wait for session check before showing the form
   if (!sessionChecked) return null;
 
@@ -108,7 +113,7 @@ export const Login = () => {
         <div className="space-y-6 pb-8">
           <div className="flex justify-center">
             <img
-              src={`${getBasePath()}/nebi-logo.svg`}
+              src={getBrandingLogoUrl()}
               alt="Nebi Logo"
               className="h-24 w-auto"
             />
@@ -157,12 +162,16 @@ export const Login = () => {
               <div className="w-full border-t border-gray-300"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">Or continue with</span>
+              <span className="px-2 bg-white text-gray-500">
+                Or continue with
+              </span>
             </div>
           </div>
 
           <Button
-            onClick={() => window.location.href = `${getApiBaseUrl()}/auth/oidc/login`}
+            onClick={() =>
+              (window.location.href = `${getApiBaseUrl()}/auth/oidc/login`)
+            }
             variant="outline"
             className="w-full h-12 text-base font-medium"
           >

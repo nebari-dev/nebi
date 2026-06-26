@@ -1,12 +1,27 @@
-import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import {
+  ArrowLeft,
+  Calendar,
+  Check,
+  CircleQuestionMark,
+  Cloud,
+  Copy,
+  Fingerprint,
+  HardDrive,
+  History,
+  IdCard,
+  Loader2,
+  Package,
+  User,
+} from 'lucide-react';
+import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { remoteApi } from '@/api/remote';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { ArrowLeft, Loader2, Cloud, Copy, Check } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { UserBadge } from '@/components/ui/user-badge';
 import { capitalize } from '@/lib/utils';
 import type { RemoteWorkspaceTag, RemoteWorkspaceVersion } from '@/types';
 
@@ -25,6 +40,7 @@ export const RemoteWorkspaceDetail = () => {
 
   const [activeTab, setActiveTab] = useState('overview');
   const [copiedToml, setCopiedToml] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
 
   const { data: workspace, isLoading: wsLoading } = useQuery({
     queryKey: ['remote', 'workspaces', wsId],
@@ -73,19 +89,33 @@ export const RemoteWorkspaceDetail = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/workspaces')}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => navigate('/workspaces')}
+        >
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
           <h1 className="text-3xl font-bold">{workspace.name}</h1>
-          <p className="text-muted-foreground">Remote workspace details (read-only)</p>
+          <p className="text-muted-foreground">
+            Remote workspace details (read-only)
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="bg-purple-500/10 text-purple-500 border-purple-500/20">
+          <Badge
+            variant="outline"
+            className="bg-purple-500/10 text-purple-500 border-purple-500/20"
+          >
             <Cloud className="h-3 w-3 mr-1" />
             Remote
           </Badge>
-          <Badge className={statusColors[workspace.status] || 'bg-gray-500/10 text-gray-500 border-gray-500/20'}>
+          <Badge
+            className={
+              statusColors[workspace.status] ||
+              'bg-gray-500/10 text-gray-500 border-gray-500/20'
+            }
+          >
             {capitalize(workspace.status)}
           </Badge>
         </div>
@@ -94,61 +124,140 @@ export const RemoteWorkspaceDetail = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="toml">pixi.toml</TabsTrigger>
+          <TabsTrigger value="toml">Configuration</TabsTrigger>
           <TabsTrigger value="versions">Version History</TabsTrigger>
           <TabsTrigger value="tags">Tags</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview">
-          <Card>
-            <CardHeader>
-              <CardTitle>Workspace Info</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Name:</span>
-                <span className="font-medium">{workspace.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Status:</span>
-                <Badge className={statusColors[workspace.status] || 'bg-gray-500/10 text-gray-500 border-gray-500/20'}>
-                  {capitalize(workspace.status)}
-                </Badge>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Package Manager:</span>
-                <span className="font-medium font-mono text-sm">{workspace.package_manager || 'pixi'}</span>
-              </div>
-              {workspace.size_bytes > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Size:</span>
-                  <span className="font-medium">{(workspace.size_bytes / 1024 / 1024).toFixed(1)} MB</span>
+        <TabsContent value="overview" className="px-1">
+          <div className="space-y-4 my-4">
+            <h2 className="text-2xl font-bold mb-0">Overview</h2>
+            <p className="text-muted-foreground text-sm mt-2">
+              View details for this remote workspace
+            </p>
+          </div>
+          <div>
+            <div>
+              {/* Name */}
+              <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <IdCard className="h-3 w-3 shrink-0" />
+                  <span className="text-sm font-medium">Workspace Name</span>
                 </div>
-              )}
+                <span className="text-sm">{workspace.name}</span>
+              </div>
+
+              {/* Owner */}
               {workspace.owner?.username && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Owner:</span>
-                  <span className="font-medium">{workspace.owner.username}</span>
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <User className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium">Owner</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <UserBadge username={workspace.owner.username} />
+                  </div>
                 </div>
               )}
-              {workspace.created_at && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Created:</span>
-                  <span>{new Date(workspace.created_at).toLocaleString()}</span>
+
+              {/* Status */}
+              <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <CircleQuestionMark className="h-3 w-3 shrink-0" />
+                  <span className="text-sm font-medium">Status</span>
                 </div>
-              )}
-              {workspace.updated_at && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Last Updated:</span>
-                  <span>{new Date(workspace.updated_at).toLocaleString()}</span>
+                <div>
+                  <Badge
+                    className={
+                      statusColors[workspace.status] ||
+                      'bg-gray-500/10 text-gray-500 border-gray-500/20'
+                    }
+                  >
+                    {capitalize(workspace.status)}
+                  </Badge>
                 </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">ID:</span>
-                <span className="font-mono text-xs text-muted-foreground">{workspace.id}</span>
               </div>
-            </CardContent>
-          </Card>
+
+              {/* Package Manager */}
+              <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Package className="h-3 w-3 shrink-0" />
+                  <span className="text-sm font-medium">Package Manager</span>
+                </div>
+                <code className="text-sm font-mono">
+                  {workspace.package_manager || 'pixi'}
+                </code>
+              </div>
+
+              {/* Size */}
+              {workspace.size_bytes > 0 && (
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <HardDrive className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium">Size</span>
+                  </div>
+                  <span className="text-sm">
+                    {(workspace.size_bytes / 1024 / 1024).toFixed(1)} MB
+                  </span>
+                </div>
+              )}
+
+              {/* Created */}
+              {workspace.created_at && (
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Calendar className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium">Created</span>
+                  </div>
+                  <span className="text-sm">
+                    {new Date(workspace.created_at).toLocaleString()}
+                  </span>
+                </div>
+              )}
+
+              {/* Last Updated */}
+              {workspace.updated_at && (
+                <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <History className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium">Last Updated</span>
+                  </div>
+                  <span className="text-sm">
+                    {new Date(workspace.updated_at).toLocaleString()}
+                  </span>
+                </div>
+              )}
+
+              {/* ID */}
+              <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Fingerprint className="h-3 w-3 shrink-0" />
+                  <span className="text-sm font-medium">ID</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <code className="text-xs font-mono text-muted-foreground">
+                    {workspace.id}
+                  </code>
+                  <button
+                    type="button"
+                    className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(workspace.id);
+                      setCopiedId(true);
+                      setTimeout(() => setCopiedId(false), 2000);
+                    }}
+                    title="Copy ID"
+                  >
+                    {copiedId ? (
+                      <Check className="h-3 w-3" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="toml">
@@ -212,13 +321,18 @@ export const RemoteWorkspaceDetail = () => {
                     <thead className="border-b bg-muted/50">
                       <tr>
                         <th className="text-left p-4 font-medium">Version</th>
-                        <th className="text-left p-4 font-medium">Description</th>
+                        <th className="text-left p-4 font-medium">
+                          Description
+                        </th>
                         <th className="text-left p-4 font-medium">Created</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {versions.map((v: RemoteWorkspaceVersion) => (
-                        <tr key={v.id || v.version_number} className="hover:bg-muted/50">
+                        <tr
+                          key={v.id || v.version_number}
+                          className="hover:bg-muted/50"
+                        >
                           <td className="p-4">
                             <Badge variant="outline">v{v.version_number}</Badge>
                           </td>
@@ -226,7 +340,9 @@ export const RemoteWorkspaceDetail = () => {
                             {v.description || '-'}
                           </td>
                           <td className="p-4 text-sm text-muted-foreground">
-                            {v.created_at ? new Date(v.created_at).toLocaleString() : '-'}
+                            {v.created_at
+                              ? new Date(v.created_at).toLocaleString()
+                              : '-'}
                           </td>
                         </tr>
                       ))}
@@ -272,7 +388,9 @@ export const RemoteWorkspaceDetail = () => {
                             v{t.version_number}
                           </td>
                           <td className="p-4 text-sm text-muted-foreground">
-                            {t.created_at ? new Date(t.created_at).toLocaleString() : '-'}
+                            {t.created_at
+                              ? new Date(t.created_at).toLocaleString()
+                              : '-'}
                           </td>
                         </tr>
                       ))}

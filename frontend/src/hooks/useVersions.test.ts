@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
+import { HttpResponse, http } from 'msw';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { server } from '@/test/handlers';
 import { createWrapper } from '@/test/utils';
-import { useVersions, useVersion, useRollback } from './useVersions';
+import { useRollback, useVersion, useVersions } from './useVersions';
 
 const mockVersion = {
   id: 'v-1',
@@ -18,18 +18,24 @@ const mockVersion = {
 describe('useVersions', () => {
   beforeEach(() => {
     server.use(
-      http.get('/api/v1/workspaces/:id/versions', () => HttpResponse.json([mockVersion]))
+      http.get('/api/v1/workspaces/:id/versions', () =>
+        HttpResponse.json([mockVersion]),
+      ),
     );
   });
 
   it('fetches versions for a workspace', async () => {
-    const { result } = renderHook(() => useVersions('ws-1'), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useVersions('ws-1'), {
+      wrapper: createWrapper(),
+    });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual([mockVersion]);
   });
 
   it('does not fetch when environmentId is empty', () => {
-    const { result } = renderHook(() => useVersions(''), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useVersions(''), {
+      wrapper: createWrapper(),
+    });
     expect(result.current.fetchStatus).toBe('idle');
   });
 });
@@ -37,23 +43,31 @@ describe('useVersions', () => {
 describe('useVersion (single)', () => {
   beforeEach(() => {
     server.use(
-      http.get('/api/v1/workspaces/:id/versions/:num', () => HttpResponse.json(mockVersion))
+      http.get('/api/v1/workspaces/:id/versions/:num', () =>
+        HttpResponse.json(mockVersion),
+      ),
     );
   });
 
   it('fetches a single version', async () => {
-    const { result } = renderHook(() => useVersion('ws-1', 1), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useVersion('ws-1', 1), {
+      wrapper: createWrapper(),
+    });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.version_number).toBe(1);
   });
 
   it('does not fetch when versionNumber is 0', () => {
-    const { result } = renderHook(() => useVersion('ws-1', 0), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useVersion('ws-1', 0), {
+      wrapper: createWrapper(),
+    });
     expect(result.current.fetchStatus).toBe('idle');
   });
 
   it('does not fetch when environmentId is empty', () => {
-    const { result } = renderHook(() => useVersion('', 1), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useVersion('', 1), {
+      wrapper: createWrapper(),
+    });
     expect(result.current.fetchStatus).toBe('idle');
   });
 });
@@ -62,10 +76,12 @@ describe('useRollback', () => {
   it('calls the rollback endpoint and succeeds', async () => {
     server.use(
       http.post('/api/v1/workspaces/:id/rollback', () =>
-        HttpResponse.json({ id: 'job-2', status: 'pending' }, { status: 201 })
-      )
+        HttpResponse.json({ id: 'job-2', status: 'pending' }, { status: 201 }),
+      ),
     );
-    const { result } = renderHook(() => useRollback('ws-1'), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useRollback('ws-1'), {
+      wrapper: createWrapper(),
+    });
     result.current.mutate({ version_number: 1 });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
   });
@@ -73,10 +89,12 @@ describe('useRollback', () => {
   it('enters error state when rollback fails', async () => {
     server.use(
       http.post('/api/v1/workspaces/:id/rollback', () =>
-        HttpResponse.json({ error: 'not found' }, { status: 404 })
-      )
+        HttpResponse.json({ error: 'not found' }, { status: 404 }),
+      ),
     );
-    const { result } = renderHook(() => useRollback('ws-1'), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useRollback('ws-1'), {
+      wrapper: createWrapper(),
+    });
     result.current.mutate({ version_number: 99 });
     await waitFor(() => expect(result.current.isError).toBe(true));
   });

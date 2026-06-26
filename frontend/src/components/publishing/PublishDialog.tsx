@@ -1,9 +1,20 @@
-import { useState, useEffect } from 'react';
-import { usePublicRegistries, usePublishWorkspace, usePublishDefaults, usePublications } from '@/hooks/useRegistries';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { AlertCircle, Loader2, Upload } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Loader2, Upload, AlertCircle } from 'lucide-react';
+import {
+  usePublications,
+  usePublicRegistries,
+  usePublishDefaults,
+  usePublishWorkspace,
+} from '@/hooks/useRegistries';
 
 interface PublishDialogProps {
   open: boolean;
@@ -12,9 +23,15 @@ interface PublishDialogProps {
   environmentName: string;
 }
 
-export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDialogProps) => {
-  const { data: registries, isLoading: registriesLoading } = usePublicRegistries();
-  const { data: defaults, isLoading: defaultsLoading } = usePublishDefaults(environmentId);
+export const PublishDialog = ({
+  open,
+  onOpenChange,
+  environmentId,
+}: PublishDialogProps) => {
+  const { data: registries, isLoading: registriesLoading } =
+    usePublicRegistries();
+  const { data: defaults, isLoading: defaultsLoading } =
+    usePublishDefaults(environmentId);
   const { data: publications } = usePublications(environmentId);
   const publishMutation = usePublishWorkspace();
 
@@ -24,6 +41,10 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
   const [error, setError] = useState('');
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [hasAutoPopulated, setHasAutoPopulated] = useState(false);
+  const registryId = useId();
+  const repositoryId = useId();
+  const tagId = useId();
+  const registrySelectRef = useRef<HTMLSelectElement>(null);
 
   // Auto-populate from server-provided defaults
   useEffect(() => {
@@ -72,7 +93,9 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
       }, 2000);
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage = error?.response?.data?.error || 'Failed to publish workspace. Please try again.';
+      const errorMessage =
+        error?.response?.data?.error ||
+        'Failed to publish workspace. Please try again.';
       setError(errorMessage);
       console.error('Failed to publish:', err);
     }
@@ -86,13 +109,20 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
 
   const isLoading = registriesLoading || defaultsLoading;
 
+  useEffect(() => {
+    if (open && !isLoading && registries?.length) {
+      registrySelectRef.current?.focus();
+    }
+  }, [open, isLoading, registries?.length]);
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Publish Workspace to OCI Registry</DialogTitle>
           <DialogDescription>
-            Publish the workspace's pixi.toml and pixi.lock files as an OCI artifact.
+            Publish the workspace's pixi.toml and pixi.lock files as an OCI
+            artifact.
           </DialogDescription>
         </DialogHeader>
 
@@ -120,20 +150,24 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
                 <div>
                   <p className="font-medium">No registries configured</p>
                   <p className="text-sm mt-1">
-                    Contact your administrator to set up OCI registries for publishing.
+                    Contact your administrator to set up OCI registries for
+                    publishing.
                   </p>
                 </div>
               </div>
             ) : (
               <>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Registry</label>
+                  <label htmlFor={registryId} className="text-sm font-medium">
+                    Registry
+                  </label>
                   <select
+                    ref={registrySelectRef}
+                    id={registryId}
                     value={selectedRegistry}
                     onChange={(e) => setSelectedRegistry(e.target.value)}
                     className="w-full h-10 px-3 rounded-md border border-input bg-background"
                     required
-                    autoFocus
                   >
                     <option value="">Select a registry</option>
                     {registries?.map((registry) => (
@@ -146,7 +180,9 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Repository</label>
+                  <label htmlFor={repositoryId} className="text-sm font-medium">
+                    Repository
+                  </label>
                   <div className="flex items-center gap-0">
                     {defaults?.namespace && (
                       <span className="inline-flex items-center px-3 h-10 rounded-l-md border border-r-0 border-input bg-muted text-muted-foreground text-sm">
@@ -154,6 +190,7 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
                       </span>
                     )}
                     <Input
+                      id={repositoryId}
                       type="text"
                       value={repository}
                       onChange={(e) => setRepository(e.target.value)}
@@ -165,8 +202,11 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Tag</label>
+                  <label htmlFor={tagId} className="text-sm font-medium">
+                    Tag
+                  </label>
                   <Input
+                    id={tagId}
                     type="text"
                     value={tag}
                     onChange={(e) => setTag(e.target.value)}
@@ -176,7 +216,15 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
                   <p className="text-xs text-muted-foreground">
                     Version tag for this publication
                     {publications && publications.length > 0 && (
-                      <> (existing: {publications.slice(0, 3).map(p => p.tag).join(', ')}{publications.length > 3 ? '...' : ''})</>
+                      <>
+                        {' '}
+                        (existing:{' '}
+                        {publications
+                          .slice(0, 3)
+                          .map((p) => p.tag)
+                          .join(', ')}
+                        {publications.length > 3 ? '...' : ''})
+                      </>
                     )}
                   </p>
                 </div>
@@ -188,7 +236,12 @@ export const PublishDialog = ({ open, onOpenChange, environmentId }: PublishDial
                 )}
 
                 <div className="flex gap-2 justify-end pt-4">
-                  <Button type="button" variant="outline" onClick={handleClose} disabled={publishMutation.isPending}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleClose}
+                    disabled={publishMutation.isPending}
+                  >
                     Cancel
                   </Button>
                   <Button

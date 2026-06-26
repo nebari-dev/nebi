@@ -1,10 +1,17 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
-import { server, mockOwnerCollaborator, mockCollaborator, mockUser, mockAdminUser, mockGroupCollaborator } from '@/test/handlers';
-import { ShareDialog } from './ShareDialog';
+import { HttpResponse, http } from 'msw';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  mockAdminUser,
+  mockCollaborator,
+  mockGroupCollaborator,
+  mockOwnerCollaborator,
+  mockUser,
+  server,
+} from '@/test/handlers';
 import { renderWithProviders } from '@/test/utils';
+import { ShareDialog } from './ShareDialog';
 
 const defaultProps = {
   open: true,
@@ -23,7 +30,7 @@ describe('ShareDialog', () => {
       http.get('/api/v1/workspaces/:id/collaborators', async () => {
         await new Promise((r) => setTimeout(r, 500));
         return HttpResponse.json([]);
-      })
+      }),
     );
     renderWithProviders(<ShareDialog {...defaultProps} />);
     expect(document.querySelector('.animate-spin')).toBeTruthy();
@@ -31,7 +38,11 @@ describe('ShareDialog', () => {
 
   it('renders collaborators after loading', async () => {
     renderWithProviders(<ShareDialog {...defaultProps} />);
-    await waitFor(() => expect(screen.getByText(mockOwnerCollaborator.username)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByText(mockOwnerCollaborator.username),
+      ).toBeInTheDocument(),
+    );
     expect(screen.getByText(mockCollaborator.username)).toBeInTheDocument();
   });
 
@@ -43,11 +54,21 @@ describe('ShareDialog', () => {
 
   it('shows no remove button for the owner', async () => {
     renderWithProviders(<ShareDialog {...defaultProps} />);
-    await waitFor(() => expect(screen.getByText(mockOwnerCollaborator.username)).toBeInTheDocument());
-    // The owner row should have no X button — only the non-owner should
-    const removeButtons = screen.getAllByRole('button', { name: '' }); // X buttons have no accessible label
-    // There's 1 non-owner collaborator so 1 remove button
-    expect(removeButtons).toHaveLength(1);
+    await waitFor(() =>
+      expect(
+        screen.getByText(mockOwnerCollaborator.username),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole('button', {
+        name: `Remove ${mockOwnerCollaborator.username}`,
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: `Remove ${mockCollaborator.username}`,
+      }),
+    ).toBeInTheDocument();
   });
 
   it('shows the Add Collaborator form when non-collaborator users exist', async () => {
@@ -55,7 +76,9 @@ describe('ShareDialog', () => {
     renderWithProviders(<ShareDialog {...defaultProps} />);
     // The submit button (not the heading) confirms the form is rendered
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Add Collaborator' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Add Collaborator' }),
+      ).toBeInTheDocument(),
     );
   });
 
@@ -63,28 +86,41 @@ describe('ShareDialog', () => {
     // Make all users already collaborators
     server.use(
       http.get('/api/v1/admin/users', () =>
-        HttpResponse.json([mockUser, { ...mockAdminUser, id: 'user-2' }])
-      )
+        HttpResponse.json([mockUser, { ...mockAdminUser, id: 'user-2' }]),
+      ),
     );
     renderWithProviders(<ShareDialog {...defaultProps} />);
-    await waitFor(() => expect(screen.getByText(mockOwnerCollaborator.username)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByText(mockOwnerCollaborator.username),
+      ).toBeInTheDocument(),
+    );
     // The section heading and toggle still render, but the user-form submit button does not
-    expect(screen.queryByRole('button', { name: 'Add Collaborator' })).not.toBeInTheDocument();
-    expect(screen.getByText('All users are already collaborators.')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Add Collaborator' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText('All users are already collaborators.'),
+    ).toBeInTheDocument();
   });
 
   it('shows a confirm dialog when remove button is clicked', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ShareDialog {...defaultProps} />);
-    await waitFor(() => expect(screen.getByText(mockCollaborator.username)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(mockCollaborator.username)).toBeInTheDocument(),
+    );
 
-    // Click the X button for the non-owner collaborator
-    const removeButtons = screen.getAllByRole('button');
-    const removeBtn = removeButtons.find((b) => b.querySelector('svg'));
-    await user.click(removeBtn!);
+    await user.click(
+      screen.getByRole('button', {
+        name: `Remove ${mockCollaborator.username}`,
+      }),
+    );
 
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Remove Collaborator' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Remove Collaborator' }),
+      ).toBeInTheDocument(),
     );
   });
 
@@ -95,41 +131,58 @@ describe('ShareDialog', () => {
       http.delete('/api/v1/workspaces/:id/share/:userId', ({ params }) => {
         unshareCalledWith = params.userId as string;
         return new HttpResponse(null, { status: 204 });
-      })
+      }),
     );
 
     renderWithProviders(<ShareDialog {...defaultProps} />);
-    await waitFor(() => expect(screen.getByText(mockCollaborator.username)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(mockCollaborator.username)).toBeInTheDocument(),
+    );
 
-    const removeButtons = screen.getAllByRole('button');
-    const removeBtn = removeButtons.find((b) => b.querySelector('svg'));
-    await user.click(removeBtn!);
+    await user.click(
+      screen.getByRole('button', {
+        name: `Remove ${mockCollaborator.username}`,
+      }),
+    );
 
-    await waitFor(() => expect(screen.getByText('Remove Collaborator')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText('Remove Collaborator')).toBeInTheDocument(),
+    );
     await user.click(screen.getByRole('button', { name: 'Remove' }));
 
-    await waitFor(() => expect(unshareCalledWith).toBe(mockCollaborator.user_id));
+    await waitFor(() =>
+      expect(unshareCalledWith).toBe(mockCollaborator.user_id),
+    );
   });
 
   it('shows an error message when unshare request fails', async () => {
     server.use(
       http.delete('/api/v1/workspaces/:id/share/:userId', () =>
-        HttpResponse.json({ error: 'Permission denied' }, { status: 403 })
-      )
+        HttpResponse.json({ error: 'Permission denied' }, { status: 403 }),
+      ),
     );
 
     const user = userEvent.setup();
     renderWithProviders(<ShareDialog {...defaultProps} />);
-    await waitFor(() => expect(screen.getByText(mockCollaborator.username)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(mockCollaborator.username)).toBeInTheDocument(),
+    );
 
-    // Click the remove button and confirm
-    const removeButtons = screen.getAllByRole('button');
-    const removeBtn = removeButtons.find((b) => b.querySelector('svg'));
-    await user.click(removeBtn!);
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Remove Collaborator' })).toBeInTheDocument());
+    await user.click(
+      screen.getByRole('button', {
+        name: `Remove ${mockCollaborator.username}`,
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { name: 'Remove Collaborator' }),
+      ).toBeInTheDocument(),
+    );
     await user.click(screen.getByRole('button', { name: 'Remove' }));
 
-    await waitFor(() => expect(screen.getByText('Permission denied')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText('Permission denied')).toBeInTheDocument(),
+    );
   });
 
   it('switches to group mode and shows the group form', async () => {
@@ -151,13 +204,21 @@ describe('ShareDialog', () => {
       ),
     );
     renderWithProviders(<ShareDialog {...defaultProps} />);
-    await waitFor(() => expect(screen.getByText(mockOwnerCollaborator.username)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByText(mockOwnerCollaborator.username),
+      ).toBeInTheDocument(),
+    );
 
     await userEvent.click(screen.getByRole('button', { name: 'Group' }));
 
     // After switching to group mode the group placeholder and submit button render
-    await waitFor(() => expect(screen.getByText(/Select group/i)).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: /Add Group/ })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText(/Select group/i)).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole('button', { name: /Add Group/ }),
+    ).toBeInTheDocument();
   });
 
   it('renders a group collaborator with its source badge', async () => {
@@ -167,7 +228,9 @@ describe('ShareDialog', () => {
       ),
     );
     renderWithProviders(<ShareDialog {...defaultProps} />);
-    await waitFor(() => expect(screen.getByText('data-science')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText('data-science')).toBeInTheDocument(),
+    );
     expect(screen.getByText(/Native group/i)).toBeInTheDocument();
   });
 });

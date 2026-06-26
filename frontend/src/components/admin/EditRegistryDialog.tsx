@@ -1,9 +1,14 @@
-import { useState, useEffect } from 'react';
-import { useUpdateRegistry } from '@/hooks/useRegistries';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { useUpdateRegistry } from '@/hooks/useRegistries';
 import type { OCIRegistry } from '@/types';
 
 interface EditRegistryDialogProps {
@@ -12,7 +17,11 @@ interface EditRegistryDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistryDialogProps) => {
+export const EditRegistryDialog = ({
+  registry,
+  open,
+  onOpenChange,
+}: EditRegistryDialogProps) => {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [username, setUsername] = useState('');
@@ -21,6 +30,14 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
   const [namespace, setNamespace] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [error, setError] = useState('');
+  const nameId = useId();
+  const urlId = useId();
+  const namespaceId = useId();
+  const isDefaultId = useId();
+  const usernameId = useId();
+  const passwordId = useId();
+  const apiTokenId = useId();
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   const updateMutation = useUpdateRegistry();
 
@@ -36,6 +53,12 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
       setIsDefault(registry.is_default);
     }
   }, [registry]);
+
+  useEffect(() => {
+    if (open) {
+      nameInputRef.current?.focus();
+    }
+  }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,7 +81,9 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
       setError('');
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage = error?.response?.data?.error || 'Failed to update registry. Please try again.';
+      const errorMessage =
+        error?.response?.data?.error ||
+        'Failed to update registry. Please try again.';
       setError(errorMessage);
       console.error('Failed to update registry:', err);
     }
@@ -72,23 +97,31 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Registry</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Registry
+            </h3>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Name</label>
+              <label htmlFor={nameId} className="text-sm font-medium">
+                Name
+              </label>
               <Input
+                ref={nameInputRef}
+                id={nameId}
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g., GitHub Container Registry"
                 required
-                autoFocus
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Registry URL</label>
+              <label htmlFor={urlId} className="text-sm font-medium">
+                Registry URL
+              </label>
               <Input
+                id={urlId}
                 type="text"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
@@ -98,8 +131,11 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Namespace</label>
+              <label htmlFor={namespaceId} className="text-sm font-medium">
+                Namespace
+              </label>
               <Input
+                id={namespaceId}
                 type="text"
                 value={namespace}
                 onChange={(e) => setNamespace(e.target.value)}
@@ -114,12 +150,15 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
-                id="edit_is_default"
+                id={isDefaultId}
                 checked={isDefault}
                 onChange={(e) => setIsDefault(e.target.checked)}
                 className="h-4 w-4 rounded border-input"
               />
-              <label htmlFor="edit_is_default" className="text-sm font-medium cursor-pointer">
+              <label
+                htmlFor={isDefaultId}
+                className="text-sm font-medium cursor-pointer"
+              >
                 Set as default registry
               </label>
             </div>
@@ -127,15 +166,21 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
 
           <div className="border-t pt-4 mt-4 space-y-4">
             <div>
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Authentication</h3>
-              <p className="text-xs text-muted-foreground mt-1">Optional — needed for private repositories and publishing</p>
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Authentication
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Optional — needed for private repositories and publishing
+              </p>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">
-                Username <span className="text-muted-foreground">(optional)</span>
+              <label htmlFor={usernameId} className="text-sm font-medium">
+                Username{' '}
+                <span className="text-muted-foreground">(optional)</span>
               </label>
               <Input
+                id={usernameId}
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -144,10 +189,14 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">
-                Password/Token <span className="text-muted-foreground">(leave blank to keep current)</span>
+              <label htmlFor={passwordId} className="text-sm font-medium">
+                Password/Token{' '}
+                <span className="text-muted-foreground">
+                  (leave blank to keep current)
+                </span>
               </label>
               <Input
+                id={passwordId}
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -156,17 +205,22 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">
-                API Token <span className="text-muted-foreground">(leave blank to keep current)</span>
+              <label htmlFor={apiTokenId} className="text-sm font-medium">
+                API Token{' '}
+                <span className="text-muted-foreground">
+                  (leave blank to keep current)
+                </span>
               </label>
               <Input
+                id={apiTokenId}
                 type="password"
                 value={apiToken}
                 onChange={(e) => setApiToken(e.target.value)}
                 placeholder="Leave blank to keep current token"
               />
               <p className="text-xs text-muted-foreground">
-                For Quay.io: an OAuth Application Token to list private repositories.
+                For Quay.io: an OAuth Application Token to list private
+                repositories.
                 {registry.has_api_token && ' A token is currently configured.'}
               </p>
             </div>
@@ -179,7 +233,11 @@ export const EditRegistryDialog = ({ registry, open, onOpenChange }: EditRegistr
           )}
 
           <div className="flex gap-2 justify-end pt-4">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={updateMutation.isPending}>

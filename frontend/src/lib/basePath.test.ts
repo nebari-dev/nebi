@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { getBasePath, getApiBaseUrl } from './basePath';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { getApiBaseUrl, getBasePath } from './basePath';
 
 describe('getBasePath', () => {
   beforeEach(() => {
-    delete (window as Window & { __NEBI_BASE_PATH__?: string }).__NEBI_BASE_PATH__;
+    delete (window as Window & { __NEBI_BASE_PATH__?: string })
+      .__NEBI_BASE_PATH__;
   });
 
   it('returns empty string when __NEBI_BASE_PATH__ is not set', () => {
@@ -11,14 +12,16 @@ describe('getBasePath', () => {
   });
 
   it('returns the configured base path', () => {
-    (window as Window & { __NEBI_BASE_PATH__?: string }).__NEBI_BASE_PATH__ = '/nebi';
+    (window as Window & { __NEBI_BASE_PATH__?: string }).__NEBI_BASE_PATH__ =
+      '/nebi';
     expect(getBasePath()).toBe('/nebi');
   });
 });
 
 describe('getApiBaseUrl', () => {
   beforeEach(() => {
-    delete (window as Window & { __NEBI_BASE_PATH__?: string }).__NEBI_BASE_PATH__;
+    delete (window as Window & { __NEBI_BASE_PATH__?: string })
+      .__NEBI_BASE_PATH__;
   });
 
   it('returns /api/v1 when no base path is set', () => {
@@ -26,7 +29,8 @@ describe('getApiBaseUrl', () => {
   });
 
   it('prepends the base path', () => {
-    (window as Window & { __NEBI_BASE_PATH__?: string }).__NEBI_BASE_PATH__ = '/nebi';
+    (window as Window & { __NEBI_BASE_PATH__?: string }).__NEBI_BASE_PATH__ =
+      '/nebi';
     expect(getApiBaseUrl()).toBe('/nebi/api/v1');
   });
 });

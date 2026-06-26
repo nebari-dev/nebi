@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { groupsApi } from '@/api/groups';
 import type { CreateGroupRequest, UpdateGroupRequest } from '@/types/models';
 
@@ -10,19 +10,29 @@ export const useGroups = (enabled = true) =>
 export const useGroup = (id: string | undefined) =>
   useQuery({
     queryKey: ['group', id],
-    queryFn: () => groupsApi.get(id!),
+    queryFn: () => {
+      if (!id) throw new Error('Group ID is required');
+      return groupsApi.get(id);
+    },
     enabled: !!id,
   });
 
 export const useGroupMembers = (id: string | undefined) =>
   useQuery({
     queryKey: ['group', id, 'members'],
-    queryFn: () => groupsApi.listMembers(id!),
+    queryFn: () => {
+      if (!id) throw new Error('Group ID is required');
+      return groupsApi.listMembers(id);
+    },
     enabled: !!id,
   });
 
 export const useMyGroups = (enabled = true) =>
-  useQuery({ queryKey: ['groups', 'me'], queryFn: groupsApi.myGroups, enabled });
+  useQuery({
+    queryKey: ['groups', 'me'],
+    queryFn: groupsApi.myGroups,
+    enabled,
+  });
 
 export const useCreateGroup = () => {
   const qc = useQueryClient();

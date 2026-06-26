@@ -249,7 +249,7 @@ const RepositoryRow = ({
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           ) : tags.length > 0 ? (
             <select
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               value={effectiveTag}
               onChange={(e) => setSelectedTag(e.target.value)}
             >

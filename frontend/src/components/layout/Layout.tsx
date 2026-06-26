@@ -74,6 +74,7 @@ export const Layout = () => {
                       className="gap-2"
                     >
                       <svg
+                        aria-hidden="true"
                         xmlns="http://www.w3.org/2000/svg"
                         width="16"
                         height="16"
@@ -122,6 +123,7 @@ export const Layout = () => {
               {isRemoteConnected && (
                 <div className="flex items-center gap-0.5 p-[3px] bg-muted rounded-lg border border-border">
                   <button
+                    type="button"
                     onClick={() => setViewMode('local')}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
                       viewMode === 'local'
@@ -139,6 +141,7 @@ export const Layout = () => {
                     Local
                   </button>
                   <button
+                    type="button"
                     onClick={() => setViewMode('remote')}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
                       viewMode === 'remote'

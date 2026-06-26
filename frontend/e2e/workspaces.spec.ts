@@ -184,7 +184,16 @@ test('signs in, creates a workspace, and passes critical a11y checks @a11y', asy
   await expectNoCriticalOrSeriousA11yViolations(page);
 
   await page.getByRole('button', { name: 'New Workspace' }).click();
-  await page.getByLabel('Workspace Name').fill('e2e-created-workspace');
+  await page
+    .getByLabel('pixi.toml Configuration')
+    .fill(`[workspace]
+name = "e2e-created-workspace"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
+
+[dependencies]
+python = ">=3.11"
+`);
   await page.getByRole('button', { name: 'Create & Save' }).click();
 
   await expect(page).toHaveURL(/\/workspaces\/ws-created$/);

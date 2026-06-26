@@ -1,5 +1,5 @@
 import { Check, Copy, Download, Loader2, Plus, Trash2, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -48,13 +48,19 @@ const statusColors: Record<string, string> = {
 };
 
 const DEFAULT_PIXI_TOML = `[workspace]
-name = "my-project"
+name = ""
 channels = ["conda-forge"]
 platforms = ["osx-arm64", "linux-64"]
 
 [dependencies]
 python = ">=3.11"
 `;
+
+// TODO: Robustify. Maybe use a proper TOML parser?
+const getTomlName = (toml: string): string | null => {
+  const match = toml.match(/^name\s*=\s*"([^"]*)"/m);
+  return match ? match[1] : null;
+};
 
 export const Workspaces = () => {
   const navigate = useNavigate();
@@ -73,7 +79,6 @@ export const Workspaces = () => {
 
   const [showCreate, setShowCreate] = useState(false);
   const [createTarget, setCreateTarget] = useState<'local' | 'server'>('local');
-  const [newWsName, setNewWsName] = useState('');
   const [localPath, setLocalPath] = useState('');
   const [pixiToml, setPixiToml] = useState(DEFAULT_PIXI_TOML);
 
@@ -84,6 +89,7 @@ export const Workspaces = () => {
   } | null>(null);
   const [error, setError] = useState('');
   const [copiedPullId, setCopiedPullId] = useState<string | null>(null);
+  const localPathId = useId();
 
   // Filter workspaces based on view mode (when remote connected) or show all local (when not)
   const displayedWorkspaces = useMemo<UnifiedWorkspace[]>(() => {
@@ -137,7 +143,13 @@ export const Workspaces = () => {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newWsName.trim()) return;
+    const wsName = getTomlName(pixiToml);
+    if (!wsName?.trim()) {
+      setError(
+        'Workspace name is required in the pixi.toml [workspace] section.',
+      );
+      return;
+    }
 
     setError('');
     try {
@@ -145,13 +157,13 @@ export const Workspaces = () => {
 
       if (createTarget === 'server' && isRemoteConnected) {
         await createRemoteMutation.mutateAsync({
-          name: newWsName,
+          name: wsName,
           package_manager: 'pixi',
           pixi_toml: tomlContent,
         });
       } else {
         const ws = await createMutation.mutateAsync({
-          name: newWsName,
+          name: wsName,
           package_manager: 'pixi',
           pixi_toml: tomlContent,
           ...(localPath.trim()
@@ -160,7 +172,6 @@ export const Workspaces = () => {
         });
 
         // Reset form
-        setNewWsName('');
         setLocalPath('');
         setPixiToml(DEFAULT_PIXI_TOML);
         setShowCreate(false);
@@ -171,7 +182,6 @@ export const Workspaces = () => {
       }
 
       // Reset form
-      setNewWsName('');
       setLocalPath('');
       setPixiToml(DEFAULT_PIXI_TOML);
       setShowCreate(false);
@@ -288,25 +298,20 @@ export const Workspaces = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreate} className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium" htmlFor="workspace-name">
-                  Workspace Name
-                </label>
-                <Input
-                  id="workspace-name"
-                  placeholder="e.g., my-data-project"
-                  value={newWsName}
-                  onChange={(e) => setNewWsName(e.target.value)}
-                  autoFocus
-                  required
-                />
-              </div>
+              <PixiTomlEditor
+                tomlValue={pixiToml}
+                onTomlChange={setPixiToml}
+                workspaceName={getTomlName(pixiToml) || ''}
+              />
 
               {/* Path field — only for local target in local mode */}
               {createTarget === 'local' && isLocal && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Path (optional)</label>
+                  <label htmlFor={localPathId} className="text-sm font-medium">
+                    Path (optional)
+                  </label>
                   <Input
+                    id={localPathId}
                     placeholder="e.g., /home/user/projects/my-project"
                     value={localPath}
                     onChange={(e) => setLocalPath(e.target.value)}
@@ -317,12 +322,6 @@ export const Workspaces = () => {
                 </div>
               )}
 
-              <PixiTomlEditor
-                tomlValue={pixiToml}
-                onTomlChange={setPixiToml}
-                workspaceName={newWsName || 'my-project'}
-              />
-
               <div className="flex gap-2 justify-end">
                 <Button
                   type="button"
@@ -331,7 +330,10 @@ export const Workspaces = () => {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isCreatePending}>
+                <Button
+                  type="submit"
+                  disabled={isCreatePending || !getTomlName(pixiToml)?.trim()}
+                >
                   {isCreatePending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />

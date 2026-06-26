@@ -32,33 +32,25 @@
       "recommended": true,
 
       "correctness": {
-        "noUndeclaredVariables": "error",
-        "useExhaustiveDependencies": "off",
-        "useHookAtTopLevel": "off"
+        "noUndeclaredVariables": "error"
+      },
+
+      "a11y": {
+        "useValidAriaRole": {
+          "level": "error",
+          "options": {
+            "ignoreNonDom": true
+          }
+        }
       },
 
       "style": {
-        "noNonNullAssertion": "off",
         "useComponentExportOnlyModules": {
           "level": "warn",
           "options": {
             "allowConstantExport": true
           }
         }
-      },
-
-      "a11y": {
-        "noSvgWithoutTitle": "off",
-        "noLabelWithoutControl": "off",
-        "useButtonType": "off",
-        "noAutofocus": "off",
-        "useValidAriaRole": "off"
-      },
-
-      "suspicious": {
-        "noArrayIndexKey": "off",
-        "noExplicitAny": "off",
-        "noDuplicateObjectKeys": "off"
       }
     }
   },

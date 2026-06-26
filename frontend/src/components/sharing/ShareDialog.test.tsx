@@ -59,10 +59,16 @@ describe('ShareDialog', () => {
         screen.getByText(mockOwnerCollaborator.username),
       ).toBeInTheDocument(),
     );
-    // The owner row should have no X button — only the non-owner should
-    const removeButtons = screen.getAllByRole('button', { name: '' }); // X buttons have no accessible label
-    // There's 1 non-owner collaborator so 1 remove button
-    expect(removeButtons).toHaveLength(1);
+    expect(
+      screen.queryByRole('button', {
+        name: `Remove ${mockOwnerCollaborator.username}`,
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: `Remove ${mockCollaborator.username}`,
+      }),
+    ).toBeInTheDocument();
   });
 
   it('shows the Add Collaborator form when non-collaborator users exist', async () => {
@@ -105,10 +111,11 @@ describe('ShareDialog', () => {
       expect(screen.getByText(mockCollaborator.username)).toBeInTheDocument(),
     );
 
-    // Click the X button for the non-owner collaborator
-    const removeButtons = screen.getAllByRole('button');
-    const removeBtn = removeButtons.find((b) => b.querySelector('svg'));
-    await user.click(removeBtn!);
+    await user.click(
+      screen.getByRole('button', {
+        name: `Remove ${mockCollaborator.username}`,
+      }),
+    );
 
     await waitFor(() =>
       expect(
@@ -132,9 +139,11 @@ describe('ShareDialog', () => {
       expect(screen.getByText(mockCollaborator.username)).toBeInTheDocument(),
     );
 
-    const removeButtons = screen.getAllByRole('button');
-    const removeBtn = removeButtons.find((b) => b.querySelector('svg'));
-    await user.click(removeBtn!);
+    await user.click(
+      screen.getByRole('button', {
+        name: `Remove ${mockCollaborator.username}`,
+      }),
+    );
 
     await waitFor(() =>
       expect(screen.getByText('Remove Collaborator')).toBeInTheDocument(),
@@ -159,10 +168,11 @@ describe('ShareDialog', () => {
       expect(screen.getByText(mockCollaborator.username)).toBeInTheDocument(),
     );
 
-    // Click the remove button and confirm
-    const removeButtons = screen.getAllByRole('button');
-    const removeBtn = removeButtons.find((b) => b.querySelector('svg'));
-    await user.click(removeBtn!);
+    await user.click(
+      screen.getByRole('button', {
+        name: `Remove ${mockCollaborator.username}`,
+      }),
+    );
     await waitFor(() =>
       expect(
         screen.getByRole('heading', { name: 'Remove Collaborator' }),

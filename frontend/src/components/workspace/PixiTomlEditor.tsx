@@ -1,5 +1,5 @@
 import { FileCode, Loader2, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
@@ -38,31 +38,166 @@ ${dependenciesLines || 'python = ">=3.11"'}
 `;
 };
 
-const parsePixiTomlDependencies = (toml: string): Package[] => {
-  const lines = toml.split('\n');
-  const packages: Package[] = [];
-  let inDependencies = false;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    if (trimmed === '[dependencies]') {
-      inDependencies = true;
+const findSectionRange = (
+  lines: string[],
+  sectionNames: string[],
+): { start: number; end: number } | null => {
+  for (let index = 0; index < lines.length; index++) {
+    const tableMatch = lines[index].match(/^\s*\[([^[\]]+)\]\s*(?:#.*)?$/);
+    if (!tableMatch || !sectionNames.includes(tableMatch[1].trim())) {
       continue;
     }
 
-    if (inDependencies && trimmed.startsWith('[')) {
-      break;
+    let end = lines.length;
+    for (let next = index + 1; next < lines.length; next++) {
+      if (/^\s*\[+.+\]\s*(?:#.*)?$/.test(lines[next])) {
+        end = next;
+        break;
+      }
     }
 
-    if (inDependencies && trimmed && !trimmed.startsWith('#')) {
-      const match = trimmed.match(/^([^\s=]+)\s*=\s*"([^"]*)"$/);
-      if (match) {
-        packages.push({
-          name: match[1],
-          version: match[2] === '*' ? '' : match[2],
-        });
-      }
+    return { start: index, end };
+  }
+
+  return null;
+};
+
+const parseDependencyLine = (
+  line: string,
+): {
+  indent: string;
+  name: string;
+  version: string;
+  comment: string;
+} | null => {
+  const match = line.match(/^(\s*)([^\s=#]+)\s*=\s*"([^"]*)"\s*(#.*)?$/);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    indent: match[1],
+    name: match[2],
+    version: match[3],
+    comment: match[4] ? ` ${match[4].trimStart()}` : '',
+  };
+};
+
+const formatDependencyLine = (
+  pkg: Package,
+  indent = '',
+  comment = '',
+): string => {
+  const name = pkg.name.trim();
+  const version = pkg.version.trim() || '*';
+  return `${indent}${name} = "${version}"${comment}`;
+};
+
+const patchPixiTomlDependencies = (
+  toml: string,
+  packages: Package[],
+): string => {
+  const lines = toml.split(/\r?\n/);
+  const desiredByName = new Map(packages.map((pkg) => [pkg.name, pkg]));
+  const sectionRange = findSectionRange(lines, ['dependencies']);
+
+  if (!sectionRange) {
+    if (packages.length === 0) {
+      return toml;
+    }
+
+    const nextLines = toml ? [...lines] : [];
+    if (nextLines.length > 0 && nextLines[nextLines.length - 1] !== '') {
+      nextLines.push('');
+    }
+    nextLines.push(
+      '[dependencies]',
+      ...packages.map((pkg) => formatDependencyLine(pkg)),
+    );
+    return nextLines.join('\n');
+  }
+
+  const emittedNames = new Set<string>();
+  const patchedSectionLines: string[] = [];
+
+  for (const line of lines.slice(sectionRange.start + 1, sectionRange.end)) {
+    const dependency = parseDependencyLine(line);
+    if (!dependency) {
+      patchedSectionLines.push(line);
+      continue;
+    }
+
+    const desiredPackage = desiredByName.get(dependency.name);
+    if (!desiredPackage) {
+      continue;
+    }
+
+    patchedSectionLines.push(
+      formatDependencyLine(
+        desiredPackage,
+        dependency.indent,
+        dependency.comment,
+      ),
+    );
+    emittedNames.add(dependency.name);
+  }
+
+  const newDependencyLines = packages
+    .filter((pkg) => !emittedNames.has(pkg.name))
+    .map((pkg) => formatDependencyLine(pkg));
+
+  if (newDependencyLines.length > 0) {
+    let insertAt = patchedSectionLines.length;
+    while (insertAt > 0 && patchedSectionLines[insertAt - 1].trim() === '') {
+      insertAt--;
+    }
+    patchedSectionLines.splice(insertAt, 0, ...newDependencyLines);
+  }
+
+  return [
+    ...lines.slice(0, sectionRange.start + 1),
+    ...patchedSectionLines,
+    ...lines.slice(sectionRange.end),
+  ].join('\n');
+};
+
+const patchPixiTomlWorkspaceName = (toml: string, workspaceName: string) => {
+  const lines = toml.split(/\r?\n/);
+  const sectionRange = findSectionRange(lines, ['workspace', 'project']);
+  const nameLine = `name = "${workspaceName}"`;
+
+  if (!sectionRange) {
+    return toml;
+  }
+
+  const nextLines = [...lines];
+  for (let index = sectionRange.start + 1; index < sectionRange.end; index++) {
+    const nameMatch = nextLines[index].match(/^(\s*)name\s*=.*?(\s+#.*)?$/);
+    if (nameMatch) {
+      nextLines[index] = `${nameMatch[1]}${nameLine}${nameMatch[2] ?? ''}`;
+      return nextLines.join('\n');
+    }
+  }
+
+  nextLines.splice(sectionRange.start + 1, 0, nameLine);
+  return nextLines.join('\n');
+};
+
+const parsePixiTomlDependencies = (toml: string): Package[] => {
+  const lines = toml.split(/\r?\n/);
+  const packages: Package[] = [];
+  const sectionRange = findSectionRange(lines, ['dependencies']);
+  if (!sectionRange) {
+    return packages;
+  }
+
+  for (const line of lines.slice(sectionRange.start + 1, sectionRange.end)) {
+    const dependency = parseDependencyLine(line);
+    if (dependency) {
+      packages.push({
+        name: dependency.name,
+        version: dependency.version === '*' ? '' : dependency.version,
+      });
     }
   }
 
@@ -87,6 +222,9 @@ export const PixiTomlEditor = ({
   const [showDiscardPrompt, setShowDiscardPrompt] = useState(false);
   const pendingModeRef = useRef<'ui' | 'toml'>('ui');
   const initialTomlRef = useRef<string>('');
+  const workspaceNameId = useId();
+  const packagesHeadingId = useId();
+  const tomlEditorId = useId();
 
   useEffect(() => {
     if (!initialized && tomlValue) {
@@ -99,22 +237,30 @@ export const PixiTomlEditor = ({
     }
   }, [tomlValue, initialized]);
 
-  const performSwitch = async (newMode: 'ui' | 'toml') => {
-    if (newMode === 'toml') {
+  const performSwitch = async (
+    newMode: 'ui' | 'toml',
+    discardChanges = false,
+  ) => {
+    let source = onReloadToml ? tomlValue : initialTomlRef.current;
+
+    if (newMode === 'toml' || discardChanges) {
       if (onReloadToml) {
         setSwitching(true);
         try {
           const freshToml = await onReloadToml();
           onTomlChange(freshToml);
           initialTomlRef.current = freshToml;
+          source = freshToml;
         } finally {
           setSwitching(false);
         }
       } else {
-        onTomlChange(initialTomlRef.current);
+        source = initialTomlRef.current;
+        onTomlChange(source);
       }
-    } else {
-      const source = onReloadToml ? tomlValue : initialTomlRef.current;
+    }
+
+    if (newMode === 'ui') {
       const parsed = parsePixiTomlDependencies(source);
       if (parsed.length > 0) {
         setPackages(parsed);
@@ -138,27 +284,38 @@ export const PixiTomlEditor = ({
 
   const handleConfirmDiscard = async () => {
     setShowDiscardPrompt(false);
-    await performSwitch(pendingModeRef.current);
+    await performSwitch(pendingModeRef.current, true);
+  };
+
+  const getCurrentToml = () => {
+    return (
+      tomlValue ||
+      initialTomlRef.current ||
+      buildPixiToml(packages, workspaceName || 'my-project')
+    );
   };
 
   const handleAddPackage = () => {
-    if (!newPackageName.trim()) return;
-    const updated = [
-      ...packages,
-      { name: newPackageName.trim(), version: newPackageVersion.trim() },
-    ];
+    const name = newPackageName.trim();
+    if (!name) return;
+
+    const version = newPackageVersion.trim();
+    const existingPackage = packages.some((pkg) => pkg.name === name);
+    const updated = existingPackage
+      ? packages.map((pkg) => (pkg.name === name ? { name, version } : pkg))
+      : [...packages, { name, version }];
     setPackages(updated);
     setDirty(true);
     setNewPackageName('');
     setNewPackageVersion('');
-    onTomlChange(buildPixiToml(updated, workspaceName || 'my-project'));
+    onTomlChange(patchPixiTomlDependencies(getCurrentToml(), updated));
   };
 
-  const handleRemovePackage = (index: number) => {
-    const updated = packages.filter((_, i) => i !== index);
+  const handleRemovePackage = (name: string) => {
+    const updated = packages.filter((pkg) => pkg.name !== name);
     setPackages(updated);
     setDirty(true);
-    onTomlChange(buildPixiToml(updated, workspaceName || 'my-project'));
+    onTomlChange(patchPixiTomlDependencies(getCurrentToml(), updated));
   };
 
   const handleTomlEdit = (value: string) => {
@@ -209,11 +366,35 @@ export const PixiTomlEditor = ({
       {mode === 'ui' ? (
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium block pt-2 pb-0">
-              Packages
+            <label
+              htmlFor={workspaceNameId}
+              className="text-sm font-medium block pt-2 pb-0"
+            >
+              Workspace Name
             </label>
+            <Input
+              id={workspaceNameId}
+              value={workspaceName || ''}
+              onChange={(e) => {
+                const newName = e.target.value;
+                setDirty(true);
+                onTomlChange(
+                  patchPixiTomlWorkspaceName(getCurrentToml(), newName),
+                );
+              }}
+              placeholder="Workspace name"
+              className="font-mono"
+            />
+          </div>
+          <div className="space-y-2">
+            <h3
+              id={packagesHeadingId}
+              className="text-sm font-medium block pt-2 pb-0"
+            >
+              Packages
+            </h3>
             <div className="border rounded-lg overflow-hidden">
-              <table className="w-full">
+              <table className="w-full" aria-labelledby={packagesHeadingId}>
                 <thead className="bg-muted/50 border-b">
                   <tr>
                     <th className="text-left p-3 text-sm font-medium">Name</th>
@@ -224,8 +405,8 @@ export const PixiTomlEditor = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {packages.map((pkg, index) => (
-                    <tr key={index} className="hover:bg-muted/30">
+                  {packages.map((pkg) => (
+                    <tr key={pkg.name} className="hover:bg-muted/30">
                       <td className="p-3">
                         <span className="font-mono text-sm">{pkg.name}</span>
                       </td>
@@ -239,7 +420,7 @@ export const PixiTomlEditor = ({
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleRemovePackage(index)}
+                          onClick={() => handleRemovePackage(pkg.name)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -291,10 +472,14 @@ export const PixiTomlEditor = ({
         </div>
       ) : (
         <div className="space-y-2">
-          <label className="text-sm font-medium block pt-2 pb-0">
+          <label
+            htmlFor={tomlEditorId}
+            className="text-sm font-medium block pt-2 pb-0"
+          >
             pixi.toml Configuration
           </label>
           <Textarea
+            id={tomlEditorId}
             placeholder="Enter your pixi.toml content"
             value={tomlValue}
             onChange={(e) => handleTomlEdit(e.target.value)}
@@ -304,6 +489,18 @@ export const PixiTomlEditor = ({
           />
           <p className="text-xs text-muted-foreground">
             Define your project dependencies and configuration in TOML format
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Workspace will be created as:{' '}
+            {workspaceName ? (
+              <span className="font-medium text-foreground">
+                {workspaceName}
+              </span>
+            ) : (
+              <span className="text-yellow-600">
+                (add a name under [workspace] to continue)
+              </span>
+            )}
           </p>
         </div>
       )}

@@ -239,6 +239,7 @@ export const RemoteWorkspaceDetail = () => {
                     {workspace.id}
                   </code>
                   <button
+                    type="button"
                     className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground"
                     onClick={async () => {
                       await navigator.clipboard.writeText(workspace.id);

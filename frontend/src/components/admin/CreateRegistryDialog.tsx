@@ -1,5 +1,5 @@
 import { Loader2, Plus } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -21,8 +21,22 @@ export const CreateRegistryDialog = () => {
   const [namespace, setNamespace] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [error, setError] = useState('');
+  const nameId = useId();
+  const urlId = useId();
+  const namespaceId = useId();
+  const isDefaultId = useId();
+  const usernameId = useId();
+  const passwordId = useId();
+  const apiTokenId = useId();
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   const createMutation = useCreateRegistry();
+
+  useEffect(() => {
+    if (open) {
+      nameInputRef.current?.focus();
+    }
+  }, [open]);
 
   const handleOpenChange = (value: boolean) => {
     setOpen(value);
@@ -80,20 +94,26 @@ export const CreateRegistryDialog = () => {
             </h3>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Name</label>
+              <label htmlFor={nameId} className="text-sm font-medium">
+                Name
+              </label>
               <Input
+                ref={nameInputRef}
+                id={nameId}
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g., GitHub Container Registry"
                 required
-                autoFocus
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Registry URL</label>
+              <label htmlFor={urlId} className="text-sm font-medium">
+                Registry URL
+              </label>
               <Input
+                id={urlId}
                 type="text"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
@@ -103,8 +123,11 @@ export const CreateRegistryDialog = () => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Namespace</label>
+              <label htmlFor={namespaceId} className="text-sm font-medium">
+                Namespace
+              </label>
               <Input
+                id={namespaceId}
                 type="text"
                 value={namespace}
                 onChange={(e) => setNamespace(e.target.value)}
@@ -119,13 +142,13 @@ export const CreateRegistryDialog = () => {
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
-                id="is_default"
+                id={isDefaultId}
                 checked={isDefault}
                 onChange={(e) => setIsDefault(e.target.checked)}
                 className="h-4 w-4 rounded border-input"
               />
               <label
-                htmlFor="is_default"
+                htmlFor={isDefaultId}
                 className="text-sm font-medium cursor-pointer"
               >
                 Set as default registry
@@ -144,11 +167,12 @@ export const CreateRegistryDialog = () => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">
+              <label htmlFor={usernameId} className="text-sm font-medium">
                 Username{' '}
                 <span className="text-muted-foreground">(optional)</span>
               </label>
               <Input
+                id={usernameId}
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -157,11 +181,12 @@ export const CreateRegistryDialog = () => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">
+              <label htmlFor={passwordId} className="text-sm font-medium">
                 Password/Token{' '}
                 <span className="text-muted-foreground">(optional)</span>
               </label>
               <Input
+                id={passwordId}
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -170,11 +195,12 @@ export const CreateRegistryDialog = () => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">
+              <label htmlFor={apiTokenId} className="text-sm font-medium">
                 API Token{' '}
                 <span className="text-muted-foreground">(optional)</span>
               </label>
               <Input
+                id={apiTokenId}
                 type="password"
                 value={apiToken}
                 onChange={(e) => setApiToken(e.target.value)}

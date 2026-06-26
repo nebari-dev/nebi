@@ -1,5 +1,5 @@
 import { Check, Copy, Download, Loader2, Plus, Trash2, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -89,6 +89,7 @@ export const Workspaces = () => {
   } | null>(null);
   const [error, setError] = useState('');
   const [copiedPullId, setCopiedPullId] = useState<string | null>(null);
+  const localPathId = useId();
 
   // Filter workspaces based on view mode (when remote connected) or show all local (when not)
   const displayedWorkspaces = useMemo<UnifiedWorkspace[]>(() => {
@@ -304,8 +305,11 @@ export const Workspaces = () => {
               {/* Path field — only for local target in local mode */}
               {createTarget === 'local' && isLocal && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Path (optional)</label>
+                  <label htmlFor={localPathId} className="text-sm font-medium">
+                    Path (optional)
+                  </label>
                   <Input
+                    id={localPathId}
                     placeholder="e.g., /home/user/projects/my-project"
                     value={localPath}
                     onChange={(e) => setLocalPath(e.target.value)}

@@ -1,5 +1,5 @@
 import { Loader2, Wifi, WifiOff } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +21,9 @@ export const Settings = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const urlId = useId();
+  const usernameId = useId();
+  const passwordId = useId();
 
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,8 +139,11 @@ export const Settings = () => {
                 shared resources.
               </p>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Server URL</label>
+                <label htmlFor={urlId} className="text-sm font-medium">
+                  Server URL
+                </label>
                 <Input
+                  id={urlId}
                   type="url"
                   placeholder="https://nebi.example.com"
                   value={url}
@@ -146,8 +152,11 @@ export const Settings = () => {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Username</label>
+                <label htmlFor={usernameId} className="text-sm font-medium">
+                  Username
+                </label>
                 <Input
+                  id={usernameId}
                   type="text"
                   placeholder="Username"
                   value={username}
@@ -156,8 +165,11 @@ export const Settings = () => {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Password</label>
+                <label htmlFor={passwordId} className="text-sm font-medium">
+                  Password
+                </label>
                 <Input
+                  id={passwordId}
                   type="password"
                   placeholder="Password"
                   value={password}

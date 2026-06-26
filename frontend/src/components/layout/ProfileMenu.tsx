@@ -13,17 +13,14 @@ const getInitial = (user: User | null) =>
 
 export const ProfileMenu = ({ user, onLogout }: ProfileMenuProps) => {
   const [open, setOpen] = useState(false);
-  const [avatarError, setAvatarError] = useState(false);
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const menuId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const displayName = user?.username || user?.email || 'User';
   const avatarUrl = user?.avatar_url;
-
-  useEffect(() => {
-    setAvatarError(false);
-  }, [avatarUrl]);
+  const avatarError = Boolean(avatarUrl && failedAvatarUrl === avatarUrl);
 
   useEffect(() => {
     if (!open) return;
@@ -53,6 +50,16 @@ export const ProfileMenu = ({ user, onLogout }: ProfileMenuProps) => {
     onLogout();
   };
 
+  const handleAvatarError = () => {
+    if (avatarUrl) {
+      setFailedAvatarUrl(avatarUrl);
+    }
+  };
+
+  const handleAvatarLoad = () => {
+    setFailedAvatarUrl(null);
+  };
+
   return (
     <div ref={rootRef} className="relative">
       <button
@@ -71,7 +78,8 @@ export const ProfileMenu = ({ user, onLogout }: ProfileMenuProps) => {
             className="h-8 w-8 shrink-0 rounded-full object-cover"
             referrerPolicy="no-referrer-when-downgrade"
             crossOrigin="anonymous"
-            onError={() => setAvatarError(true)}
+            onError={handleAvatarError}
+            onLoad={handleAvatarLoad}
           />
         ) : (
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
@@ -104,7 +112,8 @@ export const ProfileMenu = ({ user, onLogout }: ProfileMenuProps) => {
                 className="h-10 w-10 shrink-0 rounded-full object-cover"
                 referrerPolicy="no-referrer-when-downgrade"
                 crossOrigin="anonymous"
-                onError={() => setAvatarError(true)}
+                onError={handleAvatarError}
+                onLoad={handleAvatarLoad}
               />
             ) : (
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-base font-medium text-primary">

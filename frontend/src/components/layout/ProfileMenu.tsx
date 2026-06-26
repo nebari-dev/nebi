@@ -1,5 +1,5 @@
 import { ChevronDown, LogOut } from 'lucide-react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { User } from '@/types';
 
@@ -15,35 +15,11 @@ export const ProfileMenu = ({ user, onLogout }: ProfileMenuProps) => {
   const [open, setOpen] = useState(false);
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const menuId = useId();
-  const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const displayName = user?.username || user?.email || 'User';
   const avatarUrl = user?.avatar_url;
   const avatarError = Boolean(avatarUrl && failedAvatarUrl === avatarUrl);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [open]);
 
   const handleLogout = () => {
     setOpen(false);
@@ -61,7 +37,21 @@ export const ProfileMenu = ({ user, onLogout }: ProfileMenuProps) => {
   };
 
   return (
-    <div ref={rootRef} className="relative">
+    // biome-ignore lint/a11y/noStaticElementInteractions: This container observes bubbled React focus and keyboard events from its child controls.
+    <div
+      className="relative"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setOpen(false);
+        }
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          setOpen(false);
+          triggerRef.current?.focus();
+        }
+      }}
+    >
       <button
         ref={triggerRef}
         type="button"

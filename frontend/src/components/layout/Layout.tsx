@@ -198,7 +198,7 @@ export const Layout = () => {
             }
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+            className="text-sm text-muted-foreground hover:text-muted-foreground transition-colors"
           >
             v{versionInfo.version}
           </a>

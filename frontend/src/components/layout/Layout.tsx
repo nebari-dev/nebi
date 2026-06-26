@@ -1,5 +1,4 @@
-import { Boxes, ExternalLink, LogOut, Settings, Shield } from 'lucide-react';
-import { useState } from 'react';
+import { Boxes, ExternalLink, Settings, Shield } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useIsAdmin } from '@/hooks/useAdmin';
@@ -10,13 +9,13 @@ import { openExternal } from '@/lib/openExternal';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
+import { ProfileMenu } from './ProfileMenu';
 
 export const Layout = () => {
   const { user, clearAuth } = useAuthStore();
   const isLocalMode = useModeStore((s) => s.isLocalMode());
   const navigate = useNavigate();
   const { data: isAdmin } = useIsAdmin();
-  const [avatarError, setAvatarError] = useState(false);
   const { viewMode, setViewMode } = useViewModeStore();
   const { data: serverStatus } = useRemoteServer();
   const { data: versionInfo } = useVersion();
@@ -174,30 +173,7 @@ export const Layout = () => {
                 </NavLink>
               )}
               {!isLocalMode && (
-                <>
-                  {user?.avatar_url && !avatarError ? (
-                    <img
-                      src={user.avatar_url}
-                      alt={user.username}
-                      className="h-8 w-8 rounded-full"
-                      referrerPolicy="no-referrer-when-downgrade"
-                      crossOrigin="anonymous"
-                      onError={() => setAvatarError(true)}
-                    />
-                  ) : (
-                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <span className="text-sm font-medium text-primary">
-                        {user?.username?.charAt(0).toUpperCase()}
-                      </span>
-                    </div>
-                  )}
-                  <span className="text-sm font-medium text-foreground">
-                    {user?.username}
-                  </span>
-                  <Button variant="ghost" size="icon" onClick={handleLogout}>
-                    <LogOut className="h-4 w-4" />
-                  </Button>
-                </>
+                <ProfileMenu user={user} onLogout={handleLogout} />
               )}
             </div>
           </div>

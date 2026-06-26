@@ -19,18 +19,18 @@ import { useViewModeStore } from '@/store/viewModeStore';
 import type { Job } from '@/types';
 
 const statusColors = {
-  pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-  running: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  completed: 'bg-green-500/10 text-green-500 border-green-500/20',
-  failed: 'bg-red-500/10 text-red-500 border-red-500/20',
+  pending: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  running: 'bg-blue-100 text-blue-800 border-blue-300',
+  completed: 'bg-green-100 text-green-800 border-green-300',
+  failed: 'bg-red-100 text-red-800 border-red-300',
 };
 
 const typeColors = {
-  create: 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20',
-  delete: 'bg-red-500/10 text-red-500 border-red-500/20',
-  install: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  remove: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
-  update: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
+  create: 'bg-indigo-100 text-indigo-800 border-indigo-300',
+  delete: 'bg-red-100 text-red-800 border-red-300',
+  install: 'bg-blue-100 text-blue-800 border-blue-300',
+  remove: 'bg-orange-100 text-orange-800 border-orange-300',
+  update: 'bg-purple-100 text-purple-800 border-purple-300',
 };
 
 const CopyButton = ({ text }: { text: string }) => {

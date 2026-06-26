@@ -12,10 +12,12 @@ export const SplitButton = ({
   onPrimary,
   primaryLabel,
   menuItems,
+  menuLabel = 'Open menu',
 }: {
   onPrimary: () => void;
   primaryLabel: React.ReactNode;
   menuItems: SplitButtonMenuItem[];
+  menuLabel?: string;
 }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -41,6 +43,7 @@ export const SplitButton = ({
       <Button
         className="rounded-l-none px-2"
         onClick={() => setOpen((o) => !o)}
+        aria-label={menuLabel}
         aria-haspopup="menu"
         aria-expanded={open}
       >

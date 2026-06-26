@@ -51,12 +51,12 @@ import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
 import type { Collaborator } from '@/types/models';
 
 const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-  creating: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  running: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  ready: 'bg-green-500/10 text-green-500 border-green-500/20',
-  failed: 'bg-red-500/10 text-red-500 border-red-500/20',
-  deleting: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+  pending: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  creating: 'bg-blue-100 text-blue-800 border-blue-300',
+  running: 'bg-blue-100 text-blue-800 border-blue-300',
+  ready: 'bg-green-100 text-green-800 border-green-300',
+  failed: 'bg-red-100 text-red-800 border-red-300',
+  deleting: 'bg-orange-100 text-orange-800 border-orange-300',
 };
 
 export const WorkspaceDetail = () => {
@@ -161,6 +161,7 @@ export const WorkspaceDetail = () => {
           variant="ghost"
           size="icon"
           onClick={() => navigate('/workspaces')}
+          aria-label="Back to workspaces"
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -489,6 +490,7 @@ export const WorkspaceDetail = () => {
                       setCopiedId(true);
                       setTimeout(() => setCopiedId(false), 2000);
                     }}
+                    aria-label="Copy workspace ID"
                     title="Copy ID"
                   >
                     {copiedId ? (

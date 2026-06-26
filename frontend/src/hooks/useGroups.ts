@@ -10,14 +10,20 @@ export const useGroups = (enabled = true) =>
 export const useGroup = (id: string | undefined) =>
   useQuery({
     queryKey: ['group', id],
-    queryFn: () => groupsApi.get(id!),
+    queryFn: () => {
+      if (!id) throw new Error('Group ID is required');
+      return groupsApi.get(id);
+    },
     enabled: !!id,
   });
 
 export const useGroupMembers = (id: string | undefined) =>
   useQuery({
     queryKey: ['group', id, 'members'],
-    queryFn: () => groupsApi.listMembers(id!),
+    queryFn: () => {
+      if (!id) throw new Error('Group ID is required');
+      return groupsApi.listMembers(id);
+    },
     enabled: !!id,
   });
 

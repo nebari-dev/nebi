@@ -43,6 +43,13 @@ export interface CreateWorkspaceRequest {
 
 export type JobType = 'create' | 'delete' | 'install' | 'remove' | 'update';
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
 export interface Job {
   id: string; // UUID
@@ -51,7 +58,7 @@ export interface Job {
   status: JobStatus;
   logs: string;
   error?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, JsonValue>;
   created_at: string;
   started_at?: string;
   completed_at?: string;
@@ -92,7 +99,7 @@ export interface AuditLog {
   action: string;
   resource: string;
   resource_id?: string;
-  details_json?: Record<string, any>;
+  details_json?: Record<string, JsonValue>;
   timestamp: string;
   user?: User;
 }

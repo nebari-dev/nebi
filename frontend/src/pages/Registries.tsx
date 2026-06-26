@@ -11,7 +11,7 @@ import {
   Search,
   Settings,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -178,6 +178,7 @@ const RepositoryRow = ({
   const [showImport, setShowImport] = useState(false);
   const [importName, setImportName] = useState('');
   const [error, setError] = useState('');
+  const importNameId = useId();
 
   const tags = tagData?.tags || [];
   const effectiveTag = selectedTag || tags[0]?.name || '';
@@ -322,10 +323,14 @@ const RepositoryRow = ({
                 </div>
               </div>
               <div className="space-y-3">
-                <label className="text-sm font-medium mb-2 block">
+                <label
+                  htmlFor={importNameId}
+                  className="text-sm font-medium mb-2 block"
+                >
                   Workspace Name
                 </label>
                 <Input
+                  id={importNameId}
                   value={importName}
                   onChange={(e) => setImportName(e.target.value)}
                   placeholder="Enter workspace name"

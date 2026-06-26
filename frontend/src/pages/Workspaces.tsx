@@ -54,6 +54,7 @@ platforms = ["osx-arm64", "linux-64"]
 
 [dependencies]
 python = ">=3.11"
+ipykernel = "*"
 `;
 
 // TODO: Robustify. Maybe use a proper TOML parser?

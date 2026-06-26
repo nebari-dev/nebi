@@ -69,11 +69,12 @@ func (e *LocalExecutor) StagingRoot() string {
 	return root
 }
 
-// GetWorkspacePath returns the filesystem path for a workspace
-// For source=="local" workspaces with a path set, returns that path directly.
+// GetWorkspacePath returns the filesystem path for a workspace.
+// If ws.Path is set to an absolute path, prefer it regardless of source so
+// reads/writes remain stable across process restarts or base-dir changes.
 // Otherwise: {baseDir}/{normalized-name}-{uuid}
 func (e *LocalExecutor) GetWorkspacePath(ws *models.Workspace) string {
-	if ws.Source == "local" && ws.Path != "" {
+	if ws.Path != "" && filepath.IsAbs(ws.Path) {
 		return ws.Path
 	}
 	normalizedName := normalizeEnvName(ws.Name)

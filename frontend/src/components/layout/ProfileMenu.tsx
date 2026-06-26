@@ -19,10 +19,11 @@ export const ProfileMenu = ({ user, onLogout }: ProfileMenuProps) => {
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const displayName = user?.username || user?.email || 'User';
+  const avatarUrl = user?.avatar_url;
 
   useEffect(() => {
     setAvatarError(false);
-  }, [user?.avatar_url]);
+  }, [avatarUrl]);
 
   useEffect(() => {
     if (!open) return;
@@ -63,9 +64,9 @@ export const ProfileMenu = ({ user, onLogout }: ProfileMenuProps) => {
         aria-controls={open ? menuId : undefined}
         onClick={() => setOpen((value) => !value)}
       >
-        {user?.avatar_url && !avatarError ? (
+        {avatarUrl && !avatarError ? (
           <img
-            src={user.avatar_url}
+            src={avatarUrl}
             alt=""
             className="h-8 w-8 shrink-0 rounded-full object-cover"
             referrerPolicy="no-referrer-when-downgrade"
@@ -96,9 +97,9 @@ export const ProfileMenu = ({ user, onLogout }: ProfileMenuProps) => {
             role="presentation"
             className="flex items-center gap-3 px-2 py-2"
           >
-            {user?.avatar_url && !avatarError ? (
+            {avatarUrl && !avatarError ? (
               <img
-                src={user.avatar_url}
+                src={avatarUrl}
                 alt=""
                 className="h-10 w-10 shrink-0 rounded-full object-cover"
                 referrerPolicy="no-referrer-when-downgrade"

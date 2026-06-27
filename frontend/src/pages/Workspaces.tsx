@@ -19,7 +19,7 @@ import {
   useDeleteWorkspace,
   useWorkspaces,
 } from '@/hooks/useWorkspaces';
-import { capitalize } from '@/lib/utils';
+import { capitalize, getWorkspaceStatusColor } from '@/lib/utils';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
@@ -37,14 +37,6 @@ type UnifiedWorkspace = {
   owner_id?: string;
   owner?: { id: string; username: string; email: string };
   size_formatted?: string;
-};
-
-const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-  creating: 'bg-blue-100 text-blue-800 border-blue-300',
-  ready: 'bg-green-100 text-green-800 border-green-300',
-  failed: 'bg-red-100 text-red-800 border-red-300',
-  deleting: 'bg-orange-100 text-orange-800 border-orange-300',
 };
 
 const DEFAULT_PIXI_TOML = `[workspace]
@@ -388,12 +380,7 @@ export const Workspaces = () => {
                       )}
                     </td>
                     <td className="p-4">
-                      <Badge
-                        className={
-                          statusColors[ws.status] ||
-                          'bg-zinc-100 text-zinc-800 border-zinc-300'
-                        }
-                      >
+                      <Badge className={getWorkspaceStatusColor(ws.status)}>
                         {capitalize(ws.status)}
                       </Badge>
                     </td>

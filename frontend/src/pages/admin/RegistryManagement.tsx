@@ -129,7 +129,7 @@ export const RegistryManagement = () => {
                     </td>
                     <td className="p-4">
                       {registry.is_default ? (
-                        <Badge className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
+                        <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">
                           Default
                         </Badge>
                       ) : (

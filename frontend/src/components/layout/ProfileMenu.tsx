@@ -202,7 +202,7 @@ const ThemeOption = ({
       'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
       selected
         ? 'bg-background text-foreground shadow-sm'
-        : 'text-muted-foreground hover:text-foreground',
+        : 'text-foreground hover:text-foreground',
     )}
     onClick={onSelect}
   >

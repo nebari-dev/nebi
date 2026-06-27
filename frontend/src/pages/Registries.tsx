@@ -110,7 +110,7 @@ export const Registries = () => {
                     </td>
                     <td className="p-4">
                       {registry.is_default && (
-                        <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20">
+                        <Badge className="bg-blue-100 text-blue-800 border-blue-300">
                           Default
                         </Badge>
                       )}
@@ -232,12 +232,12 @@ const RepositoryRow = ({
                 Unknown
               </Badge>
             ) : isPublic ? (
-              <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
+              <Badge className="bg-green-100 text-green-800 border-green-300">
                 <Globe className="mr-1 h-3 w-3" />
                 Public
               </Badge>
             ) : (
-              <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20">
+              <Badge className="bg-orange-100 text-orange-800 border-orange-300">
                 <Lock className="mr-1 h-3 w-3" />
                 Private
               </Badge>
@@ -252,6 +252,7 @@ const RepositoryRow = ({
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               value={effectiveTag}
               onChange={(e) => setSelectedTag(e.target.value)}
+              aria-label={`Select tag for ${repoName}`}
             >
               {tags.map((tag) => (
                 <option key={tag.name} value={tag.name}>
@@ -266,7 +267,7 @@ const RepositoryRow = ({
         <td className="p-4">
           {registry && effectiveTag && !tagsLoading ? (
             <div className="flex items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 max-w-sm">
-              <code className="no-scrollbar flex-1 min-w-0 font-mono text-xs whitespace-nowrap overflow-x-auto text-foreground">
+              <code className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs text-foreground">
                 {buildImportCommand(registry.url, repoName, effectiveTag)}
               </code>
               <Button
@@ -397,6 +398,7 @@ export const RegistryRepositories = () => {
           variant="ghost"
           size="icon"
           onClick={() => navigate('/registries')}
+          aria-label="Back to registries"
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>

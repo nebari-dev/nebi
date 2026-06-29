@@ -166,7 +166,7 @@ export const PublishDialog = ({
                     id={registryId}
                     value={selectedRegistry}
                     onChange={(e) => setSelectedRegistry(e.target.value)}
-                    className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                    className="w-full h-10 px-3 rounded-md border border-input bg-background text-foreground"
                     required
                   >
                     <option value="">Select a registry</option>

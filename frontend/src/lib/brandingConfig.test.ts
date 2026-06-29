@@ -98,6 +98,7 @@ describe('brandingConfig', () => {
     expect(config).toEqual({});
     expect(document.title).toBe('Nebi - Environment Management');
     expect(getBrandingLogoUrl()).toBe('/nebi-logo.svg');
+    expect(getBrandingLogoUrl(true)).toBe('/nebi-logo-dark.svg');
     expect(warnSpy).toHaveBeenCalled();
   });
 

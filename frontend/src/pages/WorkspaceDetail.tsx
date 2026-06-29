@@ -44,20 +44,11 @@ import { usePackages } from '@/hooks/usePackages';
 import { usePublications, useUpdatePublication } from '@/hooks/useRegistries';
 import { useWorkspace } from '@/hooks/useWorkspaces';
 import { buildImportCommand } from '@/lib/registry';
-import { capitalize } from '@/lib/utils';
+import { capitalize, getWorkspaceStatusColor } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
 import type { Collaborator } from '@/types/models';
-
-const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-  creating: 'bg-blue-100 text-blue-800 border-blue-300',
-  running: 'bg-blue-100 text-blue-800 border-blue-300',
-  ready: 'bg-green-100 text-green-800 border-green-300',
-  failed: 'bg-red-100 text-red-800 border-red-300',
-  deleting: 'bg-orange-100 text-orange-800 border-orange-300',
-};
 
 export const WorkspaceDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -181,12 +172,7 @@ export const WorkspaceDetail = () => {
               Local
             </Badge>
           )}
-          <Badge
-            className={
-              statusColors[workspace.status] ||
-              'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
-            }
-          >
+          <Badge className={getWorkspaceStatusColor(workspace.status)}>
             {capitalize(workspace.status)}
           </Badge>
           {!isLocalWs && <UseLocallyButton workspaceName={workspace.name} />}
@@ -289,12 +275,7 @@ export const WorkspaceDetail = () => {
                   <span className="text-sm font-medium">Status</span>
                 </div>
                 <div>
-                  <Badge
-                    className={
-                      statusColors[workspace.status] ||
-                      'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
-                    }
-                  >
+                  <Badge className={getWorkspaceStatusColor(workspace.status)}>
                     {capitalize(workspace.status)}
                   </Badge>
                 </div>

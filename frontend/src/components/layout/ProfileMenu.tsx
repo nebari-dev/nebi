@@ -1,17 +1,25 @@
-import { ChevronDown, LogOut } from 'lucide-react';
-import { useId, useRef, useState } from 'react';
+import { ChevronDown, LogOut, Monitor, Moon, Sun } from 'lucide-react';
+import { type ReactNode, useId, useRef, useState } from 'react';
+import type { ThemeMode } from '@/hooks/useThemePreference';
 import { cn } from '@/lib/utils';
 import type { User } from '@/types';
 
 type ProfileMenuProps = {
   user: User | null;
+  themeMode: ThemeMode;
+  onThemeChange: (themeMode: ThemeMode) => void;
   onLogout: () => void;
 };
 
 const getInitial = (user: User | null) =>
   (user?.username || user?.email || 'U').charAt(0).toUpperCase();
 
-export const ProfileMenu = ({ user, onLogout }: ProfileMenuProps) => {
+export const ProfileMenu = ({
+  user,
+  themeMode,
+  onThemeChange,
+  onLogout,
+}: ProfileMenuProps) => {
   const [open, setOpen] = useState(false);
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const menuId = useId();
@@ -122,6 +130,38 @@ export const ProfileMenu = ({ user, onLogout }: ProfileMenuProps) => {
             </div>
           </div>
           <hr className="my-1 border-border" />
+          <div className="px-2 py-2">
+            <fieldset
+              aria-label="Theme"
+              className="flex min-w-0 items-center gap-1 rounded-lg border-0 bg-muted p-1"
+            >
+              <ThemeOption
+                label="Light mode"
+                text="Light"
+                selected={themeMode === 'light'}
+                onSelect={() => onThemeChange('light')}
+              >
+                <Sun className="h-4 w-4" />
+              </ThemeOption>
+              <ThemeOption
+                label="Dark mode"
+                text="Dark"
+                selected={themeMode === 'dark'}
+                onSelect={() => onThemeChange('dark')}
+              >
+                <Moon className="h-4 w-4" />
+              </ThemeOption>
+              <ThemeOption
+                label="System theme"
+                text="System"
+                selected={themeMode === 'system'}
+                onSelect={() => onThemeChange('system')}
+              >
+                <Monitor className="h-4 w-4" />
+              </ThemeOption>
+            </fieldset>
+          </div>
+          <hr className="my-1 border-border" />
           <button
             type="button"
             role="menuitem"
@@ -136,3 +176,37 @@ export const ProfileMenu = ({ user, onLogout }: ProfileMenuProps) => {
     </div>
   );
 };
+
+type ThemeOptionProps = {
+  label: string;
+  text: string;
+  selected: boolean;
+  onSelect: () => void;
+  children: ReactNode;
+};
+
+const ThemeOption = ({
+  label,
+  text,
+  selected,
+  onSelect,
+  children,
+}: ThemeOptionProps) => (
+  <button
+    type="button"
+    role="menuitemradio"
+    aria-label={label}
+    aria-checked={selected}
+    title={label}
+    className={cn(
+      'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+      selected
+        ? 'bg-background text-foreground shadow-sm'
+        : 'text-foreground hover:text-foreground',
+    )}
+    onClick={onSelect}
+  >
+    {children}
+    <span>{text}</span>
+  </button>
+);

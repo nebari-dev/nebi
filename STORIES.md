@@ -37,7 +37,10 @@
 5. As a solo developer, I want to push a workspace to an OCI registry so I can pull it onto another machine.
 6. As a solo developer, I want to pull a workspace from an OCI registry onto a new machine so I can recreate the environment there.
 7. As a solo developer, I want to list all my local workspaces so I can see what I have and where they are located.
-8. As a solo developer, I want to manage my workspaces through a graphical interface so I can browse, create, and version them without using the terminal.
+8. As a solo developer, I want to delete a workspace I no longer need.
+9. As a solo developer, I want to manage my workspaces through a graphical interface so I can browse, create, and version them without using the terminal.
+10. As a solo developer, when a workspace fails to install, I want a clear explanation of what went wrong and assurance that my previous working environment is still intact.
+11. As a solo developer, I want confirmation before destructive actions like deleting a workspace and feedback when async operations like pulling or installing complete.
 
 ## 2. Team developer
 
@@ -45,22 +48,26 @@
 2. As a team developer in a managed environment like JupyterHub, I want Nebi to authenticate using a pre-existing bearer token from my session so I don't have to log in again.
 3. As a team developer, I want my available workspaces to be visible as soon as I'm connected to a Nebi server so I don't need to know exact names ahead of time.
 4. As a team developer, I want to pull a workspace from the server so I can recreate the environment and start working.
-5. As a team developer using the CLI, I want to run a command to check for newer workspace versions of my pulled workspaces so I can decide when to update.
-6. As a team developer using the UI, I want updates for my pulled workspaces to surface automatically through background polling with a manual refresh button so I can see what's new at a glance.
-7. As a team developer, I want to know where my environments are stored on disk so I can point my tools at them.
-8. As a team developer, I want to disconnect from a Nebi server so I can remove it from my local configuration.
-9. As a team developer, I want to connect to and switch between multiple Nebi servers so I can access workspaces from different sources, such as a development server and a production server.
+5. As a team developer in a managed environment, I want Nebi-managed workspaces to appear as Jupyter kernel options so I can select them without leaving my notebook.
+6. As a team developer using the CLI, I want to run a command to check for newer workspace versions of my pulled workspaces so I can decide when to update.
+7. As a team developer using the UI, I want updates for my pulled workspaces to surface automatically through background polling with a manual refresh button so I can see what's new at a glance.
+8. As a team developer, I want to know where my environments are stored on disk so I can point my tools at them.
+9. As a team developer, I want to disconnect from a Nebi server so I can remove it from my local configuration.
+10. As a team developer, I want to connect to and switch between multiple Nebi servers so I can access workspaces from different sources, such as a development server and a production server.
+11. As a team developer, when a workspace fails to install, I want a clear explanation of what went wrong and assurance that my previous working environment is still intact.
+12. As a team developer, I want confirmation before destructive actions like deleting a workspace and feedback when async operations like pulling or installing complete.
 
 ## 3. Environment manager
 
 1. As an environment manager, I want to create a new workspace so I can publish it for my organization.
-2. As an environment manager, I want to publish a new workspace version so my team can pull the latest changes.
-3. As an environment manager, I want to publish workspaces from both the CLI and the UI so I can choose the workflow that fits my context.
-4. As an environment manager, I want each workspace version to have a clear, unambiguous version lineage so I can track its history.
-5. As an environment manager, I want to share a workspace with specific users and groups at read-only, edit, or admin levels so I control who can view, modify, or manage each workspace.
-6. As an environment manager, I want to remove sharing access from a user or group on a workspace so I can revoke their permissions when needed.
-7. As an environment manager, I want to deprecate a workspace version so team developers see a warning when they check for updates, signaling that they should migrate.
-8. As an environment manager, I want to archive a workspace version so it can no longer be pulled, while leaving existing local copies untouched.
+2. As an environment manager, I want to edit an existing workspace so I can add, remove, or update packages and publish a new version.
+3. As an environment manager, I want to publish a new workspace version so my team can pull the latest changes.
+4. As an environment manager, I want to publish workspaces from both the CLI and the UI so I can choose the workflow that fits my context.
+5. As an environment manager, I want each workspace version to have a clear, unambiguous version lineage so I can track its history.
+6. As an environment manager, I want to share a workspace with specific users and groups at read-only, edit, or admin levels so I control who can view, modify, or manage each workspace.
+7. As an environment manager, I want to remove sharing access from a user or group on a workspace so I can revoke their permissions when needed.
+8. As an environment manager, I want to deprecate a workspace version so team developers see a warning when they check for updates, signaling that they should migrate.
+9. As an environment manager, I want to archive a workspace version so it can no longer be pulled, while leaving existing local copies untouched.
 
 ## 4. Server administrator
 
@@ -90,3 +97,9 @@
 2. As a security officer, I want Nebi to expose the resolved package list per workspace version so I can run my own CVE scanner against it and surface the results.
 3. As a security officer, I want a per-workspace-version license report listing all packages and their licenses so I can identify problematic dependencies.
 4. As a security officer, I want to export a workspace version's package list in a standard SBOM format so I can feed it into compliance tools.
+
+## Non-functional requirements
+
+- **Accessibility** — The Nebi UI must meet WCAG 2.1 AA and Section 508 compliance.
+- **Error resilience** — A failed workspace install must never corrupt or remove a previously working environment.
+- **Documentation** — All features must be documented for both end users and administrators.

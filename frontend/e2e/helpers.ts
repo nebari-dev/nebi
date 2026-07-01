@@ -334,6 +334,18 @@ export const expectResolvedTheme = async (
 };
 
 export const expectNoCriticalOrSeriousA11yViolations = async (page: Page) => {
+  // Disable CSS transitions/animations so axe measures settled colors rather
+  // than intermediate values mid-transition (e.g. right after a theme switch),
+  // which otherwise produces flaky color-contrast violations.
+  await page.addStyleTag({
+    content: `*, *::before, *::after {
+      transition-duration: 0s !important;
+      transition-delay: 0s !important;
+      animation-duration: 0s !important;
+      animation-delay: 0s !important;
+    }`,
+  });
+
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .analyze();

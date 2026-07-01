@@ -68,6 +68,7 @@
 7. As an environment manager, I want to remove sharing access from a user or group on a workspace so I can revoke their permissions when needed.
 8. As an environment manager, I want to deprecate a workspace version so team developers see a warning when they check for updates, signaling that they should migrate.
 9. As an environment manager, I want to archive a workspace version so it can no longer be pulled, while leaving existing local copies untouched.
+10. As an environment manager, I want to publish a workspace to an OCI registry so external teams and automated systems can import it without needing access to the Nebi server.
 
 ## 4. Server administrator
 
@@ -84,12 +85,14 @@
 1. As an automation workflow, I want to authenticate to a Nebi server using machine-to-machine OIDC credentials so I can pull workspaces without human interaction.
 2. As an automation workflow, I want to pull a specific workspace version so my builds are deterministic.
 3. As an automation workflow, I want the Nebi client to operate in a headless mode with structured output, no color, and clean exit codes so I can integrate it into scripts and pipelines.
+4. As an automation workflow, I want to import a workspace from an OCI registry so I can recreate environments without Nebi server access or credentials.
 
 ## 6. Distributed compute operator
 
 1. As a distributed compute operator, I want to configure worker nodes to authenticate to a Nebi server using machine-to-machine OIDC credentials.
 2. As a distributed compute operator, I want worker nodes to pull a specific workspace version so the computing environment is identical across all nodes.
 3. As a distributed compute operator, I want worker nodes to automatically pull a workspace and execute within its environment so I don't need to manage Docker images or manual synchronization.
+4. As a distributed compute operator, I want worker nodes to pull workspaces from an OCI registry so I can scale out without all nodes needing direct access to the Nebi server.
 
 ## 7. Security & compliance officer
 

@@ -79,6 +79,7 @@
 5. As a server administrator, I want to lock down the list of available Nebi servers on Nebi clients so I control where workspaces are pulled from and users cannot add, remove, or modify them.
 6. As a server administrator, I want to disable standalone operation on Nebi clients so all workspace usage goes through the server.
 7. As a server administrator, I want to upgrade the Nebi server to a new version with confidence that existing workspaces, workspace versions, and connected clients will continue to function without data loss or manual intervention.
+8. As a server administrator, I want Nebi to derive user identities, group memberships, and admin status from the OIDC ID token claims so I don't need to maintain a separate user directory or manage group membership manually within Nebi.
 
 ## 5. Automation / machine consumer
 

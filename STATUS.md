@@ -36,6 +36,7 @@ Legend: 🟢 implemented &nbsp; 🟡 partial &nbsp; 🔴 missing
 | 10 | I want to connect to and switch between multiple Nebi servers so I can access workspaces from different sources, such as a development server and a production server. | 🔴 | Only a single server URL is stored at a time. |
 | 11 | When a workspace fails to install, I want a clear explanation of what went wrong and assurance that my previous working environment is still intact. | 🟢 | |
 | 12 | I want confirmation before destructive actions like deleting a workspace and feedback when async operations like pulling or installing complete. | 🟡 | Same as solo developer #11. |
+| 13 | I want to connect the desktop app to my team's Nebi server so I can browse, inspect, and pull workspaces through a graphical interface without using the CLI. | 🟢 | Remote proxy endpoints in the local-mode server bridge the desktop app to a remote server. Connect/disconnect flow, workspace browsing, and admin pages all work through the proxy. |
 
 ## 3. Environment manager
 
@@ -50,6 +51,8 @@ Legend: 🟢 implemented &nbsp; 🟡 partial &nbsp; 🔴 missing
 | 7 | I want to remove sharing access from a user or group on a workspace so I can revoke their permissions when needed. | 🟢 | |
 | 8 | I want to deprecate a workspace version so team developers see a warning when they check for updates, signaling that they should migrate. | 🔴 | No deprecation feature exists. |
 | 9 | I want to archive a workspace version so it can no longer be pulled, while leaving existing local copies untouched. | 🔴 | No archive feature exists. |
+| 10 | I want to upload a workspace's spec files to the Nebi server so my team can discover and pull them. | 🟢 | |
+| 11 | I want to see the status and outcome of async operations like workspace pushes and builds so I know when they're done and can diagnose failures. | 🟢 | Job queue, worker, and the jobs API endpoint all exist. The UI surfaces job status. |
 
 ## 4. Server administrator
 
@@ -62,6 +65,7 @@ Legend: 🟢 implemented &nbsp; 🟡 partial &nbsp; 🔴 missing
 | 5 | I want to lock down the list of available Nebi servers on Nebi clients so I control where workspaces are pulled from and users cannot add, remove, or modify them. | 🔴 | No server policy or client lockdown mechanism exists. |
 | 6 | I want to disable standalone operation on Nebi clients so all workspace usage goes through the server. | 🔴 | No disable-standalone flag or policy exists. |
 | 7 | I want to upgrade the Nebi server to a new version with confidence that existing workspaces, workspace versions, and connected clients will continue to function without data loss or manual intervention. | 🟡 | GORM auto-migration runs on startup, but there is no versioned migration tooling or documented upgrade procedure. |
+| 8 | I want Nebi to derive user identities, group memberships, and admin status from the OIDC ID token claims so I don't need to maintain a separate user directory or manage group membership manually within Nebi. | 🟡 | OIDC proxy flow (`findOrCreateProxyUser`, `SyncOIDCGroups`, `syncRolesFromGroups`) already populates users, groups, and admin from claims on every request. Native user/group CRUD (admin UI, CreateUser, CreateGroup, membership management) still exists as a parallel path and should be removed. |
 
 ## 5. Automation / machine consumer
 
@@ -83,7 +87,7 @@ Legend: 🟢 implemented &nbsp; 🟡 partial &nbsp; 🔴 missing
 
 | # | Story | Status | Comments |
 |---|---|---|---|
-| 1 | I want an audit trail of who pulled which workspace version and when so I can demonstrate compliance during reviews. | 🟡 | Audit log infrastructure exists (DB table, API endpoint, admin UI page). Covers group sync, workspace import, and workspace publishing. Pull events and permission changes are not yet recorded. |
+| 1 | I want an audit trail of who pulled which workspace version and when, browsable through the admin UI, so I can demonstrate compliance during reviews. | 🟡 | Audit log infrastructure exists (DB table, API endpoint, admin UI page). Covers group sync, workspace import, and workspace publishing. Pull events and permission changes are not yet recorded. |
 | 2 | I want Nebi to expose the resolved package list per workspace version so I can run my own CVE scanner against it and surface the results. | 🔴 | No resolved package list API exists. |
 | 3 | I want a per-workspace-version license report listing all packages and their licenses so I can identify problematic dependencies. | 🔴 | No license report exists. |
 | 4 | I want to export a workspace version's package list in a standard SBOM format so I can feed it into compliance tools. | 🔴 | No SBOM export exists. |
@@ -98,7 +102,6 @@ These features are currently implemented but do not map to any user story. Each 
 |---|---|---|
 | **Basic auth** | Username/password authentication (`NEBI_AUTH_TYPE=basic`) used as default. | Stories only mention OIDC. Decide whether basic auth is a deliberate server-admin feature (add story) or legacy to remove. |
 | **UV package manager adapter** | Config key `package_manager.default_type: uv` and `NEBI_PACKAGE_MANAGER_UV_PATH` exist. Factory is registered but no UV implementation is wired up. | Dead code. Remove unless a story drives UV support. |
-| **`nebi push`** | Push workspace specs (pixi.toml + pixi.lock) to the Nebi server. Distinct from `publish` which pushes to OCI. | Add a story capturing server-side workspace upload (team dev or env manager). |
 | **`nebi shell`** | Activate a pixi shell in a workspace by name. | Add a story for "run commands / open shell in a workspace". |
 | **`nebi run`** | Run a pixi task in a workspace by name. | Same as `nebi shell`. |
 | **`nebi completion`** | Shell completion generation for bash/zsh/fish/powershell. | Low priority; add a story for CLI polish or leave as uncaptured DX. |
@@ -107,13 +110,8 @@ These features are currently implemented but do not map to any user story. Each 
 | **`nebi workspace prune`** | Remove tracking entries for workspaces whose on-disk directories no longer exist. | Add a story for workspace cleanup. |
 | **`nebi workspace tags`** | List tags for a remote workspace. | Complement to solo dev story #3 (tagging). |
 | **Content-addressed tags** | Auto-created `sha-<hash>` tags on every push/publish for deduplication. | Not user-visible as a story; belongs in implementation design. |
-| **Remote proxy endpoints** | Local-mode server proxies browse requests to a remote Nebi server for hybrid local+remote workflows. | Could be a solo dev story for "browse remote workspaces from desktop app". |
-| **Job system (queue + worker)** | Async job pipeline with memory or Valkey queue and local executor. | Infrastructure detail, not a user-facing story. Fine to leave uncaptured. |
 | **Server-side environment builds** | The server currently runs `pixi install` (full download + build) during create, solve, rollback, add, and remove operations. This consumes gigabytes of disk per workspace to produce (a) a package list and (b) a disk-size measurement — neither of which any story requires. | Planned simplification: use `pixi add --no-install` / `pixi remove --no-install` / `pixi install --no-install` to resolve and update the lock file without downloading packages. Parse `pixi.lock` for package metadata instead of `pixi list`. Stop measuring disk size. Rollback restores toml+lock from the version snapshot without re-running pixi. |
-| **Group management UI/API** | Admin CRUD for groups, membership management, OIDC group sync. | Underpins env manager #6/#7. Add an admin story if not fully covered. |
-| **User management UI** | Admin page for listing, creating, and deleting users. | Add a server admin story for user lifecycle. |
+| **Group management UI/API** | Full admin CRUD for groups (list, create, get, update name/description, hard-delete with casbin cleanup), membership management (add/remove members, list members), OIDC group sync (`SyncOIDCGroups` reconciles `groups` claim on every request, creating OIDC-sourced groups and membership), group admin promotion (`/admin/groups/:id/grant-admin` adds casbin `g` rule), group registry access grants, and group workspace sharing (`/workspaces/:id/share-group`). Groups carry a `source` column distinguishing `"native"` (Nebi-managed) from `"oidc"` (read-only, IdP-managed). Frontend: Groups admin page, CreateGroupDialog, GroupMembersDialog, group picker in ShareDialog. | Now covered by server admin story #8, which says Nebi should derive groups from the IdP, not maintain its own directory. The native group CRUD, membership management, and admin promotion UI/API should be removed. |
+| **User management UI/API** | Full admin CRUD for users (list with `is_admin` flag, create with bcrypt password, get by ID, toggle admin, delete), user auto-provisioning from OIDC claims (`findOrCreateProxyUser` on every request), admin role sync from OIDC group membership (`syncRolesFromGroups` checks against `PROXY_ADMIN_GROUPS`). Users have `PasswordHash` (empty for OIDC-provisioned users). Frontend: UserManagement admin page, CreateUserDialog, user picker in ShareDialog. | Now covered by server admin story #8, which says Nebi should derive users from the IdP. The CreateUser dialog (requires password), ToggleAdmin button, and DeleteUser action should be removed. The user list endpoint should be accessible to non-admins for sharing autocomplete. |
 | **Registry management UI/API** | Admin page for managing OCI registry configurations on the server. | Add a server admin story for registry configuration. |
-| **Audit log UI** | Admin page for browsing audit log entries. | Maps to security officer #1. The story exists but wording should cover UI access. |
 | **Branding/theme configuration** | Server-served CSS custom properties for UI branding. | Add a server admin story for white-labeling/branding. |
-| **`nebi publish --local`** | Publish directly to an OCI registry without a server. | Covered by solo dev story #5. Remove from this list or keep as implementation detail. |
-| **`nebi import`** | Pull a workspace bundle from an OCI registry without a server. | Covered by solo dev story #6. Remove from this list or keep as implementation detail. |

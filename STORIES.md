@@ -25,7 +25,7 @@
 
 **Nebi client** — The CLI or desktop application that connects to a Nebi server or operates standalone. Its behavior can be restricted by server policy.
 
-**Source** — A connection to a Nebi server or OCI registry that provides workspaces. A source has a type (server or registry), a URL, and optional credentials. Multiple sources can be connected simultaneously.
+**Source** — A connection that provides workspaces: a Nebi server, an OCI registry, or the local SQLite database. Multiple sources can be connected simultaneously.
 
 ---
 
@@ -35,7 +35,7 @@
 2. As a developer, I want to tag workspace versions and diff them so I can mark known-good states and understand what changed between versions.
 3. As a developer, I want to add, list, switch between, and remove sources so I can access workspaces from multiple origins in one place.
 4. As a developer, I want a unified workspace list across all connected sources that shows each workspace's source, install status, and whether it's read-only, so I can discover and browse environments without knowing where they live.
-5. As a developer, I want Nebi to work out of the box without requiring a server, database, or any additional infrastructure so I can start immediately.
+5. As a developer, I want Nebi to work out of the box without requiring additional setup or infrastructure so I can start immediately.
 6. As a developer, I want to publish a workspace to an OCI source so I can pull it onto another machine.
 7. As a developer, I want to pull a workspace's spec files from any connected source and install its environment — via CLI or a button in the UI — with feedback on progress and where the environment lives on disk. `nebi install` implies a pull when needed.
 8. As a developer, I want to manage workspaces through a graphical interface — browsing, editing, installing, and publishing — with the same capabilities for both local and remote workspaces, so the desktop app is a full management interface regardless of where the workspace lives.

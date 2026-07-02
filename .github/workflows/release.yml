@@ -18,6 +18,16 @@ concurrency:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    # macOS signing/notarization credentials for the `notarize` block in
+    # .goreleaser.yaml. These reuse the Developer ID cert + App Store Connect
+    # API key already configured for the Desktop App workflow (desktop.yml).
+    # When absent (e.g. fork PRs) the `isEnvSet` guard skips signing.
+    env:
+      MACOS_SIGN_P12: ${{ secrets.MACOS_SIGNING_CERT_B64 }}
+      MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGNING_CERT_PASSWORD }}
+      MACOS_NOTARY_KEY: ${{ secrets.APPLE_API_KEY_B64 }}
+      MACOS_NOTARY_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      MACOS_NOTARY_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

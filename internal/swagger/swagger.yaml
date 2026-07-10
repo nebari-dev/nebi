@@ -80,8 +80,6 @@ definitions:
         type: string
       source:
         type: string
-    required:
-    - name
     type: object
   handlers.ErrorResponse:
     properties:
@@ -381,7 +379,20 @@ definitions:
     - remove
     - update
     - rollback
+    - env_install
+    - env_uninstall
     type: string
+    x-enum-comments:
+      JobTypeInstall: add packages to the manifest
+    x-enum-descriptions:
+    - ""
+    - ""
+    - add packages to the manifest
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
     x-enum-varnames:
     - JobTypeCreate
     - JobTypeDelete
@@ -389,6 +400,8 @@ definitions:
     - JobTypeRemove
     - JobTypeUpdate
     - JobTypeRollback
+    - JobTypeEnvInstall
+    - JobTypeEnvUninstall
   models.Package:
     properties:
       id:
@@ -1983,6 +1996,46 @@ paths:
       summary: List all users with access to workspace
       tags:
       - workspaces
+  /workspaces/{id}/install:
+    post:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/models.Job'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Install the workspace environment from its lockfile (local mode)
+      tags:
+      - workspaces
   /workspaces/{id}/packages:
     get:
       parameters:
@@ -2549,7 +2602,7 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Solve and install environment from current pixi.toml
+      summary: Solve the environment (refresh pixi.lock) from current pixi.toml
       tags:
       - workspaces
   /workspaces/{id}/tags:
@@ -2572,6 +2625,46 @@ paths:
       security:
       - BearerAuth: []
       summary: List tags for an workspace
+      tags:
+      - workspaces
+  /workspaces/{id}/uninstall:
+    post:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/models.Job'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove the workspace's installed environment (local mode)
       tags:
       - workspaces
   /workspaces/{id}/versions:

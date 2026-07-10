@@ -19,7 +19,13 @@ import {
   useDeleteWorkspace,
   useWorkspaces,
 } from '@/hooks/useWorkspaces';
-import { capitalize, getWorkspaceStatusColor } from '@/lib/utils';
+import { InstallControls } from '@/components/workspace/InstallControls';
+import {
+  capitalize,
+  getInstallStatusColor,
+  getWorkspaceStatusColor,
+} from '@/lib/utils';
+import type { InstallStatus } from '@/types';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
@@ -37,6 +43,7 @@ type UnifiedWorkspace = {
   owner_id?: string;
   owner?: { id: string; username: string; email: string };
   size_formatted?: string;
+  install_status?: InstallStatus;
 };
 
 const DEFAULT_PIXI_TOML = `[workspace]
@@ -101,6 +108,7 @@ export const Workspaces = () => {
         owner_id: ws.owner_id,
         owner: ws.owner,
         size_formatted: ws.size_formatted,
+        install_status: ws.install_status,
       }));
     }
 
@@ -119,6 +127,7 @@ export const Workspaces = () => {
         owner_id: ws.owner_id,
         owner: ws.owner,
         size_formatted: ws.size_formatted,
+        install_status: ws.install_status,
       }));
     } else {
       if (!remoteWorkspaces) return [];
@@ -380,9 +389,22 @@ export const Workspaces = () => {
                       )}
                     </td>
                     <td className="p-4">
-                      <Badge className={getWorkspaceStatusColor(ws.status)}>
-                        {capitalize(ws.status)}
-                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge className={getWorkspaceStatusColor(ws.status)}>
+                          {capitalize(ws.status)}
+                        </Badge>
+                        {ws.install_status && (
+                          <Badge
+                            className={getInstallStatusColor(
+                              ws.install_status,
+                            )}
+                          >
+                            {capitalize(
+                              ws.install_status.replaceAll('_', ' '),
+                            )}
+                          </Badge>
+                        )}
+                      </div>
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">
                       {ws.location === 'local' ? ws.size_formatted || '-' : '-'}
@@ -392,6 +414,12 @@ export const Workspaces = () => {
                     </td>
                     <td className="p-4">
                       <div className="flex justify-end gap-2">
+                        {ws.location === 'local' && (
+                          <InstallControls
+                            workspaceId={ws.id}
+                            installStatus={ws.install_status}
+                          />
+                        )}
                         {ws.location === 'local' && ws.source !== 'local' && (
                           <Button
                             variant="ghost"

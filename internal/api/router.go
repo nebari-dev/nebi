@@ -224,6 +224,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			ws.DELETE("", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.DeleteWorkspace)
 			ws.POST("/packages", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.InstallPackages)
 			ws.POST("/solve", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.SolveWorkspace)
+			ws.POST("/install", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.InstallWorkspace)
+			ws.POST("/uninstall", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.UninstallWorkspace)
 			ws.DELETE("/packages/:package", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.RemovePackages)
 			ws.POST("/rollback", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.RollbackToVersion)
 

@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
@@ -276,7 +275,6 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			w.logger.Error("Failed to sync packages", "error", err)
 		}
 
-		w.svc.UpdateWorkspaceSize(ws)
 		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusReady)
 
 		// Create version snapshot
@@ -290,15 +288,20 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return fmt.Errorf("packages not found in job metadata")
 		}
 
+		wasInstalled := w.executor.IsEnvInstalled(ws)
+
 		if err := w.executor.InstallPackages(ctx, ws, packages, logWriter); err != nil {
 			return err
 		}
 
 		w.svc.SaveInstalledPackages(ws.ID, packages)
-		w.svc.UpdateWorkspaceSize(ws)
 
 		if err := w.svc.CreateVersionSnapshot(ctx, ws, job.ID, userID, fmt.Sprintf("Installed packages: %v", packages)); err != nil {
 			w.logger.Error("Failed to create version snapshot", "error", err)
+		}
+
+		if err := w.maybeReinstallEnv(ctx, ws, wasInstalled, logWriter); err != nil {
+			return err
 		}
 
 	case models.JobTypeRemove:
@@ -307,18 +310,24 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return fmt.Errorf("packages not found in job metadata")
 		}
 
+		wasInstalled := w.executor.IsEnvInstalled(ws)
+
 		if err := w.executor.RemovePackages(ctx, ws, packages, logWriter); err != nil {
 			return err
 		}
 
 		w.svc.DeletePackagesByName(ws.ID, packages)
-		w.svc.UpdateWorkspaceSize(ws)
 
 		if err := w.svc.CreateVersionSnapshot(ctx, ws, job.ID, userID, fmt.Sprintf("Removed packages: %v", packages)); err != nil {
 			w.logger.Error("Failed to create version snapshot", "error", err)
 		}
 
+		if err := w.maybeReinstallEnv(ctx, ws, wasInstalled, logWriter); err != nil {
+			return err
+		}
+
 	case models.JobTypeUpdate:
+		wasInstalled := w.executor.IsEnvInstalled(ws)
 		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusCreating)
 
 		fmt.Fprintf(logWriter, "Solving environment from current pixi.toml...\n")
@@ -332,11 +341,30 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			w.logger.Error("Failed to sync packages after solve", "error", err)
 		}
 
-		w.svc.UpdateWorkspaceSize(ws)
 		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusReady)
 
 		if err := w.svc.CreateVersionSnapshot(ctx, ws, job.ID, userID, "Solved environment from updated pixi.toml"); err != nil {
 			w.logger.Error("Failed to create version snapshot", "error", err)
+		}
+
+		if err := w.maybeReinstallEnv(ctx, ws, wasInstalled, logWriter); err != nil {
+			return err
+		}
+
+	case models.JobTypeEnvInstall:
+		if err := w.executor.InstallEnvironment(ctx, ws, logWriter); err != nil {
+			return err
+		}
+		w.svc.UpdateWorkspaceSize(ws)
+
+	case models.JobTypeEnvUninstall:
+		if err := w.executor.UninstallEnvironment(ctx, ws, logWriter); err != nil {
+			return err
+		}
+		// Size tracks the installed environment; with no environment there
+		// is nothing to measure.
+		if err := w.svc.ResetWorkspaceSize(ws.ID); err != nil {
+			w.logger.Error("failed to reset workspace size", "workspace_id", ws.ID, "error", err)
 		}
 
 	case models.JobTypeDelete:
@@ -372,6 +400,8 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 
 		fmt.Fprintf(logWriter, "Rolling back to version %d\n", version.VersionNumber)
 
+		wasInstalled := w.executor.IsEnvInstalled(ws)
+
 		if err := w.executeRollback(ctx, ws, version, logWriter); err != nil {
 			return err
 		}
@@ -380,10 +410,12 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			w.logger.Error("Failed to sync packages after rollback", "error", err)
 		}
 
-		w.svc.UpdateWorkspaceSize(ws)
-
 		if err := w.svc.CreateVersionSnapshot(ctx, ws, job.ID, userID, fmt.Sprintf("Rolled back to version %d", version.VersionNumber)); err != nil {
 			w.logger.Error("Failed to create version snapshot after rollback", "error", err)
+		}
+
+		if err := w.maybeReinstallEnv(ctx, ws, wasInstalled, logWriter); err != nil {
+			return err
 		}
 
 		fmt.Fprintf(logWriter, "Rollback completed successfully\n")
@@ -392,6 +424,23 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 		return fmt.Errorf("unknown job type: %s", job.Type)
 	}
 
+	return nil
+}
+
+// maybeReinstallEnv reinstalls the environment after a lockfile-changing
+// operation, but only in local mode and only when the workspace had an
+// installed environment before the operation. This keeps installed
+// environments in sync with the latest lockfile without ever implicitly
+// installing a workspace the user never installed.
+func (w *Worker) maybeReinstallEnv(ctx context.Context, ws *models.Workspace, wasInstalled bool, logWriter io.Writer) error {
+	if !w.svc.IsLocal() || !wasInstalled {
+		return nil
+	}
+	fmt.Fprintf(logWriter, "Workspace was installed; reinstalling environment from updated lockfile...\n")
+	if err := w.executor.InstallEnvironment(ctx, ws, logWriter); err != nil {
+		return err
+	}
+	w.svc.UpdateWorkspaceSize(ws)
 	return nil
 }
 
@@ -411,16 +460,11 @@ func (w *Worker) executeRollback(ctx context.Context, ws *models.Workspace, vers
 		return err
 	}
 
-	// 3. Run pixi install to recreate environment
-	fmt.Fprintf(logWriter, "Running pixi install to apply changes...\n")
-
-	cmd := exec.CommandContext(ctx, "pixi", "install", "-v")
-	cmd.Dir = envPath
-	cmd.Stdout = logWriter
-	cmd.Stderr = logWriter
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("pixi install failed: %w", err)
+	// 3. Refresh the lockfile against the restored manifest. The restored
+	// pixi.lock is normally already consistent, so this is a fast no-op
+	// that doubles as validation. Packages are not installed here.
+	if err := w.executor.SolveEnvironment(ctx, ws, logWriter); err != nil {
+		return err
 	}
 
 	fmt.Fprintf(logWriter, "Workspace restored successfully\n")

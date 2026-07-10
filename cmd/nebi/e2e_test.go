@@ -159,6 +159,7 @@ func resetFlags() {
 	// workspace.go
 	wsListRemote = false
 	wsListJSON = false
+	wsListInstalled = false
 	wsTagsJSON = false
 	wsRemoveRemote = false
 	// login.go

@@ -2082,6 +2082,69 @@ const docTemplate = `{
                 }
             }
         },
+        "/workspaces/{id}/install": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workspaces"
+                ],
+                "summary": "Install the workspace environment from its lockfile (local mode)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/models.Job"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/workspaces/{id}/packages": {
             "get": {
                 "security": [
@@ -2934,7 +2997,7 @@ const docTemplate = `{
                 "tags": [
                     "workspaces"
                 ],
-                "summary": "Solve and install environment from current pixi.toml",
+                "summary": "Solve the environment (refresh pixi.lock) from current pixi.toml",
                 "parameters": [
                     {
                         "type": "string",
@@ -3009,6 +3072,69 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/handlers.WorkspaceTagResponse"
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "/workspaces/{id}/uninstall": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workspaces"
+                ],
+                "summary": "Remove the workspace's installed environment (local mode)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/models.Job"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
                 }
@@ -3277,9 +3403,6 @@ const docTemplate = `{
         },
         "handlers.CreateWorkspaceRequest": {
             "type": "object",
-            "required": [
-                "name"
-            ],
             "properties": {
                 "name": {
                     "type": "string"
@@ -3739,7 +3862,22 @@ const docTemplate = `{
                 "install",
                 "remove",
                 "update",
-                "rollback"
+                "rollback",
+                "env_install",
+                "env_uninstall"
+            ],
+            "x-enum-comments": {
+                "JobTypeInstall": "add packages to the manifest"
+            },
+            "x-enum-descriptions": [
+                "",
+                "",
+                "add packages to the manifest",
+                "",
+                "",
+                "",
+                "",
+                ""
             ],
             "x-enum-varnames": [
                 "JobTypeCreate",
@@ -3747,7 +3885,9 @@ const docTemplate = `{
                 "JobTypeInstall",
                 "JobTypeRemove",
                 "JobTypeUpdate",
-                "JobTypeRollback"
+                "JobTypeRollback",
+                "JobTypeEnvInstall",
+                "JobTypeEnvUninstall"
             ]
         },
         "models.Package": {

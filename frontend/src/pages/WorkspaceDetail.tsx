@@ -37,6 +37,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserBadge } from '@/components/ui/user-badge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
+import { InstallControls } from '@/components/workspace/InstallControls';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
 import { UseLocallyButton } from '@/components/workspace/UseLocallyButton';
 import { useCollaborators } from '@/hooks/useAdmin';
@@ -44,7 +45,11 @@ import { usePackages } from '@/hooks/usePackages';
 import { usePublications, useUpdatePublication } from '@/hooks/useRegistries';
 import { useWorkspace } from '@/hooks/useWorkspaces';
 import { buildImportCommand } from '@/lib/registry';
-import { capitalize, getWorkspaceStatusColor } from '@/lib/utils';
+import {
+  capitalize,
+  getInstallStatusColor,
+  getWorkspaceStatusColor,
+} from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
@@ -175,6 +180,17 @@ export const WorkspaceDetail = () => {
           <Badge className={getWorkspaceStatusColor(workspace.status)}>
             {capitalize(workspace.status)}
           </Badge>
+          {workspace.install_status && (
+            <Badge
+              className={getInstallStatusColor(workspace.install_status)}
+            >
+              {capitalize(workspace.install_status.replaceAll('_', ' '))}
+            </Badge>
+          )}
+          <InstallControls
+            workspaceId={wsId}
+            installStatus={workspace.install_status}
+          />
           {!isLocalWs && <UseLocallyButton workspaceName={workspace.name} />}
           <Button
             variant="outline"

@@ -93,4 +93,14 @@ export const workspacesApi = {
     const { data } = await apiClient.post(`/workspaces/${id}/solve`);
     return data;
   },
+
+  install: async (id: string): Promise<Job> => {
+    const { data } = await apiClient.post(`/workspaces/${id}/install`);
+    return data;
+  },
+
+  uninstall: async (id: string): Promise<Job> => {
+    const { data } = await apiClient.post(`/workspaces/${id}/uninstall`);
+    return data;
+  },
 };

@@ -29,8 +29,9 @@ type Workspace struct {
 	ID             string    `json:"id"`
 	Name           string    `json:"name"`
 	Status         string    `json:"status"`
+	InstallStatus  string    `json:"install_status,omitempty"` // local-mode servers only
 	PackageManager string    `json:"package_manager"`
-	SizeBytes      int64     `json:"size_bytes"`
+	SizeBytes      int64     `json:"size_bytes,omitempty"`
 	Owner          *User     `json:"owner,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`

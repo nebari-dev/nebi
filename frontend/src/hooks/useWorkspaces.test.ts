@@ -6,6 +6,8 @@ import { createWrapper } from '@/test/utils';
 import {
   useCreateWorkspace,
   useDeleteWorkspace,
+  useInstallWorkspace,
+  useUninstallWorkspace,
   useWorkspace,
   useWorkspaces,
 } from './useWorkspaces';
@@ -66,6 +68,67 @@ describe('useCreateWorkspace', () => {
     });
     result.current.mutate({ name: 'bad' });
     await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+});
+
+describe('useInstallWorkspace', () => {
+  it('posts to the install endpoint and returns the queued job', async () => {
+    server.use(
+      http.post('/api/v1/workspaces/ws-1/install', () =>
+        HttpResponse.json(
+          {
+            id: 'job-1',
+            workspace_id: 'ws-1',
+            type: 'env_install',
+            status: 'pending',
+          },
+          { status: 202 },
+        ),
+      ),
+    );
+    const { result } = renderHook(() => useInstallWorkspace('ws-1'), {
+      wrapper: createWrapper(),
+    });
+    result.current.mutate();
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.type).toBe('env_install');
+  });
+
+  it('enters error state when install is rejected', async () => {
+    server.use(
+      http.post('/api/v1/workspaces/ws-1/install', () =>
+        HttpResponse.json({ error: 'already in progress' }, { status: 409 }),
+      ),
+    );
+    const { result } = renderHook(() => useInstallWorkspace('ws-1'), {
+      wrapper: createWrapper(),
+    });
+    result.current.mutate();
+    await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+});
+
+describe('useUninstallWorkspace', () => {
+  it('posts to the uninstall endpoint and returns the queued job', async () => {
+    server.use(
+      http.post('/api/v1/workspaces/ws-1/uninstall', () =>
+        HttpResponse.json(
+          {
+            id: 'job-2',
+            workspace_id: 'ws-1',
+            type: 'env_uninstall',
+            status: 'pending',
+          },
+          { status: 202 },
+        ),
+      ),
+    );
+    const { result } = renderHook(() => useUninstallWorkspace('ws-1'), {
+      wrapper: createWrapper(),
+    });
+    result.current.mutate();
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.type).toBe('env_uninstall');
   });
 });
 

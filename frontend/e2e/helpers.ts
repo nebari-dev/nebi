@@ -336,13 +336,15 @@ export const expectResolvedTheme = async (
 export const expectNoCriticalOrSeriousA11yViolations = async (page: Page) => {
   // Disable CSS transitions/animations so axe measures settled colors rather
   // than intermediate values mid-transition (e.g. right after a theme switch),
-  // which otherwise produces flaky color-contrast violations.
+  // which otherwise produces flaky color-contrast violations. Zeroing the
+  // duration is not enough: a transition already in flight keeps running with
+  // its original duration, and WebKit can leave it stuck at an intermediate
+  // color for seconds under CI load. Removing the transition property cancels
+  // in-flight transitions and snaps computed colors to their final values.
   await page.addStyleTag({
     content: `*, *::before, *::after {
-      transition-duration: 0s !important;
-      transition-delay: 0s !important;
-      animation-duration: 0s !important;
-      animation-delay: 0s !important;
+      transition: none !important;
+      animation: none !important;
     }`,
   });
 

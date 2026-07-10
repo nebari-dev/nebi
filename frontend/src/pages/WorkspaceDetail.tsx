@@ -181,9 +181,7 @@ export const WorkspaceDetail = () => {
             {capitalize(workspace.status)}
           </Badge>
           {workspace.install_status && (
-            <Badge
-              className={getInstallStatusColor(workspace.install_status)}
-            >
+            <Badge className={getInstallStatusColor(workspace.install_status)}>
               {capitalize(workspace.install_status.replaceAll('_', ' '))}
             </Badge>
           )}

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { SplitButton } from '@/components/ui/split-button';
+import { InstallControls } from '@/components/workspace/InstallControls';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
 import {
   useCreateRemoteWorkspace,
@@ -19,16 +20,15 @@ import {
   useDeleteWorkspace,
   useWorkspaces,
 } from '@/hooks/useWorkspaces';
-import { InstallControls } from '@/components/workspace/InstallControls';
 import {
   capitalize,
   getInstallStatusColor,
   getWorkspaceStatusColor,
 } from '@/lib/utils';
-import type { InstallStatus } from '@/types';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
+import type { InstallStatus } from '@/types';
 
 type UnifiedWorkspace = {
   id: string;
@@ -395,13 +395,9 @@ export const Workspaces = () => {
                         </Badge>
                         {ws.install_status && (
                           <Badge
-                            className={getInstallStatusColor(
-                              ws.install_status,
-                            )}
+                            className={getInstallStatusColor(ws.install_status)}
                           >
-                            {capitalize(
-                              ws.install_status.replaceAll('_', ' '),
-                            )}
+                            {capitalize(ws.install_status.replaceAll('_', ' '))}
                           </Badge>
                         )}
                       </div>

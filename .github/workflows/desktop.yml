@@ -87,8 +87,10 @@ jobs:
           rm -rf internal/web/dist
           cp -r frontend/dist internal/web/dist
 
+      # Pin to the wails version in go.mod; @latest broke when wails v2.13.0
+      # started requiring a newer Go than this workflow uses.
       - name: Install wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
       - name: Build desktop app
         run: wails build -platform ${{ matrix.platform }} ${{ matrix.build_tags }}

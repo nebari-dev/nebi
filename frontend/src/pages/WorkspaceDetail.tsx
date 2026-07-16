@@ -344,7 +344,7 @@ export const WorkspaceDetail = () => {
                   <span className="text-sm font-medium">Size</span>
                 </div>
                 <span className="text-sm">
-                  {workspace.size_formatted || 'Calculating...'}
+                  {workspace.size_formatted || '-'}
                 </span>
               </div>
 

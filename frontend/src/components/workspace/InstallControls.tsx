@@ -4,11 +4,14 @@ import {
   useInstallWorkspace,
   useUninstallWorkspace,
 } from '@/hooks/useWorkspaces';
-import type { InstallStatus } from '@/types';
+import type { InstallStatus, Job } from '@/types';
 
 interface InstallControlsProps {
   workspaceId: string;
   installStatus?: InstallStatus;
+  // Called with the queued job right after an install or uninstall is
+  // accepted, so callers can jump to the job's logs.
+  onStarted?: (job: Job) => void;
 }
 
 // Install/Uninstall action for a workspace's environment. Renders nothing
@@ -16,6 +19,7 @@ interface InstallControlsProps {
 export const InstallControls = ({
   workspaceId,
   installStatus,
+  onStarted,
 }: InstallControlsProps) => {
   const installMutation = useInstallWorkspace(workspaceId);
   const uninstallMutation = useUninstallWorkspace(workspaceId);
@@ -41,7 +45,7 @@ export const InstallControls = ({
         disabled={uninstallMutation.isPending}
         onClick={(e) => {
           stop(e);
-          uninstallMutation.mutate();
+          uninstallMutation.mutate(undefined, { onSuccess: onStarted });
         }}
         aria-label="Uninstall environment"
         title="Remove the installed environment (.pixi/envs); pixi.toml and pixi.lock are kept"
@@ -60,7 +64,7 @@ export const InstallControls = ({
       disabled={installMutation.isPending}
       onClick={(e) => {
         stop(e);
-        installMutation.mutate();
+        installMutation.mutate(undefined, { onSuccess: onStarted });
       }}
       aria-label="Install environment"
       title="Download and install packages from the lockfile"

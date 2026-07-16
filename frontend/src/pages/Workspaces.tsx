@@ -88,6 +88,12 @@ export const Workspaces = () => {
     location: 'local' | 'remote';
   } | null>(null);
   const [error, setError] = useState('');
+  const [envJobNotice, setEnvJobNotice] = useState<{
+    wsId: string;
+    wsName: string;
+    jobId: string;
+    type: string;
+  } | null>(null);
   const [copiedPullId, setCopiedPullId] = useState<string | null>(null);
   const localPathId = useId();
 
@@ -283,6 +289,39 @@ export const Workspaces = () => {
         </div>
       )}
 
+      {envJobNotice && (
+        <div className="rounded-md border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-700">
+          <div className="flex items-center justify-between gap-3">
+            <span>
+              {envJobNotice.type === 'env_uninstall' ? 'Uninstall' : 'Install'}{' '}
+              job started for "{envJobNotice.wsName}" (ID: {envJobNotice.jobId}
+              ).
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPendingTab('jobs');
+                  navigate(`/workspaces/${envJobNotice.wsId}`);
+                }}
+              >
+                View logs
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-blue-700 hover:bg-blue-500/10 hover:text-blue-700"
+                onClick={() => setEnvJobNotice(null)}
+                aria-label="Dismiss notification"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCreate && (
         <Card>
           <CardHeader>
@@ -414,6 +453,14 @@ export const Workspaces = () => {
                           <InstallControls
                             workspaceId={ws.id}
                             installStatus={ws.install_status}
+                            onStarted={(job) =>
+                              setEnvJobNotice({
+                                wsId: ws.id,
+                                wsName: ws.name,
+                                jobId: job.id,
+                                type: job.type,
+                              })
+                            }
                           />
                         )}
                         {ws.location === 'local' && ws.source !== 'local' && (

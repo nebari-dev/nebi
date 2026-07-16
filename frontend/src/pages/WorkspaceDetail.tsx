@@ -89,6 +89,10 @@ export const WorkspaceDetail = () => {
   const [copiedImportId, setCopiedImportId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
   const [saveInstallJobId, setSaveInstallJobId] = useState<string | null>(null);
+  const [envJobNotice, setEnvJobNotice] = useState<{
+    id: string;
+    type: string;
+  } | null>(null);
 
   // Determine if this is a local workspace
   const isLocalWs = workspace?.source === 'local';
@@ -188,6 +192,7 @@ export const WorkspaceDetail = () => {
           <InstallControls
             workspaceId={wsId}
             installStatus={workspace.install_status}
+            onStarted={(job) => setEnvJobNotice({ id: job.id, type: job.type })}
           />
           {!isLocalWs && <UseLocallyButton workspaceName={workspace.name} />}
           <Button
@@ -225,6 +230,38 @@ export const WorkspaceDetail = () => {
           {!isLocalWs && isOwner && <ShareButton environmentId={wsId} />}
         </div>
       </div>
+
+      {envJobNotice && (
+        <div className="rounded-md border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-700">
+          <div className="flex items-center justify-between gap-3">
+            <span>
+              {envJobNotice.type === 'env_uninstall' ? 'Uninstall' : 'Install'}{' '}
+              job started (ID: {envJobNotice.id}).
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setActiveTab('jobs');
+                  setEnvJobNotice(null);
+                }}
+              >
+                View logs
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-blue-700 hover:bg-blue-500/10 hover:text-blue-700"
+                onClick={() => setEnvJobNotice(null)}
+                aria-label="Dismiss notification"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Tabs
         value={activeTab}

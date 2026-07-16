@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { renderWithProviders, screen } from '@/test/utils';
+import { HttpResponse, http } from 'msw';
+import { describe, expect, it, vi } from 'vitest';
+import { server } from '@/test/handlers';
+import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import { InstallControls } from './InstallControls';
 
 describe('InstallControls', () => {
@@ -43,5 +45,58 @@ describe('InstallControls', () => {
     );
     const button = screen.getByRole('button', { name: /installing/i });
     expect(button).toBeDisabled();
+  });
+
+  it('calls onStarted with the queued job after clicking Install', async () => {
+    server.use(
+      http.post('/api/v1/workspaces/ws-1/install', () =>
+        HttpResponse.json(
+          {
+            id: 'job-1',
+            workspace_id: 'ws-1',
+            type: 'env_install',
+            status: 'pending',
+          },
+          { status: 202 },
+        ),
+      ),
+    );
+    const onStarted = vi.fn();
+    renderWithProviders(
+      <InstallControls
+        workspaceId="ws-1"
+        installStatus="not_installed"
+        onStarted={onStarted}
+      />,
+    );
+    screen.getByRole('button', { name: /install/i }).click();
+    await waitFor(() => expect(onStarted).toHaveBeenCalled());
+    expect(onStarted.mock.calls[0][0]).toMatchObject({ id: 'job-1' });
+  });
+
+  it('calls onStarted after clicking Uninstall', async () => {
+    server.use(
+      http.post('/api/v1/workspaces/ws-1/uninstall', () =>
+        HttpResponse.json(
+          {
+            id: 'job-2',
+            workspace_id: 'ws-1',
+            type: 'env_uninstall',
+            status: 'pending',
+          },
+          { status: 202 },
+        ),
+      ),
+    );
+    const onStarted = vi.fn();
+    renderWithProviders(
+      <InstallControls
+        workspaceId="ws-1"
+        installStatus="installed"
+        onStarted={onStarted}
+      />,
+    );
+    screen.getByRole('button', { name: /uninstall/i }).click();
+    await waitFor(() => expect(onStarted).toHaveBeenCalled());
   });
 });

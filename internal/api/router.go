@@ -186,7 +186,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	adminSvc := service.NewAdminService(db, rbacProvider)
 	groupSvc := service.NewGroupService(db, rbacProvider)
 	registrySvc := service.NewRegistryService(db, encKey)
-	jobSvc := service.NewJobService(db)
+	jobSvc := service.NewJobService(db, localMode)
 
 	wsHandler := handlers.NewWorkspaceHandler(svc)
 	groupHandler := handlers.NewGroupHandler(groupSvc)

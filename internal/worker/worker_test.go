@@ -529,6 +529,6 @@ func setupWorkerTestMode(t *testing.T, isLocal bool) (*gorm.DB, *service.Workspa
 	q := queue.NewMemoryQueue(10)
 	t.Cleanup(func() { q.Close() })
 	svc := service.New(db, q, fe, isLocal, nil, rbac.NewDefaultProvider())
-	jobSvc := service.NewJobService(db)
+	jobSvc := service.NewJobService(db, isLocal)
 	return db, svc, jobSvc, fe
 }

@@ -2,6 +2,30 @@ package server
 
 import "testing"
 
+func TestResolveBindHost(t *testing.T) {
+	tests := []struct {
+		name      string
+		localMode bool
+		host      string
+		want      string
+	}{
+		{name: "local mode defaults to loopback", localMode: true, host: "", want: "127.0.0.1"},
+		{name: "local mode whitespace defaults to loopback", localMode: true, host: "  ", want: "127.0.0.1"},
+		{name: "local mode explicit host respected", localMode: true, host: "0.0.0.0", want: "0.0.0.0"},
+		{name: "team mode keeps all-interface default", localMode: false, host: "", want: ""},
+		{name: "team mode explicit host respected", localMode: false, host: "10.0.0.5", want: "10.0.0.5"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveBindHost(tt.localMode, tt.host)
+			if got != tt.want {
+				t.Fatalf("expected %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestListenAddress(t *testing.T) {
 	tests := []struct {
 		name string

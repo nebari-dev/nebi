@@ -1,5 +1,7 @@
 import { HardDriveDownload, Loader2, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   useInstallWorkspace,
   useUninstallWorkspace,
@@ -23,6 +25,7 @@ export const InstallControls = ({
 }: InstallControlsProps) => {
   const installMutation = useInstallWorkspace(workspaceId);
   const uninstallMutation = useUninstallWorkspace(workspaceId);
+  const [confirmingUninstall, setConfirmingUninstall] = useState(false);
 
   if (!installStatus) return null;
 
@@ -39,20 +42,33 @@ export const InstallControls = ({
 
   if (installStatus === 'installed') {
     return (
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={uninstallMutation.isPending}
-        onClick={(e) => {
-          stop(e);
-          uninstallMutation.mutate(undefined, { onSuccess: onStarted });
-        }}
-        aria-label="Uninstall environment"
-        title="Remove the installed environment (.pixi/envs); pixi.toml and pixi.lock are kept"
-      >
-        <Trash2 className="h-4 w-4 mr-1.5" />
-        Uninstall
-      </Button>
+      <>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={uninstallMutation.isPending}
+          onClick={(e) => {
+            stop(e);
+            setConfirmingUninstall(true);
+          }}
+          aria-label="Uninstall environment"
+          title="Remove the installed environment (.pixi/envs); pixi.toml and pixi.lock are kept"
+        >
+          <Trash2 className="h-4 w-4 mr-1.5" />
+          Uninstall
+        </Button>
+        <ConfirmDialog
+          open={confirmingUninstall}
+          onOpenChange={setConfirmingUninstall}
+          onConfirm={() =>
+            uninstallMutation.mutate(undefined, { onSuccess: onStarted })
+          }
+          title="Uninstall environment?"
+          description="This removes the installed environment (.pixi/envs). pixi.toml and pixi.lock are kept, so you can reinstall later."
+          confirmText="Uninstall"
+          variant="destructive"
+        />
+      </>
     );
   }
 

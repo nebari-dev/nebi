@@ -36,7 +36,8 @@ Examples:
 
 Environment variables:
   NEBI_MODE                         Server mode: "local" or "team" (default: "team")
-  NEBI_SERVER_HOST                  Bind host/IP (e.g. 127.0.0.1). If unset, bind all interfaces.
+  NEBI_SERVER_HOST                  Bind host/IP (e.g. 127.0.0.1). If unset: team mode binds all
+                                    interfaces; local mode binds loopback only
   NEBI_SERVER_PORT                  Server port (default: 8460)
   NEBI_SERVER_MODE                  Server environment: "development" or "production" (default: "development")
   NEBI_SERVER_BASE_PATH             URL path prefix for reverse proxy (e.g. "/nebi")
@@ -68,7 +69,7 @@ Environment variables:
 }
 
 func init() {
-	serveCmd.Flags().StringVar(&serveHost, "host", "", "Bind host/IP (overrides config), e.g. 127.0.0.1. Empty keeps all-interface bind")
+	serveCmd.Flags().StringVar(&serveHost, "host", "", "Bind host/IP (overrides config), e.g. 127.0.0.1. Empty: all interfaces in team mode, loopback in local mode")
 	serveCmd.Flags().IntVarP(&servePort, "port", "p", 0, "Port to run server on (overrides config)")
 	serveCmd.Flags().StringVarP(&serveMode, "mode", "m", "both", "Run mode: server, worker, or both")
 }

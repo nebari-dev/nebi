@@ -140,7 +140,9 @@ func (a *OIDCAuthenticator) HandleCallback(ctx context.Context, code string) (*L
 		return nil, fmt.Errorf("failed to parse claims: %w", err)
 	}
 
-	slog.Info("OIDC login claims", "email", claims.Email, "name", claims.Name, "sub", claims.Sub, "picture", claims.Picture)
+	// Do not log identity claims (email, name, subject, picture) - they are PII
+	// and end up in aggregated log stores. A presence marker is enough for ops.
+	slog.Debug("OIDC login claims parsed")
 
 	// Determine username
 	username := claims.Email

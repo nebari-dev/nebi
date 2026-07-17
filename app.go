@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"time"
 
 	"github.com/nebari-dev/nebi/internal/api"
@@ -16,6 +18,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/netguard"
 	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
@@ -200,11 +203,15 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	close(a.ready) // signal that router is ready for Wails handler
 	logToFile("startEmbeddedServer: router initialized")
 
-	// Create HTTP server on port 8460 (fallback for CLI/external access)
-	addr := fmt.Sprintf(":%d", cfg.Server.Port)
+	// Create HTTP server on port 8460 (fallback for CLI access).
+	// The desktop app is a single-user, on-device setup, so bind loopback
+	// only and accept only requests with a local Host/Origin. The Wails UI
+	// does not use this listener; it reaches the router in-process via
+	// Handler().
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Server.Port))
 	a.server = &http.Server{
 		Addr:    addr,
-		Handler: router,
+		Handler: netguard.Middleware(router, false),
 	}
 
 	logToFile(fmt.Sprintf("startEmbeddedServer: starting server on %s", addr))

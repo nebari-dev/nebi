@@ -31,7 +31,7 @@ export const AdminLayout = () => {
             System overview and management
           </p>
         </div>
-        <nav className="flex flex-col gap-1 px-2">
+        <nav className="flex flex-col gap-1 px-2" aria-label="Admin">
           {navItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end} className="block w-full">
               {({ isActive }) => (
@@ -50,9 +50,9 @@ export const AdminLayout = () => {
           ))}
         </nav>
       </aside>
-      <main className="flex-1 overflow-auto p-8">
+      <section className="flex-1 overflow-auto p-8" aria-label="Admin page">
         <Outlet />
-      </main>
+      </section>
     </div>
   );
 };

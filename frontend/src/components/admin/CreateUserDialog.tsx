@@ -69,12 +69,14 @@ export const CreateUserDialog = () => {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger>
-        <Button onClick={() => setOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Create User
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          <Button onClick={() => setOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create User
+          </Button>
+        }
+      />
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create New User</DialogTitle>
@@ -166,7 +168,10 @@ export const CreateUserDialog = () => {
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
+            <Button
+              render={<button type="submit" />}
+              disabled={createMutation.isPending}
+            >
               {createMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

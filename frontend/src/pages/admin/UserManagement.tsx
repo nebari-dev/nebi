@@ -199,6 +199,11 @@ export const UserManagement = () => {
                                 ? 'Revoke Admin'
                                 : 'Grant Admin'
                           }
+                          aria-label={
+                            user.is_admin
+                              ? `Revoke admin for ${user.username}`
+                              : `Grant admin to ${user.username}`
+                          }
                         >
                           {user.is_admin ? (
                             <ShieldOff className="h-4 w-4" />
@@ -226,6 +231,7 @@ export const UserManagement = () => {
                               ? 'Cannot delete yourself'
                               : 'Delete User'
                           }
+                          aria-label={`Delete ${user.username}`}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

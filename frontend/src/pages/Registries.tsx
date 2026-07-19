@@ -17,6 +17,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import {
   useImportEnvironment,
@@ -248,18 +255,26 @@ const RepositoryRow = ({
           {tagsLoading ? (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           ) : tags.length > 0 ? (
-            <select
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            <Select
               value={effectiveTag}
-              onChange={(e) => setSelectedTag(e.target.value)}
-              aria-label={`Select tag for ${repoName}`}
+              onValueChange={(tag: string | null) => setSelectedTag(tag ?? '')}
             >
-              {tags.map((tag) => (
-                <option key={tag.name} value={tag.name}>
-                  {tag.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger
+                className="w-full"
+                aria-label={`Select tag for ${repoName}`}
+              >
+                <SelectValue>
+                  {(value: string | null) => value || 'Select tag'}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {tags.map((tag) => (
+                  <SelectItem key={tag.name} value={tag.name}>
+                    {tag.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : (
             <span className="text-sm text-muted-foreground">No tags</span>
           )}

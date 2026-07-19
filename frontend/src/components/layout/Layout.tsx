@@ -65,7 +65,7 @@ export const Layout = ({
                   className="h-10 w-auto"
                 />
               </NavLink>
-              <nav className="flex gap-1">
+              <nav className="flex gap-1" aria-label="Primary">
                 <NavLink to="/workspaces">
                   {({ isActive }) => (
                     <Button
@@ -196,6 +196,7 @@ export const Layout = ({
         </div>
       </header>
       <main
+        aria-label={isAdminPage ? 'Admin content' : 'Main content'}
         className={
           isAdminPage
             ? 'flex-1 overflow-hidden'

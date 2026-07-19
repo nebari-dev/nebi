@@ -342,7 +342,7 @@ export const ShareDialog = ({
                     </div>
 
                     <Button
-                      type="submit"
+                      render={<button type="submit" />}
                       disabled={!selectedUser || shareMutation.isPending}
                       className="w-full"
                     >
@@ -419,7 +419,7 @@ export const ShareDialog = ({
                   </div>
 
                   <Button
-                    type="submit"
+                    render={<button type="submit" />}
                     disabled={!selectedGroup || shareGroupMutation.isPending}
                     className="w-full"
                   >

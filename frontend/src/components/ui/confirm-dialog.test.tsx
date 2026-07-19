@@ -59,6 +59,6 @@ describe('ConfirmDialog', () => {
   it('applies destructive styling class for destructive variant', () => {
     renderDialog({ variant: 'destructive', confirmText: 'Remove' });
     const btn = screen.getByRole('button', { name: 'Remove' });
-    expect(btn.className).toContain('bg-red-600');
+    expect(btn.className).toContain('bg-destructive');
   });
 });

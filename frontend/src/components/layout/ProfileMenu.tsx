@@ -165,7 +165,7 @@ export const ProfileMenu = ({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-red-500 transition-colors hover:bg-red-500/10 focus:bg-red-500/10 focus:outline-none"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-destructive-foreground transition-colors hover:bg-destructive focus:bg-destructive focus:outline-none"
             onClick={handleLogout}
           >
             <LogOut className="h-4 w-4" />

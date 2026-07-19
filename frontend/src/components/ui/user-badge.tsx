@@ -6,6 +6,9 @@ const colors = [
   'bg-pink-100 text-pink-700',
 ];
 
+// Local-only: the @nebari registry does not publish a user badge primitive.
+// Keep this app-specific avatar chip while using shared surface/text tokens.
+
 export const UserBadge = ({ username }: { username: string }) => {
   const colorClass = colors[username.charCodeAt(0) % colors.length];
   const initial = username[0]?.toUpperCase() || '?';

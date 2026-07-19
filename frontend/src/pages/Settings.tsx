@@ -177,7 +177,10 @@ export const Settings = () => {
                   required
                 />
               </div>
-              <Button type="submit" disabled={connectMutation.isPending}>
+              <Button
+                render={<button type="submit" />}
+                disabled={connectMutation.isPending}
+              >
                 {connectMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />

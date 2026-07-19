@@ -3,7 +3,13 @@ import { useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useAuditLogs } from '@/hooks/useAdmin';
 import { useRemoteAuditLogs, useRemoteServer } from '@/hooks/useRemote';
 import { useModeStore } from '@/store/modeStore';
@@ -19,6 +25,22 @@ const ACTION_COLORS: Record<string, string> = {
   share_workspace: 'bg-cyan-100 text-cyan-800 border-cyan-300',
   unshare_workspace: 'bg-yellow-100 text-yellow-800 border-yellow-300',
 };
+
+const ACTION_FILTER_OPTIONS = [
+  { value: '', label: 'All Actions' },
+  { value: 'create_user', label: 'Create User' },
+  { value: 'delete_user', label: 'Delete User' },
+  { value: 'grant_permission', label: 'Grant Permission' },
+  { value: 'revoke_permission', label: 'Revoke Permission' },
+  { value: 'make_admin', label: 'Make Admin' },
+  { value: 'revoke_admin', label: 'Revoke Admin' },
+  { value: 'share_workspace', label: 'Share Workspace' },
+  { value: 'unshare_workspace', label: 'Unshare Workspace' },
+];
+
+const ACTION_FILTER_LABELS = Object.fromEntries(
+  ACTION_FILTER_OPTIONS.map((option) => [option.value, option.label]),
+);
 
 export const AuditLogs = () => {
   const [filters, setFilters] = useState({
@@ -89,19 +111,27 @@ export const AuditLogs = () => {
         </div>
         <Select
           value={filters.action}
-          onChange={(e) => setFilters({ ...filters, action: e.target.value })}
-          className="w-64"
-          aria-label="Filter audit logs by action"
+          onValueChange={(action: string | null) =>
+            setFilters({ ...filters, action: action ?? '' })
+          }
         >
-          <option value="">All Actions</option>
-          <option value="create_user">Create User</option>
-          <option value="delete_user">Delete User</option>
-          <option value="grant_permission">Grant Permission</option>
-          <option value="revoke_permission">Revoke Permission</option>
-          <option value="make_admin">Make Admin</option>
-          <option value="revoke_admin">Revoke Admin</option>
-          <option value="share_workspace">Share Workspace</option>
-          <option value="unshare_workspace">Unshare Workspace</option>
+          <SelectTrigger
+            className="w-64"
+            aria-label="Filter audit logs by action"
+          >
+            <SelectValue>
+              {(value: string | null) =>
+                ACTION_FILTER_LABELS[value ?? ''] ?? 'All Actions'
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {ACTION_FILTER_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
         </Select>
       </div>
 

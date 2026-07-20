@@ -113,7 +113,7 @@ jobs:
           # Start container with port mapping
           docker run --rm -d --name test-nebi \
             -p 8460:8460 \
-            -e NEBI_AUTH_JWT_SECRET=test-secret \
+            -e NEBI_AUTH_JWT_SECRET=test-secret-that-is-at-least-32-chars-long \
             -e NEBI_DATABASE_DSN=/tmp/test.db \
             ${IMAGE_TAG}
 

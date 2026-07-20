@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"golang.org/x/crypto/bcrypt"
@@ -35,13 +36,20 @@ type BasicAuthenticator struct {
 	rbac             rbac.Provider
 }
 
-// NewBasicAuthenticator creates a new basic authenticator
-func NewBasicAuthenticator(db *gorm.DB, jwtSecret string, rbacProvider rbac.Provider) *BasicAuthenticator {
+// NewBasicAuthenticator creates a new basic authenticator. The JWT signing
+// key is derived from jwtSecret via HKDF (see internal/crypto), independent
+// of the key derived from the same secret for registry-credential
+// encryption — knowing one does not yield the other.
+func NewBasicAuthenticator(db *gorm.DB, jwtSecret string, rbacProvider rbac.Provider) (*BasicAuthenticator, error) {
+	signingKey, err := nebicrypto.DeriveSigningKey(jwtSecret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive JWT signing key: %w", err)
+	}
 	return &BasicAuthenticator{
 		db:        db,
-		jwtSecret: []byte(jwtSecret),
+		jwtSecret: signingKey,
 		rbac:      rbacProvider,
-	}
+	}, nil
 }
 
 // SetProxyAdminGroups configures which IdToken groups grant Nebi admin.

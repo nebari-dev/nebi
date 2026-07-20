@@ -69,7 +69,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	var authenticator auth.Authenticator
 	var oidcAuth *auth.OIDCAuthenticator
 	// Session check endpoint needs a BasicAuthenticator for JWT generation.
-	sessionBasicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret, rbacProvider)
+	sessionBasicAuth, err := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret, rbacProvider)
+	if err != nil {
+		logger.Error("Failed to initialize session authenticator", "error", err)
+		panic(err)
+	}
 
 	if localMode {
 		localAuth, err := auth.NewLocalAuthenticator(db)
@@ -81,7 +85,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		logger.Info("Running in local mode — authentication bypassed", "user", auth.LocalUsername())
 	} else {
 		if cfg.Auth.Type == "basic" {
-			basicAuth := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret, rbacProvider)
+			basicAuth, err := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret, rbacProvider)
+			if err != nil {
+				logger.Error("Failed to initialize basic authenticator", "error", err)
+				panic(err)
+			}
 			basicAuth.SetProxyAdminGroups(cfg.Auth.ProxyAdminGroups)
 			authenticator = basicAuth
 		}

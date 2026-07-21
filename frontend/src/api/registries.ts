@@ -49,9 +49,15 @@ export const registriesApi = {
   },
 
   // Publishing endpoints (require write permission on workspace)
-  getPublishDefaults: async (workspaceId: string): Promise<PublishDefaults> => {
+  getPublishDefaults: async (
+    workspaceId: string,
+    registryId?: string,
+  ): Promise<PublishDefaults> => {
     const { data } = await apiClient.get(
       `/workspaces/${workspaceId}/publish-defaults`,
+      {
+        params: registryId ? { registry_id: registryId } : undefined,
+      },
     );
     return data;
   },

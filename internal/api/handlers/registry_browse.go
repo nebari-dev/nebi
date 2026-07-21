@@ -38,7 +38,7 @@ func (h *RegistryBrowseHandler) ListRepositories(c *gin.Context) {
 	registryID := c.Param("id")
 	search := c.Query("search")
 
-	regCreds, err := h.registrySvc.GetRegistryWithCredentials(registryID)
+	regCreds, err := h.registrySvc.GetRegistryWithCredentials(registryID, getUserID(c))
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -127,7 +127,7 @@ func (h *RegistryBrowseHandler) ListTags(c *gin.Context) {
 		return
 	}
 
-	regCreds, err := h.registrySvc.GetRegistryWithCredentials(registryID)
+	regCreds, err := h.registrySvc.GetRegistryWithCredentials(registryID, getUserID(c))
 	if err != nil {
 		handleServiceError(c, err)
 		return

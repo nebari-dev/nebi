@@ -31,8 +31,9 @@ func TestGetPublishDefaults_ReturnsDefaults(t *testing.T) {
 		IsDefault: true,
 	}
 	db.Create(&registry)
+	grantRegistryAccessForTest(t, db, userID, registry.ID, "read")
 
-	defaults, err := svc.GetPublishDefaults(ws.ID.String())
+	defaults, err := svc.GetPublishDefaults(ws.ID.String(), userID, uuid.Nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -65,7 +66,9 @@ func TestGetPublishDefaults_UsesContentHashTag(t *testing.T) {
 	ws := createReadyWorkspace(t, svc, db, "publish-hash", userID)
 
 	// OCIRegistry already migrated in testSetup
-	db.Create(&models.OCIRegistry{Name: "reg", URL: "https://ghcr.io", IsDefault: true})
+	registry := models.OCIRegistry{Name: "reg", URL: "https://ghcr.io", IsDefault: true}
+	db.Create(&registry)
+	grantRegistryAccessForTest(t, db, userID, registry.ID, "read")
 
 	// Push a version so there's a content hash
 	svc.PushVersion(context.Background(), ws.ID.String(), PushRequest{
@@ -73,7 +76,7 @@ func TestGetPublishDefaults_UsesContentHashTag(t *testing.T) {
 		PixiLock: "version: 6",
 	}, userID)
 
-	defaults, err := svc.GetPublishDefaults(ws.ID.String())
+	defaults, err := svc.GetPublishDefaults(ws.ID.String(), userID, uuid.Nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -95,18 +98,61 @@ func TestGetPublishDefaults_NoDefaultRegistry(t *testing.T) {
 	// OCIRegistry already migrated in testSetup
 	// No default registry exists
 
-	_, err := svc.GetPublishDefaults(ws.ID.String())
+	_, err := svc.GetPublishDefaults(ws.ID.String(), userID, uuid.Nil)
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestGetPublishDefaults_RequiresRegistryReadAccess(t *testing.T) {
+	svc, db := testSetup(t, false)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "private-default", userID)
+
+	db.Create(&models.OCIRegistry{Name: "reg", URL: "https://ghcr.io", IsDefault: true})
+
+	_, err := svc.GetPublishDefaults(ws.ID.String(), userID, uuid.Nil)
+	if err == nil {
+		t.Fatal("expected forbidden error without registry read grant")
+	}
+	if !isForbiddenError(err, nil) {
+		t.Fatalf("expected ForbiddenError, got %T: %v", err, err)
 	}
 }
 
 func TestGetPublishDefaults_WorkspaceNotFound(t *testing.T) {
 	svc, _ := testSetup(t, false)
 
-	_, err := svc.GetPublishDefaults(uuid.New().String())
+	_, err := svc.GetPublishDefaults(uuid.New().String(), uuid.New(), uuid.Nil)
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestGetPublishDefaults_UsesExplicitRegistryAccess(t *testing.T) {
+	svc, db := testSetup(t, false)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "explicit-reg", userID)
+
+	defaultRegistry := models.OCIRegistry{Name: "default", URL: "https://quay.io", IsDefault: true}
+	explicitRegistry := models.OCIRegistry{Name: "team-b", URL: "https://ghcr.io", Namespace: "team"}
+	db.Create(&defaultRegistry)
+	db.Create(&explicitRegistry)
+	grantRegistryAccessForTest(t, db, userID, explicitRegistry.ID, "read")
+
+	defaults, err := svc.GetPublishDefaults(ws.ID.String(), userID, explicitRegistry.ID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if defaults.RegistryID != explicitRegistry.ID {
+		t.Fatalf("expected explicit registry %s, got %s", explicitRegistry.ID, defaults.RegistryID)
+	}
+	if defaults.RegistryName != explicitRegistry.Name {
+		t.Fatalf("expected registry name %q, got %q", explicitRegistry.Name, defaults.RegistryName)
+	}
+	if defaults.Namespace != explicitRegistry.Namespace {
+		t.Fatalf("expected namespace %q, got %q", explicitRegistry.Namespace, defaults.Namespace)
 	}
 }
 
@@ -119,7 +165,7 @@ func TestListPublications_Empty(t *testing.T) {
 
 	// OCIRegistry and Publication already migrated in testSetup
 
-	pubs, err := svc.ListPublications(ws.ID.String())
+	pubs, err := svc.ListPublications(ws.ID.String(), userID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -137,6 +183,7 @@ func TestListPublications_ReturnsRecords(t *testing.T) {
 
 	registry := models.OCIRegistry{Name: "reg", URL: "https://ghcr.io", Namespace: "myorg"}
 	db.Create(&registry)
+	grantRegistryAccessForTest(t, db, userID, registry.ID, "read")
 
 	pub := models.Publication{
 		WorkspaceID:   ws.ID,
@@ -149,7 +196,7 @@ func TestListPublications_ReturnsRecords(t *testing.T) {
 	}
 	db.Create(&pub)
 
-	pubs, err := svc.ListPublications(ws.ID.String())
+	pubs, err := svc.ListPublications(ws.ID.String(), userID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -171,9 +218,49 @@ func TestListPublications_ReturnsRecords(t *testing.T) {
 func TestListPublications_NotFound(t *testing.T) {
 	svc, _ := testSetup(t, false)
 
-	_, err := svc.ListPublications(uuid.New().String())
+	_, err := svc.ListPublications(uuid.New().String(), uuid.New())
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestListPublications_FiltersUnreadableRegistries(t *testing.T) {
+	svc, db := testSetup(t, false)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "filtered-pubs", userID)
+
+	readable := models.OCIRegistry{Name: "readable", URL: "https://ghcr.io"}
+	hidden := models.OCIRegistry{Name: "hidden", URL: "https://quay.io"}
+	db.Create(&readable)
+	db.Create(&hidden)
+	grantRegistryAccessForTest(t, db, userID, readable.ID, "read")
+
+	db.Create(&models.Publication{
+		WorkspaceID:   ws.ID,
+		VersionNumber: 1,
+		RegistryID:    readable.ID,
+		Repository:    "visible-env",
+		Tag:           "v1",
+		PublishedBy:   userID,
+	})
+	db.Create(&models.Publication{
+		WorkspaceID:   ws.ID,
+		VersionNumber: 1,
+		RegistryID:    hidden.ID,
+		Repository:    "hidden-env",
+		Tag:           "v1",
+		PublishedBy:   userID,
+	})
+
+	pubs, err := svc.ListPublications(ws.ID.String(), userID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(pubs) != 1 {
+		t.Fatalf("expected 1 readable publication, got %d: %+v", len(pubs), pubs)
+	}
+	if pubs[0].RegistryName != readable.Name || pubs[0].Repository != "visible-env" {
+		t.Fatalf("unexpected publication returned: %+v", pubs[0])
 	}
 }
 
@@ -188,6 +275,7 @@ func TestUpdatePublication_TogglesVisibility(t *testing.T) {
 
 	registry := models.OCIRegistry{Name: "reg", URL: "https://ghcr.io"}
 	db.Create(&registry)
+	grantRegistryAccessForTest(t, db, userID, registry.ID, "write")
 
 	pub := models.Publication{
 		WorkspaceID:   ws.ID,
@@ -200,7 +288,7 @@ func TestUpdatePublication_TogglesVisibility(t *testing.T) {
 	}
 	db.Create(&pub)
 
-	result, err := svc.UpdatePublication(context.Background(), ws.ID.String(), pub.ID.String(), true)
+	result, err := svc.UpdatePublication(context.Background(), ws.ID.String(), pub.ID.String(), true, userID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -224,9 +312,77 @@ func TestUpdatePublication_NotFound(t *testing.T) {
 
 	// OCIRegistry and Publication already migrated in testSetup
 
-	_, err := svc.UpdatePublication(context.Background(), ws.ID.String(), uuid.New().String(), true)
+	_, err := svc.UpdatePublication(context.Background(), ws.ID.String(), uuid.New().String(), true, userID)
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestUpdatePublication_RequiresRegistryWriteAccess(t *testing.T) {
+	svc, db := testSetup(t, false)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "private-vis", userID)
+
+	registry := models.OCIRegistry{Name: "reg", URL: "https://ghcr.io"}
+	db.Create(&registry)
+	grantRegistryAccessForTest(t, db, userID, registry.ID, "read")
+
+	pub := models.Publication{
+		WorkspaceID:   ws.ID,
+		VersionNumber: 1,
+		RegistryID:    registry.ID,
+		Repository:    "my-env",
+		Tag:           "v1",
+		PublishedBy:   userID,
+		IsPublic:      false,
+	}
+	db.Create(&pub)
+
+	_, err := svc.UpdatePublication(context.Background(), ws.ID.String(), pub.ID.String(), true, userID)
+	if err == nil {
+		t.Fatal("expected forbidden error with read-only registry grant")
+	}
+	if !isForbiddenError(err, nil) {
+		t.Fatalf("expected ForbiddenError, got %T: %v", err, err)
+	}
+
+	var updated models.Publication
+	db.First(&updated, pub.ID)
+	if updated.IsPublic {
+		t.Fatal("publication visibility changed despite missing registry write grant")
+	}
+}
+
+func TestPublishWorkspace_RequiresRegistryWriteAccess(t *testing.T) {
+	svc, db := testSetup(t, false)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "private-pub", userID)
+
+	db.Create(&models.WorkspaceVersion{
+		WorkspaceID:   ws.ID,
+		VersionNumber: 1,
+		ContentHash:   "sha-private",
+	})
+	registry := models.OCIRegistry{Name: "reg", URL: "https://ghcr.io"}
+	db.Create(&registry)
+	grantRegistryAccessForTest(t, db, userID, registry.ID, "read")
+
+	_, err := svc.PublishWorkspace(context.Background(), ws.ID.String(), PublishWorkspaceRequest{
+		RegistryID: registry.ID,
+		Repository: "private-pub",
+		Tag:        "v1",
+	}, userID)
+	if err == nil {
+		t.Fatal("expected forbidden error with read-only registry grant")
+	}
+	if !isForbiddenError(err, nil) {
+		t.Fatalf("expected ForbiddenError, got %T: %v", err, err)
+	}
+
+	var count int64
+	db.Model(&models.Publication{}).Where("workspace_id = ?", ws.ID).Count(&count)
+	if count != 0 {
+		t.Fatalf("expected no publication record without registry write grant, got %d", count)
 	}
 }
 
@@ -315,7 +471,7 @@ func TestGetPublishDefaults_LocalMode_UsesBundleHash(t *testing.T) {
 	// Seed a version so GetPublishDefaults doesn't short-circuit to "latest".
 	db.Create(&models.WorkspaceVersion{WorkspaceID: ws.ID, VersionNumber: 1, ContentHash: "sha-oldstyle"})
 
-	got, err := svc.GetPublishDefaults(ws.ID.String())
+	got, err := svc.GetPublishDefaults(ws.ID.String(), userID, uuid.Nil)
 	if err != nil {
 		t.Fatalf("GetPublishDefaults: %v", err)
 	}

@@ -122,6 +122,7 @@ platforms = ["linux-64"]
 		Name: "team-src", URL: "http://" + u.Host, Namespace: "demo", IsDefault: true,
 	}
 	db.Create(&dbReg)
+	grantRegistryAccessForTest(t, db, userID, dbReg.ID, "read")
 
 	ws, err := svc.ImportFromRegistry(context.Background(), dbReg.ID.String(), ImportFromRegistryRequest{
 		RepositoryPath: "demo/team-import", Tag: "v1", Name: "imported-team",
@@ -154,5 +155,30 @@ platforms = ["linux-64"]
 	lockBytes, _ := os.ReadFile(filepath.Join(stagingDir, "pixi.lock"))
 	if !strings.Contains(string(lockBytes), "version: 6") {
 		t.Errorf("team mode should preserve published pixi.lock content, got %q", string(lockBytes))
+	}
+}
+
+func TestImportFromRegistry_RequiresRegistryReadAccess(t *testing.T) {
+	svc, db := testSetup(t, false)
+	userID := createTestUser(t, db, "alice")
+	registry := models.OCIRegistry{Name: "private", URL: "https://ghcr.io", Namespace: "demo"}
+	db.Create(&registry)
+
+	_, err := svc.ImportFromRegistry(context.Background(), registry.ID.String(), ImportFromRegistryRequest{
+		Repository: "bundle-import",
+		Tag:        "v1",
+		Name:       "imported-env",
+	}, userID)
+	if err == nil {
+		t.Fatal("expected forbidden error without registry read grant")
+	}
+	if !isForbiddenError(err, nil) {
+		t.Fatalf("expected ForbiddenError, got %T: %v", err, err)
+	}
+
+	var count int64
+	db.Model(&models.Workspace{}).Where("name = ?", "imported-env").Count(&count)
+	if count != 0 {
+		t.Fatalf("expected no workspace to be created without registry read grant, got %d", count)
 	}
 }

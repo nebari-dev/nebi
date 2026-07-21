@@ -39,14 +39,16 @@ describe('PublishDialog', () => {
 
   it('renders the form with registry options when registries exist', async () => {
     renderWithProviders(<PublishDialog {...defaultProps} />);
-    await waitFor(() =>
-      expect(
-        screen.getByRole('option', { name: new RegExp(mockRegistry.name) }),
-      ).toBeInTheDocument(),
-    );
-    expect(screen.getByPlaceholderText(/e\.g\., myenv/)).toBeInTheDocument();
+    expect(
+      await screen.findByPlaceholderText(/e\.g\., myenv/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: new RegExp(mockRegistry.name) }),
+    ).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/e\.g\., v1/)).toBeInTheDocument();
-    expect(screen.getByLabelText('Registry')).toHaveFocus();
+    await waitFor(() =>
+      expect(screen.getByLabelText('Registry')).toHaveFocus(),
+    );
   });
 
   it('auto-populates form fields from publish defaults', async () => {
@@ -105,10 +107,7 @@ describe('PublishDialog', () => {
       ).toBe(mockPublishDefaults.repository),
     );
 
-    await user.click(screen.getByRole('combobox', { name: 'Registry' }));
-    await user.click(
-      await screen.findByRole('option', { name: /Second Registry/ }),
-    );
+    await user.selectOptions(screen.getByLabelText('Registry'), 'reg-2');
 
     await waitFor(() =>
       expect(
@@ -155,10 +154,9 @@ describe('PublishDialog', () => {
       ).toBeInTheDocument(),
     );
 
-    // Select registry
-    const select = screen.getByRole('combobox', {
-      hidden: true,
-    }) as HTMLSelectElement;
+    const select = await screen.findByRole('combobox', {
+      name: 'Registry',
+    });
     await user.selectOptions(select, mockRegistry.id);
 
     await user.click(screen.getByRole('button', { name: /Publish/ }));

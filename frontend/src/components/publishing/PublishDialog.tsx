@@ -38,7 +38,13 @@ export const PublishDialog = ({
   >(null);
   const { data: registries, isLoading: registriesLoading } =
     usePublicRegistries();
-  const defaultsRegistryId = selectedRegistry || undefined;
+  const selectedRegistryRecord = registries?.find(
+    (registry) => registry.id === selectedRegistry,
+  );
+  const defaultsRegistryId =
+    selectedRegistryRecord && !selectedRegistryRecord.is_default
+      ? selectedRegistry
+      : undefined;
   const { data: defaults, isLoading: defaultsLoading } = usePublishDefaults(
     environmentId,
     defaultsRegistryId,
@@ -53,7 +59,7 @@ export const PublishDialog = ({
 
   // Auto-populate from server-provided defaults for the current registry.
   useEffect(() => {
-    if (!open || !defaults) {
+    if (!open || !defaults || !registries) {
       return;
     }
 
@@ -69,7 +75,7 @@ export const PublishDialog = ({
     setRepository(defaults.repository);
     setTag(defaults.tag);
     setAppliedDefaultsRegistry(registryID);
-  }, [open, defaults, selectedRegistry, appliedDefaultsRegistry]);
+  }, [open, defaults, registries, selectedRegistry, appliedDefaultsRegistry]);
 
   // Reset form when dialog closes
   useEffect(() => {

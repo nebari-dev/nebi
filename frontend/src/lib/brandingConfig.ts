@@ -18,6 +18,7 @@ export type RuntimeBrandingConfig = {
 
 const DEFAULT_TITLE = 'Nebi - Environment Management';
 const DEFAULT_BRANDING_LOGO_URL = '/nebi-logo.svg';
+const DEFAULT_DARK_BRANDING_LOGO_URL = '/nebi-logo-dark.svg';
 const BRANDING_CONFIG_PATH = '/public/config.json';
 const BRANDING_STYLE_ID = 'nebi-runtime-branding';
 const UNSAFE_CSS_VALUE = /[;<>{}"'\\]|url\s*\(|expression\s*\(|javascript:/i;
@@ -254,7 +255,10 @@ export const loadBrandingConfig = async (): Promise<RuntimeBrandingConfig> => {
   }
 };
 
-export const getBrandingLogoUrl = (): string => {
+export const getBrandingLogoUrl = (isDarkMode = false): string => {
   const configuredLogo = cachedConfig?.branding?.logoUrl;
-  return resolveBasePathUrl(configuredLogo || DEFAULT_BRANDING_LOGO_URL);
+  return resolveBasePathUrl(
+    configuredLogo ||
+      (isDarkMode ? DEFAULT_DARK_BRANDING_LOGO_URL : DEFAULT_BRANDING_LOGO_URL),
+  );
 };

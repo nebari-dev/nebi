@@ -1,4 +1,4 @@
-.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all build-desktop up down
+.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all build-desktop
 
 # Variables
 BINARY_NAME=nebi
@@ -147,35 +147,3 @@ build-desktop: build-frontend ## Build Wails desktop app with version info
 	@echo "Building desktop app..."
 	@wails build -ldflags "-X main.Version=$(VERSION) -X main.Commit=$(COMMIT)"
 	@echo "Desktop app built: build/bin/Nebi.app"
-
-# K3d Development Environment
-up: ## Create k3d cluster and start Tilt (recreates cluster if exists)
-	@echo "Setting up Nebi development environment..."
-	@if k3d cluster list | grep -q nebi-dev; then \
-		echo ""; \
-		echo "⚠️  Cluster 'nebi-dev' already exists"; \
-		read -p "Do you want to delete and recreate it? [y/N] " confirm; \
-		if [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ]; then \
-			echo "Deleting existing cluster..."; \
-			k3d cluster delete nebi-dev; \
-		else \
-			echo "Using existing cluster..."; \
-		fi; \
-	fi
-	@if ! k3d cluster list | grep -q nebi-dev; then \
-		echo "Creating k3d cluster 'nebi-dev'..."; \
-		k3d cluster create -c k3d-config.yaml --wait; \
-		kubectl wait --for=condition=ready node --all --timeout=60s; \
-		echo "✓ Cluster ready!"; \
-		kubectl get nodes; \
-	fi
-	@echo ""
-	@echo "Starting Tilt..."
-	@tilt up
-
-down: ## Stop Tilt and delete k3d cluster
-	@echo "Stopping Tilt..."
-	@tilt down || true
-	@echo "Deleting k3d cluster 'nebi-dev'..."
-	@k3d cluster delete nebi-dev || true
-	@echo "✓ Environment cleaned up!"

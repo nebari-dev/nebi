@@ -17,6 +17,7 @@ import (
 	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/logstream"
+	"github.com/nebari-dev/nebi/internal/netguard"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/nebari-dev/nebi/internal/service"
@@ -62,7 +63,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	// Middleware
 	router.Use(gin.Recovery())
 	router.Use(loggingMiddleware())
-	router.Use(corsMiddleware())
+	router.Use(corsMiddleware(localMode))
 
 	// Initialize authenticator based on mode
 	var authenticator auth.Authenticator
@@ -531,9 +532,24 @@ func loggingMiddleware() gin.HandlerFunc {
 // CORS spec to name an explicit origin, and combining it with the "*" wildcard
 // is invalid: browsers reject any such response, which in turn blocks the SPA's
 // <script type="module" crossorigin> bundle from loading.
-func corsMiddleware() gin.HandlerFunc {
+//
+// In local mode the API is used only by local UIs, so instead of a wildcard
+// the allowed origin is echoed only for those: loopback http(s) origins (the
+// SPA served by this process, the Vite dev server) and the desktop webview
+// ("wails://..." on macOS/Linux, opaque "null" origins some webviews produce).
+// Those webview requests arrive through the in-process Wails handler, never
+// the network listener (see netguard.Middleware).
+func corsMiddleware(localMode bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		if localMode {
+			origin := c.Request.Header.Get("Origin")
+			if netguard.IsLoopbackOrigin(origin) || strings.HasPrefix(origin, "wails://") || origin == "null" {
+				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+				c.Writer.Header().Set("Vary", "Origin")
+			}
+		} else {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		// Prevent WebView (WKWebView) from caching API responses,

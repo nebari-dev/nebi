@@ -49,8 +49,12 @@ func TestCORSMiddlewareNoInvalidCredentialedWildcard(t *testing.T) {
 
 	// /api/v1/health is a real public route; /assets/* flows through the real
 	// SPA static handler. Both pass through the global CORS middleware.
+	// The router is in local mode, where the allowed origin is echoed for
+	// local UIs (e.g. the Vite dev server) instead of a wildcard.
+	const origin = "http://localhost:8461"
 	for _, path := range []string{"/api/v1/health", "/assets/index-abc123.js"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Origin", origin)
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
 
@@ -60,8 +64,8 @@ func TestCORSMiddlewareNoInvalidCredentialedWildcard(t *testing.T) {
 		if acao == "*" && acac == "true" {
 			t.Fatalf("%s: invalid CORS combo: ACAO=%q ACAC=%q (wildcard origin cannot be credentialed)", path, acao, acac)
 		}
-		if acao == "" {
-			t.Fatalf("%s: expected Access-Control-Allow-Origin to be set, got empty", path)
+		if acao != origin {
+			t.Fatalf("%s: expected Access-Control-Allow-Origin %q, got %q", path, origin, acao)
 		}
 		if acac != "" {
 			t.Fatalf("%s: expected no Access-Control-Allow-Credentials, got %q", path, acac)

@@ -19,7 +19,7 @@ import {
   useDeleteWorkspace,
   useWorkspaces,
 } from '@/hooks/useWorkspaces';
-import { capitalize } from '@/lib/utils';
+import { capitalize, getWorkspaceStatusColor } from '@/lib/utils';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
@@ -39,14 +39,6 @@ type UnifiedWorkspace = {
   size_formatted?: string;
 };
 
-const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-  creating: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  ready: 'bg-green-500/10 text-green-500 border-green-500/20',
-  failed: 'bg-red-500/10 text-red-500 border-red-500/20',
-  deleting: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
-};
-
 const DEFAULT_PIXI_TOML = `[workspace]
 name = ""
 channels = ["conda-forge"]
@@ -54,6 +46,7 @@ platforms = ["osx-arm64", "linux-64"]
 
 [dependencies]
 python = ">=3.11"
+ipykernel = "*"
 `;
 
 // TODO: Robustify. Maybe use a proper TOML parser?
@@ -264,6 +257,7 @@ export const Workspaces = () => {
               New Workspace
             </>
           }
+          menuLabel="Open workspace actions"
           menuItems={[
             {
               label: 'Import Workspace from Registry',
@@ -289,6 +283,7 @@ export const Workspaces = () => {
                 variant="ghost"
                 size="icon"
                 onClick={() => setShowCreate(false)}
+                aria-label="Close create workspace form"
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -385,12 +380,7 @@ export const Workspaces = () => {
                       )}
                     </td>
                     <td className="p-4">
-                      <Badge
-                        className={
-                          statusColors[ws.status] ||
-                          'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
-                        }
-                      >
+                      <Badge className={getWorkspaceStatusColor(ws.status)}>
                         {capitalize(ws.status)}
                       </Badge>
                     </td>
@@ -408,6 +398,7 @@ export const Workspaces = () => {
                             size="sm"
                             className="gap-1.5"
                             onClick={(e) => handleCopyPull(e, ws.name, ws.id)}
+                            aria-label={`Copy pull command for ${ws.name}`}
                             title="Copy nebi pull command"
                           >
                             {copiedPullId === ws.id ? (
@@ -430,6 +421,7 @@ export const Workspaces = () => {
                             });
                           }}
                           disabled={isDeletePending}
+                          aria-label={`Delete ${ws.name}`}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

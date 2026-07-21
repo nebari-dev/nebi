@@ -44,20 +44,11 @@ import { usePackages } from '@/hooks/usePackages';
 import { usePublications, useUpdatePublication } from '@/hooks/useRegistries';
 import { useWorkspace } from '@/hooks/useWorkspaces';
 import { buildImportCommand } from '@/lib/registry';
-import { capitalize } from '@/lib/utils';
+import { capitalize, getWorkspaceStatusColor } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
 import type { Collaborator } from '@/types/models';
-
-const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-  creating: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  running: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  ready: 'bg-green-500/10 text-green-500 border-green-500/20',
-  failed: 'bg-red-500/10 text-red-500 border-red-500/20',
-  deleting: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
-};
 
 export const WorkspaceDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -161,6 +152,7 @@ export const WorkspaceDetail = () => {
           variant="ghost"
           size="icon"
           onClick={() => navigate('/workspaces')}
+          aria-label="Back to workspaces"
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -180,12 +172,7 @@ export const WorkspaceDetail = () => {
               Local
             </Badge>
           )}
-          <Badge
-            className={
-              statusColors[workspace.status] ||
-              'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
-            }
-          >
+          <Badge className={getWorkspaceStatusColor(workspace.status)}>
             {capitalize(workspace.status)}
           </Badge>
           {!isLocalWs && <UseLocallyButton workspaceName={workspace.name} />}
@@ -288,12 +275,7 @@ export const WorkspaceDetail = () => {
                   <span className="text-sm font-medium">Status</span>
                 </div>
                 <div>
-                  <Badge
-                    className={
-                      statusColors[workspace.status] ||
-                      'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
-                    }
-                  >
+                  <Badge className={getWorkspaceStatusColor(workspace.status)}>
                     {capitalize(workspace.status)}
                   </Badge>
                 </div>
@@ -489,6 +471,7 @@ export const WorkspaceDetail = () => {
                       setCopiedId(true);
                       setTimeout(() => setCopiedId(false), 2000);
                     }}
+                    aria-label="Copy workspace ID"
                     title="Copy ID"
                   >
                     {copiedId ? (

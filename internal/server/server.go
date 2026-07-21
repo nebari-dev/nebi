@@ -22,6 +22,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/logger"
 	"github.com/nebari-dev/nebi/internal/logstream"
+	"github.com/nebari-dev/nebi/internal/netguard"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/nebari-dev/nebi/internal/service"
@@ -64,6 +65,7 @@ func Run(ctx context.Context, cfg Config) error {
 	if cfg.Port != 0 {
 		appCfg.Server.Port = cfg.Port
 	}
+	appCfg.Server.Host = resolveBindHost(appCfg.IsLocalMode(), appCfg.Server.Host)
 
 	// Initialize logger
 	logger.Init(appCfg.Log.Format, appCfg.Log.Level)
@@ -186,10 +188,22 @@ func Run(ctx context.Context, cfg Config) error {
 		var valkeyClientInterface interface{} = valkeyClient
 		router := api.NewRouter(appCfg, database, jobQueue, exec, broker, valkeyClientInterface, slog.Default())
 
+		var handler http.Handler = router
+		if appCfg.IsLocalMode() {
+			// Local mode is a single-user, on-device setup: scope the
+			// listener to clients on the local machine.
+			allowAnyHost := !netguard.IsLoopbackHost(appCfg.Server.Host)
+			if allowAnyHost {
+				slog.Warn("Local mode is bound to a non-loopback interface; it is intended for local use only",
+					"host", appCfg.Server.Host)
+			}
+			handler = netguard.Middleware(router, allowAnyHost)
+		}
+
 		addr := listenAddress(appCfg.Server.Host, appCfg.Server.Port)
 		srv = &http.Server{
 			Addr:    addr,
-			Handler: router,
+			Handler: handler,
 		}
 
 		go func() {
@@ -226,6 +240,18 @@ func Run(ctx context.Context, cfg Config) error {
 
 	slog.Info("Nebi exited")
 	return nil
+}
+
+// resolveBindHost returns the effective bind host. Local mode is a
+// single-user, on-device setup, so when no host is configured it binds
+// loopback only; binding more widely requires an explicit host (config,
+// env, or flag).
+func resolveBindHost(localMode bool, host string) string {
+	host = strings.TrimSpace(host)
+	if localMode && host == "" {
+		return "127.0.0.1"
+	}
+	return host
 }
 
 func listenAddress(host string, port int) string {

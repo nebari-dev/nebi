@@ -31,7 +31,7 @@ Start the server:
 nebi serve
 ```
 
-By default (`--host` unset), Nebi binds all interfaces on port `8460`.
+By default (`--host` unset), Nebi binds all interfaces on port `8460` in team mode. Local mode (`NEBI_MODE=local`) is a single-user, on-device setup, so the server binds only the loopback interface (`127.0.0.1`) and only accepts requests addressed to a local host/origin. To bind a local-mode server to another interface, set `--host` (or `NEBI_SERVER_HOST`) explicitly.
 
 To use a different port:
 
@@ -44,8 +44,6 @@ To explicitly bind a host/interface, use `--host` (or `NEBI_SERVER_HOST`):
 ```bash
 nebi serve --host 127.0.0.1 --port 8460
 ```
-
-For local-only usage (desktop/IPC scenarios), always set `--host 127.0.0.1` (or `NEBI_SERVER_HOST=127.0.0.1`).
 
 Once the server is running, authenticate from any client machine with [`nebi login`](./cli-team.md#connect-to-a-server).
 

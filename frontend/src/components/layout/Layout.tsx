@@ -1,22 +1,32 @@
-import { Boxes, ExternalLink, LogOut, Settings, Shield } from 'lucide-react';
-import { useState } from 'react';
+import { Boxes, ExternalLink, Settings, Shield } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import { useRemoteServer } from '@/hooks/useRemote';
+import type { ThemeMode } from '@/hooks/useThemePreference';
 import { useVersion } from '@/hooks/useVersion';
 import { getBrandingLogoUrl } from '@/lib/brandingConfig';
 import { openExternal } from '@/lib/openExternal';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
+import { ProfileMenu } from './ProfileMenu';
 
-export const Layout = () => {
+type LayoutProps = {
+  themeMode: ThemeMode;
+  isDarkMode: boolean;
+  onThemeChange: (themeMode: ThemeMode) => void;
+};
+
+export const Layout = ({
+  themeMode,
+  isDarkMode,
+  onThemeChange,
+}: LayoutProps) => {
   const { user, clearAuth } = useAuthStore();
   const isLocalMode = useModeStore((s) => s.isLocalMode());
   const navigate = useNavigate();
   const { data: isAdmin } = useIsAdmin();
-  const [avatarError, setAvatarError] = useState(false);
   const { viewMode, setViewMode } = useViewModeStore();
   const { data: serverStatus } = useRemoteServer();
   const { data: versionInfo } = useVersion();
@@ -50,7 +60,7 @@ export const Layout = () => {
             <div className="flex items-center gap-8">
               <NavLink to="/workspaces">
                 <img
-                  src={getBrandingLogoUrl()}
+                  src={getBrandingLogoUrl(isDarkMode)}
                   alt="Nebi"
                   className="h-10 w-auto"
                 />
@@ -127,7 +137,7 @@ export const Layout = () => {
                     onClick={() => setViewMode('local')}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
                       viewMode === 'local'
-                        ? 'bg-white text-foreground shadow-sm'
+                        ? 'bg-background text-foreground shadow-sm'
                         : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
@@ -145,7 +155,7 @@ export const Layout = () => {
                     onClick={() => setViewMode('remote')}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
                       viewMode === 'remote'
-                        ? 'bg-white text-foreground shadow-sm'
+                        ? 'bg-background text-foreground shadow-sm'
                         : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
@@ -174,30 +184,12 @@ export const Layout = () => {
                 </NavLink>
               )}
               {!isLocalMode && (
-                <>
-                  {user?.avatar_url && !avatarError ? (
-                    <img
-                      src={user.avatar_url}
-                      alt={user.username}
-                      className="h-8 w-8 rounded-full"
-                      referrerPolicy="no-referrer-when-downgrade"
-                      crossOrigin="anonymous"
-                      onError={() => setAvatarError(true)}
-                    />
-                  ) : (
-                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <span className="text-sm font-medium text-primary">
-                        {user?.username?.charAt(0).toUpperCase()}
-                      </span>
-                    </div>
-                  )}
-                  <span className="text-sm font-medium text-foreground">
-                    {user?.username}
-                  </span>
-                  <Button variant="ghost" size="icon" onClick={handleLogout}>
-                    <LogOut className="h-4 w-4" />
-                  </Button>
-                </>
+                <ProfileMenu
+                  user={user}
+                  themeMode={themeMode}
+                  onThemeChange={onThemeChange}
+                  onLogout={handleLogout}
+                />
               )}
             </div>
           </div>
@@ -222,7 +214,7 @@ export const Layout = () => {
             }
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+            className="text-sm text-muted-foreground hover:text-muted-foreground transition-colors"
           >
             v{versionInfo.version}
           </a>

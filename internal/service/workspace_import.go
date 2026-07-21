@@ -48,6 +48,14 @@ type ImportFromRegistryRequest struct {
 // did not start. On any failure after the staging dir is created, the
 // staging dir is removed before returning.
 func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID string, req ImportFromRegistryRequest, userID uuid.UUID) (*models.Workspace, error) {
+	regID, err := uuid.Parse(registryID)
+	if err != nil {
+		return nil, &ValidationError{Message: "Invalid registry ID"}
+	}
+	if err := ensureRegistryAccess(s.db, s.rbac, s.isLocal, userID, regID, "read"); err != nil {
+		return nil, err
+	}
+
 	ep, err := s.loadRegistryEndpoint(registryID)
 	if err != nil {
 		return nil, err

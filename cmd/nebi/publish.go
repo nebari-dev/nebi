@@ -84,18 +84,21 @@ func runPublishServer(args []string) error {
 		return err
 	}
 
-	defaults, err := client.GetPublishDefaults(ctx, ws.ID)
-	if err != nil {
-		return fmt.Errorf("getting publish defaults: %w", err)
-	}
-
-	registryID := defaults.RegistryID
+	var registryID string
 	if publishRegistry != "" {
-		var err error
 		registryID, err = resolveRegistryID(client, ctx, publishRegistry)
 		if err != nil {
 			return err
 		}
+	}
+
+	defaults, err := client.GetPublishDefaults(ctx, ws.ID, registryID)
+	if err != nil {
+		return fmt.Errorf("getting publish defaults: %w", err)
+	}
+
+	if registryID == "" {
+		registryID = defaults.RegistryID
 	}
 
 	repo := defaults.Repository

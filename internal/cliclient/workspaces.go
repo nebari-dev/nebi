@@ -3,6 +3,7 @@ package cliclient
 import (
 	"context"
 	"fmt"
+	"net/url"
 )
 
 // ListWorkspaces returns all workspaces.
@@ -62,9 +63,13 @@ func (c *Client) GetWorkspacePublications(ctx context.Context, wsID string) ([]P
 }
 
 // GetPublishDefaults returns suggested defaults for publishing a workspace.
-func (c *Client) GetPublishDefaults(ctx context.Context, wsID string) (*PublishDefaults, error) {
+func (c *Client) GetPublishDefaults(ctx context.Context, wsID string, registryID ...string) (*PublishDefaults, error) {
 	var defaults PublishDefaults
-	_, err := c.Get(ctx, fmt.Sprintf("/workspaces/%s/publish-defaults", wsID), &defaults)
+	path := fmt.Sprintf("/workspaces/%s/publish-defaults", wsID)
+	if len(registryID) > 0 && registryID[0] != "" {
+		path += "?registry_id=" + url.QueryEscape(registryID[0])
+	}
+	_, err := c.Get(ctx, path, &defaults)
 	if err != nil {
 		return nil, err
 	}

@@ -109,7 +109,8 @@ describe('brandingConfig', () => {
         branding: {
           title: 'Unsafe assets',
           logoUrl: 'javascript:alert(1)',
-          faviconUrl: 'data:image/svg+xml;base64,PHN2Zy8+',
+          faviconUrl:
+            'data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==',
         },
       }),
     });
@@ -124,6 +125,57 @@ describe('brandingConfig', () => {
     expect(document.title).toBe('Unsafe assets');
     const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
     expect(favicon?.getAttribute('href')).toBe('/favicon.ico');
+  });
+
+  it('ignores non-base64 data image URIs and protocol-relative asset URLs', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        branding: {
+          // Non-base64 data image URI must be rejected.
+          logoUrl: 'data:image/svg+xml,<svg></svg>',
+          // Protocol-relative URL must be rejected.
+          faviconUrl: '//evil.example.com/favicon.ico',
+        },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import(
+      './brandingConfig'
+    );
+    await loadBrandingConfig();
+
+    expect(getBrandingLogoUrl()).toBe('/nebi-logo.svg');
+    const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    expect(favicon?.getAttribute('href')).toBe('/favicon.ico');
+  });
+
+  it('accepts base64-encoded data image asset URLs', async () => {
+    const logoDataUri = 'data:image/png;base64,iVBORw0KGgo=';
+    const faviconDataUri = 'data:image/svg+xml;base64,PHN2Zy8+';
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        branding: {
+          title: 'Inline assets',
+          logoUrl: logoDataUri,
+          faviconUrl: faviconDataUri,
+        },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import(
+      './brandingConfig'
+    );
+    const config = await loadBrandingConfig();
+
+    expect(config.branding?.logoUrl).toBe(logoDataUri);
+    expect(config.branding?.faviconUrl).toBe(faviconDataUri);
+    expect(getBrandingLogoUrl()).toBe(logoDataUri);
+    const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    expect(favicon?.getAttribute('href')).toBe(faviconDataUri);
   });
 
   it('ignores route-relative asset URLs to avoid path-dependent resolution', async () => {

@@ -1328,104 +1328,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/cli-login": {
-            "get": {
-                "description": "Handles browser-based CLI login using a device code flow.\nIf behind an OIDC proxy, auto-completes the code. Otherwise shows a login form.",
-                "produces": [
-                    "text/html"
-                ],
-                "tags": [
-                    "auth"
-                ],
-                "summary": "Browser-based login for CLI clients",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Device code from CLI",
-                        "name": "code",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "HTML page",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/auth/cli-login/code": {
-            "post": {
-                "description": "Generates a short-lived device code for browser-based CLI authentication.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "auth"
-                ],
-                "summary": "Request a device code for CLI login",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/auth/cli-login/poll": {
-            "get": {
-                "description": "Polls the status of a device code. Returns the token when authentication is complete.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "auth"
-                ],
-                "summary": "Poll for CLI login completion",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Device code",
-                        "name": "code",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/auth/login": {
             "post": {
                 "description": "Authenticate user and return JWT token",
@@ -2077,6 +1979,69 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/service.CollaboratorResult"
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "/workspaces/{id}/install": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workspaces"
+                ],
+                "summary": "Install the workspace environment from its lockfile (local mode)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/models.Job"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
                 }
@@ -2934,7 +2899,7 @@ const docTemplate = `{
                 "tags": [
                     "workspaces"
                 ],
-                "summary": "Solve and install environment from current pixi.toml",
+                "summary": "Solve the environment (refresh pixi.lock) from current pixi.toml",
                 "parameters": [
                     {
                         "type": "string",
@@ -3009,6 +2974,69 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/handlers.WorkspaceTagResponse"
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "/workspaces/{id}/uninstall": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workspaces"
+                ],
+                "summary": "Remove the workspace's installed environment (local mode)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/models.Job"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     }
                 }
@@ -3277,9 +3305,6 @@ const docTemplate = `{
         },
         "handlers.CreateWorkspaceRequest": {
             "type": "object",
-            "required": [
-                "name"
-            ],
             "properties": {
                 "name": {
                     "type": "string"
@@ -3739,7 +3764,22 @@ const docTemplate = `{
                 "install",
                 "remove",
                 "update",
-                "rollback"
+                "rollback",
+                "env_install",
+                "env_uninstall"
+            ],
+            "x-enum-comments": {
+                "JobTypeInstall": "add packages to the manifest"
+            },
+            "x-enum-descriptions": [
+                "",
+                "",
+                "add packages to the manifest",
+                "",
+                "",
+                "",
+                "",
+                ""
             ],
             "x-enum-varnames": [
                 "JobTypeCreate",
@@ -3747,7 +3787,9 @@ const docTemplate = `{
                 "JobTypeInstall",
                 "JobTypeRemove",
                 "JobTypeUpdate",
-                "JobTypeRollback"
+                "JobTypeRollback",
+                "JobTypeEnvInstall",
+                "JobTypeEnvUninstall"
             ]
         },
         "models.Package": {

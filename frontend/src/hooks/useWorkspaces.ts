@@ -41,6 +41,30 @@ export const useDeleteWorkspace = () => {
   });
 };
 
+export const useInstallWorkspace = (id: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => workspacesApi.install(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
+};
+
+export const useUninstallWorkspace = (id: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => workspacesApi.uninstall(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
+};
+
 export const useWorkspaceTags = (id: string) => {
   return useQuery({
     queryKey: ['workspaces', id, 'tags'],

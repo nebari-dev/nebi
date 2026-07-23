@@ -50,6 +50,8 @@ const (
 	ActionInstallPackage    = "install_package"
 	ActionRemovePackage     = "remove_package"
 	ActionSolveWorkspace    = "solve_workspace"
+	ActionInstallEnv        = "install_environment"
+	ActionUninstallEnv      = "uninstall_environment"
 	ActionPublishWorkspace  = "publish_workspace"
 	ActionImportWorkspace   = "import_workspace"
 	ActionPush              = "push"

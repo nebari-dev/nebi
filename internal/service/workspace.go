@@ -79,6 +79,9 @@ func (s *WorkspaceService) List(userID uuid.UUID) ([]WorkspaceResponse, error) {
 	result := make([]WorkspaceResponse, len(workspaces))
 	for i, ws := range workspaces {
 		result[i] = NewWorkspaceResponse(ws)
+		if s.isLocal {
+			result[i].InstallStatus = s.installStatusFor(&workspaces[i])
+		}
 	}
 	return result, nil
 }
@@ -93,6 +96,9 @@ func (s *WorkspaceService) Get(id string) (*WorkspaceResponse, error) {
 		return nil, err
 	}
 	resp := NewWorkspaceResponse(ws)
+	if s.isLocal {
+		resp.InstallStatus = s.installStatusFor(&ws)
+	}
 	return &resp, nil
 }
 

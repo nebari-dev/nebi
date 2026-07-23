@@ -87,20 +87,7 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 	envPath := e.GetWorkspacePath(ws)
 	fmt.Fprintf(logWriter, "Creating environment at: %s\n", envPath)
 
-	pmType := ws.PackageManager
-	if pmType == "" {
-		pmType = e.config.PackageManager.DefaultType
-	}
-
-	var pm pkgmgr.PackageManager
-	var err error
-	if pmType == "pixi" && e.config.PackageManager.PixiPath != "" {
-		pm, err = pkgmgr.NewWithPath(pmType, e.config.PackageManager.PixiPath)
-	} else if pmType == "uv" && e.config.PackageManager.UvPath != "" {
-		pm, err = pkgmgr.NewWithPath(pmType, e.config.PackageManager.UvPath)
-	} else {
-		pm, err = pkgmgr.New(pmType)
-	}
+	pm, err := e.packageManagerFor(ws)
 	if err != nil {
 		return fmt.Errorf("failed to create package manager: %w", err)
 	}
@@ -123,7 +110,7 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 		if err := seedWorkspaceFromDir(opts.SeedDir, envPath); err != nil {
 			return fmt.Errorf("seed workspace: %w", err)
 		}
-		if err := runPixiInstall(ctx, pm, envPath, logWriter); err != nil {
+		if err := runPixiLock(ctx, pm, envPath, logWriter); err != nil {
 			return err
 		}
 
@@ -136,7 +123,7 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 		if err := os.WriteFile(pixiTomlPath, []byte(opts.PixiToml), 0o644); err != nil {
 			return fmt.Errorf("failed to write pixi.toml: %w", err)
 		}
-		if err := runPixiInstall(ctx, pm, envPath, logWriter); err != nil {
+		if err := runPixiLock(ctx, pm, envPath, logWriter); err != nil {
 			return err
 		}
 
@@ -156,22 +143,39 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 	return nil
 }
 
-// runPixiInstall runs `pixi install -v` in envPath. Extracted so the
-// pixi.toml-only and seed-dir branches share the install step.
-func runPixiInstall(ctx context.Context, pm pkgmgr.PackageManager, envPath string, logWriter io.Writer) error {
+// packageManagerFor resolves the package manager for a workspace, honoring
+// the configured default type and explicit binary paths.
+func (e *LocalExecutor) packageManagerFor(ws *models.Workspace) (pkgmgr.PackageManager, error) {
+	pmType := ws.PackageManager
+	if pmType == "" {
+		pmType = e.config.PackageManager.DefaultType
+	}
+	if pmType == "pixi" && e.config.PackageManager.PixiPath != "" {
+		return pkgmgr.NewWithPath(pmType, e.config.PackageManager.PixiPath)
+	}
+	if pmType == "uv" && e.config.PackageManager.UvPath != "" {
+		return pkgmgr.NewWithPath(pmType, e.config.PackageManager.UvPath)
+	}
+	return pkgmgr.New(pmType)
+}
+
+// runPixiLock runs `pixi lock` in envPath. It resolves the dependency
+// graph and writes pixi.lock without downloading or extracting packages;
+// installing is a separate, explicit step (see InstallEnvironment).
+func runPixiLock(ctx context.Context, pm pkgmgr.PackageManager, envPath string, logWriter io.Writer) error {
 	pixiBinary := "pixi"
 	if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
 		pixiBinary = pixiMgr.BinaryPath()
 	}
-	installCmd := exec.CommandContext(ctx, pixiBinary, "install", "-v")
-	installCmd.Dir = envPath
-	installCmd.Stdout = logWriter
-	installCmd.Stderr = logWriter
-	fmt.Fprintf(logWriter, "Running: %s install -v\n", pixiBinary)
-	if err := installCmd.Run(); err != nil {
-		return fmt.Errorf("failed to install pixi environment: %w", err)
+	lockCmd := exec.CommandContext(ctx, pixiBinary, "lock")
+	lockCmd.Dir = envPath
+	lockCmd.Stdout = logWriter
+	lockCmd.Stderr = logWriter
+	fmt.Fprintf(logWriter, "Running: %s lock\n", pixiBinary)
+	if err := lockCmd.Run(); err != nil {
+		return fmt.Errorf("failed to lock pixi environment: %w", err)
 	}
-	fmt.Fprintf(logWriter, "Pixi environment installed successfully\n")
+	fmt.Fprintf(logWriter, "Lockfile resolved successfully\n")
 	return nil
 }
 
@@ -230,13 +234,7 @@ func (e *LocalExecutor) InstallPackages(ctx context.Context, ws *models.Workspac
 
 	fmt.Fprintf(logWriter, "Installing packages: %v\n", packages)
 
-	// Get package manager
-	pmType := ws.PackageManager
-	if pmType == "" {
-		pmType = e.config.PackageManager.DefaultType
-	}
-
-	pm, err := pkgmgr.New(pmType)
+	pm, err := e.packageManagerFor(ws)
 	if err != nil {
 		return fmt.Errorf("failed to create package manager: %w", err)
 	}
@@ -245,6 +243,7 @@ func (e *LocalExecutor) InstallPackages(ctx context.Context, ws *models.Workspac
 		EnvPath:   envPath,
 		Packages:  packages,
 		LogWriter: logWriter,
+		NoInstall: true,
 	}
 
 	if err := pm.Install(ctx, opts); err != nil {
@@ -261,13 +260,7 @@ func (e *LocalExecutor) RemovePackages(ctx context.Context, ws *models.Workspace
 
 	fmt.Fprintf(logWriter, "Removing packages: %v\n", packages)
 
-	// Get package manager
-	pmType := ws.PackageManager
-	if pmType == "" {
-		pmType = e.config.PackageManager.DefaultType
-	}
-
-	pm, err := pkgmgr.New(pmType)
+	pm, err := e.packageManagerFor(ws)
 	if err != nil {
 		return fmt.Errorf("failed to create package manager: %w", err)
 	}
@@ -276,6 +269,7 @@ func (e *LocalExecutor) RemovePackages(ctx context.Context, ws *models.Workspace
 		EnvPath:   envPath,
 		Packages:  packages,
 		LogWriter: logWriter,
+		NoInstall: true,
 	}
 
 	if err := pm.Remove(ctx, opts); err != nil {
@@ -286,40 +280,69 @@ func (e *LocalExecutor) RemovePackages(ctx context.Context, ws *models.Workspace
 	return nil
 }
 
-// SolveEnvironment runs pixi install to solve and install the current pixi.toml
+// SolveEnvironment runs pixi lock to resolve the current pixi.toml into
+// pixi.lock. It never installs packages.
 func (e *LocalExecutor) SolveEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error {
 	envPath := e.GetWorkspacePath(ws)
 
-	fmt.Fprintf(logWriter, "Running pixi install to solve environment...\n")
+	fmt.Fprintf(logWriter, "Running pixi lock to solve environment...\n")
 
-	// Get pixi binary path
-	pmType := ws.PackageManager
-	if pmType == "" {
-		pmType = e.config.PackageManager.DefaultType
+	pm, err := e.packageManagerFor(ws)
+	if err != nil {
+		return fmt.Errorf("failed to create package manager: %w", err)
+	}
+
+	if err := runPixiLock(ctx, pm, envPath, logWriter); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(logWriter, "Environment solved successfully\n")
+	return nil
+}
+
+// InstallEnvironment runs `pixi install -v` in the workspace directory,
+// materializing .pixi/envs/ from the already-resolved pixi.lock.
+func (e *LocalExecutor) InstallEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error {
+	envPath := e.GetWorkspacePath(ws)
+
+	pm, err := e.packageManagerFor(ws)
+	if err != nil {
+		return fmt.Errorf("failed to create package manager: %w", err)
 	}
 
 	pixiBinary := "pixi"
-	if pmType == "pixi" && e.config.PackageManager.PixiPath != "" {
-		pm, err := pkgmgr.NewWithPath(pmType, e.config.PackageManager.PixiPath)
-		if err == nil {
-			if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
-				pixiBinary = pixiMgr.BinaryPath()
-			}
-		}
+	if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
+		pixiBinary = pixiMgr.BinaryPath()
 	}
-
 	cmd := exec.CommandContext(ctx, pixiBinary, "install", "-v")
 	cmd.Dir = envPath
 	cmd.Stdout = logWriter
 	cmd.Stderr = logWriter
-
-	fmt.Fprintf(logWriter, "Running: pixi install -v\n")
+	fmt.Fprintf(logWriter, "Running: %s install -v\n", pixiBinary)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("pixi install failed: %w", err)
 	}
-
-	fmt.Fprintf(logWriter, "Environment solved and installed successfully\n")
+	fmt.Fprintf(logWriter, "Environment installed successfully\n")
 	return nil
+}
+
+// UninstallEnvironment removes the installed environment (.pixi/envs)
+// from the workspace directory. Manifest and lockfile are untouched.
+func (e *LocalExecutor) UninstallEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error {
+	envsDir := filepath.Join(e.GetWorkspacePath(ws), ".pixi", "envs")
+	fmt.Fprintf(logWriter, "Removing installed environment at: %s\n", envsDir)
+	if err := os.RemoveAll(envsDir); err != nil {
+		return fmt.Errorf("failed to remove installed environment: %w", err)
+	}
+	fmt.Fprintf(logWriter, "Environment uninstalled successfully\n")
+	return nil
+}
+
+// IsEnvInstalled reports whether the workspace has an installed
+// environment on disk (.pixi/envs exists).
+func (e *LocalExecutor) IsEnvInstalled(ws *models.Workspace) bool {
+	info, err := os.Stat(filepath.Join(e.GetWorkspacePath(ws), ".pixi", "envs"))
+	return err == nil && info.IsDir()
 }
 
 // DeleteWorkspace removes a workspace from the filesystem.

@@ -173,5 +173,33 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid mode %q: must be \"local\" or \"team\"", cfg.Mode)
 	}
 
+	// Team mode exposes JWT-authenticated network endpoints, so its signing
+	// secret must not be empty, the shipped default, or too short to resist
+	// brute force. Local mode never reaches this auth path (it uses
+	// LocalAuthenticator, see router.go), so it's exempt.
+	if !cfg.IsLocalMode() {
+		if err := validateTeamModeJWTSecret(cfg.Auth.JWTSecret); err != nil {
+			return nil, err
+		}
+	}
+
 	return &cfg, nil
+}
+
+const (
+	defaultJWTSecret   = "change-me-in-production"
+	minJWTSecretLength = 32
+)
+
+func validateTeamModeJWTSecret(secret string) error {
+	if secret == "" {
+		return fmt.Errorf("auth.jwt_secret (NEBI_AUTH_JWT_SECRET) must be set in team mode")
+	}
+	if secret == defaultJWTSecret {
+		return fmt.Errorf("auth.jwt_secret (NEBI_AUTH_JWT_SECRET) must not be the default value %q in team mode", defaultJWTSecret)
+	}
+	if len(secret) < minJWTSecretLength {
+		return fmt.Errorf("auth.jwt_secret (NEBI_AUTH_JWT_SECRET) must be at least %d characters in team mode", minJWTSecretLength)
+	}
+	return nil
 }

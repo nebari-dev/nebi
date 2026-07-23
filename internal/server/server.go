@@ -162,7 +162,7 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("failed to derive encryption key: %w", err)
 	}
 	workerSvc := service.New(database, jobQueue, exec, appCfg.IsLocalMode(), workerEncKey, rbac.NewDefaultProvider())
-	workerJobSvc := service.NewJobService(database)
+	workerJobSvc := service.NewJobService(database, appCfg.IsLocalMode())
 
 	// Initialize and start worker if needed
 	if runWorker {

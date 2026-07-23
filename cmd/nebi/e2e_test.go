@@ -82,7 +82,7 @@ func TestMain(m *testing.M) {
 	// Common env vars
 	os.Setenv("NEBI_DATABASE_DRIVER", "sqlite")
 	os.Setenv("NEBI_QUEUE_TYPE", "memory")
-	os.Setenv("NEBI_AUTH_JWT_SECRET", "e2e-test-secret")
+	os.Setenv("NEBI_AUTH_JWT_SECRET", "e2e-test-secret-that-is-at-least-32-chars-long")
 	os.Setenv("NEBI_SERVER_MODE", "test")
 	os.Setenv("NEBI_LOG_LEVEL", "error")
 	os.Setenv("NEBI_DATABASE_LOG_LEVEL", "silent")
@@ -159,6 +159,7 @@ func resetFlags() {
 	// workspace.go
 	wsListRemote = false
 	wsListJSON = false
+	wsListInstalled = false
 	wsTagsJSON = false
 	wsRemoveRemote = false
 	// login.go

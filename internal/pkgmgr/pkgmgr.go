@@ -43,6 +43,7 @@ type InstallOptions struct {
 	EnvPath   string    // Path to environment
 	Packages  []string  // Package names (e.g., "numpy==1.24.0")
 	LogWriter io.Writer // Optional writer for streaming command output
+	NoInstall bool      // Only update manifest and lockfile, don't install the environment
 }
 
 // RemoveOptions contains parameters for removing packages
@@ -50,6 +51,7 @@ type RemoveOptions struct {
 	EnvPath   string    // Path to environment
 	Packages  []string  // Package names to remove
 	LogWriter io.Writer // Optional writer for streaming command output
+	NoInstall bool      // Only update manifest and lockfile, don't modify the environment
 }
 
 // ListOptions contains parameters for listing packages

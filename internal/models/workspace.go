@@ -18,6 +18,19 @@ const (
 	WsStatusDeleting WorkspaceStatus = "deleting"
 )
 
+// InstallStatus describes whether a workspace's environment is
+// materialized on disk (.pixi/envs). It is derived from disk state and
+// env job state, never stored in the database. Local mode only.
+type InstallStatus string
+
+const (
+	InstallStatusNotInstalled InstallStatus = "not_installed"
+	InstallStatusInstalling   InstallStatus = "installing"
+	InstallStatusInstalled    InstallStatus = "installed"
+	InstallStatusUninstalling InstallStatus = "uninstalling"
+	InstallStatusFailed       InstallStatus = "install_failed"
+)
+
 // Workspace represents a package manager workspace
 type Workspace struct {
 	ID             uuid.UUID       `gorm:"type:text;primary_key" json:"id"`
@@ -28,7 +41,7 @@ type Workspace struct {
 	PackageManager string          `gorm:"not null" json:"package_manager"` // "pixi" or "uv"
 	Source         string          `gorm:"default:'managed'" json:"source"` // "managed", "local"
 	Path           string          `json:"path,omitempty"`                  // filesystem path (local-mode)
-	SizeBytes      int64           `gorm:"default:0" json:"size_bytes"`
+	SizeBytes      int64           `gorm:"default:0" json:"size_bytes,omitempty"`
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`
 	DeletedAt      gorm.DeletedAt  `gorm:"index" json:"-"`

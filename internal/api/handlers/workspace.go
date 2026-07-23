@@ -155,7 +155,7 @@ func (h *WorkspaceHandler) SavePixiToml(c *gin.Context) {
 }
 
 // SolveWorkspace godoc
-// @Summary Solve and install environment from current pixi.toml
+// @Summary Solve the environment (refresh pixi.lock) from current pixi.toml
 // @Tags workspaces
 // @Security BearerAuth
 // @Produce json
@@ -168,6 +168,50 @@ func (h *WorkspaceHandler) SavePixiToml(c *gin.Context) {
 // @Router /workspaces/{id}/solve [post]
 func (h *WorkspaceHandler) SolveWorkspace(c *gin.Context) {
 	job, err := h.svc.SolveWorkspace(c.Request.Context(), c.Param("id"), getUserID(c))
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, job)
+}
+
+// InstallWorkspace godoc
+// @Summary Install the workspace environment from its lockfile (local mode)
+// @Tags workspaces
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "Workspace ID"
+// @Success 202 {object} models.Job
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /workspaces/{id}/install [post]
+func (h *WorkspaceHandler) InstallWorkspace(c *gin.Context) {
+	job, err := h.svc.InstallWorkspaceEnv(c.Request.Context(), c.Param("id"), getUserID(c))
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, job)
+}
+
+// UninstallWorkspace godoc
+// @Summary Remove the workspace's installed environment (local mode)
+// @Tags workspaces
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "Workspace ID"
+// @Success 202 {object} models.Job
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /workspaces/{id}/uninstall [post]
+func (h *WorkspaceHandler) UninstallWorkspace(c *gin.Context) {
+	job, err := h.svc.UninstallWorkspaceEnv(c.Request.Context(), c.Param("id"), getUserID(c))
 	if err != nil {
 		handleServiceError(c, err)
 		return

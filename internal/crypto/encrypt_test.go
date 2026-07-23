@@ -136,3 +136,37 @@ func TestUnsupportedVersion(t *testing.T) {
 		t.Fatal("expected error for unsupported version")
 	}
 }
+
+func TestDeriveSigningKeyDiffersFromEncryptionKey(t *testing.T) {
+	encKey, err := DeriveKey(testSecret)
+	if err != nil {
+		t.Fatalf("DeriveKey: %v", err)
+	}
+
+	signKey, err := DeriveSigningKey(testSecret)
+	if err != nil {
+		t.Fatalf("DeriveSigningKey: %v", err)
+	}
+
+	if len(signKey) != 32 {
+		t.Fatalf("expected 32-byte key, got %d", len(signKey))
+	}
+	if string(signKey) == string(encKey) {
+		t.Fatal("signing key must differ from encryption key derived from the same secret")
+	}
+}
+
+func TestDeriveSigningKeyDeterministic(t *testing.T) {
+	key1, _ := DeriveSigningKey(testSecret)
+	key2, _ := DeriveSigningKey(testSecret)
+	if string(key1) != string(key2) {
+		t.Fatal("DeriveSigningKey not deterministic")
+	}
+}
+
+func TestDeriveSigningKeyEmptySecret(t *testing.T) {
+	_, err := DeriveSigningKey("")
+	if err == nil {
+		t.Fatal("expected error for empty secret")
+	}
+}

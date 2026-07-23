@@ -11,23 +11,29 @@ import (
 
 // JobService contains business logic for job operations.
 type JobService struct {
-	db *gorm.DB
+	db      *gorm.DB
+	isLocal bool
 }
 
-// NewJobService creates a new JobService.
-func NewJobService(db *gorm.DB) *JobService {
-	return &JobService{db: db}
+// NewJobService creates a new JobService. In local mode job visibility is
+// not restricted by workspace ownership: the whole machine belongs to one
+// person and every request runs as the synthetic local-user, so ownership
+// filtering would hide jobs for workspaces created under a different mode.
+func NewJobService(db *gorm.DB, isLocal bool) *JobService {
+	return &JobService{db: db, isLocal: isLocal}
 }
 
-// ListJobs returns all jobs for workspaces owned by the given user.
+// ListJobs returns jobs for workspaces owned by the given user, or all
+// jobs in local mode.
 func (s *JobService) ListJobs(userID uuid.UUID) ([]models.Job, error) {
 	var jobs []models.Job
-	err := s.db.
+	query := s.db.
 		Select("jobs.*").
-		Joins("JOIN workspaces ON workspaces.id = jobs.workspace_id").
-		Where("workspaces.owner_id = ?", userID).
-		Order("jobs.created_at DESC").
-		Find(&jobs).Error
+		Joins("JOIN workspaces ON workspaces.id = jobs.workspace_id")
+	if !s.isLocal {
+		query = query.Where("workspaces.owner_id = ?", userID)
+	}
+	err := query.Order("jobs.created_at DESC").Find(&jobs).Error
 
 	if err != nil {
 		return nil, fmt.Errorf("fetch jobs: %w", err)
@@ -35,14 +41,18 @@ func (s *JobService) ListJobs(userID uuid.UUID) ([]models.Job, error) {
 	return jobs, nil
 }
 
-// GetJob returns a single job by ID, verifying the user owns the workspace.
+// GetJob returns a single job by ID. Outside local mode it verifies the
+// user owns the workspace.
 func (s *JobService) GetJob(jobID string, userID uuid.UUID) (*models.Job, error) {
 	var job models.Job
-	err := s.db.
+	query := s.db.
 		Select("jobs.*").
 		Joins("JOIN workspaces ON workspaces.id = jobs.workspace_id").
-		Where("jobs.id = ? AND workspaces.owner_id = ?", jobID, userID).
-		First(&job).Error
+		Where("jobs.id = ?", jobID)
+	if !s.isLocal {
+		query = query.Where("workspaces.owner_id = ?", userID)
+	}
+	err := query.First(&job).Error
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -53,15 +63,19 @@ func (s *JobService) GetJob(jobID string, userID uuid.UUID) (*models.Job, error)
 	return &job, nil
 }
 
-// GetJobForStreaming returns a job by ID with ownership check, for SSE streaming.
-// Returns the job regardless of status (caller decides what to do with completed jobs).
+// GetJobForStreaming returns a job by ID for SSE streaming. Outside local
+// mode it verifies the user owns the workspace. Returns the job regardless
+// of status (caller decides what to do with completed jobs).
 func (s *JobService) GetJobForStreaming(jobID uuid.UUID, userID uuid.UUID) (*models.Job, error) {
 	var job models.Job
-	err := s.db.
+	query := s.db.
 		Select("jobs.*").
 		Joins("JOIN workspaces ON workspaces.id = jobs.workspace_id").
-		Where("jobs.id = ? AND workspaces.owner_id = ?", jobID, userID).
-		First(&job).Error
+		Where("jobs.id = ?", jobID)
+	if !s.isLocal {
+		query = query.Where("workspaces.owner_id = ?", userID)
+	}
+	err := query.First(&job).Error
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -108,6 +122,24 @@ func (s *JobService) MarkPanicked(job *models.Job, panicMsg string) {
 	job.Status = models.JobStatusFailed
 	job.Error = panicMsg
 	s.db.Save(job)
+}
+
+// RecordFailedEnvInstall writes an already-failed env-install job for a
+// workspace whose environment was reinstalled outside the explicit
+// install flow (e.g. the worker's auto-reinstall after an update or
+// rollback). It exists so that failure surfaces through the same
+// install_status derivation an explicit `nebi workspace install` failure
+// would, without ever failing the job that triggered the reinstall.
+func (s *JobService) RecordFailedEnvInstall(workspaceID uuid.UUID, errMsg string) error {
+	now := time.Now()
+	job := &models.Job{
+		WorkspaceID: workspaceID,
+		Type:        models.JobTypeEnvInstall,
+		Status:      models.JobStatusFailed,
+		Error:       errMsg,
+		CompletedAt: &now,
+	}
+	return s.db.Create(job).Error
 }
 
 // FlushLogs persists the current log content for a job.

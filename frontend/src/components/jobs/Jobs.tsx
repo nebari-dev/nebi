@@ -16,7 +16,7 @@ import { useRemoteJobs, useRemoteServer } from '@/hooks/useRemote';
 import { capitalize } from '@/lib/utils';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
-import type { Job } from '@/types';
+import type { Job, JobType } from '@/types';
 
 const statusColors = {
   pending: 'bg-yellow-100 text-yellow-800 border-yellow-300',
@@ -25,12 +25,15 @@ const statusColors = {
   failed: 'bg-red-100 text-red-800 border-red-300',
 };
 
-const typeColors = {
+const typeColors: Record<JobType, string> = {
   create: 'bg-indigo-100 text-indigo-800 border-indigo-300',
   delete: 'bg-red-100 text-red-800 border-red-300',
   install: 'bg-blue-100 text-blue-800 border-blue-300',
   remove: 'bg-orange-100 text-orange-800 border-orange-300',
   update: 'bg-purple-100 text-purple-800 border-purple-300',
+  rollback: 'bg-purple-100 text-purple-800 border-purple-300',
+  env_install: 'bg-blue-100 text-blue-800 border-blue-300',
+  env_uninstall: 'bg-orange-100 text-orange-800 border-orange-300',
 };
 
 const CopyButton = ({ text }: { text: string }) => {

@@ -12,7 +12,7 @@ import (
 func jobTestSetup(t *testing.T) (*JobService, *WorkspaceService, *gorm.DB) {
 	t.Helper()
 	wsSvc, db := testSetup(t, false)
-	return NewJobService(db), wsSvc, db
+	return NewJobService(db, false), wsSvc, db
 }
 
 // --- ListJobs ---
@@ -139,5 +139,75 @@ func TestJobGetJobForStreaming_WrongOwner(t *testing.T) {
 	_, err := svc.GetJobForStreaming(created.ID, bob)
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound for wrong owner, got %v", err)
+	}
+}
+
+// --- Local mode: jobs are visible regardless of workspace owner, matching
+// how workspace listing behaves in local mode (single-user machine, all
+// requests run as the synthetic local-user).
+
+func localJobTestSetup(t *testing.T) (*JobService, *WorkspaceService, *gorm.DB) {
+	t.Helper()
+	wsSvc, db := testSetup(t, true)
+	return NewJobService(db, true), wsSvc, db
+}
+
+func TestJobListJobs_LocalModeReturnsAllOwners(t *testing.T) {
+	svc, wsSvc, db := localJobTestSetup(t)
+	admin := createTestUser(t, db, "admin")
+	localUser := createTestUser(t, db, "local-user")
+
+	ws := createReadyWorkspace(t, wsSvc, db, "admin-ws", admin)
+	wsSvc.InstallPackages(context.Background(), ws.ID.String(), []string{"numpy"}, admin)
+
+	jobs, err := svc.ListJobs(localUser)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(jobs) != 2 {
+		t.Errorf("expected 2 jobs visible in local mode regardless of owner, got %d", len(jobs))
+	}
+}
+
+func TestJobGetJob_LocalModeIgnoresOwner(t *testing.T) {
+	svc, wsSvc, db := localJobTestSetup(t)
+	admin := createTestUser(t, db, "admin")
+	localUser := createTestUser(t, db, "local-user")
+
+	ws := createReadyWorkspace(t, wsSvc, db, "admin-ws2", admin)
+	created, err := wsSvc.InstallPackages(context.Background(), ws.ID.String(), []string{"numpy"}, admin)
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	if _, err := svc.GetJob(created.ID.String(), localUser); err != nil {
+		t.Errorf("expected job visible in local mode, got %v", err)
+	}
+	if _, err := svc.GetJobForStreaming(created.ID, localUser); err != nil {
+		t.Errorf("expected job streamable in local mode, got %v", err)
+	}
+}
+
+// --- RecordFailedEnvInstall ---
+
+// TestJobRecordFailedEnvInstall_SurfacesAsInstallFailed proves a reinstall
+// failure recorded outside the normal env-install job flow (e.g. the
+// auto-reinstall the worker runs after an update or rollback) still shows
+// up as install_failed through the workspace's derived install_status.
+func TestJobRecordFailedEnvInstall_SurfacesAsInstallFailed(t *testing.T) {
+	svc, wsSvc, db := localJobTestSetup(t)
+	alice := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, wsSvc, db, "reinstall-fail", alice)
+
+	if err := svc.RecordFailedEnvInstall(ws.ID, "pixi install failed: exit status 1"); err != nil {
+		t.Fatalf("RecordFailedEnvInstall: %v", err)
+	}
+
+	resp, err := wsSvc.Get(ws.ID.String())
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if resp.InstallStatus != models.InstallStatusFailed {
+		t.Errorf("expected install_status %q, got %q", models.InstallStatusFailed, resp.InstallStatus)
 	}
 }

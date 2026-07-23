@@ -21,9 +21,10 @@ func (s *WorkspaceService) UninstallWorkspaceEnv(ctx context.Context, wsID strin
 }
 
 // installStatusFor derives a workspace's install status. An active env
-// job wins (installing/uninstalling); otherwise the on-disk environment
-// decides (installed); otherwise a failed last install surfaces as
-// install_failed; the default is not_installed.
+// job wins (installing/uninstalling); otherwise a failed last install
+// wins over stale on-disk state (pixi install can leave a partial
+// .pixi/envs behind before failing); otherwise the on-disk environment
+// decides (installed); the default is not_installed.
 func (s *WorkspaceService) installStatusFor(ws *models.Workspace) models.InstallStatus {
 	var latest models.Job
 	jobErr := s.db.
@@ -38,11 +39,11 @@ func (s *WorkspaceService) installStatusFor(ws *models.Workspace) models.Install
 		}
 		return models.InstallStatusUninstalling
 	}
-	if s.executor.IsEnvInstalled(ws) {
-		return models.InstallStatusInstalled
-	}
 	if jobErr == nil && latest.Type == models.JobTypeEnvInstall && latest.Status == models.JobStatusFailed {
 		return models.InstallStatusFailed
+	}
+	if s.executor.IsEnvInstalled(ws) {
+		return models.InstallStatusInstalled
 	}
 	return models.InstallStatusNotInstalled
 }

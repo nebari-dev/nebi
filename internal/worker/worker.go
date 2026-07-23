@@ -432,13 +432,23 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 // installed environment before the operation. This keeps installed
 // environments in sync with the latest lockfile without ever implicitly
 // installing a workspace the user never installed.
+//
+// By the time this runs, the manifest, lockfile, and version snapshot for
+// the triggering operation are already committed, so a reinstall failure
+// here must not fail the whole job: that would hide a change that
+// actually succeeded. Instead it's logged and recorded as a failed env
+// install, which surfaces as install_status = install_failed.
 func (w *Worker) maybeReinstallEnv(ctx context.Context, ws *models.Workspace, wasInstalled bool, logWriter io.Writer) error {
 	if !w.svc.IsLocal() || !wasInstalled {
 		return nil
 	}
 	fmt.Fprintf(logWriter, "Workspace was installed; reinstalling environment from updated lockfile...\n")
 	if err := w.executor.InstallEnvironment(ctx, ws, logWriter); err != nil {
-		return err
+		fmt.Fprintf(logWriter, "Reinstall failed, environment may be out of sync: %v\n", err)
+		if recordErr := w.jobSvc.RecordFailedEnvInstall(ws.ID, err.Error()); recordErr != nil {
+			w.logger.Error("failed to record failed env install", "workspace_id", ws.ID, "error", recordErr)
+		}
+		return nil
 	}
 	w.svc.UpdateWorkspaceSize(ws)
 	return nil

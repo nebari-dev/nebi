@@ -187,3 +187,27 @@ func TestJobGetJob_LocalModeIgnoresOwner(t *testing.T) {
 		t.Errorf("expected job streamable in local mode, got %v", err)
 	}
 }
+
+// --- RecordFailedEnvInstall ---
+
+// TestJobRecordFailedEnvInstall_SurfacesAsInstallFailed proves a reinstall
+// failure recorded outside the normal env-install job flow (e.g. the
+// auto-reinstall the worker runs after an update or rollback) still shows
+// up as install_failed through the workspace's derived install_status.
+func TestJobRecordFailedEnvInstall_SurfacesAsInstallFailed(t *testing.T) {
+	svc, wsSvc, db := localJobTestSetup(t)
+	alice := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, wsSvc, db, "reinstall-fail", alice)
+
+	if err := svc.RecordFailedEnvInstall(ws.ID, "pixi install failed: exit status 1"); err != nil {
+		t.Fatalf("RecordFailedEnvInstall: %v", err)
+	}
+
+	resp, err := wsSvc.Get(ws.ID.String())
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if resp.InstallStatus != models.InstallStatusFailed {
+		t.Errorf("expected install_status %q, got %q", models.InstallStatusFailed, resp.InstallStatus)
+	}
+}

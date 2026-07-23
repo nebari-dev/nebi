@@ -149,6 +149,33 @@ func TestGet_InstallStatus_FailedWhenLastInstallJobFailed(t *testing.T) {
 	}
 }
 
+// TestGet_InstallStatus_FailedWinsOverStaleDir proves a failed install job
+// is reported even when it left a partial .pixi/envs directory behind:
+// pixi install can create the dir before failing partway through, and
+// dir-existence alone must not be read as a successful install.
+func TestGet_InstallStatus_FailedWinsOverStaleDir(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "st-failed-stale-dir", userID)
+	makeEnvInstalled(t, svc, ws)
+
+	job, err := svc.InstallWorkspaceEnv(context.Background(), ws.ID.String(), userID)
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if err := db.Model(job).Update("status", models.JobStatusFailed).Error; err != nil {
+		t.Fatalf("fail job: %v", err)
+	}
+
+	resp, err := svc.Get(ws.ID.String())
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if resp.InstallStatus != models.InstallStatusFailed {
+		t.Errorf("expected install_status %q, got %q", models.InstallStatusFailed, resp.InstallStatus)
+	}
+}
+
 func TestGet_InstallStatus_OmittedInTeamMode(t *testing.T) {
 	svc, db := testSetup(t, false)
 	userID := createTestUser(t, db, "alice")

@@ -491,6 +491,34 @@ func TestExecuteJob_RollbackLocksAndAutoInstalls(t *testing.T) {
 	}
 }
 
+// TestExecuteJob_UpdateReinstallFailureDoesNotFailJob proves a reinstall
+// failure after a lockfile-changing job (the manifest, lockfile, and
+// version snapshot are already committed by this point) does not mark
+// the whole job as failed, and instead surfaces as install_status =
+// install_failed on the workspace.
+func TestExecuteJob_UpdateReinstallFailureDoesNotFailJob(t *testing.T) {
+	db, svc, jobSvc, exec := setupWorkerTest(t)
+
+	ws, job := newTestWorkspace(t, db, exec, "update-reinstall-fail", models.JobTypeUpdate, nil)
+	if err := os.MkdirAll(filepath.Join(exec.GetWorkspacePath(ws), ".pixi", "envs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	exec.installErr = errors.New("pixi install failed: exit status 1")
+
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
+		t.Fatalf("executeJob: expected reinstall failure not to fail the job, got %v", err)
+	}
+
+	resp, err := svc.Get(ws.ID.String())
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if resp.InstallStatus != models.InstallStatusFailed {
+		t.Errorf("expected install_status %q, got %q", models.InstallStatusFailed, resp.InstallStatus)
+	}
+}
+
 func setupWorkerTest(t *testing.T) (*gorm.DB, *service.WorkspaceService, *service.JobService, *fakeExecutor) {
 	t.Helper()
 	return setupWorkerTestMode(t, true)

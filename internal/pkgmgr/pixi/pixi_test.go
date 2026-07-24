@@ -5,6 +5,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/nebari-dev/nebi/internal/pkgmgr"
@@ -252,6 +255,156 @@ func TestRemove(t *testing.T) {
 			t.Errorf("Expected 'python' to be removed, but it's still in the list")
 		}
 	}
+}
+
+func TestPackageCommandsSeparateUserArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(context.Context, *PixiManager, string) error
+		want []string
+	}{
+		{
+			name: "install",
+			run: func(ctx context.Context, pm *PixiManager, envPath string) error {
+				return pm.Install(ctx, pkgmgr.InstallOptions{
+					EnvPath:  envPath,
+					Packages: []string{"--config", "python=3.11"},
+				})
+			},
+			want: []string{"add", "-v", "--", "--config", "python=3.11"},
+		},
+		{
+			name: "install no-install",
+			run: func(ctx context.Context, pm *PixiManager, envPath string) error {
+				return pm.Install(ctx, pkgmgr.InstallOptions{
+					EnvPath:   envPath,
+					Packages:  []string{"--config", "python=3.11"},
+					NoInstall: true,
+				})
+			},
+			want: []string{"add", "-v", "--no-install", "--", "--config", "python=3.11"},
+		},
+		{
+			name: "remove",
+			run: func(ctx context.Context, pm *PixiManager, envPath string) error {
+				return pm.Remove(ctx, pkgmgr.RemoveOptions{
+					EnvPath:  envPath,
+					Packages: []string{"--manifest-path", "python"},
+				})
+			},
+			want: []string{"remove", "-v", "--", "--manifest-path", "python"},
+		},
+		{
+			name: "remove no-install",
+			run: func(ctx context.Context, pm *PixiManager, envPath string) error {
+				return pm.Remove(ctx, pkgmgr.RemoveOptions{
+					EnvPath:   envPath,
+					Packages:  []string{"--manifest-path", "python"},
+					NoInstall: true,
+				})
+			},
+			want: []string{"remove", "-v", "--no-install", "--", "--manifest-path", "python"},
+		},
+		{
+			name: "update",
+			run: func(ctx context.Context, pm *PixiManager, envPath string) error {
+				return pm.Update(ctx, pkgmgr.UpdateOptions{
+					EnvPath:  envPath,
+					Packages: []string{"--frozen", "python"},
+				})
+			},
+			want: []string{"update", "--", "--frozen", "python"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pm, argsPath, envPath := newRecordingPixi(t)
+
+			if err := tt.run(context.Background(), pm, envPath); err != nil {
+				t.Fatalf("command failed: %v", err)
+			}
+
+			got := readRecordedArgs(t, argsPath)
+			if !slices.Equal(got, tt.want) {
+				t.Fatalf("recorded args = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidatePackageArgs(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr bool
+	}{
+		{name: "valid package spec", args: []string{"python=3.11"}},
+		{name: "valid option-like package", args: []string{"--config"}},
+		{name: "empty string", args: []string{""}, wantErr: true},
+		{name: "whitespace only", args: []string{" \t "}, wantErr: true},
+		{name: "nul byte", args: []string{"python\x00numpy"}, wantErr: true},
+		{name: "newline", args: []string{"python\nnumpy"}, wantErr: true},
+		{name: "carriage return", args: []string{"python\rnumpy"}, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validatePackageArgs(tt.args)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("validatePackageArgs() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func newRecordingPixi(t *testing.T) (*PixiManager, string, string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("recording pixi test uses a POSIX shell script")
+	}
+
+	tmpDir := t.TempDir()
+	pixiPath := filepath.Join(tmpDir, "pixi")
+	script := `#!/bin/sh
+for arg in "$@"; do
+  printf '%s\n' "$arg" >> "$0.args"
+done
+if [ "${1:-}" = "--version" ]; then
+  exit 0
+fi
+exit 0
+`
+	if err := os.WriteFile(pixiPath, []byte(script), 0755); err != nil {
+		t.Fatalf("write fake pixi: %v", err)
+	}
+
+	pm, err := NewWithPath(pixiPath)
+	if err != nil {
+		t.Fatalf("create PixiManager with fake pixi: %v", err)
+	}
+
+	argsPath := pixiPath + ".args"
+	if err := os.WriteFile(argsPath, nil, 0644); err != nil {
+		t.Fatalf("clear recorded args: %v", err)
+	}
+
+	return pm, argsPath, tmpDir
+}
+
+func readRecordedArgs(t *testing.T, argsPath string) []string {
+	t.Helper()
+
+	content, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatalf("read recorded args: %v", err)
+	}
+
+	args := strings.Split(strings.TrimSuffix(string(content), "\n"), "\n")
+	if len(args) == 1 && args[0] == "" {
+		return nil
+	}
+	return args
 }
 
 func TestExtractWorkspaceName(t *testing.T) {

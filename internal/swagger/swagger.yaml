@@ -1732,10 +1732,6 @@ paths:
         name: id
         required: true
         type: string
-      - description: Auth token (alternative to Bearer header for EventSource compatibility)
-        in: query
-        name: token
-        type: string
       produces:
       - text/event-stream
       responses:

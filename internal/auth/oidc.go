@@ -84,7 +84,10 @@ func NewOIDCAuthenticator(ctx context.Context, cfg OIDCConfig, db *gorm.DB, jwtS
 	})
 
 	// Create basic authenticator for JWT generation
-	basicAuth := NewBasicAuthenticator(db, jwtSecret, rbacProvider)
+	basicAuth, err := NewBasicAuthenticator(db, jwtSecret, rbacProvider)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create basic authenticator: %w", err)
+	}
 
 	return &OIDCAuthenticator{
 		provider:  provider,

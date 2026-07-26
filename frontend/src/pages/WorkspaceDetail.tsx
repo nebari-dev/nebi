@@ -37,6 +37,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserBadge } from '@/components/ui/user-badge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
+import { InstallControls } from '@/components/workspace/InstallControls';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
 import { UseLocallyButton } from '@/components/workspace/UseLocallyButton';
 import { useCollaborators } from '@/hooks/useAdmin';
@@ -44,7 +45,11 @@ import { usePackages } from '@/hooks/usePackages';
 import { usePublications, useUpdatePublication } from '@/hooks/useRegistries';
 import { useWorkspace } from '@/hooks/useWorkspaces';
 import { buildImportCommand } from '@/lib/registry';
-import { capitalize, getWorkspaceStatusColor } from '@/lib/utils';
+import {
+  capitalize,
+  getInstallStatusColor,
+  getWorkspaceStatusColor,
+} from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
@@ -84,6 +89,10 @@ export const WorkspaceDetail = () => {
   const [copiedImportId, setCopiedImportId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
   const [saveInstallJobId, setSaveInstallJobId] = useState<string | null>(null);
+  const [envJobNotice, setEnvJobNotice] = useState<{
+    id: string;
+    type: string;
+  } | null>(null);
 
   // Determine if this is a local workspace
   const isLocalWs = workspace?.source === 'local';
@@ -175,6 +184,16 @@ export const WorkspaceDetail = () => {
           <Badge className={getWorkspaceStatusColor(workspace.status)}>
             {capitalize(workspace.status)}
           </Badge>
+          {workspace.install_status && (
+            <Badge className={getInstallStatusColor(workspace.install_status)}>
+              {capitalize(workspace.install_status.replaceAll('_', ' '))}
+            </Badge>
+          )}
+          <InstallControls
+            workspaceId={wsId}
+            installStatus={workspace.install_status}
+            onStarted={(job) => setEnvJobNotice({ id: job.id, type: job.type })}
+          />
           {!isLocalWs && <UseLocallyButton workspaceName={workspace.name} />}
           <Button
             variant="outline"
@@ -211,6 +230,38 @@ export const WorkspaceDetail = () => {
           {!isLocalWs && isOwner && <ShareButton environmentId={wsId} />}
         </div>
       </div>
+
+      {envJobNotice && (
+        <div className="rounded-md border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-700">
+          <div className="flex items-center justify-between gap-3">
+            <span>
+              {envJobNotice.type === 'env_uninstall' ? 'Uninstall' : 'Install'}{' '}
+              job started (ID: {envJobNotice.id}).
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setActiveTab('jobs');
+                  setEnvJobNotice(null);
+                }}
+              >
+                View logs
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-blue-700 hover:bg-blue-500/10 hover:text-blue-700"
+                onClick={() => setEnvJobNotice(null)}
+                aria-label="Dismiss notification"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Tabs
         value={activeTab}
@@ -330,7 +381,7 @@ export const WorkspaceDetail = () => {
                   <span className="text-sm font-medium">Size</span>
                 </div>
                 <span className="text-sm">
-                  {workspace.size_formatted || 'Calculating...'}
+                  {workspace.size_formatted || '-'}
                 </span>
               </div>
 

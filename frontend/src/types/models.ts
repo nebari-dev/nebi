@@ -15,17 +15,26 @@ export type WorkspaceStatus =
   | 'failed'
   | 'deleting';
 
+// Derived environment install state; present only on local-mode servers.
+export type InstallStatus =
+  | 'not_installed'
+  | 'installing'
+  | 'installed'
+  | 'uninstalling'
+  | 'install_failed';
+
 export interface Workspace {
   id: string; // UUID
   name: string;
   owner_id: string; // UUID
   owner?: User; // Optional owner details
   status: WorkspaceStatus;
+  install_status?: InstallStatus;
   package_manager: string;
   created_at: string;
   updated_at: string;
-  size_bytes: number;
-  size_formatted: string;
+  size_bytes?: number;
+  size_formatted?: string;
   source?: 'local' | 'managed';
   path?: string;
   origin_name?: string;
@@ -41,7 +50,15 @@ export interface CreateWorkspaceRequest {
   source?: 'local' | 'managed';
 }
 
-export type JobType = 'create' | 'delete' | 'install' | 'remove' | 'update';
+export type JobType =
+  | 'create'
+  | 'delete'
+  | 'install'
+  | 'remove'
+  | 'update'
+  | 'rollback'
+  | 'env_install'
+  | 'env_uninstall';
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
 export type JsonValue =
   | string

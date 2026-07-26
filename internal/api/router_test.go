@@ -72,3 +72,31 @@ func TestCORSMiddlewareNoInvalidCredentialedWildcard(t *testing.T) {
 		}
 	}
 }
+
+// TestLegacyCLILoginRoutesRemoved is the regression test for issue #448: the
+// legacy device-code CLI login flow silently authorized the CLI from an
+// existing proxy session cookie on a bare GET, with no confirmation step
+// (CSRF) and no single-use enforcement on the completed code. Nothing in the
+// shipped CLI uses it (nebi login only speaks the RFC 8628 device flow at
+// /auth/device-config and /auth/device-token), so the fix removes the routes
+// outright rather than hardening a flow with no legitimate caller.
+func TestLegacyCLILoginRoutesRemoved(t *testing.T) {
+	r := buildTestRouter(t, "")
+
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/v1/auth/cli-login?code=ABCD-1234"},
+		{http.MethodPost, "/api/v1/auth/cli-login/code"},
+		{http.MethodGet, "/api/v1/auth/cli-login/poll?code=ABCD-1234"},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("%s %s: expected 404 (route removed), got %d", tc.method, tc.path, w.Code)
+		}
+	}
+}

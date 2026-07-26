@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -293,6 +294,258 @@ esac
 	if _, err := os.Stat(stagingDir); !os.IsNotExist(err) {
 		t.Errorf("staging dir leaked after install failure: stat err=%v\nlog: %s", err, log.String())
 	}
+}
+
+// TestLocalExecutor_CreateWorkspace_PixiTomlRunsLockNotInstall proves the
+// server-side create path only resolves the lockfile (pixi lock) and never
+// downloads packages (pixi install).
+func TestLocalExecutor_CreateWorkspace_PixiTomlRunsLockNotInstall(t *testing.T) {
+	pixiBin, argsLog := writeRecordingStub(t)
+
+	cfg := &config.Config{
+		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PackageManager: config.PackageManagerConfig{
+			DefaultType: "pixi",
+			PixiPath:    pixiBin,
+		},
+	}
+	exec, err := NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+
+	ws := &models.Workspace{ID: uuid.New(), Name: "lock-only", PackageManager: "pixi"}
+	var log bytes.Buffer
+	err = exec.CreateWorkspace(context.Background(), ws, &log, CreateWorkspaceOptions{
+		PixiToml: "[project]\nname = \"lock-only\"\n",
+	})
+	if err != nil {
+		t.Fatalf("CreateWorkspace: %v\nlog: %s", err, log.String())
+	}
+
+	calls := readStubCalls(t, argsLog)
+	if !containsCall(calls, "lock") {
+		t.Errorf("expected a `pixi lock` invocation, got calls: %v", calls)
+	}
+	if containsCall(calls, "install") {
+		t.Errorf("expected no `pixi install` invocation, got calls: %v", calls)
+	}
+}
+
+// TestLocalExecutor_SolveEnvironment_RunsLockNotInstall proves solving a
+// manifest only refreshes the lockfile and never installs packages.
+func TestLocalExecutor_SolveEnvironment_RunsLockNotInstall(t *testing.T) {
+	pixiBin, argsLog := writeRecordingStub(t)
+
+	cfg := &config.Config{
+		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PackageManager: config.PackageManagerConfig{
+			DefaultType: "pixi",
+			PixiPath:    pixiBin,
+		},
+	}
+	exec, err := NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+
+	ws := &models.Workspace{ID: uuid.New(), Name: "solve-lock", PackageManager: "pixi"}
+	if err := os.MkdirAll(exec.GetWorkspacePath(ws), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var log bytes.Buffer
+	if err := exec.SolveEnvironment(context.Background(), ws, &log); err != nil {
+		t.Fatalf("SolveEnvironment: %v\nlog: %s", err, log.String())
+	}
+
+	calls := readStubCalls(t, argsLog)
+	if !containsCall(calls, "lock") {
+		t.Errorf("expected a `pixi lock` invocation, got calls: %v", calls)
+	}
+	if containsCall(calls, "install") {
+		t.Errorf("expected no `pixi install` invocation, got calls: %v", calls)
+	}
+}
+
+// TestLocalExecutor_InstallEnvironment_RunsPixiInstall proves the explicit
+// install step downloads packages from the existing lockfile.
+func TestLocalExecutor_InstallEnvironment_RunsPixiInstall(t *testing.T) {
+	pixiBin, argsLog := writeRecordingStub(t)
+
+	cfg := &config.Config{
+		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PackageManager: config.PackageManagerConfig{
+			DefaultType: "pixi",
+			PixiPath:    pixiBin,
+		},
+	}
+	exec, err := NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+
+	ws := &models.Workspace{ID: uuid.New(), Name: "install-env", PackageManager: "pixi"}
+	if err := os.MkdirAll(exec.GetWorkspacePath(ws), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var log bytes.Buffer
+	if err := exec.InstallEnvironment(context.Background(), ws, &log); err != nil {
+		t.Fatalf("InstallEnvironment: %v\nlog: %s", err, log.String())
+	}
+
+	calls := readStubCalls(t, argsLog)
+	if !containsCall(calls, "install") {
+		t.Errorf("expected a `pixi install` invocation, got calls: %v", calls)
+	}
+}
+
+// TestLocalExecutor_UninstallEnvironment_RemovesEnvsDir proves uninstall
+// removes .pixi/envs while leaving manifest and lockfile in place, and
+// that IsEnvInstalled tracks the transition.
+func TestLocalExecutor_UninstallEnvironment_RemovesEnvsDir(t *testing.T) {
+	exec := testExecutor(t)
+
+	ws := &models.Workspace{ID: uuid.New(), Name: "uninstall-env", PackageManager: "pixi"}
+	envPath := exec.GetWorkspacePath(ws)
+	if err := os.MkdirAll(filepath.Join(envPath, ".pixi", "envs", "default"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"pixi.toml", "pixi.lock"} {
+		if err := os.WriteFile(filepath.Join(envPath, f), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if !exec.IsEnvInstalled(ws) {
+		t.Fatalf("expected IsEnvInstalled=true with .pixi/envs present")
+	}
+
+	var log bytes.Buffer
+	if err := exec.UninstallEnvironment(context.Background(), ws, &log); err != nil {
+		t.Fatalf("UninstallEnvironment: %v", err)
+	}
+
+	if exec.IsEnvInstalled(ws) {
+		t.Errorf("expected IsEnvInstalled=false after uninstall")
+	}
+	if _, err := os.Stat(filepath.Join(envPath, ".pixi", "envs")); !os.IsNotExist(err) {
+		t.Errorf("expected .pixi/envs removed, stat err=%v", err)
+	}
+	for _, f := range []string{"pixi.toml", "pixi.lock"} {
+		if _, err := os.Stat(filepath.Join(envPath, f)); err != nil {
+			t.Errorf("expected %s preserved, got %v", f, err)
+		}
+	}
+}
+
+func TestLocalExecutor_IsEnvInstalled_FalseWithoutEnvs(t *testing.T) {
+	exec := testExecutor(t)
+	ws := &models.Workspace{ID: uuid.New(), Name: "no-envs", PackageManager: "pixi"}
+	if err := os.MkdirAll(exec.GetWorkspacePath(ws), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if exec.IsEnvInstalled(ws) {
+		t.Errorf("expected IsEnvInstalled=false when .pixi/envs is absent")
+	}
+}
+
+// TestLocalExecutor_PackageOps_UseNoInstall proves add/remove package
+// operations only update manifest+lockfile (--no-install); materializing
+// the environment stays an explicit step.
+func TestLocalExecutor_PackageOps_UseNoInstall(t *testing.T) {
+	pixiBin, argsLog := writeRecordingStub(t)
+
+	cfg := &config.Config{
+		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PackageManager: config.PackageManagerConfig{
+			DefaultType: "pixi",
+			PixiPath:    pixiBin,
+		},
+	}
+	exec, err := NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+
+	ws := &models.Workspace{ID: uuid.New(), Name: "pkg-ops", PackageManager: "pixi"}
+	if err := os.MkdirAll(exec.GetWorkspacePath(ws), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var log bytes.Buffer
+	if err := exec.InstallPackages(context.Background(), ws, []string{"numpy"}, &log); err != nil {
+		t.Fatalf("InstallPackages: %v\nlog: %s", err, log.String())
+	}
+	if err := exec.RemovePackages(context.Background(), ws, []string{"numpy"}, &log); err != nil {
+		t.Fatalf("RemovePackages: %v\nlog: %s", err, log.String())
+	}
+
+	calls := readStubCalls(t, argsLog)
+	var sawAdd, sawRemove bool
+	for _, c := range calls {
+		if strings.HasPrefix(c, "add ") {
+			sawAdd = true
+			if !strings.Contains(c, "--no-install") {
+				t.Errorf("pixi add missing --no-install: %q", c)
+			}
+		}
+		if strings.HasPrefix(c, "remove ") {
+			sawRemove = true
+			if !strings.Contains(c, "--no-install") {
+				t.Errorf("pixi remove missing --no-install: %q", c)
+			}
+		}
+	}
+	if !sawAdd || !sawRemove {
+		t.Errorf("expected add and remove invocations, got calls: %v", calls)
+	}
+}
+
+// writeRecordingStub writes a stub pixi binary that records every
+// invocation's arguments to a log file. Returns (binaryPath, argsLogPath).
+func writeRecordingStub(t *testing.T) (string, string) {
+	t.Helper()
+	argsLog := filepath.Join(t.TempDir(), "args.log")
+	script := `#!/bin/sh
+echo "$@" >> ` + argsLog + `
+case "$1" in
+  --version) echo "stub pixi 0.0.0" ;;
+esac
+exit 0
+`
+	return writeStubBinary(t, script), argsLog
+}
+
+// readStubCalls returns one entry per stub invocation (its argv joined by spaces).
+func readStubCalls(t *testing.T, argsLog string) []string {
+	t.Helper()
+	data, err := os.ReadFile(argsLog)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		t.Fatal(err)
+	}
+	var calls []string
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if line != "" {
+			calls = append(calls, line)
+		}
+	}
+	return calls
+}
+
+// containsCall reports whether any recorded invocation's first argument
+// (the pixi subcommand) equals subcommand.
+func containsCall(calls []string, subcommand string) bool {
+	for _, c := range calls {
+		if strings.HasPrefix(c, subcommand+" ") || c == subcommand {
+			return true
+		}
+	}
+	return false
 }
 
 // writeStubBinary writes an executable shell script to a temp file and

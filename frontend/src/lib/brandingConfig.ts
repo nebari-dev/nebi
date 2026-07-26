@@ -45,6 +45,20 @@ const resolveBasePathUrl = (url: string): string => {
   return `${basePath}${url}`;
 };
 
+const ALLOWED_DATA_MIME_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/svg+xml',
+  'image/webp',
+  'image/gif',
+  'image/x-icon',
+  'image/vnd.microsoft.icon',
+]);
+
+// Accepts http(s) URLs, root-relative paths, and base64-encoded data: image
+// URIs from the allow-list above. Protocol-relative (`//`), javascript:,
+// data:text/html, and non-base64 data URIs are rejected.
 const isSafeAssetUrl = (value: string): boolean => {
   if (value.startsWith('/')) {
     return !value.startsWith('//');
@@ -52,7 +66,21 @@ const isSafeAssetUrl = (value: string): boolean => {
 
   try {
     const parsed = new URL(value);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return true;
+    }
+    if (parsed.protocol === 'data:') {
+      // Only accept base64-encoded images from the allow-list; reject
+      // text/html, javascript, and everything else.
+      const match = /^data:([^;,]+)(;base64)?,/.exec(value);
+      if (!match) {
+        return false;
+      }
+      const mime = match[1].toLowerCase();
+      const isBase64 = Boolean(match[2]);
+      return isBase64 && ALLOWED_DATA_MIME_TYPES.has(mime);
+    }
+    return false;
   } catch {
     return false;
   }

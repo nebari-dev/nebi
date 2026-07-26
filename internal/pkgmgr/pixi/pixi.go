@@ -197,7 +197,11 @@ func (p *PixiManager) Install(ctx context.Context, opts pkgmgr.InstallOptions) e
 	}
 
 	// Build pixi add command with verbose flag for better logging
-	args := append([]string{"add", "-v"}, opts.Packages...)
+	baseArgs := []string{"add", "-v"}
+	if opts.NoInstall {
+		baseArgs = append(baseArgs, "--no-install")
+	}
+	args := append(baseArgs, opts.Packages...)
 
 	// Execute pixi add
 	cmd := exec.CommandContext(ctx, p.pixiPath, args...)
@@ -265,7 +269,11 @@ func (p *PixiManager) Remove(ctx context.Context, opts pkgmgr.RemoveOptions) err
 	}
 
 	// Build pixi remove command
-	args := append([]string{"remove", "-v"}, opts.Packages...)
+	baseArgs := []string{"remove", "-v"}
+	if opts.NoInstall {
+		baseArgs = append(baseArgs, "--no-install")
+	}
+	args := append(baseArgs, opts.Packages...)
 
 	// Execute pixi remove
 	cmd := exec.CommandContext(ctx, p.pixiPath, args...)

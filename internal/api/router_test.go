@@ -1,16 +1,22 @@
 package api
 
 import (
+	"bytes"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+	"github.com/nebari-dev/nebi/internal/auth"
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
+	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/queue"
 )
 
@@ -44,6 +50,62 @@ func buildTestRouter(t *testing.T, basePath string) http.Handler {
 	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, nil, logger)
 }
 
+func buildTeamTestRouter(t *testing.T, logger *slog.Logger) (http.Handler, string) {
+	t.Helper()
+
+	const (
+		username  = "alice"
+		password  = "correct-horse-battery-staple"
+		jwtSecret = "test-secret-for-team-router-test"
+	)
+
+	cfg := &config.Config{Mode: "team"}
+	cfg.Auth.Type = "basic"
+	cfg.Auth.JWTSecret = jwtSecret
+	cfg.Database.Driver = "sqlite"
+	cfg.Database.DSN = filepath.Join(t.TempDir(), "team-router-test.db")
+
+	database, err := db.New(cfg.Database)
+	if err != nil {
+		t.Fatalf("db.New: %v", err)
+	}
+	if err := db.Migrate(database); err != nil {
+		t.Fatalf("db.Migrate: %v", err)
+	}
+
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+	user := models.User{
+		Username:     username,
+		Email:        username + "@example.com",
+		PasswordHash: hash,
+	}
+	if err := database.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	authenticator, err := auth.NewBasicAuthenticator(database, jwtSecret, nil)
+	if err != nil {
+		t.Fatalf("NewBasicAuthenticator: %v", err)
+	}
+	login, err := authenticator.Login(username, password)
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+
+	exec, err := executor.NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+
+	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, nil, logger), login.Token
+}
+
 func TestCORSMiddlewareNoInvalidCredentialedWildcard(t *testing.T) {
 	r := buildTestRouter(t, "")
 
@@ -70,6 +132,51 @@ func TestCORSMiddlewareNoInvalidCredentialedWildcard(t *testing.T) {
 		if acac != "" {
 			t.Fatalf("%s: expected no Access-Control-Allow-Credentials, got %q", path, acac)
 		}
+	}
+}
+
+func TestProtectedRoutesRejectQueryToken(t *testing.T) {
+	r, token := buildTeamTestRouter(t, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected bearer header to authenticate, got %d", w.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/auth/me?token="+url.QueryEscape(token), nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected query token to be rejected with 401, got %d", w.Code)
+	}
+}
+
+func TestLoggingMiddlewareOmitsQueryString(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(previous)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(loggingMiddleware())
+	r.GET("/api/v1/auth/me", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me?token=secret-bearer-material", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	output := logs.String()
+	if !strings.Contains(output, "/api/v1/auth/me") {
+		t.Fatalf("expected log output to include request path, got %q", output)
+	}
+	if strings.Contains(output, "token") || strings.Contains(output, "secret-bearer-material") {
+		t.Fatalf("expected log output to omit query string, got %q", output)
 	}
 }
 

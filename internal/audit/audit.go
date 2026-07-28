@@ -60,6 +60,11 @@ const (
 	ActionLoginFailed       = "login_failed"
 )
 
+const (
+	ActionApproveFederatedIdentity = "approve_federated_identity"
+	ActionRejectFederatedIdentity  = "reject_federated_identity"
+)
+
 // Resource types
 const (
 	ResourceUser       = "user"

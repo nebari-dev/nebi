@@ -4,17 +4,22 @@ import { describe, expect, it } from 'vitest';
 import {
   mockAdminUser,
   mockCollaborator,
+  mockFederatedIdentity,
+  mockFederatedIdentityReview,
   mockOwnerCollaborator,
   mockUser,
   server,
 } from '@/test/handlers';
 import { createWrapper } from '@/test/utils';
 import {
+  useApproveFederatedIdentityReview,
   useCollaborators,
   useCreateUser,
   useDashboardStats,
   useDeleteUser,
+  useFederatedIdentityReviews,
   useIsAdmin,
+  useRejectFederatedIdentityReview,
   useShareWorkspace,
   useUnshareWorkspace,
   useUsers,
@@ -152,5 +157,47 @@ describe('useDashboardStats', () => {
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toMatchObject({ total_disk_usage_bytes: 0 });
+  });
+});
+
+describe('useFederatedIdentityReviews', () => {
+  it('fetches federated identity reviews', async () => {
+    const { result } = renderHook(() => useFederatedIdentityReviews(), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([mockFederatedIdentityReview]);
+  });
+});
+
+describe('useApproveFederatedIdentityReview', () => {
+  it('calls the approve endpoint successfully', async () => {
+    server.use(
+      http.post('/api/v1/admin/federated-identity-reviews/:id/approve', () =>
+        HttpResponse.json(mockFederatedIdentity, { status: 201 }),
+      ),
+    );
+    const { result } = renderHook(() => useApproveFederatedIdentityReview(), {
+      wrapper: createWrapper(),
+    });
+    result.current.mutate('review-1');
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual(mockFederatedIdentity);
+  });
+});
+
+describe('useRejectFederatedIdentityReview', () => {
+  it('calls the reject endpoint successfully', async () => {
+    server.use(
+      http.post(
+        '/api/v1/admin/federated-identity-reviews/:id/reject',
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
+    const { result } = renderHook(() => useRejectFederatedIdentityReview(), {
+      wrapper: createWrapper(),
+    });
+    result.current.mutate('review-1');
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
   });
 });

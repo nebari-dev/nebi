@@ -142,3 +142,43 @@ export const useRemoteDashboardStats = (enabled: boolean) => {
     enabled,
   });
 };
+
+export const useRemoteFederatedIdentityReviews = (enabled: boolean) => {
+  return useQuery({
+    queryKey: ['remote', 'admin', 'federated-identity-reviews'],
+    queryFn: remoteApi.listFederatedIdentityReviews,
+    enabled,
+  });
+};
+
+export const useApproveRemoteFederatedIdentityReview = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reviewId: string) =>
+      remoteApi.approveFederatedIdentityReview(reviewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['remote', 'admin', 'federated-identity-reviews'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['remote', 'admin', 'audit-logs'],
+      });
+    },
+  });
+};
+
+export const useRejectRemoteFederatedIdentityReview = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reviewId: string) =>
+      remoteApi.rejectFederatedIdentityReview(reviewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['remote', 'admin', 'federated-identity-reviews'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['remote', 'admin', 'audit-logs'],
+      });
+    },
+  });
+};

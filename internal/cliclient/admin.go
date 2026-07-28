@@ -52,3 +52,29 @@ func (c *Client) GetDashboardStats(ctx context.Context) (*DashboardStats, error)
 	}
 	return &stats, nil
 }
+
+// ListFederatedIdentityReviews returns federated identity reviews.
+func (c *Client) ListFederatedIdentityReviews(ctx context.Context) ([]FederatedIdentityReview, error) {
+	var reviews []FederatedIdentityReview
+	_, err := c.Get(ctx, "/admin/federated-identity-reviews", &reviews)
+	if err != nil {
+		return nil, err
+	}
+	return reviews, nil
+}
+
+// ApproveFederatedIdentityReview approves a pending federated identity review.
+func (c *Client) ApproveFederatedIdentityReview(ctx context.Context, reviewID string) (*FederatedIdentity, error) {
+	var identity FederatedIdentity
+	_, err := c.Post(ctx, fmt.Sprintf("/admin/federated-identity-reviews/%s/approve", reviewID), nil, &identity)
+	if err != nil {
+		return nil, err
+	}
+	return &identity, nil
+}
+
+// RejectFederatedIdentityReview rejects a pending federated identity review.
+func (c *Client) RejectFederatedIdentityReview(ctx context.Context, reviewID string) error {
+	_, err := c.Post(ctx, fmt.Sprintf("/admin/federated-identity-reviews/%s/reject", reviewID), nil, nil)
+	return err
+}

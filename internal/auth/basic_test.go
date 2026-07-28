@@ -3,6 +3,7 @@ package auth
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -66,6 +67,34 @@ func TestBasicAuthenticator_LoginTokenIsAccepted(t *testing.T) {
 
 	if code := callWithToken(t, authr.Middleware(), resp.Token); code != http.StatusOK {
 		t.Fatalf("expected 200 for a token signed by Login, got %d", code)
+	}
+}
+
+func TestBasicAuthenticator_RejectsQueryToken(t *testing.T) {
+	db := setupTestDB(t)
+	newTestUser(t, db, "alice", "correct-horse-battery-staple")
+
+	authr, err := NewBasicAuthenticator(db, testJWTSecret, nil)
+	if err != nil {
+		t.Fatalf("NewBasicAuthenticator: %v", err)
+	}
+
+	resp, err := authr.Login("alice", "correct-horse-battery-staple")
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(authr.Middleware())
+	router.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	req := httptest.NewRequest(http.MethodGet, "/?token="+url.QueryEscape(resp.Token), nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for token in query string, got %d", rec.Code)
 	}
 }
 

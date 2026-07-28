@@ -1767,12 +1767,6 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Auth token (alternative to Bearer header for EventSource compatibility)",
-                        "name": "token",
-                        "in": "query"
                     }
                 ],
                 "responses": {

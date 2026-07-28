@@ -157,7 +157,7 @@ func (a *BasicAuthenticator) validateToken(tokenString string) (*Claims, error) 
 }
 
 // Middleware returns a Gin middleware for authentication.
-// It checks (in order): Bearer token header, ?token= query param, IdToken cookie.
+// It checks (in order): Bearer token header, IdToken cookie.
 func (a *BasicAuthenticator) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var tokenString string
@@ -173,9 +173,6 @@ func (a *BasicAuthenticator) Middleware() gin.HandlerFunc {
 				return
 			}
 			tokenString = parts[1]
-		} else {
-			// Fallback to query parameter (for EventSource/SSE compatibility)
-			tokenString = c.Query("token")
 		}
 
 		// If we have a Nebi JWT, validate it

@@ -2,6 +2,10 @@ import * as React from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
 import { Check, ChevronDown, ChevronUp } from 'lucide-react';
 
+// Local-only: the @nebari registry does not publish select-v2.
+// Keep this Radix wrapper for existing sharing/group dialogs because its
+// placeholder/value API is not a drop-in match for the registry Select.
+
 const SelectRoot = SelectPrimitive.Root;
 
 const SelectGroup = SelectPrimitive.Group;

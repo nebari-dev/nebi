@@ -34,7 +34,7 @@ import { ShareButton } from '@/components/sharing/ShareButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs';
 import { UserBadge } from '@/components/ui/user-badge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
 import { InstallControls } from '@/components/workspace/InstallControls';
@@ -271,22 +271,22 @@ export const WorkspaceDetail = () => {
         }}
       >
         <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="toml">Configuration</TabsTrigger>
-          <TabsTrigger value="versions">Versions</TabsTrigger>
-          <TabsTrigger value="packages">Packages</TabsTrigger>
-          <TabsTrigger value="jobs">Jobs</TabsTrigger>
-          <TabsTrigger value="publications">
+          <TabsTab value="overview">Overview</TabsTab>
+          <TabsTab value="toml">Configuration</TabsTab>
+          <TabsTab value="versions">Versions</TabsTab>
+          <TabsTab value="packages">Packages</TabsTab>
+          <TabsTab value="jobs">Jobs</TabsTab>
+          <TabsTab value="publications">
             Publications ({publications?.length || 0})
-          </TabsTrigger>
+          </TabsTab>
           {!isLocalWs && !isLocalMode && (
-            <TabsTrigger value="collaborators">
+            <TabsTab value="collaborators">
               Collaborators ({collaborators?.length || 0})
-            </TabsTrigger>
+            </TabsTab>
           )}
         </TabsList>
 
-        <TabsContent value="overview" className="px-1">
+        <TabsPanel value="overview" className="px-1">
           <div className="space-y-4 my-4">
             <h2 className="text-2xl font-bold mb-0">Overview</h2>
             <p className="text-muted-foreground text-sm mt-2">
@@ -535,9 +535,9 @@ export const WorkspaceDetail = () => {
               </div>
             </div>
           </div>
-        </TabsContent>
+        </TabsPanel>
 
-        <TabsContent value="packages" className="px-1">
+        <TabsPanel value="packages" className="px-1">
           <div className="space-y-4 my-3">
             <div className="flex justify-between items-center  mb-0">
               <h2 className="text-2xl font-bold">Packages</h2>
@@ -606,9 +606,9 @@ export const WorkspaceDetail = () => {
               </Card>
             )}
           </div>
-        </TabsContent>
+        </TabsPanel>
 
-        <TabsContent value="toml" className="px-1">
+        <TabsPanel value="toml" className="px-1">
           <div className="space-y-4 my-4">
             <h2 className="text-2xl font-bold mb-0">Configuration</h2>
             <p className="text-muted-foreground text-sm mt-2">
@@ -754,20 +754,20 @@ export const WorkspaceDetail = () => {
               Failed to load pixi.toml
             </div>
           )}
-        </TabsContent>
+        </TabsPanel>
 
-        <TabsContent value="versions" className="px-1">
+        <TabsPanel value="versions" className="px-1">
           <VersionHistory
             environmentId={wsId}
             environmentStatus={workspace.status}
           />
-        </TabsContent>
+        </TabsPanel>
 
-        <TabsContent value="jobs" className="px-1">
+        <TabsPanel value="jobs" className="px-1">
           <Jobs workspaceId={wsId} />
-        </TabsContent>
+        </TabsPanel>
 
-        <TabsContent value="publications" className="px-1">
+        <TabsPanel value="publications" className="px-1">
           <div className="space-y-4 my-4">
             <h2 className="text-2xl font-bold mb-0">Publications</h2>
             <p className="text-muted-foreground text-sm mt-2">
@@ -902,10 +902,10 @@ export const WorkspaceDetail = () => {
               workspace to an OCI registry.
             </p>
           )}
-        </TabsContent>
+        </TabsPanel>
 
         {!isLocalWs && !isLocalMode && (
-          <TabsContent value="collaborators" className="px-1">
+          <TabsPanel value="collaborators" className="px-1">
             <div className="space-y-4 my-4">
               <h2 className="text-2xl font-bold mb-0">Collaborators</h2>
               <p className="text-muted-foreground text-sm mt-2">
@@ -913,7 +913,7 @@ export const WorkspaceDetail = () => {
               </p>
             </div>
             <CollaboratorsList collaborators={collaborators || []} />
-          </TabsContent>
+          </TabsPanel>
         )}
       </Tabs>
     </div>

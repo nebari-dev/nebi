@@ -20,6 +20,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@base-ui-components/react": "^1.0.0-rc.0",
     "@fontsource/fira-code": "^5.2.7",
     "@fontsource/ibm-plex-sans": "^5.2.8",
     "@radix-ui/react-alert-dialog": "^1.1.18",

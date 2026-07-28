@@ -1,5 +1,11 @@
 import * as React from 'react';
 import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog';
+import type { VariantProps } from 'class-variance-authority';
+import { cn } from '@/lib/utils';
+import { buttonVariants } from '@/components/ui/button';
+
+// Local-only: the @nebari registry does not currently publish alert-dialog.
+// Keep the Radix composition and reuse the registry-backed button styling.
 
 const AlertDialog = AlertDialogPrimitive.Root;
 
@@ -97,21 +103,18 @@ const AlertDialogDescription = React.forwardRef<
 AlertDialogDescription.displayName =
   AlertDialogPrimitive.Description.displayName;
 
+type AlertDialogActionProps = React.ComponentPropsWithoutRef<
+  typeof AlertDialogPrimitive.Action
+> &
+  VariantProps<typeof buttonVariants>;
+
 const AlertDialogAction = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Action>,
-  React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action>
->(({ className = '', ...props }, ref) => (
+  AlertDialogActionProps
+>(({ className = '', variant = 'default', ...props }, ref) => (
   <AlertDialogPrimitive.Action
     ref={ref}
-    className={`
-      inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 py-2
-      text-sm font-semibold text-primary-foreground ring-offset-background
-      transition-colors
-      hover:bg-primary/90
-      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
-      disabled:pointer-events-none disabled:opacity-50
-      ${className}
-    `}
+    className={cn(buttonVariants({ variant }), className)}
     {...props}
   />
 ));
@@ -123,16 +126,7 @@ const AlertDialogCancel = React.forwardRef<
 >(({ className = '', ...props }, ref) => (
   <AlertDialogPrimitive.Cancel
     ref={ref}
-    className={`
-      inline-flex h-10 items-center justify-center rounded-md border border-input
-      bg-background px-4 py-2 text-sm font-semibold ring-offset-background
-      transition-colors
-      hover:bg-accent hover:text-accent-foreground
-      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
-      disabled:pointer-events-none disabled:opacity-50
-      mt-2 sm:mt-0
-      ${className}
-    `}
+    className={cn(buttonVariants({ variant: 'outline' }), 'mt-2 sm:mt-0', className)}
     {...props}
   />
 ));

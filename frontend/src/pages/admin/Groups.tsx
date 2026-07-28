@@ -107,6 +107,7 @@ export const Groups = () => {
                             variant="ghost"
                             size="sm"
                             title="View members"
+                            aria-label={`View members of ${g.name}`}
                             onClick={() => setMembersOf(g)}
                           >
                             <Users className="h-4 w-4" />
@@ -120,6 +121,7 @@ export const Groups = () => {
                                 : 'Delete group'
                             }
                             disabled={g.source === 'oidc'}
+                            aria-label={`Delete ${g.name}`}
                             onClick={() =>
                               setConfirm({ id: g.id, name: g.name })
                             }

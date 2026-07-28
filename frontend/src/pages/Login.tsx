@@ -153,7 +153,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
             />
 
             <Button
-              type="submit"
+              render={<button type="submit" />}
               disabled={loading}
               className="w-full h-12 text-base font-medium"
             >

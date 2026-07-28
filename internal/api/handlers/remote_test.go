@@ -53,6 +53,7 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 		remote.POST("/workspaces/:id/push", h.PushVersion)
 		remote.GET("/registries", h.ListRegistries)
 		remote.GET("/jobs", h.ListJobs)
+		remote.POST("/admin/registries", h.CreateAdminRegistry)
 	}
 	return r
 }
@@ -308,6 +309,73 @@ func TestListRegistries_WithMockRemote(t *testing.T) {
 	}
 	if registries[0]["name"] != "Docker Hub" {
 		t.Errorf("expected first registry name=Docker Hub, got %v", registries[0]["name"])
+	}
+}
+
+func TestCreateAdminRegistry_NotConnected(t *testing.T) {
+	db := setupTestDB(t)
+	router := setupRouter(db)
+
+	body := `{"name":"GHCR","url":"ghcr.io"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/remote/admin/registries", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when not connected, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateAdminRegistry_WithMockRemote(t *testing.T) {
+	var received map[string]any
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && r.URL.Path == "/api/v1/admin/registries" {
+			json.NewDecoder(r.Body).Decode(&received)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"id":         "reg-1",
+				"name":       received["name"],
+				"url":        received["url"],
+				"is_default": false,
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer mockServer.Close()
+
+	db := setupTestDB(t)
+	router := setupRouter(db)
+	db.Model(&store.Config{}).Where("id = ?", 1).Update("server_url", mockServer.URL)
+	db.Model(&store.Credentials{}).Where("id = ?", 1).Updates(map[string]any{
+		"token":    "valid-token",
+		"username": "testuser",
+	})
+
+	body := `{"name":"GHCR","url":"ghcr.io","api_token":"secret-token"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/remote/admin/registries", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["name"] != "GHCR" {
+		t.Errorf("expected name=GHCR, got %v", resp["name"])
+	}
+
+	// The remote server must actually receive the api_token field - it must
+	// not be silently dropped by the proxy's request struct.
+	if received["api_token"] != "secret-token" {
+		t.Errorf("expected remote server to receive api_token=secret-token, got %v", received["api_token"])
 	}
 }
 

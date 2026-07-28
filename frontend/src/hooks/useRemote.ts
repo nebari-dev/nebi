@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { remoteApi } from '@/api/remote';
 import type {
   ConnectServerRequest,
+  CreateRegistryRequest,
   CreateRemoteWorkspaceRequest,
 } from '@/types';
 
@@ -121,6 +122,20 @@ export const useRemoteAdminRegistries = (enabled: boolean) => {
     queryKey: ['remote', 'admin', 'registries'],
     queryFn: remoteApi.listAdminRegistries,
     enabled,
+  });
+};
+
+export const useCreateRemoteRegistry = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (req: CreateRegistryRequest) =>
+      remoteApi.createAdminRegistry(req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['remote', 'admin', 'registries'],
+      });
+    },
   });
 };
 

@@ -82,7 +82,7 @@ export const RegistryManagement = () => {
             Manage OCI registries for workspace publishing
           </p>
         </div>
-        <CreateRegistryDialog />
+        <CreateRegistryDialog isRemote={shouldShowRemote} />
       </div>
 
       {error && (

@@ -362,6 +362,26 @@ func (h *RemoteHandler) ListAdminRegistries(c *gin.Context) {
 	c.JSON(http.StatusOK, registries)
 }
 
+// CreateAdminRegistry proxies registry creation to the remote server.
+func (h *RemoteHandler) CreateAdminRegistry(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		h.notConnected(c, err)
+		return
+	}
+	var req cliclient.CreateRegistryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	registry, err := client.CreateRegistry(c.Request.Context(), req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.JSON(http.StatusCreated, registry)
+}
+
 // ListAdminAuditLogs proxies admin audit log listing to the remote server.
 func (h *RemoteHandler) ListAdminAuditLogs(c *gin.Context) {
 	client, err := h.getClient()

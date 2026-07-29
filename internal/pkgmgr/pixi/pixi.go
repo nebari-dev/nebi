@@ -195,13 +195,16 @@ func (p *PixiManager) Install(ctx context.Context, opts pkgmgr.InstallOptions) e
 	if len(opts.Packages) == 0 {
 		return fmt.Errorf("at least one package is required")
 	}
+	if err := validatePackageArgs(opts.Packages); err != nil {
+		return err
+	}
 
 	// Build pixi add command with verbose flag for better logging
 	baseArgs := []string{"add", "-v"}
 	if opts.NoInstall {
 		baseArgs = append(baseArgs, "--no-install")
 	}
-	args := append(baseArgs, opts.Packages...)
+	args := append(append(baseArgs, "--"), opts.Packages...)
 
 	// Execute pixi add
 	cmd := exec.CommandContext(ctx, p.pixiPath, args...)
@@ -267,13 +270,16 @@ func (p *PixiManager) Remove(ctx context.Context, opts pkgmgr.RemoveOptions) err
 	if len(opts.Packages) == 0 {
 		return fmt.Errorf("at least one package is required")
 	}
+	if err := validatePackageArgs(opts.Packages); err != nil {
+		return err
+	}
 
 	// Build pixi remove command
 	baseArgs := []string{"remove", "-v"}
 	if opts.NoInstall {
 		baseArgs = append(baseArgs, "--no-install")
 	}
-	args := append(baseArgs, opts.Packages...)
+	args := append(append(baseArgs, "--"), opts.Packages...)
 
 	// Execute pixi remove
 	cmd := exec.CommandContext(ctx, p.pixiPath, args...)
@@ -398,7 +404,10 @@ func (p *PixiManager) Update(ctx context.Context, opts pkgmgr.UpdateOptions) err
 	// Build pixi update command
 	args := []string{"update"}
 	if len(opts.Packages) > 0 {
-		args = append(args, opts.Packages...)
+		if err := validatePackageArgs(opts.Packages); err != nil {
+			return err
+		}
+		args = append(append(args, "--"), opts.Packages...)
 	}
 
 	// Execute pixi update
@@ -413,6 +422,18 @@ func (p *PixiManager) Update(ctx context.Context, opts pkgmgr.UpdateOptions) err
 		return fmt.Errorf("pixi update failed: %w, stderr: %s", err, stderr.String())
 	}
 
+	return nil
+}
+
+func validatePackageArgs(packages []string) error {
+	for _, pkg := range packages {
+		if strings.TrimSpace(pkg) == "" {
+			return fmt.Errorf("package argument cannot be empty")
+		}
+		if strings.ContainsAny(pkg, "\x00\r\n") {
+			return fmt.Errorf("package argument %q contains unsupported control characters", pkg)
+		}
+	}
 	return nil
 }
 

@@ -20,7 +20,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func buildTeamTestRouter(t *testing.T) (http.Handler, *gorm.DB) {
+func buildRegistryRBACTestRouter(t *testing.T) (http.Handler, *gorm.DB) {
 	t.Helper()
 
 	cfg := &config.Config{Mode: "team"}
@@ -86,7 +86,7 @@ func authedRequest(router http.Handler, method, path, token, body string) *httpt
 }
 
 func TestRegistryRoutesRequireRegistryRBAC(t *testing.T) {
-	router, database := buildTeamTestRouter(t)
+	router, database := buildRegistryRBACTestRouter(t)
 
 	const password = "password"
 	passwordHash, err := auth.HashPassword(password)

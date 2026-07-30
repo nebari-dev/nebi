@@ -30,7 +30,7 @@ func TestReconcile_CreatesEntries(t *testing.T) {
 	db, encKey := reconcileTestSetup(t)
 
 	err := ReconcileConfigRegistries(db, encKey, []config.RegistryEntryConfig{
-		{Name: "acme", URL: "registry.acme.com", Namespace: "acme-envs", Username: "svc", Password: "hunter2", Default: true},
+		{Name: "acme", URL: "registry.acme.com", Namespace: "acme-envs", Username: "svc", Password: "hunter2", APIToken: "tok-123", Default: true},
 	})
 	if err != nil {
 		t.Fatalf("reconcile: %v", err)
@@ -53,6 +53,13 @@ func TestReconcile_CreatesEntries(t *testing.T) {
 	plain, err := nebicrypto.DecryptField(reg.Password, encKey)
 	if err != nil || plain != "hunter2" {
 		t.Errorf("expected decryptable password, got %q err=%v", plain, err)
+	}
+	if reg.APIToken == "tok-123" {
+		t.Error("api token stored in plaintext")
+	}
+	plainToken, err := nebicrypto.DecryptField(reg.APIToken, encKey)
+	if err != nil || plainToken != "tok-123" {
+		t.Errorf("expected decryptable api token, got %q err=%v", plainToken, err)
 	}
 }
 
@@ -161,5 +168,62 @@ func TestReconcile_NoDefaultClaimLeavesExisting(t *testing.T) {
 
 	if !getRegistryByName(t, db, "personal").IsDefault {
 		t.Error("existing default must be untouched when no config entry claims default")
+	}
+}
+
+func TestReconcile_RemoveThenReAdd(t *testing.T) {
+	db, encKey := reconcileTestSetup(t)
+
+	if err := ReconcileConfigRegistries(db, encKey, []config.RegistryEntryConfig{
+		{Name: "acme", URL: "registry.acme.com"},
+	}); err != nil {
+		t.Fatalf("first reconcile: %v", err)
+	}
+
+	if err := ReconcileConfigRegistries(db, encKey, nil); err != nil {
+		t.Fatalf("second reconcile: %v", err)
+	}
+
+	if err := ReconcileConfigRegistries(db, encKey, []config.RegistryEntryConfig{
+		{Name: "acme", URL: "registry.acme.com"},
+	}); err != nil {
+		t.Fatalf("third reconcile: %v", err)
+	}
+
+	if getRegistryByName(t, db, "acme") == nil {
+		t.Error("expected acme to exist after remove-then-re-add")
+	}
+
+	// Guards against the stale-delete becoming a soft delete (e.g. if
+	// OCIRegistry.DeletedAt were ever changed to gorm.DeletedAt): an
+	// unscoped count must show exactly one row, not a live one plus a
+	// soft-deleted leftover.
+	var count int64
+	db.Unscoped().Model(&models.OCIRegistry{}).Count(&count)
+	if count != 1 {
+		t.Errorf("expected 1 registry (unscoped), got %d", count)
+	}
+}
+
+func TestReconcile_DefaultTrueThenFalse(t *testing.T) {
+	db, encKey := reconcileTestSetup(t)
+
+	if err := ReconcileConfigRegistries(db, encKey, []config.RegistryEntryConfig{
+		{Name: "acme", URL: "registry.acme.com", Default: true},
+	}); err != nil {
+		t.Fatalf("first reconcile: %v", err)
+	}
+	if !getRegistryByName(t, db, "acme").IsDefault {
+		t.Fatal("expected acme to be default after first reconcile")
+	}
+
+	if err := ReconcileConfigRegistries(db, encKey, []config.RegistryEntryConfig{
+		{Name: "acme", URL: "registry.acme.com", Default: false},
+	}); err != nil {
+		t.Fatalf("second reconcile: %v", err)
+	}
+
+	if getRegistryByName(t, db, "acme").IsDefault {
+		t.Error("expected acme to no longer be default once its entry sets default=false")
 	}
 }

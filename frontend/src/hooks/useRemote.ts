@@ -1,15 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { remoteApi } from '@/api/remote';
+import { useModeStore } from '@/store/modeStore';
 import type {
   ConnectServerRequest,
   CreateRemoteWorkspaceRequest,
 } from '@/types';
 
 export const useRemoteServer = () => {
+  const isLocalMode = useModeStore((s) => s.isLocalMode());
   return useQuery({
     queryKey: ['remote', 'server'],
     queryFn: remoteApi.getServer,
     refetchInterval: 10000, // Check connection status every 10s
+    enabled: isLocalMode,
   });
 };
 

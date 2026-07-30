@@ -1,6 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { useModeStore } from '@/store/modeStore';
 import {
   mockJob,
   mockRegistry,
@@ -35,6 +36,7 @@ const mockRemoteWorkspace = {
 
 describe('useRemoteServer', () => {
   beforeEach(() => {
+    useModeStore.setState({ mode: 'local' });
     server.use(
       http.get('/api/v1/remote/server', () =>
         HttpResponse.json(mockRemoteServer),

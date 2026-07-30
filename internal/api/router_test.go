@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/auth"
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/db"
@@ -207,5 +208,58 @@ func TestLegacyCLILoginRoutesRemoved(t *testing.T) {
 		if w.Code != http.StatusNotFound {
 			t.Fatalf("%s %s: expected 404 (route removed), got %d", tc.method, tc.path, w.Code)
 		}
+	}
+}
+
+// TestAdminRegistryMutations_RejectConfigManaged exercises the config-managed
+// registry guards (see registry.go UpdateRegistry / DeleteRegistry) through
+// the real HTTP admin routes, not just the service layer.
+func TestAdminRegistryMutations_RejectConfigManaged(t *testing.T) {
+	cfg := &config.Config{Mode: "local"}
+	cfg.Auth.JWTSecret = "test-secret-for-config-managed-registry-test"
+	cfg.Database.Driver = "sqlite"
+	cfg.Database.DSN = filepath.Join(t.TempDir(), "config-managed-registry-test.db")
+	cfg.Registries.SeedDefault = false
+
+	database, err := db.New(cfg.Database)
+	if err != nil {
+		t.Fatalf("db.New: %v", err)
+	}
+	if err := db.Migrate(database, cfg.Registries.SeedDefault); err != nil {
+		t.Fatalf("db.Migrate: %v", err)
+	}
+
+	exec, err := executor.NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	r := NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, nil, logger)
+
+	managed := models.OCIRegistry{ID: uuid.New(), Name: "managed", URL: "a.io", ConfigManaged: true}
+	if err := database.Create(&managed).Error; err != nil {
+		t.Fatalf("seed config-managed registry: %v", err)
+	}
+
+	putReq := httptest.NewRequest(http.MethodPut, "/api/v1/admin/registries/"+managed.ID.String(), strings.NewReader(`{"url":"b.io"}`))
+	putReq.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, putReq)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("PUT: expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "managed by server configuration") {
+		t.Fatalf("PUT: expected body to mention server configuration, got %s", w.Body.String())
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/registries/"+managed.ID.String(), nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, deleteReq)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("DELETE: expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "managed by server configuration") {
+		t.Fatalf("DELETE: expected body to mention server configuration, got %s", w.Body.String())
 	}
 }

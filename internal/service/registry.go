@@ -156,6 +156,10 @@ func (s *RegistryService) UpdateRegistry(id string, req UpdateRegistryReq) (*Reg
 		return nil, err
 	}
 
+	if registry.ConfigManaged {
+		return nil, &ConflictError{Message: fmt.Sprintf("Registry '%s' is managed by server configuration (config.yaml) and cannot be modified", registry.Name)}
+	}
+
 	if req.Name != nil {
 		registry.Name = *req.Name
 	}
@@ -210,6 +214,10 @@ func (s *RegistryService) DeleteRegistry(id string) error {
 			return ErrNotFound
 		}
 		return err
+	}
+
+	if registry.ConfigManaged {
+		return &ConflictError{Message: fmt.Sprintf("Registry '%s' is managed by server configuration (config.yaml) and cannot be deleted", registry.Name)}
 	}
 
 	if err := s.db.Delete(&registry).Error; err != nil {

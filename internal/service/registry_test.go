@@ -261,3 +261,36 @@ func TestRegistryList_IncludesConfigManaged(t *testing.T) {
 		t.Error("expected config_managed to be true in result")
 	}
 }
+
+func TestRegistryUpdate_ConfigManagedRejected(t *testing.T) {
+	svc, db := registryTestSetup(t)
+
+	reg := models.OCIRegistry{ID: uuid.New(), Name: "managed", URL: "a.io", ConfigManaged: true}
+	db.Create(&reg)
+
+	newURL := "b.io"
+	_, err := svc.UpdateRegistry(reg.ID.String(), UpdateRegistryReq{URL: &newURL})
+	if err == nil {
+		t.Fatal("expected error updating config-managed registry")
+	}
+	var ce *ConflictError
+	if !isConflictError(err, &ce) {
+		t.Fatalf("expected ConflictError, got %T: %v", err, err)
+	}
+}
+
+func TestRegistryDelete_ConfigManagedRejected(t *testing.T) {
+	svc, db := registryTestSetup(t)
+
+	reg := models.OCIRegistry{ID: uuid.New(), Name: "managed", URL: "a.io", ConfigManaged: true}
+	db.Create(&reg)
+
+	err := svc.DeleteRegistry(reg.ID.String())
+	if err == nil {
+		t.Fatal("expected error deleting config-managed registry")
+	}
+	var ce *ConflictError
+	if !isConflictError(err, &ce) {
+		t.Fatalf("expected ConflictError, got %T: %v", err, err)
+	}
+}

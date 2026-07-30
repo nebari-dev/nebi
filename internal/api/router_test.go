@@ -32,12 +32,13 @@ func buildTestRouter(t *testing.T, basePath string) http.Handler {
 	cfg.Auth.JWTSecret = "test-secret-for-router-test"
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = filepath.Join(t.TempDir(), "router-test.db")
+	cfg.Registries.SeedDefault = true
 
 	database, err := db.New(cfg.Database)
 	if err != nil {
 		t.Fatalf("db.New: %v", err)
 	}
-	if err := db.Migrate(database); err != nil {
+	if err := db.Migrate(database, cfg.Registries.SeedDefault); err != nil {
 		t.Fatalf("db.Migrate: %v", err)
 	}
 
@@ -64,12 +65,13 @@ func buildTeamTestRouter(t *testing.T, logger *slog.Logger) (http.Handler, strin
 	cfg.Auth.JWTSecret = jwtSecret
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = filepath.Join(t.TempDir(), "team-router-test.db")
+	cfg.Registries.SeedDefault = true
 
 	database, err := db.New(cfg.Database)
 	if err != nil {
 		t.Fatalf("db.New: %v", err)
 	}
-	if err := db.Migrate(database); err != nil {
+	if err := db.Migrate(database, cfg.Registries.SeedDefault); err != nil {
 		t.Fatalf("db.Migrate: %v", err)
 	}
 

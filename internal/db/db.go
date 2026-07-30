@@ -92,8 +92,9 @@ func New(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	return db, nil
 }
 
-// Migrate runs database migrations for all models
-func Migrate(db *gorm.DB) error {
+// Migrate runs database migrations for all models. seedRegistry controls
+// whether the built-in default registry is seeded (registries.seed_default).
+func Migrate(db *gorm.DB, seedRegistry bool) error {
 	slog.Info("Running database migrations...")
 
 	// Auto-migrate all models
@@ -113,6 +114,7 @@ func Migrate(db *gorm.DB) error {
 		&models.Group{},
 		&models.GroupMember{},
 		&models.GroupPermission{},
+		&models.SystemSetting{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
@@ -123,9 +125,11 @@ func Migrate(db *gorm.DB) error {
 		return fmt.Errorf("failed to seed default roles: %w", err)
 	}
 
-	// Seed default registry if it doesn't exist
-	if err := seedDefaultRegistry(db); err != nil {
-		return fmt.Errorf("failed to seed default registry: %w", err)
+	// Seed default registry (one-time; disabled via registries.seed_default)
+	if seedRegistry {
+		if err := seedDefaultRegistry(db); err != nil {
+			return fmt.Errorf("failed to seed default registry: %w", err)
+		}
 	}
 
 	return nil
@@ -154,23 +158,38 @@ func seedDefaultRoles(db *gorm.DB) error {
 	return nil
 }
 
-// seedDefaultRegistry creates the default nebari-environments registry
-func seedDefaultRegistry(db *gorm.DB) error {
-	var count int64
-	db.Model(&models.OCIRegistry{}).Where("name = ?", "nebari-environments").Count(&count)
-	if count > 0 {
-		return nil
-	}
+// defaultRegistrySeededKey marks that the built-in default registry has been
+// seeded once. Without it the seed would resurrect a deliberately deleted
+// default registry on every boot.
+const defaultRegistrySeededKey = "default_registry_seeded"
 
-	registry := models.OCIRegistry{
-		Name:      "nebari-environments",
-		URL:       "quay.io",
-		Namespace: "nebari_environments",
-		IsDefault: true,
+// seedDefaultRegistry creates the default nebari-environments registry once.
+// Databases that already have the row (created before the marker existed)
+// get the marker backfilled without touching the row.
+func seedDefaultRegistry(db *gorm.DB) error {
+	var marker models.SystemSetting
+	err := db.Where("key = ?", defaultRegistrySeededKey).First(&marker).Error
+	if err == nil {
+		return nil // seeded before; a missing row means it was deleted on purpose
 	}
-	if err := db.Create(&registry).Error; err != nil {
+	if err != gorm.ErrRecordNotFound {
 		return err
 	}
-	slog.Info("Created default registry", "name", registry.Name, "url", registry.URL)
-	return nil
+
+	var count int64
+	db.Model(&models.OCIRegistry{}).Where("name = ?", "nebari-environments").Count(&count)
+	if count == 0 {
+		registry := models.OCIRegistry{
+			Name:      "nebari-environments",
+			URL:       "quay.io",
+			Namespace: "nebari_environments",
+			IsDefault: true,
+		}
+		if err := db.Create(&registry).Error; err != nil {
+			return err
+		}
+		slog.Info("Created default registry", "name", registry.Name, "url", registry.URL)
+	}
+
+	return db.Create(&models.SystemSetting{Key: defaultRegistrySeededKey, Value: "true"}).Error
 }

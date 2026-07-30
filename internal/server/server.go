@@ -82,7 +82,7 @@ func Run(ctx context.Context, cfg Config) error {
 	slog.Info("Database initialized", "driver", appCfg.Database.Driver)
 
 	// Run migrations
-	if err := db.Migrate(database); err != nil {
+	if err := db.Migrate(database, appCfg.Registries.SeedDefault); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 	if appCfg.IsLocalMode() {

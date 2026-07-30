@@ -144,7 +144,7 @@ func (a *App) startup(ctx context.Context) {
 	logToFile("Database connected")
 
 	// Run migrations
-	if err := db.Migrate(database); err != nil {
+	if err := db.Migrate(database, cfg.Registries.SeedDefault); err != nil {
 		logToFile(fmt.Sprintf("Error running migrations: %v", err))
 		return
 	}

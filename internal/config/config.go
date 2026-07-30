@@ -263,14 +263,16 @@ func normalizeRegistries(rc *RegistriesConfig) error {
 	defaults := 0
 	for i := range rc.Entries {
 		e := &rc.Entries[i]
-		if strings.TrimSpace(e.Name) == "" {
+		e.Name = strings.TrimSpace(e.Name)
+		e.URL = strings.TrimSpace(e.URL)
+		if e.Name == "" {
 			return fmt.Errorf("registries.entries[%d]: name is required", i)
 		}
 		if seen[e.Name] {
 			return fmt.Errorf("registries.entries: duplicate name %q", e.Name)
 		}
 		seen[e.Name] = true
-		if strings.TrimSpace(e.URL) == "" {
+		if e.URL == "" {
 			return fmt.Errorf("registries.entries[%d] (%s): url is required", i, e.Name)
 		}
 		if e.Default {

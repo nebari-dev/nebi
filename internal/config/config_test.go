@@ -233,3 +233,25 @@ registries:
 		t.Fatal("expected error when two entries set default: true")
 	}
 }
+
+func TestLoad_Registries_TrimsNameAndURL(t *testing.T) {
+	isolate(t)
+	t.Setenv("NEBI_MODE", "local")
+	writeConfigYAML(t, `
+registries:
+  entries:
+    - name: "  acme  "
+      url: "  registry.acme.com  "
+`)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Registries.Entries[0].Name != "acme" {
+		t.Errorf("expected trimmed name, got %q", cfg.Registries.Entries[0].Name)
+	}
+	if cfg.Registries.Entries[0].URL != "registry.acme.com" {
+		t.Errorf("expected trimmed url, got %q", cfg.Registries.Entries[0].URL)
+	}
+}

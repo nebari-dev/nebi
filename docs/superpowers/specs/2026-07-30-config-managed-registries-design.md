@@ -96,7 +96,10 @@ key derived from the JWT secret):
 `internal/service/registry.go` reject config-managed rows with a typed
 "managed by server configuration" error. The API maps it to HTTP 409; the CLI
 surfaces the message; the admin UI disables edit/delete for those rows and
-shows a badge with a tooltip.
+shows a badge with a tooltip. When the current default registry is
+config-managed, attempts to make another registry the default (create or
+update with `is_default: true`) are also rejected with 409, so the
+config-declared default cannot be stolen between boots.
 
 **Scope caveat (documented, accepted):** in local mode the lock is a
 consistency mechanism, not a security boundary. The per-user nebi process is

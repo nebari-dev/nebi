@@ -165,50 +165,57 @@ func TestRegistryRoutesRequireRegistryRBAC(t *testing.T) {
 	}
 
 	tests := []struct {
-		name   string
-		method string
-		path   string
-		body   string
+		name       string
+		method     string
+		path       string
+		body       string
+		wantStatus int
 	}{
 		{
-			name:   "browse repositories",
-			method: http.MethodGet,
-			path:   "/api/v1/registries/" + registry.ID.String() + "/repositories",
+			name:       "browse repositories",
+			method:     http.MethodGet,
+			path:       "/api/v1/registries/" + registry.ID.String() + "/repositories",
+			wantStatus: http.StatusForbidden,
 		},
 		{
-			name:   "list tags",
-			method: http.MethodGet,
-			path:   "/api/v1/registries/" + registry.ID.String() + "/tags?repo=private-pub",
+			name:       "list tags",
+			method:     http.MethodGet,
+			path:       "/api/v1/registries/" + registry.ID.String() + "/tags?repo=private-pub",
+			wantStatus: http.StatusForbidden,
 		},
 		{
-			name:   "import",
-			method: http.MethodPost,
-			path:   "/api/v1/registries/" + registry.ID.String() + "/import",
-			body:   `{"repository":"private-pub","tag":"v1","name":"imported"}`,
+			name:       "import",
+			method:     http.MethodPost,
+			path:       "/api/v1/registries/" + registry.ID.String() + "/import",
+			body:       `{"repository":"private-pub","tag":"v1","name":"imported"}`,
+			wantStatus: http.StatusForbidden,
 		},
 		{
-			name:   "publish defaults",
-			method: http.MethodGet,
-			path:   "/api/v1/workspaces/" + workspace.ID.String() + "/publish-defaults",
+			name:       "publish defaults",
+			method:     http.MethodGet,
+			path:       "/api/v1/workspaces/" + workspace.ID.String() + "/publish-defaults",
+			wantStatus: http.StatusNotFound,
 		},
 		{
-			name:   "publish",
-			method: http.MethodPost,
-			path:   "/api/v1/workspaces/" + workspace.ID.String() + "/publish",
-			body:   `{"registry_id":"` + registry.ID.String() + `","repository":"private-pub","tag":"v1"}`,
+			name:       "publish",
+			method:     http.MethodPost,
+			path:       "/api/v1/workspaces/" + workspace.ID.String() + "/publish",
+			body:       `{"registry_id":"` + registry.ID.String() + `","repository":"private-pub","tag":"v1"}`,
+			wantStatus: http.StatusForbidden,
 		},
 		{
-			name:   "visibility",
-			method: http.MethodPatch,
-			path:   "/api/v1/workspaces/" + workspace.ID.String() + "/publications/" + publication.ID.String(),
-			body:   `{"is_public":true}`,
+			name:       "visibility",
+			method:     http.MethodPatch,
+			path:       "/api/v1/workspaces/" + workspace.ID.String() + "/publications/" + publication.ID.String(),
+			body:       `{"is_public":true}`,
+			wantStatus: http.StatusForbidden,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := authedRequest(router, tt.method, tt.path, token, tt.body)
-			if w.Code != http.StatusForbidden {
+			if w.Code != tt.wantStatus {
 				t.Fatalf("%s %s: got %d body %s", tt.method, tt.path, w.Code, w.Body.String())
 			}
 		})

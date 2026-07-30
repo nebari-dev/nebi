@@ -104,7 +104,7 @@ func TestGetPublishDefaults_NoDefaultRegistry(t *testing.T) {
 	}
 }
 
-func TestGetPublishDefaults_RequiresRegistryReadAccess(t *testing.T) {
+func TestGetPublishDefaults_MasksDefaultRegistryWithoutReadAccess(t *testing.T) {
 	svc, db := testSetup(t, false)
 	userID := createTestUser(t, db, "alice")
 	ws := createReadyWorkspace(t, svc, db, "private-default", userID)
@@ -112,11 +112,8 @@ func TestGetPublishDefaults_RequiresRegistryReadAccess(t *testing.T) {
 	db.Create(&models.OCIRegistry{Name: "reg", URL: "https://ghcr.io", IsDefault: true})
 
 	_, err := svc.GetPublishDefaults(ws.ID.String(), userID, uuid.Nil)
-	if err == nil {
-		t.Fatal("expected forbidden error without registry read grant")
-	}
-	if !isForbiddenError(err, nil) {
-		t.Fatalf("expected ForbiddenError, got %T: %v", err, err)
+	if err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got %T: %v", err, err)
 	}
 }
 
@@ -153,6 +150,20 @@ func TestGetPublishDefaults_UsesExplicitRegistryAccess(t *testing.T) {
 	}
 	if defaults.Namespace != explicitRegistry.Namespace {
 		t.Fatalf("expected namespace %q, got %q", explicitRegistry.Namespace, defaults.Namespace)
+	}
+}
+
+func TestGetPublishDefaults_MasksExplicitRegistryWithoutReadAccess(t *testing.T) {
+	svc, db := testSetup(t, false)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "explicit-private", userID)
+
+	registry := models.OCIRegistry{Name: "private", URL: "https://ghcr.io"}
+	db.Create(&registry)
+
+	_, err := svc.GetPublishDefaults(ws.ID.String(), userID, registry.ID)
+	if err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got %T: %v", err, err)
 	}
 }
 

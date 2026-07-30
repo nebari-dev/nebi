@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -228,6 +229,10 @@ func (s *WorkspaceService) GetPublishDefaults(wsID string, userID uuid.UUID, reg
 		return nil, err
 	}
 	if err := ensureRegistryAccess(s.db, s.rbac, s.isLocal, userID, registry.ID, "read"); err != nil {
+		var forbiddenErr *ForbiddenError
+		if errors.As(err, &forbiddenErr) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 

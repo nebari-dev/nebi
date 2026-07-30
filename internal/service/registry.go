@@ -8,18 +8,21 @@ import (
 	"github.com/google/uuid"
 	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/rbac"
 	"gorm.io/gorm"
 )
 
 // RegistryService contains business logic for OCI registry operations.
 type RegistryService struct {
-	db     *gorm.DB
-	encKey []byte
+	db      *gorm.DB
+	encKey  []byte
+	isLocal bool
+	rbac    rbac.Provider
 }
 
 // NewRegistryService creates a new RegistryService.
-func NewRegistryService(db *gorm.DB, encKey []byte) *RegistryService {
-	return &RegistryService{db: db, encKey: encKey}
+func NewRegistryService(db *gorm.DB, encKey []byte, isLocal bool, rbacProvider rbac.Provider) *RegistryService {
+	return &RegistryService{db: db, encKey: encKey, isLocal: isLocal, rbac: rbacProvider}
 }
 
 // RegistryResult is the response type for registry operations.
@@ -75,16 +78,22 @@ func (s *RegistryService) ListRegistries() ([]RegistryResult, error) {
 	return result, nil
 }
 
-// ListPublicRegistries returns registries with public-safe info (no credentials).
-func (s *RegistryService) ListPublicRegistries() ([]RegistryResult, error) {
+// ListPublicRegistries returns registries the user can read with public-safe info (no credentials).
+func (s *RegistryService) ListPublicRegistries(userID uuid.UUID) ([]RegistryResult, error) {
 	var registries []models.OCIRegistry
 	if err := s.db.Find(&registries).Error; err != nil {
 		return nil, fmt.Errorf("fetch registries: %w", err)
 	}
 
-	result := make([]RegistryResult, len(registries))
-	for i, reg := range registries {
-		result[i] = registryToResult(reg, "", false)
+	result := make([]RegistryResult, 0, len(registries))
+	for _, reg := range registries {
+		hasAccess, err := hasRegistryAccess(s.rbac, s.isLocal, userID, reg.ID, "read")
+		if err != nil {
+			return nil, fmt.Errorf("check registry read access: %w", err)
+		}
+		if hasAccess {
+			result = append(result, registryToResult(reg, "", false))
+		}
 	}
 	return result, nil
 }
@@ -224,8 +233,16 @@ type RegistryWithCredentials struct {
 	APIToken string
 }
 
-// GetRegistryWithCredentials returns a registry with decrypted credentials for OCI operations.
-func (s *RegistryService) GetRegistryWithCredentials(id string) (*RegistryWithCredentials, error) {
+// GetRegistryWithCredentials returns a readable registry with decrypted credentials for OCI operations.
+func (s *RegistryService) GetRegistryWithCredentials(id string, userID uuid.UUID) (*RegistryWithCredentials, error) {
+	regID, err := uuid.Parse(id)
+	if err != nil {
+		return nil, &ValidationError{Message: "Invalid registry ID"}
+	}
+	if err := ensureRegistryAccess(s.db, s.rbac, s.isLocal, userID, regID, "read"); err != nil {
+		return nil, err
+	}
+
 	var registry models.OCIRegistry
 	if err := s.db.Where("id = ?", id).First(&registry).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {

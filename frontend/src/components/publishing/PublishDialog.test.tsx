@@ -39,14 +39,16 @@ describe('PublishDialog', () => {
 
   it('renders the form with registry options when registries exist', async () => {
     renderWithProviders(<PublishDialog {...defaultProps} />);
-    await waitFor(() =>
-      expect(
-        screen.getByRole('option', { name: new RegExp(mockRegistry.name) }),
-      ).toBeInTheDocument(),
-    );
-    expect(screen.getByPlaceholderText(/e\.g\., myenv/)).toBeInTheDocument();
+    expect(
+      await screen.findByPlaceholderText(/e\.g\., myenv/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: new RegExp(mockRegistry.name) }),
+    ).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/e\.g\., v1/)).toBeInTheDocument();
-    expect(screen.getByLabelText('Registry')).toHaveFocus();
+    await waitFor(() =>
+      expect(screen.getByLabelText('Registry')).toHaveFocus(),
+    );
   });
 
   it('auto-populates form fields from publish defaults', async () => {
@@ -60,6 +62,64 @@ describe('PublishDialog', () => {
     expect(
       (screen.getByPlaceholderText(/e\.g\., v1/) as HTMLInputElement).value,
     ).toBe(mockPublishDefaults.tag);
+  });
+
+  it('refreshes defaults when a different registry is selected', async () => {
+    const user = userEvent.setup();
+    const secondRegistry = {
+      ...mockRegistry,
+      id: 'reg-2',
+      name: 'Second Registry',
+      url: 'https://second.registry.example.com',
+      namespace: 'secondorg',
+      is_default: false,
+    };
+    const requestedRegistryIds: Array<string | null> = [];
+
+    server.use(
+      http.get('/api/v1/registries', () =>
+        HttpResponse.json([mockRegistry, secondRegistry]),
+      ),
+      http.get('/api/v1/workspaces/:id/publish-defaults', ({ request }) => {
+        const registryId = new URL(request.url).searchParams.get('registry_id');
+        requestedRegistryIds.push(registryId);
+
+        if (registryId === 'reg-2') {
+          return HttpResponse.json({
+            ...mockPublishDefaults,
+            registry_id: 'reg-2',
+            registry_name: 'Second Registry',
+            namespace: 'secondorg',
+            repository: 'second-workspace',
+            tag: 'next',
+          });
+        }
+
+        return HttpResponse.json(mockPublishDefaults);
+      }),
+    );
+
+    renderWithProviders(<PublishDialog {...defaultProps} />);
+    await waitFor(() =>
+      expect(
+        (screen.getByPlaceholderText(/e\.g\., myenv/) as HTMLInputElement)
+          .value,
+      ).toBe(mockPublishDefaults.repository),
+    );
+
+    await user.selectOptions(screen.getByLabelText('Registry'), 'reg-2');
+
+    await waitFor(() =>
+      expect(
+        (screen.getByPlaceholderText(/e\.g\., myenv/) as HTMLInputElement)
+          .value,
+      ).toBe('second-workspace'),
+    );
+    expect(
+      (screen.getByPlaceholderText(/e\.g\., v1/) as HTMLInputElement).value,
+    ).toBe('next');
+    expect(screen.getByText('secondorg/')).toBeInTheDocument();
+    expect(requestedRegistryIds).toContain('reg-2');
   });
 
   it('disables the Publish button when required fields are empty', async () => {
@@ -94,10 +154,9 @@ describe('PublishDialog', () => {
       ).toBeInTheDocument(),
     );
 
-    // Select registry
-    const select = screen.getByRole('combobox', {
-      hidden: true,
-    }) as HTMLSelectElement;
+    const select = await screen.findByRole('combobox', {
+      name: 'Registry',
+    });
     await user.selectOptions(select, mockRegistry.id);
 
     await user.click(screen.getByRole('button', { name: /Publish/ }));

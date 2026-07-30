@@ -163,7 +163,7 @@ func (h *RegistryHandler) DeleteRegistry(c *gin.Context) {
 // @Success 200 {array} service.RegistryResult
 // @Router /registries [get]
 func (h *RegistryHandler) ListPublicRegistries(c *gin.Context) {
-	registries, err := h.svc.ListPublicRegistries()
+	registries, err := h.svc.ListPublicRegistries(getUserID(c))
 	if err != nil {
 		handleServiceError(c, err)
 		return

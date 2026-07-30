@@ -28,33 +28,54 @@ export const PublishDialog = ({
   onOpenChange,
   environmentId,
 }: PublishDialogProps) => {
-  const { data: registries, isLoading: registriesLoading } =
-    usePublicRegistries();
-  const { data: defaults, isLoading: defaultsLoading } =
-    usePublishDefaults(environmentId);
-  const { data: publications } = usePublications(environmentId);
-  const publishMutation = usePublishWorkspace();
-
   const [selectedRegistry, setSelectedRegistry] = useState('');
   const [repository, setRepository] = useState('');
   const [tag, setTag] = useState('');
   const [error, setError] = useState('');
   const [publishSuccess, setPublishSuccess] = useState(false);
-  const [hasAutoPopulated, setHasAutoPopulated] = useState(false);
+  const [appliedDefaultsRegistry, setAppliedDefaultsRegistry] = useState<
+    string | null
+  >(null);
+  const { data: registries, isLoading: registriesLoading } =
+    usePublicRegistries();
+  const selectedRegistryRecord = registries?.find(
+    (registry) => registry.id === selectedRegistry,
+  );
+  const defaultsRegistryId =
+    selectedRegistryRecord && !selectedRegistryRecord.is_default
+      ? selectedRegistry
+      : undefined;
+  const { data: defaults, isLoading: defaultsLoading } = usePublishDefaults(
+    environmentId,
+    defaultsRegistryId,
+  );
+  const { data: publications } = usePublications(environmentId);
+  const publishMutation = usePublishWorkspace();
+
   const registryId = useId();
   const repositoryId = useId();
   const tagId = useId();
   const registrySelectRef = useRef<HTMLSelectElement>(null);
 
-  // Auto-populate from server-provided defaults
+  // Auto-populate from server-provided defaults for the current registry.
   useEffect(() => {
-    if (open && !hasAutoPopulated && defaults) {
-      setSelectedRegistry(defaults.registry_id);
-      setRepository(defaults.repository);
-      setTag(defaults.tag);
-      setHasAutoPopulated(true);
+    if (!open || !defaults || !registries) {
+      return;
     }
-  }, [open, hasAutoPopulated, defaults]);
+
+    const registryID = selectedRegistry || defaults.registry_id;
+    if (!registryID || appliedDefaultsRegistry === registryID) {
+      return;
+    }
+    if (selectedRegistry && defaults.registry_id !== selectedRegistry) {
+      return;
+    }
+
+    setSelectedRegistry(registryID);
+    setRepository(defaults.repository);
+    setTag(defaults.tag);
+    setAppliedDefaultsRegistry(registryID);
+  }, [open, defaults, registries, selectedRegistry, appliedDefaultsRegistry]);
 
   // Reset form when dialog closes
   useEffect(() => {
@@ -64,7 +85,7 @@ export const PublishDialog = ({
       setTag('');
       setError('');
       setPublishSuccess(false);
-      setHasAutoPopulated(false);
+      setAppliedDefaultsRegistry(null);
     }
   }, [open]);
 

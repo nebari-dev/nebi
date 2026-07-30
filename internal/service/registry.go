@@ -112,6 +112,14 @@ func (s *RegistryService) GetRegistry(id string) (*RegistryResult, error) {
 // CreateRegistry creates a new registry with encrypted credentials.
 func (s *RegistryService) CreateRegistry(req CreateRegistryReq) (*RegistryResult, error) {
 	if req.IsDefault {
+		var current models.OCIRegistry
+		if err := s.db.Where("is_default = ?", true).First(&current).Error; err != nil {
+			if err != gorm.ErrRecordNotFound {
+				return nil, err
+			}
+		} else if current.ConfigManaged {
+			return nil, &ConflictError{Message: fmt.Sprintf("Default registry '%s' is managed by server configuration (config.yaml); the default cannot be changed via the API", current.Name)}
+		}
 		s.db.Model(&models.OCIRegistry{}).Where("is_default = ?", true).Update("is_default", false)
 	}
 
@@ -185,6 +193,14 @@ func (s *RegistryService) UpdateRegistry(id string, req UpdateRegistryReq) (*Reg
 	}
 	if req.IsDefault != nil {
 		if *req.IsDefault {
+			var current models.OCIRegistry
+			if err := s.db.Where("is_default = ?", true).First(&current).Error; err != nil {
+				if err != gorm.ErrRecordNotFound {
+					return nil, err
+				}
+			} else if current.ConfigManaged && current.ID != registry.ID {
+				return nil, &ConflictError{Message: fmt.Sprintf("Default registry '%s' is managed by server configuration (config.yaml); the default cannot be changed via the API", current.Name)}
+			}
 			s.db.Model(&models.OCIRegistry{}).Where("is_default = ?", true).Update("is_default", false)
 		}
 		registry.IsDefault = *req.IsDefault

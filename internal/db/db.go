@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 )
 
@@ -148,7 +150,10 @@ func seedDefaultRoles(db *gorm.DB) error {
 		var existing models.Role
 		result := db.Where("name = ?", role.Name).First(&existing)
 		if result.Error == gorm.ErrRecordNotFound {
-			if err := db.Create(&role).Error; err != nil {
+			// Role.Name has a unique index, so a concurrent booting process
+			// (e.g. api + worker sharing Postgres in team mode) racing this
+			// insert is resolved by the DB rather than crashing the loser.
+			if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&role).Error; err != nil {
 				return err
 			}
 			slog.Info("Created default role", "role", role.Name)
@@ -172,7 +177,7 @@ func seedDefaultRegistry(db *gorm.DB) error {
 	if err == nil {
 		return nil // seeded before; a missing row means it was deleted on purpose
 	}
-	if err != gorm.ErrRecordNotFound {
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
 
@@ -185,11 +190,14 @@ func seedDefaultRegistry(db *gorm.DB) error {
 			Namespace: "nebari_environments",
 			IsDefault: true,
 		}
-		if err := db.Create(&registry).Error; err != nil {
+		// Concurrent boot (e.g. api + worker sharing Postgres in team mode)
+		// can race this insert; let the DB's unique constraint silently
+		// resolve the loser instead of crashing at boot.
+		if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&registry).Error; err != nil {
 			return err
 		}
 		slog.Info("Created default registry", "name", registry.Name, "url", registry.URL)
 	}
 
-	return db.Create(&models.SystemSetting{Key: defaultRegistrySeededKey, Value: "true"}).Error
+	return db.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.SystemSetting{Key: defaultRegistrySeededKey, Value: "true"}).Error
 }

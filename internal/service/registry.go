@@ -24,14 +24,15 @@ func NewRegistryService(db *gorm.DB, encKey []byte) *RegistryService {
 
 // RegistryResult is the response type for registry operations.
 type RegistryResult struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	URL         string    `json:"url"`
-	Username    string    `json:"username"`
-	HasAPIToken bool      `json:"has_api_token"`
-	IsDefault   bool      `json:"is_default"`
-	Namespace   string    `json:"namespace"`
-	CreatedAt   string    `json:"created_at"`
+	ID            uuid.UUID `json:"id"`
+	Name          string    `json:"name"`
+	URL           string    `json:"url"`
+	Username      string    `json:"username"`
+	HasAPIToken   bool      `json:"has_api_token"`
+	IsDefault     bool      `json:"is_default"`
+	Namespace     string    `json:"namespace"`
+	ConfigManaged bool      `json:"config_managed"`
+	CreatedAt     string    `json:"created_at"`
 }
 
 // CreateRegistryRequest holds parameters for creating a registry.
@@ -277,13 +278,14 @@ func (s *RegistryService) FallbackRepositories(registryID string) []string {
 
 func registryToResult(reg models.OCIRegistry, username string, hasAPIToken bool) RegistryResult {
 	return RegistryResult{
-		ID:          reg.ID,
-		Name:        reg.Name,
-		URL:         reg.URL,
-		Username:    username,
-		HasAPIToken: hasAPIToken,
-		IsDefault:   reg.IsDefault,
-		Namespace:   reg.Namespace,
-		CreatedAt:   reg.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:            reg.ID,
+		Name:          reg.Name,
+		URL:           reg.URL,
+		Username:      username,
+		HasAPIToken:   hasAPIToken,
+		IsDefault:     reg.IsDefault,
+		Namespace:     reg.Namespace,
+		ConfigManaged: reg.ConfigManaged,
+		CreatedAt:     reg.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
 }

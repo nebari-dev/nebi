@@ -239,3 +239,25 @@ func TestFallbackRepositories_ReturnsNamespaceQualifiedPaths(t *testing.T) {
 		t.Fatalf("did not expect namespace to be duplicated in %v", repositories)
 	}
 }
+
+func TestRegistryList_IncludesConfigManaged(t *testing.T) {
+	svc, db := registryTestSetup(t)
+
+	db.Create(&models.OCIRegistry{
+		ID:            uuid.New(),
+		Name:          "managed",
+		URL:           "registry.acme.com",
+		ConfigManaged: true,
+	})
+
+	registries, err := svc.ListRegistries()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(registries) != 1 {
+		t.Fatalf("expected 1 registry, got %d", len(registries))
+	}
+	if !registries[0].ConfigManaged {
+		t.Error("expected config_managed to be true in result")
+	}
+}

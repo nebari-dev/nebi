@@ -15,6 +15,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/api"
 	"github.com/nebari-dev/nebi/internal/api/handlers"
 	"github.com/nebari-dev/nebi/internal/config"
+	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
@@ -151,6 +152,17 @@ func (a *App) startup(ctx context.Context) {
 	// Desktop app is always local mode — migrate store tables
 	if err := store.MigrateServerDB(database); err != nil {
 		logToFile(fmt.Sprintf("Error migrating store tables: %v", err))
+		return
+	}
+
+	// Reconcile admin-provisioned registries from config.yaml into the DB.
+	registryEncKey, err := nebicrypto.DeriveKey(cfg.Auth.JWTSecret)
+	if err != nil {
+		logToFile(fmt.Sprintf("Error deriving registry encryption key: %v", err))
+		return
+	}
+	if err := service.ReconcileConfigRegistries(database, registryEncKey, cfg.Registries.Entries); err != nil {
+		logToFile(fmt.Sprintf("Error reconciling config registries: %v", err))
 		return
 	}
 	logToFile("Migrations complete")

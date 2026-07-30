@@ -103,6 +103,16 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	slog.Info("Database migrations completed")
 
+	// Reconcile admin-provisioned registries from config.yaml into the DB.
+	// Runs unconditionally so entries removed from config are cleaned up.
+	registryEncKey, err := nebicrypto.DeriveKey(appCfg.Auth.JWTSecret)
+	if err != nil {
+		return fmt.Errorf("failed to derive registry encryption key: %w", err)
+	}
+	if err := service.ReconcileConfigRegistries(database, registryEncKey, appCfg.Registries.Entries); err != nil {
+		return fmt.Errorf("failed to reconcile config registries: %w", err)
+	}
+
 	// Create default admin user if configured (team mode only)
 	if !appCfg.IsLocalMode() {
 		// Initialize RBAC early so CreateDefaultAdmin can grant admin role

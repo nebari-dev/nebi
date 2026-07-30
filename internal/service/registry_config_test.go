@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -225,5 +226,37 @@ func TestReconcile_DefaultTrueThenFalse(t *testing.T) {
 
 	if getRegistryByName(t, db, "acme").IsDefault {
 		t.Error("expected acme to no longer be default once its entry sets default=false")
+	}
+}
+
+func TestIsDuplicateKeyErr(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "sqlite unique constraint",
+			err:  errors.New("UNIQUE constraint failed: oci_registries.name"),
+			want: true,
+		},
+		{
+			name: "postgres duplicate key",
+			err:  errors.New("duplicate key value violates unique constraint \"oci_registries_name_key\""),
+			want: true,
+		},
+		{
+			name: "unrelated error",
+			err:  errors.New("connection refused"),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isDuplicateKeyErr(tt.err); got != tt.want {
+				t.Errorf("isDuplicateKeyErr(%q) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
 	}
 }

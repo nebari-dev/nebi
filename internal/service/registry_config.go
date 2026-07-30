@@ -112,7 +112,16 @@ func reconcileRegistryEntry(tx *gorm.DB, ee encryptedRegistryEntry) error {
 			Namespace:     e.Namespace,
 			ConfigManaged: true,
 		}
-		createErr := tx.Create(&row).Error
+		// Run the create under a savepoint: on Postgres a failed statement
+		// aborts the enclosing transaction (SQLSTATE 25P02), so a plain
+		// tx.Create failing on the unique-name constraint would poison the
+		// outer transaction and make the fallback lookup below fail too.
+		// gorm emits SAVEPOINT/ROLLBACK TO SAVEPOINT for a nested
+		// Transaction call on an existing tx, so only this statement is
+		// rolled back and the outer transaction survives.
+		createErr := tx.Transaction(func(tx2 *gorm.DB) error {
+			return tx2.Create(&row).Error
+		})
 		switch {
 		case createErr == nil:
 			slog.Info("Created config-managed registry", "name", e.Name, "url", e.URL)
@@ -168,7 +177,8 @@ func updateManagedRegistryRow(tx *gorm.DB, row *models.OCIRegistry, ee encrypted
 }
 
 // isDuplicateKeyErr detects a unique-constraint violation the same way
-// RegistryService.CreateRegistry does.
+// RegistryService.CreateRegistry does. err must be non-nil; callers only
+// invoke this on a known create error.
 func isDuplicateKeyErr(err error) bool {
 	return strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "duplicate")
 }

@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -17,6 +19,7 @@ type Config struct {
 	Log            LogConfig            `mapstructure:"log"`
 	PackageManager PackageManagerConfig `mapstructure:"package_manager"`
 	Storage        StorageConfig        `mapstructure:"storage"`
+	Registries     RegistriesConfig     `mapstructure:"registries"`
 }
 
 // IsLocalMode returns true when the server is running in local/desktop mode.
@@ -80,6 +83,25 @@ type StorageConfig struct {
 	WorkspacesDir string `mapstructure:"workspaces_dir"` // Directory where workspaces are stored
 }
 
+// RegistriesConfig holds admin-provisioned OCI registry configuration.
+// Entries are declarative: at boot they are reconciled into the database,
+// marked config-managed, and locked against API/UI/CLI modification.
+type RegistriesConfig struct {
+	SeedDefault bool                  `mapstructure:"seed_default"` // seed the built-in quay.io/nebari_environments registry (default true)
+	Entries     []RegistryEntryConfig `mapstructure:"entries"`
+}
+
+// RegistryEntryConfig is one admin-provisioned OCI registry.
+type RegistryEntryConfig struct {
+	Name      string `mapstructure:"name"`      // required, unique; reconciliation identity
+	URL       string `mapstructure:"url"`       // required, e.g. "quay.io"
+	Namespace string `mapstructure:"namespace"` // organization/namespace on the registry
+	Username  string `mapstructure:"username"`  // supports ${ENV_VAR}
+	Password  string `mapstructure:"password"`  // supports ${ENV_VAR}
+	APIToken  string `mapstructure:"api_token"` // supports ${ENV_VAR}
+	Default   bool   `mapstructure:"default"`   // at most one entry may set this
+}
+
 // Load reads configuration from file and environment variables
 func Load() (*Config, error) {
 	v := viper.New()
@@ -111,6 +133,7 @@ func Load() (*Config, error) {
 	v.SetDefault("log.level", "info")
 	v.SetDefault("package_manager.default_type", "pixi")
 	v.SetDefault("storage.workspaces_dir", "./data/workspaces")
+	v.SetDefault("registries.seed_default", true)
 
 	// Read from config file if exists
 	v.SetConfigName("config")
@@ -173,6 +196,10 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid mode %q: must be \"local\" or \"team\"", cfg.Mode)
 	}
 
+	if err := normalizeRegistries(&cfg.Registries); err != nil {
+		return nil, err
+	}
+
 	// Team mode exposes JWT-authenticated network endpoints, so its signing
 	// secret must not be empty, the shipped default, or too short to resist
 	// brute force. Local mode never reaches this auth path (it uses
@@ -200,6 +227,72 @@ func validateTeamModeJWTSecret(secret string) error {
 	}
 	if len(secret) < minJWTSecretLength {
 		return fmt.Errorf("auth.jwt_secret (NEBI_AUTH_JWT_SECRET) must be at least %d characters in team mode", minJWTSecretLength)
+	}
+	return nil
+}
+
+// envRefPattern matches ${VAR} references in credential fields.
+var envRefPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+
+// expandEnvRefs replaces ${VAR} with the environment value. A reference to
+// an unset variable is an error so a missing secret fails at boot instead
+// of silently producing an empty credential. An empty-but-set variable is
+// treated as set.
+func expandEnvRefs(field, value string) (string, error) {
+	var missing []string
+	expanded := envRefPattern.ReplaceAllStringFunc(value, func(m string) string {
+		name := envRefPattern.FindStringSubmatch(m)[1]
+		v, ok := os.LookupEnv(name)
+		if !ok {
+			missing = append(missing, name)
+			return m
+		}
+		return v
+	})
+	if len(missing) > 0 {
+		return "", fmt.Errorf("registries: %s references unset environment variable(s): %s",
+			field, strings.Join(missing, ", "))
+	}
+	return expanded, nil
+}
+
+// normalizeRegistries validates the registries section and expands ${VAR}
+// references in credential fields.
+func normalizeRegistries(rc *RegistriesConfig) error {
+	seen := make(map[string]bool, len(rc.Entries))
+	defaults := 0
+	for i := range rc.Entries {
+		e := &rc.Entries[i]
+		if strings.TrimSpace(e.Name) == "" {
+			return fmt.Errorf("registries.entries[%d]: name is required", i)
+		}
+		if seen[e.Name] {
+			return fmt.Errorf("registries.entries: duplicate name %q", e.Name)
+		}
+		seen[e.Name] = true
+		if strings.TrimSpace(e.URL) == "" {
+			return fmt.Errorf("registries.entries[%d] (%s): url is required", i, e.Name)
+		}
+		if e.Default {
+			defaults++
+		}
+		for _, f := range []struct {
+			label string
+			val   *string
+		}{
+			{"username", &e.Username},
+			{"password", &e.Password},
+			{"api_token", &e.APIToken},
+		} {
+			expanded, err := expandEnvRefs(fmt.Sprintf("entries[%d] (%s) %s", i, e.Name, f.label), *f.val)
+			if err != nil {
+				return err
+			}
+			*f.val = expanded
+		}
+	}
+	if defaults > 1 {
+		return fmt.Errorf("registries.entries: at most one entry may set default: true")
 	}
 	return nil
 }

@@ -1,7 +1,9 @@
 package auth
 
 import (
+	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -17,7 +19,13 @@ func syncTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	if err := db.AutoMigrate(&models.User{}, &models.Group{}, &models.GroupMember{}); err != nil {
+	if err := db.AutoMigrate(
+		&models.User{},
+		&models.Group{},
+		&models.GroupMember{},
+		&models.AuditLog{},
+		&models.AuthReconciliationStatus{},
+	); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := rbac.InitEnforcer(db, slog.Default()); err != nil {
@@ -178,4 +186,345 @@ func TestSyncOIDCGroups_RefusesToMergeIntoNativeGroup(t *testing.T) {
 	if refetched.Source != models.GroupSourceNative {
 		t.Fatalf("native group's source was reclassified to %q", refetched.Source)
 	}
+}
+
+func TestSyncOIDCGroups_ReturnsRBACAddFailure(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+
+	wantErr := errors.New("casbin add failed")
+	provider := &stubRBACProvider{addUserToGroupErr: wantErr}
+
+	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected rbac add error, got %v", err)
+	}
+}
+
+func TestSyncOIDCGroups_ReturnsRBACListFailure(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+
+	wantErr := errors.New("casbin list failed")
+	provider := &stubRBACProvider{getUserGroupsErr: wantErr}
+
+	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected rbac list error, got %v", err)
+	}
+}
+
+func TestSyncOIDCGroups_RetainsStaleMembershipWhenRBACRemoveFails(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+
+	provider := &stubRBACProvider{}
+	if err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider); err != nil {
+		t.Fatalf("seed sync: %v", err)
+	}
+
+	var group models.Group
+	if err := db.First(&group, "name = ?", "engineering").Error; err != nil {
+		t.Fatalf("load group: %v", err)
+	}
+
+	wantErr := errors.New("casbin remove failed")
+	provider.removeUserFromGroupErr = wantErr
+	err := syncOIDCGroups(db, u.ID, nil, provider)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected rbac remove error, got %v", err)
+	}
+
+	var count int64
+	db.Model(&models.GroupMember{}).
+		Where("group_id = ? AND user_id = ?", group.ID, u.ID).
+		Count(&count)
+	if count != 1 {
+		t.Fatalf("expected stale membership to remain for retry, got %d rows", count)
+	}
+}
+
+func TestSyncOIDCGroups_RecordsSuccessAndFailureStatus(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+
+	provider := &stubRBACProvider{}
+	if err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	var status models.AuthReconciliationStatus
+	if err := db.First(&status, "user_id = ? AND kind = ?", u.ID, string(authReconciliationOIDCGroups)).Error; err != nil {
+		t.Fatalf("load success status: %v", err)
+	}
+	if status.LastSuccessAt == nil {
+		t.Fatal("expected last success timestamp")
+	}
+	if status.ConsecutiveFailures != 0 {
+		t.Fatalf("expected failures reset after success, got %d", status.ConsecutiveFailures)
+	}
+	if status.DesiredGroupsJSON != `["engineering"]` {
+		t.Fatalf("expected desired groups to be stored, got %q", status.DesiredGroupsJSON)
+	}
+
+	wantErr := errors.New("casbin list failed")
+	provider.getUserGroupsErr = wantErr
+	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected rbac list error, got %v", err)
+	}
+
+	if err := db.First(&status, "user_id = ? AND kind = ?", u.ID, string(authReconciliationOIDCGroups)).Error; err != nil {
+		t.Fatalf("load failure status: %v", err)
+	}
+	if status.LastFailureAt == nil {
+		t.Fatal("expected last failure timestamp")
+	}
+	if status.ConsecutiveFailures != 1 {
+		t.Fatalf("expected one consecutive failure, got %d", status.ConsecutiveFailures)
+	}
+	if status.LastFailureSource != string(authReconciliationFailureSourceLocal) {
+		t.Fatalf("expected local failure source, got %q", status.LastFailureSource)
+	}
+	if !strings.Contains(status.LastError, wantErr.Error()) {
+		t.Fatalf("expected last error to contain %q, got %q", wantErr, status.LastError)
+	}
+}
+
+func TestSyncOIDCGroups_ReturnsStatusCreateFailure(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+
+	wantErr := errors.New("status create failed")
+	name := registerDBTableFailureCallback(t, db, "create", "auth_reconciliation_statuses", wantErr)
+	defer db.Callback().Create().Remove(name)
+
+	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, &stubRBACProvider{})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected status create error, got %v", err)
+	}
+}
+
+func TestSyncOIDCGroups_ReturnsStatusUpdateFailure(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+
+	provider := &stubRBACProvider{}
+	if err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider); err != nil {
+		t.Fatalf("seed status: %v", err)
+	}
+
+	wantErr := errors.New("status update failed")
+	name := registerDBTableFailureCallback(t, db, "update", "auth_reconciliation_statuses", wantErr)
+	defer db.Callback().Update().Remove(name)
+
+	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected status update error, got %v", err)
+	}
+}
+
+func TestSyncOIDCGroups_ReturnsGroupLookupFailure(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+
+	wantErr := errors.New("group lookup failed")
+	name := registerDBTableFailureCallback(t, db, "query", "groups", wantErr)
+	defer db.Callback().Query().Remove(name)
+
+	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, &stubRBACProvider{})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected group lookup error, got %v", err)
+	}
+}
+
+func TestSyncOIDCGroups_ReturnsGroupCreateFailure(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+
+	wantErr := errors.New("group create failed")
+	name := registerDBTableFailureCallback(t, db, "create", "groups", wantErr)
+	defer db.Callback().Create().Remove(name)
+
+	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, &stubRBACProvider{})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected group create error, got %v", err)
+	}
+}
+
+func TestSyncOIDCGroups_ReturnsMembershipLookupFailure(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+	group := models.Group{Name: "engineering", Source: models.GroupSourceOIDC}
+	db.Create(&group)
+
+	wantErr := errors.New("membership lookup failed")
+	name := registerDBTableFailureCallbackAfter(t, db, "query", "group_members", 1, wantErr)
+	defer db.Callback().Query().Remove(name)
+
+	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, &stubRBACProvider{})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected membership lookup error, got %v", err)
+	}
+}
+
+func TestSyncOIDCGroups_ReturnsMembershipCreateFailure(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+	group := models.Group{Name: "engineering", Source: models.GroupSourceOIDC}
+	db.Create(&group)
+
+	wantErr := errors.New("membership create failed")
+	name := registerDBTableFailureCallback(t, db, "create", "group_members", wantErr)
+	defer db.Callback().Create().Remove(name)
+
+	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, &stubRBACProvider{})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected membership create error, got %v", err)
+	}
+}
+
+func TestSyncOIDCGroups_ReturnsOriginalErrorWhenFailureStatusCreateFails(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+
+	wantErr := errors.New("casbin list failed")
+	provider := &stubRBACProvider{getUserGroupsErr: wantErr}
+	name := registerDBTableFailureCallback(t, db, "create", "auth_reconciliation_statuses", errors.New("status create failed"))
+	defer db.Callback().Create().Remove(name)
+
+	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected original reconciliation error, got %v", err)
+	}
+}
+
+func TestSyncOIDCGroups_ReturnsOriginalErrorWhenFailureStatusUpdateFails(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+
+	provider := &stubRBACProvider{}
+	if err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider); err != nil {
+		t.Fatalf("seed status: %v", err)
+	}
+
+	wantErr := errors.New("casbin list failed")
+	provider.getUserGroupsErr = wantErr
+	name := registerDBTableFailureCallback(t, db, "update", "auth_reconciliation_statuses", errors.New("status update failed"))
+	defer db.Callback().Update().Remove(name)
+
+	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected original reconciliation error, got %v", err)
+	}
+}
+
+func TestSyncOIDCGroups_ReturnsDBQueryFailure(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+
+	wantErr := errors.New("query failed")
+	name := registerDBFailureCallback(t, db, "query", wantErr)
+	defer db.Callback().Query().Remove(name)
+
+	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, &stubRBACProvider{})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected db query error, got %v", err)
+	}
+}
+
+func TestSyncOIDCGroups_ReturnsDBDeleteFailure(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+
+	provider := &stubRBACProvider{}
+	if err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider); err != nil {
+		t.Fatalf("seed sync: %v", err)
+	}
+
+	wantErr := errors.New("delete failed")
+	name := registerDBFailureCallback(t, db, "delete", wantErr)
+	defer db.Callback().Delete().Remove(name)
+
+	err := syncOIDCGroups(db, u.ID, nil, provider)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected db delete error, got %v", err)
+	}
+}
+
+func registerDBFailureCallback(t *testing.T, db *gorm.DB, op string, err error) string {
+	t.Helper()
+	name := "test:fail:" + strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())
+	switch op {
+	case "query":
+		if registerErr := db.Callback().Query().Before("gorm:query").Register(name, func(tx *gorm.DB) {
+			tx.AddError(err)
+		}); registerErr != nil {
+			t.Fatalf("register query callback: %v", registerErr)
+		}
+	case "delete":
+		if registerErr := db.Callback().Delete().Before("gorm:delete").Register(name, func(tx *gorm.DB) {
+			tx.AddError(err)
+		}); registerErr != nil {
+			t.Fatalf("register delete callback: %v", registerErr)
+		}
+	default:
+		t.Fatalf("unsupported callback op %q", op)
+	}
+	return name
+}
+
+func registerDBTableFailureCallback(t *testing.T, db *gorm.DB, op string, table string, err error) string {
+	t.Helper()
+	return registerDBTableFailureCallbackAfter(t, db, op, table, 0, err)
+}
+
+func registerDBTableFailureCallbackAfter(t *testing.T, db *gorm.DB, op string, table string, skipMatches int, err error) string {
+	t.Helper()
+	name := "test:fail:" + strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())
+	matches := 0
+	failForTable := func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Schema != nil && tx.Statement.Schema.Table == table {
+			if matches < skipMatches {
+				matches++
+				return
+			}
+			tx.AddError(err)
+		}
+	}
+	switch op {
+	case "query":
+		if registerErr := db.Callback().Query().Before("gorm:query").Register(name, failForTable); registerErr != nil {
+			t.Fatalf("register query callback: %v", registerErr)
+		}
+	case "create":
+		if registerErr := db.Callback().Create().Before("gorm:create").Register(name, failForTable); registerErr != nil {
+			t.Fatalf("register create callback: %v", registerErr)
+		}
+	case "delete":
+		if registerErr := db.Callback().Delete().Before("gorm:delete").Register(name, failForTable); registerErr != nil {
+			t.Fatalf("register delete callback: %v", registerErr)
+		}
+	case "update":
+		if registerErr := db.Callback().Update().Before("gorm:update").Register(name, failForTable); registerErr != nil {
+			t.Fatalf("register update callback: %v", registerErr)
+		}
+	default:
+		t.Fatalf("unsupported callback op %q", op)
+	}
+	return name
 }

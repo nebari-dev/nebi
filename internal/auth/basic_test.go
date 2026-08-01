@@ -70,6 +70,88 @@ func TestBasicAuthenticator_LoginTokenIsAccepted(t *testing.T) {
 	}
 }
 
+func TestBasicAuthenticator_AcceptsFreshReconciledBearerToken(t *testing.T) {
+	db := setupTestDB(t)
+	newTestUser(t, db, "alice", "correct-horse-battery-staple")
+
+	authr, err := NewBasicAuthenticator(db, testJWTSecret, nil)
+	if err != nil {
+		t.Fatalf("NewBasicAuthenticator: %v", err)
+	}
+
+	var user models.User
+	if err := db.Where("username = ?", "alice").First(&user).Error; err != nil {
+		t.Fatalf("load user: %v", err)
+	}
+
+	token, err := authr.generateReconciledToken(&user)
+	if err != nil {
+		t.Fatalf("generate reconciled token: %v", err)
+	}
+
+	if code := callWithToken(t, authr.Middleware(), token); code != http.StatusOK {
+		t.Fatalf("expected 200 for fresh reconciled token, got %d", code)
+	}
+}
+
+func TestBasicAuthenticator_RejectsStaleReconciledBearerToken(t *testing.T) {
+	db := setupTestDB(t)
+	newTestUser(t, db, "alice", "correct-horse-battery-staple")
+
+	authr, err := NewBasicAuthenticator(db, testJWTSecret, nil)
+	if err != nil {
+		t.Fatalf("NewBasicAuthenticator: %v", err)
+	}
+
+	var user models.User
+	if err := db.Where("username = ?", "alice").First(&user).Error; err != nil {
+		t.Fatalf("load user: %v", err)
+	}
+
+	syncedAt := time.Now().UTC().Add(-authReconciliationStaleAfter - time.Second)
+	token, err := authr.generateTokenWithAuthorizationSync(&user, &syncedAt)
+	if err != nil {
+		t.Fatalf("generate stale reconciled token: %v", err)
+	}
+
+	if code := callWithToken(t, authr.Middleware(), token); code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for stale reconciled token, got %d", code)
+	}
+}
+
+func TestBasicAuthenticator_RejectsLegacyUnstampedBearerToken(t *testing.T) {
+	db := setupTestDB(t)
+	newTestUser(t, db, "alice", "correct-horse-battery-staple")
+
+	authr, err := NewBasicAuthenticator(db, testJWTSecret, nil)
+	if err != nil {
+		t.Fatalf("NewBasicAuthenticator: %v", err)
+	}
+
+	var user models.User
+	if err := db.Where("username = ?", "alice").First(&user).Error; err != nil {
+		t.Fatalf("load user: %v", err)
+	}
+
+	claims := Claims{
+		UserID:   user.ID.String(),
+		Username: user.Username,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenDuration)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Issuer:    "nebi",
+		},
+	}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(authr.jwtSecret)
+	if err != nil {
+		t.Fatalf("sign legacy token: %v", err)
+	}
+
+	if code := callWithToken(t, authr.Middleware(), token); code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for legacy unstamped token, got %d", code)
+	}
+}
+
 func TestBasicAuthenticator_RejectsQueryToken(t *testing.T) {
 	db := setupTestDB(t)
 	newTestUser(t, db, "alice", "correct-horse-battery-staple")

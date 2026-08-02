@@ -56,6 +56,31 @@ describe('brandingConfig', () => {
     expect(style?.textContent).toContain('.dark');
   });
 
+  it('adds the CSP nonce to runtime branding styles when present', async () => {
+    document.head.innerHTML = `${defaultHead}
+      <meta name="csp-style-nonce" content="test-nonce" />
+    `;
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        branding: {
+          theme: {
+            light: { primary: '#123456' },
+          },
+        },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadBrandingConfig } = await import('./brandingConfig');
+    await loadBrandingConfig();
+
+    const style = document.getElementById(
+      'nebi-runtime-branding',
+    ) as HTMLStyleElement | null;
+    expect(style?.getAttribute('nonce') || style?.nonce).toBe('test-nonce');
+  });
+
   it('prepends base path for config fetch and root-relative assets', async () => {
     (window as BasePathWindow).__NEBI_BASE_PATH__ = '/nebi';
     const fetchMock = vi.fn().mockResolvedValue({
@@ -125,6 +150,29 @@ describe('brandingConfig', () => {
     expect(document.title).toBe('Unsafe assets');
     const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
     expect(favicon?.getAttribute('href')).toBe('/favicon.ico');
+  });
+
+  it('rejects external http asset URLs and accepts same-origin absolute URLs', async () => {
+    const sameOriginFavicon = `${window.location.origin}/brand/favicon.ico`;
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        branding: {
+          logoUrl: 'https://assets.example.com/logo.svg',
+          faviconUrl: sameOriginFavicon,
+        },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import(
+      './brandingConfig'
+    );
+    await loadBrandingConfig();
+
+    expect(getBrandingLogoUrl()).toBe('/nebi-logo.svg');
+    const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    expect(favicon?.getAttribute('href')).toBe(sameOriginFavicon);
   });
 
   it('ignores non-base64 data image URIs and protocol-relative asset URLs', async () => {

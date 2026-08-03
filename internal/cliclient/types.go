@@ -117,6 +117,7 @@ type CreateRegistryRequest struct {
 	URL       string  `json:"url"`
 	Username  *string `json:"username,omitempty"`
 	Password  *string `json:"password,omitempty"`
+	APIToken  *string `json:"api_token,omitempty"`
 	IsDefault *bool   `json:"is_default,omitempty"`
 	Namespace *string `json:"namespace,omitempty"`
 }

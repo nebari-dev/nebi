@@ -1,6 +1,7 @@
 import type {
   AuditLog,
   ConnectServerRequest,
+  CreateRegistryRequest,
   CreateRemoteWorkspaceRequest,
   DashboardStats,
   Job,
@@ -106,6 +107,13 @@ export const remoteApi = {
 
   listAdminRegistries: async (): Promise<OCIRegistry[]> => {
     const { data } = await apiClient.get('/remote/admin/registries');
+    return data;
+  },
+
+  createAdminRegistry: async (
+    req: CreateRegistryRequest,
+  ): Promise<OCIRegistry> => {
+    const { data } = await apiClient.post('/remote/admin/registries', req);
     return data;
   },
 

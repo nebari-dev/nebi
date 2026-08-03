@@ -27,10 +27,26 @@ func (c *Config) IsLocalMode() bool {
 // ServerConfig holds HTTP server configuration
 // Host may be empty to allow "all interfaces" bind behavior.
 type ServerConfig struct {
-	Host     string `mapstructure:"host"` // Bind host/IP (e.g. "127.0.0.1", "0.0.0.0")
-	Port     int    `mapstructure:"port"`
-	Mode     string `mapstructure:"mode"`      // "development" or "production"
-	BasePath string `mapstructure:"base_path"` // URL path prefix (e.g. "/nebi")
+	Host           string `mapstructure:"host"` // Bind host/IP (e.g. "127.0.0.1", "0.0.0.0")
+	Port           int    `mapstructure:"port"`
+	Mode           string `mapstructure:"mode"`            // "development" or "production"
+	BasePath       string `mapstructure:"base_path"`       // URL path prefix (e.g. "/nebi")
+	AllowedOrigins string `mapstructure:"allowed_origins"` // comma-separated non-loopback origins accepted in local mode (e.g. "https://hub.example.com" when proxied by JupyterHub)
+}
+
+// AllowedOriginsList returns server.allowed_origins split on commas, with
+// whitespace trimmed and empty entries dropped.
+func (c *ServerConfig) AllowedOriginsList() []string {
+	if strings.TrimSpace(c.AllowedOrigins) == "" {
+		return nil
+	}
+	var out []string
+	for _, o := range strings.Split(c.AllowedOrigins, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 // DatabaseConfig holds database configuration
@@ -90,6 +106,7 @@ func Load() (*Config, error) {
 	v.SetDefault("server.port", 8460)
 	v.SetDefault("server.mode", "development")
 	v.SetDefault("server.base_path", "")
+	v.SetDefault("server.allowed_origins", "")
 	v.SetDefault("database.driver", "sqlite")
 	v.SetDefault("database.dsn", "./nebi.db")
 	v.SetDefault("database.max_idle_conns", 10)
@@ -141,6 +158,7 @@ func Load() (*Config, error) {
 	_ = v.BindEnv("server.port", "NEBI_SERVER_PORT")
 	_ = v.BindEnv("server.mode", "NEBI_SERVER_MODE")
 	_ = v.BindEnv("server.base_path", "NEBI_SERVER_BASE_PATH")
+	_ = v.BindEnv("server.allowed_origins", "NEBI_SERVER_ALLOWED_ORIGINS")
 	_ = v.BindEnv("database.driver", "NEBI_DATABASE_DRIVER")
 	_ = v.BindEnv("database.dsn", "NEBI_DATABASE_DSN")
 	_ = v.BindEnv("auth.type", "NEBI_AUTH_TYPE")

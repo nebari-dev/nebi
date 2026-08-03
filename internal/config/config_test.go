@@ -71,3 +71,26 @@ func TestLoad_LocalMode_AllowsDefaultJWTSecret(t *testing.T) {
 		t.Fatalf("unexpected error in local mode: %v", err)
 	}
 }
+
+func TestLoad_Server_AllowedOrigins(t *testing.T) {
+	isolate(t)
+	t.Setenv("NEBI_MODE", "local")
+	t.Setenv("NEBI_SERVER_ALLOWED_ORIGINS", "https://hub.example.com, https://other.example.com ,")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := cfg.Server.AllowedOriginsList()
+	want := []string{"https://hub.example.com", "https://other.example.com"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("expected %v, got %v", want, got)
+	}
+}
+
+func TestAllowedOriginsList_Empty(t *testing.T) {
+	c := ServerConfig{AllowedOrigins: "  "}
+	if got := c.AllowedOriginsList(); got != nil {
+		t.Errorf("expected nil for blank value, got %v", got)
+	}
+}

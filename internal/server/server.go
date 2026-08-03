@@ -197,7 +197,7 @@ func Run(ctx context.Context, cfg Config) error {
 				slog.Warn("Local mode is bound to a non-loopback interface; it is intended for local use only",
 					"host", appCfg.Server.Host)
 			}
-			handler = netguard.Middleware(router, allowAnyHost)
+			handler = netguard.Middleware(router, allowAnyHost, appCfg.Server.AllowedOriginsList())
 		}
 
 		addr := listenAddress(appCfg.Server.Host, appCfg.Server.Port)

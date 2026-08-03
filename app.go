@@ -211,7 +211,7 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Server.Port))
 	a.server = &http.Server{
 		Addr:    addr,
-		Handler: netguard.Middleware(router, false),
+		Handler: netguard.Middleware(router, false, nil),
 	}
 
 	logToFile(fmt.Sprintf("startEmbeddedServer: starting server on %s", addr))

@@ -4,6 +4,12 @@
 server:
   port: 8460
   mode: development  # or "production"
+  # Local mode only accepts requests with loopback Host/Origin headers.
+  # When nebi is served through a reverse proxy on a public hostname
+  # (e.g. JupyterHub's jupyter-server-proxy), list that origin here so
+  # browser CORS-mode requests (the SPA's crossorigin asset bundle) pass.
+  # Comma-separated. Env: NEBI_SERVER_ALLOWED_ORIGINS
+  # allowed_origins: "https://hub.example.com"
 
 database:
   driver: sqlite  # or "postgres"

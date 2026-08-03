@@ -63,7 +63,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	// Middleware
 	router.Use(gin.Recovery())
 	router.Use(loggingMiddleware())
-	router.Use(corsMiddleware(localMode))
+	router.Use(corsMiddleware(localMode, cfg.Server.AllowedOriginsList()))
 
 	// Initialize authenticator based on mode
 	var authenticator auth.Authenticator
@@ -537,15 +537,18 @@ func loggingMiddleware() gin.HandlerFunc {
 //
 // In local mode the API is used only by local UIs, so instead of a wildcard
 // the allowed origin is echoed only for those: loopback http(s) origins (the
-// SPA served by this process, the Vite dev server) and the desktop webview
-// ("wails://..." on macOS/Linux, opaque "null" origins some webviews produce).
-// Those webview requests arrive through the in-process Wails handler, never
-// the network listener (see netguard.Middleware).
-func corsMiddleware(localMode bool) gin.HandlerFunc {
+// SPA served by this process, the Vite dev server), the desktop webview
+// ("wails://..." on macOS/Linux, opaque "null" origins some webviews produce),
+// and any operator-configured server.allowed_origins (a reverse proxy such as
+// jupyter-server-proxy, whose public origin browsers send on CORS-mode
+// requests like Vite's crossorigin module bundles). Webview requests arrive
+// through the in-process Wails handler, never the network listener (see
+// netguard.Middleware, which enforces the same origin rules on requests).
+func corsMiddleware(localMode bool, allowedOrigins []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if localMode {
 			origin := c.Request.Header.Get("Origin")
-			if netguard.IsLoopbackOrigin(origin) || strings.HasPrefix(origin, "wails://") || origin == "null" {
+			if netguard.IsLoopbackOrigin(origin) || netguard.OriginAllowed(origin, allowedOrigins) || strings.HasPrefix(origin, "wails://") || origin == "null" {
 				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 				c.Writer.Header().Set("Vary", "Origin")
 			}

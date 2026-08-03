@@ -45,6 +45,9 @@ export const PublishDialog = ({
   const repositoryId = useId();
   const tagId = useId();
   const registrySelectRef = useRef<HTMLSelectElement>(null);
+  const selectedRegistryNamespace =
+    registries?.find((registry) => registry.id === selectedRegistry)
+      ?.namespace || '';
 
   // Auto-populate from server-provided defaults
   useEffect(() => {
@@ -184,9 +187,9 @@ export const PublishDialog = ({
                     Repository
                   </label>
                   <div className="flex items-center gap-0">
-                    {defaults?.namespace && (
+                    {selectedRegistryNamespace && (
                       <span className="inline-flex items-center px-3 h-10 rounded-l-md border border-r-0 border-input bg-muted text-muted-foreground text-sm">
-                        {defaults.namespace}/
+                        {selectedRegistryNamespace}/
                       </span>
                     )}
                     <Input
@@ -196,7 +199,9 @@ export const PublishDialog = ({
                       onChange={(e) => setRepository(e.target.value)}
                       placeholder="e.g., myenv"
                       required
-                      className={defaults?.namespace ? 'rounded-l-none' : ''}
+                      className={
+                        selectedRegistryNamespace ? 'rounded-l-none' : ''
+                      }
                     />
                   </div>
                 </div>

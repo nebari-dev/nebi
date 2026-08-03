@@ -62,6 +62,31 @@ describe('PublishDialog', () => {
     ).toBe(mockPublishDefaults.tag);
   });
 
+  it('uses the selected registry namespace for the repository prefix', async () => {
+    const user = userEvent.setup();
+    const harborRegistry = {
+      ...mockRegistry,
+      id: 'reg-2',
+      name: 'Harbor',
+      url: 'https://harbor.example.com',
+      is_default: false,
+      namespace: 'harbor-project',
+    };
+    server.use(
+      http.get('/api/v1/registries', () =>
+        HttpResponse.json([mockRegistry, harborRegistry]),
+      ),
+    );
+
+    renderWithProviders(<PublishDialog {...defaultProps} />);
+    await waitFor(() => expect(screen.getByText('myorg/')).toBeInTheDocument());
+
+    await user.selectOptions(screen.getByLabelText('Registry'), 'reg-2');
+
+    expect(screen.queryByText('myorg/')).not.toBeInTheDocument();
+    expect(screen.getByText('harbor-project/')).toBeInTheDocument();
+  });
+
   it('disables the Publish button when required fields are empty', async () => {
     server.use(
       http.get('/api/v1/workspaces/:id/publish-defaults', () =>

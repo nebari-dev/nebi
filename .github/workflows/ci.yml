@@ -112,9 +112,9 @@ jobs:
         run: mkdir -p frontend/dist internal/web/dist && touch frontend/dist/.gitkeep internal/web/dist/.gitkeep
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@8564da7cb3c6866ed1da648ca8f00a258ef0c802 # v6.5.2
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: latest
+          version: v2.12.2
 
   backend-test:
     name: Backend / Test
@@ -208,13 +208,17 @@ jobs:
           version: latest
           args: build --snapshot --clean
 
-      # Binary-mode scan of a final artifact: checks the symbols actually
-      # linked into the compiled binary (including the exact stdlib the
-      # release toolchain shipped) against the vulndb.
+      # Binary-mode scan of a compiled artifact: checks the symbols actually
+      # linked into the binary (including the exact stdlib the toolchain
+      # shipped) against the vulndb. The release binaries are stripped
+      # (-s -w), which loses the symbol table and degrades govulncheck to
+      # module-level reporting (false positives like GO-2026-5932), so scan
+      # an unstripped build of the same package, toolchain, and deps.
       - name: govulncheck (compiled binary)
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
-          govulncheck -mode=binary dist/nebi_linux_amd64_v1/nebi
+          go build -trimpath -o /tmp/nebi-scan ./cmd/nebi
+          govulncheck -mode=binary /tmp/nebi-scan
 
       - name: Upload Linux amd64
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

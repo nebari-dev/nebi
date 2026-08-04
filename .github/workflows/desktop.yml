@@ -95,15 +95,19 @@ jobs:
       - name: Build desktop app
         run: wails build -platform ${{ matrix.platform }} ${{ matrix.build_tags }}
 
-      # Binary-mode vulnerability scan of the final desktop artifact — this
-      # covers the wails stack the CLI binary never links (#451). Linux only:
-      # one leg is enough to gate the shared dependency graph, and the
-      # macOS/Windows artifacts are built from the same go.sum.
+      # Binary-mode vulnerability scan of the desktop app — this covers the
+      # wails stack the CLI binary never links (#451). Linux only: one leg is
+      # enough to gate the shared dependency graph, and the macOS/Windows
+      # artifacts are built from the same go.sum. Wails strips the production
+      # binary, which degrades govulncheck to module-level reporting (false
+      # positives like GO-2026-5932), so scan an unstripped build of the same
+      # package, toolchain, and deps.
       - name: govulncheck (compiled binary)
         if: matrix.os == 'ubuntu-latest'
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
-          govulncheck -mode=binary build/bin/Nebi
+          go build -trimpath -tags webkit2_41 -o /tmp/nebi-desktop-scan .
+          govulncheck -mode=binary /tmp/nebi-desktop-scan
 
       # Import the Developer ID Application cert into a throwaway keychain so
       # codesign can use it. Skipped automatically when secrets are absent

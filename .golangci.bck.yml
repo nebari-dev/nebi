@@ -1,0 +1,45 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    - gofmt
+    - govet
+    - gosimple
+    - ineffassign
+
+linters-settings:
+  errcheck:
+    check-blank: false
+    check-type-assertions: false
+  govet:
+    enable-all: false
+    enable:
+      - assign
+      - atomic
+      - bools
+      - buildtag
+      - composites
+      - copylocks
+      - nilfunc
+      - printf
+      - shift
+      - stdmethods
+      - structtag
+      - tests
+      - unmarshal
+      - unreachable
+      - unusedresult
+
+issues:
+  exclude-files:
+    - "scripts/.*"
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+    - path: scripts/
+      linters:
+        - typecheck

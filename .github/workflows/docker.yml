@@ -143,6 +143,19 @@ jobs:
           # Cleanup
           docker stop test-nebi
 
+      # Scan the final image (base layers + compiled binary) and fail on
+      # fixable High/Critical findings (#451). Runs after the smoke test,
+      # which has already pulled the image when it was pushed rather than
+      # loaded locally.
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
       - name: Add image tags to summary
         run: |
           echo "## Docker Image Built: ${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY

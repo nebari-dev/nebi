@@ -180,3 +180,5 @@ $ nebi publish my-project --tag v1.0.0
 # Publish to a specific registry and repository
 $ nebi publish my-project --registry ghcr --repo myorg/myenv
 ```
+
+If a registry was added with `--repository`, `nebi publish --registry <name>` uses that shared repository by default. This is useful for Harbor projects where all Nebi environment artifacts should live under one repository.

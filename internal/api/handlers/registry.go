@@ -66,14 +66,15 @@ func (h *RegistryHandler) CreateRegistry(c *gin.Context) {
 	userID := user.(*models.User).ID
 
 	result, err := h.svc.CreateRegistry(service.CreateRegistryReq{
-		Name:      req.Name,
-		URL:       req.URL,
-		Username:  req.Username,
-		Password:  req.Password,
-		APIToken:  req.APIToken,
-		IsDefault: req.IsDefault,
-		Namespace: req.Namespace,
-		CreatedBy: userID,
+		Name:              req.Name,
+		URL:               req.URL,
+		Username:          req.Username,
+		Password:          req.Password,
+		APIToken:          req.APIToken,
+		IsDefault:         req.IsDefault,
+		Namespace:         req.Namespace,
+		DefaultRepository: req.DefaultRepository,
+		CreatedBy:         userID,
 	})
 	if err != nil {
 		handleServiceError(c, err)
@@ -122,13 +123,14 @@ func (h *RegistryHandler) UpdateRegistry(c *gin.Context) {
 	}
 
 	result, err := h.svc.UpdateRegistry(c.Param("id"), service.UpdateRegistryReq{
-		Name:      req.Name,
-		URL:       req.URL,
-		Username:  req.Username,
-		Password:  req.Password,
-		APIToken:  req.APIToken,
-		IsDefault: req.IsDefault,
-		Namespace: req.Namespace,
+		Name:              req.Name,
+		URL:               req.URL,
+		Username:          req.Username,
+		Password:          req.Password,
+		APIToken:          req.APIToken,
+		IsDefault:         req.IsDefault,
+		Namespace:         req.Namespace,
+		DefaultRepository: req.DefaultRepository,
 	})
 	if err != nil {
 		handleServiceError(c, err)
@@ -174,23 +176,25 @@ func (h *RegistryHandler) ListPublicRegistries(c *gin.Context) {
 // --- Request types ---
 
 type CreateRegistryRequest struct {
-	Name      string `json:"name" binding:"required"`
-	URL       string `json:"url" binding:"required"`
-	Username  string `json:"username"`
-	Password  string `json:"password"`
-	APIToken  string `json:"api_token"`
-	IsDefault bool   `json:"is_default"`
-	Namespace string `json:"namespace"`
+	Name              string `json:"name" binding:"required"`
+	URL               string `json:"url" binding:"required"`
+	Username          string `json:"username"`
+	Password          string `json:"password"`
+	APIToken          string `json:"api_token"`
+	IsDefault         bool   `json:"is_default"`
+	Namespace         string `json:"namespace"`
+	DefaultRepository string `json:"default_repository"`
 }
 
 type UpdateRegistryRequest struct {
-	Name      *string `json:"name"`
-	URL       *string `json:"url"`
-	Username  *string `json:"username"`
-	Password  *string `json:"password"`
-	APIToken  *string `json:"api_token"`
-	IsDefault *bool   `json:"is_default"`
-	Namespace *string `json:"namespace"`
+	Name              *string `json:"name"`
+	URL               *string `json:"url"`
+	Username          *string `json:"username"`
+	Password          *string `json:"password"`
+	APIToken          *string `json:"api_token"`
+	IsDefault         *bool   `json:"is_default"`
+	Namespace         *string `json:"namespace"`
+	DefaultRepository *string `json:"default_repository"`
 }
 
 type GrantRegistryToGroupRequest struct {

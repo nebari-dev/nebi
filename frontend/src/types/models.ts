@@ -168,6 +168,7 @@ export interface OCIRegistry {
   has_api_token: boolean;
   is_default: boolean;
   namespace: string;
+  default_repository: string;
   created_at: string;
 }
 
@@ -179,6 +180,7 @@ export interface CreateRegistryRequest {
   api_token?: string;
   is_default?: boolean;
   namespace?: string;
+  default_repository?: string;
 }
 
 export interface UpdateRegistryRequest {
@@ -189,6 +191,7 @@ export interface UpdateRegistryRequest {
   api_token?: string;
   is_default?: boolean;
   namespace?: string;
+  default_repository?: string;
 }
 
 // Workspace Tag types

@@ -22,10 +22,11 @@ func TestRegistryCreate(t *testing.T) {
 	svc, _ := registryTestSetup(t)
 
 	result, err := svc.CreateRegistry(CreateRegistryReq{
-		Name:     "test-registry",
-		URL:      "https://ghcr.io",
-		Username: "user",
-		Password: "pass",
+		Name:              "test-registry",
+		URL:               "https://ghcr.io",
+		Username:          "user",
+		Password:          "pass",
+		DefaultRepository: "nebari_environments",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -35,6 +36,9 @@ func TestRegistryCreate(t *testing.T) {
 	}
 	if result.Username != "user" {
 		t.Errorf("expected username 'user', got %q", result.Username)
+	}
+	if result.DefaultRepository != "nebari_environments" {
+		t.Errorf("expected default repository %q, got %q", "nebari_environments", result.DefaultRepository)
 	}
 }
 
@@ -95,11 +99,12 @@ func TestRegistryListPublic_HidesCredentials(t *testing.T) {
 	svc, _ := registryTestSetup(t)
 
 	svc.CreateRegistry(CreateRegistryReq{
-		Name:     "public-reg",
-		URL:      "https://ghcr.io",
-		Username: "secret-user",
-		Password: "secret-pass",
-		APIToken: "secret-token",
+		Name:              "public-reg",
+		URL:               "https://ghcr.io",
+		Username:          "secret-user",
+		Password:          "secret-pass",
+		APIToken:          "secret-token",
+		DefaultRepository: "nebari_environments",
 	})
 
 	registries, err := svc.ListPublicRegistries()
@@ -115,6 +120,9 @@ func TestRegistryListPublic_HidesCredentials(t *testing.T) {
 	}
 	if registries[0].HasAPIToken {
 		t.Error("expected HasAPIToken=false in public listing")
+	}
+	if registries[0].DefaultRepository != "nebari_environments" {
+		t.Errorf("expected default repository %q, got %q", "nebari_environments", registries[0].DefaultRepository)
 	}
 }
 
@@ -152,9 +160,11 @@ func TestRegistryUpdate(t *testing.T) {
 
 	newName := "updated-name"
 	newURL := "https://new.io"
+	newDefaultRepository := "shared-nebi"
 	result, err := svc.UpdateRegistry(created.ID.String(), UpdateRegistryReq{
-		Name: &newName,
-		URL:  &newURL,
+		Name:              &newName,
+		URL:               &newURL,
+		DefaultRepository: &newDefaultRepository,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -164,6 +174,9 @@ func TestRegistryUpdate(t *testing.T) {
 	}
 	if result.URL != "https://new.io" {
 		t.Errorf("expected URL 'https://new.io', got %q", result.URL)
+	}
+	if result.DefaultRepository != "shared-nebi" {
+		t.Errorf("expected default repository %q, got %q", "shared-nebi", result.DefaultRepository)
 	}
 }
 

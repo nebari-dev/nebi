@@ -179,6 +179,7 @@ func resetFlags() {
 	registryAddURL = ""
 	registryAddUsername = ""
 	registryAddNamespace = ""
+	registryAddRepository = ""
 	registryAddDefault = false
 	registryAddPwdStdin = false
 	registryRemoveForce = false
@@ -857,7 +858,7 @@ func TestE2E_RegistryAdd(t *testing.T) {
 	dir := t.TempDir()
 
 	// Add a registry
-	res := runCLI(t, dir, "registry", "add", "--name", "test-registry", "--url", "ghcr.io", "--namespace", "testns")
+	res := runCLI(t, dir, "registry", "add", "--name", "test-registry", "--url", "ghcr.io", "--namespace", "testns", "--repository", "shared-nebi")
 	if res.ExitCode != 0 {
 		t.Fatalf("registry add failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -875,6 +876,27 @@ func TestE2E_RegistryAdd(t *testing.T) {
 	}
 	if !strings.Contains(res.Stdout, "ghcr.io") {
 		t.Errorf("expected URL in list, got stdout: %s", res.Stdout)
+	}
+
+	res = runCLI(t, dir, "registry", "list", "--json")
+	if res.ExitCode != 0 {
+		t.Fatalf("registry list --json failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	var registries []cliclient.Registry
+	if err := json.Unmarshal([]byte(res.Stdout), &registries); err != nil {
+		t.Fatalf("decode registry list: %v\nstdout: %s", err, res.Stdout)
+	}
+	var found bool
+	for _, registry := range registries {
+		if registry.Name == "test-registry" {
+			found = true
+			if registry.DefaultRepository != "shared-nebi" {
+				t.Errorf("expected default repository %q, got %q", "shared-nebi", registry.DefaultRepository)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected test-registry in JSON list, got %+v", registries)
 	}
 }
 

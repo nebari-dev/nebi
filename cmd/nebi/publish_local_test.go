@@ -110,3 +110,31 @@ func TestLocalPublishDefaults(t *testing.T) {
 		t.Fatalf("expected tag %q, got %q", expectedTag, pubs[0].Tag)
 	}
 }
+
+func TestPublishDefaultRepository(t *testing.T) {
+	t.Run("uses configured repository", func(t *testing.T) {
+		got := publishDefaultRepository("workspace-12345678", " nebari_environments ")
+		if got != "nebari_environments" {
+			t.Fatalf("expected configured repository, got %q", got)
+		}
+	})
+
+	t.Run("falls back to workspace repository", func(t *testing.T) {
+		got := publishDefaultRepository("workspace-12345678", "")
+		if got != "workspace-12345678" {
+			t.Fatalf("expected workspace repository, got %q", got)
+		}
+	})
+}
+
+func TestPublishWorkspaceRepository(t *testing.T) {
+	got := publishWorkspaceRepository("test-workspace", "12345678-1234-1234-1234-123456789012")
+	if got != "test-workspace-12345678" {
+		t.Fatalf("expected workspace repository, got %q", got)
+	}
+
+	got = publishWorkspaceRepository("test-workspace", "short")
+	if got != "test-workspace" {
+		t.Fatalf("expected name fallback, got %q", got)
+	}
+}

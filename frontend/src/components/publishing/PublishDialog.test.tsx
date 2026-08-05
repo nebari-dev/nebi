@@ -87,6 +87,82 @@ describe('PublishDialog', () => {
     expect(screen.getByText('harbor-project/')).toBeInTheDocument();
   });
 
+  it('uses the selected registry default repository', async () => {
+    const user = userEvent.setup();
+    const harborRegistry = {
+      ...mockRegistry,
+      id: 'reg-2',
+      name: 'Harbor',
+      url: 'https://harbor.example.com',
+      is_default: false,
+      default_repository: 'nebari_environments',
+    };
+    server.use(
+      http.get('/api/v1/registries', () =>
+        HttpResponse.json([mockRegistry, harborRegistry]),
+      ),
+    );
+
+    renderWithProviders(<PublishDialog {...defaultProps} />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('option', { name: new RegExp(harborRegistry.name) }),
+      ).toBeInTheDocument(),
+    );
+
+    await user.selectOptions(
+      screen.getByLabelText('Registry'),
+      harborRegistry.id,
+    );
+
+    expect(
+      (screen.getByPlaceholderText(/e\.g\., myenv/) as HTMLInputElement).value,
+    ).toBe('nebari_environments');
+  });
+
+  it('falls back to the workspace repository when the selected registry has no default repository', async () => {
+    const user = userEvent.setup();
+    const defaultRegistry = {
+      ...mockRegistry,
+      default_repository: 'default-shared',
+    };
+    const harborRegistry = {
+      ...mockRegistry,
+      id: 'reg-2',
+      name: 'Harbor',
+      url: 'https://harbor.example.com',
+      is_default: false,
+      default_repository: '',
+    };
+    server.use(
+      http.get('/api/v1/registries', () =>
+        HttpResponse.json([defaultRegistry, harborRegistry]),
+      ),
+      http.get('/api/v1/workspaces/:id/publish-defaults', () =>
+        HttpResponse.json({
+          ...mockPublishDefaults,
+          repository: 'default-shared',
+        }),
+      ),
+    );
+
+    renderWithProviders(<PublishDialog {...defaultProps} />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('option', { name: new RegExp(harborRegistry.name) }),
+      ).toBeInTheDocument(),
+    );
+
+    await user.selectOptions(
+      screen.getByLabelText('Registry'),
+      harborRegistry.id,
+    );
+
+    expect(
+      (screen.getByPlaceholderText(/e\.g\., myenv/) as HTMLInputElement).value,
+    ).toBe('test-workspace');
+  });
+
   it('disables the Publish button when required fields are empty', async () => {
     server.use(
       http.get('/api/v1/workspaces/:id/publish-defaults', () =>

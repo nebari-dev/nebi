@@ -27,6 +27,7 @@ export const PublishDialog = ({
   open,
   onOpenChange,
   environmentId,
+  environmentName,
 }: PublishDialogProps) => {
   const { data: registries, isLoading: registriesLoading } =
     usePublicRegistries();
@@ -45,9 +46,14 @@ export const PublishDialog = ({
   const repositoryId = useId();
   const tagId = useId();
   const registrySelectRef = useRef<HTMLSelectElement>(null);
-  const selectedRegistryNamespace =
-    registries?.find((registry) => registry.id === selectedRegistry)
-      ?.namespace || '';
+  const selectedRegistryDetails = registries?.find(
+    (registry) => registry.id === selectedRegistry,
+  );
+  const selectedRegistryNamespace = selectedRegistryDetails?.namespace || '';
+  const workspaceRepository =
+    environmentId.length >= 8
+      ? `${environmentName}-${environmentId.slice(0, 8)}`
+      : environmentName;
 
   // Auto-populate from server-provided defaults
   useEffect(() => {
@@ -110,6 +116,19 @@ export const PublishDialog = ({
     }
   };
 
+  const handleRegistryChange = (registryId: string) => {
+    setSelectedRegistry(registryId);
+    const registry = registries?.find((item) => item.id === registryId);
+    const defaultRepository = registry?.default_repository?.trim();
+    if (defaultRepository) {
+      setRepository(defaultRepository);
+    } else if (registryId === defaults?.registry_id) {
+      setRepository(defaults.repository);
+    } else {
+      setRepository(workspaceRepository);
+    }
+  };
+
   const isLoading = registriesLoading || defaultsLoading;
 
   useEffect(() => {
@@ -168,7 +187,7 @@ export const PublishDialog = ({
                     ref={registrySelectRef}
                     id={registryId}
                     value={selectedRegistry}
-                    onChange={(e) => setSelectedRegistry(e.target.value)}
+                    onChange={(e) => handleRegistryChange(e.target.value)}
                     className="w-full h-10 px-3 rounded-md border border-input bg-background text-foreground"
                     required
                   >

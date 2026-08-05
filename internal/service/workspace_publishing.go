@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
@@ -207,7 +208,7 @@ func (s *WorkspaceService) GetPublishDefaults(wsID string) (*PublishDefaultsResu
 		return nil, err
 	}
 
-	repo := fmt.Sprintf("%s-%s", ws.Name, ws.ID.String()[:8])
+	repo := defaultPublishRepository(ws, registry)
 
 	tag := "latest"
 	var latestVersion models.WorkspaceVersion
@@ -244,6 +245,13 @@ func (s *WorkspaceService) GetPublishDefaults(wsID string) (*PublishDefaultsResu
 		Repository:   repo,
 		Tag:          tag,
 	}, nil
+}
+
+func defaultPublishRepository(ws models.Workspace, registry models.OCIRegistry) string {
+	if repo := strings.TrimSpace(registry.DefaultRepository); repo != "" {
+		return repo
+	}
+	return fmt.Sprintf("%s-%s", ws.Name, ws.ID.String()[:8])
 }
 
 func publicationToResult(pub *models.Publication) *PublicationResult {

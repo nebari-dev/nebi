@@ -41,6 +41,7 @@ const registries = [
     has_api_token: true,
     is_default: true,
     namespace: 'nebari',
+    default_repository: '',
     created_at: '2026-01-01T00:00:00Z',
   },
 ];

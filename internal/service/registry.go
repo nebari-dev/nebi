@@ -24,37 +24,40 @@ func NewRegistryService(db *gorm.DB, encKey []byte) *RegistryService {
 
 // RegistryResult is the response type for registry operations.
 type RegistryResult struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	URL         string    `json:"url"`
-	Username    string    `json:"username"`
-	HasAPIToken bool      `json:"has_api_token"`
-	IsDefault   bool      `json:"is_default"`
-	Namespace   string    `json:"namespace"`
-	CreatedAt   string    `json:"created_at"`
+	ID                uuid.UUID `json:"id"`
+	Name              string    `json:"name"`
+	URL               string    `json:"url"`
+	Username          string    `json:"username"`
+	HasAPIToken       bool      `json:"has_api_token"`
+	IsDefault         bool      `json:"is_default"`
+	Namespace         string    `json:"namespace"`
+	DefaultRepository string    `json:"default_repository"`
+	CreatedAt         string    `json:"created_at"`
 }
 
 // CreateRegistryRequest holds parameters for creating a registry.
 type CreateRegistryReq struct {
-	Name      string
-	URL       string
-	Username  string
-	Password  string
-	APIToken  string
-	IsDefault bool
-	Namespace string
-	CreatedBy uuid.UUID
+	Name              string
+	URL               string
+	Username          string
+	Password          string
+	APIToken          string
+	IsDefault         bool
+	Namespace         string
+	DefaultRepository string
+	CreatedBy         uuid.UUID
 }
 
 // UpdateRegistryReq holds parameters for updating a registry.
 type UpdateRegistryReq struct {
-	Name      *string
-	URL       *string
-	Username  *string
-	Password  *string
-	APIToken  *string
-	IsDefault *bool
-	Namespace *string
+	Name              *string
+	URL               *string
+	Username          *string
+	Password          *string
+	APIToken          *string
+	IsDefault         *bool
+	Namespace         *string
+	DefaultRepository *string
 }
 
 // ListRegistries returns all registries with admin-level detail (includes username, token status).
@@ -124,14 +127,15 @@ func (s *RegistryService) CreateRegistry(req CreateRegistryReq) (*RegistryResult
 	}
 
 	registry := models.OCIRegistry{
-		Name:      req.Name,
-		URL:       req.URL,
-		Username:  req.Username,
-		Password:  encPassword,
-		APIToken:  encAPIToken,
-		IsDefault: req.IsDefault,
-		Namespace: req.Namespace,
-		CreatedBy: req.CreatedBy,
+		Name:              req.Name,
+		URL:               req.URL,
+		Username:          req.Username,
+		Password:          encPassword,
+		APIToken:          encAPIToken,
+		IsDefault:         req.IsDefault,
+		Namespace:         req.Namespace,
+		DefaultRepository: req.DefaultRepository,
+		CreatedBy:         req.CreatedBy,
 	}
 
 	if err := s.db.Create(&registry).Error; err != nil {
@@ -186,6 +190,9 @@ func (s *RegistryService) UpdateRegistry(id string, req UpdateRegistryReq) (*Reg
 	}
 	if req.Namespace != nil {
 		registry.Namespace = *req.Namespace
+	}
+	if req.DefaultRepository != nil {
+		registry.DefaultRepository = *req.DefaultRepository
 	}
 
 	if err := s.db.Save(&registry).Error; err != nil {
@@ -277,13 +284,14 @@ func (s *RegistryService) FallbackRepositories(registryID string) []string {
 
 func registryToResult(reg models.OCIRegistry, username string, hasAPIToken bool) RegistryResult {
 	return RegistryResult{
-		ID:          reg.ID,
-		Name:        reg.Name,
-		URL:         reg.URL,
-		Username:    username,
-		HasAPIToken: hasAPIToken,
-		IsDefault:   reg.IsDefault,
-		Namespace:   reg.Namespace,
-		CreatedAt:   reg.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:                reg.ID,
+		Name:              reg.Name,
+		URL:               reg.URL,
+		Username:          username,
+		HasAPIToken:       hasAPIToken,
+		IsDefault:         reg.IsDefault,
+		Namespace:         reg.Namespace,
+		DefaultRepository: reg.DefaultRepository,
+		CreatedAt:         reg.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
 }

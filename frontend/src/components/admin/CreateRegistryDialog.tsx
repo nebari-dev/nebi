@@ -19,11 +19,13 @@ export const CreateRegistryDialog = () => {
   const [password, setPassword] = useState('');
   const [apiToken, setApiToken] = useState('');
   const [namespace, setNamespace] = useState('');
+  const [defaultRepository, setDefaultRepository] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [error, setError] = useState('');
   const nameId = useId();
   const urlId = useId();
   const namespaceId = useId();
+  const defaultRepositoryId = useId();
   const isDefaultId = useId();
   const usernameId = useId();
   const passwordId = useId();
@@ -54,6 +56,7 @@ export const CreateRegistryDialog = () => {
         password: password || undefined,
         api_token: apiToken || undefined,
         namespace: namespace || undefined,
+        default_repository: defaultRepository || undefined,
         is_default: isDefault,
       });
       handleOpenChange(false);
@@ -63,6 +66,7 @@ export const CreateRegistryDialog = () => {
       setPassword('');
       setApiToken('');
       setNamespace('');
+      setDefaultRepository('');
       setIsDefault(false);
       setError('');
     } catch (err) {
@@ -136,6 +140,27 @@ export const CreateRegistryDialog = () => {
               />
               <p className="text-xs text-muted-foreground">
                 Organization or namespace on the registry.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor={defaultRepositoryId}
+                className="text-sm font-medium"
+              >
+                Default Repository{' '}
+                <span className="text-muted-foreground">(optional)</span>
+              </label>
+              <Input
+                id={defaultRepositoryId}
+                type="text"
+                value={defaultRepository}
+                onChange={(e) => setDefaultRepository(e.target.value)}
+                placeholder="e.g., nebari_environments"
+              />
+              <p className="text-xs text-muted-foreground">
+                Use one repository for all workspace publications in this
+                registry.
               </p>
             </div>
 

@@ -28,11 +28,13 @@ export const EditRegistryDialog = ({
   const [password, setPassword] = useState('');
   const [apiToken, setApiToken] = useState('');
   const [namespace, setNamespace] = useState('');
+  const [defaultRepository, setDefaultRepository] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [error, setError] = useState('');
   const nameId = useId();
   const urlId = useId();
   const namespaceId = useId();
+  const defaultRepositoryId = useId();
   const isDefaultId = useId();
   const usernameId = useId();
   const passwordId = useId();
@@ -50,6 +52,7 @@ export const EditRegistryDialog = ({
       setPassword(''); // Don't pre-fill password for security
       setApiToken(''); // Don't pre-fill token for security
       setNamespace(registry.namespace || '');
+      setDefaultRepository(registry.default_repository || '');
       setIsDefault(registry.is_default);
     }
   }, [registry]);
@@ -74,6 +77,7 @@ export const EditRegistryDialog = ({
           password: password || undefined, // Only update if provided
           api_token: apiToken || undefined, // Only update if provided
           namespace: namespace || undefined,
+          default_repository: defaultRepository,
           is_default: isDefault,
         },
       });
@@ -144,6 +148,27 @@ export const EditRegistryDialog = ({
               />
               <p className="text-xs text-muted-foreground">
                 Organization or namespace on the registry.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor={defaultRepositoryId}
+                className="text-sm font-medium"
+              >
+                Default Repository{' '}
+                <span className="text-muted-foreground">(optional)</span>
+              </label>
+              <Input
+                id={defaultRepositoryId}
+                type="text"
+                value={defaultRepository}
+                onChange={(e) => setDefaultRepository(e.target.value)}
+                placeholder="e.g., nebari_environments"
+              />
+              <p className="text-xs text-muted-foreground">
+                Use one repository for all workspace publications in this
+                registry.
               </p>
             </div>
 

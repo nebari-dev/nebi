@@ -83,6 +83,7 @@ export const mockRegistry: OCIRegistry = {
   has_api_token: false,
   is_default: true,
   namespace: 'myorg',
+  default_repository: '',
   created_at: '2024-01-01T00:00:00Z',
 };
 

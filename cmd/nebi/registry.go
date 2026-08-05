@@ -19,15 +19,16 @@ var registryCmd = &cobra.Command{
 }
 
 var (
-	registryAddName      string
-	registryAddURL       string
-	registryAddUsername  string
-	registryAddNamespace string
-	registryAddDefault   bool
-	registryAddPwdStdin  bool
-	registryRemoveForce  bool
-	registryListJSON     bool
-	registryLocal        bool
+	registryAddName       string
+	registryAddURL        string
+	registryAddUsername   string
+	registryAddNamespace  string
+	registryAddRepository string
+	registryAddDefault    bool
+	registryAddPwdStdin   bool
+	registryRemoveForce   bool
+	registryListJSON      bool
+	registryLocal         bool
 )
 
 var registryListCmd = &cobra.Command{
@@ -53,6 +54,9 @@ Examples:
 
   # Programmatic - read password from stdin
   echo "$TOKEN" | nebi registry add --name quay --url quay.io --namespace nebari_environments --username myuser --password-stdin
+
+  # Publish all workspaces into one repository under a registry namespace/project
+  nebi registry add --name harbor --url harbor.example.com --namespace my-project --repository nebari_environments --username myuser
 
   # Public registry (no auth)
   nebi registry add --name dockerhub --url docker.io --default`,
@@ -101,6 +105,7 @@ func init() {
 	registryAddCmd.Flags().StringVar(&registryAddURL, "url", "", "Registry URL (required)")
 	registryAddCmd.Flags().StringVar(&registryAddUsername, "username", "", "Username for authentication")
 	registryAddCmd.Flags().StringVar(&registryAddNamespace, "namespace", "", "Organization or namespace on the registry")
+	registryAddCmd.Flags().StringVar(&registryAddRepository, "repository", "", "Default OCI repository for publishing workspaces")
 	registryAddCmd.Flags().BoolVar(&registryAddPwdStdin, "password-stdin", false, "Read password from stdin")
 	registryAddCmd.Flags().BoolVar(&registryAddDefault, "default", false, "Set as default registry")
 	registryAddCmd.Flags().BoolVar(&registryLocal, "local", false, "Operate on local registry store instead of server")
@@ -233,11 +238,12 @@ func runRegistryAddLocal(password string) error {
 	defer s.Close()
 
 	reg := &store.LocalRegistry{
-		Name:      registryAddName,
-		URL:       registryAddURL,
-		Username:  registryAddUsername,
-		IsDefault: registryAddDefault,
-		Namespace: registryAddNamespace,
+		Name:              registryAddName,
+		URL:               registryAddURL,
+		Username:          registryAddUsername,
+		IsDefault:         registryAddDefault,
+		Namespace:         registryAddNamespace,
+		DefaultRepository: registryAddRepository,
 	}
 	if err := s.CreateRegistry(reg); err != nil {
 		return fmt.Errorf("creating local registry: %w", err)
@@ -275,6 +281,9 @@ func runRegistryAddServer(password string) error {
 	}
 	if registryAddNamespace != "" {
 		req.Namespace = &registryAddNamespace
+	}
+	if registryAddRepository != "" {
+		req.DefaultRepository = &registryAddRepository
 	}
 
 	ctx := context.Background()

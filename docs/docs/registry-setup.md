@@ -38,6 +38,22 @@ The `--namespace` is your username or organization on the registry. It becomes p
 Public packages on GHCR are free. Anyone can import them with `nebi import ghcr.io/your-username/my-workspace:v1.0`.
 :::
 
+### Shared Repository Layout
+
+By default, Nebi publishes each workspace to its own OCI repository. For registries like Harbor where you want one project repository to hold all Nebi environment artifacts, configure a default repository on the registry:
+
+```bash
+nebi registry add \
+  --name harbor \
+  --url harbor.example.com \
+  --namespace my-project \
+  --repository nebari_environments \
+  --username myuser \
+  --default
+```
+
+Publishing any workspace to this registry will default to `harbor.example.com/my-project/nebari_environments:<tag>`. You can still override a single publish with `nebi publish --repo <name>`.
+
 ### Quay.io
 
 Quay.io is a free container registry by Red Hat. To set it up:

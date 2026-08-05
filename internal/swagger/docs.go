@@ -3255,6 +3255,9 @@ const docTemplate = `{
                 "api_token": {
                     "type": "string"
                 },
+                "default_repository": {
+                    "type": "string"
+                },
                 "is_default": {
                     "type": "boolean"
                 },
@@ -3540,6 +3543,9 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "api_token": {
+                    "type": "string"
+                },
+                "default_repository": {
                     "type": "string"
                 },
                 "is_default": {
@@ -4141,6 +4147,9 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "created_at": {
+                    "type": "string"
+                },
+                "default_repository": {
                     "type": "string"
                 },
                 "has_api_token": {

@@ -3249,6 +3249,9 @@
                 "api_token": {
                     "type": "string"
                 },
+                "default_repository": {
+                    "type": "string"
+                },
                 "is_default": {
                     "type": "boolean"
                 },
@@ -3534,6 +3537,9 @@
             "type": "object",
             "properties": {
                 "api_token": {
+                    "type": "string"
+                },
+                "default_repository": {
                     "type": "string"
                 },
                 "is_default": {
@@ -4135,6 +4141,9 @@
             "type": "object",
             "properties": {
                 "created_at": {
+                    "type": "string"
+                },
+                "default_repository": {
                     "type": "string"
                 },
                 "has_api_token": {

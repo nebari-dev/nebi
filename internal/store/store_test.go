@@ -244,11 +244,12 @@ func TestRegistryCRUD(t *testing.T) {
 
 	// Create
 	reg := &LocalRegistry{
-		Name:      "ghcr",
-		URL:       "ghcr.io",
-		Username:  "myuser",
-		IsDefault: true,
-		Namespace: "myorg",
+		Name:              "ghcr",
+		URL:               "ghcr.io",
+		Username:          "myuser",
+		IsDefault:         true,
+		Namespace:         "myorg",
+		DefaultRepository: "nebari_environments",
 	}
 	if err := s.CreateRegistry(reg); err != nil {
 		t.Fatalf("CreateRegistry: %v", err)
@@ -265,6 +266,9 @@ func TestRegistryCRUD(t *testing.T) {
 	if regs[0].Name != "ghcr" {
 		t.Fatalf("expected name 'ghcr', got %q", regs[0].Name)
 	}
+	if regs[0].DefaultRepository != "nebari_environments" {
+		t.Fatalf("expected default repository %q, got %q", "nebari_environments", regs[0].DefaultRepository)
+	}
 
 	// Get by name
 	got, err := s.GetRegistryByName("ghcr")
@@ -273,6 +277,9 @@ func TestRegistryCRUD(t *testing.T) {
 	}
 	if got.URL != "ghcr.io" {
 		t.Fatalf("expected URL 'ghcr.io', got %q", got.URL)
+	}
+	if got.DefaultRepository != "nebari_environments" {
+		t.Fatalf("expected default repository %q, got %q", "nebari_environments", got.DefaultRepository)
 	}
 
 	// Get by name - not found

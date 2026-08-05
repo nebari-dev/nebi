@@ -59,6 +59,33 @@ func TestGetPublishDefaults_ReturnsDefaults(t *testing.T) {
 	}
 }
 
+func TestGetPublishDefaults_UsesRegistryDefaultRepository(t *testing.T) {
+	svc, db := testSetup(t, false)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "publish-test", userID)
+
+	registry := models.OCIRegistry{
+		Name:              "harbor",
+		URL:               "https://harbor.example.com",
+		Namespace:         "project",
+		DefaultRepository: "nebari_environments",
+		IsDefault:         true,
+	}
+	db.Create(&registry)
+
+	defaults, err := svc.GetPublishDefaults(ws.ID.String())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if defaults.Repository != "nebari_environments" {
+		t.Errorf("expected repository %q, got %q", "nebari_environments", defaults.Repository)
+	}
+	if defaults.Namespace != "project" {
+		t.Errorf("expected namespace %q, got %q", "project", defaults.Namespace)
+	}
+}
+
 func TestGetPublishDefaults_UsesContentHashTag(t *testing.T) {
 	svc, db := testSetup(t, false)
 	userID := createTestUser(t, db, "alice")

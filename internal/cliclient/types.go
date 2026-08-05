@@ -102,33 +102,37 @@ type WorkspaceVersion struct {
 
 // Registry represents an OCI registry.
 type Registry struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	URL       string `json:"url"`
-	Username  string `json:"username,omitempty"`
-	IsDefault bool   `json:"is_default"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	URL               string `json:"url"`
+	Username          string `json:"username,omitempty"`
+	IsDefault         bool   `json:"is_default"`
+	Namespace         string `json:"namespace"`
+	DefaultRepository string `json:"default_repository"`
+	CreatedAt         string `json:"created_at"`
+	UpdatedAt         string `json:"updated_at"`
 }
 
 // CreateRegistryRequest represents a request to create a registry.
 type CreateRegistryRequest struct {
-	Name      string  `json:"name"`
-	URL       string  `json:"url"`
-	Username  *string `json:"username,omitempty"`
-	Password  *string `json:"password,omitempty"`
-	IsDefault *bool   `json:"is_default,omitempty"`
-	Namespace *string `json:"namespace,omitempty"`
+	Name              string  `json:"name"`
+	URL               string  `json:"url"`
+	Username          *string `json:"username,omitempty"`
+	Password          *string `json:"password,omitempty"`
+	IsDefault         *bool   `json:"is_default,omitempty"`
+	Namespace         *string `json:"namespace,omitempty"`
+	DefaultRepository *string `json:"default_repository,omitempty"`
 }
 
 // UpdateRegistryRequest represents a request to update a registry.
 type UpdateRegistryRequest struct {
-	Name      *string `json:"name,omitempty"`
-	URL       *string `json:"url,omitempty"`
-	Username  *string `json:"username,omitempty"`
-	Password  *string `json:"password,omitempty"`
-	IsDefault *bool   `json:"is_default,omitempty"`
-	Namespace *string `json:"namespace,omitempty"`
+	Name              *string `json:"name,omitempty"`
+	URL               *string `json:"url,omitempty"`
+	Username          *string `json:"username,omitempty"`
+	Password          *string `json:"password,omitempty"`
+	IsDefault         *bool   `json:"is_default,omitempty"`
+	Namespace         *string `json:"namespace,omitempty"`
+	DefaultRepository *string `json:"default_repository,omitempty"`
 }
 
 // RollbackRequest represents a request to rollback a workspace to a previous version.

@@ -54,9 +54,13 @@ Two terms appear throughout these commands:
 
 - `--local`: Publish directly to registry without a server
 - `--tag <tag>`: Set the OCI tag (default: content hash with `--local`, auto-incrementing `v1`, `v2`, ... otherwise)
-- `--repo <name>`: Set the OCI repository name (defaults to the workspace name)
+- `--repo <name>`: Set the OCI repository name (overrides the registry/workspace default)
 - `--registry <name>`: Registry name or ID to publish to (defaults to the configured default registry)
 - `--concurrency N`: Number of files uploaded at the same time (only with `--local`, default 8)
+
+**`registry add`**
+
+- `--repository <name>`: Default OCI repository for workspace publications in this registry. Use this when a registry project/namespace should contain one shared Nebi repository.
 
 **`import`**
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/nebari-dev/nebi/internal/contenthash"
@@ -27,7 +28,7 @@ var publishCmd = &cobra.Command{
 	Long: `Publish a workspace to an OCI registry.
 
 If no workspace name is given, the current directory's tracked workspace is used.
-The repository name defaults to the workspace name.
+The repository name defaults to the registry's configured repository, or to the workspace name.
 The tag auto-increments (v1, v2, v3, ...) based on existing publications.
 If --registry is not specified, the server's default registry is used.
 
@@ -44,7 +45,7 @@ Examples:
 func init() {
 	publishCmd.Flags().StringVar(&publishRegistry, "registry", "", "Registry name or ID (uses server default if not set)")
 	publishCmd.Flags().StringVar(&publishTag, "tag", "", "OCI tag (auto-increments v1, v2, ... if not set)")
-	publishCmd.Flags().StringVar(&publishRepo, "repo", "", "OCI repository name (defaults to workspace name)")
+	publishCmd.Flags().StringVar(&publishRepo, "repo", "", "OCI repository name (overrides the registry/workspace default)")
 	publishCmd.Flags().BoolVar(&publishLocal, "local", false, "Publish directly to registry without a server")
 	publishCmd.Flags().IntVar(&publishConcurrency, "concurrency", 8, "Parallel blob push workers (only with --local)")
 }
@@ -90,17 +91,22 @@ func runPublishServer(args []string) error {
 	}
 
 	registryID := defaults.RegistryID
+	var selectedRegistry *cliclient.Registry
 	if publishRegistry != "" {
 		var err error
-		registryID, err = resolveRegistryID(client, ctx, publishRegistry)
+		selectedRegistry, err = resolveRegistry(client, ctx, publishRegistry)
 		if err != nil {
 			return err
 		}
+		registryID = selectedRegistry.ID
 	}
 
+	workspaceRepo := publishWorkspaceRepository(ws.Name, ws.ID)
 	repo := defaults.Repository
 	if publishRepo != "" {
 		repo = publishRepo
+	} else if selectedRegistry != nil {
+		repo = publishDefaultRepository(workspaceRepo, selectedRegistry.DefaultRepository)
 	}
 
 	tag := defaults.Tag
@@ -205,7 +211,7 @@ func runPublishLocal(args []string) error {
 		tag = publishTag
 	}
 
-	repo := fmt.Sprintf("%s-%s", ws.Name, ws.ID.String()[:8])
+	repo := publishDefaultRepository(fmt.Sprintf("%s-%s", ws.Name, ws.ID.String()[:8]), reg.DefaultRepository)
 	if publishRepo != "" {
 		repo = publishRepo
 	}
@@ -252,15 +258,38 @@ func runPublishLocal(args []string) error {
 
 // resolveRegistryID resolves a registry name/ID or finds the default registry.
 func resolveRegistryID(client *cliclient.Client, ctx context.Context, registry string) (string, error) {
+	reg, err := resolveRegistry(client, ctx, registry)
+	if err != nil {
+		return "", err
+	}
+	return reg.ID, nil
+}
+
+func resolveRegistry(client *cliclient.Client, ctx context.Context, registry string) (*cliclient.Registry, error) {
 	registries, err := client.ListRegistries(ctx)
 	if err != nil {
-		return "", fmt.Errorf("listing registries: %w", err)
+		return nil, fmt.Errorf("listing registries: %w", err)
 	}
 
-	for _, r := range registries {
+	for i := range registries {
+		r := &registries[i]
 		if r.Name == registry || r.ID == registry {
-			return r.ID, nil
+			return r, nil
 		}
 	}
-	return "", fmt.Errorf("registry %q not found on server", registry)
+	return nil, fmt.Errorf("registry %q not found on server", registry)
+}
+
+func publishDefaultRepository(fallback, configured string) string {
+	if repo := strings.TrimSpace(configured); repo != "" {
+		return repo
+	}
+	return fallback
+}
+
+func publishWorkspaceRepository(name, id string) string {
+	if len(id) >= 8 {
+		return fmt.Sprintf("%s-%s", name, id[:8])
+	}
+	return name
 }

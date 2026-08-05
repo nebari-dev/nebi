@@ -37,6 +37,8 @@ definitions:
     properties:
       api_token:
         type: string
+      default_repository:
+        type: string
       is_default:
         type: boolean
       name:
@@ -229,6 +231,8 @@ definitions:
   handlers.UpdateRegistryRequest:
     properties:
       api_token:
+        type: string
+      default_repository:
         type: string
       is_default:
         type: boolean
@@ -643,6 +647,8 @@ definitions:
   service.RegistryResult:
     properties:
       created_at:
+        type: string
+      default_repository:
         type: string
       has_api_token:
         type: boolean

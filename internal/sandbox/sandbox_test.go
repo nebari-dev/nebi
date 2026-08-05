@@ -127,6 +127,100 @@ func TestCommand_RejectsEmptyArgv(t *testing.T) {
 	}
 }
 
+func TestReadOnlyPaths_GrantsSystemDirsButNotEtc(t *testing.T) {
+	r := newTestRunner(t, ModeStrict)
+	ws := t.TempDir()
+
+	// Use a binary path whose directory is guaranteed to exist so the
+	// "directory holding the package manager" entry is exercised.
+	binDir := t.TempDir()
+	binary := filepath.Join(binDir, "pixi")
+
+	cmd, err := r.Command(context.Background(), Spec{
+		WorkspaceDir: ws,
+		Argv:         []string{binary, "install"},
+		ParentEnv:    []string{"PATH=/bin"},
+	})
+	if err != nil {
+		t.Fatalf("Command: %v", err)
+	}
+
+	var roDirs []string
+	for _, arg := range cmd.Args {
+		if dir, ok := strings.CutPrefix(arg, "--allow-ro="); ok {
+			roDirs = append(roDirs, dir)
+		}
+	}
+	if len(roDirs) == 0 {
+		t.Fatalf("expected at least one --allow-ro flag, got %v", cmd.Args)
+	}
+	if !slices.Contains(roDirs, binDir) {
+		t.Fatalf("expected the binary's directory %q to be readable, got %v", binDir, roDirs)
+	}
+	// Granting /etc wholesale would expose /etc/nebi/config.yaml, which can
+	// hold the database DSN and the JWT secret.
+	if slices.Contains(roDirs, "/etc") {
+		t.Fatalf("/etc must not be granted wholesale, got %v", roDirs)
+	}
+}
+
+func TestReadOnlyFiles_GrantsResolverFilesOnly(t *testing.T) {
+	for _, f := range readOnlyFiles() {
+		if !filepath.IsAbs(f) {
+			t.Fatalf("expected absolute paths, got %q", f)
+		}
+		if !strings.HasPrefix(f, "/etc/") {
+			t.Fatalf("unexpected read-only file %q", f)
+		}
+		if f == "/etc/nebi/config.yaml" {
+			t.Fatal("the nebi config file must never be readable by a build")
+		}
+	}
+}
+
+func TestShimArgv_EmitsReadOnlyFileFlags(t *testing.T) {
+	files := readOnlyFiles()
+	if len(files) == 0 {
+		t.Skip("no candidate read-only files exist on this host")
+	}
+
+	r := newTestRunner(t, ModeStrict)
+	cmd, err := r.Command(context.Background(), Spec{
+		WorkspaceDir: t.TempDir(),
+		Argv:         []string{"/usr/bin/pixi", "install"},
+		ParentEnv:    []string{"PATH=/bin"},
+	})
+	if err != nil {
+		t.Fatalf("Command: %v", err)
+	}
+	for _, f := range files {
+		if !slices.Contains(cmd.Args, "--allow-ro-file="+f) {
+			t.Fatalf("expected --allow-ro-file=%s, got %v", f, cmd.Args)
+		}
+	}
+}
+
+func TestRestrictions_Validate(t *testing.T) {
+	if err := (Restrictions{}).Validate(); err == nil {
+		t.Fatal("expected an error when no RW path is given")
+	}
+	if err := (Restrictions{RW: []string{"/ws"}}).Validate(); err != nil {
+		t.Fatalf("expected a single RW path to be valid, got %v", err)
+	}
+	if err := (Restrictions{RW: []string{"relative"}}).Validate(); err == nil {
+		t.Fatal("expected an error for a relative RW path")
+	}
+	if err := (Restrictions{RW: []string{"/ws"}, RO: []string{"rel"}}).Validate(); err == nil {
+		t.Fatal("expected an error for a relative RO path")
+	}
+	if err := (Restrictions{RW: []string{"/ws"}, ROFiles: []string{"rel"}}).Validate(); err == nil {
+		t.Fatal("expected an error for a relative RO file")
+	}
+	if err := (Restrictions{RW: []string{"/ws"}, RWFiles: []string{"rel"}}).Validate(); err == nil {
+		t.Fatal("expected an error for a relative RW file")
+	}
+}
+
 func TestIsSetupFailure(t *testing.T) {
 	if !IsSetupFailure(&exitCodeErr{code: SetupFailureExitCode}) {
 		t.Fatal("expected exit code 125 to be a setup failure")

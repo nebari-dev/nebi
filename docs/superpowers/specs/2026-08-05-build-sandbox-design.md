@@ -50,7 +50,7 @@ The single construction point for pixi subprocess commands.
   - Always sets `cmd.Env` to the scrubbed allowlist (below).
   - When sandboxing is active, the argv becomes
     `<nebi-binary> sandbox-exec --mode=<m> --allow-rw=<p> [--allow-ro=<p>...]
-    [--allow-port=<n>...] -- <real argv>`.
+    [--allow-ro-file=<p>...] [--allow-port=<n>...] -- <real argv>`.
   - When mode is `off` (or the platform is not Linux and mode is not
     `strict`), the real argv runs directly, still with the scrubbed env.
 - `spec` carries: the workspace path (RW root), the working directory, the
@@ -60,12 +60,21 @@ The single construction point for pixi subprocess commands.
 
 A minimal re-exec shim, Linux-only:
 
-1. Parse `--allow-rw`, `--allow-ro`, `--allow-port`, `--mode`.
-2. `runtime.LockOSThread`, apply the Landlock ruleset with
-   `github.com/landlock-lsm/go-landlock` (pure Go, no cgo):
-   - Filesystem (requires ABI v1, kernel 5.13+): RW dirs from `--allow-rw`,
-     RO dirs from `--allow-ro`, RW files for `/dev/null`, `/dev/urandom`,
-     `/dev/zero`.
+1. Parse `--allow-rw`, `--allow-ro`, `--allow-ro-file`, `--allow-port`,
+   `--mode`.
+2. Apply the Landlock ruleset with `github.com/landlock-lsm/go-landlock`
+   (pure Go when `CGO_ENABLED=0`; the library handles thread synchronisation
+   itself, so the caller does not lock the OS thread):
+   - Filesystem: RW dirs from `--allow-rw`, RO dirs from `--allow-ro`, RO
+     files from `--allow-ro-file`, RW files for `/dev/null`, `/dev/urandom`,
+     `/dev/random`, `/dev/zero`.
+   - This is attempted at ABI v2 (kernel 5.19+) first so the `refer` right
+     can be granted on the workspace, falling back to ABI v1 (kernel 5.13+).
+     Landlock always denies reparenting a file across directories unless
+     `refer` is granted, and v1 cannot grant it, so under v1 a build cannot
+     rename a file from one workspace subdirectory into another. Package
+     managers do exactly that when they stage a download and then move it
+     into their cache. v1 remains the hard floor for confinement.
    - TCP connect restriction (ABI v4, kernel 6.7+): connect allowed only to
      `--allow-port` values; bind denied. Best-effort: absence of ABI v4 is a
      logged warning, not a failure, even in strict mode.
@@ -83,9 +92,18 @@ A minimal re-exec shim, Linux-only:
   default; a shared cache would let one tenant poison packages for another.
   The perf trade-off (no cross-workspace cache reuse) is accepted and
   documented.
-- **RO:** `/usr`, `/lib`, `/lib64`, `/bin`, `/sbin`, `/etc`, `/opt`, and the
-  directory containing the pixi binary. Paths that do not exist on a given
-  host are skipped.
+- **RO directories:** `/usr`, `/lib`, `/lib64`, `/bin`, `/sbin`, `/opt`, the
+  TLS trust stores (`/etc/ssl`, `/etc/pki`, `/etc/ca-certificates`), and the
+  directory containing the pixi binary.
+- **RO files:** `/etc/resolv.conf`, `/etc/hosts`, `/etc/nsswitch.conf`,
+  `/etc/localtime`, `/etc/passwd`, `/etc/group`.
+- Paths that do not exist on a given host are skipped.
+
+  `/etc` is deliberately **not** granted wholesale. `internal/config/config.go`
+  searches `/etc/nebi/` for `config.yaml`, and both `database.dsn` and
+  `auth.jwt_secret` are file-loadable fields, so a readable `/etc` would hand
+  build code the very credentials the environment allowlist removes. Only the
+  specific trust-store directories and resolver files above are granted.
 - **Network:** TCP connect only to `sandbox.allowed_ports` (default
   `[80, 443]`). The database (5432) and Valkey (6379) become unreachable from
   build code even though they share the pod network. Kernels below 6.7 skip
@@ -170,6 +188,12 @@ problems from build failures.
 - Moving API-side workspace writes (`SavePixiToml`, `PushVersion`, import
   staging) behind the executor. These are trusted code paths; the sandbox
   targets untrusted build execution.
+- Killing the whole process group on build timeout. `exec.CommandContext`
+  signals only the direct child, so pixi's own grandchildren can outlive a
+  timeout. Fixing it needs `Setpgid`, which is not portable to the Windows
+  desktop build, so it needs its own platform-split change. The escaped
+  processes remain Landlock-confined; this is a resource-cleanup gap, not a
+  containment gap.
 - Per-workspace volumes / RWX PVC split in nebi-pack.
 - Registry or private-channel credentials for builds (would be per-job
   credential files, never env inheritance; needs its own design).

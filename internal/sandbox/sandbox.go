@@ -130,6 +130,9 @@ func (r *Runner) shimArgv(spec Spec) []string {
 	for _, dir := range readOnlyPaths(spec.Argv[0]) {
 		argv = append(argv, "--allow-ro="+dir)
 	}
+	for _, file := range readOnlyFiles() {
+		argv = append(argv, "--allow-ro-file="+file)
+	}
 	for _, port := range r.cfg.AllowedPorts {
 		argv = append(argv, "--allow-port="+strconv.Itoa(port))
 	}
@@ -141,8 +144,18 @@ func (r *Runner) shimArgv(spec Spec) []string {
 // interpreters, shared libraries, TLS trust stores, and the directory
 // holding the package-manager binary itself. Nonexistent paths are dropped
 // so the ruleset stays valid across images.
+//
+// /etc is deliberately NOT granted wholesale. config.go searches
+// /etc/nebi/ for config.yaml, and both database.dsn and auth.jwt_secret are
+// file-loadable, so a readable /etc would hand build code exactly the
+// credentials the environment allowlist exists to strip. Only the TLS trust
+// stores under /etc are granted here; the handful of individual files a
+// build genuinely needs come from readOnlyFiles.
 func readOnlyPaths(binary string) []string {
-	candidates := []string{"/usr", "/lib", "/lib64", "/bin", "/sbin", "/etc", "/opt"}
+	candidates := []string{
+		"/usr", "/lib", "/lib64", "/bin", "/sbin", "/opt",
+		"/etc/ssl", "/etc/pki", "/etc/ca-certificates",
+	}
 	if dir := filepath.Dir(binary); dir != "" && dir != "." && dir != "/" {
 		candidates = append(candidates, dir)
 	}
@@ -162,6 +175,30 @@ func readOnlyPaths(binary string) []string {
 	return out
 }
 
+// readOnlyFiles returns the individual files under /etc a build needs in
+// order to resolve DNS names and look up its own user. None of them carry
+// secrets, unlike /etc as a whole. Nonexistent files are dropped.
+func readOnlyFiles() []string {
+	candidates := []string{
+		"/etc/resolv.conf",
+		"/etc/hosts",
+		"/etc/nsswitch.conf",
+		"/etc/localtime",
+		"/etc/passwd",
+		"/etc/group",
+	}
+
+	out := make([]string, 0, len(candidates))
+	for _, p := range candidates {
+		info, err := os.Stat(p)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
 func statDir(path string) (os.FileInfo, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -171,6 +208,31 @@ func statDir(path string) (os.FileInfo, error) {
 		return nil, fmt.Errorf("%s is not a directory", path)
 	}
 	return info, nil
+}
+
+// Restrictions is the ruleset the shim applies to itself before exec'ing the
+// build command.
+type Restrictions struct {
+	RW              []string // directories the build may read and write
+	RO              []string // directories the build may read
+	ROFiles         []string // individual files the build may read
+	RWFiles         []string // individual files the build may read and write
+	TCPConnectPorts []int    // TCP ports the build may connect to
+}
+
+// Validate rejects rulesets that would be useless or accidentally empty.
+func (r Restrictions) Validate() error {
+	if len(r.RW) == 0 {
+		return errors.New("sandbox: at least one read-write path is required")
+	}
+	for _, set := range [][]string{r.RW, r.RO, r.ROFiles, r.RWFiles} {
+		for _, p := range set {
+			if !filepath.IsAbs(p) {
+				return fmt.Errorf("sandbox: path %q must be absolute", p)
+			}
+		}
+	}
+	return nil
 }
 
 // IsSetupFailure reports whether err is a sandbox setup failure (as opposed

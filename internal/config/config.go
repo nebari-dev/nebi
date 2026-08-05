@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -17,6 +18,7 @@ type Config struct {
 	Log            LogConfig            `mapstructure:"log"`
 	PackageManager PackageManagerConfig `mapstructure:"package_manager"`
 	Storage        StorageConfig        `mapstructure:"storage"`
+	Sandbox        SandboxConfig        `mapstructure:"sandbox"`
 }
 
 // IsLocalMode returns true when the server is running in local/desktop mode.
@@ -80,6 +82,21 @@ type StorageConfig struct {
 	WorkspacesDir string `mapstructure:"workspaces_dir"` // Directory where workspaces are stored
 }
 
+// SandboxConfig controls isolation of untrusted package/build subprocesses.
+//
+// Mode semantics:
+//
+//	strict     — builds fail if the kernel cannot enforce filesystem confinement
+//	permissive — confine when possible, warn and continue when not
+//	off        — no confinement (the environment allowlist still applies)
+//
+// Mode defaults to "strict" in team mode and "off" in local mode.
+type SandboxConfig struct {
+	Mode         string        `mapstructure:"mode"`
+	AllowedPorts []int         `mapstructure:"allowed_ports"` // TCP ports build code may connect to
+	BuildTimeout time.Duration `mapstructure:"build_timeout"` // Wall-clock ceiling for a build job
+}
+
 // Load reads configuration from file and environment variables
 func Load() (*Config, error) {
 	v := viper.New()
@@ -111,6 +128,9 @@ func Load() (*Config, error) {
 	v.SetDefault("log.level", "info")
 	v.SetDefault("package_manager.default_type", "pixi")
 	v.SetDefault("storage.workspaces_dir", "./data/workspaces")
+	v.SetDefault("sandbox.mode", "")
+	v.SetDefault("sandbox.allowed_ports", []int{80, 443})
+	v.SetDefault("sandbox.build_timeout", 30*time.Minute)
 
 	// Read from config file if exists
 	v.SetConfigName("config")
@@ -154,6 +174,9 @@ func Load() (*Config, error) {
 	_ = v.BindEnv("queue.valkey_addr", "NEBI_QUEUE_VALKEY_ADDR")
 	_ = v.BindEnv("log.format", "NEBI_LOG_FORMAT")
 	_ = v.BindEnv("log.level", "NEBI_LOG_LEVEL")
+	_ = v.BindEnv("sandbox.mode", "NEBI_SANDBOX_MODE")
+	_ = v.BindEnv("sandbox.allowed_ports", "NEBI_SANDBOX_ALLOWED_PORTS")
+	_ = v.BindEnv("sandbox.build_timeout", "NEBI_SANDBOX_BUILD_TIMEOUT")
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
@@ -171,6 +194,25 @@ func Load() (*Config, error) {
 		// valid — empty defaults to "team" via IsLocalMode()
 	default:
 		return nil, fmt.Errorf("invalid mode %q: must be \"local\" or \"team\"", cfg.Mode)
+	}
+
+	// Sandbox mode defaults by deployment mode: team servers run untrusted
+	// build code for multiple tenants and fail closed; local/desktop is a
+	// single user on their own machine.
+	if cfg.Sandbox.Mode == "" {
+		if cfg.IsLocalMode() {
+			cfg.Sandbox.Mode = "off"
+		} else {
+			cfg.Sandbox.Mode = "strict"
+		}
+	}
+	switch cfg.Sandbox.Mode {
+	case "strict", "permissive", "off":
+	default:
+		return nil, fmt.Errorf("invalid sandbox.mode %q: must be \"strict\", \"permissive\", or \"off\"", cfg.Sandbox.Mode)
+	}
+	if cfg.Sandbox.BuildTimeout <= 0 {
+		return nil, fmt.Errorf("sandbox.build_timeout must be positive, got %s", cfg.Sandbox.BuildTimeout)
 	}
 
 	// Team mode exposes JWT-authenticated network endpoints, so its signing

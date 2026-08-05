@@ -68,16 +68,31 @@ A minimal re-exec shim, Linux-only:
    - Filesystem: RW dirs from `--allow-rw`, RO dirs from `--allow-ro`, RO
      files from `--allow-ro-file`, RW files for `/dev/null`, `/dev/urandom`,
      `/dev/random`, `/dev/zero`.
-   - This is attempted at ABI v2 (kernel 5.19+) first so the `refer` right
-     can be granted on the workspace, falling back to ABI v1 (kernel 5.13+).
-     Landlock always denies reparenting a file across directories unless
-     `refer` is granted, and v1 cannot grant it, so under v1 a build cannot
-     rename a file from one workspace subdirectory into another. Package
-     managers do exactly that when they stage a download and then move it
-     into their cache. v1 remains the hard floor for confinement.
-   - TCP connect restriction (ABI v4, kernel 6.7+): connect allowed only to
-     `--allow-port` values; bind denied. Best-effort: absence of ABI v4 is a
-     logged warning, not a failure, even in strict mode.
+   - TCP: connect allowed only to `--allow-port` values; bind denied. Always
+     applied, never skipped, so an empty port list means deny all TCP and
+     `allowed_ports: []` gives fully offline builds rather than silently
+     unrestricted ones.
+   - **Filesystem and network go into one ruleset, not two.** Landlock
+     denies reparenting a file across directories by default in *every*
+     domain, and the `refer` right that permits it can only be granted
+     inside the domain that handles it. Applying the network rules as a
+     second, stacked domain therefore re-denies `refer` no matter what the
+     first domain granted, and cross-subdirectory renames inside the
+     workspace start failing with `EXDEV`. Package managers do exactly that
+     rename when they stage a download and then move it into their cache.
+     Verified on kernel 6.17: FS-then-net gives `EXDEV`, combined does not.
+   - ABI ladder, degrading one capability at a time:
+
+     | ABI | Kernel | Filesystem | `refer` | TCP |
+     |-----|--------|-----------|---------|-----|
+     | v4  | 6.7+   | yes       | yes     | yes |
+     | v2  | 5.19+  | yes       | yes     | unrestricted, warn |
+     | v1  | 5.13+  | yes       | no (renames give `EXDEV`) | unrestricted, warn |
+
+     v1 is the hard floor: below it, `Confine` returns `ErrUnsupported` and
+     strict mode fails the build. Missing TCP support returns the separate
+     `ErrNetworkUnrestricted`, which is a logged warning even in strict
+     mode, because the filesystem is still confined.
 3. `syscall.Exec` the real command. execve preserves the Landlock domain, so
    pixi and every process it spawns stays confined.
 4. Failure semantics: any sandbox-setup failure exits with reserved code
@@ -105,9 +120,9 @@ A minimal re-exec shim, Linux-only:
   build code the very credentials the environment allowlist removes. Only the
   specific trust-store directories and resolver files above are granted.
 - **Network:** TCP connect only to `sandbox.allowed_ports` (default
-  `[80, 443]`). The database (5432) and Valkey (6379) become unreachable from
-  build code even though they share the pod network. Kernels below 6.7 skip
-  this with a warning.
+  `[80, 443]`); an empty list denies all TCP. The database (5432) and Valkey
+  (6379) become unreachable from build code even though they share the pod
+  network. Kernels below 6.7 skip this with a warning.
 - **Environment allowlist:** `PATH`, job-scoped `HOME` and `TMPDIR`, `LANG`,
   `LC_ALL`, `SSL_CERT_FILE`, `SSL_CERT_DIR`, `HTTP_PROXY`, `HTTPS_PROXY`,
   `NO_PROXY`. Everything else is dropped, notably `NEBI_*` and any registry

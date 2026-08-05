@@ -57,6 +57,10 @@ var sandboxExecCmd = &cobra.Command{
 		})
 		switch {
 		case err == nil:
+		case errors.Is(err, sandbox.ErrNetworkUnrestricted):
+			// Filesystem confinement held; only the TCP restriction is
+			// missing. A warning even in strict mode, by design.
+			fmt.Fprintf(os.Stderr, "[nebi] WARNING: %v\n", err)
 		case mode == sandbox.ModePermissive:
 			fmt.Fprintf(os.Stderr, "[nebi] WARNING: build is running UNCONFINED: %v\n", err)
 		default:
@@ -84,10 +88,15 @@ func devFiles() []string {
 
 // failSetup exits with the reserved code so the parent can distinguish a
 // broken sandbox from a failed build.
+//
+// The hint stops short of blaming the kernel. ErrUnsupported also covers
+// failures that are not about kernel support (an unreadable path, too many
+// stacked rulesets), so it states the requirement conditionally and lets the
+// wrapped error speak to the actual cause.
 func failSetup(err error) {
 	hint := ""
 	if errors.Is(err, sandbox.ErrUnsupported) {
-		hint = fmt.Sprintf(" (kernel %s/%s lacks Landlock support; set NEBI_SANDBOX_MODE=permissive to run builds unconfined, or NEBI_SANDBOX_MODE=off to disable the sandbox)", runtime.GOOS, runtime.GOARCH)
+		hint = fmt.Sprintf(" (sandbox could not be established on %s/%s; if this host lacks Landlock support, which needs Linux 5.13+, set NEBI_SANDBOX_MODE=permissive to run builds unconfined or NEBI_SANDBOX_MODE=off to disable the sandbox)", runtime.GOOS, runtime.GOARCH)
 	}
 	fmt.Fprintf(os.Stderr, "[nebi] sandbox setup failed: %v%s\n", err, hint)
 	os.Exit(sandbox.SetupFailureExitCode)

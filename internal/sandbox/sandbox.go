@@ -210,6 +210,12 @@ func statDir(path string) (os.FileInfo, error) {
 	return info, nil
 }
 
+// ErrNetworkUnrestricted reports that Confine established filesystem
+// confinement but the kernel is too old to restrict TCP (Landlock ABI v4,
+// Linux 6.7+). Callers should warn and continue, including in strict mode:
+// the build is confined, just not on the network.
+var ErrNetworkUnrestricted = errors.New("sandbox: kernel does not support Landlock network restriction; build network access is unrestricted")
+
 // Restrictions is the ruleset the shim applies to itself before exec'ing the
 // build command.
 type Restrictions struct {

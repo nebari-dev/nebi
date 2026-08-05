@@ -196,6 +196,11 @@ func readOnlyFiles() []string {
 		"/etc/localtime",
 		"/etc/passwd",
 		"/etc/group",
+		// The dynamic loader opens this on every exec of a dynamically
+		// linked binary. glibc falls back to its compiled-in search paths
+		// when it is unreadable, so denying it costs a failed open per
+		// exec for no benefit. It holds no secrets.
+		"/etc/ld.so.cache",
 	}
 
 	out := make([]string, 0, len(candidates))

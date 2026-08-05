@@ -166,7 +166,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 	// Initialize and start worker if needed
 	if runWorker {
-		w = worker.New(jobQueue, exec, workerSvc, workerJobSvc, slog.Default(), valkeyClient)
+		w = worker.New(jobQueue, exec, workerSvc, workerJobSvc, slog.Default(), valkeyClient, appCfg.Sandbox.BuildTimeout)
 		workerCtx, cancel := context.WithCancel(ctx)
 		workerCancel = cancel
 

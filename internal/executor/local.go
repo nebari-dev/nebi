@@ -163,18 +163,37 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 
 // packageManagerFor resolves the package manager for a workspace, honoring
 // the configured default type and explicit binary paths.
+//
+// Server-side builds evaluate user-supplied manifests, so the resulting
+// manager is wired to the build sandbox: every pixi subprocess it spawns
+// runs with a scrubbed environment and, unless the sandbox is off, confined
+// to the workspace directory.
 func (e *LocalExecutor) packageManagerFor(ws *models.Workspace) (pkgmgr.PackageManager, error) {
 	pmType := ws.PackageManager
 	if pmType == "" {
 		pmType = e.config.PackageManager.DefaultType
 	}
-	if pmType == "pixi" && e.config.PackageManager.PixiPath != "" {
-		return pkgmgr.NewWithPath(pmType, e.config.PackageManager.PixiPath)
+
+	var (
+		pm  pkgmgr.PackageManager
+		err error
+	)
+	switch {
+	case pmType == "pixi" && e.config.PackageManager.PixiPath != "":
+		pm, err = pkgmgr.NewWithPath(pmType, e.config.PackageManager.PixiPath)
+	case pmType == "uv" && e.config.PackageManager.UvPath != "":
+		pm, err = pkgmgr.NewWithPath(pmType, e.config.PackageManager.UvPath)
+	default:
+		pm, err = pkgmgr.New(pmType)
 	}
-	if pmType == "uv" && e.config.PackageManager.UvPath != "" {
-		return pkgmgr.NewWithPath(pmType, e.config.PackageManager.UvPath)
+	if err != nil {
+		return nil, err
 	}
-	return pkgmgr.New(pmType)
+
+	if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
+		pixiMgr.SetSandbox(e.sandbox)
+	}
+	return pm, nil
 }
 
 // runPixiLock runs `pixi lock` in envPath. It resolves the dependency

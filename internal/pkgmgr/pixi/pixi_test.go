@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/nebari-dev/nebi/internal/pkgmgr"
+	"github.com/nebari-dev/nebi/internal/sandbox"
 )
 
 // TestPixiAvailable checks if pixi is available in PATH
@@ -521,5 +522,45 @@ func TestErrorHandling(t *testing.T) {
 	err = pm.Install(ctx, pkgmgr.InstallOptions{EnvPath: "/tmp/test"})
 	if err == nil {
 		t.Error("Expected error for empty Packages, got nil")
+	}
+}
+
+func TestInstall_UsesSandboxRunnerWhenSet(t *testing.T) {
+	pm, argsPath, envPath := newRecordingPixi(t)
+
+	sb, err := sandbox.NewRunner(sandbox.Config{Mode: sandbox.ModeOff}, "")
+	if err != nil {
+		t.Fatalf("NewRunner: %v", err)
+	}
+	pm.SetSandbox(sb)
+
+	if err := pm.Install(context.Background(), pkgmgr.InstallOptions{
+		EnvPath:  envPath,
+		Packages: []string{"python=3.11"},
+	}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	got := readRecordedArgs(t, argsPath)
+	want := []string{"add", "-v", "--", "python=3.11"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("recorded args = %#v, want %#v", got, want)
+	}
+}
+
+func TestInstall_WithoutSandboxRunnerBehavesAsBefore(t *testing.T) {
+	pm, argsPath, envPath := newRecordingPixi(t)
+
+	if err := pm.Install(context.Background(), pkgmgr.InstallOptions{
+		EnvPath:  envPath,
+		Packages: []string{"python=3.11"},
+	}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	got := readRecordedArgs(t, argsPath)
+	want := []string{"add", "-v", "--", "python=3.11"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("recorded args = %#v, want %#v", got, want)
 	}
 }

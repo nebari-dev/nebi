@@ -83,7 +83,7 @@ A minimal re-exec shim, Linux-only:
   default; a shared cache would let one tenant poison packages for another.
   The perf trade-off (no cross-workspace cache reuse) is accepted and
   documented.
-- **RO:** `/usr`, `/lib`, `/lib64`, `/bin`, `/sbin`, `/etc`, and the
+- **RO:** `/usr`, `/lib`, `/lib64`, `/bin`, `/sbin`, `/etc`, `/opt`, and the
   directory containing the pixi binary. Paths that do not exist on a given
   host are skipped.
 - **Network:** TCP connect only to `sandbox.allowed_ports` (default
@@ -125,8 +125,11 @@ All pixi exec sites route through `sandbox.Command`:
   (`InstallEnvironment`, the primary untrusted-code hot spot).
 - The six exec sites in `internal/pkgmgr/pixi/pixi.go` (init, add, remove,
   update, lock, list — lines 135, 210, 285, 347, 414, 500 on main).
-- `internal/pkgmgr/installer.go:252` gets env scrubbing only (it downloads
-  the pixi binary itself; it does not evaluate user manifests).
+Two exec sites are deliberately left alone: the `pixi --version` probes in
+`internal/pkgmgr/pixi/pixi.go:68` and `internal/pkgmgr/pixi/installer.go:252`.
+They run first-party pixi code with a fixed argument and evaluate no user
+input, so confining them buys nothing and risks breaking pixi's own startup
+requirements.
 
 The worker applies `sandbox.build_timeout` via `context.WithTimeout` around
 `executeJob`. Exit code 125 from the shim is mapped to a distinct

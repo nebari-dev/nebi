@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -14,12 +13,14 @@ import (
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
+	"github.com/nebari-dev/nebi/internal/sandbox"
 )
 
 // LocalExecutor runs operations on the local machine
 type LocalExecutor struct {
 	baseDir string // Base directory for workspaces (e.g., /var/lib/nebi/environments)
 	config  *config.Config
+	sandbox *sandbox.Runner
 }
 
 // NewLocalExecutor creates a new local executor
@@ -40,9 +41,26 @@ func NewLocalExecutor(cfg *config.Config) (*LocalExecutor, error) {
 		return nil, fmt.Errorf("failed to create base directory: %w", err)
 	}
 
+	// Builds run untrusted, user-supplied manifests. Every pixi subprocess
+	// this executor spawns goes through the sandbox runner, which scrubs the
+	// environment down to an allowlist and (unless mode is "off") confines
+	// the process to the workspace directory.
+	sandboxMode := cfg.Sandbox.Mode
+	if sandboxMode == "" {
+		sandboxMode = "off"
+	}
+	sb, err := sandbox.NewRunner(sandbox.Config{
+		Mode:         sandbox.Mode(sandboxMode),
+		AllowedPorts: cfg.Sandbox.AllowedPorts,
+	}, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize build sandbox: %w", err)
+	}
+
 	return &LocalExecutor{
 		baseDir: baseDir,
 		config:  cfg,
+		sandbox: sb,
 	}, nil
 }
 
@@ -110,7 +128,7 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 		if err := seedWorkspaceFromDir(opts.SeedDir, envPath); err != nil {
 			return fmt.Errorf("seed workspace: %w", err)
 		}
-		if err := runPixiLock(ctx, pm, envPath, logWriter); err != nil {
+		if err := runPixiLock(ctx, e.sandbox, pm, envPath, logWriter); err != nil {
 			return err
 		}
 
@@ -123,7 +141,7 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 		if err := os.WriteFile(pixiTomlPath, []byte(opts.PixiToml), 0o644); err != nil {
 			return fmt.Errorf("failed to write pixi.toml: %w", err)
 		}
-		if err := runPixiLock(ctx, pm, envPath, logWriter); err != nil {
+		if err := runPixiLock(ctx, e.sandbox, pm, envPath, logWriter); err != nil {
 			return err
 		}
 
@@ -162,17 +180,25 @@ func (e *LocalExecutor) packageManagerFor(ws *models.Workspace) (pkgmgr.PackageM
 // runPixiLock runs `pixi lock` in envPath. It resolves the dependency
 // graph and writes pixi.lock without downloading or extracting packages;
 // installing is a separate, explicit step (see InstallEnvironment).
-func runPixiLock(ctx context.Context, pm pkgmgr.PackageManager, envPath string, logWriter io.Writer) error {
+func runPixiLock(ctx context.Context, sb *sandbox.Runner, pm pkgmgr.PackageManager, envPath string, logWriter io.Writer) error {
 	pixiBinary := "pixi"
 	if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
 		pixiBinary = pixiMgr.BinaryPath()
 	}
-	lockCmd := exec.CommandContext(ctx, pixiBinary, "lock")
-	lockCmd.Dir = envPath
+	lockCmd, err := sb.Command(ctx, sandbox.Spec{
+		WorkspaceDir: envPath,
+		Argv:         []string{pixiBinary, "lock"},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to prepare sandboxed pixi lock: %w", err)
+	}
 	lockCmd.Stdout = logWriter
 	lockCmd.Stderr = logWriter
 	fmt.Fprintf(logWriter, "Running: %s lock\n", pixiBinary)
 	if err := lockCmd.Run(); err != nil {
+		if sandbox.IsSetupFailure(err) {
+			return fmt.Errorf("build sandbox setup failed: %w", err)
+		}
 		return fmt.Errorf("failed to lock pixi environment: %w", err)
 	}
 	fmt.Fprintf(logWriter, "Lockfile resolved successfully\n")
@@ -292,7 +318,7 @@ func (e *LocalExecutor) SolveEnvironment(ctx context.Context, ws *models.Workspa
 		return fmt.Errorf("failed to create package manager: %w", err)
 	}
 
-	if err := runPixiLock(ctx, pm, envPath, logWriter); err != nil {
+	if err := runPixiLock(ctx, e.sandbox, pm, envPath, logWriter); err != nil {
 		return err
 	}
 
@@ -314,12 +340,20 @@ func (e *LocalExecutor) InstallEnvironment(ctx context.Context, ws *models.Works
 	if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
 		pixiBinary = pixiMgr.BinaryPath()
 	}
-	cmd := exec.CommandContext(ctx, pixiBinary, "install", "-v")
-	cmd.Dir = envPath
+	cmd, err := e.sandbox.Command(ctx, sandbox.Spec{
+		WorkspaceDir: envPath,
+		Argv:         []string{pixiBinary, "install", "-v"},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to prepare sandboxed pixi install: %w", err)
+	}
 	cmd.Stdout = logWriter
 	cmd.Stderr = logWriter
 	fmt.Fprintf(logWriter, "Running: %s install -v\n", pixiBinary)
 	if err := cmd.Run(); err != nil {
+		if sandbox.IsSetupFailure(err) {
+			return fmt.Errorf("build sandbox setup failed: %w", err)
+		}
 		return fmt.Errorf("pixi install failed: %w", err)
 	}
 	fmt.Fprintf(logWriter, "Environment installed successfully\n")

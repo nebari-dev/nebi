@@ -13,12 +13,42 @@ import (
 	"gorm.io/gorm"
 )
 
+const enqueueTenantJobScript = `
+local was_empty = redis.call("LLEN", KEYS[1]) == 0
+redis.call("RPUSH", KEYS[1], ARGV[1])
+if was_empty then
+  local score = redis.call("INCR", KEYS[3])
+  redis.call("ZADD", KEYS[2], score, ARGV[2])
+end
+return 1
+`
+
+const popTenantJobScript = `
+local tenant = redis.call("ZPOPMIN", KEYS[1], 1)
+if #tenant == 0 then
+  return {}
+end
+local tenant_name = tenant[1]
+local queue_key = ARGV[1] .. tenant_name
+local job = redis.call("LPOP", queue_key)
+if not job then
+  return {tenant_name, ""}
+end
+if redis.call("LLEN", queue_key) > 0 then
+  local score = redis.call("INCR", KEYS[2])
+  redis.call("ZADD", KEYS[1], score, tenant_name)
+end
+return {tenant_name, job}
+`
+
 // ValkeyQueue implements a distributed job queue using Valkey
 // Valkey is used for job transport (job IDs only), DB is source of truth
 type ValkeyQueue struct {
-	client valkey.Client
-	db     *gorm.DB
-	key    string // Queue key: "nebi:jobs"
+	client     valkey.Client
+	db         *gorm.DB
+	key        string // Queue key prefix: "nebi:jobs"
+	tenantsKey string
+	seqKey     string
 }
 
 // NewValkeyQueue creates a new Valkey-backed queue
@@ -29,7 +59,8 @@ func NewValkeyQueue(addr string, db *gorm.DB) (*ValkeyQueue, error) {
 
 	// Create Valkey client with connection pool
 	client, err := valkey.NewClient(valkey.ClientOption{
-		InitAddress: []string{addr},
+		InitAddress:  []string{addr},
+		DisableCache: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Valkey: %w", err)
@@ -46,9 +77,11 @@ func NewValkeyQueue(addr string, db *gorm.DB) (*ValkeyQueue, error) {
 	}
 
 	q := &ValkeyQueue{
-		client: client,
-		db:     db,
-		key:    "nebi:jobs",
+		client:     client,
+		db:         db,
+		key:        "nebi:{jobs}",
+		tenantsKey: "nebi:{jobs}:tenants",
+		seqKey:     "nebi:{jobs}:tenant-seq",
 	}
 
 	slog.Info("Initialized Valkey job queue",
@@ -59,7 +92,8 @@ func NewValkeyQueue(addr string, db *gorm.DB) (*ValkeyQueue, error) {
 
 // Enqueue adds a job to the queue
 // 1. Save job to DB (source of truth)
-// 2. Push job ID to Valkey list
+// 2. Push job ID to a per-tenant Valkey list
+// 3. Register an idle tenant once on the round-robin tenant set
 func (q *ValkeyQueue) Enqueue(ctx context.Context, job *models.Job) error {
 	if job.ID == uuid.Nil {
 		return fmt.Errorf("job must have an ID")
@@ -70,17 +104,21 @@ func (q *ValkeyQueue) Enqueue(ctx context.Context, job *models.Job) error {
 		return fmt.Errorf("failed to save job to database: %w", err)
 	}
 
+	tenant := tenantKeyForJob(job)
 	// Marshal job ID to push to Valkey
 	jobData, err := json.Marshal(map[string]string{
-		"id":   job.ID.String(),
-		"type": string(job.Type),
+		"id": job.ID.String(),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal job data: %w", err)
 	}
 
-	// Push to Valkey list (RPUSH for FIFO)
-	cmd := q.client.B().Rpush().Key(q.key).Element(string(jobData)).Build()
+	cmd := q.client.B().Eval().
+		Script(enqueueTenantJobScript).
+		Numkeys(3).
+		Key(q.tenantQueueKey(tenant), q.tenantsKey, q.seqKey).
+		Arg(string(jobData), tenant).
+		Build()
 	if err := q.client.Do(ctx, cmd).Error(); err != nil {
 		return fmt.Errorf("failed to push job to Valkey: %w", err)
 	}
@@ -88,34 +126,73 @@ func (q *ValkeyQueue) Enqueue(ctx context.Context, job *models.Job) error {
 	slog.Debug("Job enqueued",
 		"job_id", job.ID,
 		"type", job.Type,
-		"queue_key", q.key)
+		"tenant", tenant,
+		"queue_key", q.tenantQueueKey(tenant))
 	return nil
 }
 
 // Dequeue retrieves the next job from the queue (blocking)
-// 1. BLPOP from Valkey (blocking pop with timeout)
+// 1. Atomically pop the next tenant and one job from that tenant
 // 2. Parse job ID
 // 3. Fetch full job from DB
 func (q *ValkeyQueue) Dequeue(ctx context.Context) (*models.Job, error) {
-	// BLPOP with 5 second timeout
-	cmd := q.client.B().Blpop().Key(q.key).Timeout(5).Build()
-	result := q.client.Do(ctx, cmd)
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
 
-	// Parse BLPOP result [key, value]
-	values, err := result.AsStrSlice()
+	for {
+		tenant, jobData, err := q.popTenantJob(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if jobData == "" {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-deadline.C:
+				return nil, context.DeadlineExceeded
+			case <-ticker.C:
+				continue
+			}
+		}
+
+		job, err := q.loadDequeuedJob(ctx, jobData)
+		if err != nil {
+			return nil, err
+		}
+		slog.Debug("Job dequeued", "job_id", job.ID, "type", job.Type, "tenant", tenant)
+		return job, nil
+	}
+}
+
+func (q *ValkeyQueue) tenantQueueKey(tenant string) string {
+	return q.key + ":tenant:" + tenant
+}
+
+func (q *ValkeyQueue) popTenantJob(ctx context.Context) (string, string, error) {
+	cmd := q.client.B().Eval().
+		Script(popTenantJobScript).
+		Numkeys(2).
+		Key(q.tenantsKey, q.seqKey).
+		Arg(q.key + ":tenant:").
+		Build()
+	values, err := q.client.Do(ctx, cmd).AsStrSlice()
 	if err != nil {
-		// BLPOP timeout or no jobs available - treat as normal timeout
-		// AsStrSlice returns an error when BLPOP times out (valkey nil message)
-		// This is expected behavior when the queue is empty
-		return nil, context.DeadlineExceeded
+		return "", "", fmt.Errorf("failed to pop job from Valkey: %w", err)
 	}
-	if len(values) < 2 {
-		return nil, fmt.Errorf("invalid BLPOP result: expected 2 values, got %d", len(values))
+	if len(values) == 0 {
+		return "", "", nil
 	}
+	if len(values) != 2 {
+		return "", "", fmt.Errorf("invalid pop result: expected tenant and job, got %d values", len(values))
+	}
+	return values[0], values[1], nil
+}
 
-	// Parse job data (second element contains the job info)
+func (q *ValkeyQueue) loadDequeuedJob(ctx context.Context, encoded string) (*models.Job, error) {
 	var jobData map[string]string
-	if err := json.Unmarshal([]byte(values[1]), &jobData); err != nil {
+	if err := json.Unmarshal([]byte(encoded), &jobData); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal job data: %w", err)
 	}
 
@@ -124,15 +201,10 @@ func (q *ValkeyQueue) Dequeue(ctx context.Context) (*models.Job, error) {
 		return nil, fmt.Errorf("failed to parse job ID: %w", err)
 	}
 
-	// Fetch full job from database
 	var job models.Job
 	if err := q.db.WithContext(ctx).First(&job, "id = ?", jobID).Error; err != nil {
 		return nil, fmt.Errorf("failed to fetch job from database: %w", err)
 	}
-
-	slog.Debug("Job dequeued",
-		"job_id", job.ID,
-		"type", job.Type)
 	return &job, nil
 }
 

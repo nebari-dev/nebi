@@ -257,6 +257,22 @@ func (h *AdminHandler) GetDashboardStats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
+// GetResourceMetrics godoc
+// @Summary Get resource limit and job usage metrics
+// @Tags admin
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} service.ResourceMetrics
+// @Router /admin/resource-metrics [get]
+func (h *AdminHandler) GetResourceMetrics(c *gin.Context) {
+	metrics, err := h.svc.GetResourceMetrics()
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, metrics)
+}
+
 // --- Request types ---
 
 type CreateUserRequest struct {

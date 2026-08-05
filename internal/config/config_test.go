@@ -71,3 +71,43 @@ func TestLoad_LocalMode_AllowsDefaultJWTSecret(t *testing.T) {
 		t.Fatalf("unexpected error in local mode: %v", err)
 	}
 }
+
+func TestLoad_LimitsFromEnv(t *testing.T) {
+	isolate(t)
+	t.Setenv("NEBI_MODE", "local")
+	t.Setenv("NEBI_LIMITS_MAX_PACKAGES", "7")
+	t.Setenv("NEBI_LIMITS_JOB_TIMEOUT_SECONDS", "9")
+	t.Setenv("NEBI_LIMITS_JOB_LOG_BYTES", "1234")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Limits.MaxPackages != 7 {
+		t.Fatalf("expected max_packages from env, got %d", cfg.Limits.MaxPackages)
+	}
+	if cfg.Limits.JobTimeoutSeconds != 9 {
+		t.Fatalf("expected job_timeout_seconds from env, got %d", cfg.Limits.JobTimeoutSeconds)
+	}
+	if cfg.Limits.JobLogBytes != 1234 {
+		t.Fatalf("expected job_log_bytes from env, got %d", cfg.Limits.JobLogBytes)
+	}
+}
+
+func TestLoad_LimitsExplicitZeroIsPreserved(t *testing.T) {
+	isolate(t)
+	t.Setenv("NEBI_MODE", "local")
+	t.Setenv("NEBI_LIMITS_REQUEST_BODY_BYTES", "0")
+	t.Setenv("NEBI_LIMITS_JOB_TIMEOUT_SECONDS", "0")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Limits.RequestBodyBytes != 0 {
+		t.Fatalf("expected request_body_bytes=0, got %d", cfg.Limits.RequestBodyBytes)
+	}
+	if cfg.Limits.JobTimeoutSeconds != 0 {
+		t.Fatalf("expected job_timeout_seconds=0, got %d", cfg.Limits.JobTimeoutSeconds)
+	}
+}

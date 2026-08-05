@@ -85,6 +85,38 @@ func TestMemoryQueue_FIFO(t *testing.T) {
 	}
 }
 
+func TestMemoryQueue_FairAcrossTenants(t *testing.T) {
+	q := NewMemoryQueue(10)
+	defer q.Close()
+
+	userA := uuid.New()
+	userB := uuid.New()
+	jobA1 := newTestJob()
+	jobA1.UserID = userA
+	jobA2 := newTestJob()
+	jobA2.UserID = userA
+	jobA3 := newTestJob()
+	jobA3.UserID = userA
+	jobB1 := newTestJob()
+	jobB1.UserID = userB
+
+	for _, job := range []*models.Job{jobA1, jobA2, jobA3, jobB1} {
+		if err := q.Enqueue(context.Background(), job); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+	}
+
+	got1, _ := q.Dequeue(context.Background())
+	got2, _ := q.Dequeue(context.Background())
+	got3, _ := q.Dequeue(context.Background())
+	got4, _ := q.Dequeue(context.Background())
+
+	if got1.ID != jobA1.ID || got2.ID != jobB1.ID || got3.ID != jobA2.ID || got4.ID != jobA3.ID {
+		t.Fatalf("expected fair tenant order A1,B1,A2,A3 got %s,%s,%s,%s",
+			got1.ID, got2.ID, got3.ID, got4.ID)
+	}
+}
+
 func TestMemoryQueue_GetStatus(t *testing.T) {
 	q := NewMemoryQueue(10)
 	defer q.Close()

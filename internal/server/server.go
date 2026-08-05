@@ -20,6 +20,7 @@ import (
 	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
+	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/logger"
 	"github.com/nebari-dev/nebi/internal/logstream"
 	"github.com/nebari-dev/nebi/internal/netguard"
@@ -154,6 +155,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	slog.Info("Starting Nebi", "mode", mode)
+	limitCfg := appCfg.Limits
 
 	// Initialize service for the worker (encryption key derived later by router,
 	// but we derive one here for the standalone-worker case).
@@ -161,12 +163,12 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to derive encryption key: %w", err)
 	}
-	workerSvc := service.New(database, jobQueue, exec, appCfg.IsLocalMode(), workerEncKey, rbac.NewDefaultProvider())
+	workerSvc := service.New(database, jobQueue, exec, appCfg.IsLocalMode(), workerEncKey, rbac.NewDefaultProvider(), limitCfg)
 	workerJobSvc := service.NewJobService(database, appCfg.IsLocalMode())
 
 	// Initialize and start worker if needed
 	if runWorker {
-		w = worker.New(jobQueue, exec, workerSvc, workerJobSvc, slog.Default(), valkeyClient)
+		w = worker.New(jobQueue, exec, workerSvc, workerJobSvc, slog.Default(), valkeyClient, limitCfg)
 		workerCtx, cancel := context.WithCancel(ctx)
 		workerCancel = cancel
 
@@ -202,8 +204,13 @@ func Run(ctx context.Context, cfg Config) error {
 
 		addr := listenAddress(appCfg.Server.Host, appCfg.Server.Port)
 		srv = &http.Server{
-			Addr:    addr,
-			Handler: handler,
+			Addr:              addr,
+			Handler:           handler,
+			ReadHeaderTimeout: limits.HTTPReadHeaderTimeout,
+			ReadTimeout:       limits.HTTPReadTimeout,
+			WriteTimeout:      limitCfg.HTTPWriteTimeout(),
+			IdleTimeout:       limits.HTTPIdleTimeout,
+			MaxHeaderBytes:    limits.HTTPMaxHeaderBytes,
 		}
 
 		go func() {

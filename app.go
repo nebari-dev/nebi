@@ -17,6 +17,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
+	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/netguard"
 	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
@@ -178,9 +179,10 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	logToFile("startEmbeddedServer: executor initialized")
 
 	// Create service and worker (desktop app uses local mode, no encryption key needed)
-	svc := service.New(database, jobQueue, exec, true, nil, rbac.NewDefaultProvider())
+	limitCfg := cfg.Limits
+	svc := service.New(database, jobQueue, exec, true, nil, rbac.NewDefaultProvider(), limitCfg)
 	jobSvc := service.NewJobService(database, true)
-	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), nil)
+	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), nil, limitCfg)
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	_ = workerCancel // Keep reference to avoid unused warning
 	logToFile("startEmbeddedServer: worker created")
@@ -210,8 +212,13 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	// Handler().
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Server.Port))
 	a.server = &http.Server{
-		Addr:    addr,
-		Handler: netguard.Middleware(router, false),
+		Addr:              addr,
+		Handler:           netguard.Middleware(router, false),
+		ReadHeaderTimeout: limits.HTTPReadHeaderTimeout,
+		ReadTimeout:       limits.HTTPReadTimeout,
+		WriteTimeout:      limitCfg.HTTPWriteTimeout(),
+		IdleTimeout:       limits.HTTPIdleTimeout,
+		MaxHeaderBytes:    limits.HTTPMaxHeaderBytes,
 	}
 
 	logToFile(fmt.Sprintf("startEmbeddedServer: starting server on %s", addr))

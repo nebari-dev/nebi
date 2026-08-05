@@ -12,6 +12,13 @@
 // The malicious backend is testdata/probe, compiled here into a temp
 // directory. See its package comment for why it is a Go program and not a
 // shell script.
+//
+// The sandbox re-exec shim is this test binary itself, via TestMain. Building
+// the nebi binary in-test is not an option: a plain "go build ./cmd/nebi"
+// shares nothing with the race-instrumented cache the CI run has already
+// built, so it is a full cold compile of the whole application (measured at
+// 84s of CPU and 1.1GB of compiler RSS) landing while the rest of the suite
+// is still running.
 
 package sandbox_test
 
@@ -19,6 +26,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net"
 	"os"
@@ -26,6 +34,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -59,16 +68,131 @@ const (
 	abiNetwork = 4 // Linux 6.7+: TCP connect restriction
 )
 
+// confinedRunTimeout bounds every confined command. A blocked connect(2) or a
+// wedged exec must surface as a named failure, not eat the package's ten
+// minute test budget.
+const confinedRunTimeout = 60 * time.Second
+
+// confineShimSubcommand is the argv[1] that Runner.Command emits when it
+// re-execs. runConfined asserts the two still agree.
+const confineShimSubcommand = "sandbox-exec"
+
+// TestMain lets this test binary stand in for the nebi binary as the sandbox
+// re-exec shim, so the test never has to compile cmd/nebi.
+//
+// The switch is argv rather than an environment variable because the sandbox
+// deliberately scrubs the environment down to an allowlist before the child
+// starts: no test-only variable can survive into it. That scrubbing is the
+// property the first subtest asserts, so it must not be weakened to make the
+// harness convenient.
+func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == confineShimSubcommand {
+		runConfineShim(os.Args[2:]) // never returns
+	}
+	os.Exit(m.Run())
+}
+
+// runConfineShim mirrors cmd/nebi/sandbox_exec.go: parse the ruleset off the
+// command line, apply it to this process, then execve the real command so the
+// confinement is inherited across the exec.
+//
+// Being a second implementation of that wrapper is a drift risk, so it keeps
+// the parts that carry meaning identical: it calls sandbox.Confine, which is
+// the code actually under test, and it exits with sandbox.SetupFailureExitCode
+// when the sandbox cannot be established, which is the contract
+// Runner.IsSetupFailure depends on. An unrecognised flag is a hard error
+// rather than something to ignore, so a change to Runner.shimArgv shows up
+// here as a loud failure instead of a silently weaker ruleset.
+func runConfineShim(args []string) {
+	var (
+		restrictions sandbox.Restrictions
+		mode         = sandbox.ModeStrict
+		argv         []string
+	)
+
+	for i, arg := range args {
+		if arg == "--" {
+			argv = args[i+1:]
+			break
+		}
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			shimFail(fmt.Errorf("malformed shim flag %q", arg))
+		}
+		switch key {
+		case "--mode":
+			mode = sandbox.Mode(value)
+		case "--allow-rw":
+			restrictions.RW = append(restrictions.RW, value)
+		case "--allow-ro":
+			restrictions.RO = append(restrictions.RO, value)
+		case "--allow-ro-file":
+			restrictions.ROFiles = append(restrictions.ROFiles, value)
+		case "--allow-port":
+			p, err := strconv.Atoi(value)
+			if err != nil {
+				shimFail(fmt.Errorf("bad port %q: %w", value, err))
+			}
+			restrictions.TCPConnectPorts = append(restrictions.TCPConnectPorts, p)
+		default:
+			shimFail(fmt.Errorf("unknown shim flag %q: Runner.shimArgv has changed and this harness needs updating to match", arg))
+		}
+	}
+	restrictions.RWFiles = shimDevFiles()
+
+	if len(argv) == 0 {
+		shimFail(errors.New("no command after --"))
+	}
+	switch mode {
+	case sandbox.ModeStrict, sandbox.ModePermissive:
+	default:
+		shimFail(fmt.Errorf("shim requires strict or permissive mode, got %q", mode))
+	}
+
+	err := sandbox.Confine(restrictions)
+	switch {
+	case err == nil:
+	case errors.Is(err, sandbox.ErrNetworkUnrestricted):
+		// Filesystem confinement held; only the TCP restriction is missing.
+		fmt.Fprintf(os.Stderr, "[nebi] WARNING: %v\n", err)
+	case mode == sandbox.ModePermissive:
+		fmt.Fprintf(os.Stderr, "[nebi] WARNING: build is running UNCONFINED: %v\n", err)
+	default:
+		shimFail(err)
+	}
+
+	// syscall.Exec replaces this process image on success and so never
+	// returns; any return at all is a failure to launch.
+	shimFail(fmt.Errorf("exec %s: %w", argv[0], syscall.Exec(argv[0], argv, os.Environ())))
+}
+
+// shimDevFiles mirrors devFiles in cmd/nebi/sandbox_exec.go.
+func shimDevFiles() []string {
+	var out []string
+	for _, f := range []string{"/dev/null", "/dev/urandom", "/dev/random", "/dev/zero"} {
+		if _, err := os.Stat(f); err == nil {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func shimFail(err error) {
+	fmt.Fprintf(os.Stderr, "[nebi] sandbox setup failed: %v\n", err)
+	os.Exit(sandbox.SetupFailureExitCode)
+}
+
 func TestConfinement_MaliciousBuildCannotEscape(t *testing.T) {
 	abi := requireLandlock(t)
-	requireEmbeddableFrontend(t)
 
-	// One build of each binary for the whole test. The nebi binary supplies
-	// the sandbox-exec shim the Runner re-execs; the probe is the malicious
-	// build backend.
-	binDir := t.TempDir()
-	nebiBin := goBuild(t, binDir, "nebi", "../../cmd/nebi")
-	probeBin := goBuild(t, binDir, "probe", "./testdata/probe")
+	// This binary is the re-exec shim (see TestMain), so the only thing that
+	// has to be compiled is the malicious build backend, which is a few
+	// hundred lines and builds in seconds.
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatalf("resolve this test binary for the sandbox re-exec: %v", err)
+	}
+	probeBin := goBuild(t, t.TempDir(), "probe", "./testdata/probe")
 
 	// Two sibling workspaces under a shared root. Only "attacker" is ever
 	// granted to the confined process.
@@ -85,7 +209,7 @@ func TestConfinement_MaliciousBuildCannotEscape(t *testing.T) {
 		t.Fatalf("the victim manifest must be readable outside the sandbox (err=%v)", err)
 	}
 
-	runner := newRunner(t, nebiBin, 443)
+	runner := newRunner(t, self, 443)
 
 	// Prove the shim can actually establish a ruleset on this host before
 	// asserting anything about what it blocks. Exit code 125 is the shim
@@ -224,7 +348,7 @@ func TestConfinement_MaliciousBuildCannotEscape(t *testing.T) {
 		// CAP_NET_BIND_SERVICE, which no CI test runner has.
 		allowedAddr := listen(t)
 		deniedAddr := listen(t)
-		netRunner := newRunner(t, nebiBin, port(t, allowedAddr))
+		netRunner := newRunner(t, self, port(t, allowedAddr))
 
 		t.Run("cannot connect to the database port", func(t *testing.T) {
 			res := runConfined(t, netRunner, attacker, probeBin, "connect", deniedAddr)
@@ -267,7 +391,7 @@ type result struct {
 func runConfined(t *testing.T, runner *sandbox.Runner, workspace string, argv ...string) result {
 	t.Helper()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), confinedRunTimeout)
 	defer cancel()
 
 	// Only PATH is expected to survive the allowlist; the two secrets are
@@ -285,6 +409,12 @@ func runConfined(t *testing.T, runner *sandbox.Runner, workspace string, argv ..
 	if err != nil {
 		t.Fatalf("build the confined command: %v", err)
 	}
+	// TestMain recognises the shim by this exact subcommand. If Runner.shimArgv
+	// ever renames it, say so here rather than letting the test binary try to
+	// run its own tests with sandbox flags.
+	if len(cmd.Args) < 2 || cmd.Args[1] != confineShimSubcommand {
+		t.Fatalf("expected the shim subcommand %q at argv[1], got %v; update confineShimSubcommand and TestMain", confineShimSubcommand, cmd.Args)
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -293,6 +423,10 @@ func runConfined(t *testing.T, runner *sandbox.Runner, workspace string, argv ..
 
 	if cmd.ProcessState == nil {
 		t.Fatalf("the confined command never started: %v", runErr)
+	}
+	if ctx.Err() != nil {
+		t.Fatalf("the confined command %q did not finish within %s and was killed\nstdout:\n%s\nstderr:\n%s",
+			strings.Join(argv, " "), confinedRunTimeout, stdout.String(), stderr.String())
 	}
 	res := result{
 		stdout:   stdout.String(),
@@ -368,33 +502,34 @@ func requireLandlock(t *testing.T) int {
 	return abi
 }
 
-// requireEmbeddableFrontend skips when the built frontend the nebi binary
-// embeds is absent. That is a checkout that has not run "make build-frontend"
-// and has nothing to do with the sandbox, so it should not read as a failure.
-func requireEmbeddableFrontend(t *testing.T) {
-	t.Helper()
-
-	entries, err := os.ReadDir("../web/dist")
-	if err != nil || len(entries) == 0 {
-		t.Skipf("internal/web/dist is empty (%v); the nebi binary cannot be linked without it, run 'make build-frontend' first", err)
-	}
-}
+// goBuildTimeout bounds the one compile this test still does, so a wedged
+// toolchain fails by name instead of silently draining the test budget.
+const goBuildTimeout = 3 * time.Minute
 
 func goBuild(t *testing.T, outDir, name, pkg string) string {
 	t.Helper()
 
+	ctx, cancel := context.WithTimeout(context.Background(), goBuildTimeout)
+	defer cancel()
+
 	bin := filepath.Join(outDir, name)
-	cmd := exec.Command("go", "build", "-o", bin, pkg)
-	if out, err := cmd.CombinedOutput(); err != nil {
+	out, err := exec.CommandContext(ctx, "go", "build", "-o", bin, pkg).CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatalf("go build %s did not finish within %s:\n%s", pkg, goBuildTimeout, out)
+	}
+	if err != nil {
 		t.Fatalf("go build %s: %v\n%s", pkg, err, out)
 	}
 	return bin
 }
 
-func newRunner(t *testing.T, nebiBin string, allowedPorts ...int) *sandbox.Runner {
+// newRunner points the Runner at shimBin as the binary to re-exec. In
+// production that is the nebi binary; here it is this test binary, which
+// answers to the same "sandbox-exec" subcommand.
+func newRunner(t *testing.T, shimBin string, allowedPorts ...int) *sandbox.Runner {
 	t.Helper()
 
-	r, err := sandbox.NewRunner(sandbox.Config{Mode: sandbox.ModeStrict, AllowedPorts: allowedPorts}, nebiBin)
+	r, err := sandbox.NewRunner(sandbox.Config{Mode: sandbox.ModeStrict, AllowedPorts: allowedPorts}, shimBin)
 	if err != nil {
 		t.Fatalf("NewRunner: %v", err)
 	}
@@ -421,6 +556,10 @@ func listen(t *testing.T) string {
 		t.Fatalf("listen: %v", err)
 	}
 
+	// Accept returns an error as soon as the listener is closed, which is the
+	// only way this loop ends. The bounded wait below means that even if some
+	// future Go release stopped unblocking Accept on Close, the test would
+	// report it rather than hang.
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -434,7 +573,11 @@ func listen(t *testing.T) string {
 	}()
 	t.Cleanup(func() {
 		_ = ln.Close()
-		<-done
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Errorf("the listener accept loop on %s did not stop after Close", ln.Addr())
+		}
 	})
 	return ln.Addr().String()
 }

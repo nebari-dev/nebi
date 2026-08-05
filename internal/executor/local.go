@@ -215,7 +215,7 @@ func runPixiLock(ctx context.Context, sb *sandbox.Runner, pm pkgmgr.PackageManag
 	lockCmd.Stderr = logWriter
 	fmt.Fprintf(logWriter, "Running: %s lock\n", pixiBinary)
 	if err := lockCmd.Run(); err != nil {
-		if sandbox.IsSetupFailure(err) {
+		if sb.IsSetupFailure(err) {
 			return fmt.Errorf("build sandbox setup failed: %w", err)
 		}
 		return fmt.Errorf("failed to lock pixi environment: %w", err)
@@ -370,7 +370,7 @@ func (e *LocalExecutor) InstallEnvironment(ctx context.Context, ws *models.Works
 	cmd.Stderr = logWriter
 	fmt.Fprintf(logWriter, "Running: %s install -v\n", pixiBinary)
 	if err := cmd.Run(); err != nil {
-		if sandbox.IsSetupFailure(err) {
+		if e.sandbox.IsSetupFailure(err) {
 			return fmt.Errorf("build sandbox setup failed: %w", err)
 		}
 		return fmt.Errorf("pixi install failed: %w", err)

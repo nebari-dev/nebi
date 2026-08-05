@@ -67,14 +67,17 @@ type Runner struct {
 }
 
 // NewRunner returns a Runner. selfPath may be empty, in which case the
-// current executable is resolved via os.Executable.
+// current executable is resolved via os.Executable. That lookup is skipped
+// in off mode, where selfPath is never used: a resolution failure there
+// would stop the executor from constructing, and so the server from
+// booting, over a path nothing reads.
 func NewRunner(cfg Config, selfPath string) (*Runner, error) {
 	switch cfg.Mode {
 	case ModeStrict, ModePermissive, ModeOff:
 	default:
 		return nil, fmt.Errorf("invalid sandbox mode %q", cfg.Mode)
 	}
-	if selfPath == "" {
+	if selfPath == "" && cfg.Mode != ModeOff {
 		p, err := os.Executable()
 		if err != nil {
 			return nil, fmt.Errorf("resolve nebi binary for sandbox re-exec: %w", err)
@@ -256,9 +259,21 @@ func (r Restrictions) Validate() error {
 	return nil
 }
 
-// IsSetupFailure reports whether err is a sandbox setup failure (as opposed
-// to the build command failing), so callers can produce an actionable
-// operator-facing message.
+// IsSetupFailure reports whether err came from this Runner's sandbox failing
+// to start, rather than from the build command failing on its own merits.
+//
+// Off mode never runs the shim, so nothing in that path can produce the
+// reserved exit code; a build tool that legitimately exits 125 would
+// otherwise be mislabelled as a sandbox failure. Prefer this over the
+// package-level IsSetupFailure wherever a Runner is in scope.
+func (r *Runner) IsSetupFailure(err error) bool {
+	return r.cfg.Mode != ModeOff && IsSetupFailure(err)
+}
+
+// IsSetupFailure reports whether err carries the reserved sandbox
+// setup-failure exit code, so callers can produce an actionable
+// operator-facing message. Callers holding a Runner should use its method
+// instead, which also accounts for the mode.
 func IsSetupFailure(err error) bool {
 	if err == nil {
 		return false

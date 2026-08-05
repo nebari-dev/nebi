@@ -271,6 +271,48 @@ func TestRestrictions_Validate(t *testing.T) {
 	}
 }
 
+// In off mode the shim never runs, so exit code 125 can only have come from
+// the build tool itself and must not be reported as a sandbox failure.
+func TestRunner_IsSetupFailure_OffModeNeverClaimsSetupFailure(t *testing.T) {
+	err := &exitCodeErr{code: SetupFailureExitCode}
+
+	if newTestRunner(t, ModeOff).IsSetupFailure(err) {
+		t.Fatal("off mode never runs the shim, so 125 is the build's own exit code")
+	}
+	for _, mode := range []Mode{ModeStrict, ModePermissive} {
+		if !newTestRunner(t, mode).IsSetupFailure(err) {
+			t.Fatalf("%s mode must recognise 125 as a setup failure", mode)
+		}
+		if newTestRunner(t, mode).IsSetupFailure(&exitCodeErr{code: 1}) {
+			t.Fatalf("%s mode must not treat exit 1 as a setup failure", mode)
+		}
+		if newTestRunner(t, mode).IsSetupFailure(nil) {
+			t.Fatalf("%s mode must not treat nil as a setup failure", mode)
+		}
+	}
+}
+
+// selfPath is only used to build the shim argv, which off mode never does,
+// so a failed os.Executable lookup must not stop the server from booting.
+func TestNewRunner_OffModeSkipsExecutableLookup(t *testing.T) {
+	r, err := NewRunner(Config{Mode: ModeOff}, "")
+	if err != nil {
+		t.Fatalf("off mode must not need the nebi binary path: %v", err)
+	}
+	if r.selfPath != "" {
+		t.Fatalf("expected no self path to be resolved in off mode, got %q", r.selfPath)
+	}
+
+	// Active modes still need it.
+	active, err := NewRunner(Config{Mode: ModeStrict}, "")
+	if err != nil {
+		t.Fatalf("NewRunner(strict): %v", err)
+	}
+	if active.selfPath == "" {
+		t.Fatal("strict mode must resolve the nebi binary for the re-exec shim")
+	}
+}
+
 func TestIsSetupFailure(t *testing.T) {
 	if !IsSetupFailure(&exitCodeErr{code: SetupFailureExitCode}) {
 		t.Fatal("expected exit code 125 to be a setup failure")

@@ -185,9 +185,18 @@ problems from build failures.
 | Situation | strict | permissive | off |
 |---|---|---|---|
 | Landlock FS available | confined | confined | unconfined, scrubbed env |
-| Landlock FS unavailable | job fails fast with actionable error naming `NEBI_SANDBOX_MODE` | warning in job log + server log, runs unconfined | n/a |
-| Landlock net (ABI v4) unavailable | warning, FS-only confinement | warning, FS-only confinement | n/a |
-| Non-Linux host | job fails (team servers are Linux; macOS desktop is local mode = off) | warning, runs unconfined | n/a |
+| Landlock FS unavailable | job fails fast with actionable error naming `NEBI_SANDBOX_MODE` | warning in the job log, runs unconfined | n/a |
+| Landlock net (ABI v4) unavailable | warning in the job log, FS-only confinement | warning in the job log, FS-only confinement | n/a |
+| Non-Linux host | job fails (team servers are Linux; macOS desktop is local mode = off) | warning in the job log, runs unconfined | n/a |
+
+Every one of those warnings is written by the shim to stderr, which the
+executor wires into the job's log writer, so they are per-build and visible
+only to whoever opens that build's log. Whether a server is *configured* to
+enforce is a different question, and it is answered once at boot:
+`internal/server/server.go` logs a `slog.Warn` at startup when
+`sandbox.mode` is `permissive` (builds may run unconfined) or when it is `off`
+outside local mode (confinement disabled entirely). That gives an operator
+running a fleet a server-side signal without opening an individual job.
 
 ## Testing
 

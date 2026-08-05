@@ -24,6 +24,10 @@ pixi global install nebi
 Supported platforms: **macOS** and **Linux**
 :::
 
+The installer verifies release checksums and Sigstore signatures before
+extracting artifacts. Install `cosign` first from the
+[Sigstore installation docs](https://docs.sigstore.dev/cosign/system_config/installation/).
+
 This installs the latest release of `nebi` to `~/.local/bin` (CLI and desktop app):
 
 ```bash
@@ -76,5 +80,7 @@ Prerequisite: Go version 1.24+
 :::
 
 ```bash
-go install github.com/nebari-dev/nebi/cmd/nebi@latest
+go install github.com/nebari-dev/nebi/cmd/nebi@<tag-or-commit>
 ```
+
+Prefer a released tag or audited commit instead of a mutable version selector.

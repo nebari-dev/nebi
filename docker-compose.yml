@@ -1,7 +1,7 @@
 services:
   # Traefik - Reverse Proxy with automatic HTTPS
   traefik:
-    image: traefik:v3.2
+    image: docker.io/library/traefik@sha256:e561a37f8710d9cf41c78bdf421d822b2c0b48267ec0552e644565fb55466ea9
     container_name: nebi-traefik
     command:
       # API and dashboard
@@ -39,9 +39,9 @@ services:
       - nebi-network
     restart: unless-stopped
 
-  # PostgreSQL 18 - Latest version
+  # PostgreSQL 18
   postgres:
-    image: postgres:18
+    image: docker.io/library/postgres@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a
     container_name: nebi-postgres
     environment:
       POSTGRES_DB: nebi
@@ -60,9 +60,9 @@ services:
     networks:
       - nebi-network
 
-  # Valkey 9.0 - Latest version (Redis replacement)
+  # Valkey 9.0 - Redis replacement
   valkey:
-    image: valkey/valkey:9.0.0
+    image: docker.io/valkey/valkey@sha256:00e026f877bbbed33d13241e5e701142e8842f94e1124ce1d5ddbbf6d0cee4fb
     container_name: nebi-valkey
     ports:
       - "6379:6379"

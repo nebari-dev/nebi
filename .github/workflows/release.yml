@@ -6,8 +6,16 @@ on:
       - 'v*'
 
 permissions:
+  actions: read
   contents: write
   id-token: write
+  attestations: write
+
+env:
+  SWAG_VERSION: v1.16.6
+  COSIGN_VERSION: v2.6.1
+  SYFT_VERSION: v1.40.0
+  GOVULNCHECK_VERSION: v1.1.4
 
 # Shares a ref-keyed concurrency group with the Desktop App workflow so the two
 # don't race to create the same GitHub release for a v* tag. See desktop.yml.
@@ -21,7 +29,8 @@ jobs:
     # macOS signing/notarization credentials for the `notarize` block in
     # .goreleaser.yaml. These reuse the Developer ID cert + App Store Connect
     # API key already configured for the Desktop App workflow (desktop.yml).
-    # When absent (e.g. fork PRs) the `isEnvSet` guard skips signing.
+    # Tagged releases validate these below and fail closed if any are missing.
+    # Snapshot builds that reuse .goreleaser.yaml still skip notarization.
     env:
       MACOS_SIGN_P12: ${{ secrets.MACOS_SIGNING_CERT_B64 }}
       MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGNING_CERT_PASSWORD }}
@@ -46,10 +55,35 @@ jobs:
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Validate release signing inputs
+        run: |
+          set -euo pipefail
+          for name in \
+            MACOS_SIGN_P12 \
+            MACOS_SIGN_PASSWORD \
+            MACOS_NOTARY_KEY \
+            MACOS_NOTARY_KEY_ID \
+            MACOS_NOTARY_ISSUER_ID; do
+            if [ -z "${!name}" ]; then
+              echo "Missing required release signing input: ${name}"
+              exit 1
+            fi
+          done
+
+      - name: Run frontend vulnerability check
+        run: cd frontend && npm audit --audit-level=high
+
       - name: Install build tools
         run: |
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           go mod download
-          go install github.com/swaggo/swag/cmd/swag@latest
+          go install "github.com/swaggo/swag/cmd/swag@${SWAG_VERSION}"
+          go install "github.com/sigstore/cosign/v2/cmd/cosign@${COSIGN_VERSION}"
+          go install "github.com/anchore/syft/cmd/syft@${SYFT_VERSION}"
+          go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+
+      - name: Run Go vulnerability check
+        run: govulncheck ./cmd/... ./internal/...
 
       - name: Generate Swagger docs
         run: swag init -g cmd/nebi/serve.go -o internal/swagger --packageName swagger
@@ -58,7 +92,56 @@ jobs:
         uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
         with:
           distribution: goreleaser
-          version: latest
+          version: v2.17.1
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attest CLI release artifacts
+        id: attest_cli
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-checksums: ./dist/checksums.txt
+          create-storage-record: false
+
+      - name: Prepare CLI release gate assets
+        shell: bash
+        env:
+          ATTESTATION_BUNDLE: ${{ steps.attest_cli.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ATTESTATION_BUNDLE}" ]; then
+            echo "actions/attest did not return a CLI attestation bundle path."
+            exit 1
+          fi
+          cp "${ATTESTATION_BUNDLE}" nebi-cli-provenance.sigstore.json
+
+          checksums_sha256="$(sha256sum dist/checksums.txt | awk '{print $1}')"
+          cat > nebi-cli-release.json <<EOF
+          {
+            "component": "cli",
+            "source_commit": "${GITHUB_SHA}",
+            "workflow": "${GITHUB_WORKFLOW}",
+            "run_id": "${GITHUB_RUN_ID}",
+            "run_attempt": "${GITHUB_RUN_ATTEMPT}",
+            "checksums_sha256": "${checksums_sha256}",
+            "provenance_bundle": "nebi-cli-provenance.sigstore.json"
+          }
+          EOF
+          cosign sign-blob --bundle=nebi-cli-release.json.sigstore.json nebi-cli-release.json --yes
+
+      - name: Upload CLI release gate assets
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+        with:
+          draft: true
+          fail_on_unmatched_files: true
+          files: |
+            nebi-cli-provenance.sigstore.json
+            nebi-cli-release.json
+            nebi-cli-release.json.sigstore.json
+
+      - name: Publish release when all gated assets are current
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/publish-release-if-ready.sh

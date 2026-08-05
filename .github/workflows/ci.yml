@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  SWAG_VERSION: v1.16.6
+  GORELEASER_VERSION: v2.17.1
+  GOLANGCI_LINT_VERSION: v1.64.8
+
 jobs:
 
   frontend-lint:
@@ -114,7 +119,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@8564da7cb3c6866ed1da648ca8f00a258ef0c802 # v6.5.2
         with:
-          version: latest
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
 
   backend-test:
     name: Backend / Test
@@ -137,7 +142,7 @@ jobs:
       - name: Install swag
         run: |
           go mod download
-          go install github.com/swaggo/swag/cmd/swag
+          go install "github.com/swaggo/swag/cmd/swag@${SWAG_VERSION}"
 
       - name: Run tests (unit + e2e)
         run: go test -tags=e2e -v -race -coverprofile=coverage.out ./cmd/... ./internal/...
@@ -172,7 +177,7 @@ jobs:
       - name: Install build tools
         run: |
           go mod download
-          go install github.com/swaggo/swag/cmd/swag@latest
+          go install "github.com/swaggo/swag/cmd/swag@${SWAG_VERSION}"
 
       - name: Generate Swagger docs
         run: swag init -g cmd/nebi/serve.go -o internal/swagger --packageName swagger
@@ -181,7 +186,7 @@ jobs:
         uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
         with:
           distribution: goreleaser
-          version: latest
+          version: ${{ env.GORELEASER_VERSION }}
           args: build --snapshot --clean
 
       - name: Upload Linux amd64

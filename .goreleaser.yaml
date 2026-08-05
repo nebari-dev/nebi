@@ -4,7 +4,7 @@ version: 2
 before:
   hooks:
     # Build frontend before creating release
-    - sh -c "cd frontend && npm install && npm run build"
+    - sh -c "cd frontend && npm ci && npm run build"
     # Copy frontend dist to internal/web/dist for embedding
     - sh -c "rm -rf internal/web/dist && cp -r frontend/dist internal/web/dist"
 
@@ -27,8 +27,7 @@ builds:
     ldflags:
       - -s -w
       - -X main.Version={{.Version}}
-      - -X main.commit={{.Commit}}
-      - -X main.date={{.Date}}
+      - -X main.Commit={{.Commit}}
 
 archives:
   - id: nebi
@@ -72,6 +71,21 @@ checksum:
   name_template: 'checksums.txt'
   algorithm: sha256
 
+sboms:
+  - id: archive
+    artifacts: archive
+
+signs:
+  - id: sigstore
+    cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: all
+
 snapshot:
   version_template: "{{ incpatch .Version }}-{{ .ShortCommit }}"
 
@@ -103,7 +117,12 @@ release:
   github:
     owner: nebari-dev
     name: nebi
-  draft: false
+  # Keep release assets private until signing, SBOM, attestation, and
+  # vulnerability gates have completed; publish the draft after all release
+  # workflows pass.
+  draft: true
+  use_existing_draft: true
+  replace_existing_artifacts: true
   prerelease: auto
   mode: replace
   header: |

@@ -151,6 +151,10 @@ API documentation is available at `/docs` on any running Nebi server (e.g. `http
 
 ### Shell Script
 
+The shell installers verify release checksums and Sigstore signatures before
+extracting artifacts. Install `cosign` first from the
+[Sigstore installation docs](https://docs.sigstore.dev/cosign/system_config/installation/).
+
 **Linux / macOS:**
 ```sh
 curl -fsSL https://nebi.nebari.dev/install.sh | sh
@@ -170,12 +174,12 @@ Download pre-built binaries from the [releases page](https://github.com/nebari-d
 ### Build from Source
 
 ```sh
-go install github.com/nebari-dev/nebi/cmd/nebi@latest
+go install github.com/nebari-dev/nebi/cmd/nebi@<tag-or-commit>
 ```
 
-Requires Go 1.24+.
+Requires Go 1.24+. Prefer a released tag or audited commit instead of a
+mutable version selector.
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, build instructions, and project structure.
-

@@ -9,7 +9,15 @@ on:
     branches: [main]
 
 permissions:
+  actions: read
   contents: write
+  id-token: write
+  attestations: write
+
+env:
+  COSIGN_VERSION: v2.6.1
+  SYFT_VERSION: v1.40.0
+  GOVULNCHECK_VERSION: v1.1.4
 
 # Serialize against the Release (GoReleaser) workflow, which fires on the same
 # v* tags and writes to the same GitHub release. Sharing one ref-keyed group
@@ -54,6 +62,8 @@ jobs:
       APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+      WINDOWS_SIGNING_CERT_B64: ${{ secrets.WINDOWS_SIGNING_CERT_B64 }}
+      WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -69,6 +79,34 @@ jobs:
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Validate macOS release signing inputs
+        if: matrix.os == 'macos-latest' && startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          for name in \
+            MACOS_SIGNING_CERT_B64 \
+            MACOS_SIGNING_CERT_PASSWORD \
+            MACOS_SIGNING_IDENTITY \
+            APPLE_API_KEY_B64 \
+            APPLE_API_KEY_ID \
+            APPLE_API_ISSUER_ID; do
+            if [ -z "${!name}" ]; then
+              echo "Missing required macOS signing input: ${name}"
+              exit 1
+            fi
+          done
+
+      - name: Validate Windows release signing inputs
+        if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          foreach ($name in "WINDOWS_SIGNING_CERT_B64", "WINDOWS_SIGNING_CERT_PASSWORD") {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Missing required Windows signing input: $name"
+            }
+          }
+
       # Linux dependencies for wails (Ubuntu 24.04 uses webkit2gtk-4.1).
       # xvfb is needed for the post-build smoke test below.
       - name: Install Linux dependencies
@@ -81,19 +119,37 @@ jobs:
         shell: bash
         run: |
           cd frontend
-          npm install
+          npm ci
           npm run build
           cd ..
           rm -rf internal/web/dist
           cp -r frontend/dist internal/web/dist
 
-      # Pin to the wails version in go.mod; @latest broke when wails v2.13.0
+      # Pin to the wails version in go.mod; unpinned installs broke when wails v2.13.0
       # started requiring a newer Go than this workflow uses.
       - name: Install wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
+      - name: Install release supply-chain tools
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          go mod download
+          go install "github.com/sigstore/cosign/v2/cmd/cosign@${COSIGN_VERSION}"
+          go install "github.com/anchore/syft/cmd/syft@${SYFT_VERSION}"
+          go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+
+      - name: Run Go vulnerability check
+        if: startsWith(github.ref, 'refs/tags/')
+        run: govulncheck ${{ matrix.build_tags }} ./...
+
+      - name: Run frontend vulnerability check
+        if: startsWith(github.ref, 'refs/tags/')
+        run: cd frontend && npm audit --audit-level=high
+
       - name: Build desktop app
-        run: wails build -platform ${{ matrix.platform }} ${{ matrix.build_tags }}
+        run: wails build -s -platform ${{ matrix.platform }} ${{ matrix.build_tags }}
 
       # Import the Developer ID Application cert into a throwaway keychain so
       # codesign can use it. Skipped automatically when secrets are absent
@@ -148,6 +204,34 @@ jobs:
             --wait
           xcrun stapler staple build/bin/Nebi.app
           xcrun stapler validate build/bin/Nebi.app
+
+      - name: Sign Windows app
+        if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $certPath = Join-Path $env:RUNNER_TEMP "windows-signing.pfx"
+          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERT_B64))
+
+          $kitsRoot = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+          $signtoolPath = $null
+          if (Test-Path $kitsRoot) {
+            $signtoolPath = (Get-ChildItem $kitsRoot -Recurse -Filter signtool.exe |
+              Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+              Select-Object -First 1).FullName
+          }
+          if (-not $signtoolPath) {
+            $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
+            if ($signtool) {
+              $signtoolPath = $signtool.Source
+            }
+          }
+          if (-not $signtoolPath) {
+            throw "signtool.exe not found"
+          }
+
+          & $signtoolPath sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f $certPath /p $env:WINDOWS_SIGNING_CERT_PASSWORD build/bin/Nebi.exe
+          & $signtoolPath verify /pa /v build/bin/Nebi.exe
 
       # macOS .app bundles must be packaged into a single archive before they
       # leave the runner. Uploading the raw Nebi.app directory strips the
@@ -237,26 +321,110 @@ jobs:
           cd build/bin
           tar -czvf ${{ matrix.asset_name }}.tar.gz Nebi
 
-      - name: Upload to release (Linux)
-        if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
-        with:
-          files: build/bin/${{ matrix.asset_name }}.tar.gz
-
-      - name: Upload to release (macOS)
-        if: matrix.os == 'macos-latest' && startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
-        with:
-          files: build/bin/${{ matrix.asset_name }}.zip
-
       - name: Rename for release (Windows)
         if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
           Copy-Item "build/bin/Nebi.exe" "build/bin/${{ matrix.asset_name }}"
 
-      - name: Upload to release (Windows)
-        if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
+      - name: Select release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        id: release_asset
+        shell: bash
+        run: |
+          case "${{ matrix.os }}" in
+            ubuntu-latest)
+              asset_path="build/bin/${{ matrix.asset_name }}.tar.gz"
+              ;;
+            macos-latest)
+              asset_path="build/bin/${{ matrix.asset_name }}.zip"
+              ;;
+            windows-latest)
+              asset_path="build/bin/${{ matrix.asset_name }}"
+              ;;
+            *)
+              echo "Unsupported release OS: ${{ matrix.os }}"
+              exit 1
+              ;;
+          esac
+          echo "path=${asset_path}" >> "$GITHUB_OUTPUT"
+          echo "sbom_path=${asset_path}.sbom.spdx.json" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release SBOM and signatures
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset_path="${{ steps.release_asset.outputs.path }}"
+          asset_dir="$(dirname "$asset_path")"
+          asset_name="$(basename "$asset_path")"
+
+          cd "$asset_dir"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$asset_name" > "${asset_name}.sha256"
+          else
+            shasum -a 256 "$asset_name" > "${asset_name}.sha256"
+          fi
+          syft "$asset_name" -o "spdx-json=${asset_name}.sbom.spdx.json"
+          cosign sign-blob --bundle="${asset_name}.sigstore.json" "$asset_name" --yes
+          cosign sign-blob --bundle="${asset_name}.sbom.spdx.json.sigstore.json" "${asset_name}.sbom.spdx.json" --yes
+
+          sha256_file() {
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$1" | awk '{print $1}'
+            else
+              shasum -a 256 "$1" | awk '{print $1}'
+            fi
+          }
+          asset_sha256="$(sha256_file "$asset_name")"
+          sbom_sha256="$(sha256_file "${asset_name}.sbom.spdx.json")"
+          cat > "${asset_name}.release.json" <<EOF
+          {
+            "component": "desktop",
+            "asset": "${asset_name}",
+            "source_commit": "${GITHUB_SHA}",
+            "workflow": "${GITHUB_WORKFLOW}",
+            "run_id": "${GITHUB_RUN_ID}",
+            "run_attempt": "${GITHUB_RUN_ATTEMPT}",
+            "artifact_sha256": "${asset_sha256}",
+            "sbom_sha256": "${sbom_sha256}"
+          }
+          EOF
+          cosign sign-blob --bundle="${asset_name}.release.json.sigstore.json" "${asset_name}.release.json" --yes
+
+      - name: Attest desktop release artifact
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-path: ${{ steps.release_asset.outputs.path }}
+          create-storage-record: false
+
+      - name: Attest desktop SBOM
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-path: ${{ steps.release_asset.outputs.path }}
+          sbom-path: ${{ steps.release_asset.outputs.sbom_path }}
+          create-storage-record: false
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
-          files: build/bin/${{ matrix.asset_name }}
+          draft: true
+          fail_on_unmatched_files: true
+          files: |
+            ${{ steps.release_asset.outputs.path }}
+            ${{ steps.release_asset.outputs.path }}.sha256
+            ${{ steps.release_asset.outputs.path }}.sigstore.json
+            ${{ steps.release_asset.outputs.sbom_path }}
+            ${{ steps.release_asset.outputs.sbom_path }}.sigstore.json
+            ${{ steps.release_asset.outputs.path }}.release.json
+            ${{ steps.release_asset.outputs.path }}.release.json.sigstore.json
+
+      - name: Publish release when all gated assets are current
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/publish-release-if-ready.sh

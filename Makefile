@@ -8,6 +8,8 @@ VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 LDFLAGS=-ldflags "-s -w -X main.Version=$(VERSION) -X main.Commit=$(COMMIT)"
 BUILDFLAGS=-trimpath
+SWAG_VERSION ?= v1.16.6
+AIR_VERSION ?= v1.67.3
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -17,22 +19,22 @@ help: ## Show this help message
 
 install-tools: ## Install development tools (swag, air, golangci-lint)
 	@echo "Installing swag..."
-	@go install github.com/swaggo/swag/cmd/swag@latest
+	@go install github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION)
 	@echo "Installing air..."
-	@go install github.com/air-verse/air@latest
+	@go install github.com/air-verse/air@$(AIR_VERSION)
 	@echo "Installing golangci-lint v1.64.8..."
 	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.64.8
 	@echo "Tools installed successfully"
 
 swagger: ## Generate Swagger documentation
 	@echo "Generating Swagger docs..."
-	@command -v swag >/dev/null 2>&1 || { echo "swag not found, installing..."; go install github.com/swaggo/swag/cmd/swag@latest; }
+	@command -v swag >/dev/null 2>&1 || { echo "swag not found, installing..."; go install github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION); }
 	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g cmd/nebi/serve.go -o internal/swagger --packageName swagger --exclude output,cross-platform-example
 	@echo "Swagger docs generated at /internal/swagger"
 
 build-frontend: ## Build frontend and copy to internal/web/dist
 	@echo "Building frontend..."
-	@cd $(FRONTEND_DIR) && npm install && npm run build
+	@cd $(FRONTEND_DIR) && npm ci && npm run build
 	@echo "Copying frontend build to internal/web/dist..."
 	@rm -rf internal/web/dist
 	@cp -r $(FRONTEND_DIR)/dist internal/web/dist
@@ -58,7 +60,7 @@ dev: swagger ## Run with hot reload (frontend + backend)
 	@echo "Starting nebi in development mode with hot reload..."
 	@if [ ! -d "frontend/node_modules" ]; then \
 		echo "Frontend dependencies not found. Installing..."; \
-		cd frontend && npm install; \
+		cd frontend && npm ci; \
 	fi
 	@echo ""
 	@if [ -f .env ]; then \
@@ -73,7 +75,7 @@ dev: swagger ## Run with hot reload (frontend + backend)
 	@echo ""
 	@echo "Press Ctrl+C to stop all services"
 	@echo ""
-	@command -v air >/dev/null 2>&1 || { echo "air not found, installing..."; go install github.com/air-verse/air@latest; }
+	@command -v air >/dev/null 2>&1 || { echo "air not found, installing..."; go install github.com/air-verse/air@$(AIR_VERSION); }
 	@bash -c 'export PATH="$$PATH:$$(go env GOPATH)/bin"; set -a; [ -f .env ] && source .env; set +a; trap "kill 0" EXIT; (cd frontend && npm run dev) & air'
 
 migrate: ## Run database migrations
@@ -145,5 +147,5 @@ build-all: build-frontend ## Build binaries for all platforms
 
 build-desktop: build-frontend ## Build Wails desktop app with version info
 	@echo "Building desktop app..."
-	@wails build -ldflags "-X main.Version=$(VERSION) -X main.Commit=$(COMMIT)"
+	@wails build -s -ldflags "-X main.Version=$(VERSION) -X main.Commit=$(COMMIT)"
 	@echo "Desktop app built: build/bin/Nebi.app"

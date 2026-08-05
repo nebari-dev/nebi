@@ -10,6 +10,9 @@ on:
       - "install.ps1"
       - ".github/workflows/test-install.yml"
 
+env:
+  COSIGN_VERSION: v2.6.1
+
 jobs:
   test-unix:
     strategy:
@@ -18,8 +21,48 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.24'
+
+      - name: Install cosign
+        run: |
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          go install "github.com/sigstore/cosign/v2/cmd/cosign@${COSIGN_VERSION}"
+
+      - name: Check latest release verification assets
+        id: release_assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          auth_header=()
+          if [ -n "${GITHUB_TOKEN:-}" ]; then
+            auth_header=(-H "Authorization: token ${GITHUB_TOKEN}")
+          fi
+
+          release="$(curl -fsSL "${auth_header[@]}" https://api.github.com/repos/nebari-dev/nebi/releases/latest)"
+          tag="$(printf '%s' "$release" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name", ""))')"
+          asset_names="$(printf '%s' "$release" | python3 -c 'import json,sys; print("\n".join(a.get("name", "") for a in json.load(sys.stdin).get("assets", [])))')"
+
+          missing=""
+          for asset in checksums.txt checksums.txt.sigstore.json; do
+            if ! printf '%s\n' "$asset_names" | grep -Fxq "$asset"; then
+              missing="${missing} ${asset}"
+            fi
+          done
+
+          if [ -n "$missing" ]; then
+            echo "Latest release ${tag} predates signed installer verification assets; skipping installer smoke test."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run install script
         id: install
+        if: steps.release_assets.outputs.skipped != 'true'
         env:
           # Avoid GitHub API rate limits when fetching latest release version
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -35,7 +78,7 @@ jobs:
             exit $CODE
           fi
       - name: Verify installation
-        if: steps.install.outputs.skipped != 'true'
+        if: steps.release_assets.outputs.skipped != 'true' && steps.install.outputs.skipped != 'true'
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           nebi version
@@ -44,8 +87,43 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.24'
+
+      - name: Install cosign
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $goBin = Join-Path (go env GOPATH) "bin"
+          $goBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          go install "github.com/sigstore/cosign/v2/cmd/cosign@$env:COSIGN_VERSION"
+
+      - name: Check latest release verification assets
+        id: release_assets
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $headers = @{}
+          if ($env:GITHUB_TOKEN) {
+            $headers.Authorization = "token $env:GITHUB_TOKEN"
+          }
+
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/nebari-dev/nebi/releases/latest" -Headers $headers
+          $assetNames = @($release.assets | ForEach-Object { $_.name })
+          $missing = @("checksums.txt", "checksums.txt.sigstore.json") | Where-Object { $assetNames -notcontains $_ }
+          if ($missing.Count -gt 0) {
+            Write-Host "Latest release $($release.tag_name) predates signed installer verification assets; skipping installer smoke test."
+            "skipped=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+
       - name: Run install script
         id: install
+        if: steps.release_assets.outputs.skipped != 'true'
         shell: pwsh
         run: |
           .\install.ps1 -InstallDir "$env:RUNNER_TEMP\nebi"
@@ -53,7 +131,7 @@ jobs:
             echo "skipped=true" >> $env:GITHUB_OUTPUT
           }
       - name: Verify installation
-        if: steps.install.outputs.skipped != 'true'
+        if: steps.release_assets.outputs.skipped != 'true' && steps.install.outputs.skipped != 'true'
         shell: pwsh
         run: |
           $env:PATH = "$env:RUNNER_TEMP\nebi;$env:PATH"

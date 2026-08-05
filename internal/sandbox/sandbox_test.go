@@ -219,6 +219,17 @@ func TestRestrictions_Validate(t *testing.T) {
 	if err := (Restrictions{RW: []string{"/ws"}, RWFiles: []string{"rel"}}).Validate(); err == nil {
 		t.Fatal("expected an error for a relative RW file")
 	}
+	// 70000 would wrap to 4464 in the uint16 conversion, silently opening a
+	// port nobody asked for.
+	if err := (Restrictions{RW: []string{"/ws"}, TCPConnectPorts: []int{70000}}).Validate(); err == nil {
+		t.Fatal("expected an error for an out-of-range TCP port")
+	}
+	if err := (Restrictions{RW: []string{"/ws"}, TCPConnectPorts: []int{0}}).Validate(); err == nil {
+		t.Fatal("expected an error for TCP port 0")
+	}
+	if err := (Restrictions{RW: []string{"/ws"}, TCPConnectPorts: []int{443}}).Validate(); err != nil {
+		t.Fatalf("expected port 443 to be valid, got %v", err)
+	}
 }
 
 func TestIsSetupFailure(t *testing.T) {

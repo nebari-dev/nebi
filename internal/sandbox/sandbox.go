@@ -232,6 +232,14 @@ func (r Restrictions) Validate() error {
 			}
 		}
 	}
+	// Ports are narrowed to uint16 when handed to the kernel. Config
+	// validation already rejects out-of-range values, but the shim parses
+	// its own flags, so re-check here rather than let 70000 wrap to 4464.
+	for _, p := range r.TCPConnectPorts {
+		if p < 1 || p > 65535 {
+			return fmt.Errorf("sandbox: TCP port %d out of range 1-65535", p)
+		}
+	}
 	return nil
 }
 

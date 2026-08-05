@@ -33,9 +33,11 @@ const (
 // not be established, as distinct from the build failing on its own merits.
 const SetupFailureExitCode = 125
 
-// Job-scoped subdirectories created inside the workspace. HOME is scoped so
-// the package cache stays per-workspace; a shared cache would let one tenant
-// poison packages for another.
+// Job-scoped subdirectories created inside the workspace when the sandbox is
+// active. HOME is scoped so the package cache stays per-workspace; a shared
+// cache would let one tenant poison packages for another. In off mode
+// neither directory is created and the parent's HOME and TMPDIR pass
+// through, since there is no isolation to preserve.
 const (
 	homeDirName = ".nebi-home"
 	tmpDirName  = ".nebi-tmp"
@@ -95,22 +97,27 @@ func (r *Runner) Command(ctx context.Context, spec Spec) (*exec.Cmd, error) {
 		return nil, fmt.Errorf("sandbox: workspace dir %q must be absolute", spec.WorkspaceDir)
 	}
 
-	home := filepath.Join(spec.WorkspaceDir, homeDirName)
-	tmp := filepath.Join(spec.WorkspaceDir, tmpDirName)
-	for _, dir := range []string{home, tmp} {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return nil, fmt.Errorf("sandbox: create %s: %w", dir, err)
+	// Scoping HOME and TMPDIR into the workspace only makes sense when the
+	// sandbox is active. In off mode the build is unconfined anyway, so the
+	// redirection buys no isolation while breaking pixi's credential lookup
+	// under $HOME and, for local workspaces, filling the user's own project
+	// directory with the package cache.
+	var home, tmp string
+	argv := spec.Argv
+	if r.cfg.Mode != ModeOff {
+		home = filepath.Join(spec.WorkspaceDir, homeDirName)
+		tmp = filepath.Join(spec.WorkspaceDir, tmpDirName)
+		for _, dir := range []string{home, tmp} {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				return nil, fmt.Errorf("sandbox: create %s: %w", dir, err)
+			}
 		}
+		argv = r.shimArgv(spec)
 	}
 
 	parent := spec.ParentEnv
 	if parent == nil {
 		parent = os.Environ()
-	}
-
-	argv := spec.Argv
-	if r.cfg.Mode != ModeOff {
-		argv = r.shimArgv(spec)
 	}
 
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)

@@ -66,3 +66,43 @@ func TestBuildEnv_JobScopedHomeOverridesParentHome(t *testing.T) {
 		t.Fatalf("expected job-scoped HOME, got %v", got)
 	}
 }
+
+// Empty home/tmpDir means "do not scope", which is what off mode passes.
+// The parent's own HOME must survive: pixi and rattler read
+// $HOME/.rattler/credentials.json and $HOME/.pixi, so rewriting HOME breaks
+// private-channel auth for users who never asked for isolation.
+func TestBuildEnv_UnscopedPassesParentHomeAndTmpThrough(t *testing.T) {
+	got := buildEnv([]string{"HOME=/home/dev", "TMPDIR=/var/tmp", "PATH=/bin"}, "", "")
+
+	for _, want := range []string{"HOME=/home/dev", "TMPDIR=/var/tmp"} {
+		if !slices.Contains(got, want) {
+			t.Fatalf("expected %q to pass through unscoped, got %v", want, got)
+		}
+	}
+	// The allowlist still applies to everything else.
+	for _, kv := range got {
+		if strings.HasPrefix(kv, "NEBI_") {
+			t.Fatalf("unscoped mode must still scrub secrets, got %v", got)
+		}
+	}
+}
+
+func TestBuildEnv_UnscopedOmitsHomeWhenParentHasNone(t *testing.T) {
+	got := buildEnv([]string{"PATH=/bin"}, "", "")
+
+	for _, kv := range got {
+		if strings.HasPrefix(kv, "HOME=") || strings.HasPrefix(kv, "TMPDIR=") {
+			t.Fatalf("expected no synthesised HOME/TMPDIR, got %v", got)
+		}
+	}
+}
+
+func TestBuildEnv_UnscopedStillScrubsSecrets(t *testing.T) {
+	got := buildEnv([]string{"HOME=/home/dev", "NEBI_AUTH_JWT_SECRET=supersecret"}, "", "")
+
+	for _, kv := range got {
+		if strings.Contains(kv, "supersecret") {
+			t.Fatalf("secret leaked in unscoped mode: %v", got)
+		}
+	}
+}

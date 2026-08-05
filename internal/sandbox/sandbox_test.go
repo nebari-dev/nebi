@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -81,27 +82,65 @@ func TestCommand_StrictModeWrapsInShim(t *testing.T) {
 	}
 }
 
-func TestCommand_CreatesJobScopedHomeAndTmp(t *testing.T) {
+// Both sides of the scoping branch are pinned: strict/permissive redirect
+// HOME and TMPDIR into the workspace, off leaves the parent's alone.
+func TestCommand_ActiveModesCreateJobScopedHomeAndTmp(t *testing.T) {
+	for _, mode := range []Mode{ModeStrict, ModePermissive} {
+		t.Run(string(mode), func(t *testing.T) {
+			r := newTestRunner(t, mode)
+			ws := t.TempDir()
+
+			cmd, err := r.Command(context.Background(), Spec{
+				WorkspaceDir: ws,
+				Argv:         []string{"/usr/bin/pixi", "lock"},
+				ParentEnv:    []string{"PATH=/bin", "HOME=/home/dev", "TMPDIR=/var/tmp"},
+			})
+			if err != nil {
+				t.Fatalf("Command: %v", err)
+			}
+
+			wantHome := "HOME=" + filepath.Join(ws, ".nebi-home")
+			wantTmp := "TMPDIR=" + filepath.Join(ws, ".nebi-tmp")
+			if !slices.Contains(cmd.Env, wantHome) || !slices.Contains(cmd.Env, wantTmp) {
+				t.Fatalf("expected %q and %q in env, got %v", wantHome, wantTmp, cmd.Env)
+			}
+			if slices.Contains(cmd.Env, "HOME=/home/dev") {
+				t.Fatalf("parent HOME must not survive an active sandbox: %v", cmd.Env)
+			}
+			for _, dir := range []string{filepath.Join(ws, ".nebi-home"), filepath.Join(ws, ".nebi-tmp")} {
+				if _, err := statDir(dir); err != nil {
+					t.Fatalf("expected %q to exist: %v", dir, err)
+				}
+			}
+		})
+	}
+}
+
+// In off mode the build is unconfined anyway, so redirecting HOME buys no
+// security and costs real things: for local workspaces the workspace dir is
+// the user's own project folder, which would collect a multi-GB conda cache,
+// and pixi/rattler lose $HOME/.rattler/credentials.json.
+func TestCommand_OffModeLeavesParentHomeAndTmpAlone(t *testing.T) {
 	r := newTestRunner(t, ModeOff)
 	ws := t.TempDir()
 
 	cmd, err := r.Command(context.Background(), Spec{
 		WorkspaceDir: ws,
 		Argv:         []string{"/usr/bin/pixi", "lock"},
-		ParentEnv:    []string{"PATH=/bin"},
+		ParentEnv:    []string{"PATH=/bin", "HOME=/home/dev", "TMPDIR=/var/tmp"},
 	})
 	if err != nil {
 		t.Fatalf("Command: %v", err)
 	}
 
-	wantHome := "HOME=" + filepath.Join(ws, ".nebi-home")
-	wantTmp := "TMPDIR=" + filepath.Join(ws, ".nebi-tmp")
-	if !slices.Contains(cmd.Env, wantHome) || !slices.Contains(cmd.Env, wantTmp) {
-		t.Fatalf("expected %q and %q in env, got %v", wantHome, wantTmp, cmd.Env)
+	for _, want := range []string{"HOME=/home/dev", "TMPDIR=/var/tmp"} {
+		if !slices.Contains(cmd.Env, want) {
+			t.Fatalf("expected %q to pass through in off mode, got %v", want, cmd.Env)
+		}
 	}
-	for _, dir := range []string{filepath.Join(ws, ".nebi-home"), filepath.Join(ws, ".nebi-tmp")} {
-		if _, err := statDir(dir); err != nil {
-			t.Fatalf("expected %q to exist: %v", dir, err)
+	for _, name := range []string{".nebi-home", ".nebi-tmp"} {
+		if _, err := os.Stat(filepath.Join(ws, name)); !os.IsNotExist(err) {
+			t.Fatalf("off mode must not create %s in the workspace (err=%v)", name, err)
 		}
 	}
 }

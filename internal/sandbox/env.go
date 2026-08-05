@@ -26,14 +26,28 @@ var envAllowlist = []string{
 }
 
 // buildEnv returns the environment for a build subprocess: the allowlisted
-// subset of parent, plus a job-scoped HOME and TMPDIR. HOME is job-scoped so
-// the pixi/rattler package cache lands inside the workspace rather than in a
-// location shared across tenants.
+// subset of parent, with HOME and TMPDIR handled separately.
+//
+// A non-empty home/tmpDir replaces the parent's, which is what an active
+// sandbox wants: the pixi/rattler package cache then lands inside the
+// workspace rather than somewhere shared across tenants.
+//
+// Empty home/tmpDir means "do not scope", which off mode passes. The
+// parent's own values then survive the allowlist. That costs nothing in
+// security terms, since an unconfined build could reach the real HOME
+// regardless, and it avoids two concrete harms: for local workspaces the
+// workspace directory is the user's own project folder, which would silently
+// accumulate a multi-GB conda cache, and pixi and rattler read
+// $HOME/.rattler/credentials.json and $HOME/.pixi, so a rewritten HOME
+// breaks private-channel authentication.
 func buildEnv(parent []string, home, tmpDir string) []string {
 	allowed := make(map[string]bool, len(envAllowlist))
 	for _, k := range envAllowlist {
 		allowed[k] = true
 	}
+	// Only inherited when this build is not scoping them itself.
+	allowed["HOME"] = home == ""
+	allowed["TMPDIR"] = tmpDir == ""
 
 	out := make([]string, 0, len(envAllowlist)+2)
 	havePath := false
@@ -50,6 +64,11 @@ func buildEnv(parent []string, home, tmpDir string) []string {
 	if !havePath {
 		out = append(out, "PATH="+defaultPath)
 	}
-	out = append(out, "HOME="+home, "TMPDIR="+tmpDir)
+	if home != "" {
+		out = append(out, "HOME="+home)
+	}
+	if tmpDir != "" {
+		out = append(out, "TMPDIR="+tmpDir)
+	}
 	return out
 }

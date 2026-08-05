@@ -55,6 +55,30 @@ func newSandboxTestExecutor(t *testing.T, dump string) (*LocalExecutor, *models.
 	return e, ws
 }
 
+// assertOffModeHome checks the off-mode half of the HOME/TMPDIR contract:
+// the parent's own HOME survives and no job-scoped directory is planted in
+// the workspace. Redirecting HOME here would give the build nothing it could
+// not already reach (it is unconfined in off mode) while dropping a
+// multi-GB package cache into what is, for local workspaces, the user's own
+// project directory, and hiding $HOME/.rattler/credentials.json from pixi.
+// The active-mode half is pinned in internal/sandbox.
+func assertOffModeHome(t *testing.T, env, wsPath, parentHome string) {
+	t.Helper()
+
+	scoped := filepath.Join(wsPath, ".nebi-home")
+	if strings.Contains(env, "HOME="+scoped) {
+		t.Fatalf("off mode must not redirect HOME into the workspace:\n%s", env)
+	}
+	if !strings.Contains(env, "HOME="+parentHome) {
+		t.Fatalf("expected the parent HOME %q to pass through in off mode:\n%s", parentHome, env)
+	}
+	for _, name := range []string{".nebi-home", ".nebi-tmp"} {
+		if _, err := os.Stat(filepath.Join(wsPath, name)); !os.IsNotExist(err) {
+			t.Fatalf("off mode must not create %s in the workspace (err=%v)", name, err)
+		}
+	}
+}
+
 // TestListPackages_ScrubsSecretsFromBuildEnv guards the service-layer bypass:
 // `pixi list` parses a user-supplied manifest and lockfile, so it must go
 // through the same sandbox as a build rather than inheriting the server's
@@ -62,6 +86,8 @@ func newSandboxTestExecutor(t *testing.T, dump string) (*LocalExecutor, *models.
 func TestListPackages_ScrubsSecretsFromBuildEnv(t *testing.T) {
 	dump := filepath.Join(t.TempDir(), "env.txt")
 
+	parentHome := t.TempDir()
+	t.Setenv("HOME", parentHome)
 	t.Setenv("NEBI_DATABASE_DSN", "host=db password=hunter2")
 	t.Setenv("NEBI_AUTH_JWT_SECRET", "supersecret")
 
@@ -81,9 +107,7 @@ func TestListPackages_ScrubsSecretsFromBuildEnv(t *testing.T) {
 			t.Fatalf("secret %q reached the pixi list subprocess:\n%s", banned, got)
 		}
 	}
-	if !strings.Contains(got, "HOME="+filepath.Join(e.GetWorkspacePath(ws), ".nebi-home")) {
-		t.Fatalf("expected job-scoped HOME in pixi list env:\n%s", got)
-	}
+	assertOffModeHome(t, got, e.GetWorkspacePath(ws), parentHome)
 }
 
 func TestInstallEnvironment_ScrubsSecretsFromBuildEnv(t *testing.T) {
@@ -91,6 +115,8 @@ func TestInstallEnvironment_ScrubsSecretsFromBuildEnv(t *testing.T) {
 	dump := filepath.Join(t.TempDir(), "env.txt")
 	pixiPath := fakePixi(t, t.TempDir(), dump)
 
+	parentHome := t.TempDir()
+	t.Setenv("HOME", parentHome)
 	t.Setenv("NEBI_DATABASE_DSN", "host=db password=hunter2")
 	t.Setenv("NEBI_AUTH_JWT_SECRET", "supersecret")
 
@@ -126,7 +152,5 @@ func TestInstallEnvironment_ScrubsSecretsFromBuildEnv(t *testing.T) {
 			t.Fatalf("secret %q reached the build subprocess:\n%s", banned, got)
 		}
 	}
-	if !strings.Contains(got, "HOME="+filepath.Join(e.GetWorkspacePath(ws), ".nebi-home")) {
-		t.Fatalf("expected job-scoped HOME in build env:\n%s", got)
-	}
+	assertOffModeHome(t, got, e.GetWorkspacePath(ws), parentHome)
 }

@@ -107,6 +107,17 @@ A minimal re-exec shim, Linux-only:
   default; a shared cache would let one tenant poison packages for another.
   The perf trade-off (no cross-workspace cache reuse) is accepted and
   documented.
+
+  **`HOME`/`TMPDIR` scoping applies only when the sandbox is active**
+  (`strict` or `permissive`). In `mode: off` the parent's `HOME` and `TMPDIR`
+  pass through the allowlist unchanged and `.nebi-home`/`.nebi-tmp` are never
+  created. Redirecting them would buy no isolation there (the build is
+  unconfined regardless) while causing real harm: `source == "local"`
+  workspaces resolve to the user's own project directory, which would
+  silently accumulate a multi-GB conda cache that no gitignore covers, and
+  pixi and rattler would lose `$HOME/.rattler/credentials.json` and
+  `$HOME/.pixi`. Local and desktop mode default to `off`, so this would have
+  hit precisely the users who opted out of sandboxing.
 - **RO directories:** `/usr`, `/lib`, `/lib64`, `/bin`, `/sbin`, `/opt`, the
   TLS trust stores (`/etc/ssl`, `/etc/pki`, `/etc/ca-certificates`), and the
   directory containing the pixi binary.
@@ -211,7 +222,12 @@ problems from build failures.
   containment gap.
 - Per-workspace volumes / RWX PVC split in nebi-pack.
 - Registry or private-channel credentials for builds (would be per-job
-  credential files, never env inheritance; needs its own design).
+  credential files, never env inheritance; needs its own design). Concretely:
+  when the sandbox is active, `HOME` is redirected into the workspace, so
+  pixi and rattler never see `$HOME/.rattler/credentials.json` or
+  `$HOME/.pixi` and private channels will not authenticate. This is a known
+  limitation of confined builds, not a regression; `mode: off` keeps the
+  parent's `HOME` and is unaffected.
 
 ## Acceptance mapping to issue 445
 

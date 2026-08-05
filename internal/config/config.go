@@ -86,9 +86,9 @@ type StorageConfig struct {
 //
 // Mode semantics:
 //
-//	strict     — builds fail if the kernel cannot enforce filesystem confinement
-//	permissive — confine when possible, warn and continue when not
-//	off        — no confinement (the environment allowlist still applies)
+//	strict     - builds fail if the kernel cannot enforce filesystem confinement
+//	permissive - confine when possible, warn and continue when not
+//	off        - no confinement (the environment allowlist still applies)
 //
 // Mode defaults to "strict" in team mode and "off" in local mode.
 type SandboxConfig struct {
@@ -209,10 +209,21 @@ func Load() (*Config, error) {
 	switch cfg.Sandbox.Mode {
 	case "strict", "permissive", "off":
 	default:
-		return nil, fmt.Errorf("invalid sandbox.mode %q: must be \"strict\", \"permissive\", or \"off\"", cfg.Sandbox.Mode)
+		return nil, fmt.Errorf("invalid sandbox.mode %q (NEBI_SANDBOX_MODE): must be \"strict\", \"permissive\", or \"off\"", cfg.Sandbox.Mode)
 	}
-	if cfg.Sandbox.BuildTimeout <= 0 {
-		return nil, fmt.Errorf("sandbox.build_timeout must be positive, got %s", cfg.Sandbox.BuildTimeout)
+	// Ports are narrowed to uint16 when handed to the kernel, so an
+	// out-of-range entry would wrap silently (70000 becomes 4464) and open a
+	// port the operator never named while the intended one stays closed.
+	for _, p := range cfg.Sandbox.AllowedPorts {
+		if p < 1 || p > 65535 {
+			return nil, fmt.Errorf("invalid sandbox.allowed_ports entry %d (NEBI_SANDBOX_ALLOWED_PORTS): must be between 1 and 65535", p)
+		}
+	}
+	// A bare int in config.yaml decodes as nanoseconds, so "build_timeout: 30"
+	// silently means 30ns and every build dies instantly. Reject anything
+	// under a second rather than merely anything non-positive.
+	if cfg.Sandbox.BuildTimeout < time.Second {
+		return nil, fmt.Errorf("sandbox.build_timeout (NEBI_SANDBOX_BUILD_TIMEOUT) must be at least 1s, got %s (use a duration string like \"30m\")", cfg.Sandbox.BuildTimeout)
 	}
 
 	// Team mode exposes JWT-authenticated network endpoints, so its signing

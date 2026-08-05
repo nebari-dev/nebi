@@ -379,6 +379,18 @@ func (e *LocalExecutor) InstallEnvironment(ctx context.Context, ws *models.Works
 	return nil
 }
 
+// ListPackages returns the packages installed in the workspace. It goes
+// through packageManagerFor so the listing honors the configured package
+// manager binary and runs inside the build sandbox: `pixi list` parses a
+// user-supplied manifest and lockfile, so it is as untrusted as a build.
+func (e *LocalExecutor) ListPackages(ctx context.Context, ws *models.Workspace) ([]pkgmgr.Package, error) {
+	pm, err := e.packageManagerFor(ws)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create package manager: %w", err)
+	}
+	return pm.List(ctx, pkgmgr.ListOptions{EnvPath: e.GetWorkspacePath(ws)})
+}
+
 // UninstallEnvironment removes the installed environment (.pixi/envs)
 // from the workspace directory. Manifest and lockfile are untouched.
 func (e *LocalExecutor) UninstallEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error {

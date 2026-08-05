@@ -102,6 +102,9 @@ func (e *fakeExecutor) IsEnvInstalled(ws *models.Workspace) bool {
 	info, err := os.Stat(filepath.Join(e.GetWorkspacePath(ws), ".pixi", "envs"))
 	return err == nil && info.IsDir()
 }
+func (e *fakeExecutor) ListPackages(context.Context, *models.Workspace) ([]pkgmgr.Package, error) {
+	return nil, nil
+}
 func (e *fakeExecutor) GetWorkspacePath(ws *models.Workspace) string {
 	return filepath.Join(e.rootDir, ws.Name+"-"+ws.ID.String())
 }

@@ -1,0 +1,102 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+
+	"github.com/spf13/cobra"
+
+	"github.com/nebari-dev/nebi/internal/sandbox"
+)
+
+var (
+	sandboxExecMode    string
+	sandboxExecRW      []string
+	sandboxExecRO      []string
+	sandboxExecROFiles []string
+	sandboxExecPorts   []int
+)
+
+// sandboxExecCmd is an internal re-exec shim, not a user-facing command. The
+// server invokes it as:
+//
+//	nebi sandbox-exec --mode=strict --allow-rw=/ws [--allow-ro=/usr ...] \
+//	    [--allow-ro-file=/etc/resolv.conf ...] [--allow-port=443 ...] \
+//	    -- /path/to/pixi install -v
+//
+// It applies a Landlock ruleset to itself and then execve's the real command,
+// which inherits the confinement.
+var sandboxExecCmd = &cobra.Command{
+	Use:                   "sandbox-exec [flags] -- COMMAND [ARGS...]",
+	Short:                 "Internal: run a command under filesystem and network confinement",
+	Hidden:                true,
+	DisableFlagsInUseLine: true,
+	Args:                  cobra.MinimumNArgs(1),
+	SilenceUsage:          true,
+	SilenceErrors:         true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		mode := sandbox.Mode(sandboxExecMode)
+		switch mode {
+		case sandbox.ModeStrict, sandbox.ModePermissive:
+		default:
+			failSetup(fmt.Errorf("sandbox-exec requires --mode=strict or --mode=permissive, got %q", sandboxExecMode))
+		}
+		if !filepath.IsAbs(args[0]) {
+			failSetup(fmt.Errorf("sandbox-exec requires an absolute command path, got %q", args[0]))
+		}
+
+		err := sandbox.Confine(sandbox.Restrictions{
+			RW:              sandboxExecRW,
+			RO:              sandboxExecRO,
+			ROFiles:         sandboxExecROFiles,
+			RWFiles:         devFiles(),
+			TCPConnectPorts: sandboxExecPorts,
+		})
+		switch {
+		case err == nil:
+		case mode == sandbox.ModePermissive:
+			fmt.Fprintf(os.Stderr, "[nebi] WARNING: build is running UNCONFINED: %v\n", err)
+		default:
+			failSetup(err)
+		}
+
+		// execProcess replaces this process image on success and therefore
+		// never returns; any return is a failure to launch the build.
+		failSetup(execProcess(args))
+		return nil // unreachable: failSetup exits
+	},
+}
+
+// devFiles returns the device nodes a build legitimately needs. Missing
+// nodes are skipped so the ruleset stays valid in minimal images.
+func devFiles() []string {
+	var out []string
+	for _, f := range []string{"/dev/null", "/dev/urandom", "/dev/random", "/dev/zero"} {
+		if _, err := os.Stat(f); err == nil {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// failSetup exits with the reserved code so the parent can distinguish a
+// broken sandbox from a failed build.
+func failSetup(err error) {
+	hint := ""
+	if errors.Is(err, sandbox.ErrUnsupported) {
+		hint = fmt.Sprintf(" (kernel %s/%s lacks Landlock support; set NEBI_SANDBOX_MODE=permissive to run builds unconfined, or NEBI_SANDBOX_MODE=off to disable the sandbox)", runtime.GOOS, runtime.GOARCH)
+	}
+	fmt.Fprintf(os.Stderr, "[nebi] sandbox setup failed: %v%s\n", err, hint)
+	os.Exit(sandbox.SetupFailureExitCode)
+}
+
+func init() {
+	sandboxExecCmd.Flags().StringVar(&sandboxExecMode, "mode", "strict", "strict or permissive")
+	sandboxExecCmd.Flags().StringArrayVar(&sandboxExecRW, "allow-rw", nil, "directory the command may read and write (repeatable)")
+	sandboxExecCmd.Flags().StringArrayVar(&sandboxExecRO, "allow-ro", nil, "directory the command may read (repeatable)")
+	sandboxExecCmd.Flags().StringArrayVar(&sandboxExecROFiles, "allow-ro-file", nil, "file the command may read (repeatable)")
+	sandboxExecCmd.Flags().IntSliceVar(&sandboxExecPorts, "allow-port", nil, "TCP port the command may connect to (repeatable)")
+}

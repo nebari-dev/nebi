@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -299,6 +300,178 @@ func TestAdminListAuditLogs_FilterByAction(t *testing.T) {
 	}
 	if len(logs) != 1 {
 		t.Errorf("expected 1 filtered audit log, got %d", len(logs))
+	}
+}
+
+// --- Federated identity reviews ---
+
+func TestAdminListFederatedIdentityReviews(t *testing.T) {
+	svc, _, db := adminTestSetup(t)
+	localUser := models.User{
+		Username:     "local-alice",
+		Email:        "alice@test.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&localUser).Error; err != nil {
+		t.Fatalf("create local user: %v", err)
+	}
+	review := models.FederatedIdentityReview{
+		UserID:         localUser.ID,
+		Issuer:         "https://issuer.example.com",
+		Subject:        "sub-alice",
+		CollisionField: "email",
+		Username:       "alice",
+		Email:          "alice@test.com",
+		EmailVerified:  true,
+	}
+	if err := db.Create(&review).Error; err != nil {
+		t.Fatalf("create review: %v", err)
+	}
+
+	reviews, err := svc.ListFederatedIdentityReviews()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(reviews) != 1 {
+		t.Fatalf("expected 1 review, got %d", len(reviews))
+	}
+	if reviews[0].User.ID != localUser.ID {
+		t.Errorf("expected review user to be preloaded, got %s", reviews[0].User.ID)
+	}
+}
+
+func TestAdminApproveFederatedIdentityReview(t *testing.T) {
+	svc, _, db := adminTestSetup(t)
+	adminID := createTestUser(t, db, "admin")
+	localUser := models.User{
+		Username:     "local-bob",
+		Email:        "bob@test.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&localUser).Error; err != nil {
+		t.Fatalf("create local user: %v", err)
+	}
+	review := models.FederatedIdentityReview{
+		UserID:         localUser.ID,
+		Issuer:         "https://issuer.example.com",
+		Subject:        "sub-bob",
+		CollisionField: "username",
+		Username:       "local-bob",
+		Email:          "bob@test.com",
+		EmailVerified:  true,
+		Name:           "Bob",
+		AvatarURL:      "https://example.com/bob.png",
+	}
+	if err := db.Create(&review).Error; err != nil {
+		t.Fatalf("create review: %v", err)
+	}
+
+	identity, err := svc.ApproveFederatedIdentityReview(review.ID, adminID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if identity.UserID != localUser.ID {
+		t.Errorf("expected identity user %s, got %s", localUser.ID, identity.UserID)
+	}
+	if identity.Issuer != review.Issuer || identity.Subject != review.Subject {
+		t.Errorf("expected issuer/subject %s/%s, got %s/%s", review.Issuer, review.Subject, identity.Issuer, identity.Subject)
+	}
+
+	var reviewCount int64
+	db.Model(&models.FederatedIdentityReview{}).Where("id = ?", review.ID).Count(&reviewCount)
+	if reviewCount != 0 {
+		t.Errorf("expected review to be deleted, got %d", reviewCount)
+	}
+
+	var auditCount int64
+	db.Model(&models.AuditLog{}).Where("user_id = ? AND action = ?", adminID, "approve_federated_identity").Count(&auditCount)
+	if auditCount != 1 {
+		t.Errorf("expected 1 audit log, got %d", auditCount)
+	}
+}
+
+func TestAdminRejectFederatedIdentityReview(t *testing.T) {
+	svc, _, db := adminTestSetup(t)
+	adminID := createTestUser(t, db, "admin")
+	localUser := models.User{
+		Username:     "local-carol",
+		Email:        "carol@test.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&localUser).Error; err != nil {
+		t.Fatalf("create local user: %v", err)
+	}
+	review := models.FederatedIdentityReview{
+		UserID:         localUser.ID,
+		Issuer:         "https://issuer.example.com",
+		Subject:        "sub-carol",
+		CollisionField: "email",
+		Username:       "carol",
+		Email:          "carol@test.com",
+		EmailVerified:  true,
+		Status:         models.FederatedIdentityReviewStatusPending,
+	}
+	if err := db.Create(&review).Error; err != nil {
+		t.Fatalf("create review: %v", err)
+	}
+
+	if err := svc.RejectFederatedIdentityReview(review.ID, adminID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var rejected models.FederatedIdentityReview
+	if err := db.First(&rejected, "id = ?", review.ID).Error; err != nil {
+		t.Fatalf("expected review to remain as rejected: %v", err)
+	}
+	if rejected.Status != models.FederatedIdentityReviewStatusRejected {
+		t.Errorf("expected rejected status, got %q", rejected.Status)
+	}
+	if rejected.ReviewedBy == nil || *rejected.ReviewedBy != adminID {
+		t.Errorf("expected reviewed_by %s, got %v", adminID, rejected.ReviewedBy)
+	}
+	if rejected.ReviewedAt == nil {
+		t.Error("expected reviewed_at to be set")
+	}
+
+	var auditCount int64
+	db.Model(&models.AuditLog{}).Where("user_id = ? AND action = ?", adminID, "reject_federated_identity").Count(&auditCount)
+	if auditCount != 1 {
+		t.Errorf("expected 1 audit log, got %d", auditCount)
+	}
+}
+
+func TestAdminApproveRejectedFederatedIdentityReviewConflicts(t *testing.T) {
+	svc, _, db := adminTestSetup(t)
+	adminID := createTestUser(t, db, "admin")
+	localUser := models.User{
+		Username:     "local-dana",
+		Email:        "dana@test.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&localUser).Error; err != nil {
+		t.Fatalf("create local user: %v", err)
+	}
+	review := models.FederatedIdentityReview{
+		UserID:         localUser.ID,
+		Issuer:         "https://issuer.example.com",
+		Subject:        "sub-dana",
+		CollisionField: "email",
+		Username:       "dana",
+		Email:          "dana@test.com",
+		EmailVerified:  true,
+		Status:         models.FederatedIdentityReviewStatusRejected,
+	}
+	if err := db.Create(&review).Error; err != nil {
+		t.Fatalf("create review: %v", err)
+	}
+
+	identity, err := svc.ApproveFederatedIdentityReview(review.ID, adminID)
+	if err == nil {
+		t.Fatalf("expected conflict, got identity=%v", identity)
+	}
+	var conflict *ConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("expected ConflictError, got %T: %v", err, err)
 	}
 }
 

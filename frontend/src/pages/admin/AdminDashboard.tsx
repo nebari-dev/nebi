@@ -5,16 +5,22 @@ import {
   HardDrive,
   Loader2,
   Package,
+  ShieldAlert,
   UserPlus,
   Users,
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
-import { useDashboardStats, useUsers } from '@/hooks/useAdmin';
+import {
+  useDashboardStats,
+  useFederatedIdentityReviews,
+  useUsers,
+} from '@/hooks/useAdmin';
 import { useJobs } from '@/hooks/useJobs';
 import {
   useRemoteDashboardStats,
+  useRemoteFederatedIdentityReviews,
   useRemoteJobs,
   useRemoteServer,
   useRemoteWorkspaces,
@@ -63,6 +69,12 @@ const quickActions = [
     to: '/admin/registries',
   },
   {
+    title: 'Review Identities',
+    description: 'Review blocked federated identity links',
+    icon: ShieldAlert,
+    to: '/admin/identity-reviews',
+  },
+  {
     title: 'View Audit Logs',
     description: 'Review system activity and events',
     icon: Activity,
@@ -75,6 +87,8 @@ export const AdminDashboard = () => {
   const { data: workspaces, isLoading: wsLoading } = useWorkspaces();
   const { data: jobs, isLoading: jobsLoading } = useJobs();
   const { data: dashboardStats, isLoading: statsLoading } = useDashboardStats();
+  const { data: identityReviews, isLoading: reviewsLoading } =
+    useFederatedIdentityReviews();
 
   // View mode support
   const isLocalMode = useModeStore((s) => s.isLocalMode());
@@ -90,6 +104,8 @@ export const AdminDashboard = () => {
     useRemoteJobs(shouldShowRemote);
   const { data: remoteDashboardStats, isLoading: remoteStatsLoading } =
     useRemoteDashboardStats(shouldShowRemote);
+  const { data: remoteIdentityReviews, isLoading: remoteReviewsLoading } =
+    useRemoteFederatedIdentityReviews(shouldShowRemote);
 
   // Select data based on view mode
   const displayedWorkspaces = useMemo(() => {
@@ -113,6 +129,13 @@ export const AdminDashboard = () => {
     return remoteDashboardStats;
   }, [dashboardStats, remoteDashboardStats, isRemoteConnected, viewMode]);
 
+  const displayedIdentityReviews = useMemo(() => {
+    if (!isRemoteConnected || viewMode === 'local') {
+      return identityReviews || [];
+    }
+    return remoteIdentityReviews || [];
+  }, [identityReviews, remoteIdentityReviews, isRemoteConnected, viewMode]);
+
   const activeJobs = displayedJobs.filter(
     (job) => job.status === 'running' || job.status === 'pending',
   ).length;
@@ -120,14 +143,21 @@ export const AdminDashboard = () => {
   const failedJobs = displayedJobs.filter(
     (job) => job.status === 'failed',
   ).length;
+  const pendingIdentityReviews = displayedIdentityReviews.filter(
+    (review) => !review.status || review.status === 'pending',
+  ).length;
 
   const isLoading =
     usersLoading ||
     wsLoading ||
     jobsLoading ||
     statsLoading ||
+    reviewsLoading ||
     (shouldShowRemote &&
-      (remoteWsLoading || remoteJobsLoading || remoteStatsLoading));
+      (remoteWsLoading ||
+        remoteJobsLoading ||
+        remoteStatsLoading ||
+        remoteReviewsLoading));
 
   if (isLoading) {
     return (
@@ -143,11 +173,16 @@ export const AdminDashboard = () => {
       `${failedJobs} job${failedJobs > 1 ? 's' : ''} failed recently`,
     );
   }
+  if (pendingIdentityReviews > 0) {
+    alerts.push(
+      `${pendingIdentityReviews} identity review${pendingIdentityReviews > 1 ? 's' : ''} pending`,
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
         <StatCard title="Total Users" value={users?.length || 0} icon={Users} />
         <StatCard
           title="Environments"
@@ -155,6 +190,11 @@ export const AdminDashboard = () => {
           icon={Boxes}
         />
         <StatCard title="Active Jobs" value={activeJobs} icon={Activity} />
+        <StatCard
+          title="Identity Reviews"
+          value={pendingIdentityReviews}
+          icon={ShieldAlert}
+        />
         <StatCard
           title="Disk Usage"
           value={displayedStats?.total_disk_usage_formatted || 'N/A'}

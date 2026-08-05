@@ -30,6 +30,14 @@ func Login(authenticator auth.Authenticator) gin.HandlerFunc {
 
 		resp, err := authenticator.Login(req.Username, req.Password)
 		if err != nil {
+			if auth.IsFederatedIdentityReviewRequired(err) {
+				c.JSON(http.StatusForbidden, gin.H{"error": auth.FederatedIdentityReviewPendingMessage})
+				return
+			}
+			if auth.IsFederatedIdentityReviewRejected(err) {
+				c.JSON(http.StatusForbidden, gin.H{"error": auth.FederatedIdentityReviewRejectedMessage})
+				return
+			}
 			if errors.Is(err, auth.ErrInvalidCredentials) {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 				return
@@ -55,6 +63,14 @@ func SessionRedirect(basicAuth *auth.BasicAuthenticator, proxyAdminGroups string
 	return func(c *gin.Context) {
 		resp, err := basicAuth.SessionFromProxy(c.Request, proxyAdminGroups)
 		if err != nil {
+			if auth.IsFederatedIdentityReviewRequired(err) {
+				c.Redirect(http.StatusFound, basePath+"/login?error=identity_review_pending")
+				return
+			}
+			if auth.IsFederatedIdentityReviewRejected(err) {
+				c.Redirect(http.StatusFound, basePath+"/login?error=identity_review_rejected")
+				return
+			}
 			// No valid proxy session — redirect to login without code
 			c.Redirect(http.StatusFound, basePath+"/login")
 			return
@@ -110,6 +126,14 @@ func SessionCheck(basicAuth *auth.BasicAuthenticator, proxyAdminGroups string) g
 	return func(c *gin.Context) {
 		resp, err := basicAuth.SessionFromProxy(c.Request, proxyAdminGroups)
 		if err != nil {
+			if auth.IsFederatedIdentityReviewRequired(err) {
+				c.JSON(http.StatusForbidden, gin.H{"error": auth.FederatedIdentityReviewPendingMessage})
+				return
+			}
+			if auth.IsFederatedIdentityReviewRejected(err) {
+				c.JSON(http.StatusForbidden, gin.H{"error": auth.FederatedIdentityReviewRejectedMessage})
+				return
+			}
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "no proxy session"})
 			return
 		}

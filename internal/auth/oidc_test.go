@@ -3,9 +3,13 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/models"
 )
 
 // newDiscoveryServer starts a test server that serves an OIDC discovery
@@ -63,5 +67,84 @@ func TestNewOIDCAuthenticator_IssuerMismatchWithoutDiscoveryURLFails(t *testing.
 	}
 	if _, err := NewOIDCAuthenticator(context.Background(), cfg, nil, "test-secret", nil); err == nil {
 		t.Fatal("expected issuer mismatch to fail without DiscoveryURL, got nil error")
+	}
+}
+
+func TestOIDCFindOrCreateUser_DoesNotLinkByEmail(t *testing.T) {
+	db := setupTestDB(t)
+	existing := models.User{
+		ID:           uuid.New(),
+		Username:     "local-alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&existing).Error; err != nil {
+		t.Fatalf("create existing user: %v", err)
+	}
+
+	authenticator := &OIDCAuthenticator{db: db}
+	user, err := authenticator.findOrCreateUser(federatedUserClaims{
+		Issuer:            "https://issuer.example.com",
+		Subject:           "oidc-alice",
+		PreferredUsername: "alice",
+		Email:             "alice@example.com",
+		EmailVerified:     true,
+	})
+	if !errors.Is(err, errFederatedIdentityRequiresReview) {
+		t.Fatalf("expected review error for colliding unlinked user, got user=%v err=%v", user, err)
+	}
+
+	var review models.FederatedIdentityReview
+	if err := db.Where("issuer = ? AND subject = ?", "https://issuer.example.com", "oidc-alice").First(&review).Error; err != nil {
+		t.Fatalf("expected pending federated identity review: %v", err)
+	}
+	if review.UserID != existing.ID {
+		t.Errorf("expected review for local user %s, got %s", existing.ID, review.UserID)
+	}
+}
+
+func TestOIDCFindOrCreateUser_RejectedReviewBlocksRepeatLogin(t *testing.T) {
+	db := setupTestDB(t)
+	existing := models.User{
+		ID:           uuid.New(),
+		Username:     "local-alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&existing).Error; err != nil {
+		t.Fatalf("create existing user: %v", err)
+	}
+	review := models.FederatedIdentityReview{
+		UserID:         existing.ID,
+		Issuer:         "https://issuer.example.com",
+		Subject:        "oidc-alice",
+		CollisionField: "email",
+		Username:       "alice",
+		Email:          "alice@example.com",
+		EmailVerified:  true,
+		Status:         models.FederatedIdentityReviewStatusRejected,
+	}
+	if err := db.Create(&review).Error; err != nil {
+		t.Fatalf("create rejected review: %v", err)
+	}
+
+	authenticator := &OIDCAuthenticator{db: db}
+	user, err := authenticator.findOrCreateUser(federatedUserClaims{
+		Issuer:            "https://issuer.example.com",
+		Subject:           "oidc-alice",
+		PreferredUsername: "alice",
+		Email:             "alice@example.com",
+		EmailVerified:     true,
+	})
+	if !errors.Is(err, errFederatedIdentityRejected) {
+		t.Fatalf("expected rejected review error, got user=%v err=%v", user, err)
+	}
+
+	var persisted models.FederatedIdentityReview
+	if err := db.First(&persisted, "id = ?", review.ID).Error; err != nil {
+		t.Fatalf("load persisted review: %v", err)
+	}
+	if persisted.Status != models.FederatedIdentityReviewStatusRejected {
+		t.Errorf("expected review to remain rejected, got %q", persisted.Status)
 	}
 }

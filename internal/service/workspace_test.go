@@ -33,6 +33,8 @@ func testSetup(t *testing.T, isLocal bool) (*WorkspaceService, *gorm.DB) {
 
 	if err := db.AutoMigrate(
 		&models.User{},
+		&models.FederatedIdentity{},
+		&models.FederatedIdentityReview{},
 		&models.Role{},
 		&models.Workspace{},
 		&models.Job{},

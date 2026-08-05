@@ -200,6 +200,16 @@ func (a *BasicAuthenticator) Middleware() gin.HandlerFunc {
 		user, err := findOrCreateProxyUser(a.db, proxyClaims)
 		if err != nil {
 			slog.Error("Failed to find/create proxy user", "error", err)
+			if IsFederatedIdentityReviewRequired(err) {
+				c.JSON(http.StatusForbidden, gin.H{"error": FederatedIdentityReviewPendingMessage})
+				c.Abort()
+				return
+			}
+			if IsFederatedIdentityReviewRejected(err) {
+				c.JSON(http.StatusForbidden, gin.H{"error": FederatedIdentityReviewRejectedMessage})
+				c.Abort()
+				return
+			}
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "proxy authentication failed"})
 			c.Abort()
 			return
@@ -299,6 +309,10 @@ func (a *BasicAuthenticator) ExchangeIDToken(rawIDToken string, adminGroups stri
 	var claims ProxyTokenClaims
 	if err := idToken.Claims(&claims); err != nil {
 		return nil, fmt.Errorf("failed to extract claims: %w", err)
+	}
+	claims.Issuer = idToken.Issuer
+	if claims.Sub == "" {
+		claims.Sub = idToken.Subject
 	}
 
 	user, err := findOrCreateProxyUser(a.db, &claims)

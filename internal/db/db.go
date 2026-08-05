@@ -99,6 +99,8 @@ func Migrate(db *gorm.DB) error {
 	// Auto-migrate all models
 	err := db.AutoMigrate(
 		&models.User{},
+		&models.FederatedIdentity{},
+		&models.FederatedIdentityReview{},
 		&models.Role{},
 		&models.Workspace{},
 		&models.Job{},
@@ -118,6 +120,10 @@ func Migrate(db *gorm.DB) error {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
+	if err := detectLegacyFederatedUsers(db); err != nil {
+		return err
+	}
+
 	// Seed default roles if they don't exist
 	if err := seedDefaultRoles(db); err != nil {
 		return fmt.Errorf("failed to seed default roles: %w", err)
@@ -129,6 +135,25 @@ func Migrate(db *gorm.DB) error {
 	}
 
 	return nil
+}
+
+func detectLegacyFederatedUsers(db *gorm.DB) error {
+	var users []models.User
+	if err := db.
+		Joins("LEFT JOIN federated_identities fi ON fi.user_id = users.id AND fi.deleted_at IS NULL").
+		Where("users.password_hash = ? AND fi.id IS NULL", "").
+		Find(&users).Error; err != nil {
+		return fmt.Errorf("failed to detect legacy federated users: %w", err)
+	}
+	if len(users) == 0 {
+		return nil
+	}
+
+	ids := make([]string, len(users))
+	for i, user := range users {
+		ids[i] = user.ID.String()
+	}
+	return fmt.Errorf("legacy federated users without issuer/subject bindings require manual review before migration: %v", ids)
 }
 
 // seedDefaultRoles creates default roles (admin, owner, editor, viewer)

@@ -119,3 +119,38 @@ export const useDashboardStats = () => {
     queryFn: adminApi.getDashboardStats,
   });
 };
+
+export const useFederatedIdentityReviews = () => {
+  return useQuery({
+    queryKey: ['admin', 'federated-identity-reviews'],
+    queryFn: adminApi.getFederatedIdentityReviews,
+  });
+};
+
+export const useApproveFederatedIdentityReview = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reviewId: string) =>
+      adminApi.approveFederatedIdentityReview(reviewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['admin', 'federated-identity-reviews'],
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'audit-logs'] });
+    },
+  });
+};
+
+export const useRejectFederatedIdentityReview = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reviewId: string) =>
+      adminApi.rejectFederatedIdentityReview(reviewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['admin', 'federated-identity-reviews'],
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'audit-logs'] });
+    },
+  });
+};

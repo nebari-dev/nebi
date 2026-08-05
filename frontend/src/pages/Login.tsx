@@ -4,7 +4,7 @@ import { authApi } from '@/api/auth';
 import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { getApiBaseUrl, getBasePath } from '@/lib/basePath';
+import { getApiBaseUrl } from '@/lib/basePath';
 import { getBrandingLogoUrl } from '@/lib/brandingConfig';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
@@ -13,10 +13,35 @@ type LoginProps = {
   isDarkMode: boolean;
 };
 
+const pendingReviewError = 'federated identity link is pending admin approval';
+const rejectedReviewError =
+  'federated identity link request was rejected by an admin';
+
+const authErrorMessage = (error: string) => {
+  if (error === 'identity_review_pending' || error === pendingReviewError) {
+    return 'Your identity link request is pending admin approval. Try again after an admin approves it.';
+  }
+  if (error === 'identity_review_rejected' || error === rejectedReviewError) {
+    return 'Your identity link request was rejected by an admin. Contact an administrator if you believe this is a mistake.';
+  }
+  if (!error || error === 'oauth_failed') {
+    return 'Authentication failed';
+  }
+  return error;
+};
+
+const authErrorTone = (error: string) =>
+  error === 'identity_review_pending' || error === pendingReviewError
+    ? 'warning'
+    : 'destructive';
+
 export const Login = ({ isDarkMode }: LoginProps) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [errorTone, setErrorTone] = useState<'destructive' | 'warning'>(
+    'destructive',
+  );
   const [loading, setLoading] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [searchParams] = useSearchParams();
@@ -32,10 +57,8 @@ export const Login = ({ isDarkMode }: LoginProps) => {
     }
   }, [isLocalMode, navigate]);
 
-  // Auto-login via OIDC gateway proxy (RFC 6749 §4.1 authorization code pattern):
-  // 1. Redirect to /auth/session (outside /api/, so gateway preserves cookies)
-  // 2. Backend reads IdToken cookie → generates single-use code → redirects to /login?code=xxx
-  // 3. Frontend exchanges code for JWT via POST /api/v1/auth/code/exchange
+  // Auto-login via an OIDC gateway proxy when it has already set an IdToken
+  // cookie. If no proxy session exists, stay on the normal login screen.
   useEffect(() => {
     if (isLocalMode) return;
     if (searchParams.get('code') || searchParams.get('error')) return;
@@ -46,12 +69,29 @@ export const Login = ({ isDarkMode }: LoginProps) => {
     }
     const logoutUrl = useModeStore.getState().logoutUrl;
     if (logoutUrl) {
-      window.location.href = `${getBasePath()}/auth/session`;
+      const checkProxySession = async () => {
+        try {
+          const { data } = await apiClient.get('/auth/session');
+          setAuth(data.token, data.user);
+          navigate('/');
+        } catch (err: unknown) {
+          const response = (
+            err as { response?: { status?: number; data?: { error?: string } } }
+          ).response;
+          if (response?.status === 403) {
+            const authError = response.data?.error || 'identity_review_pending';
+            setError(authErrorMessage(authError));
+            setErrorTone(authErrorTone(authError));
+          }
+          setSessionChecked(true);
+        }
+      };
+      checkProxySession();
       return;
     }
     // No gateway detected — show login form
     setSessionChecked(true);
-  }, [isLocalMode, searchParams]);
+  }, [isLocalMode, searchParams, setAuth, navigate]);
 
   // Exchange single-use authorization code for JWT.
   // Used by both gateway auto-login (/auth/session) and direct OIDC callback
@@ -63,7 +103,8 @@ export const Login = ({ isDarkMode }: LoginProps) => {
     const oauthError = searchParams.get('error');
 
     if (oauthError) {
-      setError('Authentication failed');
+      setError(authErrorMessage(oauthError));
+      setErrorTone(authErrorTone(oauthError));
       setSessionChecked(true);
       return;
     }
@@ -79,6 +120,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
           navigate('/');
         } catch {
           setError('Failed to complete login');
+          setErrorTone('destructive');
           setSessionChecked(true);
         } finally {
           setLoading(false);
@@ -91,6 +133,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setErrorTone('destructive');
     setLoading(true);
 
     try {
@@ -99,7 +142,9 @@ export const Login = ({ isDarkMode }: LoginProps) => {
       navigate('/');
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string } } };
-      setError(error.response?.data?.error || 'Login failed');
+      const authError = error.response?.data?.error;
+      setError(authError ? authErrorMessage(authError) : 'Login failed');
+      setErrorTone(authError ? authErrorTone(authError) : 'destructive');
     } finally {
       setLoading(false);
     }
@@ -129,7 +174,13 @@ export const Login = ({ isDarkMode }: LoginProps) => {
         <div className="px-8 pb-8">
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="bg-destructive/10 text-destructive p-4 rounded-md text-sm">
+              <div
+                className={
+                  errorTone === 'warning'
+                    ? 'rounded-md border border-amber-300 bg-amber-100 p-4 text-sm text-amber-800'
+                    : 'rounded-md bg-destructive/10 p-4 text-sm text-destructive'
+                }
+              >
                 {error}
               </div>
             )}

@@ -287,6 +287,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			admin.POST("/permissions", adminHandler.GrantPermission)
 			admin.DELETE("/permissions/:id", adminHandler.RevokePermission)
 
+			// Federated identity reviews
+			admin.GET("/federated-identity-reviews", adminHandler.ListFederatedIdentityReviews)
+			admin.POST("/federated-identity-reviews/:id/approve", adminHandler.ApproveFederatedIdentityReview)
+			admin.POST("/federated-identity-reviews/:id/reject", adminHandler.RejectFederatedIdentityReview)
+
 			// Audit logs
 			admin.GET("/audit-logs", adminHandler.ListAuditLogs)
 
@@ -341,6 +346,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				remote.GET("/admin/registries", remoteHandler.ListAdminRegistries)
 				remote.GET("/admin/audit-logs", remoteHandler.ListAdminAuditLogs)
 				remote.GET("/admin/dashboard/stats", remoteHandler.GetAdminDashboardStats)
+				remote.GET("/admin/federated-identity-reviews", remoteHandler.ListAdminFederatedIdentityReviews)
+				remote.POST("/admin/federated-identity-reviews/:id/approve", remoteHandler.ApproveAdminFederatedIdentityReview)
+				remote.POST("/admin/federated-identity-reviews/:id/reject", remoteHandler.RejectAdminFederatedIdentityReview)
 			}
 		}
 	}

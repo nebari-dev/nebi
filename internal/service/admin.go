@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
@@ -300,6 +301,111 @@ func (s *AdminService) ListAuditLogs(userIDFilter, actionFilter string) ([]model
 		return nil, fmt.Errorf("fetch audit logs: %w", err)
 	}
 	return logs, nil
+}
+
+// ListFederatedIdentityReviews returns federated identity review decisions.
+func (s *AdminService) ListFederatedIdentityReviews() ([]models.FederatedIdentityReview, error) {
+	var reviews []models.FederatedIdentityReview
+	if err := s.db.Preload("User").Order("created_at ASC").Find(&reviews).Error; err != nil {
+		return nil, fmt.Errorf("fetch federated identity reviews: %w", err)
+	}
+	return reviews, nil
+}
+
+func isPendingFederatedIdentityReview(review models.FederatedIdentityReview) bool {
+	return review.Status == "" || review.Status == models.FederatedIdentityReviewStatusPending
+}
+
+// ApproveFederatedIdentityReview deliberately links a reviewed external
+// identity to the colliding local user.
+func (s *AdminService) ApproveFederatedIdentityReview(reviewID uuid.UUID, adminUserID uuid.UUID) (*models.FederatedIdentity, error) {
+	var identity models.FederatedIdentity
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		var review models.FederatedIdentityReview
+		if err := tx.Preload("User").First(&review, "id = ?", reviewID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if review.User.ID != review.UserID {
+			return ErrNotFound
+		}
+		if !isPendingFederatedIdentityReview(review) {
+			return &ConflictError{Message: "federated identity review was rejected"}
+		}
+
+		var existing models.FederatedIdentity
+		err := tx.Where("issuer = ? AND subject = ?", review.Issuer, review.Subject).First(&existing).Error
+		if err == nil {
+			return &ConflictError{Message: "federated identity is already approved"}
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		identity = models.FederatedIdentity{
+			UserID:        review.UserID,
+			Issuer:        review.Issuer,
+			Subject:       review.Subject,
+			Username:      review.Username,
+			Email:         review.Email,
+			EmailVerified: review.EmailVerified,
+			Name:          review.Name,
+			AvatarURL:     review.AvatarURL,
+		}
+		if err := tx.Create(&identity).Error; err != nil {
+			return fmt.Errorf("approve federated identity: %w", err)
+		}
+		if err := tx.Delete(&review).Error; err != nil {
+			return fmt.Errorf("delete federated identity review: %w", err)
+		}
+
+		audit.LogAction(tx, adminUserID, audit.ActionApproveFederatedIdentity, "federated_identity:"+identity.ID.String(), map[string]any{
+			"user_id":         review.UserID,
+			"review_id":       review.ID,
+			"issuer":          review.Issuer,
+			"subject":         review.Subject,
+			"collision_field": review.CollisionField,
+		})
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return &identity, nil
+}
+
+// RejectFederatedIdentityReview marks a pending external identity link request
+// as rejected without linking it to the colliding local user.
+func (s *AdminService) RejectFederatedIdentityReview(reviewID uuid.UUID, adminUserID uuid.UUID) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var review models.FederatedIdentityReview
+		if err := tx.First(&review, "id = ?", reviewID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if !isPendingFederatedIdentityReview(review) {
+			return &ConflictError{Message: "federated identity review was already rejected"}
+		}
+
+		now := time.Now().UTC()
+		review.Status = models.FederatedIdentityReviewStatusRejected
+		review.ReviewedBy = &adminUserID
+		review.ReviewedAt = &now
+		if err := tx.Save(&review).Error; err != nil {
+			return fmt.Errorf("reject federated identity review: %w", err)
+		}
+
+		audit.LogAction(tx, adminUserID, audit.ActionRejectFederatedIdentity, "federated_identity_review:"+review.ID.String(), map[string]any{
+			"user_id":         review.UserID,
+			"issuer":          review.Issuer,
+			"subject":         review.Subject,
+			"collision_field": review.CollisionField,
+		})
+		return nil
+	})
 }
 
 // GetDashboardStats returns admin dashboard statistics.

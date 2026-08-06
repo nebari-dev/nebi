@@ -18,6 +18,7 @@ var (
 	sandboxExecRO      []string
 	sandboxExecROFiles []string
 	sandboxExecPorts   []int
+	sandboxExecCheck   bool
 )
 
 // sandboxExecCmd is an internal re-exec shim, not a user-facing command. The
@@ -29,15 +30,32 @@ var (
 //
 // It applies a Landlock ruleset to itself and then execve's the real command,
 // which inherits the confinement.
+//
+// "nebi sandbox-exec --check" is the probe sandbox.NewRunner uses to prove a
+// re-exec target really is this binary. It must stay a fast, side-effect-free
+// exit 0.
 var sandboxExecCmd = &cobra.Command{
 	Use:                   "sandbox-exec [flags] -- COMMAND [ARGS...]",
 	Short:                 "Internal: run a command under filesystem and network confinement",
 	Hidden:                true,
 	DisableFlagsInUseLine: true,
-	Args:                  cobra.MinimumNArgs(1),
-	SilenceUsage:          true,
-	SilenceErrors:         true,
+	Args: func(cmd *cobra.Command, args []string) error {
+		if sandboxExecCheck {
+			return nil // --check takes no command
+		}
+		return cobra.MinimumNArgs(1)(cmd, args)
+	},
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Answered before anything else: the probe must not depend on the
+		// mode being valid, on a ruleset applying, or on this host
+		// supporting Landlock at all. It answers one question only, "are
+		// you the shim", and the answer is yes by virtue of being here.
+		if sandboxExecCheck {
+			return nil
+		}
+
 		mode := sandbox.Mode(sandboxExecMode)
 		switch mode {
 		case sandbox.ModeStrict, sandbox.ModePermissive:
@@ -108,4 +126,5 @@ func init() {
 	sandboxExecCmd.Flags().StringArrayVar(&sandboxExecRO, "allow-ro", nil, "directory the command may read (repeatable)")
 	sandboxExecCmd.Flags().StringArrayVar(&sandboxExecROFiles, "allow-ro-file", nil, "file the command may read (repeatable)")
 	sandboxExecCmd.Flags().IntSliceVar(&sandboxExecPorts, "allow-port", nil, "TCP port the command may connect to (repeatable)")
+	sandboxExecCmd.Flags().BoolVar(&sandboxExecCheck, "check", false, "exit 0 immediately, proving this binary implements the shim")
 }

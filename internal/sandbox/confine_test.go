@@ -115,6 +115,12 @@ func runConfineShim(args []string) {
 			argv = args[i+1:]
 			break
 		}
+		// Mirrors cmd/nebi: --check is the probe sandbox.NewRunner uses to
+		// prove a re-exec target implements the shim. It must exit 0
+		// immediately, without applying a ruleset or exec'ing anything.
+		if arg == "--check" {
+			os.Exit(0)
+		}
 		key, value, ok := strings.Cut(arg, "=")
 		if !ok {
 			shimFail(fmt.Errorf("malformed shim flag %q", arg))

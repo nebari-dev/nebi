@@ -15,6 +15,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 )
 
 // Mode controls how failures to confine a build are handled.
@@ -66,11 +68,85 @@ type Runner struct {
 	selfPath string // absolute path to the nebi binary, used to re-exec the shim
 }
 
-// NewRunner returns a Runner. selfPath may be empty, in which case the
-// current executable is resolved via os.Executable. That lookup is skipped
-// in off mode, where selfPath is never used: a resolution failure there
-// would stop the executor from constructing, and so the server from
-// booting, over a path nothing reads.
+// shimCheckFlag makes "sandbox-exec" exit 0 immediately without applying a
+// ruleset or exec'ing anything, so it can be used to prove a binary
+// implements the shim.
+const shimCheckFlag = "--check"
+
+// shimProbeEnv marks a process spawned by verifyShim. A real shim answers
+// shimCheckFlag and exits long before it could construct a Runner, so a
+// process that reaches verifyShim with this set is by definition not a shim.
+// Refusing there caps an accidental re-exec chain at depth one instead of
+// letting it grow without bound.
+const shimProbeEnv = "NEBI_SANDBOX_SHIM_PROBE"
+
+// shimProbeTimeout bounds the probe. A binary that is not the shim may not
+// fail: a Go test binary handed "sandbox-exec" runs its whole suite, because
+// flag parsing stops at the first non-flag argument. Overridden by tests.
+var shimProbeTimeout = 10 * time.Second
+
+// shimProbeGrace is how long the probe waits after killing the target before
+// giving up on its output. Killing the target does not kill anything it has
+// already spawned, and those grandchildren hold the inherited output pipe
+// open, so without this the probe blocks for as long as they run and the
+// timeout above buys nothing. Any survivors are left orphaned; reaping them
+// needs process groups, which are not portable to the Windows build.
+const shimProbeGrace = 2 * time.Second
+
+// verifyShim reports whether path implements "nebi sandbox-exec".
+//
+// Without this check NewRunner trusts os.Executable() blindly, and when the
+// running program is not the nebi binary the failure is catastrophic and
+// silent rather than loud: every build re-execs that program with
+// "sandbox-exec ..." prepended, and a program that ignores those arguments
+// simply runs again, spawning another server that does the same. That is a
+// fork bomb, and it is what killed CI. One cheap probe at construction turns
+// it into an instant, legible startup error.
+func verifyShim(path string) error {
+	if os.Getenv(shimProbeEnv) == "1" {
+		return fmt.Errorf("refusing to probe %s: this process is itself a shim probe, so it cannot be the nebi binary", path)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), shimProbeTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, path, "sandbox-exec", shimCheckFlag)
+	cmd.Env = append(os.Environ(), shimProbeEnv+"=1")
+	cmd.WaitDelay = shimProbeGrace
+	out, err := cmd.CombinedOutput()
+
+	if ctx.Err() != nil {
+		return fmt.Errorf("timed out after %s waiting for %q; a binary that ignores the subcommand rather than answering it is not the shim", shimProbeTimeout, "sandbox-exec "+shimCheckFlag)
+	}
+	if err != nil {
+		if trimmed := lastBytes(strings.TrimSpace(string(out)), 300); trimmed != "" {
+			return fmt.Errorf("%w (output: %s)", err, trimmed)
+		}
+		return err
+	}
+	return nil
+}
+
+// lastBytes keeps the tail of s, where a failing command's actual error
+// usually is. The probe target is an arbitrary binary that may print
+// megabytes, and none of that belongs verbatim in an error string.
+func lastBytes(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return "..." + s[len(s)-n:]
+}
+
+// NewRunner returns a Runner.
+//
+// selfPath may be empty, in which case the current executable is resolved via
+// os.Executable and then verified to actually implement the shim. Both steps
+// are skipped in off mode, where selfPath is never read: a failure there
+// would stop the executor from constructing, and so the server from booting,
+// over a value nothing uses.
+//
+// A non-empty selfPath is taken on trust. It is an in-package escape hatch
+// for tests that never re-exec; production passes "".
 func NewRunner(cfg Config, selfPath string) (*Runner, error) {
 	switch cfg.Mode {
 	case ModeStrict, ModePermissive, ModeOff:
@@ -81,6 +157,13 @@ func NewRunner(cfg Config, selfPath string) (*Runner, error) {
 		p, err := os.Executable()
 		if err != nil {
 			return nil, fmt.Errorf("resolve nebi binary for sandbox re-exec: %w", err)
+		}
+		if err := verifyShim(p); err != nil {
+			return nil, fmt.Errorf(
+				"sandbox mode %q re-execs the running binary as %q, but %s does not implement it: %w; "+
+					"this usually means an active sandbox mode was enabled in a process that is not the nebi binary, "+
+					"such as a Go test binary, where NEBI_SANDBOX_MODE should be set to \"off\"",
+				cfg.Mode, "nebi sandbox-exec", p, err)
 		}
 		selfPath = p
 	}

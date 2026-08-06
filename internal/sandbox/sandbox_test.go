@@ -4,9 +4,11 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newTestRunner(t *testing.T, mode Mode) *Runner {
@@ -302,14 +304,123 @@ func TestNewRunner_OffModeSkipsExecutableLookup(t *testing.T) {
 	if r.selfPath != "" {
 		t.Fatalf("expected no self path to be resolved in off mode, got %q", r.selfPath)
 	}
+}
 
-	// Active modes still need it.
-	active, err := NewRunner(Config{Mode: ModeStrict}, "")
-	if err != nil {
-		t.Fatalf("NewRunner(strict): %v", err)
+// The regression test for the CI fork bomb: a Go test binary that enables an
+// active sandbox mode resolves os.Executable() to itself, and re-exec'ing it
+// runs the whole test suite again instead of the shim. NewRunner must refuse
+// to construct rather than hand back a Runner that will do that.
+//
+// shimProbeEnv is set here so the check short-circuits without spawning
+// anything; the probe mechanism itself is covered by the verifyShim tests.
+func TestNewRunner_ActiveModeRejectsAnExecutableThatIsNotTheShim(t *testing.T) {
+	t.Setenv(shimProbeEnv, "1")
+
+	for _, mode := range []Mode{ModeStrict, ModePermissive} {
+		_, err := NewRunner(Config{Mode: mode}, "")
+		if err == nil {
+			t.Fatalf("%s mode must refuse an executable that does not implement the shim", mode)
+		}
+		self, _ := os.Executable()
+		if self != "" && !strings.Contains(err.Error(), self) {
+			t.Fatalf("error must name the resolved path %q so an operator can see it, got: %v", self, err)
+		}
 	}
-	if active.selfPath == "" {
-		t.Fatal("strict mode must resolve the nebi binary for the re-exec shim")
+}
+
+func writeFakeBinary(t *testing.T, body string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script probe targets are not runnable on windows")
+	}
+	p := filepath.Join(t.TempDir(), "fakebin")
+	if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+		t.Fatalf("write fake binary: %v", err)
+	}
+	return p
+}
+
+func TestVerifyShim_AcceptsABinaryThatAnswersCheck(t *testing.T) {
+	// Also pins the probe argv: a target that is handed anything other than
+	// "sandbox-exec --check" fails loudly rather than passing by accident.
+	bin := writeFakeBinary(t, `[ "$1" = "sandbox-exec" ] && [ "$2" = "--check" ] && exit 0; exit 9`)
+
+	if err := verifyShim(bin); err != nil {
+		t.Fatalf("expected a shim that answers --check to be accepted, got %v", err)
+	}
+}
+
+func TestVerifyShim_RejectsABinaryThatDoesNotAnswerCheck(t *testing.T) {
+	bin := writeFakeBinary(t, `echo "I am a test binary, not the shim"; exit 1`)
+
+	err := verifyShim(bin)
+	if err == nil {
+		t.Fatal("expected a non-shim binary to be rejected")
+	}
+	// The target's own output is the most useful diagnostic, so keep it.
+	if !strings.Contains(err.Error(), "not the shim") {
+		t.Fatalf("expected the probe output in the error, got %v", err)
+	}
+}
+
+// The probe target is an arbitrary binary and may print a great deal. None
+// of it belongs verbatim in an error string.
+func TestVerifyShim_TruncatesALoudFailure(t *testing.T) {
+	bin := writeFakeBinary(t, `head -c 200000 /dev/zero | tr '\0' 'x'; exit 1`)
+
+	err := verifyShim(bin)
+	if err == nil {
+		t.Fatal("expected a failing probe target to be rejected")
+	}
+	if len(err.Error()) > 1000 {
+		t.Fatalf("probe output was not truncated: error is %d bytes", len(err.Error()))
+	}
+}
+
+// A Go test binary handed "sandbox-exec" does not fail: flag parsing stops at
+// the first non-flag argument, so it runs its whole suite. The probe must
+// time out on that rather than wait forever.
+func TestVerifyShim_RejectsABinaryThatHangs(t *testing.T) {
+	bin := writeFakeBinary(t, `sleep 30`)
+
+	restore := shimProbeTimeout
+	shimProbeTimeout = 250 * time.Millisecond
+	defer func() { shimProbeTimeout = restore }()
+
+	start := time.Now()
+	err := verifyShim(bin)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected a hanging probe target to be rejected")
+	}
+	if !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("expected a timeout error, got %v", err)
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("probe did not honour its timeout, took %s", elapsed)
+	}
+}
+
+func TestVerifyShim_RejectsAMissingBinary(t *testing.T) {
+	if err := verifyShim(filepath.Join(t.TempDir(), "does-not-exist")); err == nil {
+		t.Fatal("expected a missing probe target to be rejected")
+	}
+}
+
+// Caps accidental recursion at depth one: a probe child that reaches this
+// code is by definition not a shim, because a real shim exits at --check
+// long before it could build a Runner.
+func TestVerifyShim_RefusesToProbeFromInsideAProbe(t *testing.T) {
+	bin := writeFakeBinary(t, `exit 0`)
+	t.Setenv(shimProbeEnv, "1")
+
+	err := verifyShim(bin)
+	if err == nil {
+		t.Fatal("a probe child must not itself probe")
+	}
+	if !strings.Contains(err.Error(), "probe") {
+		t.Fatalf("expected the error to explain the recursion guard, got %v", err)
 	}
 }
 

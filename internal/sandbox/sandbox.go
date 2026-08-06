@@ -4,7 +4,7 @@
 // re-executed through the "nebi sandbox-exec" shim, which applies a Landlock
 // ruleset before exec'ing the real binary.
 //
-// See docs/superpowers/specs/2026-08-05-build-sandbox-design.md.
+// See https://github.com/nebari-dev/nebi/issues/445 for the threat model.
 package sandbox
 
 import (

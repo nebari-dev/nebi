@@ -83,3 +83,6 @@ docs/.docusaurus/
 # Pixi
 pixi.lock
 .pixi/
+
+# Superpowers working docs (specs/plans)
+docs/superpowers/

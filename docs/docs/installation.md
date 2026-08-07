@@ -34,18 +34,24 @@ Make sure it's on your `PATH`:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+**Advanced options**:
+
+* `--version <ver>`: Install specific version (e.g. v0.5.0)
+* `--install-dir <path>`: Set install directory (default: `~/.local/bin`)
+* `--desktop`: Install the desktop app
+* `-h`, `--help`: Show the help message
+
 ### Windows (Powershell)
 
-```bash
+```powershell
 irm https://nebi.nebari.dev/install.ps1 | iex
 ```
 
-### Advanced options
+**Advanced options**:
 
-* `--version <ver>`: Install specific version (e.g. v0.5.0)
-* `--install-dir <path>`: Set install directory (default: ~/.local/bin)
-* `--desktop`: Install the desktop app
-* `-h`, `--help`: Show the help message
+* `-Version <ver>`: Install specific version (e.g. v0.5.0)
+* `-InstallDir <path>`: Set install directory (default: `$env:LOCALAPPDATA\nebi`)
+* `-Desktop`: Install the desktop app
 
 ## Install with conda
 

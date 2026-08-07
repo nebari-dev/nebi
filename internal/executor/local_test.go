@@ -5,11 +5,13 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/config"
+	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
 )
 
@@ -252,6 +254,166 @@ func TestLocalExecutor_CreateWorkspace_SeedDirPopulatesWorkspace(t *testing.T) {
 	// Staging dir should be gone after successful seed.
 	if _, err := os.Stat(stagingDir); !os.IsNotExist(err) {
 		t.Errorf("staging dir still exists after CreateWorkspace")
+	}
+}
+
+func TestLocalExecutor_CreateWorkspaceRejectsStorageLimit(t *testing.T) {
+	limitCfg := limits.Defaults()
+	limitCfg.JobStorageBytes = 4
+	cfg := &config.Config{
+		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PackageManager: config.PackageManagerConfig{
+			DefaultType: "pixi",
+			PixiPath:    "/usr/bin/true",
+		},
+		Limits: limitCfg,
+	}
+	exec, err := NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+
+	ws := &models.Workspace{ID: uuid.New(), Name: "storage-limit", PackageManager: "pixi"}
+	var log bytes.Buffer
+	err = exec.CreateWorkspace(context.Background(), ws, &log, CreateWorkspaceOptions{
+		PixiToml: "[project]\nname = \"storage-limit\"\n",
+	})
+	if err == nil {
+		t.Fatal("expected storage limit error")
+	}
+	if !strings.Contains(err.Error(), "workspace storage limit exceeded") {
+		t.Fatalf("expected storage limit error, got %v", err)
+	}
+}
+
+func TestLocalExecutor_StorageLimitCheckErrorsFailClosed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod permissions do not reliably make directories unreadable on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root can read chmod 000 directories")
+	}
+
+	limitCfg := limits.Defaults()
+	limitCfg.JobStorageBytes = 1 << 20
+	cfg := &config.Config{
+		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
+		Limits:  limitCfg,
+	}
+	exec, err := NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+
+	workspacePath := filepath.Join(exec.baseDir, "unreadable-workspace")
+	blockedPath := filepath.Join(workspacePath, "blocked")
+	if err := os.MkdirAll(blockedPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(blockedPath, "data.bin"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(blockedPath, 0); err != nil {
+		t.Fatalf("chmod blocked path: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(blockedPath, 0o755)
+	})
+
+	var log bytes.Buffer
+	err = exec.withStorageLimit(context.Background(), workspacePath, &log, func(ctx context.Context) error {
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected storage limit check error")
+	}
+	if !strings.Contains(err.Error(), "workspace storage limit check failed") {
+		t.Fatalf("expected storage check failure, got %v", err)
+	}
+	if !strings.Contains(log.String(), "Workspace storage limit check failed") {
+		t.Fatalf("expected storage check failure log, got %q", log.String())
+	}
+}
+
+func TestLocalExecutor_CleanupJobArtifactsManagedCreateRemovesPartialWorkspace(t *testing.T) {
+	exec := testExecutor(t)
+	ws := &models.Workspace{ID: uuid.New(), Name: "cleanup-create", Source: "managed"}
+	wsPath := exec.GetWorkspacePath(ws)
+	if err := os.MkdirAll(filepath.Join(wsPath, ".nebi", "pixi-cache"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte("partial"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var log bytes.Buffer
+	if err := exec.CleanupJobArtifacts(context.Background(), ws, models.JobTypeCreate, &log); err != nil {
+		t.Fatalf("CleanupJobArtifacts: %v", err)
+	}
+	if _, err := os.Stat(wsPath); !os.IsNotExist(err) {
+		t.Fatalf("expected partial managed workspace removed, stat err=%v", err)
+	}
+}
+
+func TestLocalExecutor_CleanupJobArtifactsLocalPreservesWorkspace(t *testing.T) {
+	exec := testExecutor(t)
+	userDir := t.TempDir()
+	ws := &models.Workspace{ID: uuid.New(), Name: "cleanup-local", Source: "local", Path: userDir}
+	for _, rel := range []string{
+		filepath.Join(".nebi", "pixi-cache"),
+		filepath.Join(".nebi", "tmp"),
+		filepath.Join(".nebi", "cache"),
+		filepath.Join(".nebi", "home"),
+	} {
+		if err := os.MkdirAll(filepath.Join(userDir, rel), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(userDir, "pixi.toml"), []byte("user content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var log bytes.Buffer
+	if err := exec.CleanupJobArtifacts(context.Background(), ws, models.JobTypeCreate, &log); err != nil {
+		t.Fatalf("CleanupJobArtifacts: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(userDir, "pixi.toml")); err != nil {
+		t.Fatalf("expected local pixi.toml preserved, got %v", err)
+	}
+	for _, rel := range []string{
+		filepath.Join(".nebi", "pixi-cache"),
+		filepath.Join(".nebi", "tmp"),
+		filepath.Join(".nebi", "cache"),
+		filepath.Join(".nebi", "home"),
+	} {
+		if _, err := os.Stat(filepath.Join(userDir, rel)); !os.IsNotExist(err) {
+			t.Fatalf("expected local transient dir %s removed, stat err=%v", rel, err)
+		}
+	}
+}
+
+func TestLocalExecutor_CleanupJobArtifactsEnvInstallRemovesPartialEnv(t *testing.T) {
+	exec := testExecutor(t)
+	ws := &models.Workspace{ID: uuid.New(), Name: "cleanup-env", Source: "managed"}
+	envPath := exec.GetWorkspacePath(ws)
+	if err := os.MkdirAll(filepath.Join(envPath, ".pixi", "envs", "default"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(envPath, ".nebi", "pixi-cache"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var log bytes.Buffer
+	if err := exec.CleanupJobArtifacts(context.Background(), ws, models.JobTypeEnvInstall, &log); err != nil {
+		t.Fatalf("CleanupJobArtifacts: %v", err)
+	}
+	for _, path := range []string{
+		filepath.Join(envPath, ".pixi", "envs"),
+		filepath.Join(envPath, ".nebi", "pixi-cache"),
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("expected %s removed, stat err=%v", path, err)
+		}
 	}
 }
 

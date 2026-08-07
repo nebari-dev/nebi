@@ -60,6 +60,22 @@ Environment variables:
   NEBI_PACKAGE_MANAGER_PIXI_PATH    Custom pixi binary path (optional)
   NEBI_PACKAGE_MANAGER_UV_PATH      Custom uv binary path (optional)
   NEBI_STORAGE_WORKSPACES_DIR       Directory for workspace storage (default: "./data/workspaces")
+  NEBI_LIMITS_REQUEST_BODY_BYTES    Max HTTP request body size (default: 20971520)
+  NEBI_LIMITS_MANIFEST_BYTES        Max pixi.toml size (default: 1048576)
+  NEBI_LIMITS_LOCK_BYTES            Max pixi.lock size (default: 16777216)
+  NEBI_LIMITS_METADATA_BYTES        Max stored job/package metadata size (default: 65536)
+  NEBI_LIMITS_MAX_PACKAGES          Max package names per request (default: 128)
+  NEBI_LIMITS_PACKAGE_STRING_BYTES  Max bytes per package name (default: 256)
+  NEBI_LIMITS_ACTIVE_JOBS_PER_USER  Max pending/running jobs per user (default: 4)
+  NEBI_LIMITS_ACTIVE_JOBS_PER_WORKSPACE
+                                    Max pending/running jobs per workspace (default: 2)
+  NEBI_LIMITS_ACTIVE_JOBS_GLOBAL    Max pending/running jobs server-wide (default: 100)
+  NEBI_LIMITS_JOB_TIMEOUT_SECONDS   Per-job wall-clock timeout (default: 7200)
+  NEBI_LIMITS_JOB_CPU_SECONDS       Per-job CPU-time budget (default: 7200 on Linux, 0 elsewhere)
+  NEBI_LIMITS_JOB_MEMORY_BYTES      Per-job memory budget (default: 8589934592 on Linux, 0 elsewhere)
+  NEBI_LIMITS_JOB_PROCESSES         Per-job process budget (default: 256 on Linux, 0 elsewhere)
+  NEBI_LIMITS_JOB_STORAGE_BYTES     Max workspace bytes during a job (default: 21474836480)
+  NEBI_LIMITS_JOB_LOG_BYTES         Max persisted log bytes per job (default: 4194304)
   NEBI_AUTH_TOKEN                   Auth token for auto-connect when in local mode
   NEBI_REMOTE_URL                   Remote server URL for auto-connect when in local mode
   ADMIN_USERNAME                    Bootstrap admin username

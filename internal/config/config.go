@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/spf13/viper"
 )
 
@@ -17,6 +18,7 @@ type Config struct {
 	Log            LogConfig            `mapstructure:"log"`
 	PackageManager PackageManagerConfig `mapstructure:"package_manager"`
 	Storage        StorageConfig        `mapstructure:"storage"`
+	Limits         limits.Limits        `mapstructure:"limits"`
 }
 
 // IsLocalMode returns true when the server is running in local/desktop mode.
@@ -111,6 +113,22 @@ func Load() (*Config, error) {
 	v.SetDefault("log.level", "info")
 	v.SetDefault("package_manager.default_type", "pixi")
 	v.SetDefault("storage.workspaces_dir", "./data/workspaces")
+	defaultLimits := limits.Defaults()
+	v.SetDefault("limits.request_body_bytes", defaultLimits.RequestBodyBytes)
+	v.SetDefault("limits.manifest_bytes", defaultLimits.ManifestBytes)
+	v.SetDefault("limits.lock_bytes", defaultLimits.LockBytes)
+	v.SetDefault("limits.metadata_bytes", defaultLimits.MetadataBytes)
+	v.SetDefault("limits.max_packages", defaultLimits.MaxPackages)
+	v.SetDefault("limits.package_string_bytes", defaultLimits.PackageStringBytes)
+	v.SetDefault("limits.active_jobs_per_user", defaultLimits.ActiveJobsPerUser)
+	v.SetDefault("limits.active_jobs_per_workspace", defaultLimits.ActiveJobsPerWorkspace)
+	v.SetDefault("limits.active_jobs_global", defaultLimits.ActiveJobsGlobal)
+	v.SetDefault("limits.job_timeout_seconds", defaultLimits.JobTimeoutSeconds)
+	v.SetDefault("limits.job_cpu_seconds", defaultLimits.JobCPUSeconds)
+	v.SetDefault("limits.job_memory_bytes", defaultLimits.JobMemoryBytes)
+	v.SetDefault("limits.job_processes", defaultLimits.JobProcesses)
+	v.SetDefault("limits.job_storage_bytes", defaultLimits.JobStorageBytes)
+	v.SetDefault("limits.job_log_bytes", defaultLimits.JobLogBytes)
 
 	// Read from config file if exists
 	v.SetConfigName("config")
@@ -154,10 +172,28 @@ func Load() (*Config, error) {
 	_ = v.BindEnv("queue.valkey_addr", "NEBI_QUEUE_VALKEY_ADDR")
 	_ = v.BindEnv("log.format", "NEBI_LOG_FORMAT")
 	_ = v.BindEnv("log.level", "NEBI_LOG_LEVEL")
+	_ = v.BindEnv("limits.request_body_bytes", "NEBI_LIMITS_REQUEST_BODY_BYTES")
+	_ = v.BindEnv("limits.manifest_bytes", "NEBI_LIMITS_MANIFEST_BYTES")
+	_ = v.BindEnv("limits.lock_bytes", "NEBI_LIMITS_LOCK_BYTES")
+	_ = v.BindEnv("limits.metadata_bytes", "NEBI_LIMITS_METADATA_BYTES")
+	_ = v.BindEnv("limits.max_packages", "NEBI_LIMITS_MAX_PACKAGES")
+	_ = v.BindEnv("limits.package_string_bytes", "NEBI_LIMITS_PACKAGE_STRING_BYTES")
+	_ = v.BindEnv("limits.active_jobs_per_user", "NEBI_LIMITS_ACTIVE_JOBS_PER_USER")
+	_ = v.BindEnv("limits.active_jobs_per_workspace", "NEBI_LIMITS_ACTIVE_JOBS_PER_WORKSPACE")
+	_ = v.BindEnv("limits.active_jobs_global", "NEBI_LIMITS_ACTIVE_JOBS_GLOBAL")
+	_ = v.BindEnv("limits.job_timeout_seconds", "NEBI_LIMITS_JOB_TIMEOUT_SECONDS")
+	_ = v.BindEnv("limits.job_cpu_seconds", "NEBI_LIMITS_JOB_CPU_SECONDS")
+	_ = v.BindEnv("limits.job_memory_bytes", "NEBI_LIMITS_JOB_MEMORY_BYTES")
+	_ = v.BindEnv("limits.job_processes", "NEBI_LIMITS_JOB_PROCESSES")
+	_ = v.BindEnv("limits.job_storage_bytes", "NEBI_LIMITS_JOB_STORAGE_BYTES")
+	_ = v.BindEnv("limits.job_log_bytes", "NEBI_LIMITS_JOB_LOG_BYTES")
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
+	}
+	if err := cfg.Limits.Validate(); err != nil {
+		return nil, err
 	}
 
 	// Normalize base path: ensure leading slash, strip trailing slash

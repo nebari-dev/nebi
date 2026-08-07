@@ -3,6 +3,7 @@ module github.com/nebari-dev/nebi
 go 1.24.0
 
 require (
+	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/bmatcuk/doublestar/v4 v4.6.1
 	github.com/casbin/casbin/v2 v2.128.0
 	github.com/coreos/go-oidc/v3 v3.17.0
@@ -117,6 +118,7 @@ require (
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect
 	github.com/wailsapp/mimetype v1.4.1 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.22.0 // indirect

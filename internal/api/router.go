@@ -59,9 +59,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	}
 
 	router := gin.New()
+	limitCfg := cfg.Limits
 
 	// Middleware
 	router.Use(gin.Recovery())
+	router.Use(middleware.MaxRequestBodyBytes(limitCfg.RequestBodyBytes))
 	router.Use(loggingMiddleware())
 	router.Use(corsMiddleware(localMode))
 
@@ -183,8 +185,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	}
 
 	// Initialize services and handlers
-	svc := service.New(db, q, exec, localMode, encKey, rbacProvider)
-	adminSvc := service.NewAdminService(db, rbacProvider)
+	svc := service.New(db, q, exec, localMode, encKey, rbacProvider, limitCfg)
+	adminSvc := service.NewAdminService(db, rbacProvider, limitCfg)
 	groupSvc := service.NewGroupService(db, rbacProvider)
 	registrySvc := service.NewRegistryService(db, encKey)
 	jobSvc := service.NewJobService(db, localMode)
@@ -292,6 +294,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 
 			// Dashboard stats
 			admin.GET("/dashboard/stats", adminHandler.GetDashboardStats)
+			admin.GET("/resource-metrics", adminHandler.GetResourceMetrics)
 
 			// OCI Registry management
 			admin.GET("/registries", registryHandler.ListRegistries)

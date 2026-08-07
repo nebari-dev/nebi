@@ -2,6 +2,7 @@ package pixi
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,6 +36,62 @@ func TestNew(t *testing.T) {
 
 	if pm.Name() != "pixi" {
 		t.Errorf("Expected name 'pixi', got '%s'", pm.Name())
+	}
+}
+
+func TestManifestPackageNamesCountsDependencySections(t *testing.T) {
+	content := `
+	[project]
+	name = "quota-test"
+
+[dependencies]
+python = ">=3.11"
+numpy = { version = ">=2" }
+
+[pypi-dependencies]
+fastapi = "*"
+
+[feature.test.dependencies]
+pytest = "*"
+
+[target.linux-64.host-dependencies]
+openssl = "*"
+`
+
+	names, err := ManifestPackageNames(content)
+	if err != nil {
+		t.Fatalf("ManifestPackageNames: %v", err)
+	}
+
+	want := []string{"fastapi", "numpy", "openssl", "pytest", "python"}
+	slices.Sort(names)
+	if !slices.Equal(names, want) {
+		t.Fatalf("unexpected package names: got %v want %v", names, want)
+	}
+}
+
+func TestManifestDefaultDependencyNamesCountsOnlyDefaultDependencies(t *testing.T) {
+	content := `
+	[project]
+	name = "quota-test"
+
+	[dependencies]
+	python = ">=3.11"
+	numpy = "*"
+
+	[feature.test.dependencies]
+	pytest = "*"
+	`
+
+	names, err := ManifestDefaultDependencyNames(content)
+	if err != nil {
+		t.Fatalf("ManifestDefaultDependencyNames: %v", err)
+	}
+
+	want := []string{"numpy", "python"}
+	slices.Sort(names)
+	if !slices.Equal(names, want) {
+		t.Fatalf("unexpected package names: got %v want %v", names, want)
 	}
 }
 
@@ -330,6 +387,47 @@ func TestPackageCommandsSeparateUserArgs(t *testing.T) {
 				t.Fatalf("recorded args = %#v, want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestListCapsOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake pixi test uses a POSIX shell script")
+	}
+
+	tmpDir := t.TempDir()
+	pixiPath := filepath.Join(tmpDir, "pixi")
+	script := `#!/bin/sh
+if [ "${1:-}" = "--version" ]; then
+  exit 0
+fi
+if [ "${1:-}" = "list" ]; then
+  printf 'Package Version Build Size Kind Source\n'
+  i=0
+  while [ "$i" -lt 20 ]; do
+    printf 'package-%s 1.0.0 build 1 KiB conda local\n' "$i"
+    i=$((i + 1))
+  done
+  exit 0
+fi
+exit 0
+`
+	if err := os.WriteFile(pixiPath, []byte(script), 0755); err != nil {
+		t.Fatalf("write fake pixi: %v", err)
+	}
+
+	pm, err := NewWithPath(pixiPath)
+	if err != nil {
+		t.Fatalf("create PixiManager with fake pixi: %v", err)
+	}
+
+	_, err = pm.List(context.Background(), pkgmgr.ListOptions{
+		EnvPath:        tmpDir,
+		MaxOutputBytes: 64,
+	})
+	var outputLimitErr *pkgmgr.OutputLimitError
+	if !errors.As(err, &outputLimitErr) {
+		t.Fatalf("expected OutputLimitError, got %T: %v", err, err)
 	}
 }
 

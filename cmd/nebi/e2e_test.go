@@ -86,6 +86,18 @@ func TestMain(m *testing.M) {
 	os.Setenv("NEBI_SERVER_MODE", "test")
 	os.Setenv("NEBI_LOG_LEVEL", "error")
 	os.Setenv("NEBI_DATABASE_LOG_LEVEL", "silent")
+	// NEBI_MODE is unset here, so config.Load defaults to team mode, which
+	// resolves sandbox.mode to "strict". An active sandbox re-execs
+	// os.Executable() as "nebi sandbox-exec ..." -- but os.Executable() in
+	// this process is the e2e test binary, not the nebi binary. Go's flag
+	// package stops parsing at the first non-flag argument, so the test
+	// binary would not reject "sandbox-exec": it would ignore it and run
+	// this whole suite again, starting another server that does the same.
+	// sandbox.NewRunner now refuses to construct in that situation, so
+	// leaving this unset is a hard startup failure rather than a fork bomb,
+	// but the e2e suite is not where build confinement belongs either way.
+	// It has dedicated coverage in internal/sandbox/confine_test.go.
+	os.Setenv("NEBI_SANDBOX_MODE", "off")
 	os.Setenv("ADMIN_USERNAME", "admin")
 	os.Setenv("ADMIN_PASSWORD", "adminpass")
 

@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"github.com/nebari-dev/nebi/internal/utils"
 	"gorm.io/gorm"
 )
@@ -81,12 +80,7 @@ func (s *WorkspaceService) CreateVersionSnapshot(ctx context.Context, ws *models
 	}
 
 	// Get package list from package manager
-	pm, err := pkgmgr.New(ws.PackageManager)
-	if err != nil {
-		return fmt.Errorf("failed to create package manager: %w", err)
-	}
-
-	pkgs, err := pm.List(ctx, pkgmgr.ListOptions{EnvPath: envPath})
+	pkgs, err := s.executor.ListPackages(ctx, ws)
 	if err != nil {
 		return fmt.Errorf("failed to list packages: %w", err)
 	}

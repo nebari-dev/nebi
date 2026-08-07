@@ -71,6 +71,7 @@ go.work.sum
 # Claude
 CLAUDE.md
 .claude/
+docs/superpowers/
 
 # Git worktrees
 .worktrees/

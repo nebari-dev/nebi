@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"gorm.io/gorm"
 )
 
@@ -100,22 +99,10 @@ func (s *WorkspaceService) ListPackages(wsID string) ([]models.Package, error) {
 
 // syncPackagesFromDisk runs the package manager list and populates the DB for a local workspace.
 func (s *WorkspaceService) syncPackagesFromDisk(ws *models.Workspace) []models.Package {
-	wsPath := s.executor.GetWorkspacePath(ws)
-
-	pmType := ws.PackageManager
-	if pmType == "" {
-		pmType = "pixi"
-	}
-
-	pm, err := pkgmgr.New(pmType)
+	listed, err := s.executor.ListPackages(context.Background(), ws)
 	if err != nil {
-		slog.Warn("syncPackagesFromDisk: failed to create package manager", "error", err)
-		return nil
-	}
-
-	listed, err := pm.List(context.Background(), pkgmgr.ListOptions{EnvPath: wsPath})
-	if err != nil {
-		slog.Warn("syncPackagesFromDisk: failed to list packages", "error", err, "path", wsPath)
+		slog.Warn("syncPackagesFromDisk: failed to list packages", "error", err,
+			"path", s.executor.GetWorkspacePath(ws))
 		return nil
 	}
 
@@ -139,14 +126,7 @@ func (s *WorkspaceService) syncPackagesFromDisk(ws *models.Workspace) []models.P
 // SyncPackagesFromWorkspace lists packages from the workspace on disk and saves them to the DB.
 // Called by the worker after install/remove/create/rollback operations.
 func (s *WorkspaceService) SyncPackagesFromWorkspace(ctx context.Context, ws *models.Workspace) error {
-	wsPath := s.executor.GetWorkspacePath(ws)
-
-	pm, err := pkgmgr.New(ws.PackageManager)
-	if err != nil {
-		return fmt.Errorf("failed to create package manager: %w", err)
-	}
-
-	pkgs, err := pm.List(ctx, pkgmgr.ListOptions{EnvPath: wsPath})
+	pkgs, err := s.executor.ListPackages(ctx, ws)
 	if err != nil {
 		return fmt.Errorf("failed to list packages: %w", err)
 	}

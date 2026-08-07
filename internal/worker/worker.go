@@ -3,6 +3,7 @@ package worker
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -30,12 +31,14 @@ type Worker struct {
 	broker       *logstream.LogBroker
 	valkeyClient valkey.Client // For distributed log streaming (optional, can be nil for local mode)
 	maxWorkers   int
+	buildTimeout time.Duration
 	semaphore    chan struct{}
 	wg           sync.WaitGroup
 }
 
-// New creates a new worker instance
-func New(q queue.Queue, exec executor.Executor, svc *service.WorkspaceService, jobSvc *service.JobService, logger *slog.Logger, valkeyClient valkey.Client) *Worker {
+// New creates a worker. buildTimeout bounds a single job's execution; pass 0
+// to disable the ceiling.
+func New(q queue.Queue, exec executor.Executor, svc *service.WorkspaceService, jobSvc *service.JobService, logger *slog.Logger, valkeyClient valkey.Client, buildTimeout time.Duration) *Worker {
 	maxWorkers := 10 // Allow up to 10 concurrent jobs
 	return &Worker{
 		queue:        q,
@@ -46,6 +49,7 @@ func New(q queue.Queue, exec executor.Executor, svc *service.WorkspaceService, j
 		broker:       logstream.NewBroker(),
 		valkeyClient: valkeyClient,
 		maxWorkers:   maxWorkers,
+		buildTimeout: buildTimeout,
 		semaphore:    make(chan struct{}, maxWorkers),
 	}
 }
@@ -150,8 +154,26 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 		logWriter = brokerWriter
 	}
 
+	// Bound the build so a hung or deliberately slow build cannot occupy a
+	// worker slot forever.
+	execCtx := ctx
+	if w.buildTimeout > 0 {
+		var cancel context.CancelFunc
+		execCtx, cancel = context.WithTimeout(ctx, w.buildTimeout)
+		defer cancel()
+	}
+
 	// Execute the job with streaming logs
-	err := w.executeJob(ctx, job, logWriter)
+	err := w.executeJob(execCtx, job, logWriter)
+	// A build killed at the deadline surfaces as an opaque process error
+	// (exec.CommandContext reports "signal: killed", which the package
+	// manager then wraps in its own message), so context.DeadlineExceeded is
+	// never in the error chain. Ask the context instead. Note this stays
+	// false when the parent context is merely cancelled at shutdown, whose
+	// Err is context.Canceled.
+	if err != nil && errors.Is(execCtx.Err(), context.DeadlineExceeded) {
+		err = fmt.Errorf("build exceeded the %s time limit: %w", w.buildTimeout, err)
+	}
 
 	// Get final logs (thread-safe)
 	logMutex.Lock()

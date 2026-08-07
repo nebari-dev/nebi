@@ -25,6 +25,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/netguard"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
+	"github.com/nebari-dev/nebi/internal/sandbox"
 	"github.com/nebari-dev/nebi/internal/service"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/nebari-dev/nebi/internal/worker"
@@ -135,6 +136,7 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("failed to initialize executor: %w", err)
 	}
 	slog.Info("Local executor initialized")
+	warnIfSandboxNotEnforcing(appCfg)
 
 	// Initialize components based on run mode
 	var w *worker.Worker
@@ -166,7 +168,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 	// Initialize and start worker if needed
 	if runWorker {
-		w = worker.New(jobQueue, exec, workerSvc, workerJobSvc, slog.Default(), valkeyClient)
+		w = worker.New(jobQueue, exec, workerSvc, workerJobSvc, slog.Default(), valkeyClient, appCfg.Sandbox.BuildTimeout)
 		workerCtx, cancel := context.WithCancel(ctx)
 		workerCancel = cancel
 
@@ -240,6 +242,30 @@ func Run(ctx context.Context, cfg Config) error {
 
 	slog.Info("Nebi exited")
 	return nil
+}
+
+// warnIfSandboxNotEnforcing emits a startup warning when build confinement is
+// not guaranteed for this process.
+//
+// The shim already warns per build, but it writes to stderr and the executor
+// wires that into the job's log writer only. An operator watching the server
+// log across a fleet would otherwise see nothing at all, so the fact that a
+// server is configured not to enforce is stated once, at boot, where it is
+// visible without opening an individual job.
+func warnIfSandboxNotEnforcing(appCfg *config.Config) {
+	switch sandbox.Mode(appCfg.Sandbox.Mode) {
+	case sandbox.ModePermissive:
+		slog.Warn("Build sandbox is in permissive mode: builds will run UNCONFINED if the kernel cannot establish the sandbox, and untrusted build code may then read the server environment and filesystem",
+			"sandbox_mode", appCfg.Sandbox.Mode)
+	case sandbox.ModeOff:
+		// Off is the intended default for local mode, where the build code
+		// and the machine belong to the same person.
+		if appCfg.IsLocalMode() {
+			return
+		}
+		slog.Warn("Build confinement is DISABLED: untrusted build code runs with full access to the server filesystem and network. This is not recommended in team mode",
+			"sandbox_mode", appCfg.Sandbox.Mode)
+	}
 }
 
 // resolveBindHost returns the effective bind host. Local mode is a

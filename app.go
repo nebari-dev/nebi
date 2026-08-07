@@ -180,7 +180,7 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	// Create service and worker (desktop app uses local mode, no encryption key needed)
 	svc := service.New(database, jobQueue, exec, true, nil, rbac.NewDefaultProvider())
 	jobSvc := service.NewJobService(database, true)
-	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), nil)
+	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), nil, cfg.Sandbox.BuildTimeout)
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	_ = workerCancel // Keep reference to avoid unused warning
 	logToFile("startEmbeddedServer: worker created")

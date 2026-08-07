@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/nebari-dev/nebi/internal/executor"
@@ -57,6 +60,18 @@ type fakeExecutor struct {
 	installCalls   int
 	uninstallCalls int
 	solveCalls     int
+
+	// blockUntilCancelled makes InstallEnvironment hang until its context is
+	// done and then fail the way a real build does when the deadline kills
+	// it. exec.CommandContext reports a killed process as an *exec.ExitError
+	// ("signal: killed"), and pkgmgr wraps that in its own message, so the
+	// returned error deliberately does NOT wrap context.DeadlineExceeded.
+	blockUntilCancelled bool
+
+	// installCtxErr records ctx.Err() as seen inside InstallEnvironment, and
+	// installHadDeadline whether that context carried a deadline at all.
+	installCtxErr      error
+	installHadDeadline bool
 }
 
 func (e *fakeExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspace, w io.Writer, opts executor.CreateWorkspaceOptions) error {
@@ -89,6 +104,12 @@ func (e *fakeExecutor) SolveEnvironment(context.Context, *models.Workspace, io.W
 // executor's disk contract: installed means <ws>/.pixi/envs exists.
 func (e *fakeExecutor) InstallEnvironment(ctx context.Context, ws *models.Workspace, w io.Writer) error {
 	e.installCalls++
+	_, e.installHadDeadline = ctx.Deadline()
+	if e.blockUntilCancelled {
+		<-ctx.Done()
+		e.installCtxErr = ctx.Err()
+		return fmt.Errorf("pixi install failed: %w", errors.New("signal: killed"))
+	}
 	if e.installErr != nil {
 		return e.installErr
 	}
@@ -101,6 +122,9 @@ func (e *fakeExecutor) UninstallEnvironment(ctx context.Context, ws *models.Work
 func (e *fakeExecutor) IsEnvInstalled(ws *models.Workspace) bool {
 	info, err := os.Stat(filepath.Join(e.GetWorkspacePath(ws), ".pixi", "envs"))
 	return err == nil && info.IsDir()
+}
+func (e *fakeExecutor) ListPackages(context.Context, *models.Workspace) ([]pkgmgr.Package, error) {
+	return nil, nil
 }
 func (e *fakeExecutor) GetWorkspacePath(ws *models.Workspace) string {
 	return filepath.Join(e.rootDir, ws.Name+"-"+ws.ID.String())
@@ -146,7 +170,7 @@ func TestExecuteJob_CreatePersistsWorkspacePath(t *testing.T) {
 		t.Fatalf("create job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, 0)
 
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
@@ -190,7 +214,7 @@ func TestExecuteJob_UpdateSetsWorkspaceReady(t *testing.T) {
 		t.Fatalf("create job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, 0)
 
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
@@ -234,7 +258,7 @@ func TestExecuteJob_UpdateSetsWorkspaceFailedOnSolveError(t *testing.T) {
 		t.Fatalf("create job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, 0)
 
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err == nil {
 		t.Fatal("expected executeJob to fail, got nil")
@@ -302,7 +326,7 @@ func TestExecuteJob_EnvInstallRunsInstall(t *testing.T) {
 
 	ws, job := newTestWorkspace(t, db, exec, "env-install", models.JobTypeEnvInstall, nil)
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, 0)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -333,7 +357,7 @@ func TestExecuteJob_EnvUninstallRemovesEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, 0)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -365,7 +389,7 @@ func TestExecuteJob_UpdateAutoInstallsWhenPreviouslyInstalled(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, 0)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -382,7 +406,7 @@ func TestExecuteJob_UpdateSkipsAutoInstallWhenNotInstalled(t *testing.T) {
 
 	_, job := newTestWorkspace(t, db, exec, "update-noinstall", models.JobTypeUpdate, nil)
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, 0)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -403,7 +427,7 @@ func TestExecuteJob_UpdateNoAutoInstallInTeamMode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, 0)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -426,7 +450,7 @@ func TestExecuteJob_PackageOpsAutoInstallWhenPreviouslyInstalled(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+			w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, 0)
 			if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 				t.Fatalf("executeJob: %v", err)
 			}
@@ -471,7 +495,7 @@ func TestExecuteJob_RollbackLocksAndAutoInstalls(t *testing.T) {
 		t.Fatalf("create job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, 0)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -505,7 +529,7 @@ func TestExecuteJob_UpdateReinstallFailureDoesNotFailJob(t *testing.T) {
 	}
 	exec.installErr = errors.New("pixi install failed: exit status 1")
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, 0)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: expected reinstall failure not to fail the job, got %v", err)
 	}
@@ -516,6 +540,110 @@ func TestExecuteJob_UpdateReinstallFailureDoesNotFailJob(t *testing.T) {
 	}
 	if resp.InstallStatus != models.InstallStatusFailed {
 		t.Errorf("expected install_status %q, got %q", models.InstallStatusFailed, resp.InstallStatus)
+	}
+}
+
+// TestProcessJob_BuildTimeoutFailsJob proves the configured build timeout is
+// enforced: the executor's context is cancelled at the deadline and the job is
+// marked failed with an error that names the limit. The fake build returns an
+// opaque "signal: killed" error (what exec.CommandContext actually produces on
+// a deadline kill), so this also pins down that the timeout is detected from
+// the context and not by unwrapping the build error.
+func TestProcessJob_BuildTimeoutFailsJob(t *testing.T) {
+	db, svc, jobSvc, exec := setupWorkerTest(t)
+	exec.blockUntilCancelled = true
+
+	_, job := newTestWorkspace(t, db, exec, "build-timeout", models.JobTypeEnvInstall, nil)
+
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, 50*time.Millisecond)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		w.processJob(context.Background(), job)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("processJob did not return; build timeout was not enforced")
+	}
+
+	if !exec.installHadDeadline {
+		t.Error("executor context had no deadline; buildTimeout was not applied")
+	}
+	if !errors.Is(exec.installCtxErr, context.DeadlineExceeded) {
+		t.Errorf("executor context error = %v, want context.DeadlineExceeded", exec.installCtxErr)
+	}
+
+	var stored models.Job
+	if err := db.First(&stored, "id = ?", job.ID).Error; err != nil {
+		t.Fatalf("reload job: %v", err)
+	}
+	if stored.Status != models.JobStatusFailed {
+		t.Errorf("job status = %q, want %q", stored.Status, models.JobStatusFailed)
+	}
+	if !strings.Contains(stored.Error, "exceeded the 50ms time limit") {
+		t.Errorf("job error does not report the timeout: %q", stored.Error)
+	}
+	// The underlying build failure must still be visible for debugging.
+	if !strings.Contains(stored.Error, "signal: killed") {
+		t.Errorf("job error dropped the underlying build error: %q", stored.Error)
+	}
+}
+
+// TestProcessJob_ZeroBuildTimeoutDisablesCeiling proves 0 means "no limit":
+// the executor sees a context with no deadline.
+func TestProcessJob_ZeroBuildTimeoutDisablesCeiling(t *testing.T) {
+	db, svc, jobSvc, exec := setupWorkerTest(t)
+
+	_, job := newTestWorkspace(t, db, exec, "no-timeout", models.JobTypeEnvInstall, nil)
+
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, 0)
+	w.processJob(context.Background(), job)
+
+	if exec.installHadDeadline {
+		t.Error("executor context carried a deadline despite buildTimeout = 0")
+	}
+
+	var stored models.Job
+	if err := db.First(&stored, "id = ?", job.ID).Error; err != nil {
+		t.Fatalf("reload job: %v", err)
+	}
+	if stored.Status != models.JobStatusCompleted {
+		t.Errorf("job status = %q, want %q", stored.Status, models.JobStatusCompleted)
+	}
+}
+
+// TestProcessJob_ShutdownIsNotReportedAsTimeout proves a cancelled parent
+// context (worker shutdown) is not mislabelled as a build timeout.
+func TestProcessJob_ShutdownIsNotReportedAsTimeout(t *testing.T) {
+	db, svc, jobSvc, exec := setupWorkerTest(t)
+	exec.blockUntilCancelled = true
+
+	_, job := newTestWorkspace(t, db, exec, "shutdown-ws", models.JobTypeEnvInstall, nil)
+
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, time.Hour)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		w.processJob(ctx, job)
+	}()
+	time.AfterFunc(50*time.Millisecond, cancel)
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("processJob did not return after parent cancellation")
+	}
+	cancel()
+
+	var stored models.Job
+	if err := db.First(&stored, "id = ?", job.ID).Error; err != nil {
+		t.Fatalf("reload job: %v", err)
+	}
+	if strings.Contains(stored.Error, "time limit") {
+		t.Errorf("shutdown was reported as a build timeout: %q", stored.Error)
 	}
 }
 

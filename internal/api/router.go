@@ -190,6 +190,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	jobSvc := service.NewJobService(db, localMode)
 
 	wsHandler := handlers.NewWorkspaceHandler(svc)
+	buildEnvHandler := handlers.NewBuildEnvHandler(svc)
 	groupHandler := handlers.NewGroupHandler(groupSvc)
 	jobHandler := handlers.NewJobHandler(jobSvc, logBroker, valkeyClient)
 
@@ -200,6 +201,11 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 		// User info
 		protected.GET("/auth/me", handlers.GetCurrentUser(authenticator))
 		protected.GET("/groups/me", groupHandler.MyGroups)
+
+		// Current-user build variables. Values are encrypted at rest and never returned.
+		protected.GET("/build-env-vars", buildEnvHandler.ListBuildEnvVars)
+		protected.PUT("/build-env-vars", buildEnvHandler.UpsertBuildEnvVar)
+		protected.DELETE("/build-env-vars/:key", buildEnvHandler.DeleteBuildEnvVar)
 
 		// Workspace endpoints
 		protected.GET("/workspaces", wsHandler.ListWorkspaces)
@@ -323,6 +329,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				remote.POST("/connect", remoteHandler.ConnectServer)
 				remote.GET("/server", remoteHandler.GetServer)
 				remote.DELETE("/server", remoteHandler.DisconnectServer)
+				remote.GET("/build-env-vars", remoteHandler.ListBuildEnvVars)
+				remote.PUT("/build-env-vars", remoteHandler.UpsertBuildEnvVar)
+				remote.DELETE("/build-env-vars/:key", remoteHandler.DeleteBuildEnvVar)
 				remote.GET("/workspaces", remoteHandler.ListWorkspaces)
 				remote.GET("/workspaces/:id", remoteHandler.GetWorkspace)
 				remote.POST("/workspaces", remoteHandler.CreateWorkspace)

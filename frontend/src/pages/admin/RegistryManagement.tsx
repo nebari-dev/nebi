@@ -19,7 +19,7 @@ export const RegistryManagement = () => {
   // View mode support
   const isLocalMode = useModeStore((s) => s.isLocalMode());
   const viewMode = useViewModeStore((state) => state.viewMode);
-  const { data: serverStatus } = useRemoteServer();
+  const { data: serverStatus } = useRemoteServer(isLocalMode);
   const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
   const shouldShowRemote = isRemoteConnected && viewMode === 'remote';
   const { data: remoteRegistries, isLoading: remoteLoading } =

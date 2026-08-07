@@ -15,6 +15,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/api"
 	"github.com/nebari-dev/nebi/internal/api/handlers"
 	"github.com/nebari-dev/nebi/internal/config"
+	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
@@ -177,8 +178,15 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	}
 	logToFile("startEmbeddedServer: executor initialized")
 
-	// Create service and worker (desktop app uses local mode, no encryption key needed)
-	svc := service.New(database, jobQueue, exec, true, nil, rbac.NewDefaultProvider())
+	encKey, err := nebicrypto.DeriveKey(cfg.Auth.JWTSecret)
+	if err != nil {
+		logToFile(fmt.Sprintf("startEmbeddedServer: encryption key error: %v", err))
+		return
+	}
+
+	// Create service and worker. Local mode bypasses auth/RBAC, but encrypted
+	// build variables still need the same field-encryption key as the API.
+	svc := service.New(database, jobQueue, exec, true, encKey, rbac.NewDefaultProvider())
 	jobSvc := service.NewJobService(database, true)
 	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), nil)
 	workerCtx, workerCancel := context.WithCancel(context.Background())

@@ -50,6 +50,18 @@ export interface CreateWorkspaceRequest {
   source?: 'local' | 'managed';
 }
 
+export interface BuildEnvVar {
+  id: string;
+  key: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpsertBuildEnvVarRequest {
+  key: string;
+  value: string;
+}
+
 export type JobType =
   | 'create'
   | 'delete'

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -53,13 +54,16 @@ func (noopPackageManager) GetManifest(context.Context, string) (*pkgmgr.Manifest
 type fakeExecutor struct {
 	rootDir        string
 	solveErr       error
+	solveLog       string
 	installErr     error
 	installCalls   int
 	uninstallCalls int
 	solveCalls     int
+	lastEnvToken   string
 }
 
 func (e *fakeExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspace, w io.Writer, opts executor.CreateWorkspaceOptions) error {
+	e.recordEnv(ctx)
 	p := e.GetWorkspacePath(ws)
 	if err := os.MkdirAll(p, 0o755); err != nil {
 		return err
@@ -71,23 +75,30 @@ func (e *fakeExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspace
 	}
 	return nil
 }
-func (e *fakeExecutor) InstallPackages(context.Context, *models.Workspace, []string, io.Writer) error {
+func (e *fakeExecutor) InstallPackages(ctx context.Context, _ *models.Workspace, _ []string, _ io.Writer) error {
+	e.recordEnv(ctx)
 	return nil
 }
-func (e *fakeExecutor) RemovePackages(context.Context, *models.Workspace, []string, io.Writer) error {
+func (e *fakeExecutor) RemovePackages(ctx context.Context, _ *models.Workspace, _ []string, _ io.Writer) error {
+	e.recordEnv(ctx)
 	return nil
 }
 func (e *fakeExecutor) DeleteWorkspace(context.Context, *models.Workspace, io.Writer) error {
 	return nil
 }
-func (e *fakeExecutor) SolveEnvironment(context.Context, *models.Workspace, io.Writer) error {
+func (e *fakeExecutor) SolveEnvironment(ctx context.Context, _ *models.Workspace, w io.Writer) error {
+	e.recordEnv(ctx)
 	e.solveCalls++
+	if e.solveLog != "" {
+		_, _ = io.WriteString(w, e.solveLog)
+	}
 	return e.solveErr
 }
 
 // InstallEnvironment/UninstallEnvironment/IsEnvInstalled mimic the real
 // executor's disk contract: installed means <ws>/.pixi/envs exists.
 func (e *fakeExecutor) InstallEnvironment(ctx context.Context, ws *models.Workspace, w io.Writer) error {
+	e.recordEnv(ctx)
 	e.installCalls++
 	if e.installErr != nil {
 		return e.installErr
@@ -101,6 +112,18 @@ func (e *fakeExecutor) UninstallEnvironment(ctx context.Context, ws *models.Work
 func (e *fakeExecutor) IsEnvInstalled(ws *models.Workspace) bool {
 	info, err := os.Stat(filepath.Join(e.GetWorkspacePath(ws), ".pixi", "envs"))
 	return err == nil && info.IsDir()
+}
+func (e *fakeExecutor) recordEnv(ctx context.Context) {
+	e.lastEnvToken = commandEnvValue(ctx, "GITLAB_TOKEN")
+}
+func commandEnvValue(ctx context.Context, key string) string {
+	for _, entry := range pkgmgr.CommandEnvironment(ctx) {
+		name, value, ok := strings.Cut(entry, "=")
+		if ok && name == key {
+			return value
+		}
+	}
+	return ""
 }
 func (e *fakeExecutor) GetWorkspacePath(ws *models.Workspace) string {
 	return filepath.Join(e.rootDir, ws.Name+"-"+ws.ID.String())
@@ -246,6 +269,170 @@ func TestExecuteJob_UpdateSetsWorkspaceFailedOnSolveError(t *testing.T) {
 	}
 	if updated.Status != models.WsStatusFailed {
 		t.Errorf("workspace status not updated to failed: got %q", updated.Status)
+	}
+}
+
+func TestExecuteJob_AppliesBuildEnvironmentForActor(t *testing.T) {
+	db, svc, jobSvc, exec := setupWorkerTest(t)
+
+	ws, job := newTestWorkspace(t, db, exec, "build-env", models.JobTypeUpdate, nil)
+	actor := models.User{Username: "bob", Email: "bob@example.com"}
+	if err := db.Create(&actor).Error; err != nil {
+		t.Fatalf("create actor: %v", err)
+	}
+	if _, err := svc.UpsertBuildEnvVar(ws.OwnerID, service.BuildEnvVarReq{
+		Key:   "GITLAB_TOKEN",
+		Value: "owner-token",
+	}); err != nil {
+		t.Fatalf("upsert owner env: %v", err)
+	}
+	if _, err := svc.UpsertBuildEnvVar(actor.ID, service.BuildEnvVarReq{
+		Key:   "GITLAB_TOKEN",
+		Value: "actor-token",
+	}); err != nil {
+		t.Fatalf("upsert actor env: %v", err)
+	}
+	job.Metadata = map[string]interface{}{"user_id": actor.ID.String()}
+
+	var logs bytes.Buffer
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	if err := w.executeJob(context.Background(), job, &logs); err != nil {
+		t.Fatalf("executeJob: %v", err)
+	}
+
+	if exec.lastEnvToken != "actor-token" {
+		t.Fatalf("expected actor build env, got %q", exec.lastEnvToken)
+	}
+	if strings.Contains(logs.String(), "actor-token") || strings.Contains(logs.String(), "owner-token") {
+		t.Fatalf("logs leaked a build environment value: %s", logs.String())
+	}
+}
+
+func TestExecuteJob_RejectsBuildEnvironmentSecretInArtifacts(t *testing.T) {
+	db, svc, jobSvc, exec := setupWorkerTest(t)
+
+	ws, job := newTestWorkspace(t, db, exec, "build-env-leak", models.JobTypeUpdate, nil)
+	secretValue := "secret-token-123"
+	if _, err := svc.UpsertBuildEnvVar(ws.OwnerID, service.BuildEnvVarReq{
+		Key:   "GITLAB_TOKEN",
+		Value: secretValue,
+	}); err != nil {
+		t.Fatalf("upsert build env var: %v", err)
+	}
+
+	if err := os.WriteFile(
+		filepath.Join(exec.GetWorkspacePath(ws), "pixi.lock"),
+		[]byte("version: 6\nsource: "+secretValue+"\n"),
+		0o644,
+	); err != nil {
+		t.Fatalf("write pixi.lock: %v", err)
+	}
+
+	var logs bytes.Buffer
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	err := w.executeJob(context.Background(), job, &logs)
+	if err == nil {
+		t.Fatal("expected executeJob to reject leaked build environment secret")
+	}
+	if !strings.Contains(err.Error(), "build environment secret value leaked into pixi.lock") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(err.Error(), secretValue) || strings.Contains(logs.String(), secretValue) {
+		t.Fatalf("job output leaked secret value; err=%v logs=%q", err, logs.String())
+	}
+
+	var versionCount int64
+	if err := db.Model(&models.WorkspaceVersion{}).
+		Where("workspace_id = ?", ws.ID).
+		Count(&versionCount).Error; err != nil {
+		t.Fatalf("count versions: %v", err)
+	}
+	if versionCount != 0 {
+		t.Fatalf("expected no version snapshot, got %d", versionCount)
+	}
+
+	var stored models.Workspace
+	if err := db.First(&stored, "id = ?", ws.ID).Error; err != nil {
+		t.Fatalf("reload workspace: %v", err)
+	}
+	if stored.Status != models.WsStatusFailed {
+		t.Fatalf("expected workspace status failed, got %q", stored.Status)
+	}
+}
+
+func TestExecuteJob_RedactsBuildEnvironmentSecretsFromLogsAndErrors(t *testing.T) {
+	db, svc, jobSvc, exec := setupWorkerTest(t)
+
+	ws, job := newTestWorkspace(t, db, exec, "build-env-log-redaction", models.JobTypeUpdate, nil)
+	secretValue := "secret-token-123"
+	if _, err := svc.UpsertBuildEnvVar(ws.OwnerID, service.BuildEnvVarReq{
+		Key:   "GITLAB_TOKEN",
+		Value: secretValue,
+	}); err != nil {
+		t.Fatalf("upsert build env var: %v", err)
+	}
+
+	exec.solveLog = "resolving private package with " + secretValue
+	exec.solveErr = errors.New("pixi failed while using " + secretValue)
+
+	var logs bytes.Buffer
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	err := w.executeJob(context.Background(), job, &logs)
+	if err == nil {
+		t.Fatal("expected executeJob to fail")
+	}
+
+	if strings.Contains(logs.String(), secretValue) {
+		t.Fatalf("logs leaked build environment secret: %q", logs.String())
+	}
+	if strings.Contains(err.Error(), secretValue) {
+		t.Fatalf("error leaked build environment secret: %v", err)
+	}
+	if !strings.Contains(logs.String(), buildEnvironmentSecretRedaction) {
+		t.Fatalf("logs did not include redaction marker: %q", logs.String())
+	}
+	if !strings.Contains(err.Error(), buildEnvironmentSecretRedaction) {
+		t.Fatalf("error did not include redaction marker: %v", err)
+	}
+}
+
+func TestRedactBuildEnvironmentSecrets_OverlappingSecrets(t *testing.T) {
+	redacted := redactBuildEnvironmentSecrets(
+		"using token secret-token-123 and prefix secret",
+		[]string{"secret", "secret-token-123"},
+	)
+	if strings.Contains(redacted, "secret-token-123") || strings.Contains(redacted, "secret ") {
+		t.Fatalf("redaction leaked overlapping secret value: %q", redacted)
+	}
+	if strings.Contains(redacted, "[REDACTED]-token-123") {
+		t.Fatalf("redaction replaced shorter secret before longer secret: %q", redacted)
+	}
+}
+
+func TestExecuteJob_SkipsBuildEnvironmentForNonPixiJobs(t *testing.T) {
+	for _, jobType := range []models.JobType{models.JobTypeDelete, models.JobTypeEnvUninstall} {
+		t.Run(string(jobType), func(t *testing.T) {
+			db, svc, jobSvc, exec := setupWorkerTest(t)
+
+			ws, job := newTestWorkspace(t, db, exec, "skip-env-"+string(jobType), jobType, nil)
+			if jobType == models.JobTypeEnvUninstall {
+				if err := os.MkdirAll(filepath.Join(exec.GetWorkspacePath(ws), ".pixi", "envs"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := db.Create(&models.BuildEnvVar{
+				UserID: ws.OwnerID,
+				Key:    "BROKEN_SECRET",
+				Value:  "enc:v1:!!!",
+			}).Error; err != nil {
+				t.Fatalf("create broken build env var: %v", err)
+			}
+
+			w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+			if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
+				t.Fatalf("executeJob should not decrypt build env vars for %s: %v", jobType, err)
+			}
+		})
 	}
 }
 
@@ -519,6 +706,44 @@ func TestExecuteJob_UpdateReinstallFailureDoesNotFailJob(t *testing.T) {
 	}
 }
 
+func TestExecuteJob_RedactsBuildEnvironmentSecretsFromAutoReinstallFailure(t *testing.T) {
+	db, svc, jobSvc, exec := setupWorkerTest(t)
+
+	ws, job := newTestWorkspace(t, db, exec, "update-reinstall-redact", models.JobTypeUpdate, nil)
+	if err := os.MkdirAll(filepath.Join(exec.GetWorkspacePath(ws), ".pixi", "envs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secretValue := "secret-token-123"
+	if _, err := svc.UpsertBuildEnvVar(ws.OwnerID, service.BuildEnvVarReq{
+		Key:   "GITLAB_TOKEN",
+		Value: secretValue,
+	}); err != nil {
+		t.Fatalf("upsert build env var: %v", err)
+	}
+	exec.installErr = errors.New("pixi install failed while using " + secretValue)
+
+	var logs bytes.Buffer
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	if err := w.executeJob(context.Background(), job, &logs); err != nil {
+		t.Fatalf("executeJob: expected reinstall failure not to fail the job, got %v", err)
+	}
+	if strings.Contains(logs.String(), secretValue) {
+		t.Fatalf("logs leaked build environment secret: %q", logs.String())
+	}
+
+	var failedInstall models.Job
+	if err := db.Where("workspace_id = ? AND type = ? AND status = ?", ws.ID, models.JobTypeEnvInstall, models.JobStatusFailed).
+		First(&failedInstall).Error; err != nil {
+		t.Fatalf("load failed env install job: %v", err)
+	}
+	if strings.Contains(failedInstall.Error, secretValue) {
+		t.Fatalf("recorded env install error leaked build environment secret: %q", failedInstall.Error)
+	}
+	if !strings.Contains(failedInstall.Error, buildEnvironmentSecretRedaction) {
+		t.Fatalf("recorded env install error did not include redaction marker: %q", failedInstall.Error)
+	}
+}
+
 func setupWorkerTest(t *testing.T) (*gorm.DB, *service.WorkspaceService, *service.JobService, *fakeExecutor) {
 	t.Helper()
 	return setupWorkerTestMode(t, true)
@@ -541,6 +766,7 @@ func setupWorkerTestMode(t *testing.T, isLocal bool) (*gorm.DB, *service.Workspa
 		&models.Permission{},
 		&models.WorkspaceVersion{},
 		&models.WorkspaceTag{},
+		&models.BuildEnvVar{},
 		&models.AuditLog{},
 		&models.Package{},
 		&models.OCIRegistry{},
@@ -556,7 +782,7 @@ func setupWorkerTestMode(t *testing.T, isLocal bool) (*gorm.DB, *service.Workspa
 
 	q := queue.NewMemoryQueue(10)
 	t.Cleanup(func() { q.Close() })
-	svc := service.New(db, q, fe, isLocal, nil, rbac.NewDefaultProvider())
+	svc := service.New(db, q, fe, isLocal, make([]byte, 32), rbac.NewDefaultProvider())
 	jobSvc := service.NewJobService(db, isLocal)
 	return db, svc, jobSvc, fe
 }

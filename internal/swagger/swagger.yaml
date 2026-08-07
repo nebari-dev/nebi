@@ -24,6 +24,16 @@ definitions:
     required:
     - user_id
     type: object
+  handlers.BuildEnvVarRequest:
+    properties:
+      key:
+        type: string
+      value:
+        type: string
+    required:
+    - key
+    - value
+    type: object
   handlers.CreateGroupRequest:
     properties:
       description:
@@ -546,6 +556,17 @@ definitions:
       workspace:
         $ref: '#/definitions/models.Workspace'
       workspace_id:
+        type: string
+    type: object
+  service.BuildEnvVarResult:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      key:
+        type: string
+      updated_at:
         type: string
     type: object
   service.CollaboratorKind:
@@ -1633,6 +1654,105 @@ paths:
       summary: Check proxy session
       tags:
       - auth
+  /build-env-vars:
+    get:
+      description: Returns the current user's configured build environment variable
+        metadata. Values are never returned.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/service.BuildEnvVarResult'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List build environment variables
+      tags:
+      - build-env-vars
+    put:
+      consumes:
+      - application/json
+      description: Stores a current-user build environment variable. Values are encrypted
+        at rest and are never returned.
+      parameters:
+      - description: Build environment variable
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.BuildEnvVarRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.BuildEnvVarResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create or update a build environment variable
+      tags:
+      - build-env-vars
+  /build-env-vars/{key}:
+    delete:
+      description: Removes a current-user build environment variable by key.
+      parameters:
+      - description: Environment variable key
+        in: path
+        name: key
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a build environment variable
+      tags:
+      - build-env-vars
   /groups/me:
     get:
       description: Used by the ShareDialog picker to populate group options for the

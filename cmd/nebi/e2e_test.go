@@ -273,6 +273,15 @@ func writePixiFiles(t *testing.T, dir, toml, lock string) {
 	os.WriteFile(filepath.Join(dir, "pixi.lock"), []byte(lock), 0644)
 }
 
+func realPath(t *testing.T, path string) string {
+	t.Helper()
+	realPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatalf("resolving path %q: %v", path, err)
+	}
+	return realPath
+}
+
 // setupLocalStore configures the store to use test-specific directories
 // and pre-registers the e2e server with credentials.
 // Each test gets its own data dir to avoid shared state between tests.
@@ -1861,8 +1870,9 @@ func TestE2E_StatusJSON(t *testing.T) {
 	if result["workspace"] != "status-json" {
 		t.Errorf("expected workspace 'status-json', got: %v", result["workspace"])
 	}
-	if result["path"] != dir {
-		t.Errorf("expected path %q, got: %v", dir, result["path"])
+	wantPath := realPath(t, dir)
+	if result["path"] != wantPath {
+		t.Errorf("expected path %q, got: %v", wantPath, result["path"])
 	}
 }
 

@@ -3,11 +3,14 @@ package worker
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +18,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/logstream"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/service"
 	"github.com/valkey-io/valkey-go"
@@ -227,7 +231,108 @@ func (w *threadSafeWriter) Write(p []byte) (n int, err error) {
 	return w.writer.Write(p)
 }
 
-func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.Writer) error {
+const buildEnvironmentSecretRedaction = "[REDACTED]"
+
+type buildEnvironmentLogRedactor struct {
+	mu      sync.Mutex
+	writer  io.Writer
+	secrets []string
+	pending []byte
+}
+
+func newBuildEnvironmentLogRedactor(writer io.Writer, secretValues []string) *buildEnvironmentLogRedactor {
+	secrets := make([]string, 0, len(secretValues))
+	for _, value := range secretValues {
+		if value != "" {
+			secrets = append(secrets, value)
+		}
+	}
+	sort.Slice(secrets, func(i, j int) bool {
+		return len(secrets[i]) > len(secrets[j])
+	})
+	return &buildEnvironmentLogRedactor{
+		writer:  writer,
+		secrets: secrets,
+	}
+}
+
+func (w *buildEnvironmentLogRedactor) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.pending = append(w.pending, p...)
+	newline := bytes.LastIndexByte(w.pending, '\n')
+	if newline < 0 {
+		return len(p), nil
+	}
+
+	if err := w.writeRedacted(w.pending[:newline+1]); err != nil {
+		return 0, err
+	}
+	w.pending = append([]byte(nil), w.pending[newline+1:]...)
+	return len(p), nil
+}
+
+func (w *buildEnvironmentLogRedactor) Flush() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if len(w.pending) == 0 {
+		return nil
+	}
+	pending := w.pending
+	w.pending = nil
+	return w.writeRedacted(pending)
+}
+
+func (w *buildEnvironmentLogRedactor) writeRedacted(p []byte) error {
+	_, err := w.writer.Write([]byte(redactBuildEnvironmentSecrets(string(p), w.secrets)))
+	return err
+}
+
+func redactBuildEnvironmentError(err error, secretValues []string) error {
+	if err == nil || len(secretValues) == 0 {
+		return err
+	}
+
+	redacted := redactBuildEnvironmentSecrets(err.Error(), secretValues)
+	if redacted == err.Error() {
+		return err
+	}
+	return errors.New(redacted)
+}
+
+func redactBuildEnvironmentSecrets(text string, secretValues []string) string {
+	secrets := make([]string, 0, len(secretValues))
+	for _, value := range secretValues {
+		if value != "" {
+			secrets = append(secrets, value)
+		}
+	}
+	sort.Slice(secrets, func(i, j int) bool {
+		if len(secrets[i]) == len(secrets[j]) {
+			return secrets[i] < secrets[j]
+		}
+		return len(secrets[i]) > len(secrets[j])
+	})
+	for _, value := range secrets {
+		text = strings.ReplaceAll(text, value, buildEnvironmentSecretRedaction)
+	}
+	return text
+}
+
+func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.Writer) (err error) {
+	var buildEnvSecretValues []string
+	var flushBuildEnvLogs func() error
+	defer func() {
+		if flushBuildEnvLogs != nil {
+			if flushErr := flushBuildEnvLogs(); flushErr != nil && err == nil {
+				err = flushErr
+			}
+		}
+		err = redactBuildEnvironmentError(err, buildEnvSecretValues)
+	}()
+
 	// Load workspace
 	ws, err := w.jobSvc.LoadWorkspace(job.WorkspaceID)
 	if err != nil {
@@ -241,6 +346,22 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			if parsed, err := uuid.Parse(userIDStr); err == nil {
 				userID = parsed
 			}
+		}
+	}
+	if jobUsesBuildEnvironment(job.Type) {
+		buildEnv, secretValues, err := w.svc.BuildEnvironmentSecretsForUser(userID)
+		if err != nil {
+			return err
+		}
+		buildEnvSecretValues = secretValues
+		if len(buildEnvSecretValues) > 0 {
+			redactor := newBuildEnvironmentLogRedactor(logWriter, buildEnvSecretValues)
+			logWriter = redactor
+			flushBuildEnvLogs = redactor.Flush
+		}
+		ctx = pkgmgr.WithEnvironment(ctx, buildEnv)
+		if len(buildEnv) > 0 {
+			fmt.Fprintf(logWriter, "Applying %d configured build environment variable(s)\n", len(buildEnv))
 		}
 	}
 
@@ -270,6 +391,11 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			ws.Path = resolvedPath
 		}
 
+		if err := w.rejectBuildEnvSecretArtifacts(ws, buildEnvSecretValues); err != nil {
+			w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusFailed)
+			return err
+		}
+
 		// List installed packages and save to database
 		if err := w.svc.SyncPackagesFromWorkspace(ctx, ws); err != nil {
 			w.logger.Error("Failed to sync packages", "error", err)
@@ -294,13 +420,17 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return err
 		}
 
+		if err := w.rejectBuildEnvSecretArtifacts(ws, buildEnvSecretValues); err != nil {
+			return err
+		}
+
 		w.svc.SaveInstalledPackages(ws.ID, packages)
 
 		if err := w.svc.CreateVersionSnapshot(ctx, ws, job.ID, userID, fmt.Sprintf("Installed packages: %v", packages)); err != nil {
 			w.logger.Error("Failed to create version snapshot", "error", err)
 		}
 
-		if err := w.maybeReinstallEnv(ctx, ws, wasInstalled, logWriter); err != nil {
+		if err := w.maybeReinstallEnv(ctx, ws, wasInstalled, logWriter, buildEnvSecretValues); err != nil {
 			return err
 		}
 
@@ -316,13 +446,17 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return err
 		}
 
+		if err := w.rejectBuildEnvSecretArtifacts(ws, buildEnvSecretValues); err != nil {
+			return err
+		}
+
 		w.svc.DeletePackagesByName(ws.ID, packages)
 
 		if err := w.svc.CreateVersionSnapshot(ctx, ws, job.ID, userID, fmt.Sprintf("Removed packages: %v", packages)); err != nil {
 			w.logger.Error("Failed to create version snapshot", "error", err)
 		}
 
-		if err := w.maybeReinstallEnv(ctx, ws, wasInstalled, logWriter); err != nil {
+		if err := w.maybeReinstallEnv(ctx, ws, wasInstalled, logWriter, buildEnvSecretValues); err != nil {
 			return err
 		}
 
@@ -337,6 +471,11 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return err
 		}
 
+		if err := w.rejectBuildEnvSecretArtifacts(ws, buildEnvSecretValues); err != nil {
+			w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusFailed)
+			return err
+		}
+
 		if err := w.svc.SyncPackagesFromWorkspace(ctx, ws); err != nil {
 			w.logger.Error("Failed to sync packages after solve", "error", err)
 		}
@@ -347,7 +486,7 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			w.logger.Error("Failed to create version snapshot", "error", err)
 		}
 
-		if err := w.maybeReinstallEnv(ctx, ws, wasInstalled, logWriter); err != nil {
+		if err := w.maybeReinstallEnv(ctx, ws, wasInstalled, logWriter, buildEnvSecretValues); err != nil {
 			return err
 		}
 
@@ -406,6 +545,10 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return err
 		}
 
+		if err := w.rejectBuildEnvSecretArtifacts(ws, buildEnvSecretValues); err != nil {
+			return err
+		}
+
 		if err := w.svc.SyncPackagesFromWorkspace(ctx, ws); err != nil {
 			w.logger.Error("Failed to sync packages after rollback", "error", err)
 		}
@@ -414,7 +557,7 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			w.logger.Error("Failed to create version snapshot after rollback", "error", err)
 		}
 
-		if err := w.maybeReinstallEnv(ctx, ws, wasInstalled, logWriter); err != nil {
+		if err := w.maybeReinstallEnv(ctx, ws, wasInstalled, logWriter, buildEnvSecretValues); err != nil {
 			return err
 		}
 
@@ -425,6 +568,18 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 	}
 
 	return nil
+}
+
+func (w *Worker) rejectBuildEnvSecretArtifacts(ws *models.Workspace, secretValues []string) error {
+	if len(secretValues) == 0 {
+		return nil
+	}
+
+	contents, err := service.ReadWorkspaceArtifactContents(w.executor.GetWorkspacePath(ws))
+	if err != nil {
+		return err
+	}
+	return service.CheckBuildEnvironmentSecretLeak(contents, secretValues)
 }
 
 // maybeReinstallEnv reinstalls the environment after a lockfile-changing
@@ -438,14 +593,14 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 // here must not fail the whole job: that would hide a change that
 // actually succeeded. Instead it's logged and recorded as a failed env
 // install, which surfaces as install_status = install_failed.
-func (w *Worker) maybeReinstallEnv(ctx context.Context, ws *models.Workspace, wasInstalled bool, logWriter io.Writer) error {
+func (w *Worker) maybeReinstallEnv(ctx context.Context, ws *models.Workspace, wasInstalled bool, logWriter io.Writer, secretValues []string) error {
 	if !w.svc.IsLocal() || !wasInstalled {
 		return nil
 	}
 	fmt.Fprintf(logWriter, "Workspace was installed; reinstalling environment from updated lockfile...\n")
 	if err := w.executor.InstallEnvironment(ctx, ws, logWriter); err != nil {
 		fmt.Fprintf(logWriter, "Reinstall failed, environment may be out of sync: %v\n", err)
-		if recordErr := w.jobSvc.RecordFailedEnvInstall(ws.ID, err.Error()); recordErr != nil {
+		if recordErr := w.jobSvc.RecordFailedEnvInstall(ws.ID, redactBuildEnvironmentSecrets(err.Error(), secretValues)); recordErr != nil {
 			w.logger.Error("failed to record failed env install", "workspace_id", ws.ID, "error", recordErr)
 		}
 		return nil
@@ -514,6 +669,20 @@ func parsePackagesFromMetadata(metadata map[string]any) []string {
 		return packages
 	default:
 		return nil
+	}
+}
+
+func jobUsesBuildEnvironment(jobType models.JobType) bool {
+	switch jobType {
+	case models.JobTypeCreate,
+		models.JobTypeInstall,
+		models.JobTypeRemove,
+		models.JobTypeUpdate,
+		models.JobTypeEnvInstall,
+		models.JobTypeRollback:
+		return true
+	default:
+		return false
 	}
 }
 

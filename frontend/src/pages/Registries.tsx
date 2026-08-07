@@ -38,7 +38,7 @@ export const Registries = () => {
   // View mode support for local desktop app
   const isLocalMode = useModeStore((s) => s.isLocalMode());
   const viewMode = useViewModeStore((state) => state.viewMode);
-  const { data: serverStatus } = useRemoteServer();
+  const { data: serverStatus } = useRemoteServer(isLocalMode);
   const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
   const { data: remoteRegistries, isLoading: remoteLoading } =
     useRemoteRegistries(isRemoteConnected);

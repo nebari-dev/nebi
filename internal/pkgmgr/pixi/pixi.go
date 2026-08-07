@@ -134,6 +134,7 @@ func (p *PixiManager) Init(ctx context.Context, opts pkgmgr.InitOptions) error {
 	// Execute pixi init in the target directory
 	cmd := exec.CommandContext(ctx, p.pixiPath, args...)
 	cmd.Dir = opts.EnvPath
+	cmd.Env = pkgmgr.CommandEnvironment(ctx)
 
 	// Use LogWriter if provided, otherwise buffer
 	if opts.LogWriter != nil {
@@ -209,6 +210,7 @@ func (p *PixiManager) Install(ctx context.Context, opts pkgmgr.InstallOptions) e
 	// Execute pixi add
 	cmd := exec.CommandContext(ctx, p.pixiPath, args...)
 	cmd.Dir = opts.EnvPath
+	cmd.Env = pkgmgr.CommandEnvironment(ctx)
 
 	// Use LogWriter if provided, otherwise buffer
 	if opts.LogWriter != nil {
@@ -284,6 +286,7 @@ func (p *PixiManager) Remove(ctx context.Context, opts pkgmgr.RemoveOptions) err
 	// Execute pixi remove
 	cmd := exec.CommandContext(ctx, p.pixiPath, args...)
 	cmd.Dir = opts.EnvPath
+	cmd.Env = pkgmgr.CommandEnvironment(ctx)
 
 	// Use LogWriter if provided, otherwise buffer
 	if opts.LogWriter != nil {
@@ -346,6 +349,7 @@ func (p *PixiManager) List(ctx context.Context, opts pkgmgr.ListOptions) ([]pkgm
 	// Run pixi list to get all installed packages with actual versions
 	cmd := exec.CommandContext(ctx, p.pixiPath, "list")
 	cmd.Dir = opts.EnvPath
+	cmd.Env = pkgmgr.CommandEnvironment(ctx)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -413,6 +417,7 @@ func (p *PixiManager) Update(ctx context.Context, opts pkgmgr.UpdateOptions) err
 	// Execute pixi update
 	cmd := exec.CommandContext(ctx, p.pixiPath, args...)
 	cmd.Dir = opts.EnvPath
+	cmd.Env = pkgmgr.CommandEnvironment(ctx)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -499,6 +504,7 @@ func (p *PixiManager) GetManifest(ctx context.Context, envPath string) (*pkgmgr.
 func (p *PixiManager) executeCommand(ctx context.Context, workDir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, p.pixiPath, args...)
 	cmd.Dir = workDir
+	cmd.Env = pkgmgr.CommandEnvironment(ctx)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

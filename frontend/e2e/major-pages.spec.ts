@@ -51,7 +51,7 @@ const majorPages: Array<{
     path: '/settings',
     assertReady: async (page) => {
       await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
-      await expect(page.getByText('Remote Server Connection')).toBeVisible();
+      await expect(page.getByText('Build Variables')).toBeVisible();
     },
   },
   {

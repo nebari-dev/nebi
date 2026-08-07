@@ -28,7 +28,7 @@ export const Layout = ({
   const navigate = useNavigate();
   const { data: isAdmin } = useIsAdmin();
   const { viewMode, setViewMode } = useViewModeStore();
-  const { data: serverStatus } = useRemoteServer();
+  const { data: serverStatus } = useRemoteServer(isLocalMode);
   const { data: versionInfo } = useVersion();
   const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
 
@@ -105,19 +105,17 @@ export const Layout = ({
                     </Button>
                   )}
                 </NavLink>
-                {isLocalMode && (
-                  <NavLink to="/settings">
-                    {({ isActive }) => (
-                      <Button
-                        variant={isActive ? 'secondary' : 'ghost'}
-                        className="gap-2"
-                      >
-                        <Settings className="h-4 w-4" />
-                        Settings
-                      </Button>
-                    )}
-                  </NavLink>
-                )}
+                <NavLink to="/settings">
+                  {({ isActive }) => (
+                    <Button
+                      variant={isActive ? 'secondary' : 'ghost'}
+                      className="gap-2"
+                    >
+                      <Settings className="h-4 w-4" />
+                      Settings
+                    </Button>
+                  )}
+                </NavLink>
                 <Button
                   variant="ghost"
                   className="gap-2"

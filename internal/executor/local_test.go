@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/pkgmgr"
 )
 
 func testExecutor(t *testing.T) *LocalExecutor {
@@ -332,6 +333,49 @@ func TestLocalExecutor_CreateWorkspace_PixiTomlRunsLockNotInstall(t *testing.T) 
 	}
 }
 
+func TestLocalExecutor_CreateWorkspace_PixiTomlUsesBuildEnvironment(t *testing.T) {
+	envLog := filepath.Join(t.TempDir(), "env.log")
+	pixiBin := writeStubBinary(t, `#!/bin/sh
+case "$1" in
+  --version) echo "stub pixi 0.0.0" ;;
+  lock) printf "%s" "$GITLAB_TOKEN" > `+envLog+` ;;
+esac
+exit 0
+`)
+
+	cfg := &config.Config{
+		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PackageManager: config.PackageManagerConfig{
+			DefaultType: "pixi",
+			PixiPath:    pixiBin,
+		},
+	}
+	exec, err := NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+
+	ws := &models.Workspace{ID: uuid.New(), Name: "build-env-create", PackageManager: "pixi"}
+	ctx := pkgmgr.WithEnvironment(context.Background(), map[string]string{
+		"GITLAB_TOKEN": "secret-token",
+	})
+	var log bytes.Buffer
+	err = exec.CreateWorkspace(ctx, ws, &log, CreateWorkspaceOptions{
+		PixiToml: "[project]\nname = \"build-env-create\"\n",
+	})
+	if err != nil {
+		t.Fatalf("CreateWorkspace: %v\nlog: %s", err, log.String())
+	}
+
+	got, err := os.ReadFile(envLog)
+	if err != nil {
+		t.Fatalf("read env log: %v", err)
+	}
+	if string(got) != "secret-token" {
+		t.Fatalf("expected pixi command env value, got %q", got)
+	}
+}
+
 // TestLocalExecutor_SolveEnvironment_RunsLockNotInstall proves solving a
 // manifest only refreshes the lockfile and never installs packages.
 func TestLocalExecutor_SolveEnvironment_RunsLockNotInstall(t *testing.T) {
@@ -365,6 +409,50 @@ func TestLocalExecutor_SolveEnvironment_RunsLockNotInstall(t *testing.T) {
 	}
 	if containsCall(calls, "install") {
 		t.Errorf("expected no `pixi install` invocation, got calls: %v", calls)
+	}
+}
+
+func TestLocalExecutor_SolveEnvironment_UsesBuildEnvironment(t *testing.T) {
+	envLog := filepath.Join(t.TempDir(), "env.log")
+	pixiBin := writeStubBinary(t, `#!/bin/sh
+case "$1" in
+  --version) echo "stub pixi 0.0.0" ;;
+  lock) printf "%s" "$GITLAB_TOKEN" > `+envLog+` ;;
+esac
+exit 0
+`)
+
+	cfg := &config.Config{
+		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PackageManager: config.PackageManagerConfig{
+			DefaultType: "pixi",
+			PixiPath:    pixiBin,
+		},
+	}
+	exec, err := NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+
+	ws := &models.Workspace{ID: uuid.New(), Name: "build-env", PackageManager: "pixi"}
+	if err := os.MkdirAll(exec.GetWorkspacePath(ws), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := pkgmgr.WithEnvironment(context.Background(), map[string]string{
+		"GITLAB_TOKEN": "secret-token",
+	})
+	var log bytes.Buffer
+	if err := exec.SolveEnvironment(ctx, ws, &log); err != nil {
+		t.Fatalf("SolveEnvironment: %v\nlog: %s", err, log.String())
+	}
+
+	got, err := os.ReadFile(envLog)
+	if err != nil {
+		t.Fatalf("read env log: %v", err)
+	}
+	if string(got) != "secret-token" {
+		t.Fatalf("expected pixi command env value, got %q", got)
 	}
 }
 

@@ -71,7 +71,7 @@ export const Workspaces = () => {
   const createRemoteMutation = useCreateRemoteWorkspace();
   const deleteRemoteMutation = useDeleteRemoteWorkspace();
   const isLocal = useModeStore((state) => state.mode === 'local');
-  const { data: serverStatus } = useRemoteServer();
+  const { data: serverStatus } = useRemoteServer(isLocal);
   const isRemoteConnected = isLocal && serverStatus?.status === 'connected';
   const { data: remoteWorkspaces, isLoading: remoteLoading } =
     useRemoteWorkspaces(isRemoteConnected);

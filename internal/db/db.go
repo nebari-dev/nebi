@@ -110,6 +110,7 @@ func Migrate(db *gorm.DB) error {
 		&models.OCIRegistry{},
 		&models.Publication{},
 		&models.WorkspaceTag{},
+		&models.BuildEnvVar{},
 		&models.Group{},
 		&models.GroupMember{},
 		&models.GroupPermission{},

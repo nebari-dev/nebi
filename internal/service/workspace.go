@@ -127,6 +127,13 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 	if err != nil {
 		return nil, &ValidationError{Message: fmt.Sprintf("invalid pixi.toml: %v", err)}
 	}
+	if req.PixiToml != "" {
+		if err := s.EnsureNoBuildEnvironmentSecretLeak(userID, map[string]string{
+			"pixi.toml": req.PixiToml,
+		}); err != nil {
+			return nil, err
+		}
+	}
 
 	ws := models.Workspace{
 		Name:           name,
@@ -235,12 +242,17 @@ func (s *WorkspaceService) GetPixiToml(wsID string) (string, error) {
 }
 
 // SavePixiToml writes pixi.toml content to the workspace's filesystem.
-func (s *WorkspaceService) SavePixiToml(wsID string, content string) error {
+func (s *WorkspaceService) SavePixiToml(wsID string, content string, userID uuid.UUID) error {
 	var ws models.Workspace
 	if err := s.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return ErrNotFound
 		}
+		return err
+	}
+	if err := s.EnsureNoBuildEnvironmentSecretLeak(userID, map[string]string{
+		"pixi.toml": content,
+	}); err != nil {
 		return err
 	}
 
@@ -287,6 +299,13 @@ func (s *WorkspaceService) PushVersion(ctx context.Context, wsID string, req Pus
 
 	if ws.Status != models.WsStatusReady {
 		return nil, &ValidationError{Message: "Workspace must be in ready state to push"}
+	}
+
+	if err := s.EnsureNoBuildEnvironmentSecretLeak(userID, map[string]string{
+		"pixi.toml": req.PixiToml,
+		"pixi.lock": req.PixiLock,
+	}); err != nil {
+		return nil, err
 	}
 
 	// Check user-tag conflict before any side effects

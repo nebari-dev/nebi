@@ -47,6 +47,13 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 	fullRepo := ep.NamespaceRelativeRepoRef(req.Repository)
 
 	wsPath := s.executor.GetWorkspacePath(&ws)
+	artifactContents, err := ReadWorkspaceArtifactContents(wsPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.EnsureNoBuildEnvironmentSecretLeak(userID, artifactContents); err != nil {
+		return nil, err
+	}
 
 	// Collect extra OCI tags
 	extraTagSet := map[string]bool{"latest": true}

@@ -24,6 +24,20 @@ type User struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// BuildEnvVar represents current-user build environment variable metadata.
+type BuildEnvVar struct {
+	ID        string    `json:"id"`
+	Key       string    `json:"key"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// UpsertBuildEnvVarRequest represents a request to create or update a build variable.
+type UpsertBuildEnvVarRequest struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
 // Workspace represents a workspace.
 type Workspace struct {
 	ID             string    `json:"id"`

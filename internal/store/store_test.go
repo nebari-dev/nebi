@@ -1,6 +1,8 @@
 package store
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/uuid"
@@ -115,6 +117,48 @@ func TestFindWorkspaceByName(t *testing.T) {
 	}
 	if notFound != nil {
 		t.Fatal("expected nil for nonexistent name")
+	}
+}
+
+func TestFindWorkspaceByPathEquivalentSymlink(t *testing.T) {
+	s := testStore(t)
+	root := t.TempDir()
+	realDir := filepath.Join(root, "real")
+	if err := os.Mkdir(realDir, 0o755); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+	linkDir := filepath.Join(root, "link")
+	if err := os.Symlink(realDir, linkDir); err != nil {
+		t.Skipf("symlink not available: %v", err)
+	}
+
+	realWorkspace := &LocalWorkspace{Name: "real-path", Path: realDir}
+	if err := s.CreateWorkspace(realWorkspace); err != nil {
+		t.Fatalf("CreateWorkspace real: %v", err)
+	}
+
+	found, err := s.FindWorkspaceByPath(linkDir)
+	if err != nil {
+		t.Fatalf("FindWorkspaceByPath link: %v", err)
+	}
+	if found == nil || found.ID != realWorkspace.ID {
+		t.Fatal("expected to find real path workspace through symlink path")
+	}
+
+	if err := s.DeleteWorkspace(realWorkspace.ID); err != nil {
+		t.Fatalf("DeleteWorkspace: %v", err)
+	}
+	linkWorkspace := &LocalWorkspace{Name: "link-path", Path: linkDir}
+	if err := s.CreateWorkspace(linkWorkspace); err != nil {
+		t.Fatalf("CreateWorkspace link: %v", err)
+	}
+
+	found, err = s.FindWorkspaceByPath(realDir)
+	if err != nil {
+		t.Fatalf("FindWorkspaceByPath real: %v", err)
+	}
+	if found == nil || found.ID != linkWorkspace.ID {
+		t.Fatal("expected to find symlink path workspace through real path")
 	}
 }
 

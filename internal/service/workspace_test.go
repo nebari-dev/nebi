@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -39,6 +40,7 @@ func testSetup(t *testing.T, isLocal bool) (*WorkspaceService, *gorm.DB) {
 		&models.Permission{},
 		&models.WorkspaceVersion{},
 		&models.WorkspaceTag{},
+		&models.BuildEnvVar{},
 		&models.AuditLog{},
 		&models.Package{},
 		&models.OCIRegistry{},
@@ -67,7 +69,7 @@ func testSetup(t *testing.T, isLocal bool) (*WorkspaceService, *gorm.DB) {
 		t.Fatalf("new executor: %v", err)
 	}
 
-	svc := New(db, q, exec, isLocal, nil, rbac.NewDefaultProvider())
+	svc := New(db, q, exec, isLocal, make([]byte, 32), rbac.NewDefaultProvider())
 	return svc, db
 }
 
@@ -182,6 +184,161 @@ func TestCreate_LocalSourceAccepted(t *testing.T) {
 	}
 	if ws.Source != "local" || ws.Path != "/tmp/my-project" {
 		t.Errorf("unexpected source=%q path=%q", ws.Source, ws.Path)
+	}
+}
+
+func TestBuildEnvVars_EncryptedCRUD(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+
+	created, err := svc.UpsertBuildEnvVar(userID, BuildEnvVarReq{
+		Key:   "GITLAB_TOKEN",
+		Value: "secret-token",
+	})
+	if err != nil {
+		t.Fatalf("UpsertBuildEnvVar: %v", err)
+	}
+	if created.Key != "GITLAB_TOKEN" {
+		t.Fatalf("unexpected result: %+v", created)
+	}
+	if created.UpdatedAt.IsZero() {
+		t.Fatal("expected updated_at to be populated")
+	}
+
+	listed, err := svc.ListBuildEnvVars(userID)
+	if err != nil {
+		t.Fatalf("ListBuildEnvVars: %v", err)
+	}
+	if len(listed) != 1 || listed[0].Key != "GITLAB_TOKEN" {
+		t.Fatalf("unexpected list result: %+v", listed)
+	}
+	if listed[0].UpdatedAt.IsZero() {
+		t.Fatal("expected listed updated_at to be populated")
+	}
+
+	var stored models.BuildEnvVar
+	if err := db.First(&stored, "user_id = ? AND key = ?", userID, "GITLAB_TOKEN").Error; err != nil {
+		t.Fatalf("load stored var: %v", err)
+	}
+	if stored.Value == "secret-token" || !strings.HasPrefix(stored.Value, "enc:v1:") {
+		t.Fatalf("expected encrypted value, got %q", stored.Value)
+	}
+
+	buildEnv, _, err := svc.BuildEnvironmentSecretsForUser(userID)
+	if err != nil {
+		t.Fatalf("BuildEnvironmentSecretsForUser: %v", err)
+	}
+	if buildEnv["GITLAB_TOKEN"] != "secret-token" {
+		t.Fatalf("unexpected decrypted value: %q", buildEnv["GITLAB_TOKEN"])
+	}
+
+	if err := svc.DeleteBuildEnvVar(userID, "GITLAB_TOKEN"); err != nil {
+		t.Fatalf("DeleteBuildEnvVar: %v", err)
+	}
+	listed, err = svc.ListBuildEnvVars(userID)
+	if err != nil {
+		t.Fatalf("ListBuildEnvVars after delete: %v", err)
+	}
+	if len(listed) != 0 {
+		t.Fatalf("expected deleted variable, got %+v", listed)
+	}
+}
+
+func TestBuildEnvVars_RejectInvalidKey(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+
+	_, err := svc.UpsertBuildEnvVar(userID, BuildEnvVarReq{
+		Key:   "gitlab-token",
+		Value: "secret-token",
+	})
+	if err == nil {
+		t.Fatal("expected invalid key error")
+	}
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+}
+
+func TestBuildEnvVars_RejectArtifactSecretLeak(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	secretValue := "secret-token-123"
+
+	if _, err := svc.UpsertBuildEnvVar(userID, BuildEnvVarReq{
+		Key:   "GITLAB_TOKEN",
+		Value: secretValue,
+	}); err != nil {
+		t.Fatalf("UpsertBuildEnvVar: %v", err)
+	}
+
+	err := svc.EnsureNoBuildEnvironmentSecretLeak(userID, map[string]string{
+		"pixi.toml": "[project]\nname = \"safe\"\n",
+		"pixi.lock": "version: 6\nsource: " + secretValue + "\n",
+	})
+	if err == nil {
+		t.Fatal("expected artifact secret leak to be rejected")
+	}
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if !strings.Contains(ve.Message, "pixi.lock") {
+		t.Fatalf("expected filename in error, got %q", ve.Message)
+	}
+	if strings.Contains(ve.Message, secretValue) {
+		t.Fatalf("error leaked secret value: %q", ve.Message)
+	}
+
+	if err := svc.EnsureNoBuildEnvironmentSecretLeak(userID, map[string]string{
+		"pixi.toml": "[project]\nname = \"safe\"\n",
+		"pixi.lock": "version: 6\n",
+	}); err != nil {
+		t.Fatalf("unexpected leak rejection: %v", err)
+	}
+}
+
+func TestCreate_RejectsBuildEnvironmentSecretInPixiToml(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	secretValue := "secret-token-123"
+
+	if _, err := svc.UpsertBuildEnvVar(userID, BuildEnvVarReq{
+		Key:   "GITLAB_TOKEN",
+		Value: secretValue,
+	}); err != nil {
+		t.Fatalf("UpsertBuildEnvVar: %v", err)
+	}
+
+	_, err := svc.Create(context.Background(), CreateRequest{
+		PixiToml: "[project]\nname = \"private\"\n# " + secretValue + "\n",
+	}, userID)
+	if err == nil {
+		t.Fatal("expected create to reject leaked build environment secret")
+	}
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if strings.Contains(ve.Message, secretValue) {
+		t.Fatalf("error leaked secret value: %q", ve.Message)
+	}
+
+	var workspaceCount int64
+	if err := db.Model(&models.Workspace{}).Where("name = ?", "private").Count(&workspaceCount).Error; err != nil {
+		t.Fatalf("count workspaces: %v", err)
+	}
+	if workspaceCount != 0 {
+		t.Fatalf("expected no workspace, got %d", workspaceCount)
+	}
+
+	var jobCount int64
+	if err := db.Model(&models.Job{}).Count(&jobCount).Error; err != nil {
+		t.Fatalf("count jobs: %v", err)
+	}
+	if jobCount != 0 {
+		t.Fatalf("expected no job metadata to be persisted, got %d job(s)", jobCount)
 	}
 }
 
@@ -355,6 +512,46 @@ func TestPushVersion_WorkspaceNotReady(t *testing.T) {
 	}
 }
 
+func TestPushVersion_RejectsBuildEnvironmentSecretLeak(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "push-secret", userID)
+	secretValue := "secret-token-123"
+
+	if _, err := svc.UpsertBuildEnvVar(userID, BuildEnvVarReq{
+		Key:   "GITLAB_TOKEN",
+		Value: secretValue,
+	}); err != nil {
+		t.Fatalf("UpsertBuildEnvVar: %v", err)
+	}
+
+	_, err := svc.PushVersion(context.Background(), ws.ID.String(), PushRequest{
+		Tag:      "v1",
+		PixiToml: "[project]\nname = \"push-secret\"\n",
+		PixiLock: "version: 6\nsource: " + secretValue + "\n",
+	}, userID)
+	if err == nil {
+		t.Fatal("expected push to reject leaked build environment secret")
+	}
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if strings.Contains(ve.Message, secretValue) {
+		t.Fatalf("error leaked secret value: %q", ve.Message)
+	}
+
+	var versionCount int64
+	if err := db.Model(&models.WorkspaceVersion{}).
+		Where("workspace_id = ?", ws.ID).
+		Count(&versionCount).Error; err != nil {
+		t.Fatalf("count versions: %v", err)
+	}
+	if versionCount != 0 {
+		t.Fatalf("expected no version, got %d", versionCount)
+	}
+}
+
 // --- GetPixiToml / SavePixiToml tests ---
 
 func TestPixiToml_RoundTrip(t *testing.T) {
@@ -367,7 +564,7 @@ func TestPixiToml_RoundTrip(t *testing.T) {
 	os.MkdirAll(wsPath, 0755)
 
 	content := "[project]\nname = \"my-project\""
-	if err := svc.SavePixiToml(ws.ID.String(), content); err != nil {
+	if err := svc.SavePixiToml(ws.ID.String(), content, userID); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
@@ -377,6 +574,49 @@ func TestPixiToml_RoundTrip(t *testing.T) {
 	}
 	if got != content {
 		t.Errorf("round-trip mismatch: got %q, want %q", got, content)
+	}
+}
+
+func TestSavePixiToml_RejectsBuildEnvironmentSecret(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "save-secret", userID)
+	secretValue := "secret-token-123"
+
+	if _, err := svc.UpsertBuildEnvVar(userID, BuildEnvVarReq{
+		Key:   "GITLAB_TOKEN",
+		Value: secretValue,
+	}); err != nil {
+		t.Fatalf("UpsertBuildEnvVar: %v", err)
+	}
+
+	wsPath := svc.executor.GetWorkspacePath(ws)
+	if err := os.MkdirAll(wsPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	safeContent := "[project]\nname = \"safe\"\n"
+	if err := os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte(safeContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := svc.SavePixiToml(ws.ID.String(), "[project]\nname = \"save-secret\"\n# "+secretValue+"\n", userID)
+	if err == nil {
+		t.Fatal("expected save to reject leaked build environment secret")
+	}
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if strings.Contains(ve.Message, secretValue) {
+		t.Fatalf("error leaked secret value: %q", ve.Message)
+	}
+
+	got, err := os.ReadFile(filepath.Join(wsPath, "pixi.toml"))
+	if err != nil {
+		t.Fatalf("read pixi.toml: %v", err)
+	}
+	if string(got) != safeContent {
+		t.Fatalf("pixi.toml changed despite validation failure:\ngot  %q\nwant %q", got, safeContent)
 	}
 }
 

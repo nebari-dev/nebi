@@ -230,6 +230,58 @@ func TestUpdatePublication_NotFound(t *testing.T) {
 	}
 }
 
+func TestPublishWorkspace_RejectsBuildEnvironmentSecretLeak(t *testing.T) {
+	svc, db := testSetup(t, false)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "publish-secret", userID)
+	secretValue := "secret-token-123"
+
+	if _, err := svc.UpsertBuildEnvVar(userID, BuildEnvVarReq{
+		Key:   "GITLAB_TOKEN",
+		Value: secretValue,
+	}); err != nil {
+		t.Fatalf("UpsertBuildEnvVar: %v", err)
+	}
+
+	wsPath := svc.executor.GetWorkspacePath(ws)
+	if err := os.MkdirAll(wsPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte("[project]\nname = \"safe\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wsPath, "pixi.lock"), []byte("version: 6\nsource: "+secretValue+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	db.Create(&models.WorkspaceVersion{WorkspaceID: ws.ID, VersionNumber: 1})
+	reg := models.OCIRegistry{Name: "reg", URL: "https://ghcr.io"}
+	db.Create(&reg)
+
+	_, err := svc.PublishWorkspace(context.Background(), ws.ID.String(), PublishWorkspaceRequest{
+		RegistryID: reg.ID,
+		Repository: "publish-secret",
+		Tag:        "v1",
+	}, userID)
+	if err == nil {
+		t.Fatal("expected publish to reject leaked build environment secret")
+	}
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+
+	var publicationCount int64
+	if err := db.Model(&models.Publication{}).
+		Where("workspace_id = ?", ws.ID).
+		Count(&publicationCount).Error; err != nil {
+		t.Fatalf("count publications: %v", err)
+	}
+	if publicationCount != 0 {
+		t.Fatalf("expected no publication record, got %d", publicationCount)
+	}
+}
+
 func TestPublishWorkspace_LocalMode_UploadsAssets(t *testing.T) {
 	svc, db := testSetup(t, true) // isLocal=true
 	userID := createTestUser(t, db, "alice")

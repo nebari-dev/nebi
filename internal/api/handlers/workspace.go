@@ -147,7 +147,7 @@ func (h *WorkspaceHandler) SavePixiToml(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.SavePixiToml(c.Param("id"), req.Content); err != nil {
+	if err := h.svc.SavePixiToml(c.Param("id"), req.Content, getUserID(c)); err != nil {
 		handleServiceError(c, err)
 		return
 	}

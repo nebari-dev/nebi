@@ -41,6 +41,9 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 		remote.POST("/connect", h.ConnectServer)
 		remote.GET("/server", h.GetServer)
 		remote.DELETE("/server", h.DisconnectServer)
+		remote.GET("/build-env-vars", h.ListBuildEnvVars)
+		remote.PUT("/build-env-vars", h.UpsertBuildEnvVar)
+		remote.DELETE("/build-env-vars/:key", h.DeleteBuildEnvVar)
 		remote.GET("/workspaces", h.ListWorkspaces)
 		remote.GET("/workspaces/:id", h.GetWorkspace)
 		remote.POST("/workspaces", h.CreateWorkspace)
@@ -89,6 +92,30 @@ func TestConnectServer_MissingFields(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestConnectServer_RejectsPlainHTTPNonLoopback(t *testing.T) {
+	db := setupTestDB(t)
+	router := setupRouter(db)
+
+	body := `{"url":"http://example.com","username":"remoteuser","password":"secret"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/remote/connect", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "https") {
+		t.Fatalf("expected https validation error, got %s", w.Body.String())
+	}
+
+	var cfg store.Config
+	db.First(&cfg)
+	if cfg.ServerURL != "" {
+		t.Fatalf("server URL should not be stored after validation failure, got %q", cfg.ServerURL)
 	}
 }
 
@@ -177,6 +204,116 @@ func TestListWorkspaces_NotConnected(t *testing.T) {
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestBuildEnvVars_WithMockRemote(t *testing.T) {
+	var sawList, sawUpsert, sawDelete bool
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer valid-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/api/v1/build-env-vars":
+			sawList = true
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"id":         "env-1",
+					"key":        "GITLAB_TOKEN",
+					"created_at": "2024-01-01T00:00:00Z",
+					"updated_at": "2024-01-01T00:00:00Z",
+				},
+			})
+		case r.Method == "PUT" && r.URL.Path == "/api/v1/build-env-vars":
+			sawUpsert = true
+			var body map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode upsert body: %v", err)
+			}
+			if body["key"] != "GITLAB_TOKEN" || body["value"] != "secret-token" {
+				t.Errorf("unexpected upsert body: %+v", body)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]any{
+				"id":         "env-1",
+				"key":        "GITLAB_TOKEN",
+				"created_at": "2024-01-01T00:00:00Z",
+				"updated_at": "2024-01-02T00:00:00Z",
+			})
+		case r.Method == "DELETE" && r.URL.Path == "/api/v1/build-env-vars/GITLAB_TOKEN":
+			sawDelete = true
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer mockServer.Close()
+
+	db := setupTestDB(t)
+	router := setupRouter(db)
+	db.Model(&store.Config{}).Where("id = ?", 1).Update("server_url", mockServer.URL)
+	db.Model(&store.Credentials{}).Where("id = ?", 1).Updates(map[string]any{
+		"token":    "valid-token",
+		"username": "testuser",
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/remote/build-env-vars", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected list 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "secret-token") {
+		t.Fatalf("list response leaked secret value: %s", w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("PUT", "/api/v1/remote/build-env-vars", strings.NewReader(`{"key":"GITLAB_TOKEN","value":"secret-token"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected upsert 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "secret-token") {
+		t.Fatalf("upsert response leaked secret value: %s", w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("DELETE", "/api/v1/remote/build-env-vars/GITLAB_TOKEN", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected delete 204, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if !sawList || !sawUpsert || !sawDelete {
+		t.Fatalf("expected all remote build env endpoints to be called: list=%v upsert=%v delete=%v", sawList, sawUpsert, sawDelete)
+	}
+}
+
+func TestBuildEnvVars_RejectsStoredPlainHTTPNonLoopback(t *testing.T) {
+	db := setupTestDB(t)
+	router := setupRouter(db)
+	db.Model(&store.Config{}).Where("id = ?", 1).Update("server_url", "http://example.com")
+	db.Model(&store.Credentials{}).Where("id = ?", 1).Updates(map[string]any{
+		"token":    "valid-token",
+		"username": "testuser",
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/api/v1/remote/build-env-vars", strings.NewReader(`{"key":"GITLAB_TOKEN","value":"secret-token"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "https") {
+		t.Fatalf("expected https validation error, got %s", w.Body.String())
 	}
 }
 

@@ -3,10 +3,12 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nebari-dev/nebi/internal/cliclient"
+	"github.com/nebari-dev/nebi/internal/netguard"
 	"github.com/nebari-dev/nebi/internal/store"
 	"gorm.io/gorm"
 )
@@ -31,11 +33,32 @@ func (h *RemoteHandler) getClient() (*cliclient.Client, error) {
 	if cfg.ServerURL == "" {
 		return nil, fmt.Errorf("no server URL configured")
 	}
+	if err := validateRemoteServerURL(cfg.ServerURL); err != nil {
+		return nil, err
+	}
 	var creds store.Credentials
 	if err := h.db.First(&creds).Error; err != nil || creds.Token == "" {
 		return nil, fmt.Errorf("not authenticated with remote server")
 	}
 	return cliclient.New(cfg.ServerURL, creds.Token), nil
+}
+
+func validateRemoteServerURL(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("remote server URL must be an absolute http(s) URL")
+	}
+	switch parsed.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if netguard.IsLoopbackHost(parsed.Hostname()) {
+			return nil
+		}
+		return fmt.Errorf("remote server URL must use https unless it targets localhost")
+	default:
+		return fmt.Errorf("remote server URL must use http or https")
+	}
 }
 
 // notConnected returns 503 when no remote server is configured.
@@ -51,6 +74,10 @@ func (h *RemoteHandler) ConnectServer(c *gin.Context) {
 		Password string `json:"password" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	if err := validateRemoteServerURL(req.URL); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
@@ -115,6 +142,55 @@ func (h *RemoteHandler) DisconnectServer(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "disconnected"})
+}
+
+// ListBuildEnvVars proxies current-user build environment variable listing to the remote server.
+func (h *RemoteHandler) ListBuildEnvVars(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		h.notConnected(c, err)
+		return
+	}
+	vars, err := client.ListBuildEnvVars(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, vars)
+}
+
+// UpsertBuildEnvVar proxies current-user build environment variable writes to the remote server.
+func (h *RemoteHandler) UpsertBuildEnvVar(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		h.notConnected(c, err)
+		return
+	}
+	var req cliclient.UpsertBuildEnvVarRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	envVar, err := client.UpsertBuildEnvVar(c.Request.Context(), req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, envVar)
+}
+
+// DeleteBuildEnvVar proxies current-user build environment variable deletion to the remote server.
+func (h *RemoteHandler) DeleteBuildEnvVar(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		h.notConnected(c, err)
+		return
+	}
+	if err := client.DeleteBuildEnvVar(c.Request.Context(), c.Param("key")); err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 // ListWorkspaces proxies workspace listing to the remote server.

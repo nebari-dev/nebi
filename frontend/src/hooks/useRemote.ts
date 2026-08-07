@@ -5,10 +5,11 @@ import type {
   CreateRemoteWorkspaceRequest,
 } from '@/types';
 
-export const useRemoteServer = () => {
+export const useRemoteServer = (enabled = true) => {
   return useQuery({
     queryKey: ['remote', 'server'],
     queryFn: remoteApi.getServer,
+    enabled,
     refetchInterval: 10000, // Check connection status every 10s
   });
 };

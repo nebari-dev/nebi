@@ -169,6 +169,7 @@ func runPixiLock(ctx context.Context, pm pkgmgr.PackageManager, envPath string, 
 	}
 	lockCmd := exec.CommandContext(ctx, pixiBinary, "lock")
 	lockCmd.Dir = envPath
+	lockCmd.Env = pkgmgr.CommandEnvironment(ctx)
 	lockCmd.Stdout = logWriter
 	lockCmd.Stderr = logWriter
 	fmt.Fprintf(logWriter, "Running: %s lock\n", pixiBinary)
@@ -316,6 +317,7 @@ func (e *LocalExecutor) InstallEnvironment(ctx context.Context, ws *models.Works
 	}
 	cmd := exec.CommandContext(ctx, pixiBinary, "install", "-v")
 	cmd.Dir = envPath
+	cmd.Env = pkgmgr.CommandEnvironment(ctx)
 	cmd.Stdout = logWriter
 	cmd.Stderr = logWriter
 	fmt.Fprintf(logWriter, "Running: %s install -v\n", pixiBinary)

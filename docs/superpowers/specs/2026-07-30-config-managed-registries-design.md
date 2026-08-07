@@ -18,8 +18,9 @@ Requirements from the issue:
 1. Admins can define OCI registries for all users via YAML configuration that
    persists across redeploys.
 2. Admins can remove the built-in default OCI registry.
-3. Shared credentials (one username/password for all users) are acceptable
-   short-term; per-user credentials are future work.
+3. Only public (unauthenticated) registries are supported. (The issue
+   originally allowed shared credentials; that requirement was dropped on
+   2026-08-07; credential support removed from this design.)
 
 ## Solution overview
 
@@ -28,15 +29,15 @@ reconciles these entries into the existing `oci_registries` table, marks them
 config-managed, and locks them against UI/API/CLI modification. A separate
 `seed_default` flag disables the built-in default registry seed, and the
 seeder gains a one-time marker so a deliberately deleted default stays
-deleted. The data-science-pack chart renders this config into a Secret
+deleted. The data-science-pack chart renders this config into a ConfigMap
 mounted at `/etc/nebi/config.yaml` in every user pod (a path nebi already
 searches).
 
 Reconciling into the DB (rather than serving registries from the file at read
 time) was chosen because every existing consumer resolves registries from the
 DB: `Publication.RegistryID` is a real foreign key, the OCI layer loads
-credentials from DB rows, and the publish flow queries `is_default`. File-only
-registries would require special-casing every consumer.
+registry rows from the DB, and the publish flow queries `is_default`.
+File-only registries would require special-casing every consumer.
 
 ## 1. Config schema
 
@@ -50,9 +51,6 @@ registries:
     - name: acme-registry    # required, unique; identity key for reconciliation
       url: registry.acme.com # required
       namespace: acme-envs
-      username: shared-user
-      password: ${ACME_REGISTRY_PASSWORD}
-      api_token: ""
       default: true          # at most one entry may set this
 ```
 
@@ -60,10 +58,7 @@ Validation at `config.Load()`:
 
 - `name` required and unique across entries; `url` required.
 - At most one entry with `default: true`.
-- `${VAR}` environment expansion applies to `username`, `password`, and
-  `api_token` only. Referencing an unset environment variable is a load
-  error: fail loud at boot rather than silently operate with an empty
-  credential.
+- No credential fields: config-managed registries are public-only.
 
 This is the first list-valued config block; it is YAML-file-only. The
 `NEBI_<SECTION>_<KEY>` env override mechanism does not apply to the entries
@@ -76,13 +71,13 @@ list (documented in `config.yaml.example`).
 responses.
 
 **Reconciler:** runs at boot in both team and local mode, after `db.Migrate`,
-in the service layer (it needs the config and the existing AES-GCM encryption
-key derived from the JWT secret):
+in the service layer:
 
-- **Upsert by name.** Each config entry is created or updated, credentials
-  encrypted with the existing scheme. If the name collides with a
+- **Upsert by name.** Each config entry is created or updated with empty
+  credential columns (public-only). If the name collides with a
   user-created registry, config wins: the row is taken over, marked
-  config-managed, and a warning is logged.
+  config-managed, any stored credentials are cleared, and a warning is
+  logged.
 - **Remove absent entries.** Config-managed rows whose name no longer appears
   in config are deleted, with the same hard-delete semantics as today's admin
   delete (existing publications keep a dangling `RegistryID`, matching
@@ -104,9 +99,9 @@ config-declared default cannot be stolen between boots.
 **Scope caveat (documented, accepted):** in local mode the lock is a
 consistency mechanism, not a security boundary. The per-user nebi process is
 owned by the user, who could shadow `/etc/nebi/config.yaml` with a
-`config.yaml` in the working directory or manipulate their own database. This
-matches the issue's threat model: all users are entitled to the shared
-credentials.
+`config.yaml` in the working directory or manipulate their own database.
+Since entries are public registry pointers with no credentials, nothing
+sensitive is at stake.
 
 ## 3. Default-seed flag and re-seed fix
 
@@ -132,18 +127,15 @@ Separate PR against https://github.com/nebari-dev/data-science-pack:
   - `nebi.seedDefaultRegistry` (bool, default true)
   - `nebi.registries` (list mirroring the nebi config entry fields)
 - When either is customized, the chart renders a nebi `config.yaml` into a
-  **Secret** (credentials may be inline) and the spawner (`01-spawner.py`,
-  which already manages singleuser pod volumes) mounts it at
-  `/etc/nebi/config.yaml`. nebi already searches `/etc/nebi/`, so no
-  discovery changes are needed on the nebi side.
-- Values comments and pack docs note that credentials mounted into user pods
-  are readable by those users.
+  **ConfigMap** (entries are public registry pointers; nothing sensitive)
+  and the spawner (`01-spawner.py`, which already manages singleuser pod
+  volumes) mounts it at `/etc/nebi/config.yaml`. nebi already searches
+  `/etc/nebi/`, so no discovery changes are needed on the nebi side.
 
 ## Error handling
 
-- Invalid registries config (duplicate names, missing url, two defaults,
-  unset `${VAR}`) fails `config.Load()` with a descriptive error; nebi does
-  not start.
+- Invalid registries config (duplicate names, missing url, two defaults)
+  fails `config.Load()` with a descriptive error; nebi does not start.
 - Reconciler failures (e.g. DB errors) fail startup the same way migration
   failures do today.
 - Removal of a config-managed registry that publications reference follows
@@ -153,25 +145,26 @@ Separate PR against https://github.com/nebari-dev/data-science-pack:
 
 ## Testing
 
-- **Config:** parsing, validation errors, `${VAR}` expansion including the
-  unset-variable failure.
+- **Config:** parsing and validation errors.
 - **Reconciler:** create, update-in-place, takeover of a same-named
-  user-created registry, removal when dropped from config, default
-  switching, credentials encrypted at rest.
+  user-created registry (including clearing its stored credentials),
+  removal when dropped from config, default switching.
 - **Locking:** service-level update/delete rejection; handler test asserting
   409; list responses include `config_managed`.
 - **Seed:** flag disables seeding; marker prevents re-seed after delete;
   marker backfill for existing databases.
 - **Frontend:** admin registry table renders the managed badge and disables
   edit/delete (component test).
-- **Pack:** helm-template test asserting the Secret renders and the spawner
-  mounts it when `nebi.registries` is set, and that nothing renders when
-  unset.
+- **Pack:** helm-template test asserting the ConfigMap renders and the
+  spawner mounts it when `nebi.registries` is set, and that nothing renders
+  when unset.
 
 ## Out of scope / future work
 
-- Per-user registry credentials (users supplying their own username/password
-  for an admin-defined registry) — noted in the issue as the desired
-  long-term direction.
+- Credentials for config-managed registries (shared or per-user). Only
+  public registries are supported; authenticated registries can still be
+  added per-instance through the admin UI/API/CLI.
 - Team-mode-specific UI for editing config-managed registries.
 - Env-var override support for the entries list.
+- `${VAR}` environment expansion inside entry fields (was only needed for
+  credentials).

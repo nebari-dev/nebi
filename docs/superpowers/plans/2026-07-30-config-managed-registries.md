@@ -2,6 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Amendment (2026-08-07):** Requirements changed after this plan was
+> executed: only public (unauthenticated) OCI registries are supported.
+> Credential fields (`username`/`password`/`api_token`), `${VAR}` env
+> expansion, and credential encryption were removed from the
+> implementation, and the pack renders the config into a ConfigMap instead
+> of a Secret. References to credentials below are historical; the spec
+> reflects the current design.
+
 **Goal:** Let admins provision OCI registries for all users via a declarative `registries:` section in nebi's `config.yaml` (reconciled into the DB at boot, locked against UI/API/CLI edits), disable the built-in default registry seed via config, and stop re-seeding a deliberately deleted default. Then wire it into the data-science-pack chart so JupyterHub user pods get the config.
 
 **Spec:** `docs/superpowers/specs/2026-07-30-config-managed-registries-design.md`

@@ -105,11 +105,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 	// Reconcile admin-provisioned registries from config.yaml into the DB.
 	// Runs unconditionally so entries removed from config are cleaned up.
-	registryEncKey, err := nebicrypto.DeriveKey(appCfg.Auth.JWTSecret)
-	if err != nil {
-		return fmt.Errorf("failed to derive registry encryption key: %w", err)
-	}
-	if err := service.ReconcileConfigRegistries(database, registryEncKey, appCfg.Registries.Entries); err != nil {
+	if err := service.ReconcileConfigRegistries(database, appCfg.Registries.Entries); err != nil {
 		return fmt.Errorf("failed to reconcile config registries: %w", err)
 	}
 

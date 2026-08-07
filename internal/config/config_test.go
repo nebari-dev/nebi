@@ -106,9 +106,6 @@ registries:
     - name: acme
       url: registry.acme.com
       namespace: acme-envs
-      username: svc-user
-      password: hunter2
-      api_token: tok
       default: true
 `)
 
@@ -123,50 +120,8 @@ registries:
 		t.Fatalf("expected 1 entry, got %d", len(cfg.Registries.Entries))
 	}
 	e := cfg.Registries.Entries[0]
-	if e.Name != "acme" || e.URL != "registry.acme.com" || e.Namespace != "acme-envs" ||
-		e.Username != "svc-user" || e.Password != "hunter2" || e.APIToken != "tok" || !e.Default {
+	if e.Name != "acme" || e.URL != "registry.acme.com" || e.Namespace != "acme-envs" || !e.Default {
 		t.Errorf("entry fields not parsed correctly: %+v", e)
-	}
-}
-
-func TestLoad_Registries_EnvExpansion(t *testing.T) {
-	isolate(t)
-	t.Setenv("NEBI_MODE", "local")
-	t.Setenv("ACME_PASS", "s3cret")
-	writeConfigYAML(t, `
-registries:
-  entries:
-    - name: acme
-      url: registry.acme.com
-      password: ${ACME_PASS}
-`)
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if cfg.Registries.Entries[0].Password != "s3cret" {
-		t.Errorf("expected expanded password, got %q", cfg.Registries.Entries[0].Password)
-	}
-}
-
-func TestLoad_Registries_UnsetEnvVarFails(t *testing.T) {
-	isolate(t)
-	t.Setenv("NEBI_MODE", "local")
-	writeConfigYAML(t, `
-registries:
-  entries:
-    - name: acme
-      url: registry.acme.com
-      password: ${DEFINITELY_NOT_SET_XYZ}
-`)
-
-	_, err := Load()
-	if err == nil {
-		t.Fatal("expected error for unset env var reference")
-	}
-	if !strings.Contains(err.Error(), "DEFINITELY_NOT_SET_XYZ") {
-		t.Errorf("error should name the missing variable, got: %v", err)
 	}
 }
 

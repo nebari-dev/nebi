@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/nebari-dev/nebi/internal/config"
-	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/models"
 	"gorm.io/gorm"
 )
@@ -32,24 +31,12 @@ import (
 // process won the race to create the row; it falls back to updating that
 // row instead of failing boot.
 //
-// Credentials are encrypted with the same key the registry service uses.
-func ReconcileConfigRegistries(db *gorm.DB, encKey []byte, entries []config.RegistryEntryConfig) error {
-	// Encrypt everything up front so a bad key fails fast, before any
-	// writes (stale-delete or upserts) happen.
+// Config-managed registries are public (unauthenticated) only, so rows
+// never carry credentials; a takeover clears any the user had stored.
+func ReconcileConfigRegistries(db *gorm.DB, entries []config.RegistryEntryConfig) error {
 	names := make([]string, 0, len(entries))
-	encrypted := make([]encryptedRegistryEntry, 0, len(entries))
 	for _, e := range entries {
 		names = append(names, e.Name)
-
-		encPassword, err := nebicrypto.EncryptField(e.Password, encKey)
-		if err != nil {
-			return fmt.Errorf("encrypt credentials for registry %q: %w", e.Name, err)
-		}
-		encAPIToken, err := nebicrypto.EncryptField(e.APIToken, encKey)
-		if err != nil {
-			return fmt.Errorf("encrypt credentials for registry %q: %w", e.Name, err)
-		}
-		encrypted = append(encrypted, encryptedRegistryEntry{entry: e, password: encPassword, apiToken: encAPIToken})
 	}
 
 	return db.Transaction(func(tx *gorm.DB) error {
@@ -63,8 +50,8 @@ func ReconcileConfigRegistries(db *gorm.DB, encKey []byte, entries []config.Regi
 			return fmt.Errorf("remove stale config-managed registries: %w", err)
 		}
 
-		for _, ee := range encrypted {
-			if err := reconcileRegistryEntry(tx, ee); err != nil {
+		for _, e := range entries {
+			if err := reconcileRegistryEntry(tx, e); err != nil {
 				return err
 			}
 		}
@@ -73,17 +60,7 @@ func ReconcileConfigRegistries(db *gorm.DB, encKey []byte, entries []config.Regi
 	})
 }
 
-// encryptedRegistryEntry pairs a config entry with its already-encrypted
-// credential fields.
-type encryptedRegistryEntry struct {
-	entry    config.RegistryEntryConfig
-	password string
-	apiToken string
-}
-
-func reconcileRegistryEntry(tx *gorm.DB, ee encryptedRegistryEntry) error {
-	e := ee.entry
-
+func reconcileRegistryEntry(tx *gorm.DB, e config.RegistryEntryConfig) error {
 	var row models.OCIRegistry
 	err := tx.Where("name = ?", e.Name).First(&row).Error
 
@@ -97,7 +74,7 @@ func reconcileRegistryEntry(tx *gorm.DB, ee encryptedRegistryEntry) error {
 		if row.IsDefault && !e.Default {
 			slog.Warn("Config takeover clears default flag on registry", "name", e.Name)
 		}
-		if err := updateManagedRegistryRow(tx, &row, ee); err != nil {
+		if err := updateManagedRegistryRow(tx, &row, e); err != nil {
 			return err
 		}
 
@@ -105,9 +82,6 @@ func reconcileRegistryEntry(tx *gorm.DB, ee encryptedRegistryEntry) error {
 		row = models.OCIRegistry{
 			Name:          e.Name,
 			URL:           e.URL,
-			Username:      e.Username,
-			Password:      ee.password,
-			APIToken:      ee.apiToken,
 			IsDefault:     e.Default,
 			Namespace:     e.Namespace,
 			ConfigManaged: true,
@@ -135,7 +109,7 @@ func reconcileRegistryEntry(tx *gorm.DB, ee encryptedRegistryEntry) error {
 			if err := tx.Where("name = ?", e.Name).First(&row).Error; err != nil {
 				return fmt.Errorf("look up concurrently created registry %q: %w", e.Name, err)
 			}
-			if err := updateManagedRegistryRow(tx, &row, ee); err != nil {
+			if err := updateManagedRegistryRow(tx, &row, e); err != nil {
 				return err
 			}
 		default:
@@ -157,19 +131,17 @@ func reconcileRegistryEntry(tx *gorm.DB, ee encryptedRegistryEntry) error {
 	return nil
 }
 
-func updateManagedRegistryRow(tx *gorm.DB, row *models.OCIRegistry, ee encryptedRegistryEntry) error {
-	e := ee.entry
+func updateManagedRegistryRow(tx *gorm.DB, row *models.OCIRegistry, e config.RegistryEntryConfig) error {
 	row.URL = e.URL
-	row.Username = e.Username
-	row.Password = ee.password
-	row.APIToken = ee.apiToken
+	row.Username = ""
+	row.Password = ""
+	row.APIToken = ""
 	row.IsDefault = e.Default
 	row.Namespace = e.Namespace
 	row.ConfigManaged = true
-	// Every boot re-encrypts and saves each managed row (a fresh AES-GCM
-	// nonce each time), so updated_at churns even when nothing actually
-	// changed. Accepted: reconciliation stays simple and declarative
-	// rather than diffing fields to skip a no-op write.
+	// Every boot saves each managed row, so updated_at churns even when
+	// nothing actually changed. Accepted: reconciliation stays simple and
+	// declarative rather than diffing fields to skip a no-op write.
 	if err := tx.Save(row).Error; err != nil {
 		return fmt.Errorf("update config-managed registry %q: %w", e.Name, err)
 	}

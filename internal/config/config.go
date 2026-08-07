@@ -2,8 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
-	"regexp"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -107,14 +105,12 @@ type RegistriesConfig struct {
 	Entries     []RegistryEntryConfig `mapstructure:"entries"`
 }
 
-// RegistryEntryConfig is one admin-provisioned OCI registry.
+// RegistryEntryConfig is one admin-provisioned OCI registry. Only public
+// (unauthenticated) registries are supported; there are no credential fields.
 type RegistryEntryConfig struct {
 	Name      string `mapstructure:"name"`      // required, unique; reconciliation identity
 	URL       string `mapstructure:"url"`       // required, e.g. "quay.io"
 	Namespace string `mapstructure:"namespace"` // organization/namespace on the registry
-	Username  string `mapstructure:"username"`  // supports ${ENV_VAR}
-	Password  string `mapstructure:"password"`  // supports ${ENV_VAR}
-	APIToken  string `mapstructure:"api_token"` // supports ${ENV_VAR}
 	Default   bool   `mapstructure:"default"`   // at most one entry may set this
 }
 
@@ -249,33 +245,7 @@ func validateTeamModeJWTSecret(secret string) error {
 	return nil
 }
 
-// envRefPattern matches ${VAR} references in credential fields.
-var envRefPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
-
-// expandEnvRefs replaces ${VAR} with the environment value. A reference to
-// an unset variable is an error so a missing secret fails at boot instead
-// of silently producing an empty credential. An empty-but-set variable is
-// treated as set.
-func expandEnvRefs(field, value string) (string, error) {
-	var missing []string
-	expanded := envRefPattern.ReplaceAllStringFunc(value, func(m string) string {
-		name := envRefPattern.FindStringSubmatch(m)[1]
-		v, ok := os.LookupEnv(name)
-		if !ok {
-			missing = append(missing, name)
-			return m
-		}
-		return v
-	})
-	if len(missing) > 0 {
-		return "", fmt.Errorf("registries: %s references unset environment variable(s): %s",
-			field, strings.Join(missing, ", "))
-	}
-	return expanded, nil
-}
-
-// normalizeRegistries validates the registries section and expands ${VAR}
-// references in credential fields.
+// normalizeRegistries validates the registries section.
 func normalizeRegistries(rc *RegistriesConfig) error {
 	seen := make(map[string]bool, len(rc.Entries))
 	defaults := 0
@@ -295,20 +265,6 @@ func normalizeRegistries(rc *RegistriesConfig) error {
 		}
 		if e.Default {
 			defaults++
-		}
-		for _, f := range []struct {
-			label string
-			val   *string
-		}{
-			{"username", &e.Username},
-			{"password", &e.Password},
-			{"api_token", &e.APIToken},
-		} {
-			expanded, err := expandEnvRefs(fmt.Sprintf("entries[%d] (%s) %s", i, e.Name, f.label), *f.val)
-			if err != nil {
-				return err
-			}
-			*f.val = expanded
 		}
 	}
 	if defaults > 1 {

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -63,5 +64,65 @@ func TestNewOIDCAuthenticator_IssuerMismatchWithoutDiscoveryURLFails(t *testing.
 	}
 	if _, err := NewOIDCAuthenticator(context.Background(), cfg, nil, "test-secret", nil); err == nil {
 		t.Fatal("expected issuer mismatch to fail without DiscoveryURL, got nil error")
+	}
+}
+
+func TestOIDCAuthenticator_DoesNotMintTokenWhenGroupSyncFails(t *testing.T) {
+	db := setupTestDB(t)
+	wantErr := errors.New("casbin list failed")
+	provider := &stubRBACProvider{getUserGroupsErr: wantErr}
+
+	basicAuth, err := NewBasicAuthenticator(db, testJWTSecret, provider)
+	if err != nil {
+		t.Fatalf("NewBasicAuthenticator: %v", err)
+	}
+	authr := &OIDCAuthenticator{
+		db:        db,
+		basicAuth: basicAuth,
+		rbac:      provider,
+	}
+
+	resp, err := authr.loginWithVerifiedClaims(oidcLoginClaims{
+		Email:  "alice@example.com",
+		Sub:    "alice-subject",
+		Groups: []string{"engineering"},
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected group sync error, got %v", err)
+	}
+	if resp != nil {
+		t.Fatal("expected no OIDC login response when group sync fails")
+	}
+}
+
+func TestOIDCAuthenticator_MintsReconciledToken(t *testing.T) {
+	db := setupTestDB(t)
+	provider := &stubRBACProvider{}
+
+	basicAuth, err := NewBasicAuthenticator(db, testJWTSecret, provider)
+	if err != nil {
+		t.Fatalf("NewBasicAuthenticator: %v", err)
+	}
+	authr := &OIDCAuthenticator{
+		db:        db,
+		basicAuth: basicAuth,
+		rbac:      provider,
+	}
+
+	resp, err := authr.loginWithVerifiedClaims(oidcLoginClaims{
+		Email:  "alice@example.com",
+		Sub:    "alice-subject",
+		Groups: []string{"engineering"},
+	})
+	if err != nil {
+		t.Fatalf("OIDC login: %v", err)
+	}
+
+	claims, err := basicAuth.validateToken(resp.Token)
+	if err != nil {
+		t.Fatalf("validate reconciled token: %v", err)
+	}
+	if claims.AuthorizationSyncedAt == nil {
+		t.Fatal("expected OIDC token to carry authorization sync timestamp")
 	}
 }

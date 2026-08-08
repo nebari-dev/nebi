@@ -113,6 +113,7 @@ func Migrate(db *gorm.DB) error {
 		&models.Group{},
 		&models.GroupMember{},
 		&models.GroupPermission{},
+		&models.AuthReconciliationStatus{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)

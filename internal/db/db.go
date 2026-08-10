@@ -150,10 +150,7 @@ func seedDefaultRoles(db *gorm.DB) error {
 		var existing models.Role
 		result := db.Where("name = ?", role.Name).First(&existing)
 		if result.Error == gorm.ErrRecordNotFound {
-			// Role.Name has a unique index, so a concurrent booting process
-			// (e.g. api + worker sharing Postgres in team mode) racing this
-			// insert is resolved by the DB rather than crashing the loser.
-			if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&role).Error; err != nil {
+			if err := db.Create(&role).Error; err != nil {
 				return err
 			}
 			slog.Info("Created default role", "role", role.Name)

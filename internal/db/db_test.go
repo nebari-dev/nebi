@@ -4,17 +4,16 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/glebarez/sqlite"
+	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/models"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 func testDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	database, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
+	database, err := New(config.DatabaseConfig{
+		Driver: "sqlite",
+		DSN:    filepath.Join(t.TempDir(), "test.db"),
 	})
 	if err != nil {
 		t.Fatalf("open db: %v", err)

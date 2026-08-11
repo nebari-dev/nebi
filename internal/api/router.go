@@ -1,6 +1,8 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log/slog"
@@ -65,7 +67,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	router.Use(gin.Recovery())
 	router.Use(middleware.MaxRequestBodyBytes(limitCfg.RequestBodyBytes))
 	router.Use(loggingMiddleware())
-	router.Use(corsMiddleware(localMode))
+	router.Use(securityHeadersMiddleware(localMode, cfg.Server.AllowedOriginsList()))
+	router.Use(corsMiddleware(localMode, cfg.Server.AllowedOriginsList()))
 
 	// Initialize authenticator based on mode
 	var authenticator auth.Authenticator
@@ -455,15 +458,25 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				content = []byte(strings.ReplaceAll(string(content), `url(/`, `url(`+basePath+`/`))
 			}
 
-			// For index.html, inject base path and rewrite asset URLs
-			if fsPath == "index.html" && basePath != "" {
+			// For index.html, inject CSP nonce metadata and rewrite asset URLs
+			if fsPath == "index.html" {
 				html := string(content)
-				// Inject base path script tag into <head>
-				injection := fmt.Sprintf(`<script>window.__NEBI_BASE_PATH__=%q;</script>`, basePath)
-				html = strings.Replace(html, "<head>", "<head>\n    "+injection, 1)
-				// Rewrite absolute asset paths to include base path
-				html = strings.ReplaceAll(html, `href="/`, `href="`+basePath+`/`)
-				html = strings.ReplaceAll(html, `src="/`, `src="`+basePath+`/`)
+				nonceAttr := ""
+				if styleNonce := c.GetString(cspStyleNonceKey); styleNonce != "" {
+					nonceMeta := fmt.Sprintf(`<meta name="csp-style-nonce" content="%s" />`, styleNonce)
+					html = strings.Replace(html, "<head>", "<head>\n    "+nonceMeta, 1)
+				}
+				if basePath != "" {
+					if scriptNonce := c.GetString(cspScriptNonceKey); scriptNonce != "" {
+						nonceAttr = fmt.Sprintf(` nonce="%s"`, scriptNonce)
+					}
+					// Inject base path script tag into <head>
+					injection := fmt.Sprintf(`<script%s>window.__NEBI_BASE_PATH__=%q;</script>`, nonceAttr, basePath)
+					html = strings.Replace(html, "<head>", "<head>\n    "+injection, 1)
+					// Rewrite absolute asset paths to include base path
+					html = strings.ReplaceAll(html, `href="/`, `href="`+basePath+`/`)
+					html = strings.ReplaceAll(html, `src="/`, `src="`+basePath+`/`)
+				}
 				content = []byte(html)
 			}
 
@@ -529,6 +542,90 @@ func loggingMiddleware() gin.HandlerFunc {
 	}
 }
 
+const (
+	cspScriptNonceKey = "cspScriptNonce"
+	cspStyleNonceKey  = "cspStyleNonce"
+)
+
+func securityHeadersMiddleware(localMode bool, allowedOrigins []string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		scriptNonce, err := newCSPNonce()
+		if err != nil {
+			c.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
+		styleNonce, err := newCSPNonce()
+		if err != nil {
+			c.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
+
+		c.Set(cspScriptNonceKey, scriptNonce)
+		c.Set(cspStyleNonceKey, styleNonce)
+		headers := c.Writer.Header()
+		headers.Set("Content-Security-Policy", contentSecurityPolicy(scriptNonce, styleNonce, localMode, allowedOrigins))
+		headers.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		headers.Set("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()")
+		headers.Set("X-Content-Type-Options", "nosniff")
+		// Legacy fallback only: browsers that support CSP frame-ancestors
+		// ignore this header, and it cannot express the configured-origins
+		// allowlist, so SAMEORIGIN is the closest safe value.
+		headers.Set("X-Frame-Options", "SAMEORIGIN")
+		if isHTTPSRequest(c) {
+			headers.Set("Strict-Transport-Security", "max-age=31536000")
+		}
+
+		c.Next()
+	}
+}
+
+func contentSecurityPolicy(scriptNonce string, styleNonce string, localMode bool, allowedOrigins []string) string {
+	connectSrc := "connect-src 'self'"
+	if localMode {
+		connectSrc = "connect-src 'self' http://localhost:* http://127.0.0.1:* https://localhost:* https://127.0.0.1:*"
+	}
+
+	// 'self' covers reverse proxies that serve nebi and the framing page
+	// from one origin (e.g. jupyter-server-proxy under JupyterHub);
+	// server.allowed_origins covers frames served from a different origin.
+	frameAncestors := "frame-ancestors 'self'"
+	if len(allowedOrigins) > 0 {
+		frameAncestors += " " + strings.Join(allowedOrigins, " ")
+	}
+
+	directives := []string{
+		"default-src 'self'",
+		"base-uri 'none'",
+		"object-src 'none'",
+		frameAncestors,
+		"script-src 'self' 'nonce-" + scriptNonce + "'",
+		"style-src 'self' 'nonce-" + styleNonce + "'",
+		"style-src-elem 'self' 'nonce-" + styleNonce + "'",
+		"style-src-attr 'none'",
+		"img-src 'self' data: blob:",
+		"font-src 'self' data:",
+		connectSrc,
+		"manifest-src 'self'",
+		"form-action 'self'",
+	}
+	return strings.Join(directives, "; ")
+}
+
+func newCSPNonce() (string, error) {
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return "", err
+	}
+	return base64.RawStdEncoding.EncodeToString(nonce[:]), nil
+}
+
+func isHTTPSRequest(c *gin.Context) bool {
+	if c.Request.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+}
+
 // corsMiddleware adds CORS headers.
 //
 // The API is reached with a bearer Authorization header (CLI and the
@@ -540,15 +637,18 @@ func loggingMiddleware() gin.HandlerFunc {
 //
 // In local mode the API is used only by local UIs, so instead of a wildcard
 // the allowed origin is echoed only for those: loopback http(s) origins (the
-// SPA served by this process, the Vite dev server) and the desktop webview
-// ("wails://..." on macOS/Linux, opaque "null" origins some webviews produce).
-// Those webview requests arrive through the in-process Wails handler, never
-// the network listener (see netguard.Middleware).
-func corsMiddleware(localMode bool) gin.HandlerFunc {
+// SPA served by this process, the Vite dev server), the desktop webview
+// ("wails://..." on macOS/Linux, opaque "null" origins some webviews produce),
+// and any operator-configured server.allowed_origins (a reverse proxy such as
+// jupyter-server-proxy, whose public origin browsers send on CORS-mode
+// requests like Vite's crossorigin module bundles). Webview requests arrive
+// through the in-process Wails handler, never the network listener (see
+// netguard.Middleware, which enforces the same origin rules on requests).
+func corsMiddleware(localMode bool, allowedOrigins []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if localMode {
 			origin := c.Request.Header.Get("Origin")
-			if netguard.IsLoopbackOrigin(origin) || strings.HasPrefix(origin, "wails://") || origin == "null" {
+			if netguard.IsLoopbackOrigin(origin) || netguard.OriginAllowed(origin, allowedOrigins) || strings.HasPrefix(origin, "wails://") || origin == "null" {
 				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 				c.Writer.Header().Set("Vary", "Origin")
 			}

@@ -688,6 +688,8 @@ definitions:
     type: object
   service.RegistryResult:
     properties:
+      config_managed:
+        type: boolean
       created_at:
         type: string
       has_api_token:
@@ -1303,6 +1305,10 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Delete a registry
@@ -1361,6 +1367,10 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflict
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:

@@ -15,7 +15,7 @@ func okHandler() http.Handler {
 }
 
 func TestMiddlewareAllowsLoopbackHosts(t *testing.T) {
-	guard := netguard.Middleware(okHandler(), false)
+	guard := netguard.Middleware(okHandler(), false, nil)
 
 	for _, host := range []string{
 		"localhost:8460",
@@ -37,7 +37,7 @@ func TestMiddlewareAllowsLoopbackHosts(t *testing.T) {
 }
 
 func TestMiddlewareRejectsNonLoopbackHost(t *testing.T) {
-	guard := netguard.Middleware(okHandler(), false)
+	guard := netguard.Middleware(okHandler(), false, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "http://evil.example.com:8460/api/v1/workspaces", nil)
 	rec := httptest.NewRecorder()
@@ -49,7 +49,7 @@ func TestMiddlewareRejectsNonLoopbackHost(t *testing.T) {
 }
 
 func TestMiddlewareRejectsNonLocalOrigins(t *testing.T) {
-	guard := netguard.Middleware(okHandler(), false)
+	guard := netguard.Middleware(okHandler(), false, nil)
 
 	for _, origin := range []string{
 		"https://evil.example.com",
@@ -69,7 +69,7 @@ func TestMiddlewareRejectsNonLocalOrigins(t *testing.T) {
 }
 
 func TestMiddlewareAllowAnyHostStillRejectsNonLocalOrigins(t *testing.T) {
-	guard := netguard.Middleware(okHandler(), true)
+	guard := netguard.Middleware(okHandler(), true, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "http://192.0.2.10:8460/api/v1/health", nil)
 	rec := httptest.NewRecorder()
@@ -87,8 +87,59 @@ func TestMiddlewareAllowAnyHostStillRejectsNonLocalOrigins(t *testing.T) {
 	}
 }
 
+func TestMiddlewareAllowsConfiguredOrigins(t *testing.T) {
+	guard := netguard.Middleware(okHandler(), false, []string{"https://hub.example.com", "https://other.example.com:8443"})
+
+	for _, origin := range []string{
+		"https://hub.example.com",
+		"HTTPS://HUB.EXAMPLE.COM", // case-insensitive
+		"https://other.example.com:8443",
+	} {
+		req := httptest.NewRequest(http.MethodGet, "http://localhost:8460/assets/index.js", nil)
+		req.Header.Set("Origin", origin)
+		rec := httptest.NewRecorder()
+		guard.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Origin %q: expected 200, got %d", origin, rec.Code)
+		}
+	}
+}
+
+func TestMiddlewareConfiguredOriginsDoNotOpenOtherOrigins(t *testing.T) {
+	guard := netguard.Middleware(okHandler(), false, []string{"https://hub.example.com"})
+
+	for _, origin := range []string{
+		"https://evil.example.com",
+		"https://hub.example.com.evil.com",
+		"http://hub.example.com", // scheme must match too
+	} {
+		req := httptest.NewRequest(http.MethodGet, "http://localhost:8460/assets/index.js", nil)
+		req.Header.Set("Origin", origin)
+		rec := httptest.NewRecorder()
+		guard.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("Origin %q: expected 403, got %d", origin, rec.Code)
+		}
+	}
+}
+
+func TestOriginAllowed(t *testing.T) {
+	allowed := []string{" https://hub.example.com/ "} // tolerates stray whitespace/slash from env vars
+	if !netguard.OriginAllowed("https://hub.example.com", allowed) {
+		t.Error("expected normalized match to be allowed")
+	}
+	if netguard.OriginAllowed("", allowed) {
+		t.Error("empty origin must not match")
+	}
+	if netguard.OriginAllowed("https://hub.example.com", nil) {
+		t.Error("nil allowlist must not match")
+	}
+}
+
 func TestMiddlewareAllowsLoopbackAndAbsentOrigins(t *testing.T) {
-	guard := netguard.Middleware(okHandler(), false)
+	guard := netguard.Middleware(okHandler(), false, nil)
 
 	for _, origin := range []string{
 		"", // CLI / same-origin GET: no Origin header

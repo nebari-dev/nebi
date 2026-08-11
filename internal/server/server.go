@@ -82,7 +82,7 @@ func Run(ctx context.Context, cfg Config) error {
 	slog.Info("Database initialized", "driver", appCfg.Database.Driver)
 
 	// Run migrations
-	if err := db.Migrate(database); err != nil {
+	if err := db.Migrate(database, appCfg.Registries.SeedDefault); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 	if appCfg.IsLocalMode() {
@@ -102,6 +102,12 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 	}
 	slog.Info("Database migrations completed")
+
+	// Reconcile admin-provisioned registries from config.yaml into the DB.
+	// Runs unconditionally so entries removed from config are cleaned up.
+	if err := service.ReconcileConfigRegistries(database, appCfg.Registries.Entries); err != nil {
+		return fmt.Errorf("failed to reconcile config registries: %w", err)
+	}
 
 	// Create default admin user if configured (team mode only)
 	if !appCfg.IsLocalMode() {
@@ -197,7 +203,7 @@ func Run(ctx context.Context, cfg Config) error {
 				slog.Warn("Local mode is bound to a non-loopback interface; it is intended for local use only",
 					"host", appCfg.Server.Host)
 			}
-			handler = netguard.Middleware(router, allowAnyHost)
+			handler = netguard.Middleware(router, allowAnyHost, appCfg.Server.AllowedOriginsList())
 		}
 
 		addr := listenAddress(appCfg.Server.Host, appCfg.Server.Port)

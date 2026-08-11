@@ -17,6 +17,7 @@ type Config struct {
 	Log            LogConfig            `mapstructure:"log"`
 	PackageManager PackageManagerConfig `mapstructure:"package_manager"`
 	Storage        StorageConfig        `mapstructure:"storage"`
+	Registries     RegistriesConfig     `mapstructure:"registries"`
 }
 
 // IsLocalMode returns true when the server is running in local/desktop mode.
@@ -27,10 +28,26 @@ func (c *Config) IsLocalMode() bool {
 // ServerConfig holds HTTP server configuration
 // Host may be empty to allow "all interfaces" bind behavior.
 type ServerConfig struct {
-	Host     string `mapstructure:"host"` // Bind host/IP (e.g. "127.0.0.1", "0.0.0.0")
-	Port     int    `mapstructure:"port"`
-	Mode     string `mapstructure:"mode"`      // "development" or "production"
-	BasePath string `mapstructure:"base_path"` // URL path prefix (e.g. "/nebi")
+	Host           string `mapstructure:"host"` // Bind host/IP (e.g. "127.0.0.1", "0.0.0.0")
+	Port           int    `mapstructure:"port"`
+	Mode           string `mapstructure:"mode"`            // "development" or "production"
+	BasePath       string `mapstructure:"base_path"`       // URL path prefix (e.g. "/nebi")
+	AllowedOrigins string `mapstructure:"allowed_origins"` // comma-separated non-loopback origins accepted in local mode (e.g. "https://hub.example.com" when proxied by JupyterHub)
+}
+
+// AllowedOriginsList returns server.allowed_origins split on commas, with
+// whitespace trimmed and empty entries dropped.
+func (c *ServerConfig) AllowedOriginsList() []string {
+	if strings.TrimSpace(c.AllowedOrigins) == "" {
+		return nil
+	}
+	var out []string
+	for _, o := range strings.Split(c.AllowedOrigins, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 // DatabaseConfig holds database configuration
@@ -80,6 +97,23 @@ type StorageConfig struct {
 	WorkspacesDir string `mapstructure:"workspaces_dir"` // Directory where workspaces are stored
 }
 
+// RegistriesConfig holds admin-provisioned OCI registry configuration.
+// Entries are declarative: at boot they are reconciled into the database,
+// marked config-managed, and locked against API/UI/CLI modification.
+type RegistriesConfig struct {
+	SeedDefault bool                  `mapstructure:"seed_default"` // seed the built-in quay.io/nebari_environments registry (default true)
+	Entries     []RegistryEntryConfig `mapstructure:"entries"`
+}
+
+// RegistryEntryConfig is one admin-provisioned OCI registry. Only public
+// (unauthenticated) registries are supported; there are no credential fields.
+type RegistryEntryConfig struct {
+	Name      string `mapstructure:"name"`      // required, unique; reconciliation identity
+	URL       string `mapstructure:"url"`       // required, e.g. "quay.io"
+	Namespace string `mapstructure:"namespace"` // organization/namespace on the registry
+	Default   bool   `mapstructure:"default"`   // at most one entry may set this
+}
+
 // Load reads configuration from file and environment variables
 func Load() (*Config, error) {
 	v := viper.New()
@@ -90,6 +124,7 @@ func Load() (*Config, error) {
 	v.SetDefault("server.port", 8460)
 	v.SetDefault("server.mode", "development")
 	v.SetDefault("server.base_path", "")
+	v.SetDefault("server.allowed_origins", "")
 	v.SetDefault("database.driver", "sqlite")
 	v.SetDefault("database.dsn", "./nebi.db")
 	v.SetDefault("database.max_idle_conns", 10)
@@ -111,6 +146,7 @@ func Load() (*Config, error) {
 	v.SetDefault("log.level", "info")
 	v.SetDefault("package_manager.default_type", "pixi")
 	v.SetDefault("storage.workspaces_dir", "./data/workspaces")
+	v.SetDefault("registries.seed_default", true)
 
 	// Read from config file if exists
 	v.SetConfigName("config")
@@ -141,6 +177,7 @@ func Load() (*Config, error) {
 	_ = v.BindEnv("server.port", "NEBI_SERVER_PORT")
 	_ = v.BindEnv("server.mode", "NEBI_SERVER_MODE")
 	_ = v.BindEnv("server.base_path", "NEBI_SERVER_BASE_PATH")
+	_ = v.BindEnv("server.allowed_origins", "NEBI_SERVER_ALLOWED_ORIGINS")
 	_ = v.BindEnv("database.driver", "NEBI_DATABASE_DRIVER")
 	_ = v.BindEnv("database.dsn", "NEBI_DATABASE_DSN")
 	_ = v.BindEnv("auth.type", "NEBI_AUTH_TYPE")
@@ -173,6 +210,10 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid mode %q: must be \"local\" or \"team\"", cfg.Mode)
 	}
 
+	if err := normalizeRegistries(&cfg.Registries); err != nil {
+		return nil, err
+	}
+
 	// Team mode exposes JWT-authenticated network endpoints, so its signing
 	// secret must not be empty, the shipped default, or too short to resist
 	// brute force. Local mode never reaches this auth path (it uses
@@ -200,6 +241,34 @@ func validateTeamModeJWTSecret(secret string) error {
 	}
 	if len(secret) < minJWTSecretLength {
 		return fmt.Errorf("auth.jwt_secret (NEBI_AUTH_JWT_SECRET) must be at least %d characters in team mode", minJWTSecretLength)
+	}
+	return nil
+}
+
+// normalizeRegistries validates the registries section.
+func normalizeRegistries(rc *RegistriesConfig) error {
+	seen := make(map[string]bool, len(rc.Entries))
+	defaults := 0
+	for i := range rc.Entries {
+		e := &rc.Entries[i]
+		e.Name = strings.TrimSpace(e.Name)
+		e.URL = strings.TrimSpace(e.URL)
+		if e.Name == "" {
+			return fmt.Errorf("registries.entries[%d]: name is required", i)
+		}
+		if seen[e.Name] {
+			return fmt.Errorf("registries.entries: duplicate name %q", e.Name)
+		}
+		seen[e.Name] = true
+		if e.URL == "" {
+			return fmt.Errorf("registries.entries[%d] (%s): url is required", i, e.Name)
+		}
+		if e.Default {
+			defaults++
+		}
+	}
+	if defaults > 1 {
+		return fmt.Errorf("registries.entries: at most one entry may set default: true")
 	}
 	return nil
 }

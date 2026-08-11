@@ -8,10 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func corsTestRouter(localMode bool) *gin.Engine {
+func corsTestRouter(localMode bool, allowedOrigins ...string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.Use(corsMiddleware(localMode))
+	r.Use(corsMiddleware(localMode, allowedOrigins))
 	r.GET("/ping", func(c *gin.Context) { c.String(http.StatusOK, "pong") })
 	return r
 }
@@ -71,5 +71,19 @@ func TestCORSTeamModeKeepsWildcard(t *testing.T) {
 	rec := doCORSRequest(t, r, "https://anywhere.example.com")
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
 		t.Errorf("team mode: expected wildcard Access-Control-Allow-Origin, got %q", got)
+	}
+}
+
+func TestCORSLocalModeEchoesConfiguredOrigins(t *testing.T) {
+	r := corsTestRouter(true, "https://hub.example.com")
+
+	rec := doCORSRequest(t, r, "https://hub.example.com")
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://hub.example.com" {
+		t.Errorf("expected configured origin echoed, got %q", got)
+	}
+
+	rec = doCORSRequest(t, r, "https://evil.example.com")
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("expected no Access-Control-Allow-Origin for unlisted origin, got %q", got)
 	}
 }

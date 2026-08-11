@@ -168,6 +168,7 @@ export interface OCIRegistry {
   has_api_token: boolean;
   is_default: boolean;
   namespace: string;
+  config_managed: boolean;
   created_at: string;
 }
 

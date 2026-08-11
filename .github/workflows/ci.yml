@@ -111,6 +111,18 @@ jobs:
       - name: Create stub frontend/dist for embed
         run: mkdir -p frontend/dist internal/web/dist && touch frontend/dist/.gitkeep internal/web/dist/.gitkeep
 
+      # The Release workflow regenerates these docs and GoReleaser refuses a
+      # dirty tree, so stale committed docs break releases. Catch the drift on
+      # the PR that causes it instead. Uses swag@latest to match release.yml.
+      - name: Check Swagger docs are up to date
+        run: |
+          go install github.com/swaggo/swag/cmd/swag@latest
+          swag init -g cmd/nebi/serve.go -o internal/swagger --packageName swagger
+          if ! git diff --exit-code internal/swagger/; then
+            echo "::error::internal/swagger is stale. Run: swag init -g cmd/nebi/serve.go -o internal/swagger --packageName swagger"
+            exit 1
+          fi
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@8564da7cb3c6866ed1da648ca8f00a258ef0c802 # v6.5.2
         with:

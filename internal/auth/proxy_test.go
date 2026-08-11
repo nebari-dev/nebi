@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
@@ -271,6 +272,12 @@ func TestSyncProxyAdminRole_ReturnsStatusUpdateFailure(t *testing.T) {
 	if err := authr.syncProxyAdminRole(u.ID, nil, []string{"admin"}); err != nil {
 		t.Fatalf("seed status: %v", err)
 	}
+	oldSuccess := time.Now().UTC().Add(-authReconciliationSuccessRefreshAfter() - time.Second)
+	if err := db.Model(&models.AuthReconciliationStatus{}).
+		Where("user_id = ? AND kind = ?", u.ID, string(authReconciliationProxyAdmin)).
+		Update("last_success_at", oldSuccess).Error; err != nil {
+		t.Fatalf("age status: %v", err)
+	}
 
 	wantErr := errors.New("status update failed")
 	name := registerDBTableFailureCallback(t, db, "update", "auth_reconciliation_statuses", wantErr)
@@ -415,6 +422,8 @@ func testProxyRequest(t *testing.T, username string, groups []string) *http.Requ
 
 func testIDToken(t *testing.T, username string, groups []string) string {
 	t.Helper()
+	// alg=none is deliberate: testProxyVerifier skips signature checks, so
+	// these tests only need claim payloads, not cryptographic signatures.
 	token := jwt.NewWithClaims(jwt.SigningMethodNone, jwt.MapClaims{
 		"sub":                username,
 		"preferred_username": username,

@@ -70,7 +70,6 @@ func NewOIDCAuthenticator(ctx context.Context, cfg OIDCConfig, db *gorm.DB, jwtS
 
 	provider, err := oidc.NewProvider(ctx, discoveryURL)
 	if err != nil {
-		logIdentityProviderAuthFailure(authReconciliationOIDCGroups, err)
 		return nil, fmt.Errorf("failed to discover OIDC provider: %w", err)
 	}
 

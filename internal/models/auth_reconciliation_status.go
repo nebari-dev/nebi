@@ -17,8 +17,7 @@ type AuthReconciliationStatus struct {
 	ConsecutiveFailures int        `gorm:"not null;default:0" json:"consecutive_failures"`
 	LastError           string     `gorm:"type:text" json:"last_error,omitempty"`
 	DesiredGroupsJSON   string     `gorm:"type:text" json:"desired_groups_json,omitempty"`
-	DesiredAdmin        bool       `json:"desired_admin,omitempty"`
-	HasDesiredAdmin     bool       `json:"has_desired_admin,omitempty"`
+	DesiredAdmin        *bool      `json:"desired_admin,omitempty"`
 	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt           time.Time  `json:"updated_at"`
 	User                User       `gorm:"foreignKey:UserID" json:"user,omitempty"`

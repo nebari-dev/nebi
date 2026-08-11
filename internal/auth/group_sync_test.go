@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/nebari-dev/nebi/internal/models"
@@ -318,6 +319,12 @@ func TestSyncOIDCGroups_ReturnsStatusUpdateFailure(t *testing.T) {
 	provider := &stubRBACProvider{}
 	if err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider); err != nil {
 		t.Fatalf("seed status: %v", err)
+	}
+	oldSuccess := time.Now().UTC().Add(-authReconciliationSuccessRefreshAfter() - time.Second)
+	if err := db.Model(&models.AuthReconciliationStatus{}).
+		Where("user_id = ? AND kind = ?", u.ID, string(authReconciliationOIDCGroups)).
+		Update("last_success_at", oldSuccess).Error; err != nil {
+		t.Fatalf("age status: %v", err)
 	}
 
 	wantErr := errors.New("status update failed")

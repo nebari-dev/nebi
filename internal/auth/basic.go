@@ -180,7 +180,7 @@ func (a *BasicAuthenticator) validateToken(tokenString string) (*Claims, error) 
 	}
 
 	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
-		if err := claims.requireFreshAuthorizationSync(time.Now().UTC()); err != nil {
+		if err := a.requireFreshAuthorizationSync(claims, time.Now().UTC()); err != nil {
 			return nil, err
 		}
 		return claims, nil
@@ -189,17 +189,77 @@ func (a *BasicAuthenticator) validateToken(tokenString string) (*Claims, error) 
 	return nil, ErrUnauthorized
 }
 
-func (c *Claims) requireFreshAuthorizationSync(now time.Time) error {
+func (a *BasicAuthenticator) requireFreshAuthorizationSync(claims *Claims, now time.Time) error {
+	staleAfter := authReconciliationStaleAfter()
+	err := claims.requireFreshAuthorizationSync(now, staleAfter)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, ErrAuthorizationStale) || claims.AuthorizationSyncedAt == nil {
+		return err
+	}
+
+	userID, parseErr := uuid.Parse(claims.UserID)
+	if parseErr != nil {
+		return fmt.Errorf("invalid user ID in token: %w", parseErr)
+	}
+	fresh, statusErr := hasFreshAuthorizationReconciliationStatus(a.db, userID, claims.AuthorizationSyncedAt.Time, now, staleAfter)
+	if statusErr != nil {
+		return fmt.Errorf("check authorization reconciliation status: %w", statusErr)
+	}
+	if fresh {
+		return nil
+	}
+	return err
+}
+
+func (c *Claims) requireFreshAuthorizationSync(now time.Time, staleAfter time.Duration) error {
 	if c.AuthorizationSyncedAt == nil {
-		if c.TokenSource == string(authTokenSourceBasic) {
+		if c.TokenSource == "" || c.TokenSource == string(authTokenSourceBasic) {
 			return nil
 		}
 		return ErrAuthorizationStale
 	}
-	if now.After(c.AuthorizationSyncedAt.Time.Add(authReconciliationStaleAfter)) {
+	if staleAfter <= 0 {
+		staleAfter = defaultAuthReconciliationStaleAfter
+	}
+	if now.After(c.AuthorizationSyncedAt.Time.Add(staleAfter)) {
 		return ErrAuthorizationStale
 	}
 	return nil
+}
+
+func hasFreshAuthorizationReconciliationStatus(db *gorm.DB, userID uuid.UUID, tokenSyncedAt time.Time, now time.Time, staleAfter time.Duration) (bool, error) {
+	if db == nil {
+		return false, nil
+	}
+
+	var unresolved int64
+	if err := db.Model(&models.AuthReconciliationStatus{}).
+		Where("user_id = ?", userID).
+		Where("last_failure_at IS NOT NULL").
+		Where("last_success_at IS NULL OR last_failure_at > last_success_at").
+		Count(&unresolved).Error; err != nil {
+		return false, err
+	}
+	if unresolved > 0 {
+		return false, nil
+	}
+
+	minSuccessAt := now.Add(-staleAfter)
+	if tokenSyncedAt.After(minSuccessAt) {
+		minSuccessAt = tokenSyncedAt
+	}
+
+	var freshSuccesses int64
+	if err := db.Model(&models.AuthReconciliationStatus{}).
+		Where("user_id = ?", userID).
+		Where("last_success_at IS NOT NULL").
+		Where("last_success_at >= ?", minSuccessAt).
+		Count(&freshSuccesses).Error; err != nil {
+		return false, err
+	}
+	return freshSuccesses > 0, nil
 }
 
 // Middleware returns a Gin middleware for authentication.
@@ -226,7 +286,11 @@ func (a *BasicAuthenticator) Middleware() gin.HandlerFunc {
 			user, err := a.validateAndLoadUser(tokenString)
 			if err != nil {
 				slog.Warn("Invalid token", "error", err)
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+				if errors.Is(err, ErrAuthorizationStale) {
+					c.JSON(http.StatusUnauthorized, gin.H{"error": "authorization reconciliation is stale; re-authentication required"})
+				} else {
+					c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+				}
 				c.Abort()
 				return
 			}

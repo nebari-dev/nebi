@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type authReconciliationKind string
@@ -20,10 +22,40 @@ const (
 	authReconciliationOIDCGroups authReconciliationKind = "oidc_groups"
 	authReconciliationProxyAdmin authReconciliationKind = "proxy_admin"
 
-	authReconciliationStaleAfter      = 5 * time.Minute
-	authReconciliationMonitorInterval = authReconciliationStaleAfter / 2
-	maxReconciliationErrorLength      = 2048
+	defaultAuthReconciliationStaleAfter = TokenDuration
+	maxReconciliationErrorLength        = 2048
 )
+
+var authReconciliationStaleAfterNanos atomic.Int64
+
+func init() {
+	ConfigureAuthReconciliationStaleAfter(defaultAuthReconciliationStaleAfter)
+}
+
+// ConfigureAuthReconciliationStaleAfter sets the reconciliation freshness
+// window used by bearer-token validation and the background monitor.
+func ConfigureAuthReconciliationStaleAfter(staleAfter time.Duration) {
+	if staleAfter <= 0 {
+		staleAfter = defaultAuthReconciliationStaleAfter
+	}
+	authReconciliationStaleAfterNanos.Store(int64(staleAfter))
+}
+
+func authReconciliationStaleAfter() time.Duration {
+	return time.Duration(authReconciliationStaleAfterNanos.Load())
+}
+
+func authReconciliationMonitorInterval() time.Duration {
+	interval := authReconciliationStaleAfter() / 2
+	if interval <= 0 {
+		return time.Second
+	}
+	return interval
+}
+
+func authReconciliationSuccessRefreshAfter() time.Duration {
+	return authReconciliationMonitorInterval()
+}
 
 type authReconciliationFailureSource string
 
@@ -55,6 +87,9 @@ func recordAuthReconciliationSuccessWithState(db *gorm.DB, userID uuid.UUID, kin
 	err := db.Where("user_id = ? AND kind = ?", userID, string(kind)).First(&status).Error
 	switch {
 	case err == nil:
+		if !authReconciliationSuccessNeedsWrite(status, state, now) {
+			return nil
+		}
 		status.LastSuccessAt = &now
 		status.LastFailureAt = nil
 		status.LastFailureSource = ""
@@ -70,10 +105,47 @@ func recordAuthReconciliationSuccessWithState(db *gorm.DB, userID uuid.UUID, kin
 			ConsecutiveFailures: 0,
 		}
 		applyAuthReconciliationState(&status, state)
-		return db.Create(&status).Error
+		return upsertAuthReconciliationStatus(db, &status, []string{
+			"last_success_at",
+			"last_failure_at",
+			"last_failure_source",
+			"consecutive_failures",
+			"last_error",
+			"desired_groups_json",
+			"desired_admin",
+			"updated_at",
+		})
 	default:
 		return err
 	}
+}
+
+func authReconciliationSuccessNeedsWrite(status models.AuthReconciliationStatus, state authReconciliationState, now time.Time) bool {
+	if status.LastFailureAt != nil || status.LastFailureSource != "" || status.ConsecutiveFailures != 0 || status.LastError != "" {
+		return true
+	}
+	if state.desiredGroupsJSON != nil && status.DesiredGroupsJSON != *state.desiredGroupsJSON {
+		return true
+	}
+	if state.desiredAdmin != nil {
+		if status.DesiredAdmin == nil || *status.DesiredAdmin != *state.desiredAdmin {
+			return true
+		}
+	}
+	if status.LastSuccessAt == nil {
+		return true
+	}
+	return now.Sub(*status.LastSuccessAt) >= authReconciliationSuccessRefreshAfter()
+}
+
+func upsertAuthReconciliationStatus(db *gorm.DB, status *models.AuthReconciliationStatus, updateColumns []string) error {
+	return db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{
+			{Name: "user_id"},
+			{Name: "kind"},
+		},
+		DoUpdates: clause.AssignmentColumns(updateColumns),
+	}).Create(status).Error
 }
 
 func recordAuthReconciliationFailureWithGroups(db *gorm.DB, userID uuid.UUID, kind authReconciliationKind, cause error, claimGroups []string) {
@@ -123,7 +195,15 @@ func recordAuthReconciliationFailureWithState(db *gorm.DB, userID uuid.UUID, kin
 				LastError:           lastError,
 			}
 			applyAuthReconciliationState(&status, state)
-			if err := db.Create(&status).Error; err != nil {
+			if err := upsertAuthReconciliationStatus(db, &status, []string{
+				"last_failure_at",
+				"last_failure_source",
+				"consecutive_failures",
+				"last_error",
+				"desired_groups_json",
+				"desired_admin",
+				"updated_at",
+			}); err != nil {
 				slog.Error("Failed to record authorization reconciliation failure",
 					"user_id", userID, "kind", kind, "error", err)
 			}
@@ -138,14 +218,14 @@ func recordAuthReconciliationFailureWithState(db *gorm.DB, userID uuid.UUID, kin
 		staleFor = now.Sub(*lastSuccessAt)
 	}
 
-	slog.Error("Authorization reconciliation stale alert",
+	slog.Error("Authorization reconciliation failure alert",
 		"user_id", userID,
 		"kind", kind,
 		"error", cause,
 		"failure_source", source,
 		"last_success_at", lastSuccessAt,
 		"stale_for", staleFor.String(),
-		"stale_after", authReconciliationStaleAfter.String(),
+		"stale_after", authReconciliationStaleAfter().String(),
 		"consecutive_failures", consecutiveFailures,
 		"alert", true,
 	)
@@ -174,12 +254,12 @@ func StartAuthReconciliationMonitor(ctx context.Context, db *gorm.DB, rbacProvid
 		return
 	}
 
-	go monitorAuthReconciliations(ctx, db, rbacProvider, logger, authReconciliationMonitorInterval)
+	go monitorAuthReconciliations(ctx, db, rbacProvider, logger, authReconciliationMonitorInterval())
 }
 
 func monitorAuthReconciliations(ctx context.Context, db *gorm.DB, rbacProvider rbac.Provider, logger *slog.Logger, interval time.Duration) {
 	if interval <= 0 {
-		interval = authReconciliationMonitorInterval
+		interval = authReconciliationMonitorInterval()
 	}
 
 	report := func() {
@@ -220,19 +300,17 @@ func alertUnresolvedAuthReconciliations(db *gorm.DB, rbacProvider rbac.Provider,
 
 	unresolved := 0
 	for _, status := range statuses {
-		if status.LastFailureSource != string(authReconciliationFailureSourceIdentityProvider) {
-			reconciled, retryErr := retryAuthReconciliationStatus(db, rbacProvider, status)
-			if retryErr != nil {
-				logger.Error("Authorization reconciliation retry failed",
-					"user_id", status.UserID,
-					"kind", status.Kind,
-					"error", retryErr,
-					"failure_source", authReconciliationFailureSourceLocal,
-				)
-			}
-			if reconciled {
-				continue
-			}
+		reconciled, retryErr := retryAuthReconciliationStatus(db, rbacProvider, status)
+		if retryErr != nil {
+			logger.Error("Authorization reconciliation retry failed",
+				"user_id", status.UserID,
+				"kind", status.Kind,
+				"error", retryErr,
+				"failure_source", authReconciliationFailureSourceLocal,
+			)
+		}
+		if reconciled {
+			continue
 		}
 
 		unresolved++
@@ -251,7 +329,7 @@ func alertUnresolvedAuthReconciliations(db *gorm.DB, rbacProvider rbac.Provider,
 			"last_success_at", status.LastSuccessAt,
 			"last_failure_at", status.LastFailureAt,
 			"stale_for", staleFor.String(),
-			"stale_after", authReconciliationStaleAfter.String(),
+			"stale_after", authReconciliationStaleAfter().String(),
 			"consecutive_failures", status.ConsecutiveFailures,
 			"alert", true,
 			"monitor", true,
@@ -282,15 +360,18 @@ func retryAuthReconciliationStatus(db *gorm.DB, rbacProvider rbac.Provider, stat
 		}
 		return true, nil
 	case authReconciliationProxyAdmin:
-		if !status.HasDesiredAdmin {
+		if status.DesiredAdmin == nil {
 			return false, nil
 		}
-		if err := syncAdminRoleToDesired(status.UserID, status.DesiredAdmin, rbacProvider); err != nil {
-			recordAuthReconciliationFailureWithAdmin(db, status.UserID, kind, err, status.DesiredAdmin)
+		if *status.DesiredAdmin {
+			return false, nil
+		}
+		if err := syncAdminRoleToDesired(status.UserID, *status.DesiredAdmin, rbacProvider); err != nil {
+			recordAuthReconciliationFailureWithAdmin(db, status.UserID, kind, err, *status.DesiredAdmin)
 			return false, err
 		}
-		if err := recordAuthReconciliationSuccessWithAdmin(db, status.UserID, kind, status.DesiredAdmin); err != nil {
-			recordAuthReconciliationFailureWithAdmin(db, status.UserID, kind, err, status.DesiredAdmin)
+		if err := recordAuthReconciliationSuccessWithAdmin(db, status.UserID, kind, *status.DesiredAdmin); err != nil {
+			recordAuthReconciliationFailureWithAdmin(db, status.UserID, kind, err, *status.DesiredAdmin)
 			return false, err
 		}
 		return true, nil
@@ -313,8 +394,8 @@ func applyAuthReconciliationState(status *models.AuthReconciliationStatus, state
 		status.DesiredGroupsJSON = *state.desiredGroupsJSON
 	}
 	if state.desiredAdmin != nil {
-		status.DesiredAdmin = *state.desiredAdmin
-		status.HasDesiredAdmin = true
+		desiredAdmin := *state.desiredAdmin
+		status.DesiredAdmin = &desiredAdmin
 	}
 }
 

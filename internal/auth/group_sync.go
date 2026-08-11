@@ -25,6 +25,9 @@ import (
 // groups are administered explicitly in nebi, and silently merging IdP claims
 // into them would create permanent untracked grants (phase-2 reconcile only
 // considers source=oidc memberships).
+//
+// The public wrapper also records auth_reconciliation_statuses rows so callers
+// can fail closed and operators can see unresolved reconciliation failures.
 func SyncOIDCGroups(db *gorm.DB, userID uuid.UUID, claimGroups []string) error {
 	return syncOIDCGroups(db, userID, claimGroups, rbac.NewDefaultProvider())
 }
@@ -71,20 +74,15 @@ func syncOIDCGroupsOnce(db *gorm.DB, userID uuid.UUID, claimGroups []string, rba
 		return fmt.Errorf("list current oidc memberships: %w", err)
 	}
 
-	for _, m := range current {
-		if _, ok := desired[m.Group.Name]; ok {
-			continue
-		}
+	staleMemberships := staleOIDCMemberships(current, desired)
+	for _, m := range staleMemberships {
 		if err := rbacProvider.RemoveUserFromGroup(userID, m.GroupID); err != nil {
 			return fmt.Errorf("casbin remove stale: %w", err)
 		}
 	}
 
 	if err := db.Transaction(func(tx *gorm.DB) error {
-		for _, m := range current {
-			if _, ok := desired[m.Group.Name]; ok {
-				continue
-			}
+		for _, m := range staleMemberships {
 			if err := tx.Where("group_id = ? AND user_id = ?", m.GroupID, userID).Delete(&models.GroupMember{}).Error; err != nil {
 				return fmt.Errorf("delete stale membership: %w", err)
 			}
@@ -166,6 +164,17 @@ func syncOIDCGroupsOnce(db *gorm.DB, userID uuid.UUID, claimGroups []string, rba
 
 	slog.Debug("OIDC groups synced", "user_id", userID, "claim_count", len(desiredNames))
 	return nil
+}
+
+func staleOIDCMemberships(current []models.GroupMember, desired map[string]struct{}) []models.GroupMember {
+	stale := make([]models.GroupMember, 0)
+	for _, m := range current {
+		if _, ok := desired[m.Group.Name]; ok {
+			continue
+		}
+		stale = append(stale, m)
+	}
+	return stale
 }
 
 func normalizeOIDCGroupNames(claimGroups []string) []string {

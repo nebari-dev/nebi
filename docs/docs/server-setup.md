@@ -61,7 +61,7 @@ When OIDC authentication is configured, nebi requests the `groups` scope alongsi
 - Memberships in OIDC-source groups that aren't in this login's claim are removed.
 - Native groups (created via the admin UI) are **never** modified by OIDC sync — even if a claim name happens to collide with a native group name.
 
-OIDC groups with zero members are kept so existing workspace shares survive temporary churn. Reconciled sessions carry an authorization-sync timestamp and must refresh before stale authorization can exceed the defined interval; legacy unstamped tokens are rejected unless they were explicitly issued by basic username/password login. Nebi records the last trusted authorization state, continuously retries unresolved local database/Casbin reconciliation failures, and logs alerts with a failure source so operators can distinguish local authorization-storage failures from IdP/token failures.
+OIDC groups with zero members are kept so existing workspace shares survive temporary churn. Reconciled bearer sessions carry an authorization-sync timestamp and are accepted for `NEBI_AUTH_AUTHORIZATION_STALE_AFTER_MINS` minutes, which defaults to the 24-hour JWT lifetime; legacy unstamped tokens keep the pre-schema JWT-expiration behavior. Nebi records the last trusted authorization state, continuously retries unresolved local database/Casbin reconciliation failures, and logs alerts when reconciliation is unhealthy.
 
 ## What's Next
 

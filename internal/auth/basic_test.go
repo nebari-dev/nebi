@@ -108,7 +108,7 @@ func TestBasicAuthenticator_RejectsStaleReconciledBearerToken(t *testing.T) {
 		t.Fatalf("load user: %v", err)
 	}
 
-	syncedAt := time.Now().UTC().Add(-authReconciliationStaleAfter - time.Second)
+	syncedAt := time.Now().UTC().Add(-authReconciliationStaleAfter() - time.Second)
 	token, err := authr.generateTokenWithAuthorizationSync(&user, &syncedAt)
 	if err != nil {
 		t.Fatalf("generate stale reconciled token: %v", err)
@@ -119,7 +119,7 @@ func TestBasicAuthenticator_RejectsStaleReconciledBearerToken(t *testing.T) {
 	}
 }
 
-func TestBasicAuthenticator_RejectsLegacyUnstampedBearerToken(t *testing.T) {
+func TestBasicAuthenticator_AcceptsLegacyUnstampedBearerToken(t *testing.T) {
 	db := setupTestDB(t)
 	newTestUser(t, db, "alice", "correct-horse-battery-staple")
 
@@ -147,9 +147,54 @@ func TestBasicAuthenticator_RejectsLegacyUnstampedBearerToken(t *testing.T) {
 		t.Fatalf("sign legacy token: %v", err)
 	}
 
-	if code := callWithToken(t, authr.Middleware(), token); code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 for legacy unstamped token, got %d", code)
+	if code := callWithToken(t, authr.Middleware(), token); code != http.StatusOK {
+		t.Fatalf("expected 200 for legacy unstamped token, got %d", code)
 	}
+}
+
+func TestBasicAuthenticator_AcceptsStaleReconciledBearerTokenWithFreshStatus(t *testing.T) {
+	setAuthReconciliationStaleAfterForTest(t, 5*time.Minute)
+
+	db := setupTestDB(t)
+	newTestUser(t, db, "alice", "correct-horse-battery-staple")
+
+	authr, err := NewBasicAuthenticator(db, testJWTSecret, nil)
+	if err != nil {
+		t.Fatalf("NewBasicAuthenticator: %v", err)
+	}
+
+	var user models.User
+	if err := db.Where("username = ?", "alice").First(&user).Error; err != nil {
+		t.Fatalf("load user: %v", err)
+	}
+
+	syncedAt := time.Now().UTC().Add(-10 * time.Minute)
+	token, err := authr.generateTokenWithAuthorizationSync(&user, &syncedAt)
+	if err != nil {
+		t.Fatalf("generate stale reconciled token: %v", err)
+	}
+
+	freshSuccess := time.Now().UTC()
+	if err := db.Create(&models.AuthReconciliationStatus{
+		UserID:        user.ID,
+		Kind:          string(authReconciliationOIDCGroups),
+		LastSuccessAt: &freshSuccess,
+	}).Error; err != nil {
+		t.Fatalf("create reconciliation status: %v", err)
+	}
+
+	if code := callWithToken(t, authr.Middleware(), token); code != http.StatusOK {
+		t.Fatalf("expected 200 for stale token with fresh reconciliation status, got %d", code)
+	}
+}
+
+func setAuthReconciliationStaleAfterForTest(t *testing.T, staleAfter time.Duration) {
+	t.Helper()
+	previous := authReconciliationStaleAfter()
+	ConfigureAuthReconciliationStaleAfter(staleAfter)
+	t.Cleanup(func() {
+		ConfigureAuthReconciliationStaleAfter(previous)
+	})
 }
 
 func TestBasicAuthenticator_RejectsQueryToken(t *testing.T) {

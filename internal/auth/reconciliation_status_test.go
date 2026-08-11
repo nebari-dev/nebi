@@ -99,7 +99,7 @@ func TestAlertUnresolvedAuthReconciliationsRetriesOIDCGroupState(t *testing.T) {
 	}
 }
 
-func TestAlertUnresolvedAuthReconciliationsDoesNotRetryIdentityProviderFailures(t *testing.T) {
+func TestAlertUnresolvedAuthReconciliationsRetriesPersistedFailuresRegardlessOfSource(t *testing.T) {
 	db := syncTestDB(t)
 	now := time.Now().UTC()
 
@@ -126,11 +126,11 @@ func TestAlertUnresolvedAuthReconciliationsDoesNotRetryIdentityProviderFailures(
 	if err != nil {
 		t.Fatalf("alert unresolved reconciliations: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("expected identity-provider failure to remain unresolved, got %d", count)
+	if count != 0 {
+		t.Fatalf("expected retry to resolve reconciliation, got %d unresolved", count)
 	}
-	if len(provider.addedGroups) != 0 {
-		t.Fatalf("expected no local retry for identity-provider failure, got %d group additions", len(provider.addedGroups))
+	if len(provider.addedGroups) != 1 {
+		t.Fatalf("expected retry to add one casbin group, got %d", len(provider.addedGroups))
 	}
 }
 
@@ -150,8 +150,7 @@ func TestAlertUnresolvedAuthReconciliationsRetriesProxyAdminState(t *testing.T) 
 		LastFailureSource:   string(authReconciliationFailureSourceLocal),
 		ConsecutiveFailures: 1,
 		LastError:           "revoke failed",
-		DesiredAdmin:        false,
-		HasDesiredAdmin:     true,
+		DesiredAdmin:        boolPtr(false),
 	}).Error; err != nil {
 		t.Fatalf("create unresolved status: %v", err)
 	}
@@ -179,4 +178,43 @@ func TestAlertUnresolvedAuthReconciliationsRetriesProxyAdminState(t *testing.T) 
 	if status.LastFailureAt != nil {
 		t.Fatal("expected retry success to clear failure timestamp")
 	}
+}
+
+func TestAlertUnresolvedAuthReconciliationsDoesNotRetryProxyAdminGrants(t *testing.T) {
+	db := syncTestDB(t)
+	now := time.Now().UTC()
+
+	u := models.User{Username: "alice", Email: "alice@test"}
+	if err := db.Create(&u).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	if err := db.Create(&models.AuthReconciliationStatus{
+		UserID:              u.ID,
+		Kind:                string(authReconciliationProxyAdmin),
+		LastFailureAt:       &now,
+		LastFailureSource:   string(authReconciliationFailureSourceLocal),
+		ConsecutiveFailures: 1,
+		LastError:           "grant failed",
+		DesiredAdmin:        boolPtr(true),
+	}).Error; err != nil {
+		t.Fatalf("create unresolved status: %v", err)
+	}
+
+	provider := &stubRBACProvider{}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	count, err := alertUnresolvedAuthReconciliations(db, provider, logger, now)
+	if err != nil {
+		t.Fatalf("alert unresolved reconciliations: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected stale grant to remain unresolved, got %d unresolved", count)
+	}
+	if provider.madeAdmin {
+		t.Fatal("expected monitor not to grant admin from cached desired state")
+	}
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }

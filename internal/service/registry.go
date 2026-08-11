@@ -27,14 +27,15 @@ func NewRegistryService(db *gorm.DB, encKey []byte, isLocal bool, rbacProvider r
 
 // RegistryResult is the response type for registry operations.
 type RegistryResult struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	URL         string    `json:"url"`
-	Username    string    `json:"username"`
-	HasAPIToken bool      `json:"has_api_token"`
-	IsDefault   bool      `json:"is_default"`
-	Namespace   string    `json:"namespace"`
-	CreatedAt   string    `json:"created_at"`
+	ID            uuid.UUID `json:"id"`
+	Name          string    `json:"name"`
+	URL           string    `json:"url"`
+	Username      string    `json:"username"`
+	HasAPIToken   bool      `json:"has_api_token"`
+	IsDefault     bool      `json:"is_default"`
+	Namespace     string    `json:"namespace"`
+	ConfigManaged bool      `json:"config_managed"`
+	CreatedAt     string    `json:"created_at"`
 }
 
 // CreateRegistryRequest holds parameters for creating a registry.
@@ -120,6 +121,14 @@ func (s *RegistryService) GetRegistry(id string) (*RegistryResult, error) {
 // CreateRegistry creates a new registry with encrypted credentials.
 func (s *RegistryService) CreateRegistry(req CreateRegistryReq) (*RegistryResult, error) {
 	if req.IsDefault {
+		var current models.OCIRegistry
+		if err := s.db.Where("is_default = ?", true).First(&current).Error; err != nil {
+			if err != gorm.ErrRecordNotFound {
+				return nil, err
+			}
+		} else if current.ConfigManaged {
+			return nil, &ConflictError{Message: fmt.Sprintf("Default registry '%s' is managed by server configuration (config.yaml); the default cannot be changed via the API", current.Name)}
+		}
 		s.db.Model(&models.OCIRegistry{}).Where("is_default = ?", true).Update("is_default", false)
 	}
 
@@ -164,6 +173,10 @@ func (s *RegistryService) UpdateRegistry(id string, req UpdateRegistryReq) (*Reg
 		return nil, err
 	}
 
+	if registry.ConfigManaged {
+		return nil, &ConflictError{Message: fmt.Sprintf("Registry '%s' is managed by server configuration (config.yaml) and cannot be modified", registry.Name)}
+	}
+
 	if req.Name != nil {
 		registry.Name = *req.Name
 	}
@@ -189,6 +202,14 @@ func (s *RegistryService) UpdateRegistry(id string, req UpdateRegistryReq) (*Reg
 	}
 	if req.IsDefault != nil {
 		if *req.IsDefault {
+			var current models.OCIRegistry
+			if err := s.db.Where("is_default = ?", true).First(&current).Error; err != nil {
+				if err != gorm.ErrRecordNotFound {
+					return nil, err
+				}
+			} else if current.ConfigManaged && current.ID != registry.ID {
+				return nil, &ConflictError{Message: fmt.Sprintf("Default registry '%s' is managed by server configuration (config.yaml); the default cannot be changed via the API", current.Name)}
+			}
 			s.db.Model(&models.OCIRegistry{}).Where("is_default = ?", true).Update("is_default", false)
 		}
 		registry.IsDefault = *req.IsDefault
@@ -218,6 +239,10 @@ func (s *RegistryService) DeleteRegistry(id string) error {
 			return ErrNotFound
 		}
 		return err
+	}
+
+	if registry.ConfigManaged {
+		return &ConflictError{Message: fmt.Sprintf("Registry '%s' is managed by server configuration (config.yaml) and cannot be deleted", registry.Name)}
 	}
 
 	if err := s.db.Delete(&registry).Error; err != nil {
@@ -294,13 +319,14 @@ func (s *RegistryService) FallbackRepositories(registryID string) []string {
 
 func registryToResult(reg models.OCIRegistry, username string, hasAPIToken bool) RegistryResult {
 	return RegistryResult{
-		ID:          reg.ID,
-		Name:        reg.Name,
-		URL:         reg.URL,
-		Username:    username,
-		HasAPIToken: hasAPIToken,
-		IsDefault:   reg.IsDefault,
-		Namespace:   reg.Namespace,
-		CreatedAt:   reg.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:            reg.ID,
+		Name:          reg.Name,
+		URL:           reg.URL,
+		Username:      username,
+		HasAPIToken:   hasAPIToken,
+		IsDefault:     reg.IsDefault,
+		Namespace:     reg.Namespace,
+		ConfigManaged: reg.ConfigManaged,
+		CreatedAt:     reg.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
 }

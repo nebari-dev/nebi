@@ -21,6 +21,7 @@ const DEFAULT_BRANDING_LOGO_URL = '/nebi-logo.svg';
 const DEFAULT_DARK_BRANDING_LOGO_URL = '/nebi-logo-dark.svg';
 const BRANDING_CONFIG_PATH = '/public/config.json';
 const BRANDING_STYLE_ID = 'nebi-runtime-branding';
+const CSP_STYLE_NONCE_META_SELECTOR = 'meta[name="csp-style-nonce"]';
 const UNSAFE_CSS_VALUE = /[;<>{}"'\\]|url\s*\(|expression\s*\(|javascript:/i;
 
 let cachedConfig: RuntimeBrandingConfig | null = null;
@@ -56,8 +57,8 @@ const ALLOWED_DATA_MIME_TYPES = new Set([
   'image/vnd.microsoft.icon',
 ]);
 
-// Accepts http(s) URLs, root-relative paths, and base64-encoded data: image
-// URIs from the allow-list above. Protocol-relative (`//`), javascript:,
+// Accepts same-origin asset URLs and base64-encoded data: image URIs from the
+// allow-list above. External http(s), protocol-relative (`//`), javascript:,
 // data:text/html, and non-base64 data URIs are rejected.
 const isSafeAssetUrl = (value: string): boolean => {
   if (value.startsWith('/')) {
@@ -67,7 +68,7 @@ const isSafeAssetUrl = (value: string): boolean => {
   try {
     const parsed = new URL(value);
     if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-      return true;
+      return parsed.origin === window.location.origin;
     }
     if (parsed.protocol === 'data:') {
       // Only accept base64-encoded images from the allow-list; reject
@@ -84,6 +85,13 @@ const isSafeAssetUrl = (value: string): boolean => {
   } catch {
     return false;
   }
+};
+
+const getCSPNonce = (): string | undefined => {
+  const nonce = document
+    .querySelector<HTMLMetaElement>(CSP_STYLE_NONCE_META_SELECTOR)
+    ?.content.trim();
+  return nonce || undefined;
 };
 
 const toCssVariableName = (tokenName: string): string | undefined => {
@@ -215,6 +223,10 @@ const applyBrandingThemeStyles = (theme?: BrandingConfig['theme']): void => {
 
   const style = existingStyle ?? document.createElement('style');
   style.id = BRANDING_STYLE_ID;
+  const nonce = getCSPNonce();
+  if (nonce) {
+    style.setAttribute('nonce', nonce);
+  }
   style.textContent = `${css}\n`;
   if (!existingStyle) {
     document.head.appendChild(style);

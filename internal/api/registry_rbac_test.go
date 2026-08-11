@@ -34,7 +34,7 @@ func buildRegistryRBACTestRouter(t *testing.T) (http.Handler, *gorm.DB) {
 	if err != nil {
 		t.Fatalf("db.New: %v", err)
 	}
-	if err := db.Migrate(database); err != nil {
+	if err := db.Migrate(database, cfg.Registries.SeedDefault); err != nil {
 		t.Fatalf("db.Migrate: %v", err)
 	}
 

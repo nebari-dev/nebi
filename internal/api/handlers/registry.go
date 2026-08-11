@@ -113,6 +113,7 @@ func (h *RegistryHandler) GetRegistry(c *gin.Context) {
 // @Success 200 {object} service.RegistryResult
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
 // @Router /admin/registries/{id} [put]
 func (h *RegistryHandler) UpdateRegistry(c *gin.Context) {
 	var req UpdateRegistryRequest
@@ -145,6 +146,7 @@ func (h *RegistryHandler) UpdateRegistry(c *gin.Context) {
 // @Param id path string true "Registry ID"
 // @Success 204
 // @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
 // @Router /admin/registries/{id} [delete]
 func (h *RegistryHandler) DeleteRegistry(c *gin.Context) {
 	if err := h.svc.DeleteRegistry(c.Param("id")); err != nil {

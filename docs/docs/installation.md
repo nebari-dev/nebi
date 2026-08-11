@@ -20,9 +20,7 @@ pixi global install nebi
 
 ## Installation script
 
-:::note
-Supported platforms: **macOS** and **Linux**
-:::
+### Linux & MacOS
 
 This installs the latest release of `nebi` to `~/.local/bin` (CLI and desktop app):
 
@@ -36,44 +34,38 @@ Make sure it's on your `PATH`:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-### Install only CLI
+**Advanced options**:
 
-```bash
-curl -fsSL https://nebi.nebari.dev/install.sh | bash
+* `--version <ver>`: Install specific version (e.g. v0.5.0)
+* `--install-dir <path>`: Set install directory (default: `~/.local/bin`)
+* `--desktop`: Install the desktop app
+* `-h`, `--help`: Show the help message
+
+### Windows (Powershell)
+
+```powershell
+irm https://nebi.nebari.dev/install.ps1 | iex
 ```
 
-### Install a specific version
+**Advanced options**:
 
-```bash
-# Only CLI
-curl -fsSL https://nebi.nebari.dev/install.sh | sh -s -- --version v0.6.0-rc3
-
-# CLI and desktop app
-curl -fsSL https://nebi.nebari.dev/install.sh | sh -s -- --version v0.6.0-rc3 --desktop
-```
-
-### Install to a custom directory
-
-```bash
-curl -fsSL https://nebi.nebari.dev/install.sh | sh -s -- --install-dir /usr/local/bin
-```
+* `-Version <ver>`: Install specific version (e.g. v0.5.0)
+* `-InstallDir <path>`: Set install directory (default: `$env:LOCALAPPDATA\nebi`)
+* `-Desktop`: Install the desktop app
 
 ## Install with conda
 
-Nebi CLI and desktop packages is distributed on conda-forge, you can install it with conda in your base environment:
+Nebi CLI and desktop packages are distributed on conda-forge, you can install it with conda in your base environment:
 
 ```bash
 conda install conda-forge::nebi
-conda install conda-forge::nebi-desktop
 ```
 
 ## Install from source
 
 For certain cases like development or testing, you can install Nebi from source.
 
-:::note
 Prerequisite: Go version 1.24+
-:::
 
 ```bash
 go install github.com/nebari-dev/nebi/cmd/nebi@latest

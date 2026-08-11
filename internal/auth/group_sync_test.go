@@ -35,12 +35,12 @@ func syncTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func TestSyncOIDCGroups_CreatesGroupAndMembership(t *testing.T) {
+func TestOIDCGroupSync_CreatesGroupAndMembership(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
 
-	if err := SyncOIDCGroups(db, u.ID, []string{"data-science", "admins"}); err != nil {
+	if err := syncOIDCGroups(db, u.ID, []string{"data-science", "admins"}, rbac.NewDefaultProvider()); err != nil {
 		t.Fatalf("sync: %v", err)
 	}
 
@@ -61,7 +61,7 @@ func TestSyncOIDCGroups_CreatesGroupAndMembership(t *testing.T) {
 	}
 }
 
-func TestSyncOIDCGroups_StripsLeadingSlashAndDedups(t *testing.T) {
+func TestOIDCGroupSync_StripsLeadingSlashAndDedups(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
@@ -69,7 +69,7 @@ func TestSyncOIDCGroups_StripsLeadingSlashAndDedups(t *testing.T) {
 	// Keycloak can emit the same group twice in the `groups` claim: once as a
 	// full path ("/developer", from a full.path=true mapper) and once as the
 	// bare name ("developer"). Both refer to one group and must collapse.
-	if err := SyncOIDCGroups(db, u.ID, []string{"/developer", "developer"}); err != nil {
+	if err := syncOIDCGroups(db, u.ID, []string{"/developer", "developer"}, rbac.NewDefaultProvider()); err != nil {
 		t.Fatalf("sync: %v", err)
 	}
 
@@ -88,13 +88,13 @@ func TestSyncOIDCGroups_StripsLeadingSlashAndDedups(t *testing.T) {
 	}
 }
 
-func TestSyncOIDCGroups_RemovesStaleMemberships(t *testing.T) {
+func TestOIDCGroupSync_RemovesStaleMemberships(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
-	_ = SyncOIDCGroups(db, u.ID, []string{"x", "y"})
+	_ = syncOIDCGroups(db, u.ID, []string{"x", "y"}, rbac.NewDefaultProvider())
 
-	if err := SyncOIDCGroups(db, u.ID, []string{"x"}); err != nil {
+	if err := syncOIDCGroups(db, u.ID, []string{"x"}, rbac.NewDefaultProvider()); err != nil {
 		t.Fatalf("sync: %v", err)
 	}
 
@@ -104,12 +104,12 @@ func TestSyncOIDCGroups_RemovesStaleMemberships(t *testing.T) {
 	}
 }
 
-func TestSyncOIDCGroups_KeepsZeroMemberGroups(t *testing.T) {
+func TestOIDCGroupSync_KeepsZeroMemberGroups(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
-	_ = SyncOIDCGroups(db, u.ID, []string{"keep-me"})
-	_ = SyncOIDCGroups(db, u.ID, []string{}) // user dropped from the group
+	_ = syncOIDCGroups(db, u.ID, []string{"keep-me"}, rbac.NewDefaultProvider())
+	_ = syncOIDCGroups(db, u.ID, []string{}, rbac.NewDefaultProvider()) // user dropped from the group
 
 	var g models.Group
 	if err := db.First(&g, "name = ?", "keep-me").Error; err != nil {
@@ -117,7 +117,7 @@ func TestSyncOIDCGroups_KeepsZeroMemberGroups(t *testing.T) {
 	}
 }
 
-func TestSyncOIDCGroups_DoesNotTouchNativeMemberships(t *testing.T) {
+func TestOIDCGroupSync_DoesNotTouchNativeMemberships(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
@@ -126,7 +126,7 @@ func TestSyncOIDCGroups_DoesNotTouchNativeMemberships(t *testing.T) {
 	db.Create(&models.GroupMember{GroupID: native.ID, UserID: u.ID})
 	_ = rbac.AddUserToGroup(u.ID, native.ID)
 
-	_ = SyncOIDCGroups(db, u.ID, []string{"x"})
+	_ = syncOIDCGroups(db, u.ID, []string{"x"}, rbac.NewDefaultProvider())
 
 	var mem models.GroupMember
 	if err := db.Where("group_id = ? AND user_id = ?", native.ID, u.ID).First(&mem).Error; err != nil {
@@ -148,7 +148,7 @@ func TestSyncOIDCGroups_DoesNotTouchNativeMemberships(t *testing.T) {
 	}
 }
 
-func TestSyncOIDCGroups_RefusesToMergeIntoNativeGroup(t *testing.T) {
+func TestOIDCGroupSync_RefusesToMergeIntoNativeGroup(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
@@ -160,7 +160,7 @@ func TestSyncOIDCGroups_RefusesToMergeIntoNativeGroup(t *testing.T) {
 	}
 
 	// OIDC claim arrives with the same name.
-	if err := SyncOIDCGroups(db, u.ID, []string{"engineering"}); err != nil {
+	if err := syncOIDCGroups(db, u.ID, []string{"engineering"}, rbac.NewDefaultProvider()); err != nil {
 		t.Fatalf("sync: %v", err)
 	}
 
@@ -189,7 +189,7 @@ func TestSyncOIDCGroups_RefusesToMergeIntoNativeGroup(t *testing.T) {
 	}
 }
 
-func TestSyncOIDCGroups_ReturnsRBACAddFailure(t *testing.T) {
+func TestOIDCGroupSync_ReturnsRBACAddFailure(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
@@ -203,7 +203,7 @@ func TestSyncOIDCGroups_ReturnsRBACAddFailure(t *testing.T) {
 	}
 }
 
-func TestSyncOIDCGroups_ReturnsRBACListFailure(t *testing.T) {
+func TestOIDCGroupSync_ReturnsRBACListFailure(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
@@ -217,7 +217,7 @@ func TestSyncOIDCGroups_ReturnsRBACListFailure(t *testing.T) {
 	}
 }
 
-func TestSyncOIDCGroups_RetainsStaleMembershipWhenRBACRemoveFails(t *testing.T) {
+func TestOIDCGroupSync_RetainsStaleMembershipWhenRBACRemoveFails(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
@@ -248,7 +248,7 @@ func TestSyncOIDCGroups_RetainsStaleMembershipWhenRBACRemoveFails(t *testing.T) 
 	}
 }
 
-func TestSyncOIDCGroups_RecordsSuccessAndFailureStatus(t *testing.T) {
+func TestOIDCGroupSync_RecordsSuccessAndFailureStatus(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
@@ -296,7 +296,7 @@ func TestSyncOIDCGroups_RecordsSuccessAndFailureStatus(t *testing.T) {
 	}
 }
 
-func TestSyncOIDCGroups_ReturnsStatusCreateFailure(t *testing.T) {
+func TestOIDCGroupSync_ReturnsStatusCreateFailure(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
@@ -311,7 +311,7 @@ func TestSyncOIDCGroups_ReturnsStatusCreateFailure(t *testing.T) {
 	}
 }
 
-func TestSyncOIDCGroups_ReturnsStatusUpdateFailure(t *testing.T) {
+func TestOIDCGroupSync_ReturnsStatusUpdateFailure(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
@@ -337,7 +337,7 @@ func TestSyncOIDCGroups_ReturnsStatusUpdateFailure(t *testing.T) {
 	}
 }
 
-func TestSyncOIDCGroups_ReturnsGroupLookupFailure(t *testing.T) {
+func TestOIDCGroupSync_ReturnsGroupLookupFailure(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
@@ -352,7 +352,7 @@ func TestSyncOIDCGroups_ReturnsGroupLookupFailure(t *testing.T) {
 	}
 }
 
-func TestSyncOIDCGroups_ReturnsGroupCreateFailure(t *testing.T) {
+func TestOIDCGroupSync_ReturnsGroupCreateFailure(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
@@ -367,7 +367,7 @@ func TestSyncOIDCGroups_ReturnsGroupCreateFailure(t *testing.T) {
 	}
 }
 
-func TestSyncOIDCGroups_ReturnsMembershipLookupFailure(t *testing.T) {
+func TestOIDCGroupSync_ReturnsMembershipLookupFailure(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
@@ -384,7 +384,7 @@ func TestSyncOIDCGroups_ReturnsMembershipLookupFailure(t *testing.T) {
 	}
 }
 
-func TestSyncOIDCGroups_ReturnsMembershipCreateFailure(t *testing.T) {
+func TestOIDCGroupSync_ReturnsMembershipCreateFailure(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
@@ -401,7 +401,7 @@ func TestSyncOIDCGroups_ReturnsMembershipCreateFailure(t *testing.T) {
 	}
 }
 
-func TestSyncOIDCGroups_ReturnsOriginalErrorWhenFailureStatusCreateFails(t *testing.T) {
+func TestOIDCGroupSync_ReturnsOriginalErrorWhenFailureStatusCreateFails(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
@@ -417,7 +417,7 @@ func TestSyncOIDCGroups_ReturnsOriginalErrorWhenFailureStatusCreateFails(t *test
 	}
 }
 
-func TestSyncOIDCGroups_ReturnsOriginalErrorWhenFailureStatusUpdateFails(t *testing.T) {
+func TestOIDCGroupSync_ReturnsOriginalErrorWhenFailureStatusUpdateFails(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
@@ -438,7 +438,7 @@ func TestSyncOIDCGroups_ReturnsOriginalErrorWhenFailureStatusUpdateFails(t *test
 	}
 }
 
-func TestSyncOIDCGroups_ReturnsDBQueryFailure(t *testing.T) {
+func TestOIDCGroupSync_ReturnsDBQueryFailure(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
@@ -453,7 +453,7 @@ func TestSyncOIDCGroups_ReturnsDBQueryFailure(t *testing.T) {
 	}
 }
 
-func TestSyncOIDCGroups_ReturnsDBDeleteFailure(t *testing.T) {
+func TestOIDCGroupSync_ReturnsDBDeleteFailure(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)

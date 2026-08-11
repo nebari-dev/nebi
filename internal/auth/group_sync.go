@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// SyncOIDCGroups reconciles the user's OIDC group memberships with the names
+// syncOIDCGroups reconciles the user's OIDC group memberships with the names
 // in the latest ID token's `groups` claim. Idempotent: safe to call on every
 // login. Only affects groups with source=oidc; native memberships are
 // untouched. Zero-member OIDC groups are preserved so existing workspace
@@ -26,15 +26,10 @@ import (
 // into them would create permanent untracked grants (phase-2 reconcile only
 // considers source=oidc memberships).
 //
-// The public wrapper also records auth_reconciliation_statuses rows so callers
-// can fail closed and operators can see unresolved reconciliation failures.
-func SyncOIDCGroups(db *gorm.DB, userID uuid.UUID, claimGroups []string) error {
-	return syncOIDCGroups(db, userID, claimGroups, rbac.NewDefaultProvider())
-}
-
-// syncOIDCGroups is the injected form used by auth flows and tests. It keeps
-// the public SyncOIDCGroups API simple while letting callers reuse a specific
-// RBAC provider or inject one that fails at known reconciliation steps.
+// It also records auth_reconciliation_statuses rows so callers can fail closed
+// and operators can see unresolved reconciliation failures. The RBAC provider
+// is injected so auth flows can reuse the configured provider and tests can
+// fail known reconciliation steps.
 func syncOIDCGroups(db *gorm.DB, userID uuid.UUID, claimGroups []string, rbacProvider rbac.Provider) error {
 	if err := syncOIDCGroupsOnce(db, userID, claimGroups, rbacProvider); err != nil {
 		recordAuthReconciliationFailureWithGroups(db, userID, authReconciliationOIDCGroups, err, claimGroups)

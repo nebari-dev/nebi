@@ -32,7 +32,7 @@ type ServerConfig struct {
 	Port           int    `mapstructure:"port"`
 	Mode           string `mapstructure:"mode"`            // "development" or "production"
 	BasePath       string `mapstructure:"base_path"`       // URL path prefix (e.g. "/nebi")
-	AllowedOrigins string `mapstructure:"allowed_origins"` // comma-separated non-loopback origins accepted in local mode (e.g. "https://hub.example.com" when proxied by JupyterHub)
+	AllowedOrigins string `mapstructure:"allowed_origins"` // comma-separated non-loopback origins accepted in local mode and allowed as CSP frame-ancestors in all modes (e.g. "https://hub.example.com" when proxied by JupyterHub)
 }
 
 // AllowedOriginsList returns server.allowed_origins split on commas, with

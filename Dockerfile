@@ -25,7 +25,7 @@ COPY . .
 COPY --from=frontend-builder /app/frontend/dist ./internal/web/dist
 
 # Generate swagger docs
-RUN swag init -g cmd/nebi/main.go -o ./docs --exclude output
+RUN swag init -g serve.go -d cmd/nebi,internal/api,internal/service,internal/models,internal/limits,internal/metrics,internal/auth -o ./internal/swagger --packageName swagger --exclude output,cross-platform-example
 
 # Build pure Go binary with CGO disabled
 ARG VERSION=dev

@@ -42,15 +42,10 @@ func NewLocalExecutor(cfg *config.Config) (*LocalExecutor, error) {
 		return nil, fmt.Errorf("failed to create base directory: %w", err)
 	}
 
-	limitCfg := cfg.Limits
-	if limitCfg == (limits.Limits{}) {
-		limitCfg = limits.Defaults()
-	}
-
 	return &LocalExecutor{
 		baseDir: baseDir,
 		config:  cfg,
-		limits:  limitCfg,
+		limits:  cfg.Limits,
 	}, nil
 }
 

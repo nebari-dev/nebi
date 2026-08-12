@@ -28,6 +28,19 @@ func testExecutor(t *testing.T) *LocalExecutor {
 	return exec
 }
 
+func TestNewLocalExecutorUsesResolvedConfigLimits(t *testing.T) {
+	cfg := &config.Config{
+		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
+	}
+	exec, err := NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+	if exec.limits != (limits.Limits{}) {
+		t.Fatalf("expected executor to preserve zero-value literal limits, got %+v", exec.limits)
+	}
+}
+
 func TestDeleteWorkspace_ManagedRemovesDir(t *testing.T) {
 	exec := testExecutor(t)
 

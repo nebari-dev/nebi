@@ -1017,6 +1017,12 @@
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
                     }
                 }
             },
@@ -1046,6 +1052,12 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -4312,6 +4324,9 @@
         "service.RegistryResult": {
             "type": "object",
             "properties": {
+                "config_managed": {
+                    "type": "boolean"
+                },
                 "created_at": {
                     "type": "string"
                 },

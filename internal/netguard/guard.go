@@ -17,20 +17,45 @@ import (
 //     127.0.0.1, ::1). Set allowAnyHost when the operator explicitly bound a
 //     non-loopback interface and therefore expects non-loopback Host values.
 //
-//   - The Origin header, when present, must be a loopback http(s) origin.
-//     Requests without an Origin (CLI, curl, same-origin GET) pass through.
-func Middleware(next http.Handler, allowAnyHost bool) http.Handler {
+//   - The Origin header, when present, must be a loopback http(s) origin or
+//     one of allowedOrigins (operator-configured via server.allowed_origins /
+//     NEBI_SERVER_ALLOWED_ORIGINS, e.g. the public hostname of a reverse
+//     proxy such as JupyterHub's jupyter-server-proxy — browsers send the
+//     proxy's origin on CORS-mode subresource requests like Vite's
+//     crossorigin module bundles). Requests without an Origin (CLI, curl,
+//     same-origin GET) pass through.
+func Middleware(next http.Handler, allowAnyHost bool, allowedOrigins []string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !allowAnyHost && !isLoopbackHostPort(r.Host) {
 			http.Error(w, "Forbidden: local mode only accepts requests addressed to a local host", http.StatusForbidden)
 			return
 		}
-		if origin := r.Header.Get("Origin"); origin != "" && !IsLoopbackOrigin(origin) {
+		if origin := r.Header.Get("Origin"); origin != "" && !IsLoopbackOrigin(origin) && !OriginAllowed(origin, allowedOrigins) {
 			http.Error(w, "Forbidden: local mode only accepts requests from a local origin", http.StatusForbidden)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// OriginAllowed reports whether origin matches one of allowed, compared
+// case-insensitively and ignoring surrounding whitespace and trailing
+// slashes (tolerating hand-typed env var values).
+func OriginAllowed(origin string, allowed []string) bool {
+	norm := normalizeOrigin(origin)
+	if norm == "" {
+		return false
+	}
+	for _, a := range allowed {
+		if normalizeOrigin(a) == norm {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeOrigin(origin string) string {
+	return strings.ToLower(strings.TrimRight(strings.TrimSpace(origin), "/"))
 }
 
 // IsLoopbackOrigin reports whether an Origin header value is an http(s)

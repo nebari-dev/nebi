@@ -1023,6 +1023,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
                     }
                 }
             },
@@ -1052,6 +1058,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -4318,6 +4330,9 @@ const docTemplate = `{
         "service.RegistryResult": {
             "type": "object",
             "properties": {
+                "config_managed": {
+                    "type": "boolean"
+                },
                 "created_at": {
                     "type": "string"
                 },

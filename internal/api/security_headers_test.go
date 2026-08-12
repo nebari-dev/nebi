@@ -11,10 +11,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func securityHeadersTestRouter(localMode bool) *gin.Engine {
+func securityHeadersTestRouter(localMode bool, allowedOrigins []string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.Use(securityHeadersMiddleware(localMode))
+	r.Use(securityHeadersMiddleware(localMode, allowedOrigins))
 	r.GET("/ping", func(c *gin.Context) { c.String(http.StatusOK, "pong") })
 	return r
 }
@@ -27,7 +27,7 @@ func doSecurityHeadersRequest(t *testing.T, localMode bool, setup func(*http.Req
 		setup(req)
 	}
 	rec := httptest.NewRecorder()
-	securityHeadersTestRouter(localMode).ServeHTTP(rec, req)
+	securityHeadersTestRouter(localMode, nil).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -40,7 +40,7 @@ func TestSecurityHeadersMiddlewareSetsBrowserHardeningHeaders(t *testing.T) {
 		"default-src 'self'",
 		"base-uri 'none'",
 		"object-src 'none'",
-		"frame-ancestors 'none'",
+		"frame-ancestors 'self'",
 		"style-src 'self'",
 		"style-src-attr 'none'",
 		"img-src 'self' data: blob:",
@@ -75,11 +75,26 @@ func TestSecurityHeadersMiddlewareSetsBrowserHardeningHeaders(t *testing.T) {
 	if got := headers.Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Fatalf("expected X-Content-Type-Options nosniff, got %q", got)
 	}
-	if got := headers.Get("X-Frame-Options"); got != "DENY" {
-		t.Fatalf("expected X-Frame-Options DENY, got %q", got)
+	if got := headers.Get("X-Frame-Options"); got != "SAMEORIGIN" {
+		t.Fatalf("expected X-Frame-Options SAMEORIGIN, got %q", got)
 	}
 	if got := headers.Get("Strict-Transport-Security"); got != "" {
 		t.Fatalf("plain HTTP response must not set HSTS, got %q", got)
+	}
+}
+
+func TestSecurityHeadersMiddlewareAllowsConfiguredFrameAncestors(t *testing.T) {
+	origins := []string{"https://hub.example.com", "https://other.example.com"}
+	for _, localMode := range []bool{true, false} {
+		req := httptest.NewRequest(http.MethodGet, "/ping", nil)
+		rec := httptest.NewRecorder()
+		securityHeadersTestRouter(localMode, origins).ServeHTTP(rec, req)
+
+		csp := rec.Header().Get("Content-Security-Policy")
+		want := "frame-ancestors 'self' https://hub.example.com https://other.example.com"
+		if !strings.Contains(csp, want) {
+			t.Fatalf("localMode=%v: expected CSP to include %q, got %q", localMode, want, csp)
+		}
 	}
 }
 

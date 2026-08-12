@@ -65,7 +65,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	// Middleware
 	router.Use(gin.Recovery())
 	router.Use(loggingMiddleware())
-	router.Use(securityHeadersMiddleware(localMode))
+	router.Use(securityHeadersMiddleware(localMode, cfg.Server.AllowedOriginsList()))
 	router.Use(corsMiddleware(localMode, cfg.Server.AllowedOriginsList()))
 
 	// Initialize authenticator based on mode
@@ -544,7 +544,7 @@ const (
 	cspStyleNonceKey  = "cspStyleNonce"
 )
 
-func securityHeadersMiddleware(localMode bool) gin.HandlerFunc {
+func securityHeadersMiddleware(localMode bool, allowedOrigins []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		scriptNonce, err := newCSPNonce()
 		if err != nil {
@@ -560,11 +560,14 @@ func securityHeadersMiddleware(localMode bool) gin.HandlerFunc {
 		c.Set(cspScriptNonceKey, scriptNonce)
 		c.Set(cspStyleNonceKey, styleNonce)
 		headers := c.Writer.Header()
-		headers.Set("Content-Security-Policy", contentSecurityPolicy(scriptNonce, styleNonce, localMode))
+		headers.Set("Content-Security-Policy", contentSecurityPolicy(scriptNonce, styleNonce, localMode, allowedOrigins))
 		headers.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		headers.Set("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()")
 		headers.Set("X-Content-Type-Options", "nosniff")
-		headers.Set("X-Frame-Options", "DENY")
+		// Legacy fallback only: browsers that support CSP frame-ancestors
+		// ignore this header, and it cannot express the configured-origins
+		// allowlist, so SAMEORIGIN is the closest safe value.
+		headers.Set("X-Frame-Options", "SAMEORIGIN")
 		if isHTTPSRequest(c) {
 			headers.Set("Strict-Transport-Security", "max-age=31536000")
 		}
@@ -573,17 +576,25 @@ func securityHeadersMiddleware(localMode bool) gin.HandlerFunc {
 	}
 }
 
-func contentSecurityPolicy(scriptNonce string, styleNonce string, localMode bool) string {
+func contentSecurityPolicy(scriptNonce string, styleNonce string, localMode bool, allowedOrigins []string) string {
 	connectSrc := "connect-src 'self'"
 	if localMode {
 		connectSrc = "connect-src 'self' http://localhost:* http://127.0.0.1:* https://localhost:* https://127.0.0.1:*"
+	}
+
+	// 'self' covers reverse proxies that serve nebi and the framing page
+	// from one origin (e.g. jupyter-server-proxy under JupyterHub);
+	// server.allowed_origins covers frames served from a different origin.
+	frameAncestors := "frame-ancestors 'self'"
+	if len(allowedOrigins) > 0 {
+		frameAncestors += " " + strings.Join(allowedOrigins, " ")
 	}
 
 	directives := []string{
 		"default-src 'self'",
 		"base-uri 'none'",
 		"object-src 'none'",
-		"frame-ancestors 'none'",
+		frameAncestors,
 		"script-src 'self' 'nonce-" + scriptNonce + "'",
 		"style-src 'self' 'nonce-" + styleNonce + "'",
 		"style-src-elem 'self' 'nonce-" + styleNonce + "'",

@@ -120,6 +120,32 @@ func recordAuthReconciliationSuccessWithState(db *gorm.DB, userID uuid.UUID, kin
 	}
 }
 
+func clearAuthReconciliationFailureWithGroups(db *gorm.DB, userID uuid.UUID, kind authReconciliationKind, claimGroups []string) error {
+	return clearAuthReconciliationFailureWithState(db, userID, kind, newOIDCGroupReconciliationState(claimGroups))
+}
+
+func clearAuthReconciliationFailureWithState(db *gorm.DB, userID uuid.UUID, kind authReconciliationKind, state authReconciliationState) error {
+	if db == nil {
+		return errors.New("database is not configured")
+	}
+
+	var status models.AuthReconciliationStatus
+	err := db.Where("user_id = ? AND kind = ?", userID, string(kind)).First(&status).Error
+	switch {
+	case err == nil:
+		status.LastFailureAt = nil
+		status.LastFailureSource = ""
+		status.ConsecutiveFailures = 0
+		status.LastError = ""
+		applyAuthReconciliationState(&status, state)
+		return db.Save(&status).Error
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return nil
+	default:
+		return err
+	}
+}
+
 func authReconciliationSuccessNeedsWrite(status models.AuthReconciliationStatus, state authReconciliationState, now time.Time) bool {
 	if status.LastFailureAt != nil || status.LastFailureSource != "" || status.ConsecutiveFailures != 0 || status.LastError != "" {
 		return true
@@ -350,11 +376,11 @@ func retryAuthReconciliationStatus(db *gorm.DB, rbacProvider rbac.Provider, stat
 		if err != nil {
 			return false, err
 		}
-		if err := syncOIDCGroupsOnce(db, status.UserID, claimGroups, rbacProvider); err != nil {
+		if err := syncOIDCGroupRemovalsOnly(db, status.UserID, claimGroups, rbacProvider); err != nil {
 			recordAuthReconciliationFailureWithGroups(db, status.UserID, kind, err, claimGroups)
 			return false, err
 		}
-		if err := recordAuthReconciliationSuccessWithGroups(db, status.UserID, kind, claimGroups); err != nil {
+		if err := clearAuthReconciliationFailureWithGroups(db, status.UserID, kind, claimGroups); err != nil {
 			recordAuthReconciliationFailureWithGroups(db, status.UserID, kind, err, claimGroups)
 			return false, err
 		}

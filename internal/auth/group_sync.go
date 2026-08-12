@@ -44,47 +44,18 @@ func syncOIDCGroups(db *gorm.DB, userID uuid.UUID, claimGroups []string, rbacPro
 }
 
 func syncOIDCGroupsOnce(db *gorm.DB, userID uuid.UUID, claimGroups []string, rbacProvider rbac.Provider) error {
-	if db == nil {
-		return errors.New("database is not configured")
-	}
-	if rbacProvider == nil {
-		return errors.New("rbac provider is not configured")
+	if err := validateOIDCGroupSyncInputs(db, rbacProvider); err != nil {
+		return err
 	}
 
-	desiredNames := normalizeOIDCGroupNames(claimGroups)
-	desired := make(map[string]struct{}, len(desiredNames))
-	for _, name := range desiredNames {
-		desired[name] = struct{}{}
+	desiredNames, desired := normalizedOIDCGroupSet(claimGroups)
+	if err := syncOIDCGroupRemovalsWithDesired(db, userID, desired, rbacProvider); err != nil {
+		return err
 	}
 
 	desiredGroupIDs := make([]uuid.UUID, 0, len(desired))
 
-	var current []models.GroupMember
-	err := db.
-		Joins("JOIN groups g ON g.id = group_members.group_id").
-		Where("group_members.user_id = ? AND g.source = ?", userID, models.GroupSourceOIDC).
-		Preload("Group").
-		Find(&current).Error
-	if err != nil {
-		return fmt.Errorf("list current oidc memberships: %w", err)
-	}
-
-	staleMemberships := staleOIDCMemberships(current, desired)
-	for _, m := range staleMemberships {
-		if err := rbacProvider.RemoveUserFromGroup(userID, m.GroupID); err != nil {
-			return fmt.Errorf("casbin remove stale: %w", err)
-		}
-	}
-
 	if err := db.Transaction(func(tx *gorm.DB) error {
-		for _, m := range staleMemberships {
-			if err := tx.Where("group_id = ? AND user_id = ?", m.GroupID, userID).Delete(&models.GroupMember{}).Error; err != nil {
-				return fmt.Errorf("delete stale membership: %w", err)
-			}
-			audit.LogAction(tx, userID, audit.ActionRemoveGroupMember, fmt.Sprintf("group:%s", m.GroupID),
-				map[string]any{"origin": "oidc", "user_id": userID})
-		}
-
 		for name := range desired {
 			var g models.Group
 			err := tx.Where("name = ?", name).First(&g).Error
@@ -158,6 +129,83 @@ func syncOIDCGroupsOnce(db *gorm.DB, userID uuid.UUID, claimGroups []string, rba
 	}
 
 	slog.Debug("OIDC groups synced", "user_id", userID, "claim_count", len(desiredNames))
+	return nil
+}
+
+func syncOIDCGroupRemovalsOnly(db *gorm.DB, userID uuid.UUID, claimGroups []string, rbacProvider rbac.Provider) error {
+	if err := validateOIDCGroupSyncInputs(db, rbacProvider); err != nil {
+		return err
+	}
+
+	desiredNames, desired := normalizedOIDCGroupSet(claimGroups)
+	if err := syncOIDCGroupRemovalsWithDesired(db, userID, desired, rbacProvider); err != nil {
+		return err
+	}
+
+	slog.Debug("OIDC group removals synced", "user_id", userID, "claim_count", len(desiredNames))
+	return nil
+}
+
+func validateOIDCGroupSyncInputs(db *gorm.DB, rbacProvider rbac.Provider) error {
+	if db == nil {
+		return errors.New("database is not configured")
+	}
+	if rbacProvider == nil {
+		return errors.New("rbac provider is not configured")
+	}
+
+	return nil
+}
+
+func normalizedOIDCGroupSet(claimGroups []string) ([]string, map[string]struct{}) {
+	desiredNames := normalizeOIDCGroupNames(claimGroups)
+	desired := make(map[string]struct{}, len(desiredNames))
+	for _, name := range desiredNames {
+		desired[name] = struct{}{}
+	}
+
+	return desiredNames, desired
+}
+
+func syncOIDCGroupRemovalsWithDesired(db *gorm.DB, userID uuid.UUID, desired map[string]struct{}, rbacProvider rbac.Provider) error {
+	var current []models.GroupMember
+	err := db.
+		Joins("JOIN groups g ON g.id = group_members.group_id").
+		Where("group_members.user_id = ? AND g.source = ?", userID, models.GroupSourceOIDC).
+		Preload("Group").
+		Find(&current).Error
+	if err != nil {
+		return fmt.Errorf("list current oidc memberships: %w", err)
+	}
+
+	staleMemberships := staleOIDCMemberships(current, desired)
+	return removeOIDCGroupMemberships(db, userID, staleMemberships, rbacProvider)
+}
+
+func removeOIDCGroupMemberships(db *gorm.DB, userID uuid.UUID, staleMemberships []models.GroupMember, rbacProvider rbac.Provider) error {
+	for _, m := range staleMemberships {
+		if err := rbacProvider.RemoveUserFromGroup(userID, m.GroupID); err != nil {
+			return fmt.Errorf("casbin remove stale: %w", err)
+		}
+	}
+
+	if len(staleMemberships) == 0 {
+		return nil
+	}
+
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		for _, m := range staleMemberships {
+			if err := tx.Where("group_id = ? AND user_id = ?", m.GroupID, userID).Delete(&models.GroupMember{}).Error; err != nil {
+				return fmt.Errorf("delete stale membership: %w", err)
+			}
+			audit.LogAction(tx, userID, audit.ActionRemoveGroupMember, fmt.Sprintf("group:%s", m.GroupID),
+				map[string]any{"origin": "oidc", "user_id": userID})
+		}
+
+		return nil
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -252,6 +252,9 @@ func hasFreshAuthorizationReconciliationStatus(db *gorm.DB, userID uuid.UUID, to
 	}
 
 	var freshSuccesses int64
+	// Tokens do not encode which reconciliation kinds their issuing flow ran,
+	// so this is intentionally user-level freshness. Narrow this query if
+	// reconciled tokens ever carry kind-level state.
 	if err := db.Model(&models.AuthReconciliationStatus{}).
 		Where("user_id = ?", userID).
 		Where("last_success_at IS NOT NULL").

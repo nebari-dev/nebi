@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -185,6 +187,55 @@ func TestBasicAuthenticator_AcceptsStaleReconciledBearerTokenWithFreshStatus(t *
 
 	if code := callWithToken(t, authr.Middleware(), token); code != http.StatusOK {
 		t.Fatalf("expected 200 for stale token with fresh reconciliation status, got %d", code)
+	}
+}
+
+func TestBasicAuthenticator_RejectsStaleReconciledBearerTokenAfterCachedOIDCGroupRetry(t *testing.T) {
+	setAuthReconciliationStaleAfterForTest(t, 5*time.Minute)
+
+	db := syncTestDB(t)
+	newTestUser(t, db, "alice", "correct-horse-battery-staple")
+
+	authr, err := NewBasicAuthenticator(db, testJWTSecret, nil)
+	if err != nil {
+		t.Fatalf("NewBasicAuthenticator: %v", err)
+	}
+
+	var user models.User
+	if err := db.Where("username = ?", "alice").First(&user).Error; err != nil {
+		t.Fatalf("load user: %v", err)
+	}
+
+	syncedAt := time.Now().UTC().Add(-10 * time.Minute)
+	token, err := authr.generateTokenWithAuthorizationSync(&user, &syncedAt)
+	if err != nil {
+		t.Fatalf("generate stale reconciled token: %v", err)
+	}
+
+	failureAt := time.Now().UTC()
+	if err := db.Create(&models.AuthReconciliationStatus{
+		UserID:              user.ID,
+		Kind:                string(authReconciliationOIDCGroups),
+		LastFailureAt:       &failureAt,
+		LastFailureSource:   string(authReconciliationFailureSourceLocal),
+		ConsecutiveFailures: 1,
+		LastError:           "casbin unavailable",
+		DesiredGroupsJSON:   encodeOIDCGroupReconciliationState([]string{"engineering"}),
+	}).Error; err != nil {
+		t.Fatalf("create reconciliation status: %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	count, err := alertUnresolvedAuthReconciliations(db, &stubRBACProvider{}, logger, failureAt)
+	if err != nil {
+		t.Fatalf("alert unresolved reconciliations: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected cached group retry to clear failure, got %d unresolved", count)
+	}
+
+	if code := callWithToken(t, authr.Middleware(), token); code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for stale token after cached group retry, got %d", code)
 	}
 }
 

@@ -44,6 +44,7 @@ func startLocalModeServer(t *testing.T) *localModeEnv {
 		"NEBI_SERVER_PORT",
 		"NEBI_PACKAGE_MANAGER_PIXI_PATH",
 	}
+	envVars = append(envVars, e2eProcessLimitEnvVars...)
 	saved := make(map[string]string, len(envVars))
 	for _, k := range envVars {
 		saved[k] = os.Getenv(k)
@@ -71,6 +72,7 @@ func startLocalModeServer(t *testing.T) *localModeEnv {
 	os.Setenv("NEBI_DATABASE_DSN", dbPath)
 	os.Setenv("NEBI_STORAGE_WORKSPACES_DIR", wsDir)
 	os.Setenv("NEBI_SERVER_PORT", fmt.Sprintf("%d", port))
+	disableProcessLimitsForE2E()
 	pixiPath := filepath.Join(t.TempDir(), "pixi")
 	pixiScript := `#!/bin/sh
 if [ "${1:-}" = "--version" ]; then

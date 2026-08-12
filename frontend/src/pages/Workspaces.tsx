@@ -1,6 +1,7 @@
 import { Check, Copy, Download, Loader2, Plus, Trash2, X } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -295,12 +296,7 @@ export const Workspaces = () => {
         </div>
       )}
 
-      {remoteUnreachable && (
-        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 px-4 py-3 rounded">
-          Remote server unreachable. Check that the server is running, or
-          disconnect from it in Settings.
-        </div>
-      )}
+      {remoteUnreachable && <RemoteUnreachableBanner />}
 
       {envJobNotice && (
         <div className="rounded-md border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-700">

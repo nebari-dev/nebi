@@ -7,6 +7,7 @@ import {
   Radio,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -269,12 +270,7 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
         </p>
       </div>
 
-      {remoteUnreachable && (
-        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 px-4 py-3 rounded">
-          Remote server unreachable. Check that the server is running, or
-          disconnect from it in Settings.
-        </div>
-      )}
+      {remoteUnreachable && <RemoteUnreachableBanner />}
 
       <div className="space-y-4">
         {displayedJobs.map((job, index) => (

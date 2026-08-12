@@ -219,8 +219,11 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
   const viewMode = useViewModeStore((state) => state.viewMode);
   const { data: serverStatus } = useRemoteServer();
   const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
-  const { data: remoteJobs, isLoading: remoteLoading } =
-    useRemoteJobs(isRemoteConnected);
+  const {
+    data: remoteJobs,
+    isLoading: remoteLoading,
+    isError: remoteError,
+  } = useRemoteJobs(isRemoteConnected);
 
   // Show jobs based on view mode when connected to remote
   const { displayedJobs, isRemote } = useMemo(() => {
@@ -244,7 +247,10 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
     };
   }, [jobs, remoteJobs, isRemoteConnected, viewMode, workspaceId]);
 
-  const isLoading = jobsLoading || (isRemoteConnected && remoteLoading);
+  const remoteUnreachable =
+    isRemoteConnected && viewMode === 'remote' && remoteError;
+  const isLoading =
+    jobsLoading || (isRemoteConnected && remoteLoading && !remoteError);
 
   if (isLoading) {
     return (
@@ -263,6 +269,13 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
         </p>
       </div>
 
+      {remoteUnreachable && (
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 px-4 py-3 rounded">
+          Remote server unreachable. Check that the server is running, or
+          disconnect from it in Settings.
+        </div>
+      )}
+
       <div className="space-y-4">
         {displayedJobs.map((job, index) => (
           <JobCard
@@ -274,7 +287,7 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
         ))}
       </div>
 
-      {displayedJobs.length === 0 && (
+      {displayedJobs.length === 0 && !remoteUnreachable && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">No jobs yet</p>
         </div>

@@ -73,8 +73,11 @@ export const Workspaces = () => {
   const isLocal = useModeStore((state) => state.mode === 'local');
   const { data: serverStatus } = useRemoteServer();
   const isRemoteConnected = isLocal && serverStatus?.status === 'connected';
-  const { data: remoteWorkspaces, isLoading: remoteLoading } =
-    useRemoteWorkspaces(isRemoteConnected);
+  const {
+    data: remoteWorkspaces,
+    isLoading: remoteLoading,
+    isError: remoteError,
+  } = useRemoteWorkspaces(isRemoteConnected);
   const viewMode = useViewModeStore((state) => state.viewMode);
 
   const [showCreate, setShowCreate] = useState(false);
@@ -241,7 +244,10 @@ export const Workspaces = () => {
   const isDeletePending =
     deleteMutation.isPending || deleteRemoteMutation.isPending;
 
-  if (isLoading || (isRemoteConnected && remoteLoading)) {
+  const remoteUnreachable =
+    isRemoteConnected && viewMode === 'remote' && remoteError;
+
+  if (isLoading || (isRemoteConnected && remoteLoading && !remoteError)) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -286,6 +292,13 @@ export const Workspaces = () => {
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded">
           {error}
+        </div>
+      )}
+
+      {remoteUnreachable && (
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 px-4 py-3 rounded">
+          Remote server unreachable. Check that the server is running, or
+          disconnect from it in Settings.
         </div>
       )}
 
@@ -506,13 +519,15 @@ export const Workspaces = () => {
         </CardContent>
       </Card>
 
-      {displayedWorkspaces.length === 0 && !showCreate && (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">
-            No workspaces yet. Create your first one!
-          </p>
-        </div>
-      )}
+      {displayedWorkspaces.length === 0 &&
+        !showCreate &&
+        !remoteUnreachable && (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">
+              No workspaces yet. Create your first one!
+            </p>
+          </div>
+        )}
 
       <ConfirmDialog
         open={!!confirmDelete}

@@ -5,11 +5,19 @@ import type {
   CreateRemoteWorkspaceRequest,
 } from '@/types';
 
+// Pause interval polling while the query is errored (e.g. the remote server is
+// unreachable) so failed requests don't flash loading UI every cycle. Polling
+// resumes after a successful refetch (reconnect invalidation or remount).
+export const pollUnlessErrored =
+  (interval: number) =>
+  ({ state }: { state: { status: string } }) =>
+    state.status === 'error' ? false : interval;
+
 export const useRemoteServer = () => {
   return useQuery({
     queryKey: ['remote', 'server'],
     queryFn: remoteApi.getServer,
-    refetchInterval: 10000, // Check connection status every 10s
+    refetchInterval: pollUnlessErrored(10000), // Check connection status every 10s
   });
 };
 
@@ -40,7 +48,7 @@ export const useRemoteWorkspaces = (enabled: boolean) => {
     queryKey: ['remote', 'workspaces'],
     queryFn: remoteApi.listWorkspaces,
     enabled,
-    refetchInterval: 5000,
+    refetchInterval: pollUnlessErrored(5000),
   });
 };
 
@@ -104,7 +112,7 @@ export const useRemoteJobs = (enabled: boolean) => {
     queryKey: ['remote', 'jobs'],
     queryFn: remoteApi.listJobs,
     enabled,
-    refetchInterval: 5000, // Poll for job status updates
+    refetchInterval: pollUnlessErrored(5000), // Poll for job status updates
   });
 };
 

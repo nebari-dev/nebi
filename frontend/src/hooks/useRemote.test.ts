@@ -10,6 +10,7 @@ import {
 } from '@/test/handlers';
 import { createWrapper } from '@/test/utils';
 import {
+  pollUnlessErrored,
   useConnectServer,
   useCreateRemoteWorkspace,
   useDeleteRemoteWorkspace,
@@ -32,6 +33,21 @@ const mockRemoteWorkspace = {
   ...mockWorkspace,
   server_url: 'https://remote.example.com',
 };
+
+describe('pollUnlessErrored', () => {
+  it('returns the interval while the query is healthy', () => {
+    expect(pollUnlessErrored(5000)({ state: { status: 'success' } })).toBe(
+      5000,
+    );
+    expect(pollUnlessErrored(5000)({ state: { status: 'pending' } })).toBe(
+      5000,
+    );
+  });
+
+  it('pauses polling once the query errors', () => {
+    expect(pollUnlessErrored(5000)({ state: { status: 'error' } })).toBe(false);
+  });
+});
 
 describe('useRemoteServer', () => {
   beforeEach(() => {
@@ -134,6 +150,16 @@ describe('useRemoteWorkspaces', () => {
       wrapper: createWrapper(),
     });
     expect(result.current.fetchStatus).toBe('idle');
+  });
+
+  it('reflects an error state when the remote server is unreachable', async () => {
+    server.use(
+      http.get('/api/v1/remote/workspaces', () => HttpResponse.error()),
+    );
+    const { result } = renderHook(() => useRemoteWorkspaces(true), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
   });
 });
 

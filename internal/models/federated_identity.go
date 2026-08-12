@@ -66,3 +66,10 @@ func (f *FederatedIdentityReview) BeforeCreate(tx *gorm.DB) error {
 	}
 	return nil
 }
+
+// IsPending reports whether the review is still awaiting an admin decision.
+// Empty status is treated as pending for rows created before the status column
+// had an explicit default.
+func (f FederatedIdentityReview) IsPending() bool {
+	return f.Status == "" || f.Status == FederatedIdentityReviewStatusPending
+}

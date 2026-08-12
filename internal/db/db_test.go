@@ -43,6 +43,12 @@ func TestMigrateDetectsLegacyFederatedUsersWithoutIssuerSubject(t *testing.T) {
 	if !strings.Contains(err.Error(), "legacy federated users without issuer/subject bindings") {
 		t.Fatalf("expected legacy federated user error, got %v", err)
 	}
+	if !strings.Contains(err.Error(), legacyFederatedIdentityMigrationDocs) {
+		t.Fatalf("expected migration docs link, got %v", err)
+	}
+	if !strings.Contains(err.Error(), `username="legacy-oidc"`) {
+		t.Fatalf("expected affected username in migration error, got %v", err)
+	}
 }
 
 func TestMigrateAllowsFederatedUsersWithIssuerSubjectBinding(t *testing.T) {

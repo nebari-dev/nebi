@@ -97,12 +97,7 @@ func OIDCCallback(oidcAuth *auth.OIDCAuthenticator, codeStore *auth.AuthCodeStor
 		resp, err := oidcAuth.HandleCallback(c.Request.Context(), oidcCode)
 		if err != nil {
 			slog.Error("OIDC callback failed", "error", err)
-			if auth.IsFederatedIdentityReviewRequired(err) {
-				c.Redirect(http.StatusTemporaryRedirect, basePath+"/login?error=identity_review_pending")
-				return
-			}
-			if auth.IsFederatedIdentityReviewRejected(err) {
-				c.Redirect(http.StatusTemporaryRedirect, basePath+"/login?error=identity_review_rejected")
+			if redirectFederatedIdentityReview(c, err, http.StatusTemporaryRedirect, basePath) {
 				return
 			}
 			c.Redirect(http.StatusTemporaryRedirect, basePath+"/login?error=oauth_failed")

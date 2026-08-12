@@ -312,10 +312,6 @@ func (s *AdminService) ListFederatedIdentityReviews() ([]models.FederatedIdentit
 	return reviews, nil
 }
 
-func isPendingFederatedIdentityReview(review models.FederatedIdentityReview) bool {
-	return review.Status == "" || review.Status == models.FederatedIdentityReviewStatusPending
-}
-
 // ApproveFederatedIdentityReview deliberately links a reviewed external
 // identity to the colliding local user.
 func (s *AdminService) ApproveFederatedIdentityReview(reviewID uuid.UUID, adminUserID uuid.UUID) (*models.FederatedIdentity, error) {
@@ -331,7 +327,7 @@ func (s *AdminService) ApproveFederatedIdentityReview(reviewID uuid.UUID, adminU
 		if review.User.ID != review.UserID {
 			return ErrNotFound
 		}
-		if !isPendingFederatedIdentityReview(review) {
+		if !review.IsPending() {
 			return &ConflictError{Message: "federated identity review was rejected"}
 		}
 
@@ -386,7 +382,7 @@ func (s *AdminService) RejectFederatedIdentityReview(reviewID uuid.UUID, adminUs
 			}
 			return err
 		}
-		if !isPendingFederatedIdentityReview(review) {
+		if !review.IsPending() {
 			return &ConflictError{Message: "federated identity review was already rejected"}
 		}
 

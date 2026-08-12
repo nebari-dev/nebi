@@ -24,6 +24,11 @@ const FederatedIdentityReviewPendingMessage = "federated identity link is pendin
 // federated identity link request for the external identity.
 const FederatedIdentityReviewRejectedMessage = "federated identity link request was rejected by an admin"
 
+const (
+	FederatedIdentityReviewPendingCode  = "identity_review_pending"
+	FederatedIdentityReviewRejectedCode = "identity_review_rejected"
+)
+
 // IsFederatedIdentityReviewRequired reports whether err means login was blocked
 // until an admin approves a federated identity link.
 func IsFederatedIdentityReviewRequired(err error) bool {
@@ -34,6 +39,18 @@ func IsFederatedIdentityReviewRequired(err error) bool {
 // because an admin rejected this federated identity link.
 func IsFederatedIdentityReviewRejected(err error) bool {
 	return errors.Is(err, errFederatedIdentityRejected)
+}
+
+// FederatedIdentityReviewErrorCode returns a stable client-facing error code
+// for review-gated federated login failures.
+func FederatedIdentityReviewErrorCode(err error) (string, bool) {
+	if IsFederatedIdentityReviewRequired(err) {
+		return FederatedIdentityReviewPendingCode, true
+	}
+	if IsFederatedIdentityReviewRejected(err) {
+		return FederatedIdentityReviewRejectedCode, true
+	}
+	return "", false
 }
 
 type federatedUserClaims struct {
@@ -83,6 +100,10 @@ func findOrCreateFederatedUser(db *gorm.DB, claims federatedUserClaims) (*models
 	var user models.User
 	var reviewRequired error
 	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := enforceRejectedFederatedIdentityReview(tx, claims); err != nil {
+			return err
+		}
+
 		collision, field, err := federatedReviewCollision(tx, claims)
 		if err != nil {
 			return err
@@ -142,8 +163,8 @@ func findOrCreateFederatedUser(db *gorm.DB, claims federatedUserClaims) (*models
 func normalizeFederatedClaims(claims federatedUserClaims) federatedUserClaims {
 	claims.Issuer = strings.TrimSpace(claims.Issuer)
 	claims.Subject = strings.TrimSpace(claims.Subject)
-	claims.PreferredUsername = strings.TrimSpace(claims.PreferredUsername)
-	claims.Email = strings.TrimSpace(claims.Email)
+	claims.PreferredUsername = strings.ToLower(strings.TrimSpace(claims.PreferredUsername))
+	claims.Email = strings.ToLower(strings.TrimSpace(claims.Email))
 	claims.Name = strings.TrimSpace(claims.Name)
 	claims.AvatarURL = strings.TrimSpace(claims.AvatarURL)
 	return claims
@@ -171,6 +192,20 @@ func federatedReviewCollision(db *gorm.DB, claims federatedUserClaims) (*models.
 	}
 
 	return nil, "", nil
+}
+
+func enforceRejectedFederatedIdentityReview(db *gorm.DB, claims federatedUserClaims) error {
+	var review models.FederatedIdentityReview
+	err := db.
+		Where("issuer = ? AND subject = ? AND status = ?", claims.Issuer, claims.Subject, models.FederatedIdentityReviewStatusRejected).
+		First(&review).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to check federated identity review: %w", err)
+	}
+	return fmt.Errorf("%w: issuer %s subject %s", errFederatedIdentityRejected, claims.Issuer, claims.Subject)
 }
 
 func recordFederatedIdentityReview(db *gorm.DB, userID uuid.UUID, field string, claims federatedUserClaims) error {
@@ -219,8 +254,12 @@ func recordFederatedIdentityReview(db *gorm.DB, userID uuid.UUID, field string, 
 }
 
 func userByField(db *gorm.DB, field, value string) (*models.User, error) {
+	if field != "username" && field != "email" {
+		return nil, fmt.Errorf("unsupported user collision field: %s", field)
+	}
+
 	var user models.User
-	err := db.Where(field+" = ?", value).First(&user).Error
+	err := db.Where("LOWER("+field+") = LOWER(?)", value).First(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
@@ -292,7 +331,7 @@ func uniqueUserValue(existsFn func(*gorm.DB, string) (bool, error), db *gorm.DB,
 
 func usernameExists(db *gorm.DB, value string) (bool, error) {
 	var count int64
-	if err := db.Model(&models.User{}).Where("username = ?", value).Count(&count).Error; err != nil {
+	if err := db.Model(&models.User{}).Where("LOWER(username) = LOWER(?)", value).Count(&count).Error; err != nil {
 		return false, fmt.Errorf("failed to check user username collision: %w", err)
 	}
 	return count > 0, nil
@@ -300,7 +339,7 @@ func usernameExists(db *gorm.DB, value string) (bool, error) {
 
 func emailExists(db *gorm.DB, value string) (bool, error) {
 	var count int64
-	if err := db.Model(&models.User{}).Where("email = ?", value).Count(&count).Error; err != nil {
+	if err := db.Model(&models.User{}).Where("LOWER(email) = LOWER(?)", value).Count(&count).Error; err != nil {
 		return false, fmt.Errorf("failed to check user email collision: %w", err)
 	}
 	return count > 0, nil

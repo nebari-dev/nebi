@@ -1,8 +1,6 @@
 import { screen } from '@testing-library/react';
-import { HttpResponse, http } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useModeStore } from '@/store/modeStore';
-import { server } from '@/test/handlers';
 import { renderWithProviders } from '@/test/utils';
 import { Login } from './Login';
 
@@ -35,18 +33,7 @@ describe('Login', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows login options when OIDC is configured without a proxy session', async () => {
-    useModeStore.setState({
-      mode: 'team',
-      logoutUrl: '/logout',
-      loading: false,
-    });
-    server.use(
-      http.get('/api/v1/auth/session', () =>
-        HttpResponse.json({ error: 'no proxy session' }, { status: 401 }),
-      ),
-    );
-
+  it('shows login options when no proxy gateway is configured', async () => {
     renderWithProviders(<Login isDarkMode={false} />, {
       initialEntries: ['/login'],
     });

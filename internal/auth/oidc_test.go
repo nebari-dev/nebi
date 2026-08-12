@@ -103,6 +103,42 @@ func TestOIDCFindOrCreateUser_DoesNotLinkByEmail(t *testing.T) {
 	}
 }
 
+func TestOIDCFindOrCreateUser_CaseInsensitiveCollisionRequiresReview(t *testing.T) {
+	db := setupTestDB(t)
+	existing := models.User{
+		ID:           uuid.New(),
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&existing).Error; err != nil {
+		t.Fatalf("create existing user: %v", err)
+	}
+
+	authenticator := &OIDCAuthenticator{db: db}
+	user, err := authenticator.findOrCreateUser(federatedUserClaims{
+		Issuer:            "https://issuer.example.com",
+		Subject:           "oidc-alice",
+		PreferredUsername: "ALICE",
+		Email:             "ALICE@EXAMPLE.COM",
+		EmailVerified:     true,
+	})
+	if !errors.Is(err, errFederatedIdentityRequiresReview) {
+		t.Fatalf("expected review error for case-insensitive collision, got user=%v err=%v", user, err)
+	}
+
+	var review models.FederatedIdentityReview
+	if err := db.Where("issuer = ? AND subject = ?", "https://issuer.example.com", "oidc-alice").First(&review).Error; err != nil {
+		t.Fatalf("expected pending federated identity review: %v", err)
+	}
+	if review.UserID != existing.ID {
+		t.Errorf("expected review for local user %s, got %s", existing.ID, review.UserID)
+	}
+	if review.CollisionField != "username" {
+		t.Errorf("expected username collision field, got %s", review.CollisionField)
+	}
+}
+
 func TestOIDCFindOrCreateUser_RejectedReviewBlocksRepeatLogin(t *testing.T) {
 	db := setupTestDB(t)
 	existing := models.User{
@@ -146,5 +182,49 @@ func TestOIDCFindOrCreateUser_RejectedReviewBlocksRepeatLogin(t *testing.T) {
 	}
 	if persisted.Status != models.FederatedIdentityReviewStatusRejected {
 		t.Errorf("expected review to remain rejected, got %q", persisted.Status)
+	}
+}
+
+func TestOIDCFindOrCreateUser_RejectedReviewBlocksWithoutCurrentCollision(t *testing.T) {
+	db := setupTestDB(t)
+	existing := models.User{
+		ID:           uuid.New(),
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&existing).Error; err != nil {
+		t.Fatalf("create existing user: %v", err)
+	}
+	review := models.FederatedIdentityReview{
+		UserID:         existing.ID,
+		Issuer:         "https://issuer.example.com",
+		Subject:        "oidc-alice",
+		CollisionField: "email",
+		Username:       "alice",
+		Email:          "alice@example.com",
+		EmailVerified:  true,
+		Status:         models.FederatedIdentityReviewStatusRejected,
+	}
+	if err := db.Create(&review).Error; err != nil {
+		t.Fatalf("create rejected review: %v", err)
+	}
+	if err := db.Model(&existing).Updates(map[string]any{
+		"username": "renamed-alice",
+		"email":    "renamed-alice@example.com",
+	}).Error; err != nil {
+		t.Fatalf("rename existing user: %v", err)
+	}
+
+	authenticator := &OIDCAuthenticator{db: db}
+	user, err := authenticator.findOrCreateUser(federatedUserClaims{
+		Issuer:            "https://issuer.example.com",
+		Subject:           "oidc-alice",
+		PreferredUsername: "alice",
+		Email:             "alice@example.com",
+		EmailVerified:     true,
+	})
+	if !errors.Is(err, errFederatedIdentityRejected) {
+		t.Fatalf("expected rejected review error without current collision, got user=%v err=%v", user, err)
 	}
 }

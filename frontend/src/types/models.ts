@@ -192,6 +192,10 @@ export interface FederatedIdentityReview {
   updated_at: string;
 }
 
+export const isPendingFederatedIdentityReview = (
+  review: FederatedIdentityReview,
+) => !review.status || review.status === 'pending';
+
 // OCI Registry types
 export interface OCIRegistry {
   id: string; // UUID

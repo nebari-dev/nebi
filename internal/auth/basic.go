@@ -201,12 +201,12 @@ func (a *BasicAuthenticator) Middleware() gin.HandlerFunc {
 		if err != nil {
 			slog.Error("Failed to find/create proxy user", "error", err)
 			if IsFederatedIdentityReviewRequired(err) {
-				c.JSON(http.StatusForbidden, gin.H{"error": FederatedIdentityReviewPendingMessage})
+				c.JSON(http.StatusForbidden, gin.H{"error": FederatedIdentityReviewPendingCode})
 				c.Abort()
 				return
 			}
 			if IsFederatedIdentityReviewRejected(err) {
-				c.JSON(http.StatusForbidden, gin.H{"error": FederatedIdentityReviewRejectedMessage})
+				c.JSON(http.StatusForbidden, gin.H{"error": FederatedIdentityReviewRejectedCode})
 				c.Abort()
 				return
 			}

@@ -50,12 +50,7 @@ func DeviceToken(basicAuth *auth.BasicAuthenticator, adminGroups string) gin.Han
 		resp, err := basicAuth.ExchangeIDToken(req.IDToken, adminGroups)
 		if err != nil {
 			slog.Warn("Device token exchange failed", "error", err)
-			if auth.IsFederatedIdentityReviewRequired(err) {
-				c.JSON(http.StatusForbidden, gin.H{"error": auth.FederatedIdentityReviewPendingMessage})
-				return
-			}
-			if auth.IsFederatedIdentityReviewRejected(err) {
-				c.JSON(http.StatusForbidden, gin.H{"error": auth.FederatedIdentityReviewRejectedMessage})
+			if writeFederatedIdentityReviewJSON(c, err) {
 				return
 			}
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired id_token"})

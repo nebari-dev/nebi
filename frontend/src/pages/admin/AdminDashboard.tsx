@@ -28,6 +28,7 @@ import {
 import { useWorkspaces } from '@/hooks/useWorkspaces';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
+import { isPendingFederatedIdentityReview } from '@/types';
 
 const StatCard = ({
   title,
@@ -144,7 +145,7 @@ export const AdminDashboard = () => {
     (job) => job.status === 'failed',
   ).length;
   const pendingIdentityReviews = displayedIdentityReviews.filter(
-    (review) => !review.status || review.status === 'pending',
+    isPendingFederatedIdentityReview,
   ).length;
 
   const isLoading =

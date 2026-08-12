@@ -24,16 +24,16 @@ import {
 } from '@/hooks/useRemote';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
-import type { FederatedIdentityReview } from '@/types';
+import {
+  type FederatedIdentityReview,
+  isPendingFederatedIdentityReview,
+} from '@/types';
 
 const reviewDisplayName = (review: FederatedIdentityReview) =>
   review.username || review.name || review.email || review.subject;
 
 const formatDate = (value: string) =>
   value ? new Date(value).toLocaleString() : '—';
-
-const isPendingReview = (review: FederatedIdentityReview) =>
-  !review.status || review.status === 'pending';
 
 const mutationErrorMessage = (err: unknown) => {
   const error = err as { response?: { data?: { error?: string } } };
@@ -158,7 +158,7 @@ export const FederatedIdentityReviews = () => {
                     className="border-b last:border-0 hover:bg-muted/50"
                   >
                     <td className="p-4">
-                      {isPendingReview(review) ? (
+                      {isPendingFederatedIdentityReview(review) ? (
                         <Badge className="border-amber-300 bg-amber-100 text-amber-800">
                           <ShieldAlert className="mr-1 h-3 w-3" />
                           Pending
@@ -229,7 +229,7 @@ export const FederatedIdentityReviews = () => {
                       {formatDate(review.created_at)}
                     </td>
                     <td className="p-4">
-                      {isPendingReview(review) ? (
+                      {isPendingFederatedIdentityReview(review) ? (
                         <div className="flex justify-end gap-2">
                           <Button
                             size="sm"

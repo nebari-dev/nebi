@@ -4,7 +4,7 @@ import { authApi } from '@/api/auth';
 import { apiClient } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { getApiBaseUrl } from '@/lib/basePath';
+import { getApiBaseUrl, getBasePath } from '@/lib/basePath';
 import { getBrandingLogoUrl } from '@/lib/brandingConfig';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
@@ -69,29 +69,14 @@ export const Login = ({ isDarkMode }: LoginProps) => {
     }
     const logoutUrl = useModeStore.getState().logoutUrl;
     if (logoutUrl) {
-      const checkProxySession = async () => {
-        try {
-          const { data } = await apiClient.get('/auth/session');
-          setAuth(data.token, data.user);
-          navigate('/');
-        } catch (err: unknown) {
-          const response = (
-            err as { response?: { status?: number; data?: { error?: string } } }
-          ).response;
-          if (response?.status === 403) {
-            const authError = response.data?.error || 'identity_review_pending';
-            setError(authErrorMessage(authError));
-            setErrorTone(authErrorTone(authError));
-          }
-          setSessionChecked(true);
-        }
-      };
-      checkProxySession();
+      // Use the non-API redirect endpoint so gateway proxies preserve OIDC
+      // cookies before Nebi exchanges the resulting single-use code.
+      window.location.href = `${getBasePath()}/auth/session`;
       return;
     }
-    // No gateway detected — show login form
+    // No gateway detected - show login form
     setSessionChecked(true);
-  }, [isLocalMode, searchParams, setAuth, navigate]);
+  }, [isLocalMode, searchParams]);
 
   // Exchange single-use authorization code for JWT.
   // Used by both gateway auto-login (/auth/session) and direct OIDC callback

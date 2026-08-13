@@ -161,7 +161,7 @@ platforms = ["linux-64"]
 func TestImportFromRegistry_RequiresRegistryReadAccess(t *testing.T) {
 	svc, db := testSetup(t, false)
 	userID := createTestUser(t, db, "alice")
-	registry := models.OCIRegistry{Name: "private", URL: "https://ghcr.io", Namespace: "demo"}
+	registry := models.OCIRegistry{Name: "private", URL: "https://ghcr.io", Namespace: "demo", Restricted: true}
 	db.Create(&registry)
 
 	_, err := svc.ImportFromRegistry(context.Background(), registry.ID.String(), ImportFromRegistryRequest{

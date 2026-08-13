@@ -109,7 +109,7 @@ func TestGetPublishDefaults_MasksDefaultRegistryWithoutReadAccess(t *testing.T) 
 	userID := createTestUser(t, db, "alice")
 	ws := createReadyWorkspace(t, svc, db, "private-default", userID)
 
-	db.Create(&models.OCIRegistry{Name: "reg", URL: "https://ghcr.io", IsDefault: true})
+	db.Create(&models.OCIRegistry{Name: "reg", URL: "https://ghcr.io", IsDefault: true, Restricted: true})
 
 	_, err := svc.GetPublishDefaults(ws.ID.String(), userID, uuid.Nil)
 	if err != ErrNotFound {
@@ -158,7 +158,7 @@ func TestGetPublishDefaults_MasksExplicitRegistryWithoutReadAccess(t *testing.T)
 	userID := createTestUser(t, db, "alice")
 	ws := createReadyWorkspace(t, svc, db, "explicit-private", userID)
 
-	registry := models.OCIRegistry{Name: "private", URL: "https://ghcr.io"}
+	registry := models.OCIRegistry{Name: "private", URL: "https://ghcr.io", Restricted: true}
 	db.Create(&registry)
 
 	_, err := svc.GetPublishDefaults(ws.ID.String(), userID, registry.ID)
@@ -240,8 +240,8 @@ func TestListPublications_FiltersUnreadableRegistries(t *testing.T) {
 	userID := createTestUser(t, db, "alice")
 	ws := createReadyWorkspace(t, svc, db, "filtered-pubs", userID)
 
-	readable := models.OCIRegistry{Name: "readable", URL: "https://ghcr.io"}
-	hidden := models.OCIRegistry{Name: "hidden", URL: "https://quay.io"}
+	readable := models.OCIRegistry{Name: "readable", URL: "https://ghcr.io", Restricted: true}
+	hidden := models.OCIRegistry{Name: "hidden", URL: "https://quay.io", Restricted: true}
 	db.Create(&readable)
 	db.Create(&hidden)
 	grantRegistryAccessForTest(t, db, userID, readable.ID, "read")
@@ -284,7 +284,7 @@ func TestUpdatePublication_TogglesVisibility(t *testing.T) {
 
 	// OCIRegistry and Publication already migrated in testSetup
 
-	registry := models.OCIRegistry{Name: "reg", URL: "https://ghcr.io"}
+	registry := models.OCIRegistry{Name: "reg", URL: "https://ghcr.io", Restricted: true}
 	db.Create(&registry)
 	grantRegistryAccessForTest(t, db, userID, registry.ID, "write")
 
@@ -334,7 +334,7 @@ func TestUpdatePublication_RequiresRegistryWriteAccess(t *testing.T) {
 	userID := createTestUser(t, db, "alice")
 	ws := createReadyWorkspace(t, svc, db, "private-vis", userID)
 
-	registry := models.OCIRegistry{Name: "reg", URL: "https://ghcr.io"}
+	registry := models.OCIRegistry{Name: "reg", URL: "https://ghcr.io", Restricted: true}
 	db.Create(&registry)
 	grantRegistryAccessForTest(t, db, userID, registry.ID, "read")
 
@@ -374,7 +374,7 @@ func TestPublishWorkspace_RequiresRegistryWriteAccess(t *testing.T) {
 		VersionNumber: 1,
 		ContentHash:   "sha-private",
 	})
-	registry := models.OCIRegistry{Name: "reg", URL: "https://ghcr.io"}
+	registry := models.OCIRegistry{Name: "reg", URL: "https://ghcr.io", Restricted: true}
 	db.Create(&registry)
 	grantRegistryAccessForTest(t, db, userID, registry.ID, "read")
 

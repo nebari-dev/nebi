@@ -102,7 +102,7 @@ func TestRegistryRoutesRequireRegistryRBAC(t *testing.T) {
 		t.Fatalf("create user: %v", err)
 	}
 
-	registry := models.OCIRegistry{Name: "private", URL: "https://ghcr.io", IsDefault: true}
+	registry := models.OCIRegistry{Name: "private", URL: "https://ghcr.io", IsDefault: true, Restricted: true}
 	if err := database.Create(&registry).Error; err != nil {
 		t.Fatalf("create registry: %v", err)
 	}

@@ -57,8 +57,7 @@ package_manager:
 storage:
   environments_dir: ./data/environments
 
-# Admin-provisioned OCI registries (optional). Public registries only:
-# entries carry no credentials.
+# Admin-provisioned OCI registries (optional). Entries carry no credentials.
 # Entries are declarative: reconciled into the database at every boot,
 # marked as config-managed, and locked against UI/API/CLI modification.
 # Removing an entry here removes it from the database on next boot.
@@ -72,6 +71,7 @@ storage:
 #       url: registry.acme.com
 #       namespace: acme-envs
 #       default: true   # at most one entry may set this
+#       restricted: false # set true to require group grants for access
 
 # Environment variables can override any setting above
 # Example: NEBI_AUTH_OIDC_CLIENT_ID=your-id

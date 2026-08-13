@@ -3291,6 +3291,9 @@
                 "password": {
                     "type": "string"
                 },
+                "restricted": {
+                    "type": "boolean"
+                },
                 "url": {
                     "type": "string"
                 },
@@ -3577,6 +3580,9 @@
                 },
                 "password": {
                     "type": "string"
+                },
+                "restricted": {
+                    "type": "boolean"
                 },
                 "url": {
                     "type": "string"
@@ -4184,6 +4190,9 @@
                 },
                 "namespace": {
                     "type": "string"
+                },
+                "restricted": {
+                    "type": "boolean"
                 },
                 "url": {
                     "type": "string"

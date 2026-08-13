@@ -35,30 +35,33 @@ type RegistryResult struct {
 	IsDefault     bool      `json:"is_default"`
 	Namespace     string    `json:"namespace"`
 	ConfigManaged bool      `json:"config_managed"`
+	Restricted    bool      `json:"restricted"`
 	CreatedAt     string    `json:"created_at"`
 }
 
 // CreateRegistryRequest holds parameters for creating a registry.
 type CreateRegistryReq struct {
-	Name      string
-	URL       string
-	Username  string
-	Password  string
-	APIToken  string
-	IsDefault bool
-	Namespace string
-	CreatedBy uuid.UUID
+	Name       string
+	URL        string
+	Username   string
+	Password   string
+	APIToken   string
+	IsDefault  bool
+	Namespace  string
+	Restricted bool
+	CreatedBy  uuid.UUID
 }
 
 // UpdateRegistryReq holds parameters for updating a registry.
 type UpdateRegistryReq struct {
-	Name      *string
-	URL       *string
-	Username  *string
-	Password  *string
-	APIToken  *string
-	IsDefault *bool
-	Namespace *string
+	Name       *string
+	URL        *string
+	Username   *string
+	Password   *string
+	APIToken   *string
+	IsDefault  *bool
+	Namespace  *string
+	Restricted *bool
 }
 
 // ListRegistries returns all registries with admin-level detail (includes username, token status).
@@ -88,7 +91,7 @@ func (s *RegistryService) ListPublicRegistries(userID uuid.UUID) ([]RegistryResu
 
 	result := make([]RegistryResult, 0, len(registries))
 	for _, reg := range registries {
-		hasAccess, err := hasRegistryAccess(s.rbac, s.isLocal, userID, reg.ID, "read")
+		hasAccess, err := hasRegistryAccess(s.rbac, s.isLocal, userID, reg, "read")
 		if err != nil {
 			return nil, fmt.Errorf("check registry read access: %w", err)
 		}
@@ -142,14 +145,15 @@ func (s *RegistryService) CreateRegistry(req CreateRegistryReq) (*RegistryResult
 	}
 
 	registry := models.OCIRegistry{
-		Name:      req.Name,
-		URL:       req.URL,
-		Username:  req.Username,
-		Password:  encPassword,
-		APIToken:  encAPIToken,
-		IsDefault: req.IsDefault,
-		Namespace: req.Namespace,
-		CreatedBy: req.CreatedBy,
+		Name:       req.Name,
+		URL:        req.URL,
+		Username:   req.Username,
+		Password:   encPassword,
+		APIToken:   encAPIToken,
+		IsDefault:  req.IsDefault,
+		Namespace:  req.Namespace,
+		Restricted: req.Restricted,
+		CreatedBy:  req.CreatedBy,
 	}
 
 	if err := s.db.Create(&registry).Error; err != nil {
@@ -216,6 +220,9 @@ func (s *RegistryService) UpdateRegistry(id string, req UpdateRegistryReq) (*Reg
 	}
 	if req.Namespace != nil {
 		registry.Namespace = *req.Namespace
+	}
+	if req.Restricted != nil {
+		registry.Restricted = *req.Restricted
 	}
 
 	if err := s.db.Save(&registry).Error; err != nil {
@@ -327,6 +334,7 @@ func registryToResult(reg models.OCIRegistry, username string, hasAPIToken bool)
 		IsDefault:     reg.IsDefault,
 		Namespace:     reg.Namespace,
 		ConfigManaged: reg.ConfigManaged,
+		Restricted:    reg.Restricted,
 		CreatedAt:     reg.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
 }

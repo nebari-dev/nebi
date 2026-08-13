@@ -109,6 +109,51 @@ func TestRegistryList(t *testing.T) {
 
 // --- ListPublicRegistries ---
 
+func TestRegistryListPublic_OpenRegistryVisibleWithoutGrant(t *testing.T) {
+	svc, db := registryTestSetup(t)
+	userID := createTestUser(t, db, "alice")
+
+	registry, err := svc.CreateRegistry(CreateRegistryReq{Name: "open", URL: "https://ghcr.io"})
+	if err != nil {
+		t.Fatalf("create registry: %v", err)
+	}
+
+	registries, err := svc.ListPublicRegistries(userID)
+	if err != nil {
+		t.Fatalf("ListPublicRegistries: %v", err)
+	}
+	if len(registries) != 1 || registries[0].ID != registry.ID {
+		t.Fatalf("expected open registry without grant, got %+v", registries)
+	}
+}
+
+func TestRegistryOpenAccess_AllowsReadAndWriteWithoutGrant(t *testing.T) {
+	svc, db := registryTestSetup(t)
+	userID := createTestUser(t, db, "alice")
+
+	registry, err := svc.CreateRegistry(CreateRegistryReq{
+		Name:     "open-creds",
+		URL:      "https://ghcr.io",
+		Username: "secret-user",
+		Password: "secret-pass",
+	})
+	if err != nil {
+		t.Fatalf("create registry: %v", err)
+	}
+
+	withCreds, err := svc.GetRegistryWithCredentials(registry.ID.String(), userID)
+	if err != nil {
+		t.Fatalf("expected open registry read to succeed without grant: %v", err)
+	}
+	if withCreds.Password != "secret-pass" {
+		t.Fatalf("expected decrypted password, got %q", withCreds.Password)
+	}
+
+	if err := ensureRegistryAccess(db, rbac.NewDefaultProvider(), false, userID, registry.ID, "write"); err != nil {
+		t.Fatalf("expected open registry write to succeed without grant: %v", err)
+	}
+}
+
 func TestRegistryListPublic_HidesCredentials(t *testing.T) {
 	svc, db := registryTestSetup(t)
 
@@ -142,15 +187,15 @@ func TestRegistryListPublic_HidesCredentials(t *testing.T) {
 	}
 }
 
-func TestRegistryListPublic_FiltersUnreadableRegistries(t *testing.T) {
+func TestRegistryListPublic_FiltersRestrictedUnreadableRegistries(t *testing.T) {
 	svc, db := registryTestSetup(t)
 	userID := createTestUser(t, db, "alice")
 
-	readable, err := svc.CreateRegistry(CreateRegistryReq{Name: "readable", URL: "https://read.example"})
+	readable, err := svc.CreateRegistry(CreateRegistryReq{Name: "readable", URL: "https://read.example", Restricted: true})
 	if err != nil {
 		t.Fatalf("create readable registry: %v", err)
 	}
-	if _, err := svc.CreateRegistry(CreateRegistryReq{Name: "hidden", URL: "https://hidden.example"}); err != nil {
+	if _, err := svc.CreateRegistry(CreateRegistryReq{Name: "hidden", URL: "https://hidden.example", Restricted: true}); err != nil {
 		t.Fatalf("create hidden registry: %v", err)
 	}
 
@@ -170,10 +215,11 @@ func TestGetRegistryWithCredentials_RequiresReadAccessAndHonorsRevocation(t *tes
 	userID := createTestUser(t, db, "alice")
 
 	registry, err := svc.CreateRegistry(CreateRegistryReq{
-		Name:     "private",
-		URL:      "https://ghcr.io",
-		Username: "secret-user",
-		Password: "secret-pass",
+		Name:       "private",
+		URL:        "https://ghcr.io",
+		Username:   "secret-user",
+		Password:   "secret-pass",
+		Restricted: true,
 	})
 	if err != nil {
 		t.Fatalf("create registry: %v", err)

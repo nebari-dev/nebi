@@ -45,6 +45,8 @@ definitions:
         type: string
       password:
         type: string
+      restricted:
+        type: boolean
       url:
         type: string
       username:
@@ -238,6 +240,8 @@ definitions:
         type: string
       password:
         type: string
+      restricted:
+        type: boolean
       url:
         type: string
       username:
@@ -656,6 +660,8 @@ definitions:
         type: string
       namespace:
         type: string
+      restricted:
+        type: boolean
       url:
         type: string
       username:

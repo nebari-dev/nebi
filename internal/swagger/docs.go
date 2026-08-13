@@ -3297,6 +3297,9 @@ const docTemplate = `{
                 "password": {
                     "type": "string"
                 },
+                "restricted": {
+                    "type": "boolean"
+                },
                 "url": {
                     "type": "string"
                 },
@@ -3583,6 +3586,9 @@ const docTemplate = `{
                 },
                 "password": {
                     "type": "string"
+                },
+                "restricted": {
+                    "type": "boolean"
                 },
                 "url": {
                     "type": "string"
@@ -4190,6 +4196,9 @@ const docTemplate = `{
                 },
                 "namespace": {
                     "type": "string"
+                },
+                "restricted": {
+                    "type": "boolean"
                 },
                 "url": {
                     "type": "string"

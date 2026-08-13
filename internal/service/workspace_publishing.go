@@ -147,7 +147,7 @@ func (s *WorkspaceService) ListPublications(wsID string, userID uuid.UUID) ([]Pu
 
 	results := make([]PublicationResult, 0, len(publications))
 	for _, pub := range publications {
-		hasAccess, err := hasRegistryAccess(s.rbac, s.isLocal, userID, pub.RegistryID, "read")
+		hasAccess, err := hasRegistryAccess(s.rbac, s.isLocal, userID, pub.Registry, "read")
 		if err != nil {
 			return nil, fmt.Errorf("check registry read access: %w", err)
 		}

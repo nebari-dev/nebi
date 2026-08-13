@@ -13,10 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useJobLogStream } from '@/hooks/useJobLogStream';
 import { useJobs } from '@/hooks/useJobs';
-import { useRemoteJobs, useRemoteServer } from '@/hooks/useRemote';
+import { useRemoteJobs, useRemoteView } from '@/hooks/useRemote';
 import { capitalize } from '@/lib/utils';
-import { useModeStore } from '@/store/modeStore';
-import { useViewModeStore } from '@/store/viewModeStore';
 import type { Job, JobType } from '@/types';
 
 const statusColors = {
@@ -216,14 +214,12 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
   const { data: jobs, isLoading: jobsLoading } = useJobs();
 
   // View mode support for local desktop app
-  const isLocalMode = useModeStore((s) => s.isLocalMode());
-  const viewMode = useViewModeStore((state) => state.viewMode);
-  const { data: serverStatus } = useRemoteServer();
-  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
+  const { viewMode, isRemoteConnected, isRemoteView } = useRemoteView();
   const {
     data: remoteJobs,
     isLoading: remoteLoading,
     isError: remoteError,
+    errorUpdateCount: remoteErrorCount,
   } = useRemoteJobs(isRemoteConnected);
 
   // Show jobs based on view mode when connected to remote
@@ -248,10 +244,13 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
     };
   }, [jobs, remoteJobs, isRemoteConnected, viewMode, workspaceId]);
 
-  const remoteUnreachable =
-    isRemoteConnected && viewMode === 'remote' && remoteError;
+  const remoteUnreachable = isRemoteView && remoteError;
+  // Full-page spinner only until the remote list first resolves or errors.
+  // A refetch after an error resets the query to pending, so gating on
+  // !remoteError alone would flash the spinner on every retry (issue #217).
   const isLoading =
-    jobsLoading || (isRemoteConnected && remoteLoading && !remoteError);
+    jobsLoading ||
+    (isRemoteConnected && remoteLoading && remoteErrorCount === 0);
 
   if (isLoading) {
     return (

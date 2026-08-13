@@ -13,7 +13,7 @@ import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
 import {
   useCreateRemoteWorkspace,
   useDeleteRemoteWorkspace,
-  useRemoteServer,
+  useRemoteView,
   useRemoteWorkspaces,
 } from '@/hooks/useRemote';
 import {
@@ -26,8 +26,6 @@ import {
   getInstallStatusColor,
   getWorkspaceStatusColor,
 } from '@/lib/utils';
-import { useModeStore } from '@/store/modeStore';
-import { useViewModeStore } from '@/store/viewModeStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
 import type { InstallStatus } from '@/types';
 
@@ -71,15 +69,14 @@ export const Workspaces = () => {
   const deleteMutation = useDeleteWorkspace();
   const createRemoteMutation = useCreateRemoteWorkspace();
   const deleteRemoteMutation = useDeleteRemoteWorkspace();
-  const isLocal = useModeStore((state) => state.mode === 'local');
-  const { data: serverStatus } = useRemoteServer();
-  const isRemoteConnected = isLocal && serverStatus?.status === 'connected';
+  const { isLocalMode, viewMode, isRemoteConnected, isRemoteView } =
+    useRemoteView();
   const {
     data: remoteWorkspaces,
     isLoading: remoteLoading,
     isError: remoteError,
+    errorUpdateCount: remoteErrorCount,
   } = useRemoteWorkspaces(isRemoteConnected);
-  const viewMode = useViewModeStore((state) => state.viewMode);
 
   const [showCreate, setShowCreate] = useState(false);
   const [createTarget, setCreateTarget] = useState<'local' | 'server'>('local');
@@ -245,10 +242,15 @@ export const Workspaces = () => {
   const isDeletePending =
     deleteMutation.isPending || deleteRemoteMutation.isPending;
 
-  const remoteUnreachable =
-    isRemoteConnected && viewMode === 'remote' && remoteError;
+  const remoteUnreachable = isRemoteView && remoteError;
 
-  if (isLoading || (isRemoteConnected && remoteLoading && !remoteError)) {
+  // Full-page spinner only until the remote list first resolves or errors.
+  // A refetch after an error resets the query to pending, so gating on
+  // !remoteError alone would flash the spinner on every retry (issue #217).
+  if (
+    isLoading ||
+    (isRemoteConnected && remoteLoading && remoteErrorCount === 0)
+  ) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -268,9 +270,7 @@ export const Workspaces = () => {
         <SplitButton
           onPrimary={() => {
             setShowCreate(!showCreate);
-            setCreateTarget(
-              isRemoteConnected && viewMode === 'remote' ? 'server' : 'local',
-            );
+            setCreateTarget(isRemoteView ? 'server' : 'local');
             setError('');
           }}
           primaryLabel={
@@ -355,7 +355,7 @@ export const Workspaces = () => {
               />
 
               {/* Path field — only for local target in local mode */}
-              {createTarget === 'local' && isLocal && (
+              {createTarget === 'local' && isLocalMode && (
                 <div className="space-y-2">
                   <label htmlFor={localPathId} className="text-sm font-medium">
                     Path (optional)

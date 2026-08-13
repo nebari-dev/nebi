@@ -179,5 +179,11 @@ export const useRemoteDashboardStats = (enabled: boolean) => {
     queryKey: ['remote', 'admin', 'dashboard', 'stats'],
     queryFn: remoteApi.getDashboardStats,
     enabled,
+    // Polls (stats are cheap to serve and feed the dashboard tiles), and —
+    // more importantly — keeps retrying after an error: this query is part of
+    // AdminDashboard's unreachable-banner condition, and without an interval
+    // an errored query only refetches on remount, so the banner would stick
+    // until the user navigated away even after the server recovered.
+    refetchInterval: pollWithErrorBackoff(30000),
   });
 };

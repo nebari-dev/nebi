@@ -6,10 +6,33 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nebari-dev/nebi/internal/auth"
 )
+
+// isRequestHTTPS reports whether the request reached Nebi over HTTPS, as seen
+// by the client. It trusts the terminating proxy's X-Forwarded-Proto header
+// (the common Kubernetes/ingress deployment terminates TLS upstream) and falls
+// back to the direct TLS connection state. Used to set the Secure flag on
+// auth cookies from the externally visible origin, not just backend transport.
+func isRequestHTTPS(c *gin.Context) bool {
+	if c.Request.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+}
+
+// setStateCookie writes the OIDC state cookie with hardened flags: HttpOnly,
+// SameSite=Lax (the IdP callback is a top-level GET redirect, which Lax still
+// carries; Strict would drop it), and Secure whenever the request origin is
+// HTTPS. Pass maxAge -1 to clear the cookie. Both login and callback go
+// through here so the flags can never diverge.
+func setStateCookie(c *gin.Context, value string, maxAge int) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("oidc_state", value, maxAge, "/", "", isRequestHTTPS(c), true)
+}
 
 // OIDCLogin godoc
 // @Summary Initiate OIDC login
@@ -29,7 +52,7 @@ func OIDCLogin(oidcAuth *auth.OIDCAuthenticator) gin.HandlerFunc {
 		}
 
 		// Store state in session/cookie (for simplicity, we'll use a cookie)
-		c.SetCookie("oidc_state", state, 600, "/", "", false, true)
+		setStateCookie(c, state, 600)
 
 		// Get auth URL and redirect
 		authURL := oidcAuth.GetAuthURL(state)
@@ -55,13 +78,13 @@ func OIDCCallback(oidcAuth *auth.OIDCAuthenticator, codeStore *auth.AuthCodeStor
 		state := c.Query("state")
 		storedState, err := c.Cookie("oidc_state")
 		if err != nil || state == "" || state != storedState {
-			slog.Warn("Invalid OIDC state", "state", state, "stored_state", storedState)
+			slog.Warn("Invalid OIDC state", "had_state_cookie", err == nil)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid state parameter"})
 			return
 		}
 
 		// Clear the state cookie
-		c.SetCookie("oidc_state", "", -1, "/", "", false, true)
+		setStateCookie(c, "", -1)
 
 		// Get authorization code from OIDC provider
 		oidcCode := c.Query("code")

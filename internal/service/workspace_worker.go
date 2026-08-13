@@ -133,6 +133,12 @@ func (s *WorkspaceService) UpdateWorkspaceSize(ws *models.Workspace) {
 	slog.Info("Updated workspace size", "ws_id", ws.ID, "size", utils.FormatBytes(sizeBytes))
 }
 
+// ResetWorkspaceSize zeroes the stored workspace size (used after the
+// installed environment is removed).
+func (s *WorkspaceService) ResetWorkspaceSize(wsID uuid.UUID) error {
+	return s.db.Model(&models.Workspace{}).Where("id = ?", wsID).Update("size_bytes", 0).Error
+}
+
 // SetWorkspaceStatus updates the workspace status in the database.
 func (s *WorkspaceService) SetWorkspaceStatus(wsID uuid.UUID, status models.WorkspaceStatus) error {
 	return s.db.Model(&models.Workspace{}).Where("id = ?", wsID).Update("status", status).Error

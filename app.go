@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"time"
 
 	"github.com/nebari-dev/nebi/internal/api"
@@ -16,6 +18,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/netguard"
 	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
@@ -141,13 +144,19 @@ func (a *App) startup(ctx context.Context) {
 	logToFile("Database connected")
 
 	// Run migrations
-	if err := db.Migrate(database); err != nil {
+	if err := db.Migrate(database, cfg.Registries.SeedDefault); err != nil {
 		logToFile(fmt.Sprintf("Error running migrations: %v", err))
 		return
 	}
 	// Desktop app is always local mode — migrate store tables
 	if err := store.MigrateServerDB(database); err != nil {
 		logToFile(fmt.Sprintf("Error migrating store tables: %v", err))
+		return
+	}
+
+	// Reconcile admin-provisioned registries from config.yaml into the DB.
+	if err := service.ReconcileConfigRegistries(database, cfg.Registries.Entries); err != nil {
+		logToFile(fmt.Sprintf("Error reconciling config registries: %v", err))
 		return
 	}
 	logToFile("Migrations complete")
@@ -176,7 +185,7 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 
 	// Create service and worker (desktop app uses local mode, no encryption key needed)
 	svc := service.New(database, jobQueue, exec, true, nil, rbac.NewDefaultProvider())
-	jobSvc := service.NewJobService(database)
+	jobSvc := service.NewJobService(database, true)
 	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), nil)
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	_ = workerCancel // Keep reference to avoid unused warning
@@ -200,11 +209,15 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	close(a.ready) // signal that router is ready for Wails handler
 	logToFile("startEmbeddedServer: router initialized")
 
-	// Create HTTP server on port 8460 (fallback for CLI/external access)
-	addr := fmt.Sprintf(":%d", cfg.Server.Port)
+	// Create HTTP server on port 8460 (fallback for CLI access).
+	// The desktop app is a single-user, on-device setup, so bind loopback
+	// only and accept only requests with a local Host/Origin. The Wails UI
+	// does not use this listener; it reaches the router in-process via
+	// Handler().
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Server.Port))
 	a.server = &http.Server{
 		Addr:    addr,
-		Handler: router,
+		Handler: netguard.Middleware(router, false, nil),
 	}
 
 	logToFile(fmt.Sprintf("startEmbeddedServer: starting server on %s", addr))

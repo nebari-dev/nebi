@@ -129,6 +129,27 @@ func (c *Client) PublishWorkspace(ctx context.Context, wsID string, req PublishR
 	return &resp, nil
 }
 
+// InstallWorkspace queues an environment install for a workspace.
+// Returns the queued Job (install runs asynchronously on the server).
+func (c *Client) InstallWorkspace(ctx context.Context, wsID string) (*Job, error) {
+	var job Job
+	_, err := c.Post(ctx, fmt.Sprintf("/workspaces/%s/install", wsID), nil, &job)
+	if err != nil {
+		return nil, err
+	}
+	return &job, nil
+}
+
+// UninstallWorkspace queues removal of a workspace's installed environment.
+func (c *Client) UninstallWorkspace(ctx context.Context, wsID string) (*Job, error) {
+	var job Job
+	_, err := c.Post(ctx, fmt.Sprintf("/workspaces/%s/uninstall", wsID), nil, &job)
+	if err != nil {
+		return nil, err
+	}
+	return &job, nil
+}
+
 // RollbackWorkspace queues a server-side rollback to a previous version.
 // Returns the queued Job (rollback runs asynchronously on the server).
 func (c *Client) RollbackWorkspace(ctx context.Context, wsID string, versionNumber int) (*Job, error) {

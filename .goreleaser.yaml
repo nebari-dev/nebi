@@ -46,6 +46,28 @@ archives:
       - README*
       - CHANGELOG*
 
+# Sign and notarize the macOS CLI binaries. GoReleaser bundles `quill`, so this
+# runs cross-platform on the ubuntu-latest release runner — no macOS runner or
+# codesign/xcrun needed. The `enabled` guard mirrors desktop.yml's
+# `env.MACOS_SIGNING_CERT_B64 != ''` check so secret-less builds (fork PRs)
+# skip signing instead of failing. Note: a bare CLI binary can't have a
+# notarization ticket stapled (stapling needs a .app/.dmg/.pkg container), so
+# Gatekeeper does an online notarization check on first run.
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      ids:
+        - nebi
+      sign:
+        certificate: "{{.Env.MACOS_SIGN_P12}}"       # base64 of the Developer ID Application .p12
+        password: "{{.Env.MACOS_SIGN_PASSWORD}}"
+      notarize:
+        issuer_id: "{{.Env.MACOS_NOTARY_ISSUER_ID}}"
+        key_id: "{{.Env.MACOS_NOTARY_KEY_ID}}"
+        key: "{{.Env.MACOS_NOTARY_KEY}}"             # base64 of the App Store Connect .p8
+        wait: true
+        timeout: 20m
+
 checksum:
   name_template: 'checksums.txt'
   algorithm: sha256

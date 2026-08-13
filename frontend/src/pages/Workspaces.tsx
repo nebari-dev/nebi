@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { SplitButton } from '@/components/ui/split-button';
+import { InstallControls } from '@/components/workspace/InstallControls';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
 import {
   useCreateRemoteWorkspace,
@@ -19,10 +20,15 @@ import {
   useDeleteWorkspace,
   useWorkspaces,
 } from '@/hooks/useWorkspaces';
-import { capitalize } from '@/lib/utils';
+import {
+  capitalize,
+  getInstallStatusColor,
+  getWorkspaceStatusColor,
+} from '@/lib/utils';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
+import type { InstallStatus } from '@/types';
 
 type UnifiedWorkspace = {
   id: string;
@@ -37,14 +43,7 @@ type UnifiedWorkspace = {
   owner_id?: string;
   owner?: { id: string; username: string; email: string };
   size_formatted?: string;
-};
-
-const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-  creating: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  ready: 'bg-green-500/10 text-green-500 border-green-500/20',
-  failed: 'bg-red-500/10 text-red-500 border-red-500/20',
-  deleting: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+  install_status?: InstallStatus;
 };
 
 const DEFAULT_PIXI_TOML = `[workspace]
@@ -54,6 +53,7 @@ platforms = ["osx-arm64", "linux-64"]
 
 [dependencies]
 python = ">=3.11"
+ipykernel = "*"
 `;
 
 // TODO: Robustify. Maybe use a proper TOML parser?
@@ -88,6 +88,12 @@ export const Workspaces = () => {
     location: 'local' | 'remote';
   } | null>(null);
   const [error, setError] = useState('');
+  const [envJobNotice, setEnvJobNotice] = useState<{
+    wsId: string;
+    wsName: string;
+    jobId: string;
+    type: string;
+  } | null>(null);
   const [copiedPullId, setCopiedPullId] = useState<string | null>(null);
   const localPathId = useId();
 
@@ -108,6 +114,7 @@ export const Workspaces = () => {
         owner_id: ws.owner_id,
         owner: ws.owner,
         size_formatted: ws.size_formatted,
+        install_status: ws.install_status,
       }));
     }
 
@@ -126,6 +133,7 @@ export const Workspaces = () => {
         owner_id: ws.owner_id,
         owner: ws.owner,
         size_formatted: ws.size_formatted,
+        install_status: ws.install_status,
       }));
     } else {
       if (!remoteWorkspaces) return [];
@@ -264,6 +272,7 @@ export const Workspaces = () => {
               New Workspace
             </>
           }
+          menuLabel="Open workspace actions"
           menuItems={[
             {
               label: 'Import Workspace from Registry',
@@ -280,6 +289,39 @@ export const Workspaces = () => {
         </div>
       )}
 
+      {envJobNotice && (
+        <div className="rounded-md border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-700">
+          <div className="flex items-center justify-between gap-3">
+            <span>
+              {envJobNotice.type === 'env_uninstall' ? 'Uninstall' : 'Install'}{' '}
+              job started for "{envJobNotice.wsName}" (ID: {envJobNotice.jobId}
+              ).
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPendingTab('jobs');
+                  navigate(`/workspaces/${envJobNotice.wsId}`);
+                }}
+              >
+                View logs
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-blue-700 hover:bg-blue-500/10 hover:text-blue-700"
+                onClick={() => setEnvJobNotice(null)}
+                aria-label="Dismiss notification"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCreate && (
         <Card>
           <CardHeader>
@@ -289,6 +331,7 @@ export const Workspaces = () => {
                 variant="ghost"
                 size="icon"
                 onClick={() => setShowCreate(false)}
+                aria-label="Close create workspace form"
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -385,14 +428,18 @@ export const Workspaces = () => {
                       )}
                     </td>
                     <td className="p-4">
-                      <Badge
-                        className={
-                          statusColors[ws.status] ||
-                          'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
-                        }
-                      >
-                        {capitalize(ws.status)}
-                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge className={getWorkspaceStatusColor(ws.status)}>
+                          {capitalize(ws.status)}
+                        </Badge>
+                        {ws.install_status && (
+                          <Badge
+                            className={getInstallStatusColor(ws.install_status)}
+                          >
+                            {capitalize(ws.install_status.replaceAll('_', ' '))}
+                          </Badge>
+                        )}
+                      </div>
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">
                       {ws.location === 'local' ? ws.size_formatted || '-' : '-'}
@@ -402,12 +449,27 @@ export const Workspaces = () => {
                     </td>
                     <td className="p-4">
                       <div className="flex justify-end gap-2">
+                        {ws.location === 'local' && (
+                          <InstallControls
+                            workspaceId={ws.id}
+                            installStatus={ws.install_status}
+                            onStarted={(job) =>
+                              setEnvJobNotice({
+                                wsId: ws.id,
+                                wsName: ws.name,
+                                jobId: job.id,
+                                type: job.type,
+                              })
+                            }
+                          />
+                        )}
                         {ws.location === 'local' && ws.source !== 'local' && (
                           <Button
                             variant="ghost"
                             size="sm"
                             className="gap-1.5"
                             onClick={(e) => handleCopyPull(e, ws.name, ws.id)}
+                            aria-label={`Copy pull command for ${ws.name}`}
                             title="Copy nebi pull command"
                           >
                             {copiedPullId === ws.id ? (
@@ -430,6 +492,7 @@ export const Workspaces = () => {
                             });
                           }}
                           disabled={isDeletePending}
+                          aria-label={`Delete ${ws.name}`}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

@@ -12,6 +12,7 @@ import {
 import { adminApi } from './api/admin';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { Layout } from './components/layout/Layout';
+import { useThemePreference } from './hooks/useThemePreference';
 import { getBasePath } from './lib/basePath';
 import { queryClient } from './lib/queryClient';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
@@ -86,17 +87,23 @@ const AdminRoute = () => {
 };
 
 function App() {
+  const { themeMode, isDarkMode, setThemeMode } = useThemePreference();
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter basename={getBasePath()}>
         <ModeLoader>
           <Routes>
-            <Route path="/login" element={<Login />} />
+            <Route path="/login" element={<Login isDarkMode={isDarkMode} />} />
             <Route
               path="/"
               element={
                 <PrivateRoute>
-                  <Layout />
+                  <Layout
+                    themeMode={themeMode}
+                    isDarkMode={isDarkMode}
+                    onThemeChange={setThemeMode}
+                  />
                 </PrivateRoute>
               }
             >

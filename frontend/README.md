@@ -98,6 +98,29 @@ npm run build
 npm run preview
 ```
 
+### Testing
+
+```bash
+# Run focused unit tests with Vitest
+npm run test
+
+# First-time Playwright browser setup
+npx playwright install
+
+# Run Playwright e2e tests, including axe accessibility assertions
+npm run test:e2e
+
+# Run only the accessibility-tagged Playwright flow
+npm run test:a11y
+```
+
+Playwright starts the Vite dev server automatically and writes an HTML report to
+`playwright-report/`. After a run, view it with:
+
+```bash
+npx playwright show-report
+```
+
 ## Environment Variables
 
 Create a `.env` file in the frontend directory:

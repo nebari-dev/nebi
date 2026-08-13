@@ -17,6 +17,11 @@ const (
 	// from keys derived for other purposes (e.g. JWT signing).
 	hkdfInfo = "nebi/v1/field-encryption"
 
+	// hkdfSigningInfo domain-separates the JWT signing key from the
+	// field-encryption key, even when both are derived from the same root
+	// secret: knowing one derived key does not yield the other.
+	hkdfSigningInfo = "nebi/v1/jwt-signing"
+
 	// ciphertextPrefix is prepended to encrypted values for reliable detection.
 	// Format: enc:v1:<base64(nonce+ciphertext+tag)>
 	ciphertextPrefix = "enc:v1:"
@@ -25,11 +30,22 @@ const (
 // DeriveKey derives a 32-byte AES-256 key from the given secret using HKDF-SHA256.
 // The info parameter provides domain separation per NIST SP 800-56C.
 func DeriveKey(secret string) ([]byte, error) {
+	return deriveKey(secret, hkdfInfo)
+}
+
+// DeriveSigningKey derives a 32-byte HMAC key for JWT signing from the given
+// secret using HKDF-SHA256, independent of the key DeriveKey produces from
+// the same secret.
+func DeriveSigningKey(secret string) ([]byte, error) {
+	return deriveKey(secret, hkdfSigningInfo)
+}
+
+func deriveKey(secret, info string) ([]byte, error) {
 	if secret == "" {
 		return nil, fmt.Errorf("crypto: secret must not be empty")
 	}
 
-	hkdfReader := hkdf.New(sha256.New, []byte(secret), nil, []byte(hkdfInfo))
+	hkdfReader := hkdf.New(sha256.New, []byte(secret), nil, []byte(info))
 	key := make([]byte, 32)
 	if _, err := hkdfReader.Read(key); err != nil {
 		return nil, fmt.Errorf("crypto: hkdf key derivation failed: %w", err)

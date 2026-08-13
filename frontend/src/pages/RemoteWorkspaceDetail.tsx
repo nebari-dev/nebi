@@ -22,16 +22,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserBadge } from '@/components/ui/user-badge';
-import { capitalize } from '@/lib/utils';
+import { capitalize, getWorkspaceStatusColor } from '@/lib/utils';
 import type { RemoteWorkspaceTag, RemoteWorkspaceVersion } from '@/types';
-
-const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-  creating: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  ready: 'bg-green-500/10 text-green-500 border-green-500/20',
-  failed: 'bg-red-500/10 text-red-500 border-red-500/20',
-  deleting: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
-};
 
 export const RemoteWorkspaceDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -93,6 +85,7 @@ export const RemoteWorkspaceDetail = () => {
           variant="ghost"
           size="icon"
           onClick={() => navigate('/workspaces')}
+          aria-label="Back to workspaces"
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -105,17 +98,12 @@ export const RemoteWorkspaceDetail = () => {
         <div className="flex items-center gap-2">
           <Badge
             variant="outline"
-            className="bg-purple-500/10 text-purple-500 border-purple-500/20"
+            className="bg-purple-100 text-purple-800 border-purple-300"
           >
             <Cloud className="h-3 w-3 mr-1" />
             Remote
           </Badge>
-          <Badge
-            className={
-              statusColors[workspace.status] ||
-              'bg-gray-500/10 text-gray-500 border-gray-500/20'
-            }
-          >
+          <Badge className={getWorkspaceStatusColor(workspace.status)}>
             {capitalize(workspace.status)}
           </Badge>
         </div>
@@ -167,12 +155,7 @@ export const RemoteWorkspaceDetail = () => {
                   <span className="text-sm font-medium">Status</span>
                 </div>
                 <div>
-                  <Badge
-                    className={
-                      statusColors[workspace.status] ||
-                      'bg-gray-500/10 text-gray-500 border-gray-500/20'
-                    }
-                  >
+                  <Badge className={getWorkspaceStatusColor(workspace.status)}>
                     {capitalize(workspace.status)}
                   </Badge>
                 </div>

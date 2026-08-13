@@ -9,7 +9,11 @@ import { getBrandingLogoUrl } from '@/lib/brandingConfig';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
 
-export const Login = () => {
+type LoginProps = {
+  isDarkMode: boolean;
+};
+
+export const Login = ({ isDarkMode }: LoginProps) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -108,12 +112,12 @@ export const Login = () => {
   if (!sessionChecked) return null;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white">
+    <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="w-full max-w-lg">
         <div className="space-y-6 pb-8">
           <div className="flex justify-center">
             <img
-              src={getBrandingLogoUrl()}
+              src={getBrandingLogoUrl(isDarkMode)}
               alt="Nebi Logo"
               className="h-24 w-auto"
             />
@@ -159,10 +163,10 @@ export const Login = () => {
 
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300"></div>
+              <div className="w-full border-t border-border"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">
+              <span className="px-2 bg-background text-muted-foreground">
                 Or continue with
               </span>
             </div>

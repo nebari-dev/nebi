@@ -33,7 +33,7 @@ Start the server:
 nebi serve
 ```
 
-By default (`--host` unset), Nebi binds all interfaces on port `8460`.
+By default (`--host` unset), Nebi binds all interfaces on port `8460` in team mode. Local mode (`NEBI_MODE=local`) is a single-user, on-device setup, so the server binds only the loopback interface (`127.0.0.1`) and only accepts requests addressed to a local host/origin. To bind a local-mode server to another interface, set `--host` (or `NEBI_SERVER_HOST`) explicitly.
 
 To use a different port:
 

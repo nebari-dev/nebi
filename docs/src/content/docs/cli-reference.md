@@ -18,6 +18,8 @@ Two terms appear throughout these commands:
 | `nebi init` | Track current directory as a workspace (runs `pixi init` if needed) |
 | `nebi status` | Show workspace sync status |
 | `nebi workspace list` | List tracked workspaces |
+| `nebi workspace install <name>` | Install a server workspace's environment from its lockfile (local mode) |
+| `nebi workspace uninstall <name>` | Remove a server workspace's installed environment (local mode) |
 | `nebi workspace remove <name>` | Remove a workspace from tracking |
 | `nebi workspace prune` | Remove workspaces whose paths no longer exist |
 | `nebi shell [name] [pixi-args...]` | Activate a pixi shell |

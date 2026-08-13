@@ -34,17 +34,21 @@ type PushResult struct {
 }
 
 // WorkspaceResponse wraps a workspace with computed fields.
+// InstallStatus and size fields are populated in local mode only; the
+// server no longer installs environments, so team-mode responses omit them.
 type WorkspaceResponse struct {
 	models.Workspace
-	SizeFormatted string `json:"size_formatted"`
+	SizeFormatted string               `json:"size_formatted,omitempty"`
+	InstallStatus models.InstallStatus `json:"install_status,omitempty"`
 }
 
 // NewWorkspaceResponse creates a WorkspaceResponse with formatted size.
 func NewWorkspaceResponse(ws models.Workspace) WorkspaceResponse {
-	return WorkspaceResponse{
-		Workspace:     ws,
-		SizeFormatted: utils.FormatBytes(ws.SizeBytes),
+	resp := WorkspaceResponse{Workspace: ws}
+	if ws.SizeBytes > 0 {
+		resp.SizeFormatted = utils.FormatBytes(ws.SizeBytes)
 	}
+	return resp
 }
 
 // CollaboratorKind identifies whether a collaborator entry is a user or a group.

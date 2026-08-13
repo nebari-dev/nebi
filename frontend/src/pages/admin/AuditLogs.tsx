@@ -10,14 +10,14 @@ import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 
 const ACTION_COLORS: Record<string, string> = {
-  create_user: 'bg-green-500/10 text-green-500 border-green-500/20',
-  delete_user: 'bg-red-500/10 text-red-500 border-red-500/20',
-  grant_permission: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-  revoke_permission: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
-  make_admin: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
-  revoke_admin: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
-  share_workspace: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20',
-  unshare_workspace: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+  create_user: 'bg-green-100 text-green-800 border-green-300',
+  delete_user: 'bg-red-100 text-red-800 border-red-300',
+  grant_permission: 'bg-blue-100 text-blue-800 border-blue-300',
+  revoke_permission: 'bg-orange-100 text-orange-800 border-orange-300',
+  make_admin: 'bg-purple-100 text-purple-800 border-purple-300',
+  revoke_admin: 'bg-zinc-100 text-zinc-800 border-zinc-300',
+  share_workspace: 'bg-cyan-100 text-cyan-800 border-cyan-300',
+  unshare_workspace: 'bg-yellow-100 text-yellow-800 border-yellow-300',
 };
 
 export const AuditLogs = () => {
@@ -91,6 +91,7 @@ export const AuditLogs = () => {
           value={filters.action}
           onChange={(e) => setFilters({ ...filters, action: e.target.value })}
           className="w-64"
+          aria-label="Filter audit logs by action"
         >
           <option value="">All Actions</option>
           <option value="create_user">Create User</option>
@@ -133,7 +134,7 @@ export const AuditLogs = () => {
                       <Badge
                         className={
                           ACTION_COLORS[log.action] ||
-                          'bg-gray-500/10 text-gray-500 border-gray-500/20'
+                          'bg-zinc-100 text-zinc-800 border-zinc-300'
                         }
                       >
                         {log.action.replace(/_/g, ' ')}

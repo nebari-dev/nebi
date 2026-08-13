@@ -1,6 +1,6 @@
 import { ChevronDown, LogOut, Monitor, Moon, Sun } from 'lucide-react';
 import { type ReactNode, useId, useRef, useState } from 'react';
-import type { ThemeMode } from '@/hooks/useThemePreference';
+import type { ThemeMode } from '@/hooks/use-theme-preference';
 import { cn } from '@/lib/utils';
 import type { User } from '@/types';
 
@@ -97,43 +97,22 @@ export const ProfileMenu = ({
           id={menuId}
           role="menu"
           aria-label="Profile menu"
-          className="absolute right-0 top-full z-50 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-md border bg-popover p-2 text-popover-foreground shadow-lg"
+          className="absolute right-0 top-full z-50 mt-2 w-[248px] max-w-[calc(100vw-2rem)] rounded-md border bg-popover p-2 text-popover-foreground shadow-lg"
         >
-          <div
-            role="presentation"
-            className="flex items-center gap-3 px-2 py-2"
-          >
-            {avatarUrl && !avatarError ? (
-              <img
-                src={avatarUrl}
-                alt=""
-                className="h-10 w-10 shrink-0 rounded-full object-cover"
-                referrerPolicy="no-referrer-when-downgrade"
-                crossOrigin="anonymous"
-                onError={handleAvatarError}
-                onLoad={handleAvatarLoad}
-              />
-            ) : (
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-base font-medium text-primary">
-                {getInitial(user)}
-              </span>
-            )}
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-foreground">
-                {displayName}
+          <div className="border-b border-border px-1.5 pb-2">
+            <p className="truncate text-sm font-medium text-foreground">
+              {displayName}
+            </p>
+            {user?.email && (
+              <p className="truncate text-xs text-muted-foreground">
+                {user.email}
               </p>
-              {user?.email && (
-                <p className="truncate text-sm text-muted-foreground">
-                  {user.email}
-                </p>
-              )}
-            </div>
+            )}
           </div>
-          <hr className="my-1 border-border" />
-          <div className="px-2 py-2">
+          <div className="py-2">
             <fieldset
               aria-label="Theme"
-              className="flex min-w-0 items-center gap-1 rounded-lg border-0 bg-muted p-1"
+              className="flex h-[34px] min-w-0 items-center gap-1 rounded-md border-0 bg-muted p-1"
             >
               <ThemeOption
                 label="Light mode"
@@ -165,10 +144,10 @@ export const ProfileMenu = ({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-red-500 transition-colors hover:bg-red-500/10 focus:bg-red-500/10 focus:outline-none"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm font-medium leading-5 text-sign-out-foreground transition-colors hover:bg-accent focus:bg-accent focus:outline-none"
             onClick={handleLogout}
           >
-            <LogOut className="h-4 w-4" />
+            <LogOut className="size-4 shrink-0" aria-hidden="true" />
             Sign out
           </button>
         </div>
@@ -199,10 +178,10 @@ const ThemeOption = ({
     aria-checked={selected}
     title={label}
     className={cn(
-      'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+      'flex h-auto flex-1 items-center justify-center gap-1 rounded-sm border border-transparent px-1.5 py-0.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
       selected
-        ? 'bg-background text-foreground shadow-sm'
-        : 'text-foreground hover:text-foreground',
+        ? 'border-border bg-card text-foreground shadow-[0_1px_3px_0_rgba(0,0,0,0.10)]'
+        : 'text-muted-foreground hover:text-foreground',
     )}
     onClick={onSelect}
   >

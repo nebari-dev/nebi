@@ -1,9 +1,9 @@
 import { Boxes, ExternalLink, Settings, Shield } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import type { ThemeMode } from '@/hooks/use-theme-preference';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import { useRemoteServer } from '@/hooks/useRemote';
-import type { ThemeMode } from '@/hooks/useThemePreference';
 import { useVersion } from '@/hooks/useVersion';
 import { getBrandingLogoUrl } from '@/lib/brandingConfig';
 import { openExternal } from '@/lib/openExternal';

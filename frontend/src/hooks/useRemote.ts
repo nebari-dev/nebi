@@ -22,6 +22,18 @@ export const pollWithErrorBackoff =
   ({ state }: { state: { status: string } }) =>
     state.status === 'error' ? ERROR_BACKOFF_INTERVAL : interval;
 
+// Self-heal for banner-feeding queries that shouldn't poll while healthy: an
+// errored query with no refetchInterval only refetches on remount or window
+// focus, so an unreachable banner gated on its isUnreachable flag would stick
+// even after the server recovered. Retry on the error-backoff cadence while
+// errored, stay quiet otherwise. (Steady-state freshness polling for these
+// queries is a separate product decision — see issue #504.)
+export const retryWhileUnreachable = ({
+  state,
+}: {
+  state: { status: string };
+}) => (state.status === 'error' ? ERROR_BACKOFF_INTERVAL : false);
+
 export const useRemoteServer = () => {
   return useQuery({
     queryKey: ['remote', 'server'],
@@ -34,11 +46,6 @@ export const useRemoteServer = () => {
   });
 };
 
-// Shared view-state derivation so every page gates remote data (and the
-// unreachable banner) the same way. Note `status: 'connected'` from the
-// backend means a server URL + token are stored — not that the remote is
-// actually reachable. Reachability surfaces as errors on the remote data
-// queries themselves.
 // Named view-state flags for the remote data queries, so pages consume intent
 // instead of re-deriving it from TanStack internals:
 // - isFirstLoad: true until the query first resolves or errors — gate the
@@ -53,6 +60,10 @@ export const useRemoteServer = () => {
 //   the duration of every failed retry. errorUpdateCount survives the reset,
 //   so pending + a past error means "still retrying an unreachable server";
 //   a successful retry (or the resetQueries in connect/disconnect) clears it.
+// Coupling: any query whose isUnreachable flag a page renders must keep
+// retrying on its own — give it pollWithErrorBackoff (if it polls anyway) or
+// retryWhileUnreachable (if it shouldn't poll while healthy). Without one,
+// the banner sticks after the server recovers until the user navigates away.
 const withRemoteFlags = <T>(query: UseQueryResult<T>) => ({
   ...query,
   isFirstLoad: query.isLoading && query.errorUpdateCount === 0,
@@ -60,6 +71,11 @@ const withRemoteFlags = <T>(query: UseQueryResult<T>) => ({
     query.isError || (query.isPending && query.errorUpdateCount > 0),
 });
 
+// Shared view-state derivation so every page gates remote data (and the
+// unreachable banner) the same way. Note `status: 'connected'` from the
+// backend means a server URL + token are stored — not that the remote is
+// actually reachable. Reachability surfaces as errors on the remote data
+// queries themselves.
 export const useRemoteView = () => {
   const isLocalMode = useModeStore((s) => s.isLocalMode());
   const viewMode = useViewModeStore((s) => s.viewMode);
@@ -164,6 +180,7 @@ export const useRemoteRegistries = (enabled: boolean) => {
       queryKey: ['remote', 'registries'],
       queryFn: remoteApi.listRegistries,
       enabled,
+      refetchInterval: retryWhileUnreachable,
     }),
   );
 };
@@ -185,6 +202,7 @@ export const useRemoteUsers = (enabled: boolean) => {
       queryKey: ['remote', 'admin', 'users'],
       queryFn: remoteApi.listUsers,
       enabled,
+      refetchInterval: retryWhileUnreachable,
     }),
   );
 };
@@ -195,6 +213,7 @@ export const useRemoteAdminRegistries = (enabled: boolean) => {
       queryKey: ['remote', 'admin', 'registries'],
       queryFn: remoteApi.listAdminRegistries,
       enabled,
+      refetchInterval: retryWhileUnreachable,
     }),
   );
 };
@@ -208,6 +227,7 @@ export const useRemoteAuditLogs = (
       queryKey: ['remote', 'admin', 'audit-logs', filters],
       queryFn: () => remoteApi.listAuditLogs(filters),
       enabled,
+      refetchInterval: retryWhileUnreachable,
     }),
   );
 };

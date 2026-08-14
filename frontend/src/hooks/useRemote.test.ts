@@ -14,6 +14,7 @@ import { createWrapper } from '@/test/utils';
 import {
   ERROR_BACKOFF_INTERVAL,
   pollWithErrorBackoff,
+  retryWhileUnreachable,
   useConnectServer,
   useCreateRemoteWorkspace,
   useDeleteRemoteWorkspace,
@@ -50,6 +51,19 @@ describe('pollWithErrorBackoff', () => {
 
   it('backs off to the slow interval once the query errors', () => {
     expect(pollWithErrorBackoff(5000)({ state: { status: 'error' } })).toBe(
+      ERROR_BACKOFF_INTERVAL,
+    );
+  });
+});
+
+describe('retryWhileUnreachable', () => {
+  it('does not poll while the query is healthy', () => {
+    expect(retryWhileUnreachable({ state: { status: 'success' } })).toBe(false);
+    expect(retryWhileUnreachable({ state: { status: 'pending' } })).toBe(false);
+  });
+
+  it('retries on the error-backoff cadence once the query errors, so the unreachable banner self-heals', () => {
+    expect(retryWhileUnreachable({ state: { status: 'error' } })).toBe(
       ERROR_BACKOFF_INTERVAL,
     );
   });

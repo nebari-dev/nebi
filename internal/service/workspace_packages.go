@@ -25,8 +25,8 @@ func (s *WorkspaceService) submitJob(ctx context.Context, wsID string, userID uu
 		return nil, err
 	}
 
-	if ws.Status != models.WsStatusReady {
-		return nil, &ValidationError{Message: "Workspace is not ready"}
+	if s.hasActiveJob(ws.ID) {
+		return nil, &ValidationError{Message: "A job is already in progress for this workspace"}
 	}
 
 	job := &models.Job{
@@ -190,4 +190,13 @@ func (s *WorkspaceService) DeletePackagesByName(wsID uuid.UUID, packages []strin
 // DeleteAllPackages removes all packages for a workspace from the DB.
 func (s *WorkspaceService) DeleteAllPackages(wsID uuid.UUID) {
 	s.db.Where("workspace_id = ?", wsID).Delete(&models.Package{})
+}
+
+// hasActiveJob returns true if the workspace has a job in pending or running state.
+func (s *WorkspaceService) hasActiveJob(wsID uuid.UUID) bool {
+	var count int64
+	s.db.Model(&models.Job{}).
+		Where("workspace_id = ? AND status IN ?", wsID, []string{string(models.JobStatusPending), string(models.JobStatusRunning)}).
+		Count(&count)
+	return count > 0
 }

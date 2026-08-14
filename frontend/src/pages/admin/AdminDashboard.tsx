@@ -122,19 +122,15 @@ export const AdminDashboard = () => {
     remoteStatsQuery,
   ];
   const remoteUnreachable =
-    isRemoteView && remoteQueries.some((query) => query.isError);
-  // Full-page spinner only until the remote queries first resolve or error.
-  // A refetch after an error resets a query to pending, so gating on isError
-  // alone would flash the spinner on every retry (issue #217).
+    isRemoteView && remoteQueries.some((query) => query.isUnreachable);
+  // Full-page spinner only until the remote queries first resolve or error
+  // (see isFirstLoad in useRemote.ts).
   const isLoading =
     usersLoading ||
     wsLoading ||
     jobsLoading ||
     statsLoading ||
-    (isRemoteView &&
-      remoteQueries.some(
-        (query) => query.isLoading && query.errorUpdateCount === 0,
-      ));
+    (isRemoteView && remoteQueries.some((query) => query.isFirstLoad));
 
   if (isLoading) {
     return (

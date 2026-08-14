@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  type UseQueryResult,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { remoteApi } from '@/api/remote';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
@@ -22,9 +27,9 @@ export const useRemoteServer = () => {
     queryKey: ['remote', 'server'],
     queryFn: remoteApi.getServer,
     // Plain interval, no error backoff: this hits the local backend (a DB
-    // read), never the remote server, and its observer in Layout never
-    // unmounts — it is the app's only connection-status self-heal, so a
-    // transient local error must not stop it.
+    // read), never the remote server, and its observer in Layout (via
+    // useRemoteView) never unmounts — it is the app's only connection-status
+    // self-heal, so a transient local error must not stop it.
     refetchInterval: 10000,
   });
 };
@@ -34,6 +39,21 @@ export const useRemoteServer = () => {
 // backend means a server URL + token are stored — not that the remote is
 // actually reachable. Reachability surfaces as errors on the remote data
 // queries themselves.
+// Named view-state flags for the remote data queries, so pages consume intent
+// instead of re-deriving it from TanStack internals:
+// - isFirstLoad: true until the query first resolves or errors — gate the
+//   full-page spinner on this. A refetch after an error resets the query to
+//   pending, so gating on isLoading alone would flash the spinner on every
+//   retry (issue #217).
+// - isUnreachable: the query is errored. The backend wraps every remote
+//   failure as a 502, so this is how remote reachability surfaces — pages
+//   render RemoteUnreachableBanner when this is true in the remote view.
+const withRemoteFlags = <T>(query: UseQueryResult<T>) => ({
+  ...query,
+  isFirstLoad: query.isLoading && query.errorUpdateCount === 0,
+  isUnreachable: query.isError,
+});
+
 export const useRemoteView = () => {
   const isLocalMode = useModeStore((s) => s.isLocalMode());
   const viewMode = useViewModeStore((s) => s.viewMode);
@@ -75,12 +95,14 @@ export const useDisconnectServer = () => {
 };
 
 export const useRemoteWorkspaces = (enabled: boolean) => {
-  return useQuery({
-    queryKey: ['remote', 'workspaces'],
-    queryFn: remoteApi.listWorkspaces,
-    enabled,
-    refetchInterval: pollWithErrorBackoff(5000),
-  });
+  return withRemoteFlags(
+    useQuery({
+      queryKey: ['remote', 'workspaces'],
+      queryFn: remoteApi.listWorkspaces,
+      enabled,
+      refetchInterval: pollWithErrorBackoff(5000),
+    }),
+  );
 };
 
 export const useRemoteWorkspace = (id: string) => {
@@ -131,59 +153,72 @@ export const useDeleteRemoteWorkspace = () => {
 };
 
 export const useRemoteRegistries = (enabled: boolean) => {
-  return useQuery({
-    queryKey: ['remote', 'registries'],
-    queryFn: remoteApi.listRegistries,
-    enabled,
-  });
+  return withRemoteFlags(
+    useQuery({
+      queryKey: ['remote', 'registries'],
+      queryFn: remoteApi.listRegistries,
+      enabled,
+    }),
+  );
 };
 
 export const useRemoteJobs = (enabled: boolean) => {
-  return useQuery({
-    queryKey: ['remote', 'jobs'],
-    queryFn: remoteApi.listJobs,
-    enabled,
-    refetchInterval: pollWithErrorBackoff(5000), // Poll for job status updates
-  });
+  return withRemoteFlags(
+    useQuery({
+      queryKey: ['remote', 'jobs'],
+      queryFn: remoteApi.listJobs,
+      enabled,
+      refetchInterval: pollWithErrorBackoff(5000), // Poll for job status updates
+    }),
+  );
 };
 
 export const useRemoteUsers = (enabled: boolean) => {
-  return useQuery({
-    queryKey: ['remote', 'admin', 'users'],
-    queryFn: remoteApi.listUsers,
-    enabled,
-  });
+  return withRemoteFlags(
+    useQuery({
+      queryKey: ['remote', 'admin', 'users'],
+      queryFn: remoteApi.listUsers,
+      enabled,
+    }),
+  );
 };
 
 export const useRemoteAdminRegistries = (enabled: boolean) => {
-  return useQuery({
-    queryKey: ['remote', 'admin', 'registries'],
-    queryFn: remoteApi.listAdminRegistries,
-    enabled,
-  });
+  return withRemoteFlags(
+    useQuery({
+      queryKey: ['remote', 'admin', 'registries'],
+      queryFn: remoteApi.listAdminRegistries,
+      enabled,
+    }),
+  );
 };
 
 export const useRemoteAuditLogs = (
   enabled: boolean,
   filters?: { user_id?: string; action?: string },
 ) => {
-  return useQuery({
-    queryKey: ['remote', 'admin', 'audit-logs', filters],
-    queryFn: () => remoteApi.listAuditLogs(filters),
-    enabled,
-  });
+  return withRemoteFlags(
+    useQuery({
+      queryKey: ['remote', 'admin', 'audit-logs', filters],
+      queryFn: () => remoteApi.listAuditLogs(filters),
+      enabled,
+    }),
+  );
 };
 
 export const useRemoteDashboardStats = (enabled: boolean) => {
-  return useQuery({
-    queryKey: ['remote', 'admin', 'dashboard', 'stats'],
-    queryFn: remoteApi.getDashboardStats,
-    enabled,
-    // Polls (stats are cheap to serve and feed the dashboard tiles), and —
-    // more importantly — keeps retrying after an error: this query is part of
-    // AdminDashboard's unreachable-banner condition, and without an interval
-    // an errored query only refetches on remount, so the banner would stick
-    // until the user navigated away even after the server recovered.
-    refetchInterval: pollWithErrorBackoff(30000),
-  });
+  return withRemoteFlags(
+    useQuery({
+      queryKey: ['remote', 'admin', 'dashboard', 'stats'],
+      queryFn: remoteApi.getDashboardStats,
+      enabled,
+      // Polls (stats are cheap to serve and feed the dashboard tiles), and —
+      // more importantly — keeps retrying after an error: this query is part
+      // of AdminDashboard's unreachable-banner condition, and without an
+      // interval an errored query only refetches on remount, so the banner
+      // would stick until the user navigated away even after the server
+      // recovered.
+      refetchInterval: pollWithErrorBackoff(30000),
+    }),
+  );
 };

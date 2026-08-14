@@ -73,9 +73,8 @@ export const Workspaces = () => {
     useRemoteView();
   const {
     data: remoteWorkspaces,
-    isLoading: remoteLoading,
-    isError: remoteError,
-    errorUpdateCount: remoteErrorCount,
+    isFirstLoad: remoteFirstLoad,
+    isUnreachable: remoteIsUnreachable,
   } = useRemoteWorkspaces(isRemoteConnected);
 
   const [showCreate, setShowCreate] = useState(false);
@@ -242,15 +241,11 @@ export const Workspaces = () => {
   const isDeletePending =
     deleteMutation.isPending || deleteRemoteMutation.isPending;
 
-  const remoteUnreachable = isRemoteView && remoteError;
+  const remoteUnreachable = isRemoteView && remoteIsUnreachable;
 
-  // Full-page spinner only until the remote list first resolves or errors.
-  // A refetch after an error resets the query to pending, so gating on
-  // !remoteError alone would flash the spinner on every retry (issue #217).
-  if (
-    isLoading ||
-    (isRemoteConnected && remoteLoading && remoteErrorCount === 0)
-  ) {
+  // Full-page spinner only until the remote list first resolves or errors
+  // (see isFirstLoad in useRemote.ts).
+  if (isLoading || (isRemoteConnected && remoteFirstLoad)) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />

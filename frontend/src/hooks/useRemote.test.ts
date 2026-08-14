@@ -228,6 +228,27 @@ describe('useRemoteWorkspaces', () => {
     });
     await waitFor(() => expect(result.current.isError).toBe(true));
   });
+
+  it('reports isFirstLoad until the query first resolves', async () => {
+    const { result } = renderHook(() => useRemoteWorkspaces(true), {
+      wrapper: createWrapper(),
+    });
+    expect(result.current.isFirstLoad).toBe(true);
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.isFirstLoad).toBe(false);
+    expect(result.current.isUnreachable).toBe(false);
+  });
+
+  it('reports isUnreachable (and clears isFirstLoad) once the query errors', async () => {
+    server.use(
+      http.get('/api/v1/remote/workspaces', () => HttpResponse.error()),
+    );
+    const { result } = renderHook(() => useRemoteWorkspaces(true), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isUnreachable).toBe(true));
+    expect(result.current.isFirstLoad).toBe(false);
+  });
 });
 
 describe('useRemoteWorkspace', () => {

@@ -217,9 +217,8 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
   const { viewMode, isRemoteConnected, isRemoteView } = useRemoteView();
   const {
     data: remoteJobs,
-    isLoading: remoteLoading,
-    isError: remoteError,
-    errorUpdateCount: remoteErrorCount,
+    isFirstLoad: remoteFirstLoad,
+    isUnreachable: remoteIsUnreachable,
   } = useRemoteJobs(isRemoteConnected);
 
   // Show jobs based on view mode when connected to remote
@@ -244,13 +243,10 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
     };
   }, [jobs, remoteJobs, isRemoteConnected, viewMode, workspaceId]);
 
-  const remoteUnreachable = isRemoteView && remoteError;
-  // Full-page spinner only until the remote list first resolves or errors.
-  // A refetch after an error resets the query to pending, so gating on
-  // !remoteError alone would flash the spinner on every retry (issue #217).
-  const isLoading =
-    jobsLoading ||
-    (isRemoteConnected && remoteLoading && remoteErrorCount === 0);
+  const remoteUnreachable = isRemoteView && remoteIsUnreachable;
+  // Full-page spinner only until the remote list first resolves or errors
+  // (see isFirstLoad in useRemote.ts).
+  const isLoading = jobsLoading || (isRemoteConnected && remoteFirstLoad);
 
   if (isLoading) {
     return (

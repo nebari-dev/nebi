@@ -249,6 +249,38 @@ describe('useRemoteWorkspaces', () => {
     await waitFor(() => expect(result.current.isUnreachable).toBe(true));
     expect(result.current.isFirstLoad).toBe(false);
   });
+
+  it('holds isUnreachable while a retry refetch is in flight, then clears it on success', async () => {
+    // Refetching a never-succeeded query resets it to pending and clears
+    // isError, so isUnreachable must bridge that window or the banner
+    // flashes off during every failed retry.
+    let requests = 0;
+    server.use(
+      http.get('/api/v1/remote/workspaces', async () => {
+        requests += 1;
+        if (requests === 1) {
+          return HttpResponse.error();
+        }
+        // Hang the retry long enough for the pending window to be observable.
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return HttpResponse.json([mockRemoteWorkspace]);
+      }),
+    );
+    const { result } = renderHook(() => useRemoteWorkspaces(true), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isUnreachable).toBe(true));
+
+    result.current.refetch();
+    await waitFor(() => expect(result.current.isPending).toBe(true));
+    expect(result.current.isUnreachable).toBe(true);
+    expect(result.current.isFirstLoad).toBe(false);
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true), {
+      timeout: 2000,
+    });
+    expect(result.current.isUnreachable).toBe(false);
+  });
 });
 
 describe('useRemoteWorkspace', () => {

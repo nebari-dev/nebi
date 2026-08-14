@@ -48,10 +48,16 @@ export const useRemoteServer = () => {
 // - isUnreachable: the query is errored. The backend wraps every remote
 //   failure as a 502, so this is how remote reachability surfaces — pages
 //   render RemoteUnreachableBanner when this is true in the remote view.
+//   Held true while a retry is in flight: that same pending reset clears
+//   isError, which would flash the banner off (and the empty state on) for
+//   the duration of every failed retry. errorUpdateCount survives the reset,
+//   so pending + a past error means "still retrying an unreachable server";
+//   a successful retry (or the resetQueries in connect/disconnect) clears it.
 const withRemoteFlags = <T>(query: UseQueryResult<T>) => ({
   ...query,
   isFirstLoad: query.isLoading && query.errorUpdateCount === 0,
-  isUnreachable: query.isError,
+  isUnreachable:
+    query.isError || (query.isPending && query.errorUpdateCount > 0),
 });
 
 export const useRemoteView = () => {

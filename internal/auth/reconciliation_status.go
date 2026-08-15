@@ -396,7 +396,10 @@ func retryAuthReconciliationStatus(db *gorm.DB, rbacProvider rbac.Provider, stat
 			recordAuthReconciliationFailureWithAdmin(db, status.UserID, kind, err, *status.DesiredAdmin)
 			return false, err
 		}
-		if err := recordAuthReconciliationSuccessWithAdmin(db, status.UserID, kind, *status.DesiredAdmin); err != nil {
+		state := newProxyAdminReconciliationState(*status.DesiredAdmin)
+		// Monitor retries are cached-state repairs, so do not refresh
+		// LastSuccessAt, which gates bearer-token freshness at the user level.
+		if err := clearAuthReconciliationFailureWithState(db, status.UserID, kind, state); err != nil {
 			recordAuthReconciliationFailureWithAdmin(db, status.UserID, kind, err, *status.DesiredAdmin)
 			return false, err
 		}

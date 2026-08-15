@@ -272,8 +272,8 @@ func TestAlertUnresolvedAuthReconciliationsRetriesProxyAdminState(t *testing.T) 
 	if err := db.First(&status, "user_id = ? AND kind = ?", u.ID, string(authReconciliationProxyAdmin)).Error; err != nil {
 		t.Fatalf("load status: %v", err)
 	}
-	if status.LastSuccessAt == nil {
-		t.Fatal("expected retry to record success")
+	if status.LastSuccessAt != nil {
+		t.Fatal("expected retry not to record fresh success")
 	}
 	if status.LastFailureAt != nil {
 		t.Fatal("expected retry success to clear failure timestamp")

@@ -1,6 +1,7 @@
 import { Check, Copy, Download, Loader2, Plus, Trash2, X } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +13,7 @@ import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
 import {
   useCreateRemoteWorkspace,
   useDeleteRemoteWorkspace,
-  useRemoteServer,
+  useRemoteView,
   useRemoteWorkspaces,
 } from '@/hooks/useRemote';
 import {
@@ -25,8 +26,6 @@ import {
   getInstallStatusColor,
   getWorkspaceStatusColor,
 } from '@/lib/utils';
-import { useModeStore } from '@/store/modeStore';
-import { useViewModeStore } from '@/store/viewModeStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
 import type { InstallStatus } from '@/types';
 
@@ -70,12 +69,14 @@ export const Workspaces = () => {
   const deleteMutation = useDeleteWorkspace();
   const createRemoteMutation = useCreateRemoteWorkspace();
   const deleteRemoteMutation = useDeleteRemoteWorkspace();
-  const isLocal = useModeStore((state) => state.mode === 'local');
-  const { data: serverStatus } = useRemoteServer();
-  const isRemoteConnected = isLocal && serverStatus?.status === 'connected';
-  const { data: remoteWorkspaces, isLoading: remoteLoading } =
-    useRemoteWorkspaces(isRemoteConnected);
-  const viewMode = useViewModeStore((state) => state.viewMode);
+  const { isLocalMode, viewMode, isRemoteConnected, isRemoteView } =
+    useRemoteView();
+  const {
+    data: remoteWorkspaces,
+    isLoading: remoteLoading,
+    isError: remoteError,
+    errorUpdateCount: remoteErrorCount,
+  } = useRemoteWorkspaces(isRemoteConnected);
 
   const [showCreate, setShowCreate] = useState(false);
   const [createTarget, setCreateTarget] = useState<'local' | 'server'>('local');
@@ -241,7 +242,15 @@ export const Workspaces = () => {
   const isDeletePending =
     deleteMutation.isPending || deleteRemoteMutation.isPending;
 
-  if (isLoading || (isRemoteConnected && remoteLoading)) {
+  const remoteUnreachable = isRemoteView && remoteError;
+
+  // Full-page spinner only until the remote list first resolves or errors.
+  // A refetch after an error resets the query to pending, so gating on
+  // !remoteError alone would flash the spinner on every retry (issue #217).
+  if (
+    isLoading ||
+    (isRemoteConnected && remoteLoading && remoteErrorCount === 0)
+  ) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -261,9 +270,7 @@ export const Workspaces = () => {
         <SplitButton
           onPrimary={() => {
             setShowCreate(!showCreate);
-            setCreateTarget(
-              isRemoteConnected && viewMode === 'remote' ? 'server' : 'local',
-            );
+            setCreateTarget(isRemoteView ? 'server' : 'local');
             setError('');
           }}
           primaryLabel={
@@ -288,6 +295,8 @@ export const Workspaces = () => {
           {error}
         </div>
       )}
+
+      {remoteUnreachable && <RemoteUnreachableBanner />}
 
       {envJobNotice && (
         <div className="rounded-md border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-700">
@@ -346,7 +355,7 @@ export const Workspaces = () => {
               />
 
               {/* Path field — only for local target in local mode */}
-              {createTarget === 'local' && isLocal && (
+              {createTarget === 'local' && isLocalMode && (
                 <div className="space-y-2">
                   <label htmlFor={localPathId} className="text-sm font-medium">
                     Path (optional)
@@ -506,13 +515,15 @@ export const Workspaces = () => {
         </CardContent>
       </Card>
 
-      {displayedWorkspaces.length === 0 && !showCreate && (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">
-            No workspaces yet. Create your first one!
-          </p>
-        </div>
-      )}
+      {displayedWorkspaces.length === 0 &&
+        !showCreate &&
+        !remoteUnreachable && (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">
+              No workspaces yet. Create your first one!
+            </p>
+          </div>
+        )}
 
       <ConfirmDialog
         open={!!confirmDelete}

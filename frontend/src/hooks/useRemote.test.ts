@@ -1,6 +1,8 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { useModeStore } from '@/store/modeStore';
+import { useViewModeStore } from '@/store/viewModeStore';
 import {
   mockFederatedIdentity,
   mockFederatedIdentityReview,
@@ -12,6 +14,8 @@ import {
 } from '@/test/handlers';
 import { createWrapper } from '@/test/utils';
 import {
+  ERROR_BACKOFF_INTERVAL,
+  pollWithErrorBackoff,
   useApproveRemoteFederatedIdentityReview,
   useConnectServer,
   useCreateRemoteWorkspace,
@@ -23,6 +27,7 @@ import {
   useRemoteRegistries,
   useRemoteServer,
   useRemoteUsers,
+  useRemoteView,
   useRemoteWorkspace,
   useRemoteWorkspaces,
 } from './useRemote';
@@ -37,6 +42,84 @@ const mockRemoteWorkspace = {
   ...mockWorkspace,
   server_url: 'https://remote.example.com',
 };
+
+describe('pollWithErrorBackoff', () => {
+  it('returns the interval while the query is healthy', () => {
+    expect(pollWithErrorBackoff(5000)({ state: { status: 'success' } })).toBe(
+      5000,
+    );
+    expect(pollWithErrorBackoff(5000)({ state: { status: 'pending' } })).toBe(
+      5000,
+    );
+  });
+
+  it('backs off to the slow interval once the query errors', () => {
+    expect(pollWithErrorBackoff(5000)({ state: { status: 'error' } })).toBe(
+      ERROR_BACKOFF_INTERVAL,
+    );
+  });
+});
+
+describe('useRemoteView', () => {
+  it('reports the remote view when local mode, connected, and viewMode is remote', async () => {
+    useModeStore.setState({ mode: 'local', features: {}, loading: false });
+    useViewModeStore.setState({ viewMode: 'remote' });
+    server.use(
+      http.get('/api/v1/remote/server', () =>
+        HttpResponse.json({
+          url: 'https://remote.example.com',
+          username: 'user',
+          status: 'connected',
+        }),
+      ),
+    );
+
+    const { result } = renderHook(() => useRemoteView(), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isRemoteConnected).toBe(true));
+    expect(result.current.isRemoteView).toBe(true);
+  });
+
+  it('is not connected when no remote server is configured', async () => {
+    useModeStore.setState({ mode: 'local', features: {}, loading: false });
+    useViewModeStore.setState({ viewMode: 'remote' });
+    server.use(
+      http.get('/api/v1/remote/server', () =>
+        HttpResponse.json({ url: '', username: '', status: 'disconnected' }),
+      ),
+    );
+
+    const { result } = renderHook(() => useRemoteView(), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isRemoteConnected).toBe(false));
+    expect(result.current.isRemoteView).toBe(false);
+  });
+
+  it('is not the remote view when viewMode is local', async () => {
+    useModeStore.setState({ mode: 'local', features: {}, loading: false });
+    useViewModeStore.setState({ viewMode: 'local' });
+    server.use(
+      http.get('/api/v1/remote/server', () =>
+        HttpResponse.json({
+          url: 'https://remote.example.com',
+          username: 'user',
+          status: 'connected',
+        }),
+      ),
+    );
+
+    const { result } = renderHook(() => useRemoteView(), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isRemoteConnected).toBe(true));
+    expect(result.current.isRemoteView).toBe(false);
+  });
+});
 
 describe('useRemoteServer', () => {
   beforeEach(() => {
@@ -139,6 +222,16 @@ describe('useRemoteWorkspaces', () => {
       wrapper: createWrapper(),
     });
     expect(result.current.fetchStatus).toBe('idle');
+  });
+
+  it('reflects an error state when the remote server is unreachable', async () => {
+    server.use(
+      http.get('/api/v1/remote/workspaces', () => HttpResponse.error()),
+    );
+    const { result } = renderHook(() => useRemoteWorkspaces(true), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
   });
 });
 

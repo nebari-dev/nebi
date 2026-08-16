@@ -7,16 +7,15 @@ import {
   Radio,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useJobLogStream } from '@/hooks/useJobLogStream';
 import { useJobs } from '@/hooks/useJobs';
-import { useRemoteJobs, useRemoteServer } from '@/hooks/useRemote';
+import { useRemoteJobs, useRemoteView } from '@/hooks/useRemote';
 import { capitalize } from '@/lib/utils';
-import { useModeStore } from '@/store/modeStore';
-import { useViewModeStore } from '@/store/viewModeStore';
-import type { Job } from '@/types';
+import type { Job, JobType } from '@/types';
 
 const statusColors = {
   pending: 'bg-yellow-100 text-yellow-800 border-yellow-300',
@@ -25,12 +24,15 @@ const statusColors = {
   failed: 'bg-red-100 text-red-800 border-red-300',
 };
 
-const typeColors = {
+const typeColors: Record<JobType, string> = {
   create: 'bg-indigo-100 text-indigo-800 border-indigo-300',
   delete: 'bg-red-100 text-red-800 border-red-300',
   install: 'bg-blue-100 text-blue-800 border-blue-300',
   remove: 'bg-orange-100 text-orange-800 border-orange-300',
   update: 'bg-purple-100 text-purple-800 border-purple-300',
+  rollback: 'bg-purple-100 text-purple-800 border-purple-300',
+  env_install: 'bg-blue-100 text-blue-800 border-blue-300',
+  env_uninstall: 'bg-orange-100 text-orange-800 border-orange-300',
 };
 
 const CopyButton = ({ text }: { text: string }) => {
@@ -212,12 +214,13 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
   const { data: jobs, isLoading: jobsLoading } = useJobs();
 
   // View mode support for local desktop app
-  const isLocalMode = useModeStore((s) => s.isLocalMode());
-  const viewMode = useViewModeStore((state) => state.viewMode);
-  const { data: serverStatus } = useRemoteServer();
-  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
-  const { data: remoteJobs, isLoading: remoteLoading } =
-    useRemoteJobs(isRemoteConnected);
+  const { viewMode, isRemoteConnected, isRemoteView } = useRemoteView();
+  const {
+    data: remoteJobs,
+    isLoading: remoteLoading,
+    isError: remoteError,
+    errorUpdateCount: remoteErrorCount,
+  } = useRemoteJobs(isRemoteConnected);
 
   // Show jobs based on view mode when connected to remote
   const { displayedJobs, isRemote } = useMemo(() => {
@@ -241,7 +244,13 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
     };
   }, [jobs, remoteJobs, isRemoteConnected, viewMode, workspaceId]);
 
-  const isLoading = jobsLoading || (isRemoteConnected && remoteLoading);
+  const remoteUnreachable = isRemoteView && remoteError;
+  // Full-page spinner only until the remote list first resolves or errors.
+  // A refetch after an error resets the query to pending, so gating on
+  // !remoteError alone would flash the spinner on every retry (issue #217).
+  const isLoading =
+    jobsLoading ||
+    (isRemoteConnected && remoteLoading && remoteErrorCount === 0);
 
   if (isLoading) {
     return (
@@ -260,6 +269,8 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
         </p>
       </div>
 
+      {remoteUnreachable && <RemoteUnreachableBanner />}
+
       <div className="space-y-4">
         {displayedJobs.map((job, index) => (
           <JobCard
@@ -271,7 +282,7 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
         ))}
       </div>
 
-      {displayedJobs.length === 0 && (
+      {displayedJobs.length === 0 && !remoteUnreachable && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">No jobs yet</p>
         </div>

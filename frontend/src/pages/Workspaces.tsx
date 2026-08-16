@@ -1,17 +1,19 @@
 import { Check, Copy, Download, Loader2, Plus, Trash2, X } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { SplitButton } from '@/components/ui/split-button';
+import { InstallControls } from '@/components/workspace/InstallControls';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
 import {
   useCreateRemoteWorkspace,
   useDeleteRemoteWorkspace,
-  useRemoteServer,
+  useRemoteView,
   useRemoteWorkspaces,
 } from '@/hooks/useRemote';
 import {
@@ -19,10 +21,13 @@ import {
   useDeleteWorkspace,
   useWorkspaces,
 } from '@/hooks/useWorkspaces';
-import { capitalize, getWorkspaceStatusColor } from '@/lib/utils';
-import { useModeStore } from '@/store/modeStore';
-import { useViewModeStore } from '@/store/viewModeStore';
+import {
+  capitalize,
+  getInstallStatusColor,
+  getWorkspaceStatusColor,
+} from '@/lib/utils';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
+import type { InstallStatus } from '@/types';
 
 type UnifiedWorkspace = {
   id: string;
@@ -37,6 +42,7 @@ type UnifiedWorkspace = {
   owner_id?: string;
   owner?: { id: string; username: string; email: string };
   size_formatted?: string;
+  install_status?: InstallStatus;
 };
 
 const DEFAULT_PIXI_TOML = `[workspace]
@@ -63,12 +69,14 @@ export const Workspaces = () => {
   const deleteMutation = useDeleteWorkspace();
   const createRemoteMutation = useCreateRemoteWorkspace();
   const deleteRemoteMutation = useDeleteRemoteWorkspace();
-  const isLocal = useModeStore((state) => state.mode === 'local');
-  const { data: serverStatus } = useRemoteServer();
-  const isRemoteConnected = isLocal && serverStatus?.status === 'connected';
-  const { data: remoteWorkspaces, isLoading: remoteLoading } =
-    useRemoteWorkspaces(isRemoteConnected);
-  const viewMode = useViewModeStore((state) => state.viewMode);
+  const { isLocalMode, viewMode, isRemoteConnected, isRemoteView } =
+    useRemoteView();
+  const {
+    data: remoteWorkspaces,
+    isLoading: remoteLoading,
+    isError: remoteError,
+    errorUpdateCount: remoteErrorCount,
+  } = useRemoteWorkspaces(isRemoteConnected);
 
   const [showCreate, setShowCreate] = useState(false);
   const [createTarget, setCreateTarget] = useState<'local' | 'server'>('local');
@@ -81,6 +89,12 @@ export const Workspaces = () => {
     location: 'local' | 'remote';
   } | null>(null);
   const [error, setError] = useState('');
+  const [envJobNotice, setEnvJobNotice] = useState<{
+    wsId: string;
+    wsName: string;
+    jobId: string;
+    type: string;
+  } | null>(null);
   const [copiedPullId, setCopiedPullId] = useState<string | null>(null);
   const localPathId = useId();
 
@@ -101,6 +115,7 @@ export const Workspaces = () => {
         owner_id: ws.owner_id,
         owner: ws.owner,
         size_formatted: ws.size_formatted,
+        install_status: ws.install_status,
       }));
     }
 
@@ -119,6 +134,7 @@ export const Workspaces = () => {
         owner_id: ws.owner_id,
         owner: ws.owner,
         size_formatted: ws.size_formatted,
+        install_status: ws.install_status,
       }));
     } else {
       if (!remoteWorkspaces) return [];
@@ -226,7 +242,15 @@ export const Workspaces = () => {
   const isDeletePending =
     deleteMutation.isPending || deleteRemoteMutation.isPending;
 
-  if (isLoading || (isRemoteConnected && remoteLoading)) {
+  const remoteUnreachable = isRemoteView && remoteError;
+
+  // Full-page spinner only until the remote list first resolves or errors.
+  // A refetch after an error resets the query to pending, so gating on
+  // !remoteError alone would flash the spinner on every retry (issue #217).
+  if (
+    isLoading ||
+    (isRemoteConnected && remoteLoading && remoteErrorCount === 0)
+  ) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -246,9 +270,7 @@ export const Workspaces = () => {
         <SplitButton
           onPrimary={() => {
             setShowCreate(!showCreate);
-            setCreateTarget(
-              isRemoteConnected && viewMode === 'remote' ? 'server' : 'local',
-            );
+            setCreateTarget(isRemoteView ? 'server' : 'local');
             setError('');
           }}
           primaryLabel={
@@ -271,6 +293,41 @@ export const Workspaces = () => {
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded">
           {error}
+        </div>
+      )}
+
+      {remoteUnreachable && <RemoteUnreachableBanner />}
+
+      {envJobNotice && (
+        <div className="rounded-md border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-700">
+          <div className="flex items-center justify-between gap-3">
+            <span>
+              {envJobNotice.type === 'env_uninstall' ? 'Uninstall' : 'Install'}{' '}
+              job started for "{envJobNotice.wsName}" (ID: {envJobNotice.jobId}
+              ).
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPendingTab('jobs');
+                  navigate(`/workspaces/${envJobNotice.wsId}`);
+                }}
+              >
+                View logs
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-blue-700 hover:bg-blue-500/10 hover:text-blue-700"
+                onClick={() => setEnvJobNotice(null)}
+                aria-label="Dismiss notification"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -298,7 +355,7 @@ export const Workspaces = () => {
               />
 
               {/* Path field — only for local target in local mode */}
-              {createTarget === 'local' && isLocal && (
+              {createTarget === 'local' && isLocalMode && (
                 <div className="space-y-2">
                   <label htmlFor={localPathId} className="text-sm font-medium">
                     Path (optional)
@@ -380,9 +437,18 @@ export const Workspaces = () => {
                       )}
                     </td>
                     <td className="p-4">
-                      <Badge className={getWorkspaceStatusColor(ws.status)}>
-                        {capitalize(ws.status)}
-                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge className={getWorkspaceStatusColor(ws.status)}>
+                          {capitalize(ws.status)}
+                        </Badge>
+                        {ws.install_status && (
+                          <Badge
+                            className={getInstallStatusColor(ws.install_status)}
+                          >
+                            {capitalize(ws.install_status.replaceAll('_', ' '))}
+                          </Badge>
+                        )}
+                      </div>
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">
                       {ws.location === 'local' ? ws.size_formatted || '-' : '-'}
@@ -392,6 +458,20 @@ export const Workspaces = () => {
                     </td>
                     <td className="p-4">
                       <div className="flex justify-end gap-2">
+                        {ws.location === 'local' && (
+                          <InstallControls
+                            workspaceId={ws.id}
+                            installStatus={ws.install_status}
+                            onStarted={(job) =>
+                              setEnvJobNotice({
+                                wsId: ws.id,
+                                wsName: ws.name,
+                                jobId: job.id,
+                                type: job.type,
+                              })
+                            }
+                          />
+                        )}
                         {ws.location === 'local' && ws.source !== 'local' && (
                           <Button
                             variant="ghost"
@@ -435,13 +515,15 @@ export const Workspaces = () => {
         </CardContent>
       </Card>
 
-      {displayedWorkspaces.length === 0 && !showCreate && (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">
-            No workspaces yet. Create your first one!
-          </p>
-        </div>
-      )}
+      {displayedWorkspaces.length === 0 &&
+        !showCreate &&
+        !remoteUnreachable && (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">
+              No workspaces yet. Create your first one!
+            </p>
+          </div>
+        )}
 
       <ConfirmDialog
         open={!!confirmDelete}

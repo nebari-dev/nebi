@@ -13,10 +13,15 @@ type JobType string
 const (
 	JobTypeCreate   JobType = "create"
 	JobTypeDelete   JobType = "delete"
-	JobTypeInstall  JobType = "install"
+	JobTypeInstall  JobType = "install" // add packages to the manifest
 	JobTypeRemove   JobType = "remove"
 	JobTypeUpdate   JobType = "update"
 	JobTypeRollback JobType = "rollback"
+	// JobTypeEnvInstall materializes the environment from the lockfile
+	// (pixi install); JobTypeEnvUninstall removes .pixi/envs. Both are
+	// local-mode operations.
+	JobTypeEnvInstall   JobType = "env_install"
+	JobTypeEnvUninstall JobType = "env_uninstall"
 )
 
 // JobStatus represents the state of a job

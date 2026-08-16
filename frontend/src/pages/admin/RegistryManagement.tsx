@@ -128,13 +128,23 @@ export const RegistryManagement = () => {
                       )}
                     </td>
                     <td className="p-4">
-                      {registry.is_default ? (
-                        <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">
-                          Default
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline">Active</Badge>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {registry.is_default ? (
+                          <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">
+                            Default
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">Active</Badge>
+                        )}
+                        {registry.config_managed && (
+                          <Badge
+                            variant="outline"
+                            title="Defined in server configuration (config.yaml). Edit or remove it there."
+                          >
+                            Managed
+                          </Badge>
+                        )}
+                      </div>
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">
                       {new Date(registry.created_at).toLocaleDateString()}
@@ -146,7 +156,12 @@ export const RegistryManagement = () => {
                           size="sm"
                           onClick={() => setEditingRegistry(registry)}
                           aria-label={`Edit ${registry.name}`}
-                          title="Edit Registry"
+                          disabled={registry.config_managed}
+                          title={
+                            registry.config_managed
+                              ? 'Managed by server configuration - edit registry'
+                              : 'Edit Registry'
+                          }
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -159,9 +174,16 @@ export const RegistryManagement = () => {
                               name: registry.name,
                             })
                           }
-                          disabled={deleteRegistryMutation.isPending}
                           aria-label={`Delete ${registry.name}`}
-                          title="Delete Registry"
+                          disabled={
+                            deleteRegistryMutation.isPending ||
+                            registry.config_managed
+                          }
+                          title={
+                            registry.config_managed
+                              ? 'Managed by server configuration - delete registry'
+                              : 'Delete Registry'
+                          }
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

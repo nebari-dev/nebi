@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -28,6 +30,22 @@ func NewJobHandler(svc *service.JobService, broker *logstream.LogBroker, valkeyC
 		broker:       broker,
 		valkeyClient: client,
 	}
+}
+
+func writeSSEEvent(w io.Writer, event, data string) {
+	if event != "" {
+		fmt.Fprintf(w, "event: %s\n", event)
+	}
+
+	normalized := strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(data)
+	for _, line := range strings.Split(normalized, "\n") {
+		fmt.Fprintf(w, "data: %s\n", line)
+	}
+	fmt.Fprint(w, "\n")
+}
+
+func writeSSEData(w io.Writer, data string) {
+	writeSSEEvent(w, "", data)
 }
 
 // ListJobs godoc
@@ -74,7 +92,6 @@ func (h *JobHandler) GetJob(c *gin.Context) {
 // @Security BearerAuth
 // @Produce text/event-stream
 // @Param id path string true "Job ID"
-// @Param token query string false "Auth token (alternative to Bearer header for EventSource compatibility)"
 // @Success 200 {string} string "event stream"
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -103,16 +120,16 @@ func (h *JobHandler) StreamJobLogs(c *gin.Context) {
 	// If job is already completed or failed, send historical logs and close
 	if job.Status == models.JobStatusCompleted || job.Status == models.JobStatusFailed {
 		if job.Logs != "" {
-			fmt.Fprintf(c.Writer, "data: %s\n\n", job.Logs)
+			writeSSEData(c.Writer, job.Logs)
 		}
-		fmt.Fprintf(c.Writer, "event: done\ndata: Job already completed\n\n")
+		writeSSEEvent(c.Writer, "done", "Job already completed")
 		c.Writer.Flush()
 		return
 	}
 
 	// Send historical logs if any exist
 	if job.Logs != "" {
-		fmt.Fprintf(c.Writer, "data: %s\n\n", job.Logs)
+		writeSSEData(c.Writer, job.Logs)
 		c.Writer.Flush()
 	}
 
@@ -122,7 +139,7 @@ func (h *JobHandler) StreamJobLogs(c *gin.Context) {
 	} else if h.broker != nil {
 		h.streamLogsFromBroker(c, jobUUID)
 	} else {
-		fmt.Fprintf(c.Writer, "event: error\ndata: Log streaming not available\n\n")
+		writeSSEEvent(c.Writer, "error", "Log streaming not available")
 		c.Writer.Flush()
 	}
 }
@@ -137,21 +154,21 @@ func (h *JobHandler) streamLogsFromValkey(c *gin.Context, jobID uuid.UUID) {
 	err := h.valkeyClient.Receive(ctx, subscribeCmd, func(msg valkey.PubSubMessage) {
 		logLine := msg.Message
 
-		fmt.Fprintf(c.Writer, "data: %s\n\n", logLine)
+		writeSSEData(c.Writer, logLine)
 		if flusher, ok := c.Writer.(http.Flusher); ok {
 			flusher.Flush()
 		}
 
 		if logLine == "\n[COMPLETED] Job finished successfully\n" ||
 			(len(logLine) > 7 && logLine[:7] == "\n[ERROR]") {
-			fmt.Fprintf(c.Writer, "event: done\ndata: Job completed\n\n")
+			writeSSEEvent(c.Writer, "done", "Job completed")
 			c.Writer.Flush()
 		}
 	})
 
 	if err != nil {
 		if err.Error() != "context canceled" {
-			fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", err.Error())
+			writeSSEEvent(c.Writer, "error", err.Error())
 			c.Writer.Flush()
 		}
 	}
@@ -169,12 +186,12 @@ func (h *JobHandler) streamLogsFromBroker(c *gin.Context, jobID uuid.UUID) {
 			return
 		case logLine, ok := <-logChan:
 			if !ok {
-				fmt.Fprintf(c.Writer, "event: done\ndata: Stream ended\n\n")
+				writeSSEEvent(c.Writer, "done", "Stream ended")
 				c.Writer.Flush()
 				return
 			}
 
-			fmt.Fprintf(c.Writer, "data: %s\n\n", logLine)
+			writeSSEData(c.Writer, logLine)
 			if flusher, ok := c.Writer.(http.Flusher); ok {
 				flusher.Flush()
 			}

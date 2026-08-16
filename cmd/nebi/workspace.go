@@ -20,9 +20,10 @@ var workspaceCmd = &cobra.Command{
 }
 
 var (
-	wsListRemote bool
-	wsListJSON   bool
-	wsTagsJSON   bool
+	wsListRemote    bool
+	wsListJSON      bool
+	wsListInstalled bool
+	wsTagsJSON      bool
 )
 
 var workspaceListCmd = &cobra.Command{
@@ -48,6 +49,37 @@ Examples:
   nebi workspace tags myworkspace`,
 	Args:              cobra.ExactArgs(1),
 	RunE:              runWorkspaceTags,
+	ValidArgsFunction: completeServerWorkspaceNames,
+}
+
+var workspaceInstallCmd = &cobra.Command{
+	Use:   "install <workspace-name>",
+	Short: "Install a workspace's environment from its lockfile",
+	Long: `Install a workspace's environment (.pixi/envs) from its lockfile.
+
+The install runs as a server job; progress is streamed to the terminal.
+Only available when the server runs in local mode.
+
+Examples:
+  nebi workspace install myworkspace`,
+	Args:              cobra.ExactArgs(1),
+	RunE:              runWorkspaceInstall,
+	ValidArgsFunction: completeServerWorkspaceNames,
+}
+
+var workspaceUninstallCmd = &cobra.Command{
+	Use:   "uninstall <workspace-name>",
+	Short: "Remove a workspace's installed environment",
+	Long: `Remove a workspace's installed environment (.pixi/envs).
+
+The manifest (pixi.toml) and lockfile (pixi.lock) are kept, so the
+workspace can be reinstalled later. Only available when the server runs
+in local mode.
+
+Examples:
+  nebi workspace uninstall myworkspace`,
+	Args:              cobra.ExactArgs(1),
+	RunE:              runWorkspaceUninstall,
 	ValidArgsFunction: completeServerWorkspaceNames,
 }
 
@@ -93,7 +125,10 @@ Examples:
 func init() {
 	workspaceListCmd.Flags().BoolVarP(&wsListRemote, "remote", "r", false, "List workspaces on the server instead of locally")
 	workspaceListCmd.Flags().BoolVar(&wsListJSON, "json", false, "Output as JSON")
+	workspaceListCmd.Flags().BoolVar(&wsListInstalled, "installed", false, "Only list server workspaces with an installed environment")
 	workspaceCmd.AddCommand(workspaceListCmd)
+	workspaceCmd.AddCommand(workspaceInstallCmd)
+	workspaceCmd.AddCommand(workspaceUninstallCmd)
 	workspaceTagsCmd.Flags().BoolVar(&wsTagsJSON, "json", false, "Output as JSON")
 	workspaceCmd.AddCommand(workspaceTagsCmd)
 	workspaceRemoveCmd.Flags().BoolVarP(&wsRemoveRemote, "remote", "r", false, "Remove workspace from the server instead of locally")
@@ -102,10 +137,66 @@ func init() {
 }
 
 func runWorkspaceList(cmd *cobra.Command, args []string) error {
-	if wsListRemote {
+	if wsListRemote || wsListInstalled {
 		return runWorkspaceListServer()
 	}
 	return runWorkspaceListLocal()
+}
+
+func runWorkspaceInstall(cmd *cobra.Command, args []string) error {
+	return runWorkspaceEnvJob(args[0], "install")
+}
+
+func runWorkspaceUninstall(cmd *cobra.Command, args []string) error {
+	return runWorkspaceEnvJob(args[0], "uninstall")
+}
+
+// runWorkspaceEnvJob enqueues an install or uninstall job for the named
+// workspace and streams the job's logs until it finishes.
+func runWorkspaceEnvJob(wsName, action string) error {
+	client, err := getAuthenticatedClient()
+	if err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	ws, err := findWsByName(client, ctx, wsName)
+	if err != nil {
+		return err
+	}
+
+	var job *cliclient.Job
+	if action == "install" {
+		job, err = client.InstallWorkspace(ctx, ws.ID)
+	} else {
+		job, err = client.UninstallWorkspace(ctx, ws.ID)
+	}
+	if err != nil {
+		return fmt.Errorf("starting %s: %w", action, err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Started %s job %s for workspace %q\n", action, job.ID, wsName)
+
+	if err := client.StreamJobLogs(ctx, job.ID, os.Stdout); err != nil {
+		return fmt.Errorf("streaming %s logs: %w", action, err)
+	}
+
+	// The stream ends on the done event; the job's final status decides
+	// the exit code.
+	final, err := client.GetJob(ctx, job.ID)
+	if err != nil {
+		return fmt.Errorf("checking %s result: %w", action, err)
+	}
+	if final.Status == "failed" {
+		if final.Error != "" {
+			return fmt.Errorf("%s failed: %s", action, final.Error)
+		}
+		return fmt.Errorf("%s failed", action)
+	}
+
+	fmt.Fprintf(os.Stderr, "Workspace %q %sed successfully\n", wsName, action)
+	return nil
 }
 
 func runWorkspaceListLocal() error {
@@ -236,11 +327,25 @@ func runWorkspaceListServer() error {
 		return fmt.Errorf("listing workspaces: %w", err)
 	}
 
+	if wsListInstalled {
+		installed := workspaces[:0]
+		for _, ws := range workspaces {
+			if ws.InstallStatus == "installed" {
+				installed = append(installed, ws)
+			}
+		}
+		workspaces = installed
+	}
+
 	if len(workspaces) == 0 {
 		if wsListJSON {
 			return writeJSON([]cliclient.Workspace{})
 		}
-		fmt.Fprintln(os.Stderr, "No workspaces on server.")
+		if wsListInstalled {
+			fmt.Fprintln(os.Stderr, "No installed workspaces on server.")
+		} else {
+			fmt.Fprintln(os.Stderr, "No workspaces on server.")
+		}
 		return nil
 	}
 
@@ -249,14 +354,18 @@ func runWorkspaceListServer() error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tSTATUS\tOWNER\tUPDATED")
+	fmt.Fprintln(w, "NAME\tSTATUS\tINSTALL\tOWNER\tUPDATED")
 	for _, ws := range workspaces {
 		owner := "-"
 		if ws.Owner != nil {
 			owner = ws.Owner.Username
 		}
+		install := ws.InstallStatus
+		if install == "" {
+			install = "-"
+		}
 		updated := ws.UpdatedAt.Format("2006-01-02 15:04")
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", ws.Name, ws.Status, owner, updated)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", ws.Name, ws.Status, install, owner, updated)
 	}
 	return w.Flush()
 }

@@ -25,6 +25,13 @@ type Executor interface {
 	RemovePackages(ctx context.Context, ws *models.Workspace, packages []string, logWriter io.Writer) error
 	DeleteWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error
 	SolveEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error
+	// InstallEnvironment materializes .pixi/envs from the resolved lockfile
+	// (pixi install). UninstallEnvironment removes .pixi/envs, leaving
+	// manifest and lockfile intact. IsEnvInstalled reports whether
+	// .pixi/envs exists on disk.
+	InstallEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error
+	UninstallEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error
+	IsEnvInstalled(ws *models.Workspace) bool
 	GetWorkspacePath(ws *models.Workspace) string
 	// StagingRoot returns a directory under the executor's storage root
 	// suitable for one-off staging (e.g. bundle import pre-extraction).

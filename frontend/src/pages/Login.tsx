@@ -13,15 +13,11 @@ type LoginProps = {
   isDarkMode: boolean;
 };
 
-const pendingReviewError = 'federated identity link is pending admin approval';
-const rejectedReviewError =
-  'federated identity link request was rejected by an admin';
-
 const authErrorMessage = (error: string) => {
-  if (error === 'identity_review_pending' || error === pendingReviewError) {
+  if (error === 'identity_review_pending') {
     return 'Your identity link request is pending admin approval. Try again after an admin approves it.';
   }
-  if (error === 'identity_review_rejected' || error === rejectedReviewError) {
+  if (error === 'identity_review_rejected') {
     return 'Your identity link request was rejected by an admin. Contact an administrator if you believe this is a mistake.';
   }
   if (!error || error === 'oauth_failed') {
@@ -31,9 +27,7 @@ const authErrorMessage = (error: string) => {
 };
 
 const authErrorTone = (error: string) =>
-  error === 'identity_review_pending' || error === pendingReviewError
-    ? 'warning'
-    : 'destructive';
+  error === 'identity_review_pending' ? 'warning' : 'destructive';
 
 export const Login = ({ isDarkMode }: LoginProps) => {
   const [username, setUsername] = useState('');
@@ -57,8 +51,10 @@ export const Login = ({ isDarkMode }: LoginProps) => {
     }
   }, [isLocalMode, navigate]);
 
-  // Auto-login via an OIDC gateway proxy when it has already set an IdToken
-  // cookie. If no proxy session exists, stay on the normal login screen.
+  // Auto-login via OIDC gateway proxy (RFC 6749 §4.1 authorization code pattern):
+  // 1. Redirect to /auth/session (outside /api/, so gateway preserves cookies)
+  // 2. Backend reads IdToken cookie → generates single-use code → redirects to /login?code=xxx
+  // 3. Frontend exchanges code for JWT via POST /api/v1/auth/code/exchange
   useEffect(() => {
     if (isLocalMode) return;
     if (searchParams.get('code') || searchParams.get('error')) return;
@@ -74,7 +70,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
       window.location.href = `${getBasePath()}/auth/session`;
       return;
     }
-    // No gateway detected - show login form
+    // No gateway detected — show login form
     setSessionChecked(true);
   }, [isLocalMode, searchParams]);
 

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -125,10 +124,6 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	if err := detectLegacyFederatedUsers(db); err != nil {
-		return err
-	}
-
 	// Seed default roles if they don't exist
 	if err := seedDefaultRoles(db); err != nil {
 		return fmt.Errorf("failed to seed default roles: %w", err)
@@ -142,30 +137,6 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 	}
 
 	return nil
-}
-
-const legacyFederatedIdentityMigrationDocs = "https://nebi.nebari.dev/docs/server-setup#legacy-federated-identity-migration"
-
-func detectLegacyFederatedUsers(db *gorm.DB) error {
-	var users []models.User
-	// OIDC/proxy/device-flow users created before issuer/subject binding have
-	// an empty password hash. Local mode's synthetic user deliberately uses "-"
-	// instead (see internal/auth/local.go), so it is not flagged here.
-	if err := db.
-		Joins("LEFT JOIN federated_identities fi ON fi.user_id = users.id AND fi.deleted_at IS NULL").
-		Where("users.password_hash = ? AND fi.id IS NULL", "").
-		Find(&users).Error; err != nil {
-		return fmt.Errorf("failed to detect legacy federated users: %w", err)
-	}
-	if len(users) == 0 {
-		return nil
-	}
-
-	details := make([]string, len(users))
-	for i, user := range users {
-		details[i] = fmt.Sprintf("id=%s username=%q email=%q", user.ID, user.Username, user.Email)
-	}
-	return fmt.Errorf("legacy federated users without issuer/subject bindings block startup; backfill issuer/subject bindings before upgrading and see %s; affected users: %s", legacyFederatedIdentityMigrationDocs, strings.Join(details, "; "))
 }
 
 // seedDefaultRoles creates default roles (admin, owner, editor, viewer)

@@ -270,6 +270,75 @@ func TestFindOrCreateProxyUser_DoesNotLinkByUsernameOrEmail(t *testing.T) {
 	}
 }
 
+func TestFindOrCreateProxyUser_PendingReviewTargetDoesNotMove(t *testing.T) {
+	db := setupTestDB(t)
+
+	alice := models.User{
+		ID:           uuid.New(),
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hashed-password",
+	}
+	admin := models.User{
+		ID:           uuid.New(),
+		Username:     "root-admin",
+		Email:        "admin@example.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&alice).Error; err != nil {
+		t.Fatalf("create alice user: %v", err)
+	}
+	if err := db.Create(&admin).Error; err != nil {
+		t.Fatalf("create admin user: %v", err)
+	}
+
+	claims := &ProxyTokenClaims{
+		Issuer:            "https://issuer.example.com",
+		Sub:               "stable-sub",
+		PreferredUsername: "alice",
+		Email:             "alice@example.com",
+		EmailVerified:     true,
+	}
+	user, err := findOrCreateProxyUser(db, claims)
+	if !errors.Is(err, errFederatedIdentityRequiresReview) {
+		t.Fatalf("expected initial review error, got user=%v err=%v", user, err)
+	}
+
+	var review models.FederatedIdentityReview
+	if err := db.Where("issuer = ? AND subject = ?", claims.Issuer, claims.Sub).First(&review).Error; err != nil {
+		t.Fatalf("expected pending federated identity review: %v", err)
+	}
+
+	changedClaims := &ProxyTokenClaims{
+		Issuer:            claims.Issuer,
+		Sub:               claims.Sub,
+		PreferredUsername: "root-admin",
+		Email:             "admin@example.com",
+		EmailVerified:     true,
+	}
+	user, err = findOrCreateProxyUser(db, changedClaims)
+	if !errors.Is(err, errFederatedIdentityRequiresReview) {
+		t.Fatalf("expected repeated review error, got user=%v err=%v", user, err)
+	}
+
+	var reviewCount int64
+	db.Model(&models.FederatedIdentityReview{}).Where("issuer = ? AND subject = ?", claims.Issuer, claims.Sub).Count(&reviewCount)
+	if reviewCount != 1 {
+		t.Fatalf("expected exactly one review row, got %d", reviewCount)
+	}
+
+	var persisted models.FederatedIdentityReview
+	if err := db.First(&persisted, "id = ?", review.ID).Error; err != nil {
+		t.Fatalf("load persisted review: %v", err)
+	}
+	if persisted.UserID != alice.ID {
+		t.Errorf("expected review to remain bound to alice %s, got %s", alice.ID, persisted.UserID)
+	}
+	if persisted.Username != "alice" || persisted.Email != "alice@example.com" {
+		t.Errorf("expected original claims to remain, got username=%q email=%q", persisted.Username, persisted.Email)
+	}
+}
+
 func TestFindOrCreateProxyUser_UnverifiedEmailStoresProviderEmail(t *testing.T) {
 	db := setupTestDB(t)
 

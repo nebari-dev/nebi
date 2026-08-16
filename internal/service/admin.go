@@ -306,7 +306,7 @@ func (s *AdminService) ListAuditLogs(userIDFilter, actionFilter string) ([]model
 // ListFederatedIdentityReviews returns federated identity review decisions.
 func (s *AdminService) ListFederatedIdentityReviews() ([]models.FederatedIdentityReview, error) {
 	var reviews []models.FederatedIdentityReview
-	if err := s.db.Preload("User").Order("created_at ASC").Find(&reviews).Error; err != nil {
+	if err := s.db.Preload("User").Order("created_at ASC").Limit(100).Find(&reviews).Error; err != nil {
 		return nil, fmt.Errorf("fetch federated identity reviews: %w", err)
 	}
 	return reviews, nil
@@ -353,11 +353,12 @@ func (s *AdminService) ApproveFederatedIdentityReview(reviewID uuid.UUID, adminU
 		if err := tx.Create(&identity).Error; err != nil {
 			return fmt.Errorf("approve federated identity: %w", err)
 		}
-		if err := tx.Delete(&review).Error; err != nil {
+		if err := tx.Unscoped().Delete(&review).Error; err != nil {
 			return fmt.Errorf("delete federated identity review: %w", err)
 		}
 
-		audit.LogAction(tx, adminUserID, audit.ActionApproveFederatedIdentity, "federated_identity:"+identity.ID.String(), map[string]any{
+		audit.LogAction(tx, adminUserID, audit.ActionApproveFederatedIdentity, audit.ResourceFederatedIdentityReview+":"+review.ID.String(), map[string]any{
+			"identity_id":     identity.ID,
 			"user_id":         review.UserID,
 			"review_id":       review.ID,
 			"issuer":          review.Issuer,
@@ -394,7 +395,7 @@ func (s *AdminService) RejectFederatedIdentityReview(reviewID uuid.UUID, adminUs
 			return fmt.Errorf("reject federated identity review: %w", err)
 		}
 
-		audit.LogAction(tx, adminUserID, audit.ActionRejectFederatedIdentity, "federated_identity_review:"+review.ID.String(), map[string]any{
+		audit.LogAction(tx, adminUserID, audit.ActionRejectFederatedIdentity, audit.ResourceFederatedIdentityReview+":"+review.ID.String(), map[string]any{
 			"user_id":         review.UserID,
 			"issuer":          review.Issuer,
 			"subject":         review.Subject,

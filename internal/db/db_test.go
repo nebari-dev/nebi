@@ -2,7 +2,6 @@ package db
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/nebari-dev/nebi/internal/config"
@@ -22,7 +21,7 @@ func testDB(t *testing.T) *gorm.DB {
 	return database
 }
 
-func TestMigrateDetectsLegacyFederatedUsersWithoutIssuerSubject(t *testing.T) {
+func TestMigrateAllowsLegacyFederatedUsersWithoutIssuerSubject(t *testing.T) {
 	database := testDB(t)
 	if err := database.AutoMigrate(&models.User{}); err != nil {
 		t.Fatalf("initial migrate: %v", err)
@@ -36,18 +35,8 @@ func TestMigrateDetectsLegacyFederatedUsersWithoutIssuerSubject(t *testing.T) {
 		t.Fatalf("create legacy user: %v", err)
 	}
 
-	err := Migrate(database, false)
-	if err == nil {
-		t.Fatal("expected legacy federated user migration error")
-	}
-	if !strings.Contains(err.Error(), "legacy federated users without issuer/subject bindings") {
-		t.Fatalf("expected legacy federated user error, got %v", err)
-	}
-	if !strings.Contains(err.Error(), legacyFederatedIdentityMigrationDocs) {
-		t.Fatalf("expected migration docs link, got %v", err)
-	}
-	if !strings.Contains(err.Error(), `username="legacy-oidc"`) {
-		t.Fatalf("expected affected username in migration error, got %v", err)
+	if err := Migrate(database, false); err != nil {
+		t.Fatalf("expected migration to leave legacy users for review-flow migration: %v", err)
 	}
 }
 

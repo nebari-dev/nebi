@@ -16,38 +16,19 @@ import (
 var errFederatedIdentityRequiresReview = errors.New("federated identity requires admin review")
 var errFederatedIdentityRejected = errors.New("federated identity review was rejected")
 
-// FederatedIdentityReviewPendingMessage is returned when login created a
-// pending admin review instead of linking by mutable identity claims.
-const FederatedIdentityReviewPendingMessage = "federated identity link is pending admin approval"
-
-// FederatedIdentityReviewRejectedMessage is returned when an admin rejected a
-// federated identity link request for the external identity.
-const FederatedIdentityReviewRejectedMessage = "federated identity link request was rejected by an admin"
-
 const (
 	FederatedIdentityReviewPendingCode  = "identity_review_pending"
 	FederatedIdentityReviewRejectedCode = "identity_review_rejected"
 )
 
-// IsFederatedIdentityReviewRequired reports whether err means login was blocked
-// until an admin approves a federated identity link.
-func IsFederatedIdentityReviewRequired(err error) bool {
-	return errors.Is(err, errFederatedIdentityRequiresReview)
-}
-
-// IsFederatedIdentityReviewRejected reports whether err means login was blocked
-// because an admin rejected this federated identity link.
-func IsFederatedIdentityReviewRejected(err error) bool {
-	return errors.Is(err, errFederatedIdentityRejected)
-}
-
 // FederatedIdentityReviewErrorCode returns a stable client-facing error code
 // for review-gated federated login failures.
 func FederatedIdentityReviewErrorCode(err error) (string, bool) {
-	if IsFederatedIdentityReviewRequired(err) {
+	// Keep API responses on stable codes while sentinel errors stay internal.
+	if errors.Is(err, errFederatedIdentityRequiresReview) {
 		return FederatedIdentityReviewPendingCode, true
 	}
-	if IsFederatedIdentityReviewRejected(err) {
+	if errors.Is(err, errFederatedIdentityRejected) {
 		return FederatedIdentityReviewRejectedCode, true
 	}
 	return "", false
@@ -215,21 +196,8 @@ func recordFederatedIdentityReview(db *gorm.DB, userID uuid.UUID, field string, 
 		if review.Status == models.FederatedIdentityReviewStatusRejected {
 			return fmt.Errorf("%w: issuer %s subject %s", errFederatedIdentityRejected, claims.Issuer, claims.Subject)
 		}
-		updates := map[string]any{
-			"user_id":         userID,
-			"collision_field": field,
-			"username":        claims.PreferredUsername,
-			"email":           claims.Email,
-			"email_verified":  claims.EmailVerified,
-			"name":            claims.Name,
-			"avatar_url":      claims.AvatarURL,
-			"status":          models.FederatedIdentityReviewStatusPending,
-			"reviewed_by":     nil,
-			"reviewed_at":     nil,
-		}
-		if err := db.Model(&review).Updates(updates).Error; err != nil {
-			return fmt.Errorf("failed to update federated identity review: %w", err)
-		}
+		// Keep pending reviews bound to the user and claims an admin reviewed.
+		// Profile details refresh after approval through updateFederatedIdentityProfile.
 		return nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -290,9 +258,6 @@ func federatedUserUsername(db *gorm.DB, claims federatedUserClaims, suffix strin
 	base := claims.Subject
 	if claims.EmailVerified && claims.Email != "" {
 		base = claims.Email
-	}
-	if base == "" {
-		base = "user-" + suffix
 	}
 	return uniqueUserValue(usernameExists, db, base, func(n int) string {
 		return fmt.Sprintf("%s-%s-%d", base, suffix, n)

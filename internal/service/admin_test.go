@@ -382,11 +382,21 @@ func TestAdminApproveFederatedIdentityReview(t *testing.T) {
 	if reviewCount != 0 {
 		t.Errorf("expected review to be deleted, got %d", reviewCount)
 	}
+	db.Unscoped().Model(&models.FederatedIdentityReview{}).Where("id = ?", review.ID).Count(&reviewCount)
+	if reviewCount != 0 {
+		t.Errorf("expected review to be hard-deleted, got %d", reviewCount)
+	}
 
 	var auditCount int64
 	db.Model(&models.AuditLog{}).Where("user_id = ? AND action = ?", adminID, "approve_federated_identity").Count(&auditCount)
 	if auditCount != 1 {
 		t.Errorf("expected 1 audit log, got %d", auditCount)
+	}
+	db.Model(&models.AuditLog{}).
+		Where("user_id = ? AND action = ? AND resource = ?", adminID, "approve_federated_identity", "federated_identity_review:"+review.ID.String()).
+		Count(&auditCount)
+	if auditCount != 1 {
+		t.Errorf("expected approve audit log on review resource, got %d", auditCount)
 	}
 }
 
@@ -437,6 +447,12 @@ func TestAdminRejectFederatedIdentityReview(t *testing.T) {
 	db.Model(&models.AuditLog{}).Where("user_id = ? AND action = ?", adminID, "reject_federated_identity").Count(&auditCount)
 	if auditCount != 1 {
 		t.Errorf("expected 1 audit log, got %d", auditCount)
+	}
+	db.Model(&models.AuditLog{}).
+		Where("user_id = ? AND action = ? AND resource = ?", adminID, "reject_federated_identity", "federated_identity_review:"+review.ID.String()).
+		Count(&auditCount)
+	if auditCount != 1 {
+		t.Errorf("expected reject audit log on review resource, got %d", auditCount)
 	}
 }
 

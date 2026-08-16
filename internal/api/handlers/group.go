@@ -65,7 +65,7 @@ func (h *GroupHandler) ListGroups(c *gin.Context) {
 func (h *GroupHandler) CreateGroup(c *gin.Context) {
 	var req CreateGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 	g, err := h.svc.CreateGroup(service.CreateGroupRequest{
@@ -129,7 +129,7 @@ func (h *GroupHandler) UpdateGroup(c *gin.Context) {
 	}
 	var req UpdateGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 	g, err := h.svc.UpdateGroup(id, service.UpdateGroupRequest{
@@ -192,7 +192,7 @@ func (h *GroupHandler) AddMember(c *gin.Context) {
 	}
 	var req AddMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 	if err := h.svc.AddMember(groupID, req.UserID, getUserID(c)); err != nil {

@@ -32,19 +32,6 @@ var e2eEnv struct {
 	configDir string
 }
 
-var e2eProcessLimitEnvVars = []string{
-	"NEBI_LIMITS_JOB_CPU_SECONDS",
-	"NEBI_LIMITS_JOB_MEMORY_BYTES",
-	"NEBI_LIMITS_JOB_PROCESSES",
-}
-
-// disableProcessLimitsForE2E keeps Linux CI tests independent of cgroup access.
-func disableProcessLimitsForE2E() {
-	for _, key := range e2eProcessLimitEnvVars {
-		os.Setenv(key, "0")
-	}
-}
-
 // findFreePort returns a free TCP port on localhost.
 func findFreePort() (int, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -101,7 +88,6 @@ func TestMain(m *testing.M) {
 	os.Setenv("NEBI_DATABASE_LOG_LEVEL", "silent")
 	os.Setenv("ADMIN_USERNAME", "admin")
 	os.Setenv("ADMIN_PASSWORD", "adminpass")
-	disableProcessLimitsForE2E()
 
 	// Suppress server logs
 	origStdout := os.Stdout

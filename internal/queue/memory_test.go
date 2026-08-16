@@ -63,6 +63,31 @@ func TestMemoryQueue_DequeueBlocksUntilJob(t *testing.T) {
 	}
 }
 
+func TestMemoryQueue_DequeueAfterCloseDrainsPendingJob(t *testing.T) {
+	q := NewMemoryQueue(10)
+
+	job := newTestJob()
+	if err := q.Enqueue(context.Background(), job); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	if err := q.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	got, err := q.Dequeue(context.Background())
+	if err != nil {
+		t.Fatalf("dequeue pending job after close: %v", err)
+	}
+	if got.ID != job.ID {
+		t.Fatalf("expected job ID %s, got %s", job.ID, got.ID)
+	}
+
+	got, err = q.Dequeue(context.Background())
+	if err != context.Canceled {
+		t.Fatalf("expected context.Canceled after draining closed queue, got job=%v err=%v", got, err)
+	}
+}
+
 func TestMemoryQueue_FIFO(t *testing.T) {
 	q := NewMemoryQueue(10)
 	defer q.Close()

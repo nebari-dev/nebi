@@ -15,8 +15,8 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Install swag for API docs generation
-RUN go install github.com/swaggo/swag/cmd/swag@latest
+# Install build tools for API docs generation
+RUN apk add --no-cache make && go install github.com/swaggo/swag/cmd/swag@latest
 
 # Copy source code
 COPY . .
@@ -25,7 +25,7 @@ COPY . .
 COPY --from=frontend-builder /app/frontend/dist ./internal/web/dist
 
 # Generate swagger docs
-RUN swag init -g serve.go -d cmd/nebi,internal/api,internal/service,internal/models,internal/limits,internal/metrics,internal/auth -o ./internal/swagger --packageName swagger --exclude output,cross-platform-example
+RUN make swagger
 
 # Build pure Go binary with CGO disabled
 ARG VERSION=dev

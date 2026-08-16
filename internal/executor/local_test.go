@@ -13,6 +13,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/process"
 )
 
 func testExecutor(t *testing.T) *LocalExecutor {
@@ -348,6 +349,32 @@ func TestLocalExecutor_StorageLimitCheckErrorsFailClosed(t *testing.T) {
 	}
 }
 
+func TestDirectorySizeCountsHardLinksOnce(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hardlink accounting uses Unix inode metadata")
+	}
+	root := t.TempDir()
+	original := filepath.Join(root, "original.bin")
+	linked := filepath.Join(root, "linked.bin")
+	if err := os.WriteFile(original, []byte(strings.Repeat("x", 4096)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before, err := directorySize(root)
+	if err != nil {
+		t.Fatalf("directorySize before link: %v", err)
+	}
+	if err := os.Link(original, linked); err != nil {
+		t.Fatalf("create hardlink: %v", err)
+	}
+	after, err := directorySize(root)
+	if err != nil {
+		t.Fatalf("directorySize after link: %v", err)
+	}
+	if after != before {
+		t.Fatalf("expected hardlink to reuse accounted blocks: before=%d after=%d", before, after)
+	}
+}
+
 func TestLocalExecutor_CleanupJobArtifactsManagedCreateRemovesPartialWorkspace(t *testing.T) {
 	exec := testExecutor(t)
 	ws := &models.Workspace{ID: uuid.New(), Name: "cleanup-create", Source: "managed"}
@@ -372,13 +399,8 @@ func TestLocalExecutor_CleanupJobArtifactsLocalPreservesWorkspace(t *testing.T) 
 	exec := testExecutor(t)
 	userDir := t.TempDir()
 	ws := &models.Workspace{ID: uuid.New(), Name: "cleanup-local", Source: "local", Path: userDir}
-	for _, rel := range []string{
-		filepath.Join(".nebi", "pixi-cache"),
-		filepath.Join(".nebi", "tmp"),
-		filepath.Join(".nebi", "cache"),
-		filepath.Join(".nebi", "home"),
-	} {
-		if err := os.MkdirAll(filepath.Join(userDir, rel), 0o755); err != nil {
+	for _, dir := range process.WorkspaceTransientDirs(userDir) {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -393,14 +415,9 @@ func TestLocalExecutor_CleanupJobArtifactsLocalPreservesWorkspace(t *testing.T) 
 	if _, err := os.Stat(filepath.Join(userDir, "pixi.toml")); err != nil {
 		t.Fatalf("expected local pixi.toml preserved, got %v", err)
 	}
-	for _, rel := range []string{
-		filepath.Join(".nebi", "pixi-cache"),
-		filepath.Join(".nebi", "tmp"),
-		filepath.Join(".nebi", "cache"),
-		filepath.Join(".nebi", "home"),
-	} {
-		if _, err := os.Stat(filepath.Join(userDir, rel)); !os.IsNotExist(err) {
-			t.Fatalf("expected local transient dir %s removed, stat err=%v", rel, err)
+	for _, dir := range process.WorkspaceTransientDirs(userDir) {
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Fatalf("expected local transient dir %s removed, stat err=%v", dir, err)
 		}
 	}
 }

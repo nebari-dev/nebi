@@ -79,7 +79,7 @@ func testSetup(t *testing.T, isLocal bool) (*WorkspaceService, *gorm.DB) {
 		t.Fatalf("new executor: %v", err)
 	}
 
-	svc := New(db, q, exec, isLocal, nil, rbac.NewDefaultProvider())
+	svc := New(db, q, exec, isLocal, nil, rbac.NewDefaultProvider(), limits.Defaults())
 	return svc, db
 }
 
@@ -345,6 +345,41 @@ func TestDelete_NotFound(t *testing.T) {
 	}
 }
 
+func TestDelete_BypassesActiveJobQuotas(t *testing.T) {
+	svc, db := testSetup(t, true)
+	limitCfg := limits.Defaults()
+	limitCfg.ActiveJobsGlobal = 1
+	limitCfg.ActiveJobsPerUser = 1
+	limitCfg.ActiveJobsPerWorkspace = 1
+	svc.limits = limitCfg
+
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "delete-quota", userID)
+	if err := db.Model(&models.Job{}).Where("workspace_id = ?", ws.ID).Update("status", models.JobStatusCompleted).Error; err != nil {
+		t.Fatalf("complete setup jobs: %v", err)
+	}
+	if err := db.Create(&models.Job{
+		WorkspaceID: ws.ID,
+		UserID:      userID,
+		Type:        models.JobTypeUpdate,
+		Status:      models.JobStatusPending,
+	}).Error; err != nil {
+		t.Fatalf("create active job: %v", err)
+	}
+
+	if err := svc.Delete(context.Background(), ws.ID.String(), userID); err != nil {
+		t.Fatalf("delete should bypass active job quotas: %v", err)
+	}
+
+	var deleteJobs int64
+	db.Model(&models.Job{}).
+		Where("workspace_id = ? AND type = ? AND status = ?", ws.ID, models.JobTypeDelete, models.JobStatusPending).
+		Count(&deleteJobs)
+	if deleteJobs != 1 {
+		t.Fatalf("expected one pending delete job, got %d", deleteJobs)
+	}
+}
+
 // --- PushVersion tag conflict tests ---
 
 func TestPushVersion_TagConflictWithoutForce(t *testing.T) {
@@ -549,7 +584,7 @@ func TestGetPixiToml_UsesPersistedPathForManagedWorkspace(t *testing.T) {
 	}
 	q := queue.NewMemoryQueue(10)
 	t.Cleanup(func() { q.Close() })
-	svc2 := New(db, q, exec2, true, nil, rbac.NewDefaultProvider())
+	svc2 := New(db, q, exec2, true, nil, rbac.NewDefaultProvider(), limits.Defaults())
 
 	got, err := svc2.GetPixiToml(ws.ID.String())
 	if err != nil {

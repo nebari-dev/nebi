@@ -36,9 +36,21 @@ func init() {
 	pkgmgr.Register(testPackageManager, func(context.Context, string) (pkgmgr.PackageManager, error) {
 		return noopPackageManager{}, nil
 	})
+	pkgmgr.RegisterManifestContentParser(testPackageManager, pkgmgr.ManifestContentParser{
+		PackageNames:           emptyManifestPackageNames,
+		DefaultDependencyNames: emptyManifestPackageNames,
+	})
 	pkgmgr.Register(testListResourceLimitPackageManager, func(context.Context, string) (pkgmgr.PackageManager, error) {
 		return listResourceLimitPackageManager{}, nil
 	})
+	pkgmgr.RegisterManifestContentParser(testListResourceLimitPackageManager, pkgmgr.ManifestContentParser{
+		PackageNames:           emptyManifestPackageNames,
+		DefaultDependencyNames: emptyManifestPackageNames,
+	})
+}
+
+func emptyManifestPackageNames(string) ([]string, error) {
+	return nil, nil
 }
 
 type noopPackageManager struct{}
@@ -68,19 +80,20 @@ func (listResourceLimitPackageManager) List(context.Context, pkgmgr.ListOptions)
 // creates the workspace directory and writes empty manifest/lock files so
 // CreateVersionSnapshot reads them successfully; the rest are no-ops.
 type fakeExecutor struct {
-	rootDir         string
-	solveErr        error
-	installErr      error
-	blockInstall    bool
-	createManifest  string
-	createLock      string
-	installLog      string
-	installLock     string
-	installCalls    int
-	uninstallCalls  int
-	solveCalls      int
-	cleanupCalls    int
-	cleanupJobTypes []models.JobType
+	rootDir                           string
+	solveErr                          error
+	installErr                        error
+	blockInstall                      bool
+	succeedEnvInstallAfterContextDone bool
+	createManifest                    string
+	createLock                        string
+	installLog                        string
+	installLock                       string
+	installCalls                      int
+	uninstallCalls                    int
+	solveCalls                        int
+	cleanupCalls                      int
+	cleanupJobTypes                   []models.JobType
 }
 
 func (e *fakeExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspace, w io.Writer, opts executor.CreateWorkspaceOptions) error {
@@ -131,6 +144,9 @@ func (e *fakeExecutor) InstallEnvironment(ctx context.Context, ws *models.Worksp
 	e.installCalls++
 	if e.installErr != nil {
 		return e.installErr
+	}
+	if e.succeedEnvInstallAfterContextDone {
+		<-ctx.Done()
 	}
 	return os.MkdirAll(filepath.Join(e.GetWorkspacePath(ws), ".pixi", "envs"), 0o755)
 }
@@ -200,7 +216,7 @@ func TestExecuteJob_CreatePersistsWorkspacePath(t *testing.T) {
 		t.Fatalf("create job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
 
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
@@ -244,7 +260,7 @@ func TestExecuteJob_UpdateSetsWorkspaceReady(t *testing.T) {
 		t.Fatalf("create job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
 
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
@@ -288,7 +304,7 @@ func TestExecuteJob_UpdateSetsWorkspaceFailedOnSolveError(t *testing.T) {
 		t.Fatalf("create job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
 
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err == nil {
 		t.Fatal("expected executeJob to fail, got nil")
@@ -310,7 +326,7 @@ func TestProcessJob_FailsJobAfterDeadline(t *testing.T) {
 	_, job := newTestWorkspace(t, db, exec, "timeout-install", models.JobTypeInstall,
 		map[string]interface{}{"packages": []string{"numpy"}})
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
 	w.jobTimeout = 10 * time.Millisecond
 	w.processJob(context.Background(), job)
 
@@ -325,7 +341,7 @@ func TestProcessJob_FailsJobAfterDeadline(t *testing.T) {
 		t.Fatalf("expected timeout error, got %q", stored.Error)
 	}
 
-	adminSvc := service.NewAdminService(db, rbac.NewDefaultProvider())
+	adminSvc := service.NewAdminService(db, rbac.NewDefaultProvider(), limits.Defaults())
 	metrics, err := adminSvc.GetResourceMetrics()
 	if err != nil {
 		t.Fatalf("GetResourceMetrics: %v", err)
@@ -335,6 +351,37 @@ func TestProcessJob_FailsJobAfterDeadline(t *testing.T) {
 	}
 	if exec.cleanupCalls != 1 {
 		t.Fatalf("expected timeout cleanup to run once, got %d", exec.cleanupCalls)
+	}
+}
+
+func TestProcessJob_CompletesWhenExecutionSucceedsAtDeadlineBoundary(t *testing.T) {
+	db, svc, jobSvc, exec := setupWorkerTest(t)
+	exec.succeedEnvInstallAfterContextDone = true
+
+	_, job := newTestWorkspace(t, db, exec, "deadline-success", models.JobTypeEnvInstall, nil)
+
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w.jobTimeout = 10 * time.Millisecond
+	w.processJob(context.Background(), job)
+
+	var stored models.Job
+	if err := db.First(&stored, "id = ?", job.ID).Error; err != nil {
+		t.Fatalf("reload job: %v", err)
+	}
+	if stored.Status != models.JobStatusCompleted {
+		t.Fatalf("expected completed job when execution returned nil, got %q with error %q", stored.Status, stored.Error)
+	}
+	if exec.cleanupCalls != 0 {
+		t.Fatalf("expected no cleanup after successful execution, got %d", exec.cleanupCalls)
+	}
+
+	adminSvc := service.NewAdminService(db, rbac.NewDefaultProvider(), limits.Defaults())
+	metrics, err := adminSvc.GetResourceMetrics()
+	if err != nil {
+		t.Fatalf("GetResourceMetrics: %v", err)
+	}
+	if metrics.JobTimeoutsTotal != 0 {
+		t.Fatalf("expected no durable timeout metric after successful execution, got %d", metrics.JobTimeoutsTotal)
 	}
 }
 
@@ -409,7 +456,7 @@ func TestProcessJob_FailsCreateAndCleansUpWhenPackageListHitsResourceLimit(t *te
 		t.Fatalf("save package manager: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
 	w.processJob(context.Background(), job)
 
 	var stored models.Job
@@ -456,6 +503,34 @@ func TestProcessJob_CapsPersistedLogs(t *testing.T) {
 	}
 	if !strings.Contains(stored.Logs, "[TRUNCATED]") {
 		t.Fatalf("expected truncation notice in logs, got %q", stored.Logs)
+	}
+}
+
+func TestCappedLogWriterReservesTailForNebiErrors(t *testing.T) {
+	var buf bytes.Buffer
+	w := newCappedLogWriter(&buf, 160)
+	if _, err := w.Write([]byte(strings.Repeat("x", 512))); err != nil {
+		t.Fatalf("write noisy log: %v", err)
+	}
+	if _, err := w.Write([]byte("\n[ERROR] Job failed: important diagnostic\n")); err != nil {
+		t.Fatalf("write important log: %v", err)
+	}
+
+	got := buf.String()
+	if len(got) > 160 {
+		t.Fatalf("expected capped output, got %d bytes", len(got))
+	}
+	if !strings.Contains(got, "[TRUNCATED]") {
+		t.Fatalf("expected truncation notice, got %q", got)
+	}
+	if !strings.Contains(got, "[ERROR] Job failed") {
+		t.Fatalf("expected important error in reserved tail, got %q", got)
+	}
+	if _, err := w.Write([]byte("ordinary child output after truncation")); err != nil {
+		t.Fatalf("write ordinary post-truncation log: %v", err)
+	}
+	if strings.Contains(buf.String(), "ordinary child output") {
+		t.Fatalf("ordinary post-truncation output should still be dropped, got %q", buf.String())
 	}
 }
 
@@ -512,7 +587,7 @@ func TestExecuteJob_EnvInstallRunsInstall(t *testing.T) {
 
 	ws, job := newTestWorkspace(t, db, exec, "env-install", models.JobTypeEnvInstall, nil)
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -543,7 +618,7 @@ func TestExecuteJob_EnvUninstallRemovesEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -575,7 +650,7 @@ func TestExecuteJob_UpdateAutoInstallsWhenPreviouslyInstalled(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -592,7 +667,7 @@ func TestExecuteJob_UpdateSkipsAutoInstallWhenNotInstalled(t *testing.T) {
 
 	_, job := newTestWorkspace(t, db, exec, "update-noinstall", models.JobTypeUpdate, nil)
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -613,7 +688,7 @@ func TestExecuteJob_UpdateNoAutoInstallInTeamMode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -636,7 +711,7 @@ func TestExecuteJob_PackageOpsAutoInstallWhenPreviouslyInstalled(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+			w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
 			if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 				t.Fatalf("executeJob: %v", err)
 			}
@@ -681,7 +756,7 @@ func TestExecuteJob_RollbackLocksAndAutoInstalls(t *testing.T) {
 		t.Fatalf("create job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -783,7 +858,7 @@ func TestExecuteJob_UpdateReinstallFailureDoesNotFailJob(t *testing.T) {
 	}
 	exec.installErr = errors.New("pixi install failed: exit status 1")
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: expected reinstall failure not to fail the job, got %v", err)
 	}
@@ -806,7 +881,7 @@ func TestProcessJob_UpdateReinstallResourceFailureFailsAndCleansUp(t *testing.T)
 	}
 	exec.installErr = process.NewResourceLimitError(errors.New("CPU budget exceeded"))
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
 	w.processJob(context.Background(), job)
 
 	var stored models.Job
@@ -894,7 +969,11 @@ func setupWorkerTestModeWithLimits(t *testing.T, isLocal bool, limitOpts ...limi
 
 	q := queue.NewMemoryQueue(10)
 	t.Cleanup(func() { q.Close() })
-	svc := service.New(db, q, fe, isLocal, nil, rbac.NewDefaultProvider(), limitOpts...)
+	limitCfg := limits.Defaults()
+	if len(limitOpts) > 0 {
+		limitCfg = limitOpts[0]
+	}
+	svc := service.New(db, q, fe, isLocal, nil, rbac.NewDefaultProvider(), limitCfg)
 	jobSvc := service.NewJobService(db, isLocal)
 	return db, svc, jobSvc, fe
 }

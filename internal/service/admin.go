@@ -23,11 +23,7 @@ type AdminService struct {
 }
 
 // NewAdminService creates a new AdminService.
-func NewAdminService(db *gorm.DB, rbacProvider rbac.Provider, limitOpts ...limits.Limits) *AdminService {
-	limitCfg := limits.Defaults()
-	if len(limitOpts) > 0 {
-		limitCfg = limitOpts[0]
-	}
+func NewAdminService(db *gorm.DB, rbacProvider rbac.Provider, limitCfg limits.Limits) *AdminService {
 	return &AdminService{db: db, rbac: rbacProvider, limits: limitCfg}
 }
 

@@ -137,6 +137,9 @@ func (q *MemoryQueue) nextJobLocked() *models.Job {
 }
 
 func (q *MemoryQueue) signalLocked() {
+	if q.closed {
+		return
+	}
 	select {
 	case q.notify <- struct{}{}:
 	default:

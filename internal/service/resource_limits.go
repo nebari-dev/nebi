@@ -14,7 +14,6 @@ import (
 	resourcemetrics "github.com/nebari-dev/nebi/internal/metrics"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/pkgmgr"
-	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -24,7 +23,7 @@ var activeJobStatuses = []models.JobStatus{
 	models.JobStatusRunning,
 }
 
-func (s *WorkspaceService) validateManifestContent(name string, content string) error {
+func (s *WorkspaceService) validateManifestContent(packageManager string, name string, content string) error {
 	if content == "" {
 		return nil
 	}
@@ -32,7 +31,7 @@ func (s *WorkspaceService) validateManifestContent(name string, content string) 
 		return &ValidationError{Message: fmt.Sprintf("%s exceeds %d bytes", name, s.limits.ManifestBytes)}
 	}
 	if s.limits.MaxPackages > 0 || s.limits.PackageStringBytes > 0 {
-		packages, err := pixi.ManifestPackageNames(content)
+		packages, err := pkgmgr.ManifestPackageNames(packageManager, content)
 		if err != nil {
 			return &ValidationError{Message: fmt.Sprintf("invalid %s: %v", name, err)}
 		}
@@ -61,8 +60,8 @@ func (s *WorkspaceService) validateLockContent(name string, content string) erro
 	return nil
 }
 
-func (s *WorkspaceService) validatePushRequest(req PushRequest) error {
-	if err := s.validateManifestContent("pixi.toml", req.PixiToml); err != nil {
+func (s *WorkspaceService) validatePushRequest(packageManager string, req PushRequest) error {
+	if err := s.validateManifestContent(packageManager, "pixi.toml", req.PixiToml); err != nil {
 		return err
 	}
 	return s.validateLockContent("pixi.lock", req.PixiLock)
@@ -70,8 +69,8 @@ func (s *WorkspaceService) validatePushRequest(req PushRequest) error {
 
 // ValidateVersionContent checks stored manifest/lock content before a worker
 // uses it as fresh build input, for example during rollback of legacy versions.
-func (s *WorkspaceService) ValidateVersionContent(manifestContent, lockContent string) error {
-	if err := s.validateManifestContent("pixi.toml", manifestContent); err != nil {
+func (s *WorkspaceService) ValidateVersionContent(packageManager string, manifestContent, lockContent string) error {
+	if err := s.validateManifestContent(packageManager, "pixi.toml", manifestContent); err != nil {
 		return err
 	}
 	return s.validateLockContent("pixi.lock", lockContent)
@@ -79,12 +78,16 @@ func (s *WorkspaceService) ValidateVersionContent(manifestContent, lockContent s
 
 func (s *WorkspaceService) validateWorkspaceManifestForJob(_ *gorm.DB, ws *models.Workspace) error {
 	envPath := s.executor.GetWorkspacePath(ws)
-	return s.validateWorkspaceFileForJob(filepath.Join(envPath, "pixi.toml"), "pixi.toml", s.limits.ManifestBytes, s.validateManifestContent)
+	return s.validateWorkspaceFileForJob(filepath.Join(envPath, "pixi.toml"), "pixi.toml", s.limits.ManifestBytes, func(name string, content string) error {
+		return s.validateManifestContent(ws.PackageManager, name, content)
+	})
 }
 
 func (s *WorkspaceService) validateWorkspaceManifestAndLockForJob(_ *gorm.DB, ws *models.Workspace) error {
 	envPath := s.executor.GetWorkspacePath(ws)
-	if err := s.validateWorkspaceFileForJob(filepath.Join(envPath, "pixi.toml"), "pixi.toml", s.limits.ManifestBytes, s.validateManifestContent); err != nil {
+	if err := s.validateWorkspaceFileForJob(filepath.Join(envPath, "pixi.toml"), "pixi.toml", s.limits.ManifestBytes, func(name string, content string) error {
+		return s.validateManifestContent(ws.PackageManager, name, content)
+	}); err != nil {
 		return err
 	}
 	return s.validateWorkspaceFileForJob(filepath.Join(envPath, "pixi.lock"), "pixi.lock", s.limits.LockBytes, s.validateLockContent)
@@ -94,7 +97,7 @@ func (s *WorkspaceService) validateWorkspaceInstallPackagesForJob(packages []str
 	return func(_ *gorm.DB, ws *models.Workspace) error {
 		envPath := s.executor.GetWorkspacePath(ws)
 		if err := s.validateWorkspaceFileForJob(filepath.Join(envPath, "pixi.toml"), "pixi.toml", s.limits.ManifestBytes, func(name string, content string) error {
-			return s.validateManifestAfterPackageInstall(name, content, packages)
+			return s.validateManifestAfterPackageInstall(ws.PackageManager, name, content, packages)
 		}); err != nil {
 			return err
 		}
@@ -113,19 +116,19 @@ func (s *WorkspaceService) validateWorkspaceFileForJob(path string, name string,
 	return validate(name, content)
 }
 
-func (s *WorkspaceService) validateManifestAfterPackageInstall(name string, content string, packages []string) error {
-	if err := s.validateManifestContent(name, content); err != nil {
+func (s *WorkspaceService) validateManifestAfterPackageInstall(packageManager string, name string, content string, packages []string) error {
+	if err := s.validateManifestContent(packageManager, name, content); err != nil {
 		return err
 	}
 	if content == "" || s.limits.MaxPackages <= 0 {
 		return nil
 	}
 
-	manifestPackages, err := pixi.ManifestPackageNames(content)
+	manifestPackages, err := pkgmgr.ManifestPackageNames(packageManager, content)
 	if err != nil {
 		return &ValidationError{Message: fmt.Sprintf("invalid %s: %v", name, err)}
 	}
-	defaultDependencies, err := pixi.ManifestDefaultDependencyNames(content)
+	defaultDependencies, err := pkgmgr.ManifestDefaultDependencyNames(packageManager, content)
 	if err != nil {
 		return &ValidationError{Message: fmt.Sprintf("invalid %s: %v", name, err)}
 	}
@@ -300,6 +303,9 @@ func (s *WorkspaceService) readLimitedTextFile(path string, name string, maxByte
 }
 
 func (s *WorkspaceService) lockJobAdmission(tx *gorm.DB) error {
+	// This row deliberately serializes admissions server-wide. Manifest reads
+	// and quota checks happen while the row is write-locked so job creation,
+	// audit logging, and quota decisions observe one consistent active-job set.
 	lock := models.ResourceLock{Name: models.ResourceLockJobAdmission}
 	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&lock).Error; err != nil {
 		return fmt.Errorf("ensure job admission lock: %w", err)

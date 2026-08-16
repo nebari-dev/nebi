@@ -20,7 +20,6 @@ import (
 	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
-	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/logger"
 	"github.com/nebari-dev/nebi/internal/logstream"
 	"github.com/nebari-dev/nebi/internal/netguard"
@@ -212,11 +211,11 @@ func Run(ctx context.Context, cfg Config) error {
 		srv = &http.Server{
 			Addr:              addr,
 			Handler:           handler,
-			ReadHeaderTimeout: limits.HTTPReadHeaderTimeout,
-			ReadTimeout:       limits.HTTPReadTimeout,
+			ReadHeaderTimeout: config.HTTPReadHeaderTimeout,
+			ReadTimeout:       appCfg.Server.ReadTimeout(),
 			WriteTimeout:      limitCfg.HTTPWriteTimeout(),
-			IdleTimeout:       limits.HTTPIdleTimeout,
-			MaxHeaderBytes:    limits.HTTPMaxHeaderBytes,
+			IdleTimeout:       config.HTTPIdleTimeout,
+			MaxHeaderBytes:    config.HTTPMaxHeaderBytes,
 		}
 
 		go func() {

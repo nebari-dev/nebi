@@ -348,7 +348,7 @@ func (e *LocalExecutor) InstallEnvironment(ctx context.Context, ws *models.Works
 		fmt.Fprintf(logWriter, "Running: %s install -v\n", pixiBinary)
 		if err := cmd.Run(); err != nil {
 			installErr := fmt.Errorf("pixi install failed: %w", err)
-			if limitLogWriter.SeenResourceLimitOutput() || process.IsResourceLimitExit(err, processLimits, "") {
+			if limitLogWriter.SeenResourceLimitOutput() || process.IsResourceLimitExit(ctx, err, processLimits, "") {
 				return process.NewResourceLimitError(installErr)
 			}
 			return installErr
@@ -392,12 +392,7 @@ func (e *LocalExecutor) CleanupJobArtifacts(ctx context.Context, ws *models.Work
 		return nil
 	}
 
-	paths := []string{
-		filepath.Join(envPath, ".nebi", "pixi-cache"),
-		filepath.Join(envPath, ".nebi", "tmp"),
-		filepath.Join(envPath, ".nebi", "cache"),
-		filepath.Join(envPath, ".nebi", "home"),
-	}
+	paths := process.WorkspaceTransientDirs(envPath)
 	if jobType == models.JobTypeEnvInstall {
 		paths = append(paths, filepath.Join(envPath, ".pixi", "envs"))
 	}

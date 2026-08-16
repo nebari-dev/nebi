@@ -3633,12 +3633,6 @@ const docTemplate = `{
                 "job_log_bytes": {
                     "type": "integer"
                 },
-                "job_memory_bytes": {
-                    "type": "integer"
-                },
-                "job_processes": {
-                    "type": "integer"
-                },
                 "job_storage_bytes": {
                     "type": "integer"
                 },

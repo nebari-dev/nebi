@@ -48,12 +48,8 @@ func (e *autoReinstallFailureError) Error() string {
 }
 
 // New creates a new worker instance
-func New(q queue.Queue, exec executor.Executor, svc *service.WorkspaceService, jobSvc *service.JobService, logger *slog.Logger, valkeyClient valkey.Client, limitOpts ...limits.Limits) *Worker {
+func New(q queue.Queue, exec executor.Executor, svc *service.WorkspaceService, jobSvc *service.JobService, logger *slog.Logger, valkeyClient valkey.Client, limitCfg limits.Limits) *Worker {
 	maxWorkers := 10 // Allow up to 10 concurrent jobs
-	limitCfg := limits.Defaults()
-	if len(limitOpts) > 0 {
-		limitCfg = limitOpts[0]
-	}
 	return &Worker{
 		queue:        q,
 		executor:     exec,
@@ -188,7 +184,7 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 	err := w.executeJob(jobCtx, job, logWriter)
 	cleanupCause := err
 	needsCleanup := err != nil
-	if errors.Is(jobCtx.Err(), context.DeadlineExceeded) {
+	if err != nil && errors.Is(jobCtx.Err(), context.DeadlineExceeded) {
 		if metricErr := w.jobSvc.RecordJobTimeout(); metricErr != nil {
 			w.logger.Error("Failed to record job timeout metric", "job_id", job.ID, "error", metricErr)
 		}
@@ -299,10 +295,13 @@ func (w *threadSafeWriter) Write(p []byte) (n int, err error) {
 }
 
 const logTruncatedMessage = "\n[TRUNCATED] Job log exceeded configured limit\n"
+const logTailReserveBytes = 4096
 
 type cappedLogWriter struct {
 	dst       io.Writer
 	limit     int
+	tailLimit int
+	tailUsed  int
 	written   int
 	truncated bool
 	mu        sync.Mutex
@@ -312,7 +311,18 @@ func newCappedLogWriter(dst io.Writer, limit int) io.Writer {
 	if limit <= 0 {
 		return dst
 	}
-	return &cappedLogWriter{dst: dst, limit: limit}
+	tailLimit := limit / 4
+	if tailLimit > logTailReserveBytes {
+		tailLimit = logTailReserveBytes
+	}
+	noticeLen := len(logTruncatedMessage)
+	if noticeLen > limit {
+		noticeLen = limit
+	}
+	if tailLimit > limit-noticeLen {
+		tailLimit = limit - noticeLen
+	}
+	return &cappedLogWriter{dst: dst, limit: limit, tailLimit: tailLimit}
 }
 
 func (w *cappedLogWriter) Write(p []byte) (int, error) {
@@ -320,6 +330,11 @@ func (w *cappedLogWriter) Write(p []byte) (int, error) {
 	defer w.mu.Unlock()
 
 	if w.truncated {
+		if isImportantLogMessage(p) {
+			if err := w.writeTailLocked(p); err != nil {
+				return 0, err
+			}
+		}
 		return len(p), nil
 	}
 
@@ -327,7 +342,7 @@ func (w *cappedLogWriter) Write(p []byte) (int, error) {
 	if len(notice) > w.limit {
 		notice = notice[:w.limit]
 	}
-	maxPayload := w.limit - len(notice)
+	maxPayload := w.limit - len(notice) - w.tailLimit
 	if maxPayload < 0 {
 		maxPayload = 0
 	}
@@ -357,7 +372,41 @@ func (w *cappedLogWriter) Write(p []byte) (int, error) {
 		w.written += len(notice)
 	}
 	w.truncated = true
+	if isImportantLogMessage(p) {
+		tail := p
+		if remaining > 0 && remaining < len(p) {
+			tail = p[remaining:]
+		}
+		if err := w.writeTailLocked(tail); err != nil {
+			return 0, err
+		}
+	}
 	return len(p), nil
+}
+
+func (w *cappedLogWriter) writeTailLocked(p []byte) error {
+	remaining := w.tailLimit - w.tailUsed
+	if remaining <= 0 {
+		return nil
+	}
+	if len(p) > remaining {
+		p = p[:remaining]
+	}
+	if len(p) == 0 {
+		return nil
+	}
+	if _, err := w.dst.Write(p); err != nil {
+		return err
+	}
+	w.tailUsed += len(p)
+	w.written += len(p)
+	return nil
+}
+
+func isImportantLogMessage(p []byte) bool {
+	return bytes.Contains(p, []byte("[ERROR]")) ||
+		bytes.Contains(p, []byte("Workspace storage limit")) ||
+		bytes.Contains(p, []byte("Job cleanup"))
 }
 
 func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.Writer) error {
@@ -644,7 +693,7 @@ func isFatalResourceFailure(ctx context.Context, err error) bool {
 func (w *Worker) executeRollback(ctx context.Context, ws *models.Workspace, version *models.WorkspaceVersion, logWriter io.Writer) error {
 	envPath := w.svc.GetWorkspacePath(ws)
 
-	if err := w.svc.ValidateVersionContent(version.ManifestContent, version.LockFileContent); err != nil {
+	if err := w.svc.ValidateVersionContent(ws.PackageManager, version.ManifestContent, version.LockFileContent); err != nil {
 		return err
 	}
 

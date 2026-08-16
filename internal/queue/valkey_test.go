@@ -19,15 +19,7 @@ func newTestValkeyQueue(t *testing.T) (*ValkeyQueue, *miniredis.Miniredis) {
 	t.Helper()
 
 	server := miniredis.RunT(t)
-	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "queue.db")), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
-	})
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	if err := db.AutoMigrate(&models.User{}, &models.Workspace{}, &models.Job{}); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
+	db := newValkeyTestDB(t)
 
 	q, err := NewValkeyQueue(server.Addr(), db)
 	if err != nil {
@@ -37,6 +29,21 @@ func newTestValkeyQueue(t *testing.T) (*ValkeyQueue, *miniredis.Miniredis) {
 		_ = q.Close()
 	})
 	return q, server
+}
+
+func newValkeyTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "queue.db")), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&models.User{}, &models.Workspace{}, &models.Job{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	return db
 }
 
 func newValkeyTestJob(userID uuid.UUID) *models.Job {
@@ -109,5 +116,73 @@ func TestValkeyQueue_StaleTenantEntryDoesNotStrandFutureJobs(t *testing.T) {
 	got := dequeueValkeyTestJob(t, q)
 	if got.ID != job.ID {
 		t.Fatalf("expected job %s after stale entry, got %s", job.ID, got.ID)
+	}
+}
+
+func TestValkeyQueue_ReconcilesLegacyQueueOnStartup(t *testing.T) {
+	server := miniredis.RunT(t)
+	db := newValkeyTestDB(t)
+	job := newValkeyTestJob(uuid.New())
+	if err := db.Create(job).Error; err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if _, err := server.RPush(legacyQueueKey, job.ID.String()); err != nil {
+		t.Fatalf("seed legacy queue: %v", err)
+	}
+
+	q, err := NewValkeyQueue(server.Addr(), db)
+	if err != nil {
+		t.Fatalf("NewValkeyQueue: %v", err)
+	}
+	t.Cleanup(func() { _ = q.Close() })
+
+	got := dequeueValkeyTestJob(t, q)
+	if got.ID != job.ID {
+		t.Fatalf("expected migrated legacy job %s, got %s", job.ID, got.ID)
+	}
+	if !server.Exists(legacyQueueKey) {
+		return
+	}
+	if values, err := server.List(legacyQueueKey); err != nil {
+		t.Fatalf("legacy list: %v", err)
+	} else if len(values) != 0 {
+		t.Fatalf("expected legacy list drained, got %v", values)
+	}
+}
+
+func TestValkeyQueue_ReconcilesStalePendingDBJobsOnStartup(t *testing.T) {
+	server := miniredis.RunT(t)
+	db := newValkeyTestDB(t)
+	job := newValkeyTestJob(uuid.New())
+	job.CreatedAt = time.Now().Add(-pendingReconcileAge - time.Second)
+	if err := db.Create(job).Error; err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	q, err := NewValkeyQueue(server.Addr(), db)
+	if err != nil {
+		t.Fatalf("NewValkeyQueue: %v", err)
+	}
+	t.Cleanup(func() { _ = q.Close() })
+
+	got := dequeueValkeyTestJob(t, q)
+	if got.ID != job.ID {
+		t.Fatalf("expected reconciled pending job %s, got %s", job.ID, got.ID)
+	}
+}
+
+func TestValkeyQueue_SkipsNonPendingTransportEntries(t *testing.T) {
+	q, _ := newTestValkeyQueue(t)
+	job := newValkeyTestJob(uuid.New())
+	job.Status = models.JobStatusCompleted
+	if err := q.Enqueue(context.Background(), job); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	_, err := q.Dequeue(ctx)
+	cancel()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected stale completed job to be skipped, got %v", err)
 	}
 }

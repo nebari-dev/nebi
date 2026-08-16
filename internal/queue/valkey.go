@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +15,10 @@ import (
 )
 
 const enqueueTenantJobScript = `
+local added = redis.call("SADD", KEYS[4], ARGV[1])
+if added == 0 then
+  return 0
+end
 local was_empty = redis.call("LLEN", KEYS[1]) == 0
 redis.call("RPUSH", KEYS[1], ARGV[1])
 if was_empty then
@@ -34,12 +39,20 @@ local job = redis.call("LPOP", queue_key)
 if not job then
   return {tenant_name, ""}
 end
+redis.call("SREM", KEYS[3], job)
 if redis.call("LLEN", queue_key) > 0 then
   local score = redis.call("INCR", KEYS[2])
   redis.call("ZADD", KEYS[1], score, tenant_name)
 end
 return {tenant_name, job}
 `
+
+const (
+	legacyQueueKey        = "nebi:jobs"
+	pendingReconcileAge   = 30 * time.Second
+	pendingReconcileBatch = 500
+	tenantQueueKeyGlob    = "nebi:{jobs}:tenant:*"
+)
 
 // ValkeyQueue implements a distributed job queue using Valkey
 // Valkey is used for job transport (job IDs only), DB is source of truth
@@ -49,6 +62,7 @@ type ValkeyQueue struct {
 	key        string // Queue key prefix: "nebi:jobs"
 	tenantsKey string
 	seqKey     string
+	queuedKey  string
 }
 
 // NewValkeyQueue creates a new Valkey-backed queue
@@ -59,7 +73,9 @@ func NewValkeyQueue(addr string, db *gorm.DB) (*ValkeyQueue, error) {
 
 	// Create Valkey client with connection pool
 	client, err := valkey.NewClient(valkey.ClientOption{
-		InitAddress:  []string{addr},
+		InitAddress: []string{addr},
+		// Avoid client-side caching for queue keys; tests use miniredis and
+		// queue state is mutated by Lua scripts rather than cacheable reads.
 		DisableCache: true,
 	})
 	if err != nil {
@@ -82,6 +98,16 @@ func NewValkeyQueue(addr string, db *gorm.DB) (*ValkeyQueue, error) {
 		key:        "nebi:{jobs}",
 		tenantsKey: "nebi:{jobs}:tenants",
 		seqKey:     "nebi:{jobs}:tenant-seq",
+		queuedKey:  "nebi:{jobs}:queued",
+	}
+
+	if err := q.seedQueuedSet(ctx); err != nil {
+		client.Close()
+		return nil, err
+	}
+	if err := q.reconcilePendingJobs(ctx, pendingReconcileAge); err != nil {
+		client.Close()
+		return nil, err
 	}
 
 	slog.Info("Initialized Valkey job queue",
@@ -104,8 +130,20 @@ func (q *ValkeyQueue) Enqueue(ctx context.Context, job *models.Job) error {
 		return fmt.Errorf("failed to save job to database: %w", err)
 	}
 
+	if err := q.enqueueTransport(ctx, job); err != nil {
+		return err
+	}
+
+	slog.Debug("Job enqueued",
+		"job_id", job.ID,
+		"type", job.Type,
+		"tenant", tenantKeyForJob(job),
+		"queue_key", q.tenantQueueKey(tenantKeyForJob(job)))
+	return nil
+}
+
+func (q *ValkeyQueue) enqueueTransport(ctx context.Context, job *models.Job) error {
 	tenant := tenantKeyForJob(job)
-	// Marshal job ID to push to Valkey
 	jobData, err := json.Marshal(map[string]string{
 		"id": job.ID.String(),
 	})
@@ -115,23 +153,19 @@ func (q *ValkeyQueue) Enqueue(ctx context.Context, job *models.Job) error {
 
 	cmd := q.client.B().Eval().
 		Script(enqueueTenantJobScript).
-		Numkeys(3).
-		Key(q.tenantQueueKey(tenant), q.tenantsKey, q.seqKey).
+		Numkeys(4).
+		Key(q.tenantQueueKey(tenant), q.tenantsKey, q.seqKey, q.queuedKey).
 		Arg(string(jobData), tenant).
 		Build()
 	if err := q.client.Do(ctx, cmd).Error(); err != nil {
 		return fmt.Errorf("failed to push job to Valkey: %w", err)
 	}
-
-	slog.Debug("Job enqueued",
-		"job_id", job.ID,
-		"type", job.Type,
-		"tenant", tenant,
-		"queue_key", q.tenantQueueKey(tenant))
 	return nil
 }
 
-// Dequeue retrieves the next job from the queue (blocking)
+// Dequeue retrieves the next job from the queue. The fair-queue pop is a Lua
+// script, so it cannot use server-side blocking primitives like BLPOP; poll
+// briefly until either a job appears or the dequeue deadline expires.
 // 1. Atomically pop the next tenant and one job from that tenant
 // 2. Parse job ID
 // 3. Fetch full job from DB
@@ -161,6 +195,10 @@ func (q *ValkeyQueue) Dequeue(ctx context.Context) (*models.Job, error) {
 		if err != nil {
 			return nil, err
 		}
+		if job.Status != models.JobStatusPending {
+			slog.Warn("Skipping non-pending job from Valkey transport", "job_id", job.ID, "status", job.Status)
+			continue
+		}
 		slog.Debug("Job dequeued", "job_id", job.ID, "type", job.Type, "tenant", tenant)
 		return job, nil
 	}
@@ -173,8 +211,8 @@ func (q *ValkeyQueue) tenantQueueKey(tenant string) string {
 func (q *ValkeyQueue) popTenantJob(ctx context.Context) (string, string, error) {
 	cmd := q.client.B().Eval().
 		Script(popTenantJobScript).
-		Numkeys(2).
-		Key(q.tenantsKey, q.seqKey).
+		Numkeys(3).
+		Key(q.tenantsKey, q.seqKey, q.queuedKey).
 		Arg(q.key + ":tenant:").
 		Build()
 	values, err := q.client.Do(ctx, cmd).AsStrSlice()
@@ -191,14 +229,9 @@ func (q *ValkeyQueue) popTenantJob(ctx context.Context) (string, string, error) 
 }
 
 func (q *ValkeyQueue) loadDequeuedJob(ctx context.Context, encoded string) (*models.Job, error) {
-	var jobData map[string]string
-	if err := json.Unmarshal([]byte(encoded), &jobData); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal job data: %w", err)
-	}
-
-	jobID, err := uuid.Parse(jobData["id"])
+	jobID, err := decodeJobID(encoded)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse job ID: %w", err)
+		return nil, err
 	}
 
 	var job models.Job
@@ -206,6 +239,117 @@ func (q *ValkeyQueue) loadDequeuedJob(ctx context.Context, encoded string) (*mod
 		return nil, fmt.Errorf("failed to fetch job from database: %w", err)
 	}
 	return &job, nil
+}
+
+func decodeJobID(encoded string) (uuid.UUID, error) {
+	var jobData map[string]string
+	if err := json.Unmarshal([]byte(encoded), &jobData); err == nil {
+		jobID, err := uuid.Parse(jobData["id"])
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("failed to parse job ID: %w", err)
+		}
+		return jobID, nil
+	}
+
+	var rawID string
+	if err := json.Unmarshal([]byte(encoded), &rawID); err == nil {
+		encoded = rawID
+	}
+	jobID, err := uuid.Parse(strings.TrimSpace(encoded))
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to parse job ID: %w", err)
+	}
+	return jobID, nil
+}
+
+func (q *ValkeyQueue) seedQueuedSet(ctx context.Context) error {
+	if err := q.client.Do(ctx, q.client.B().Del().Key(q.queuedKey).Build()).Error(); err != nil {
+		return fmt.Errorf("failed to reset queued set: %w", err)
+	}
+	keys, err := q.client.Do(ctx, q.client.B().Keys().Pattern(tenantQueueKeyGlob).Build()).AsStrSlice()
+	if err != nil {
+		return fmt.Errorf("failed to list tenant queues: %w", err)
+	}
+	for _, key := range keys {
+		values, err := q.client.Do(ctx, q.client.B().Lrange().Key(key).Start(0).Stop(-1).Build()).AsStrSlice()
+		if err != nil {
+			return fmt.Errorf("failed to scan tenant queue %s: %w", key, err)
+		}
+		if len(values) == 0 {
+			continue
+		}
+		if err := q.client.Do(ctx, q.client.B().Sadd().Key(q.queuedKey).Member(values...).Build()).Error(); err != nil {
+			return fmt.Errorf("failed to seed queued set: %w", err)
+		}
+	}
+	return nil
+}
+
+func (q *ValkeyQueue) reconcilePendingJobs(ctx context.Context, minAge time.Duration) error {
+	drained, err := q.drainLegacyQueue(ctx)
+	if err != nil {
+		return err
+	}
+
+	cutoff := time.Now().Add(-minAge)
+	requeued := 0
+	for offset := 0; ; offset += pendingReconcileBatch {
+		var jobs []models.Job
+		if err := q.db.WithContext(ctx).
+			Where("status = ? AND created_at <= ?", models.JobStatusPending, cutoff).
+			Order("created_at ASC, id ASC").
+			Limit(pendingReconcileBatch).
+			Offset(offset).
+			Find(&jobs).Error; err != nil {
+			return fmt.Errorf("failed to load stale pending jobs: %w", err)
+		}
+		for i := range jobs {
+			if err := q.enqueueTransport(ctx, &jobs[i]); err != nil {
+				return fmt.Errorf("failed to re-enqueue pending job %s: %w", jobs[i].ID, err)
+			}
+		}
+		requeued += len(jobs)
+		if len(jobs) < pendingReconcileBatch {
+			break
+		}
+	}
+	if drained > 0 || requeued > 0 {
+		slog.Info("Reconciled Valkey job transport", "legacy_jobs", drained, "pending_jobs", requeued)
+	}
+	return nil
+}
+
+func (q *ValkeyQueue) drainLegacyQueue(ctx context.Context) (int, error) {
+	drained := 0
+	for {
+		encoded, err := q.client.Do(ctx, q.client.B().Lpop().Key(legacyQueueKey).Build()).ToString()
+		if valkey.IsValkeyNil(err) {
+			return drained, nil
+		}
+		if err != nil {
+			return drained, fmt.Errorf("failed to pop legacy queue: %w", err)
+		}
+		jobID, err := decodeJobID(encoded)
+		if err != nil {
+			slog.Warn("Skipping invalid legacy Valkey job entry", "entry", encoded, "error", err)
+			continue
+		}
+		var job models.Job
+		if err := q.db.WithContext(ctx).First(&job, "id = ?", jobID).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				slog.Warn("Skipping legacy Valkey job entry with no DB row", "job_id", jobID)
+				continue
+			}
+			return drained, fmt.Errorf("failed to fetch legacy job %s: %w", jobID, err)
+		}
+		if job.Status != models.JobStatusPending {
+			continue
+		}
+		if err := q.enqueueTransport(ctx, &job); err != nil {
+			return drained, fmt.Errorf("failed to migrate legacy job %s: %w", job.ID, err)
+		}
+		drained++
+	}
 }
 
 // GetStatus retrieves the current status of a job from the database

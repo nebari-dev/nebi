@@ -38,7 +38,7 @@ func (s *WorkspaceService) RollbackToVersion(ctx context.Context, wsID string, v
 		}
 		return nil, err
 	}
-	if err := s.ValidateVersionContent(version.ManifestContent, version.LockFileContent); err != nil {
+	if err := s.ValidateVersionContent(ws.PackageManager, version.ManifestContent, version.LockFileContent); err != nil {
 		return nil, err
 	}
 
@@ -64,7 +64,7 @@ func (s *WorkspaceService) CreateVersionSnapshot(ctx context.Context, ws *models
 	if err != nil {
 		return fmt.Errorf("failed to read pixi.lock: %w", err)
 	}
-	if err := s.ValidateVersionContent(manifestContent, lockContent); err != nil {
+	if err := s.ValidateVersionContent(ws.PackageManager, manifestContent, lockContent); err != nil {
 		return err
 	}
 

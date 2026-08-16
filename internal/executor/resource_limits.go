@@ -15,7 +15,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/process"
 )
 
-const storageLimitPollInterval = 500 * time.Millisecond
+const storageLimitPollInterval = 5 * time.Second
 
 type storageLimitExceededError struct {
 	Kind  string
@@ -71,23 +71,22 @@ func (e *LocalExecutor) withStorageLimit(ctx context.Context, path string, logWr
 	defer cancel()
 
 	var exceeded atomic.Value
+	var recordOnce sync.Once
 	recordExceeded := func(size int64) {
-		if exceeded.Load() != nil {
-			return
-		}
-		err := &storageLimitExceededError{Kind: "storage", path: path, limit: e.limits.JobStorageBytes, size: size}
-		exceeded.Store(err)
-		fmt.Fprintf(logWriter, "Workspace storage limit exceeded: %d bytes used, limit is %d bytes\n", size, e.limits.JobStorageBytes)
-		cancel()
+		recordOnce.Do(func() {
+			err := &storageLimitExceededError{Kind: "storage", path: path, limit: e.limits.JobStorageBytes, size: size}
+			exceeded.Store(err)
+			fmt.Fprintf(logWriter, "Workspace storage limit exceeded: %d bytes used, limit is %d bytes\n", size, e.limits.JobStorageBytes)
+			cancel()
+		})
 	}
 	recordCheckError := func(err error) {
-		if exceeded.Load() != nil {
-			return
-		}
-		limitErr := &storageLimitExceededError{Kind: "storage", path: path, limit: e.limits.JobStorageBytes, err: err}
-		exceeded.Store(limitErr)
-		fmt.Fprintf(logWriter, "Workspace storage limit check failed: %v\n", err)
-		cancel()
+		recordOnce.Do(func() {
+			limitErr := &storageLimitExceededError{Kind: "storage", path: path, limit: e.limits.JobStorageBytes, err: err}
+			exceeded.Store(limitErr)
+			fmt.Fprintf(logWriter, "Workspace storage limit check failed: %v\n", err)
+			cancel()
+		})
 	}
 
 	done := make(chan struct{})
@@ -127,6 +126,7 @@ func (e *LocalExecutor) withStorageLimit(ctx context.Context, path string, logWr
 
 func directorySize(root string) (int64, error) {
 	var total int64
+	tracker := newDiskUsageTracker()
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -144,7 +144,7 @@ func directorySize(root string) (int64, error) {
 			}
 			return err
 		}
-		total += info.Size()
+		total += tracker.size(info)
 		return nil
 	})
 	if os.IsNotExist(err) {

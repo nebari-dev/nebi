@@ -22,6 +22,10 @@ func init() {
 	pkgmgr.Register("pixi", func(ctx context.Context, customPath string) (pkgmgr.PackageManager, error) {
 		return NewWithPathContext(ctx, customPath)
 	})
+	pkgmgr.RegisterManifestContentParser("pixi", pkgmgr.ManifestContentParser{
+		PackageNames:           ManifestPackageNames,
+		DefaultDependencyNames: ManifestDefaultDependencyNames,
+	})
 }
 
 // PixiManager implements the PackageManager interface for pixi
@@ -393,7 +397,7 @@ func (p *PixiManager) List(ctx context.Context, opts pkgmgr.ListOptions) ([]pkgm
 			return nil, nil
 		}
 		listErr := fmt.Errorf("pixi list failed: %w, stderr: %s", err, stderr.String())
-		if process.IsResourceLimitExit(err, opts.ResourceLimits, stderr.String()) {
+		if process.IsResourceLimitExit(ctx, err, opts.ResourceLimits, stderr.String()) {
 			return nil, process.NewResourceLimitError(listErr)
 		}
 		return nil, listErr

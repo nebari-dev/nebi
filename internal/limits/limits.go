@@ -6,13 +6,6 @@ import (
 	"time"
 )
 
-const (
-	HTTPReadHeaderTimeout = 10 * time.Second
-	HTTPReadTimeout       = 30 * time.Second
-	HTTPIdleTimeout       = 120 * time.Second
-	HTTPMaxHeaderBytes    = 1 << 20
-)
-
 // Limits captures resource caps for request payloads and asynchronous jobs.
 type Limits struct {
 	RequestBodyBytes       int64 `mapstructure:"request_body_bytes" json:"request_body_bytes"`
@@ -26,23 +19,18 @@ type Limits struct {
 	ActiveJobsGlobal       int   `mapstructure:"active_jobs_global" json:"active_jobs_global"`
 	JobTimeoutSeconds      int   `mapstructure:"job_timeout_seconds" json:"job_timeout_seconds"`
 	JobCPUSeconds          int   `mapstructure:"job_cpu_seconds" json:"job_cpu_seconds"`
-	JobMemoryBytes         int64 `mapstructure:"job_memory_bytes" json:"job_memory_bytes"`
-	JobProcesses           int   `mapstructure:"job_processes" json:"job_processes"`
 	JobStorageBytes        int64 `mapstructure:"job_storage_bytes" json:"job_storage_bytes"`
 	JobLogBytes            int   `mapstructure:"job_log_bytes" json:"job_log_bytes"`
 }
 
 // ProcessLimits captures OS-level limits for child processes.
 type ProcessLimits struct {
-	CPUSeconds  int
-	MemoryBytes int64
-	Processes   int
-	FileBytes   int64
+	CPUSeconds int
+	FileBytes  int64
 }
 
 // Defaults returns the documented resource caps used when config omits a value.
 func Defaults() Limits {
-	jobCPUSeconds, jobMemoryBytes, jobProcesses := defaultProcessLimits()
 	return Limits{
 		RequestBodyBytes:       20 * 1024 * 1024,
 		ManifestBytes:          1 * 1024 * 1024,
@@ -54,68 +42,42 @@ func Defaults() Limits {
 		ActiveJobsPerWorkspace: 2,
 		ActiveJobsGlobal:       100,
 		JobTimeoutSeconds:      2 * 60 * 60,
-		JobCPUSeconds:          jobCPUSeconds,
-		JobMemoryBytes:         jobMemoryBytes,
-		JobProcesses:           jobProcesses,
+		JobCPUSeconds:          defaultCPUSeconds(),
 		JobStorageBytes:        20 * 1024 * 1024 * 1024,
 		JobLogBytes:            4 * 1024 * 1024,
 	}
 }
 
-func defaultProcessLimits() (int, int64, int) {
-	switch runtime.GOOS {
-	case "linux":
-		return 2 * 60 * 60, 8 * 1024 * 1024 * 1024, 256
-	default:
-		return 0, 0, 0
+func defaultCPUSeconds() int {
+	if runtime.GOOS == "windows" {
+		return 0
 	}
+	return 2 * 60 * 60
 }
 
 func (l Limits) Validate() error {
-	if l.RequestBodyBytes < 0 {
-		return fmt.Errorf("limits.request_body_bytes must be non-negative")
+	checks := []struct {
+		name  string
+		value int64
+	}{
+		{"request_body_bytes", l.RequestBodyBytes},
+		{"manifest_bytes", int64(l.ManifestBytes)},
+		{"lock_bytes", int64(l.LockBytes)},
+		{"metadata_bytes", int64(l.MetadataBytes)},
+		{"max_packages", int64(l.MaxPackages)},
+		{"package_string_bytes", int64(l.PackageStringBytes)},
+		{"active_jobs_per_user", int64(l.ActiveJobsPerUser)},
+		{"active_jobs_per_workspace", int64(l.ActiveJobsPerWorkspace)},
+		{"active_jobs_global", int64(l.ActiveJobsGlobal)},
+		{"job_timeout_seconds", int64(l.JobTimeoutSeconds)},
+		{"job_cpu_seconds", int64(l.JobCPUSeconds)},
+		{"job_storage_bytes", l.JobStorageBytes},
+		{"job_log_bytes", int64(l.JobLogBytes)},
 	}
-	if l.ManifestBytes < 0 {
-		return fmt.Errorf("limits.manifest_bytes must be non-negative")
-	}
-	if l.LockBytes < 0 {
-		return fmt.Errorf("limits.lock_bytes must be non-negative")
-	}
-	if l.MetadataBytes < 0 {
-		return fmt.Errorf("limits.metadata_bytes must be non-negative")
-	}
-	if l.MaxPackages < 0 {
-		return fmt.Errorf("limits.max_packages must be non-negative")
-	}
-	if l.PackageStringBytes < 0 {
-		return fmt.Errorf("limits.package_string_bytes must be non-negative")
-	}
-	if l.ActiveJobsPerUser < 0 {
-		return fmt.Errorf("limits.active_jobs_per_user must be non-negative")
-	}
-	if l.ActiveJobsPerWorkspace < 0 {
-		return fmt.Errorf("limits.active_jobs_per_workspace must be non-negative")
-	}
-	if l.ActiveJobsGlobal < 0 {
-		return fmt.Errorf("limits.active_jobs_global must be non-negative")
-	}
-	if l.JobTimeoutSeconds < 0 {
-		return fmt.Errorf("limits.job_timeout_seconds must be non-negative")
-	}
-	if l.JobCPUSeconds < 0 {
-		return fmt.Errorf("limits.job_cpu_seconds must be non-negative")
-	}
-	if l.JobMemoryBytes < 0 {
-		return fmt.Errorf("limits.job_memory_bytes must be non-negative")
-	}
-	if l.JobProcesses < 0 {
-		return fmt.Errorf("limits.job_processes must be non-negative")
-	}
-	if l.JobStorageBytes < 0 {
-		return fmt.Errorf("limits.job_storage_bytes must be non-negative")
-	}
-	if l.JobLogBytes < 0 {
-		return fmt.Errorf("limits.job_log_bytes must be non-negative")
+	for _, check := range checks {
+		if check.value < 0 {
+			return fmt.Errorf("limits.%s must be non-negative", check.name)
+		}
 	}
 	return nil
 }
@@ -133,10 +95,8 @@ func (l Limits) ProcessLimits() ProcessLimits {
 		fileBytes = 0
 	}
 	return ProcessLimits{
-		CPUSeconds:  l.JobCPUSeconds,
-		MemoryBytes: l.JobMemoryBytes,
-		Processes:   l.JobProcesses,
-		FileBytes:   fileBytes,
+		CPUSeconds: l.JobCPUSeconds,
+		FileBytes:  fileBytes,
 	}
 }
 

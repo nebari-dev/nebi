@@ -6,8 +6,9 @@ import (
 	"path/filepath"
 )
 
-// PreparedWorkspaceEnv keeps package-manager temp/cache/home writes under the
-// workspace so storage accounting observes them.
+// PreparedWorkspaceEnv keeps package-manager temp and language-cache writes
+// under the workspace while preserving HOME and Pixi/Rattler cache variables
+// for user config, credentials, and shared package caches.
 func PreparedWorkspaceEnv(envPath string) ([]string, error) {
 	if err := prepareWorkspaceEnvDirs(envPath); err != nil {
 		return nil, err
@@ -27,10 +28,6 @@ func WorkspaceEnv(envPath string) []string {
 		"TMPDIR="+dirs.tmp,
 		"TMP="+dirs.tmp,
 		"TEMP="+dirs.tmp,
-		"XDG_CACHE_HOME="+dirs.xdgCache,
-		"HOME="+dirs.home,
-		"PIXI_CACHE_DIR="+dirs.pixiCache,
-		"RATTLER_CACHE_DIR="+dirs.pixiCache,
 		"PIP_CACHE_DIR="+dirs.pipCache,
 		"UV_CACHE_DIR="+dirs.uvCache,
 	)
@@ -58,12 +55,23 @@ func workspaceEnvDirs(envPath string) workspaceDirs {
 	}
 }
 
+// WorkspaceTransientDirs returns workspace-owned process artifacts that can be
+// removed after failed or interrupted jobs. It includes legacy dirs from older
+// env preparation so cleanup handles upgrades safely.
+func WorkspaceTransientDirs(envPath string) []string {
+	if envPath == "" {
+		return nil
+	}
+	dirs := workspaceEnvDirs(envPath)
+	return []string{dirs.pixiCache, dirs.tmp, dirs.xdgCache, dirs.home}
+}
+
 func prepareWorkspaceEnvDirs(envPath string) error {
 	if envPath == "" {
 		return nil
 	}
 	dirs := workspaceEnvDirs(envPath)
-	for _, dir := range []string{dirs.tmp, dirs.xdgCache, dirs.home, dirs.pixiCache, dirs.pipCache, dirs.uvCache} {
+	for _, dir := range []string{dirs.tmp, dirs.pixiCache, dirs.pipCache, dirs.uvCache} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("prepare workspace process dir %s: %w", dir, err)
 		}

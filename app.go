@@ -17,7 +17,6 @@ import (
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
-	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/netguard"
 	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
@@ -220,11 +219,11 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	a.server = &http.Server{
 		Addr:              addr,
 		Handler:           netguard.Middleware(router, false, nil),
-		ReadHeaderTimeout: limits.HTTPReadHeaderTimeout,
-		ReadTimeout:       limits.HTTPReadTimeout,
+		ReadHeaderTimeout: config.HTTPReadHeaderTimeout,
+		ReadTimeout:       cfg.Server.ReadTimeout(),
 		WriteTimeout:      limitCfg.HTTPWriteTimeout(),
-		IdleTimeout:       limits.HTTPIdleTimeout,
-		MaxHeaderBytes:    limits.HTTPMaxHeaderBytes,
+		IdleTimeout:       config.HTTPIdleTimeout,
+		MaxHeaderBytes:    config.HTTPMaxHeaderBytes,
 	}
 
 	logToFile(fmt.Sprintf("startEmbeddedServer: starting server on %s", addr))

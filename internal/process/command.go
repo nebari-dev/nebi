@@ -1,15 +1,19 @@
 package process
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/nebari-dev/nebi/internal/limits"
 )
 
 var ErrResourceLimitsUnsupported = errors.New("process resource limits are not supported on this platform")
+
+var killedLineRE = regexp.MustCompile(`(?mi)^killed:?[[:space:]]*$`)
 
 type ResourceLimitError struct {
 	Err error
@@ -55,9 +59,12 @@ func IsResourceLimitSetupExit(err error) bool {
 // IsResourceLimitExit recognizes explicit resource-limit failures and the
 // signal-style exits commonly produced when active OS budgets terminate a job
 // before the wrapper can write a nebi marker.
-func IsResourceLimitExit(err error, limitCfg limits.ProcessLimits, output string) bool {
+func IsResourceLimitExit(ctx context.Context, err error, limitCfg limits.ProcessLimits, output string) bool {
 	if IsResourceLimitError(err) || HasResourceLimitOutput(output) {
 		return true
+	}
+	if ctx.Err() != nil {
+		return false
 	}
 	if !hasLimits(limitCfg) {
 		return false
@@ -75,9 +82,7 @@ func IsResourceLimitExit(err error, limitCfg limits.ProcessLimits, output string
 	}
 	switch exitErr.ExitCode() {
 	case -1:
-		return true
-	case 137:
-		return limitCfg.MemoryBytes > 0 || limitCfg.Processes > 0
+		return false
 	case 143:
 		return limitCfg.CPUSeconds > 0
 	case 152:
@@ -93,24 +98,20 @@ func HasLikelyResourceLimitOutput(limitCfg limits.ProcessLimits, output string) 
 	if output == "" || !hasLimits(limitCfg) {
 		return false
 	}
-	output = strings.ToLower(output)
-	if limitCfg.MemoryBytes > 0 {
-		for _, marker := range []string{"out of memory", "cannot allocate memory", "killed"} {
-			if strings.Contains(output, marker) {
+	lowerOutput := strings.ToLower(output)
+	if limitCfg.CPUSeconds > 0 {
+		for _, marker := range []string{"cpu time limit exceeded"} {
+			if strings.Contains(lowerOutput, marker) {
 				return true
 			}
 		}
-	}
-	if limitCfg.Processes > 0 {
-		for _, marker := range []string{"resource temporarily unavailable", "too many processes", "failed to create os thread"} {
-			if strings.Contains(output, marker) {
-				return true
-			}
+		if killedLineRE.MatchString(output) {
+			return true
 		}
 	}
 	if limitCfg.FileBytes > 0 {
 		for _, marker := range []string{"file size limit exceeded", "file too large"} {
-			if strings.Contains(output, marker) {
+			if strings.Contains(lowerOutput, marker) {
 				return true
 			}
 		}
@@ -123,13 +124,6 @@ func HasResourceLimitOutput(output string) bool {
 		"nebi: CPU budget exceeded",
 		"nebi: failed to apply CPU limit",
 		"nebi: failed to apply file size limit",
-		"nebi: memory limits are not supported",
-		"nebi: process limits are not supported",
-		"nebi: cgroup v2 is required for isolated resource limits",
-		"nebi: failed to create job cgroup",
-		"nebi: failed to apply memory limit",
-		"nebi: failed to apply process limit",
-		"nebi: failed to enter job cgroup",
 	} {
 		if strings.Contains(output, marker) {
 			return true
@@ -139,7 +133,7 @@ func HasResourceLimitOutput(output string) bool {
 }
 
 func hasLimits(limits limits.ProcessLimits) bool {
-	return limits.CPUSeconds > 0 || limits.MemoryBytes > 0 || limits.Processes > 0 || limits.FileBytes > 0
+	return limits.CPUSeconds > 0 || limits.FileBytes > 0
 }
 
 func fileLimitBlocks(bytes int64) int64 {

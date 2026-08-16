@@ -41,6 +41,7 @@ Environment variables:
   NEBI_SERVER_PORT                  Server port (default: 8460)
   NEBI_SERVER_MODE                  Server environment: "development" or "production" (default: "development")
   NEBI_SERVER_BASE_PATH             URL path prefix for reverse proxy (e.g. "/nebi")
+  NEBI_SERVER_READ_TIMEOUT_SECONDS  Max seconds to read a full request, 0 disables
   NEBI_DATABASE_DRIVER              Database driver: "sqlite" or "postgres" (default: "sqlite")
   NEBI_DATABASE_DSN                 Database connection string (default: "./nebi.db")
   NEBI_DATABASE_MAX_IDLE_CONNS      Max idle connections in pool — Postgres only (default: 10)
@@ -71,9 +72,7 @@ Environment variables:
                                     Max pending/running jobs per workspace (default: 2)
   NEBI_LIMITS_ACTIVE_JOBS_GLOBAL    Max pending/running jobs server-wide (default: 100)
   NEBI_LIMITS_JOB_TIMEOUT_SECONDS   Per-job wall-clock timeout (default: 7200)
-  NEBI_LIMITS_JOB_CPU_SECONDS       Per-job CPU-time budget (default: 7200 on Linux, 0 elsewhere)
-  NEBI_LIMITS_JOB_MEMORY_BYTES      Per-job memory budget (default: 8589934592 on Linux, 0 elsewhere)
-  NEBI_LIMITS_JOB_PROCESSES         Per-job process budget (default: 256 on Linux, 0 elsewhere)
+  NEBI_LIMITS_JOB_CPU_SECONDS       Per-job CPU-time budget (default: 7200 on Unix, 0 on Windows)
   NEBI_LIMITS_JOB_STORAGE_BYTES     Max workspace bytes during a job (default: 21474836480)
   NEBI_LIMITS_JOB_LOG_BYTES         Max persisted log bytes per job (default: 4194304)
   NEBI_AUTH_TOKEN                   Auth token for auto-connect when in local mode

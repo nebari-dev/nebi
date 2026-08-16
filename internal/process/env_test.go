@@ -8,6 +8,14 @@ import (
 
 func TestPreparedWorkspaceEnvScopesWritableProcessDirs(t *testing.T) {
 	envPath := t.TempDir()
+	homeDir := t.TempDir()
+	xdgCacheDir := t.TempDir()
+	pixiCacheDir := t.TempDir()
+	rattlerCacheDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("XDG_CACHE_HOME", xdgCacheDir)
+	t.Setenv("PIXI_CACHE_DIR", pixiCacheDir)
+	t.Setenv("RATTLER_CACHE_DIR", rattlerCacheDir)
 
 	env, err := PreparedWorkspaceEnv(envPath)
 	if err != nil {
@@ -16,15 +24,11 @@ func TestPreparedWorkspaceEnvScopesWritableProcessDirs(t *testing.T) {
 	values := envMap(env)
 
 	want := map[string]string{
-		"TMPDIR":            filepath.Join(envPath, ".nebi", "tmp"),
-		"TMP":               filepath.Join(envPath, ".nebi", "tmp"),
-		"TEMP":              filepath.Join(envPath, ".nebi", "tmp"),
-		"XDG_CACHE_HOME":    filepath.Join(envPath, ".nebi", "cache"),
-		"HOME":              filepath.Join(envPath, ".nebi", "home"),
-		"PIXI_CACHE_DIR":    filepath.Join(envPath, ".nebi", "pixi-cache"),
-		"RATTLER_CACHE_DIR": filepath.Join(envPath, ".nebi", "pixi-cache"),
-		"PIP_CACHE_DIR":     filepath.Join(envPath, ".nebi", "pixi-cache", "pip"),
-		"UV_CACHE_DIR":      filepath.Join(envPath, ".nebi", "pixi-cache", "uv"),
+		"TMPDIR":        filepath.Join(envPath, ".nebi", "tmp"),
+		"TMP":           filepath.Join(envPath, ".nebi", "tmp"),
+		"TEMP":          filepath.Join(envPath, ".nebi", "tmp"),
+		"PIP_CACHE_DIR": filepath.Join(envPath, ".nebi", "pixi-cache", "pip"),
+		"UV_CACHE_DIR":  filepath.Join(envPath, ".nebi", "pixi-cache", "uv"),
 	}
 	for key, dir := range want {
 		if values[key] != dir {
@@ -32,6 +36,18 @@ func TestPreparedWorkspaceEnvScopesWritableProcessDirs(t *testing.T) {
 		}
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 			t.Fatalf("%s dir was not prepared: info=%v err=%v", key, info, err)
+		}
+	}
+
+	preserved := map[string]string{
+		"HOME":              homeDir,
+		"XDG_CACHE_HOME":    xdgCacheDir,
+		"PIXI_CACHE_DIR":    pixiCacheDir,
+		"RATTLER_CACHE_DIR": rattlerCacheDir,
+	}
+	for key, want := range preserved {
+		if values[key] != want {
+			t.Fatalf("%s = %q, want preserved value %q", key, values[key], want)
 		}
 	}
 }

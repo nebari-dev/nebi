@@ -15,7 +15,7 @@ import (
 func adminTestSetup(t *testing.T) (*AdminService, *WorkspaceService, *gorm.DB) {
 	t.Helper()
 	wsSvc, db := testSetup(t, false)
-	return NewAdminService(db, rbac.NewDefaultProvider()), wsSvc, db
+	return NewAdminService(db, rbac.NewDefaultProvider(), limits.Defaults()), wsSvc, db
 }
 
 // --- ListUsers ---

@@ -7,9 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nebari-dev/nebi/internal/limits"
 )
@@ -35,6 +35,20 @@ func TestLimitScriptAppliesFileSizeLimit(t *testing.T) {
 	}
 }
 
+func TestLimitScriptUsesPortableULimit(t *testing.T) {
+	script := limitScript(limits.ProcessLimits{CPUSeconds: 60, FileBytes: 1024})
+	for _, want := range []string{"ulimit -t 60", "ulimit -f 2", "exec \"$@\""} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("limit script missing %q: %s", want, script)
+		}
+	}
+	for _, unwanted := range []string{"cgroup.controllers", "memory.max", "pids.max", "cpu.stat"} {
+		if strings.Contains(script, unwanted) {
+			t.Fatalf("limit script should not use cgroups; found %q in %s", unwanted, script)
+		}
+	}
+}
+
 func TestCommandContextLimitsExternalFileWrites(t *testing.T) {
 	outPath := filepath.Join(t.TempDir(), "external.bin")
 	cmd := CommandContext(context.Background(), "/bin/sh", []string{
@@ -53,61 +67,59 @@ func TestCommandContextLimitsExternalFileWrites(t *testing.T) {
 }
 
 func TestIsResourceLimitExitRecognizesSignalStatusesOnlyWithMatchingBudgets(t *testing.T) {
-	cmd := exec.Command("/bin/sh", "-c", "exit 137")
+	ctx := context.Background()
+	cmd := exec.Command("/bin/sh", "-c", "exit 152")
 	err := cmd.Run()
 	if err == nil {
 		t.Fatal("expected exit error")
 	}
-	if !IsResourceLimitExit(err, limits.ProcessLimits{MemoryBytes: 1024}, "") {
-		t.Fatal("expected SIGKILL-style exit to count as memory budget failure")
+	if !IsResourceLimitExit(ctx, err, limits.ProcessLimits{CPUSeconds: 1}, "") {
+		t.Fatal("expected SIGXCPU-style exit to count as CPU budget failure")
 	}
-	if IsResourceLimitExit(err, limits.ProcessLimits{FileBytes: 1024}, "") {
-		t.Fatal("did not expect SIGKILL-style exit to count as file budget failure")
+	if IsResourceLimitExit(ctx, err, limits.ProcessLimits{FileBytes: 1024}, "") {
+		t.Fatal("did not expect SIGXCPU-style exit to count as file budget failure")
 	}
-	if IsResourceLimitExit(err, limits.ProcessLimits{}, "") {
+	if IsResourceLimitExit(ctx, err, limits.ProcessLimits{}, "") {
 		t.Fatal("did not expect signal-style exit without active budgets")
 	}
-	if !HasLikelyResourceLimitOutput(limits.ProcessLimits{Processes: 2}, "fork: Resource temporarily unavailable") {
-		t.Fatal("expected process budget output marker")
+	if !HasLikelyResourceLimitOutput(limits.ProcessLimits{CPUSeconds: 1}, "CPU time limit exceeded") {
+		t.Fatal("expected CPU budget output marker")
 	}
 	if !HasLikelyResourceLimitOutput(limits.ProcessLimits{FileBytes: 1024}, "file size limit exceeded") {
 		t.Fatal("expected file budget output marker")
 	}
-	if HasLikelyResourceLimitOutput(limits.ProcessLimits{}, "killed") {
+	if !HasLikelyResourceLimitOutput(limits.ProcessLimits{CPUSeconds: 1}, "Killed\n") {
+		t.Fatal("expected shell killed line marker")
+	}
+	if HasLikelyResourceLimitOutput(limits.ProcessLimits{CPUSeconds: 1}, "no processes killed") {
+		t.Fatal("did not expect incidental killed text to match resource limit output")
+	}
+	if HasLikelyResourceLimitOutput(limits.ProcessLimits{}, "Killed\n") {
 		t.Fatal("did not expect generic killed output without active budgets")
 	}
 }
 
-func TestLinuxCgroupLimitScriptUsesAggregateBudgets(t *testing.T) {
-	script := linuxCgroupLimitScript(limits.ProcessLimits{
-		CPUSeconds:  60,
-		MemoryBytes: 1024,
-		Processes:   16,
-		FileBytes:   2048,
-	})
-	for _, want := range []string{
-		"cgroup.controllers",
-		"memory.max",
-		"pids.max",
-		"cpu.stat",
-		"cgroup.kill",
-		"ulimit -f 4",
-	} {
-		if !strings.Contains(script, want) {
-			t.Fatalf("linux cgroup script missing %q: %s", want, script)
+func TestIsResourceLimitExitIgnoresContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd := CommandContext(ctx, "/bin/sh", []string{"-c", "while :; do sleep 1; done"}, limits.ProcessLimits{CPUSeconds: 60})
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start command: %v", err)
+	}
+	cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected canceled command to fail")
 		}
-	}
-	if strings.Contains(script, "|| true\n\"$@\"") {
-		t.Fatalf("linux cgroup setup must not continue after setup failures: %s", script)
-	}
-}
-
-func TestNonLinuxAggregateLimitsFailClosed(t *testing.T) {
-	if runtime.GOOS == "linux" {
-		t.Skip("non-Linux behavior")
-	}
-	script := limitScript(limits.ProcessLimits{MemoryBytes: 1024})
-	if !strings.Contains(script, "memory limits are not supported") || !strings.Contains(script, "exit 125") {
-		t.Fatalf("expected unsupported memory limit to fail closed, got: %s", script)
+		if IsResourceLimitExit(ctx, err, limits.ProcessLimits{CPUSeconds: 60}, "") {
+			t.Fatalf("context cancellation should not be classified as a resource limit: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatal("timed out waiting for canceled command")
 	}
 }

@@ -30,11 +30,7 @@ type WorkspaceService struct {
 }
 
 // New creates a new WorkspaceService.
-func New(db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool, encKey []byte, rbacProvider rbac.Provider, limitOpts ...limits.Limits) *WorkspaceService {
-	limitCfg := limits.Defaults()
-	if len(limitOpts) > 0 {
-		limitCfg = limitOpts[0]
-	}
+func New(db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool, encKey []byte, rbacProvider rbac.Provider, limitCfg limits.Limits) *WorkspaceService {
 	return &WorkspaceService{db: db, queue: q, executor: exec, isLocal: isLocal, encKey: encKey, rbac: rbacProvider, limits: limitCfg}
 }
 
@@ -111,7 +107,12 @@ func (s *WorkspaceService) Get(id string) (*WorkspaceResponse, error) {
 // Create validates and creates a new workspace, queues the creation job,
 // grants RBAC owner access, and writes an audit log entry.
 func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID uuid.UUID) (*models.Workspace, error) {
-	if err := s.validateManifestContent("pixi.toml", req.PixiToml); err != nil {
+	packageManager := req.PackageManager
+	if packageManager == "" {
+		packageManager = "pixi"
+	}
+
+	if err := s.validateManifestContent(packageManager, "pixi.toml", req.PixiToml); err != nil {
 		return nil, err
 	}
 
@@ -128,14 +129,15 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 		}
 	}
 
-	packageManager := req.PackageManager
-	if packageManager == "" {
-		packageManager = "pixi"
-	}
-
-	name, err := pixi.ResolveWorkspaceName(req.Name, req.PixiToml)
-	if err != nil {
-		return nil, &ValidationError{Message: fmt.Sprintf("invalid pixi.toml: %v", err)}
+	name := req.Name
+	if packageManager == "pixi" {
+		resolvedName, err := pixi.ResolveWorkspaceName(req.Name, req.PixiToml)
+		if err != nil {
+			return nil, &ValidationError{Message: fmt.Sprintf("invalid pixi.toml: %v", err)}
+		}
+		name = resolvedName
+	} else if name == "" {
+		return nil, &ValidationError{Message: "workspace name is required"}
 	}
 
 	ws := models.Workspace{
@@ -148,7 +150,7 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 	}
 
 	var job *models.Job
-	err = s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
 		// Queue creation job
 		metadata := map[string]interface{}{}
 		if req.PixiToml != "" {
@@ -220,9 +222,6 @@ func (s *WorkspaceService) Delete(ctx context.Context, wsID string, userID uuid.
 			}
 			return err
 		}
-		if err := s.checkActiveJobQuotas(tx, userID, ws.ID); err != nil {
-			return err
-		}
 		job = &models.Job{
 			Type:        models.JobTypeDelete,
 			WorkspaceID: ws.ID,
@@ -268,15 +267,14 @@ func (s *WorkspaceService) GetPixiToml(wsID string) (string, error) {
 
 // SavePixiToml writes pixi.toml content to the workspace's filesystem.
 func (s *WorkspaceService) SavePixiToml(wsID string, content string) error {
-	if err := s.validateManifestContent("pixi.toml", content); err != nil {
-		return err
-	}
-
 	var ws models.Workspace
 	if err := s.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return ErrNotFound
 		}
+		return err
+	}
+	if err := s.validateManifestContent(ws.PackageManager, "pixi.toml", content); err != nil {
 		return err
 	}
 
@@ -313,15 +311,14 @@ func (s *WorkspaceService) upsertTag(wsID uuid.UUID, tag string, versionNumber i
 // PushVersion creates a new workspace version (or deduplicates), writes files,
 // handles tags (content hash, latest, optional user tag), and records audit logs.
 func (s *WorkspaceService) PushVersion(ctx context.Context, wsID string, req PushRequest, userID uuid.UUID) (*PushResult, error) {
-	if err := s.validatePushRequest(req); err != nil {
-		return nil, err
-	}
-
 	var ws models.Workspace
 	if err := s.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, ErrNotFound
 		}
+		return nil, err
+	}
+	if err := s.validatePushRequest(ws.PackageManager, req); err != nil {
 		return nil, err
 	}
 

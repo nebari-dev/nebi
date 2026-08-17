@@ -2,7 +2,7 @@ module github.com/nebari-dev/nebi
 
 go 1.25.0
 
-toolchain go1.26.5
+toolchain go1.26.6
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.6.1

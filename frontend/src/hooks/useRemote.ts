@@ -6,6 +6,7 @@ import type {
   ConnectServerRequest,
   CreateRegistryRequest,
   CreateRemoteWorkspaceRequest,
+  UpdateRegistryRequest,
 } from '@/types';
 
 // Slow down interval polling while the query is errored (e.g. the remote
@@ -170,6 +171,33 @@ export const useCreateRemoteRegistry = () => {
   return useMutation({
     mutationFn: (req: CreateRegistryRequest) =>
       remoteApi.createAdminRegistry(req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['remote', 'admin', 'registries'],
+      });
+    },
+  });
+};
+
+export const useUpdateRemoteRegistry = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateRegistryRequest }) =>
+      remoteApi.updateAdminRegistry(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['remote', 'admin', 'registries'],
+      });
+    },
+  });
+};
+
+export const useDeleteRemoteRegistry = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => remoteApi.deleteAdminRegistry(id),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ['remote', 'admin', 'registries'],

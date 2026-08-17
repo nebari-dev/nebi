@@ -42,6 +42,8 @@ vi.mock('@/hooks/useRemote', () => ({
   useRemoteServer: () => ({ data: undefined }),
   useRemoteAdminRegistries: () => ({ data: undefined, isLoading: false }),
   useCreateRemoteRegistry: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateRemoteRegistry: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteRemoteRegistry: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 describe('RegistryManagement', () => {

@@ -54,6 +54,8 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 		remote.GET("/registries", h.ListRegistries)
 		remote.GET("/jobs", h.ListJobs)
 		remote.POST("/admin/registries", h.CreateAdminRegistry)
+		remote.PUT("/admin/registries/:id", h.UpdateAdminRegistry)
+		remote.DELETE("/admin/registries/:id", h.DeleteAdminRegistry)
 	}
 	return r
 }
@@ -376,6 +378,161 @@ func TestCreateAdminRegistry_WithMockRemote(t *testing.T) {
 	// not be silently dropped by the proxy's request struct.
 	if received["api_token"] != "secret-token" {
 		t.Errorf("expected remote server to receive api_token=secret-token, got %v", received["api_token"])
+	}
+}
+
+func TestCreateAdminRegistry_PreservesDisplayFields(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && r.URL.Path == "/api/v1/admin/registries" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"id":             "reg-1",
+				"name":           "GHCR",
+				"url":            "ghcr.io",
+				"namespace":      "nebari",
+				"has_api_token":  true,
+				"config_managed": true,
+				"is_default":     false,
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer mockServer.Close()
+
+	db := setupTestDB(t)
+	router := setupRouter(db)
+	db.Model(&store.Config{}).Where("id = ?", 1).Update("server_url", mockServer.URL)
+	db.Model(&store.Credentials{}).Where("id = ?", 1).Updates(map[string]any{
+		"token":    "valid-token",
+		"username": "testuser",
+	})
+
+	body := `{"name":"GHCR","url":"ghcr.io"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/remote/admin/registries", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	// The proxy must not strip fields the UI relies on. config_managed drives
+	// the "Managed" badge and disables edit/delete; dropping it makes managed
+	// remote registries look editable. namespace/has_api_token are shown too.
+	if resp["config_managed"] != true {
+		t.Errorf("expected config_managed=true to survive the proxy, got %v", resp["config_managed"])
+	}
+	if resp["has_api_token"] != true {
+		t.Errorf("expected has_api_token=true to survive the proxy, got %v", resp["has_api_token"])
+	}
+	if resp["namespace"] != "nebari" {
+		t.Errorf("expected namespace=nebari to survive the proxy, got %v", resp["namespace"])
+	}
+}
+
+func TestUpdateAdminRegistry_NotConnected(t *testing.T) {
+	db := setupTestDB(t)
+	router := setupRouter(db)
+
+	body := `{"name":"GHCR"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/api/v1/remote/admin/registries/reg-1", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when not connected, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateAdminRegistry_WithMockRemote(t *testing.T) {
+	var received map[string]any
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "PUT" && r.URL.Path == "/api/v1/admin/registries/reg-1" {
+			json.NewDecoder(r.Body).Decode(&received)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]any{
+				"id":         "reg-1",
+				"name":       received["name"],
+				"url":        "ghcr.io",
+				"is_default": false,
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer mockServer.Close()
+
+	db := setupTestDB(t)
+	router := setupRouter(db)
+	db.Model(&store.Config{}).Where("id = ?", 1).Update("server_url", mockServer.URL)
+	db.Model(&store.Credentials{}).Where("id = ?", 1).Updates(map[string]any{
+		"token":    "valid-token",
+		"username": "testuser",
+	})
+
+	body := `{"name":"GHCR2","api_token":"new-token"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/api/v1/remote/admin/registries/reg-1", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	// The remote server must actually receive api_token on the update path too -
+	// it must not be silently dropped by the proxy's UpdateRegistryRequest struct.
+	if received["api_token"] != "new-token" {
+		t.Errorf("expected remote server to receive api_token=new-token, got %v", received["api_token"])
+	}
+}
+
+func TestDeleteAdminRegistry_NotConnected(t *testing.T) {
+	db := setupTestDB(t)
+	router := setupRouter(db)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("DELETE", "/api/v1/remote/admin/registries/reg-1", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when not connected, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDeleteAdminRegistry_WithMockRemote(t *testing.T) {
+	var deletedPath string
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "DELETE" && r.URL.Path == "/api/v1/admin/registries/reg-1" {
+			deletedPath = r.URL.Path
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer mockServer.Close()
+
+	db := setupTestDB(t)
+	router := setupRouter(db)
+	db.Model(&store.Config{}).Where("id = ?", 1).Update("server_url", mockServer.URL)
+	db.Model(&store.Credentials{}).Where("id = ?", 1).Updates(map[string]any{
+		"token":    "valid-token",
+		"username": "testuser",
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("DELETE", "/api/v1/remote/admin/registries/reg-1", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if deletedPath != "/api/v1/admin/registries/reg-1" {
+		t.Errorf("expected proxy to DELETE the registry on the remote, got path %q", deletedPath)
 	}
 }
 

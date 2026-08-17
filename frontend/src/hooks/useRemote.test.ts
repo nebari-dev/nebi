@@ -17,6 +17,7 @@ import {
   useConnectServer,
   useCreateRemoteRegistry,
   useCreateRemoteWorkspace,
+  useDeleteRemoteRegistry,
   useDeleteRemoteWorkspace,
   useDisconnectServer,
   useRemoteJobs,
@@ -26,6 +27,7 @@ import {
   useRemoteView,
   useRemoteWorkspace,
   useRemoteWorkspaces,
+  useUpdateRemoteRegistry,
 } from './useRemote';
 
 const mockRemoteServer = {
@@ -351,6 +353,48 @@ describe('useCreateRemoteRegistry', () => {
       wrapper: createWrapper(),
     });
     result.current.mutate({ name: 'GHCR', url: 'ghcr.io' });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(hitRemote).toBe(true);
+  });
+});
+
+describe('useUpdateRemoteRegistry', () => {
+  it('puts to the remote admin registry endpoint, not the local one', async () => {
+    let hitRemote = false;
+    server.use(
+      http.put('/api/v1/remote/admin/registries/reg-1', () => {
+        hitRemote = true;
+        return HttpResponse.json(mockRegistry, { status: 200 });
+      }),
+      http.put('/api/v1/admin/registries/reg-1', () =>
+        HttpResponse.json({ error: 'should not be called' }, { status: 500 }),
+      ),
+    );
+    const { result } = renderHook(() => useUpdateRemoteRegistry(), {
+      wrapper: createWrapper(),
+    });
+    result.current.mutate({ id: 'reg-1', data: { name: 'GHCR2' } });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(hitRemote).toBe(true);
+  });
+});
+
+describe('useDeleteRemoteRegistry', () => {
+  it('deletes on the remote admin registry endpoint, not the local one', async () => {
+    let hitRemote = false;
+    server.use(
+      http.delete('/api/v1/remote/admin/registries/reg-1', () => {
+        hitRemote = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.delete('/api/v1/admin/registries/reg-1', () =>
+        HttpResponse.json({ error: 'should not be called' }, { status: 500 }),
+      ),
+    );
+    const { result } = renderHook(() => useDeleteRemoteRegistry(), {
+      wrapper: createWrapper(),
+    });
+    result.current.mutate('reg-1');
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(hitRemote).toBe(true);
   });

@@ -72,6 +72,10 @@ React 19 + TypeScript + Vite, **shadcn/ui + Tailwind v4**, tooled with **Biome**
 
 In dev the Vite server (`:8461`) proxies to the backend (`:8460`); in production the built `dist` is served by the Go binary itself.
 
+Two frontend invariants worth knowing (see issue #217):
+- **TanStack Query `networkMode` is per app mode**, set in `src/lib/queryClient.ts` + `src/store/modeStore.ts`: `'always'` in local (desktop) mode because the loopback backend stays reachable even when the OS reports offline, `'online'` in team mode where the API is a real network hop. Every query and mutation inherits this default — don't pin `'online'` in a code path that can run in the desktop app, or offline events will wedge loopback queries in `paused`.
+- **`GET /remote/server` reporting `status: 'connected'` means a server URL + token are stored** (a local DB read), not that the remote is reachable. Reachability surfaces as errors on the remote data queries; new or updated pages should gate remote data and the unreachable banner with `useRemoteView()` from `src/hooks/useRemote.ts`. Workspaces, Jobs, and the Admin Dashboard use it today; Registries and the remaining admin pages still hand-roll the derivation (migration tracked in https://github.com/nebari-dev/nebi/issues/504). If that status ever becomes a real liveness probe, revisit the banner logic, which assumes it never flips on remote outages.
+
 ## Conventions
 - Backend lint is `golangci-lint` (config in `.golangci.yml`); frontend lint/format is Biome (`frontend/biome.json`). CI runs `biome ci` and `go test -tags=e2e -race`.
 - After changing API handler annotations, run `make swagger` so `internal/swagger` stays in sync.

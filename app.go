@@ -144,13 +144,19 @@ func (a *App) startup(ctx context.Context) {
 	logToFile("Database connected")
 
 	// Run migrations
-	if err := db.Migrate(database); err != nil {
+	if err := db.Migrate(database, cfg.Registries.SeedDefault); err != nil {
 		logToFile(fmt.Sprintf("Error running migrations: %v", err))
 		return
 	}
 	// Desktop app is always local mode — migrate store tables
 	if err := store.MigrateServerDB(database); err != nil {
 		logToFile(fmt.Sprintf("Error migrating store tables: %v", err))
+		return
+	}
+
+	// Reconcile admin-provisioned registries from config.yaml into the DB.
+	if err := service.ReconcileConfigRegistries(database, cfg.Registries.Entries); err != nil {
+		logToFile(fmt.Sprintf("Error reconciling config registries: %v", err))
 		return
 	}
 	logToFile("Migrations complete")
@@ -211,7 +217,7 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Server.Port))
 	a.server = &http.Server{
 		Addr:    addr,
-		Handler: netguard.Middleware(router, false),
+		Handler: netguard.Middleware(router, false, nil),
 	}
 
 	logToFile(fmt.Sprintf("startEmbeddedServer: starting server on %s", addr))

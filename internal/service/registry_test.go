@@ -239,3 +239,112 @@ func TestFallbackRepositories_ReturnsNamespaceQualifiedPaths(t *testing.T) {
 		t.Fatalf("did not expect namespace to be duplicated in %v", repositories)
 	}
 }
+
+func TestRegistryList_IncludesConfigManaged(t *testing.T) {
+	svc, db := registryTestSetup(t)
+
+	db.Create(&models.OCIRegistry{
+		ID:            uuid.New(),
+		Name:          "managed",
+		URL:           "registry.acme.com",
+		ConfigManaged: true,
+	})
+
+	registries, err := svc.ListRegistries()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(registries) != 1 {
+		t.Fatalf("expected 1 registry, got %d", len(registries))
+	}
+	if !registries[0].ConfigManaged {
+		t.Error("expected config_managed to be true in result")
+	}
+}
+
+func TestRegistryUpdate_ConfigManagedRejected(t *testing.T) {
+	svc, db := registryTestSetup(t)
+
+	reg := models.OCIRegistry{ID: uuid.New(), Name: "managed", URL: "a.io", ConfigManaged: true}
+	db.Create(&reg)
+
+	newURL := "b.io"
+	_, err := svc.UpdateRegistry(reg.ID.String(), UpdateRegistryReq{URL: &newURL})
+	if err == nil {
+		t.Fatal("expected error updating config-managed registry")
+	}
+	var ce *ConflictError
+	if !isConflictError(err, &ce) {
+		t.Fatalf("expected ConflictError, got %T: %v", err, err)
+	}
+}
+
+func TestRegistryDelete_ConfigManagedRejected(t *testing.T) {
+	svc, db := registryTestSetup(t)
+
+	reg := models.OCIRegistry{ID: uuid.New(), Name: "managed", URL: "a.io", ConfigManaged: true}
+	db.Create(&reg)
+
+	err := svc.DeleteRegistry(reg.ID.String())
+	if err == nil {
+		t.Fatal("expected error deleting config-managed registry")
+	}
+	var ce *ConflictError
+	if !isConflictError(err, &ce) {
+		t.Fatalf("expected ConflictError, got %T: %v", err, err)
+	}
+}
+
+func TestRegistryCreate_CannotStealConfigManagedDefault(t *testing.T) {
+	svc, db := registryTestSetup(t)
+
+	managed := models.OCIRegistry{ID: uuid.New(), Name: "managed", URL: "a.io", ConfigManaged: true, IsDefault: true}
+	db.Create(&managed)
+
+	_, err := svc.CreateRegistry(CreateRegistryReq{Name: "challenger", URL: "b.io", IsDefault: true})
+	if err == nil {
+		t.Fatal("expected error stealing config-managed default")
+	}
+	var ce *ConflictError
+	if !isConflictError(err, &ce) {
+		t.Fatalf("expected ConflictError, got %T: %v", err, err)
+	}
+
+	var reloaded models.OCIRegistry
+	if err := db.Where("id = ?", managed.ID).First(&reloaded).Error; err != nil {
+		t.Fatalf("reload managed registry: %v", err)
+	}
+	if !reloaded.IsDefault {
+		t.Error("expected managed registry to remain default")
+	}
+}
+
+func TestRegistryUpdate_CannotStealConfigManagedDefault(t *testing.T) {
+	svc, db := registryTestSetup(t)
+
+	managed := models.OCIRegistry{ID: uuid.New(), Name: "managed", URL: "a.io", ConfigManaged: true, IsDefault: true}
+	db.Create(&managed)
+
+	normal, err := svc.CreateRegistry(CreateRegistryReq{Name: "normal", URL: "b.io"})
+	if err != nil {
+		t.Fatalf("CreateRegistry: %v", err)
+	}
+
+	newDefault := true
+	_, err = svc.UpdateRegistry(normal.ID.String(), UpdateRegistryReq{IsDefault: &newDefault})
+	if err == nil {
+		t.Fatal("expected error stealing config-managed default")
+	}
+	var ce *ConflictError
+	if !isConflictError(err, &ce) {
+		t.Fatalf("expected ConflictError, got %T: %v", err, err)
+	}
+
+	var reloaded models.OCIRegistry
+	if err := db.Where("id = ?", managed.ID).First(&reloaded).Error; err != nil {
+		t.Fatalf("reload managed registry: %v", err)
+	}
+	if !reloaded.IsDefault {
+		t.Error("expected managed registry to remain default")
+	}
+}

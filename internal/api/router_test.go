@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/auth"
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/db"
@@ -24,7 +25,7 @@ import (
 // skipped) backed by an on-disk SQLite database, the in-memory queue, and the
 // local executor. Driving the actual router exercises the real CORS middleware
 // wiring and the real embedded-SPA static handler, not a hand-built stand-in.
-func buildTestRouter(t *testing.T, basePath string) http.Handler {
+func buildTestRouter(t *testing.T, basePath string, mutate ...func(*config.Config)) http.Handler {
 	t.Helper()
 
 	cfg := &config.Config{Mode: "local"}
@@ -32,12 +33,16 @@ func buildTestRouter(t *testing.T, basePath string) http.Handler {
 	cfg.Auth.JWTSecret = "test-secret-for-router-test"
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = filepath.Join(t.TempDir(), "router-test.db")
+	cfg.Registries.SeedDefault = true
+	for _, m := range mutate {
+		m(cfg)
+	}
 
 	database, err := db.New(cfg.Database)
 	if err != nil {
 		t.Fatalf("db.New: %v", err)
 	}
-	if err := db.Migrate(database); err != nil {
+	if err := db.Migrate(database, cfg.Registries.SeedDefault); err != nil {
 		t.Fatalf("db.Migrate: %v", err)
 	}
 
@@ -64,12 +69,13 @@ func buildTeamTestRouter(t *testing.T, logger *slog.Logger) (http.Handler, strin
 	cfg.Auth.JWTSecret = jwtSecret
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = filepath.Join(t.TempDir(), "team-router-test.db")
+	cfg.Registries.SeedDefault = true
 
 	database, err := db.New(cfg.Database)
 	if err != nil {
 		t.Fatalf("db.New: %v", err)
 	}
-	if err := db.Migrate(database); err != nil {
+	if err := db.Migrate(database, cfg.Registries.SeedDefault); err != nil {
 		t.Fatalf("db.Migrate: %v", err)
 	}
 
@@ -205,5 +211,85 @@ func TestLegacyCLILoginRoutesRemoved(t *testing.T) {
 		if w.Code != http.StatusNotFound {
 			t.Fatalf("%s %s: expected 404 (route removed), got %d", tc.method, tc.path, w.Code)
 		}
+	}
+}
+
+// TestAdminRegistryMutations_RejectConfigManaged exercises the config-managed
+// registry guards (see registry.go UpdateRegistry / DeleteRegistry) through
+// the real HTTP admin routes, not just the service layer.
+func TestAdminRegistryMutations_RejectConfigManaged(t *testing.T) {
+	cfg := &config.Config{Mode: "local"}
+	cfg.Auth.JWTSecret = "test-secret-for-config-managed-registry-test"
+	cfg.Database.Driver = "sqlite"
+	cfg.Database.DSN = filepath.Join(t.TempDir(), "config-managed-registry-test.db")
+	cfg.Registries.SeedDefault = false
+
+	database, err := db.New(cfg.Database)
+	if err != nil {
+		t.Fatalf("db.New: %v", err)
+	}
+	if err := db.Migrate(database, cfg.Registries.SeedDefault); err != nil {
+		t.Fatalf("db.Migrate: %v", err)
+	}
+
+	exec, err := executor.NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	r := NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, nil, logger)
+
+	managed := models.OCIRegistry{ID: uuid.New(), Name: "managed", URL: "a.io", ConfigManaged: true}
+	if err := database.Create(&managed).Error; err != nil {
+		t.Fatalf("seed config-managed registry: %v", err)
+	}
+
+	putReq := httptest.NewRequest(http.MethodPut, "/api/v1/admin/registries/"+managed.ID.String(), strings.NewReader(`{"url":"b.io"}`))
+	putReq.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, putReq)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("PUT: expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "managed by server configuration") {
+		t.Fatalf("PUT: expected body to mention server configuration, got %s", w.Body.String())
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/registries/"+managed.ID.String(), nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, deleteReq)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("DELETE: expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "managed by server configuration") {
+		t.Fatalf("DELETE: expected body to mention server configuration, got %s", w.Body.String())
+	}
+}
+
+// TestCORSAllowsConfiguredOrigin drives the real router with an
+// operator-configured non-loopback origin (server.allowed_origins) and
+// asserts the CORS layer echoes it. Browsers require a matching
+// Access-Control-Allow-Origin for the SPA's crossorigin module bundle when
+// nebi is served behind a reverse proxy such as jupyter-server-proxy.
+func TestCORSAllowsConfiguredOrigin(t *testing.T) {
+	router := buildTestRouter(t, "", func(cfg *config.Config) {
+		cfg.Server.AllowedOrigins = "https://hub.example.com"
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	req.Header.Set("Origin", "https://hub.example.com")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://hub.example.com" {
+		t.Errorf("expected configured origin echoed in Access-Control-Allow-Origin, got %q", got)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	req.Header.Set("Origin", "https://evil.example.com")
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("expected no Access-Control-Allow-Origin for unlisted origin, got %q", got)
 	}
 }

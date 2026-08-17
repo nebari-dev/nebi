@@ -1,16 +1,50 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { remoteApi } from '@/api/remote';
+import { useModeStore } from '@/store/modeStore';
+import { useViewModeStore } from '@/store/viewModeStore';
 import type {
   ConnectServerRequest,
   CreateRemoteWorkspaceRequest,
 } from '@/types';
 
+// Slow down interval polling while the query is errored (e.g. the remote
+// server is unreachable) so failed requests don't flash loading UI every
+// cycle, but keep retrying so polling self-heals once the server comes back.
+export const ERROR_BACKOFF_INTERVAL = 30000;
+
+export const pollWithErrorBackoff =
+  (interval: number) =>
+  ({ state }: { state: { status: string } }) =>
+    state.status === 'error' ? ERROR_BACKOFF_INTERVAL : interval;
+
 export const useRemoteServer = () => {
   return useQuery({
     queryKey: ['remote', 'server'],
     queryFn: remoteApi.getServer,
-    refetchInterval: 10000, // Check connection status every 10s
+    // Plain interval, no error backoff: this hits the local backend (a DB
+    // read), never the remote server, and its observer in Layout never
+    // unmounts — it is the app's only connection-status self-heal, so a
+    // transient local error must not stop it.
+    refetchInterval: 10000,
   });
+};
+
+// Shared view-state derivation so every page gates remote data (and the
+// unreachable banner) the same way. Note `status: 'connected'` from the
+// backend means a server URL + token are stored — not that the remote is
+// actually reachable. Reachability surfaces as errors on the remote data
+// queries themselves.
+export const useRemoteView = () => {
+  const isLocalMode = useModeStore((s) => s.isLocalMode());
+  const viewMode = useViewModeStore((s) => s.viewMode);
+  const { data: serverStatus } = useRemoteServer();
+  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
+  return {
+    isLocalMode,
+    viewMode,
+    isRemoteConnected,
+    isRemoteView: isRemoteConnected && viewMode === 'remote',
+  };
 };
 
 export const useConnectServer = () => {
@@ -19,7 +53,10 @@ export const useConnectServer = () => {
   return useMutation({
     mutationFn: (req: ConnectServerRequest) => remoteApi.connectServer(req),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['remote'] });
+      // Reset rather than invalidate: invalidation skips disabled queries, so
+      // an errored query left over from a previously unreachable server would
+      // keep its stale error (and banner) when reconnecting re-enables it.
+      queryClient.resetQueries({ queryKey: ['remote'] });
     },
   });
 };
@@ -30,7 +67,9 @@ export const useDisconnectServer = () => {
   return useMutation({
     mutationFn: () => remoteApi.disconnectServer(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['remote'] });
+      // Reset for the same reason as useConnectServer: drop any errored state
+      // so nothing stale survives into the next connection.
+      queryClient.resetQueries({ queryKey: ['remote'] });
     },
   });
 };
@@ -40,7 +79,7 @@ export const useRemoteWorkspaces = (enabled: boolean) => {
     queryKey: ['remote', 'workspaces'],
     queryFn: remoteApi.listWorkspaces,
     enabled,
-    refetchInterval: 5000,
+    refetchInterval: pollWithErrorBackoff(5000),
   });
 };
 
@@ -104,7 +143,7 @@ export const useRemoteJobs = (enabled: boolean) => {
     queryKey: ['remote', 'jobs'],
     queryFn: remoteApi.listJobs,
     enabled,
-    refetchInterval: 5000, // Poll for job status updates
+    refetchInterval: pollWithErrorBackoff(5000), // Poll for job status updates
   });
 };
 
@@ -140,5 +179,11 @@ export const useRemoteDashboardStats = (enabled: boolean) => {
     queryKey: ['remote', 'admin', 'dashboard', 'stats'],
     queryFn: remoteApi.getDashboardStats,
     enabled,
+    // Polls (stats are cheap to serve and feed the dashboard tiles), and —
+    // more importantly — keeps retrying after an error: this query is part of
+    // AdminDashboard's unreachable-banner condition, and without an interval
+    // an errored query only refetches on remount, so the banner would stick
+    // until the user navigated away even after the server recovered.
+    refetchInterval: pollWithErrorBackoff(30000),
   });
 };

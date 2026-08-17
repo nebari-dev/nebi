@@ -10,7 +10,7 @@ RUN npm run build
 # Stage 2: Build Go binary
 # Pinned by exact version + digest; keep in sync with the toolchain directive
 # in go.mod (scripts/check-go-toolchain.sh gates supported lines in CI).
-FROM golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS backend-builder
+FROM golang:1.26.6-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS backend-builder
 WORKDIR /app
 
 # Copy go mod files and download dependencies (cached layer)

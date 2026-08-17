@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useModeStore } from '@/store/modeStore';
@@ -294,6 +294,35 @@ describe('useRemoteWorkspaces', () => {
       timeout: 2000,
     });
     expect(result.current.isUnreachable).toBe(false);
+  });
+
+  it('does not re-render consumers when a refetch returns unchanged data', async () => {
+    // withRemoteFlags spreads the query result, which reads every field of
+    // TanStack's tracked-props proxy and so marks them all tracked — hence the
+    // pinned notifyOnChangeProps on the wrapped queries. Without it, isFetching
+    // and dataUpdatedAt re-render every consumer on each 5s poll tick even when
+    // the payload is identical.
+    let renders = 0;
+    const { result } = renderHook(
+      () => {
+        renders += 1;
+        return useRemoteWorkspaces(true);
+      },
+      { wrapper: createWrapper() },
+    );
+    await waitFor(() => expect(result.current.data).toBeDefined());
+
+    const rendersAfterLoad = renders;
+    // Fire outside act() so the fetch-start and fetch-settle notifications
+    // land in separate flushes, the way a real poll tick does — awaiting
+    // refetch() inside act() batches them into one and hides the churn.
+    const refetched = result.current.refetch();
+    await act(async () => {
+      await refetched;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(result.current.data).toBeDefined();
+    expect(renders).toBe(rendersAfterLoad);
   });
 });
 

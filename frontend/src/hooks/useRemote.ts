@@ -1,4 +1,5 @@
 import {
+  type NotifyOnChangeProps,
   type UseQueryResult,
   useMutation,
   useQuery,
@@ -23,9 +24,10 @@ export const pollWithErrorBackoff =
     state.status === 'error' ? ERROR_BACKOFF_INTERVAL : interval;
 
 // Self-heal for banner-feeding queries that shouldn't poll while healthy: an
-// errored query with no refetchInterval only refetches on remount or window
-// focus, so an unreachable banner gated on its isUnreachable flag would stick
-// even after the server recovered. Retry on the error-backoff cadence while
+// errored query with no refetchInterval only refetches on remount (this app
+// sets refetchOnWindowFocus: false globally, so focus is not a recovery path),
+// so an unreachable banner gated on its isUnreachable flag would stick even
+// after the server recovered. Retry on the error-backoff cadence while
 // errored, stay quiet otherwise. (Steady-state freshness polling for these
 // queries is a separate product decision — see issue #504.)
 export const retryWhileUnreachable = ({
@@ -70,6 +72,21 @@ const withRemoteFlags = <T>(query: UseQueryResult<T>) => ({
   isUnreachable:
     query.isError || (query.isPending && query.errorUpdateCount > 0),
 });
+
+// Every wrapped query must pin notifyOnChangeProps to exactly the fields the
+// flags above (and the pages) read. With it unset, useQuery hands back a proxy
+// that marks a field tracked on property access, and the `...query` spread in
+// withRemoteFlags accesses all of them — so a poll tick returning unchanged
+// data would still re-render every consumer via isFetching/dataUpdatedAt.
+// Grow this list if a page ever starts consuming another field (isFetching,
+// refetch, error, …); a field left out simply stops triggering re-renders.
+const remoteFlagNotifyProps: NotifyOnChangeProps = [
+  'data',
+  'isLoading',
+  'isPending',
+  'isError',
+  'errorUpdateCount',
+];
 
 // Shared view-state derivation so every page gates remote data (and the
 // unreachable banner) the same way. Note `status: 'connected'` from the
@@ -122,6 +139,7 @@ export const useRemoteWorkspaces = (enabled: boolean) => {
       queryKey: ['remote', 'workspaces'],
       queryFn: remoteApi.listWorkspaces,
       enabled,
+      notifyOnChangeProps: remoteFlagNotifyProps,
       refetchInterval: pollWithErrorBackoff(5000),
     }),
   );
@@ -180,6 +198,7 @@ export const useRemoteRegistries = (enabled: boolean) => {
       queryKey: ['remote', 'registries'],
       queryFn: remoteApi.listRegistries,
       enabled,
+      notifyOnChangeProps: remoteFlagNotifyProps,
       refetchInterval: retryWhileUnreachable,
     }),
   );
@@ -191,6 +210,7 @@ export const useRemoteJobs = (enabled: boolean) => {
       queryKey: ['remote', 'jobs'],
       queryFn: remoteApi.listJobs,
       enabled,
+      notifyOnChangeProps: remoteFlagNotifyProps,
       refetchInterval: pollWithErrorBackoff(5000), // Poll for job status updates
     }),
   );
@@ -202,6 +222,7 @@ export const useRemoteUsers = (enabled: boolean) => {
       queryKey: ['remote', 'admin', 'users'],
       queryFn: remoteApi.listUsers,
       enabled,
+      notifyOnChangeProps: remoteFlagNotifyProps,
       refetchInterval: retryWhileUnreachable,
     }),
   );
@@ -213,6 +234,7 @@ export const useRemoteAdminRegistries = (enabled: boolean) => {
       queryKey: ['remote', 'admin', 'registries'],
       queryFn: remoteApi.listAdminRegistries,
       enabled,
+      notifyOnChangeProps: remoteFlagNotifyProps,
       refetchInterval: retryWhileUnreachable,
     }),
   );
@@ -227,6 +249,7 @@ export const useRemoteAuditLogs = (
       queryKey: ['remote', 'admin', 'audit-logs', filters],
       queryFn: () => remoteApi.listAuditLogs(filters),
       enabled,
+      notifyOnChangeProps: remoteFlagNotifyProps,
       refetchInterval: retryWhileUnreachable,
     }),
   );
@@ -238,6 +261,7 @@ export const useRemoteDashboardStats = (enabled: boolean) => {
       queryKey: ['remote', 'admin', 'dashboard', 'stats'],
       queryFn: remoteApi.getDashboardStats,
       enabled,
+      notifyOnChangeProps: remoteFlagNotifyProps,
       // Polls (stats are cheap to serve and feed the dashboard tiles), and —
       // more importantly — keeps retrying after an error: this query is part
       // of AdminDashboard's unreachable-banner condition, and without an

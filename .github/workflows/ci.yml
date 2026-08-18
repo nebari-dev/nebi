@@ -116,10 +116,9 @@ jobs:
       # the PR that causes it instead. Uses swag@latest to match release.yml.
       - name: Check Swagger docs are up to date
         run: |
-          go install github.com/swaggo/swag/cmd/swag@latest
-          swag init -g cmd/nebi/serve.go -o internal/swagger --packageName swagger
+          make swagger
           if ! git diff --exit-code internal/swagger/; then
-            echo "::error::internal/swagger is stale. Run: swag init -g cmd/nebi/serve.go -o internal/swagger --packageName swagger"
+            echo "::error::internal/swagger is stale. Run: make swagger"
             exit 1
           fi
 
@@ -211,7 +210,7 @@ jobs:
           go install github.com/swaggo/swag/cmd/swag@latest
 
       - name: Generate Swagger docs
-        run: swag init -g cmd/nebi/serve.go -o internal/swagger --packageName swagger
+        run: make swagger
 
       - name: Build snapshot binaries
         uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2

@@ -2,16 +2,16 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/pkgmgr"
+	"github.com/nebari-dev/nebi/internal/process"
 	"github.com/nebari-dev/nebi/internal/utils"
 	"gorm.io/gorm"
 )
@@ -38,31 +38,16 @@ func (s *WorkspaceService) RollbackToVersion(ctx context.Context, wsID string, v
 		}
 		return nil, err
 	}
+	if err := s.ValidateVersionContent(ws.PackageManager, version.ManifestContent, version.LockFileContent); err != nil {
+		return nil, err
+	}
 
 	metadata := map[string]interface{}{
 		"version_id":     version.ID.String(),
 		"version_number": version.VersionNumber,
-		"user_id":        userID.String(),
 	}
 
-	job := &models.Job{
-		Type:        models.JobTypeRollback,
-		WorkspaceID: ws.ID,
-		Status:      models.JobStatusPending,
-		Metadata:    metadata,
-	}
-	if err := s.db.Create(job).Error; err != nil {
-		return nil, fmt.Errorf("create job: %w", err)
-	}
-	if err := s.queue.Enqueue(ctx, job); err != nil {
-		return nil, fmt.Errorf("enqueue job: %w", err)
-	}
-
-	audit.LogAction(s.db, userID, "rollback_workspace", fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
-		"version_number": versionNumber,
-	})
-
-	return job, nil
+	return s.submitJob(ctx, ws.ID.String(), userID, models.JobTypeRollback, metadata, audit.ActionRollbackWorkspace)
 }
 
 // CreateVersionSnapshot creates a version snapshot after a successful operation.
@@ -70,30 +55,40 @@ func (s *WorkspaceService) RollbackToVersion(ctx context.Context, wsID string, v
 func (s *WorkspaceService) CreateVersionSnapshot(ctx context.Context, ws *models.Workspace, jobID uuid.UUID, userID uuid.UUID, description string) error {
 	envPath := s.executor.GetWorkspacePath(ws)
 
-	manifestContent, err := os.ReadFile(filepath.Join(envPath, "pixi.toml"))
+	manifestContent, err := s.readLimitedTextFile(filepath.Join(envPath, "pixi.toml"), "pixi.toml", s.limits.ManifestBytes)
 	if err != nil {
 		return fmt.Errorf("failed to read pixi.toml: %w", err)
 	}
 
-	lockContent, err := os.ReadFile(filepath.Join(envPath, "pixi.lock"))
+	lockContent, err := s.readLimitedTextFile(filepath.Join(envPath, "pixi.lock"), "pixi.lock", s.limits.LockBytes)
 	if err != nil {
 		return fmt.Errorf("failed to read pixi.lock: %w", err)
 	}
+	if err := s.ValidateVersionContent(ws.PackageManager, manifestContent, lockContent); err != nil {
+		return err
+	}
 
 	// Get package list from package manager
-	pm, err := pkgmgr.New(ws.PackageManager)
+	pm, err := pkgmgr.NewWithContext(ctx, ws.PackageManager)
 	if err != nil {
 		return fmt.Errorf("failed to create package manager: %w", err)
 	}
 
-	pkgs, err := pm.List(ctx, pkgmgr.ListOptions{EnvPath: envPath})
+	var pkgs []pkgmgr.Package
+	pkgs, err = pm.List(ctx, s.listOptions(envPath))
 	if err != nil {
-		return fmt.Errorf("failed to list packages: %w", err)
+		mappedErr := s.mapPackageManagerListError(err)
+		var validationErr *ValidationError
+		if errors.As(mappedErr, &validationErr) || ctx.Err() != nil || process.IsResourceLimitError(mappedErr) {
+			return fmt.Errorf("failed to list packages: %w", mappedErr)
+		}
+		slog.Warn("Failed to list packages for version snapshot; storing empty package metadata", "workspace_id", ws.ID, "error", mappedErr)
+		pkgs = nil
 	}
 
-	packageMetadata, err := json.Marshal(pkgs)
+	packageMetadata, err := s.packageMetadataJSON(pkgs)
 	if err != nil {
-		return fmt.Errorf("failed to serialize package metadata: %w", err)
+		return err
 	}
 
 	createdBy := userID
@@ -103,8 +98,8 @@ func (s *WorkspaceService) CreateVersionSnapshot(ctx context.Context, ws *models
 
 	version := models.WorkspaceVersion{
 		WorkspaceID:     ws.ID,
-		LockFileContent: string(lockContent),
-		ManifestContent: string(manifestContent),
+		LockFileContent: lockContent,
+		ManifestContent: manifestContent,
 		PackageMetadata: string(packageMetadata),
 		JobID:           &jobID,
 		CreatedBy:       createdBy,

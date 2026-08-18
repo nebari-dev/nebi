@@ -25,6 +25,7 @@ type Executor interface {
 	RemovePackages(ctx context.Context, ws *models.Workspace, packages []string, logWriter io.Writer) error
 	DeleteWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error
 	SolveEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error
+	CleanupJobArtifacts(ctx context.Context, ws *models.Workspace, jobType models.JobType, logWriter io.Writer) error
 	// InstallEnvironment materializes .pixi/envs from the resolved lockfile
 	// (pixi install). UninstallEnvironment removes .pixi/envs, leaving
 	// manifest and lockfile intact. IsEnvInstalled reports whether

@@ -3,9 +3,20 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/spf13/viper"
 )
+
+const (
+	HTTPReadHeaderTimeout = 10 * time.Second
+	HTTPIdleTimeout       = 120 * time.Second
+	HTTPMaxHeaderBytes    = 1 << 20
+)
+
+const readTimeoutBytesPerSecond int64 = 256 * 1024
+const minReadTimeoutSeconds = 30
 
 // Config holds all application configuration
 type Config struct {
@@ -17,6 +28,7 @@ type Config struct {
 	Log            LogConfig            `mapstructure:"log"`
 	PackageManager PackageManagerConfig `mapstructure:"package_manager"`
 	Storage        StorageConfig        `mapstructure:"storage"`
+	Limits         limits.Limits        `mapstructure:"limits"`
 	Registries     RegistriesConfig     `mapstructure:"registries"`
 }
 
@@ -28,11 +40,12 @@ func (c *Config) IsLocalMode() bool {
 // ServerConfig holds HTTP server configuration
 // Host may be empty to allow "all interfaces" bind behavior.
 type ServerConfig struct {
-	Host           string `mapstructure:"host"` // Bind host/IP (e.g. "127.0.0.1", "0.0.0.0")
-	Port           int    `mapstructure:"port"`
-	Mode           string `mapstructure:"mode"`            // "development" or "production"
-	BasePath       string `mapstructure:"base_path"`       // URL path prefix (e.g. "/nebi")
-	AllowedOrigins string `mapstructure:"allowed_origins"` // comma-separated non-loopback origins accepted in local mode and allowed as CSP frame-ancestors in all modes (e.g. "https://hub.example.com" when proxied by JupyterHub)
+	Host               string `mapstructure:"host"` // Bind host/IP (e.g. "127.0.0.1", "0.0.0.0")
+	Port               int    `mapstructure:"port"`
+	Mode               string `mapstructure:"mode"`                 // "development" or "production"
+	BasePath           string `mapstructure:"base_path"`            // URL path prefix (e.g. "/nebi")
+	AllowedOrigins     string `mapstructure:"allowed_origins"`      // comma-separated non-loopback origins accepted in local mode and allowed as CSP frame-ancestors in all modes (e.g. "https://hub.example.com" when proxied by JupyterHub)
+	ReadTimeoutSeconds int    `mapstructure:"read_timeout_seconds"` // Max seconds to read the full request, 0 disables
 }
 
 // AllowedOriginsList returns server.allowed_origins split on commas, with
@@ -50,6 +63,26 @@ func (c *ServerConfig) AllowedOriginsList() []string {
 	return out
 }
 
+// ReadTimeout returns the configured HTTP request read timeout.
+func (c *ServerConfig) ReadTimeout() time.Duration {
+	if c.ReadTimeoutSeconds <= 0 {
+		return 0
+	}
+	return time.Duration(c.ReadTimeoutSeconds) * time.Second
+}
+
+// DefaultReadTimeoutSeconds derives a read timeout from the request body cap.
+func DefaultReadTimeoutSeconds(requestBodyBytes int64) int {
+	if requestBodyBytes <= 0 {
+		return 0
+	}
+	seconds := int((requestBodyBytes + readTimeoutBytesPerSecond - 1) / readTimeoutBytesPerSecond)
+	if seconds < minReadTimeoutSeconds {
+		return minReadTimeoutSeconds
+	}
+	return seconds
+}
+
 // DatabaseConfig holds database configuration
 type DatabaseConfig struct {
 	Driver          string `mapstructure:"driver"`            // "sqlite" or "postgres"
@@ -61,16 +94,17 @@ type DatabaseConfig struct {
 
 // AuthConfig holds authentication configuration
 type AuthConfig struct {
-	Type               string `mapstructure:"type"`                  // "basic" or "oidc"
-	JWTSecret          string `mapstructure:"jwt_secret"`            // Secret for JWT signing
-	OIDCIssuerURL      string `mapstructure:"oidc_issuer_url"`       // OIDC provider issuer URL (e.g., https://accounts.google.com)
-	OIDCDiscoveryURL   string `mapstructure:"oidc_discovery_url"`    // Optional: URL for fetching .well-known/openid-configuration when it differs from the issuer (e.g. in-cluster Keycloak Service for back-channel calls); falls back to oidc_issuer_url when unset
-	OIDCClientID       string `mapstructure:"oidc_client_id"`        // OIDC client ID
-	OIDCClientSecret   string `mapstructure:"oidc_client_secret"`    // OIDC client secret
-	OIDCRedirectURL    string `mapstructure:"oidc_redirect_url"`     // OIDC redirect URL (e.g., http://localhost:8460/auth/oidc/callback)
-	ProxyAdminGroups   string `mapstructure:"proxy_admin_groups"`    // Comma-separated Keycloak/OIDC groups that grant admin (e.g., "admin,nebi-admin")
-	ProxyDefaultRole   string `mapstructure:"proxy_default_role"`    // Default role for proxy-authenticated users (default: "editor")
-	DeviceFlowClientID string `mapstructure:"device_flow_client_id"` // OIDC device flow public client ID (for RFC 8628 CLI login)
+	Type                        string `mapstructure:"type"`                           // "basic" or "oidc"
+	JWTSecret                   string `mapstructure:"jwt_secret"`                     // Secret for JWT signing
+	OIDCIssuerURL               string `mapstructure:"oidc_issuer_url"`                // OIDC provider issuer URL (e.g., https://accounts.google.com)
+	OIDCDiscoveryURL            string `mapstructure:"oidc_discovery_url"`             // Optional: URL for fetching .well-known/openid-configuration when it differs from the issuer (e.g. in-cluster Keycloak Service for back-channel calls); falls back to oidc_issuer_url when unset
+	OIDCClientID                string `mapstructure:"oidc_client_id"`                 // OIDC client ID
+	OIDCClientSecret            string `mapstructure:"oidc_client_secret"`             // OIDC client secret
+	OIDCRedirectURL             string `mapstructure:"oidc_redirect_url"`              // OIDC redirect URL (e.g., http://localhost:8460/auth/oidc/callback)
+	ProxyAdminGroups            string `mapstructure:"proxy_admin_groups"`             // Comma-separated Keycloak/OIDC groups that grant admin (e.g., "admin,nebi-admin")
+	ProxyDefaultRole            string `mapstructure:"proxy_default_role"`             // Default role for proxy-authenticated users (default: "editor")
+	DeviceFlowClientID          string `mapstructure:"device_flow_client_id"`          // OIDC device flow public client ID (for RFC 8628 CLI login)
+	AuthorizationStaleAfterMins int    `mapstructure:"authorization_stale_after_mins"` // Reconciled bearer authorization freshness window in minutes (default: 1440)
 }
 
 // QueueConfig holds job queue configuration
@@ -140,12 +174,27 @@ func Load() (*Config, error) {
 	v.SetDefault("auth.proxy_admin_groups", "admin")
 	v.SetDefault("auth.proxy_default_role", "editor")
 	v.SetDefault("auth.device_flow_client_id", "")
+	v.SetDefault("auth.authorization_stale_after_mins", 1440)
 	v.SetDefault("queue.type", "memory")
 	v.SetDefault("queue.valkey_addr", "localhost:6379")
 	v.SetDefault("log.format", "text")
 	v.SetDefault("log.level", "info")
 	v.SetDefault("package_manager.default_type", "pixi")
 	v.SetDefault("storage.workspaces_dir", "./data/workspaces")
+	defaultLimits := limits.Defaults()
+	v.SetDefault("limits.request_body_bytes", defaultLimits.RequestBodyBytes)
+	v.SetDefault("limits.manifest_bytes", defaultLimits.ManifestBytes)
+	v.SetDefault("limits.lock_bytes", defaultLimits.LockBytes)
+	v.SetDefault("limits.metadata_bytes", defaultLimits.MetadataBytes)
+	v.SetDefault("limits.max_packages", defaultLimits.MaxPackages)
+	v.SetDefault("limits.package_string_bytes", defaultLimits.PackageStringBytes)
+	v.SetDefault("limits.active_jobs_per_user", defaultLimits.ActiveJobsPerUser)
+	v.SetDefault("limits.active_jobs_per_workspace", defaultLimits.ActiveJobsPerWorkspace)
+	v.SetDefault("limits.active_jobs_global", defaultLimits.ActiveJobsGlobal)
+	v.SetDefault("limits.job_timeout_seconds", defaultLimits.JobTimeoutSeconds)
+	v.SetDefault("limits.job_cpu_seconds", defaultLimits.JobCPUSeconds)
+	v.SetDefault("limits.job_storage_bytes", defaultLimits.JobStorageBytes)
+	v.SetDefault("limits.job_log_bytes", defaultLimits.JobLogBytes)
 	v.SetDefault("registries.seed_default", true)
 
 	// Read from config file if exists
@@ -178,6 +227,7 @@ func Load() (*Config, error) {
 	_ = v.BindEnv("server.mode", "NEBI_SERVER_MODE")
 	_ = v.BindEnv("server.base_path", "NEBI_SERVER_BASE_PATH")
 	_ = v.BindEnv("server.allowed_origins", "NEBI_SERVER_ALLOWED_ORIGINS")
+	_ = v.BindEnv("server.read_timeout_seconds", "NEBI_SERVER_READ_TIMEOUT_SECONDS")
 	_ = v.BindEnv("database.driver", "NEBI_DATABASE_DRIVER")
 	_ = v.BindEnv("database.dsn", "NEBI_DATABASE_DSN")
 	_ = v.BindEnv("auth.type", "NEBI_AUTH_TYPE")
@@ -187,14 +237,38 @@ func Load() (*Config, error) {
 	_ = v.BindEnv("auth.oidc_client_id", "NEBI_AUTH_OIDC_CLIENT_ID")
 	_ = v.BindEnv("auth.oidc_client_secret", "NEBI_AUTH_OIDC_CLIENT_SECRET")
 	_ = v.BindEnv("auth.oidc_redirect_url", "NEBI_AUTH_OIDC_REDIRECT_URL")
+	_ = v.BindEnv("auth.authorization_stale_after_mins", "NEBI_AUTH_AUTHORIZATION_STALE_AFTER_MINS")
 	_ = v.BindEnv("queue.type", "NEBI_QUEUE_TYPE")
 	_ = v.BindEnv("queue.valkey_addr", "NEBI_QUEUE_VALKEY_ADDR")
 	_ = v.BindEnv("log.format", "NEBI_LOG_FORMAT")
 	_ = v.BindEnv("log.level", "NEBI_LOG_LEVEL")
+	_ = v.BindEnv("limits.request_body_bytes", "NEBI_LIMITS_REQUEST_BODY_BYTES")
+	_ = v.BindEnv("limits.manifest_bytes", "NEBI_LIMITS_MANIFEST_BYTES")
+	_ = v.BindEnv("limits.lock_bytes", "NEBI_LIMITS_LOCK_BYTES")
+	_ = v.BindEnv("limits.metadata_bytes", "NEBI_LIMITS_METADATA_BYTES")
+	_ = v.BindEnv("limits.max_packages", "NEBI_LIMITS_MAX_PACKAGES")
+	_ = v.BindEnv("limits.package_string_bytes", "NEBI_LIMITS_PACKAGE_STRING_BYTES")
+	_ = v.BindEnv("limits.active_jobs_per_user", "NEBI_LIMITS_ACTIVE_JOBS_PER_USER")
+	_ = v.BindEnv("limits.active_jobs_per_workspace", "NEBI_LIMITS_ACTIVE_JOBS_PER_WORKSPACE")
+	_ = v.BindEnv("limits.active_jobs_global", "NEBI_LIMITS_ACTIVE_JOBS_GLOBAL")
+	_ = v.BindEnv("limits.job_timeout_seconds", "NEBI_LIMITS_JOB_TIMEOUT_SECONDS")
+	_ = v.BindEnv("limits.job_cpu_seconds", "NEBI_LIMITS_JOB_CPU_SECONDS")
+	_ = v.BindEnv("limits.job_storage_bytes", "NEBI_LIMITS_JOB_STORAGE_BYTES")
+	_ = v.BindEnv("limits.job_log_bytes", "NEBI_LIMITS_JOB_LOG_BYTES")
 
+	readTimeoutExplicit := v.IsSet("server.read_timeout_seconds")
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
+	}
+	if err := cfg.Limits.Validate(); err != nil {
+		return nil, err
+	}
+	if !readTimeoutExplicit {
+		cfg.Server.ReadTimeoutSeconds = DefaultReadTimeoutSeconds(cfg.Limits.RequestBodyBytes)
+	}
+	if cfg.Server.ReadTimeoutSeconds < 0 {
+		return nil, fmt.Errorf("server.read_timeout_seconds must be non-negative")
 	}
 
 	// Normalize base path: ensure leading slash, strip trailing slash

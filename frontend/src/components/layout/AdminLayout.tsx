@@ -1,5 +1,6 @@
 import {
   Activity,
+  Fingerprint,
   LayoutDashboard,
   Package,
   Users,
@@ -12,6 +13,12 @@ const navItems = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/admin/users', label: 'Users', icon: Users, end: false },
   { to: '/admin/groups', label: 'Groups', icon: Users2, end: false },
+  {
+    to: '/admin/identity-reviews',
+    label: 'Identity Reviews',
+    icon: Fingerprint,
+    end: false,
+  },
   { to: '/admin/registries', label: 'Registries', icon: Package, end: false },
   { to: '/admin/audit-logs', label: 'Logs', icon: Activity, end: false },
 ];

@@ -10,6 +10,9 @@ import {
   AlertDialogTitle,
 } from './alert-dialog';
 
+// Local-only: the @nebari registry does not publish confirm-dialog.
+// Keep this app-specific wrapper on top of the local AlertDialog composition.
+
 interface ConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -48,11 +51,7 @@ export const ConfirmDialog = ({
           <AlertDialogCancel>{cancelText}</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
-            className={
-              variant === 'destructive'
-                ? 'bg-red-600 hover:bg-red-700 focus:ring-red-600'
-                : ''
-            }
+            variant={variant === 'destructive' ? 'destructive' : 'default'}
           >
             {confirmText}
           </AlertDialogAction>

@@ -155,6 +155,7 @@ export const RegistryManagement = () => {
                           variant="ghost"
                           size="sm"
                           onClick={() => setEditingRegistry(registry)}
+                          aria-label={`Edit ${registry.name}`}
                           disabled={registry.config_managed}
                           title={
                             registry.config_managed
@@ -173,6 +174,7 @@ export const RegistryManagement = () => {
                               name: registry.name,
                             })
                           }
+                          aria-label={`Delete ${registry.name}`}
                           disabled={
                             deleteRegistryMutation.isPending ||
                             registry.config_managed

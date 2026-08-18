@@ -2,6 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
+// Local-only: the @nebari registry does not publish split-button.
+// Keep this composed menu control on top of the registry-backed Button.
+
 export type SplitButtonMenuItem = {
   label: string;
   icon?: React.ReactNode;

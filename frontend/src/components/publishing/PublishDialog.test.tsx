@@ -38,15 +38,19 @@ describe('PublishDialog', () => {
   });
 
   it('renders the form with registry options when registries exist', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<PublishDialog {...defaultProps} />);
-    await waitFor(() =>
-      expect(
-        screen.getByRole('option', { name: new RegExp(mockRegistry.name) }),
-      ).toBeInTheDocument(),
-    );
+    const registrySelect = await screen.findByRole('combobox', {
+      name: 'Registry',
+    });
+    await user.click(registrySelect);
+    expect(
+      await screen.findByRole('option', {
+        name: new RegExp(mockRegistry.name),
+      }),
+    ).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/e\.g\., myenv/)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/e\.g\., v1/)).toBeInTheDocument();
-    expect(screen.getByLabelText('Registry')).toHaveFocus();
   });
 
   it('auto-populates form fields from publish defaults', async () => {
@@ -81,7 +85,12 @@ describe('PublishDialog', () => {
     renderWithProviders(<PublishDialog {...defaultProps} />);
     await waitFor(() => expect(screen.getByText('myorg/')).toBeInTheDocument());
 
-    await user.selectOptions(screen.getByLabelText('Registry'), 'reg-2');
+    await user.click(screen.getByRole('combobox', { name: 'Registry' }));
+    await user.click(
+      await screen.findByRole('option', {
+        name: /Harbor/,
+      }),
+    );
 
     expect(screen.queryByText('myorg/')).not.toBeInTheDocument();
     expect(screen.getByText('harbor-project/')).toBeInTheDocument();
@@ -100,11 +109,7 @@ describe('PublishDialog', () => {
       ),
     );
     renderWithProviders(<PublishDialog {...defaultProps} />);
-    await waitFor(() =>
-      expect(
-        screen.getByRole('option', { name: new RegExp(mockRegistry.name) }),
-      ).toBeInTheDocument(),
-    );
+    await screen.findByRole('combobox', { name: 'Registry' });
 
     expect(screen.getByRole('button', { name: /Publish/ })).toBeDisabled();
   });
@@ -113,17 +118,15 @@ describe('PublishDialog', () => {
     const user = userEvent.setup();
     renderWithProviders(<PublishDialog {...defaultProps} />);
 
-    await waitFor(() =>
-      expect(
-        screen.getByRole('option', { name: new RegExp(mockRegistry.name) }),
-      ).toBeInTheDocument(),
+    const registrySelect = await screen.findByRole('combobox', {
+      name: 'Registry',
+    });
+    await user.click(registrySelect);
+    await user.click(
+      await screen.findByRole('option', {
+        name: new RegExp(mockRegistry.name),
+      }),
     );
-
-    // Select registry
-    const select = screen.getByRole('combobox', {
-      hidden: true,
-    }) as HTMLSelectElement;
-    await user.selectOptions(select, mockRegistry.id);
 
     await user.click(screen.getByRole('button', { name: /Publish/ }));
 

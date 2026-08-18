@@ -381,7 +381,7 @@ export const Workspaces = () => {
                   Cancel
                 </Button>
                 <Button
-                  type="submit"
+                  render={<button type="submit" />}
                   disabled={isCreatePending || !getTomlName(pixiToml)?.trim()}
                 >
                   {isCreatePending ? (

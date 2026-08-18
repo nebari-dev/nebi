@@ -35,7 +35,7 @@ python = ">=3.11"
   await expect(
     page.getByRole('heading', { name: 'e2e-created-workspace' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Jobs' }).click();
+  await page.getByRole('tab', { name: 'Jobs' }).click();
   await expect(page.getByRole('heading', { name: 'Jobs' })).toBeVisible();
   await expect(page.getByText('Workspace created successfully')).toBeVisible();
   await expectNoCriticalOrSeriousA11yViolations(page);

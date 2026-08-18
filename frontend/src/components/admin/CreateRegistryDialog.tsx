@@ -77,12 +77,14 @@ export const CreateRegistryDialog = () => {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger>
-        <Button onClick={() => handleOpenChange(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Registry
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          <Button onClick={() => handleOpenChange(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Registry
+          </Button>
+        }
+      />
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add OCI Registry</DialogTitle>
@@ -228,7 +230,10 @@ export const CreateRegistryDialog = () => {
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
+            <Button
+              render={<button type="submit" />}
+              disabled={createMutation.isPending}
+            >
               {createMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

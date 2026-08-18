@@ -20,7 +20,7 @@ import { remoteApi } from '@/api/remote';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs';
 import { UserBadge } from '@/components/ui/user-badge';
 import { capitalize, getWorkspaceStatusColor } from '@/lib/utils';
 import type { RemoteWorkspaceTag, RemoteWorkspaceVersion } from '@/types';
@@ -111,13 +111,13 @@ export const RemoteWorkspaceDetail = () => {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="toml">Configuration</TabsTrigger>
-          <TabsTrigger value="versions">Version History</TabsTrigger>
-          <TabsTrigger value="tags">Tags</TabsTrigger>
+          <TabsTab value="overview">Overview</TabsTab>
+          <TabsTab value="toml">Configuration</TabsTab>
+          <TabsTab value="versions">Version History</TabsTab>
+          <TabsTab value="tags">Tags</TabsTab>
         </TabsList>
 
-        <TabsContent value="overview" className="px-1">
+        <TabsPanel value="overview" className="px-1">
           <div className="space-y-4 my-4">
             <h2 className="text-2xl font-bold mb-0">Overview</h2>
             <p className="text-muted-foreground text-sm mt-2">
@@ -241,9 +241,9 @@ export const RemoteWorkspaceDetail = () => {
               </div>
             </div>
           </div>
-        </TabsContent>
+        </TabsPanel>
 
-        <TabsContent value="toml">
+        <TabsPanel value="toml">
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -286,9 +286,9 @@ export const RemoteWorkspaceDetail = () => {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+        </TabsPanel>
 
-        <TabsContent value="versions">
+        <TabsPanel value="versions">
           <Card>
             <CardHeader>
               <CardTitle>Version History</CardTitle>
@@ -339,9 +339,9 @@ export const RemoteWorkspaceDetail = () => {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+        </TabsPanel>
 
-        <TabsContent value="tags">
+        <TabsPanel value="tags">
           <Card>
             <CardHeader>
               <CardTitle>Tags</CardTitle>
@@ -387,7 +387,7 @@ export const RemoteWorkspaceDetail = () => {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+        </TabsPanel>
       </Tabs>
     </div>
   );

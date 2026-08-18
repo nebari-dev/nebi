@@ -245,6 +245,48 @@ func TestFindOrCreateProxyUser_NoIdentity(t *testing.T) {
 	}
 }
 
+func TestIsUniqueConstraintErrorOnlyMatchesUniqueConstraints(t *testing.T) {
+	db := setupTestDB(t)
+	existing := models.User{
+		ID:           uuid.New(),
+		Username:     "unique-test",
+		Email:        "unique@example.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&existing).Error; err != nil {
+		t.Fatalf("create existing user: %v", err)
+	}
+
+	duplicate := models.User{
+		ID:           uuid.New(),
+		Username:     existing.Username,
+		Email:        "duplicate@example.com",
+		PasswordHash: "hashed-password",
+	}
+	uniqueErr := db.Create(&duplicate).Error
+	if uniqueErr == nil {
+		t.Fatal("expected duplicate username error")
+	}
+	if !isUniqueConstraintError(uniqueErr) {
+		t.Fatalf("expected duplicate username to be treated as unique constraint, got %v", uniqueErr)
+	}
+
+	notNullErr := db.Exec(
+		"INSERT INTO users (id, username, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+		uuid.New().String(),
+		"missing-email",
+		"hashed-password",
+		time.Now().UTC(),
+		time.Now().UTC(),
+	).Error
+	if notNullErr == nil {
+		t.Fatal("expected missing email to violate NOT NULL")
+	}
+	if isUniqueConstraintError(notNullErr) {
+		t.Fatalf("expected NOT NULL constraint not to be treated as unique, got %v", notNullErr)
+	}
+}
+
 func TestFindOrCreateProxyUser_DoesNotLinkByUsernameOrEmail(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -277,8 +319,8 @@ func TestFindOrCreateProxyUser_DoesNotLinkByUsernameOrEmail(t *testing.T) {
 	if review.UserID != localUser.ID {
 		t.Errorf("expected review for local user %s, got %s", localUser.ID, review.UserID)
 	}
-	if review.CollisionField != "username" {
-		t.Errorf("expected username collision field, got %s", review.CollisionField)
+	if review.CollisionField != models.FederatedIdentityReviewCollisionUsernameEmail {
+		t.Errorf("expected username+email collision field, got %s", review.CollisionField)
 	}
 }
 
@@ -351,7 +393,7 @@ func TestFindOrCreateProxyUser_PendingReviewTargetDoesNotMove(t *testing.T) {
 	}
 }
 
-func TestFindOrCreateProxyUser_UnverifiedEmailStoresProviderEmail(t *testing.T) {
+func TestFindOrCreateProxyUser_UnverifiedEmailUsesSyntheticUserEmail(t *testing.T) {
 	db := setupTestDB(t)
 
 	claims := &ProxyTokenClaims{
@@ -366,8 +408,8 @@ func TestFindOrCreateProxyUser_UnverifiedEmailStoresProviderEmail(t *testing.T) 
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if user.Email != claims.Email {
-		t.Fatalf("expected unverified provider email to be stored as user email, got %s", user.Email)
+	if user.Email != "erin@nebi.local" {
+		t.Fatalf("expected unverified provider email not to be stored as user email, got %s", user.Email)
 	}
 
 	var identity models.FederatedIdentity
@@ -382,7 +424,7 @@ func TestFindOrCreateProxyUser_UnverifiedEmailStoresProviderEmail(t *testing.T) 
 	}
 }
 
-func TestFindOrCreateProxyUser_UnverifiedEmailCollisionRequiresReview(t *testing.T) {
+func TestFindOrCreateProxyUser_UnverifiedEmailCollisionDoesNotRequireReview(t *testing.T) {
 	db := setupTestDB(t)
 
 	localUser := models.User{
@@ -403,19 +445,86 @@ func TestFindOrCreateProxyUser_UnverifiedEmailCollisionRequiresReview(t *testing
 		EmailVerified:     false,
 	}
 	user, err := findOrCreateProxyUser(db, claims)
+	if err != nil {
+		t.Fatalf("unexpected error for unverified email collision: %v", err)
+	}
+	if user.ID == localUser.ID {
+		t.Fatal("expected unverified email not to bind to the existing local user")
+	}
+	if user.Email != "remote-erin@nebi.local" {
+		t.Fatalf("expected synthetic user email for unverified provider email, got %s", user.Email)
+	}
+
+	var reviewCount int64
+	db.Model(&models.FederatedIdentityReview{}).Where("issuer = ? AND subject = ?", claims.Issuer, claims.Sub).Count(&reviewCount)
+	if reviewCount != 0 {
+		t.Fatalf("expected no review for unverified email-only collision, got %d", reviewCount)
+	}
+
+	var identity models.FederatedIdentity
+	if err := db.Where("issuer = ? AND subject = ?", claims.Issuer, claims.Sub).First(&identity).Error; err != nil {
+		t.Fatalf("load federated identity: %v", err)
+	}
+	if identity.Email != claims.Email {
+		t.Errorf("expected federated profile email to retain provider email, got %s", identity.Email)
+	}
+	if identity.EmailVerified {
+		t.Fatal("expected email_verified=false to be retained")
+	}
+}
+
+func TestFindOrCreateProxyUser_AmbiguousUsernameEmailCollisionRequiresReview(t *testing.T) {
+	db := setupTestDB(t)
+
+	alice := models.User{
+		ID:           uuid.New(),
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hashed-password",
+	}
+	bob := models.User{
+		ID:           uuid.New(),
+		Username:     "bob",
+		Email:        "bob@example.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&alice).Error; err != nil {
+		t.Fatalf("create alice user: %v", err)
+	}
+	if err := db.Create(&bob).Error; err != nil {
+		t.Fatalf("create bob user: %v", err)
+	}
+
+	claims := &ProxyTokenClaims{
+		Issuer:            "https://issuer.example.com",
+		Sub:               "ambiguous-sub",
+		PreferredUsername: "alice",
+		Email:             "bob@example.com",
+		EmailVerified:     true,
+	}
+	user, err := findOrCreateProxyUser(db, claims)
 	if !errors.Is(err, errFederatedIdentityRequiresReview) {
-		t.Fatalf("expected review error for colliding unverified email, got user=%v err=%v", user, err)
+		t.Fatalf("expected review error for ambiguous collision, got user=%v err=%v", user, err)
 	}
 
 	var review models.FederatedIdentityReview
 	if err := db.Where("issuer = ? AND subject = ?", claims.Issuer, claims.Sub).First(&review).Error; err != nil {
 		t.Fatalf("expected pending federated identity review: %v", err)
 	}
-	if review.UserID != localUser.ID {
-		t.Errorf("expected review for local user %s, got %s", localUser.ID, review.UserID)
+	if review.UserID != alice.ID {
+		t.Errorf("expected review to target username collision user %s, got %s", alice.ID, review.UserID)
 	}
-	if review.CollisionField != "email" {
-		t.Errorf("expected email collision field, got %s", review.CollisionField)
+	if review.CollisionField != models.FederatedIdentityReviewCollisionUsernameEmail {
+		t.Errorf("expected username+email collision field, got %s", review.CollisionField)
+	}
+	if review.CollisionUsernameUserID == nil || *review.CollisionUsernameUserID != alice.ID {
+		t.Fatalf("expected username collision user %s, got %v", alice.ID, review.CollisionUsernameUserID)
+	}
+	if review.CollisionEmailUserID == nil || *review.CollisionEmailUserID != bob.ID {
+		t.Fatalf("expected email collision user %s, got %v", bob.ID, review.CollisionEmailUserID)
+	}
+	if !review.HasAmbiguousCollision() {
+		t.Fatal("expected review to be marked ambiguous")
 	}
 }
 

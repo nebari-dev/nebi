@@ -31,6 +31,7 @@ import {
   type FederatedIdentityReview,
   type FederatedIdentityReviewStatusFilter,
   isPendingFederatedIdentityReview,
+  type User,
 } from '@/types';
 
 type ReviewStatusTab = Exclude<FederatedIdentityReviewStatusFilter, 'all'>;
@@ -40,6 +41,75 @@ const reviewDisplayName = (review: FederatedIdentityReview) =>
 
 const formatDate = (value: string) =>
   value ? new Date(value).toLocaleString() : '—';
+
+const hasAmbiguousCollision = (review: FederatedIdentityReview) =>
+  !!review.collision_username_user_id &&
+  !!review.collision_email_user_id &&
+  review.collision_username_user_id !== review.collision_email_user_id;
+
+const collisionLabel = (review: FederatedIdentityReview) => {
+  if (hasAmbiguousCollision(review)) {
+    return 'multiple users';
+  }
+  if (review.collision_field === 'username,email') {
+    return 'username + email';
+  }
+  return review.collision_field.replace(/_/g, ' ');
+};
+
+const CollisionUser = ({
+  label,
+  user,
+  userId,
+}: {
+  label: string;
+  user?: User;
+  userId?: string;
+}) => {
+  if (!user && !userId) return null;
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase text-muted-foreground">
+        {label}
+      </p>
+      <p className="font-medium">{user?.username || 'Deleted user'}</p>
+      <p className="break-all text-sm text-muted-foreground">
+        {user?.email || userId}
+      </p>
+    </div>
+  );
+};
+
+const ExistingCollisionUsers = ({
+  review,
+}: {
+  review: FederatedIdentityReview;
+}) => {
+  if (hasAmbiguousCollision(review)) {
+    return (
+      <div className="space-y-3">
+        <CollisionUser
+          label="Username match"
+          user={review.collision_username_user}
+          userId={review.collision_username_user_id}
+        />
+        <CollisionUser
+          label="Email match"
+          user={review.collision_email_user}
+          userId={review.collision_email_user_id}
+        />
+      </div>
+    );
+  }
+  return (
+    <div>
+      <p className="font-medium">{review.user?.username || 'Deleted user'}</p>
+      <p className="break-all text-sm text-muted-foreground">
+        {review.user?.email || review.user_id}
+      </p>
+    </div>
+  );
+};
 
 const mutationErrorMessage = (err: unknown) => {
   const error = err as { response?: { data?: { error?: string } } };
@@ -195,6 +265,7 @@ export const FederatedIdentityReviews = () => {
                 <tbody>
                   {displayedReviews.map((review) => {
                     const isPending = isPendingFederatedIdentityReview(review);
+                    const isAmbiguous = hasAmbiguousCollision(review);
                     const isApproving =
                       (isRemoteView
                         ? approveRemoteReview.variables
@@ -240,14 +311,7 @@ export const FederatedIdentityReviews = () => {
                         <td className="p-4">
                           <div className="flex items-start gap-2">
                             <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                            <div>
-                              <p className="font-medium">
-                                {review.user?.username || 'Deleted user'}
-                              </p>
-                              <p className="text-sm text-muted-foreground">
-                                {review.user?.email || review.user_id}
-                              </p>
-                            </div>
+                            <ExistingCollisionUsers review={review} />
                           </div>
                         </td>
                         <td className="p-4">
@@ -281,7 +345,7 @@ export const FederatedIdentityReviews = () => {
                         </td>
                         <td className="p-4">
                           <Badge variant="outline">
-                            {review.collision_field.replace(/_/g, ' ')}
+                            {collisionLabel(review)}
                           </Badge>
                         </td>
                         <td className="p-4">
@@ -315,7 +379,12 @@ export const FederatedIdentityReviews = () => {
                               <Button
                                 size="sm"
                                 onClick={() => setReviewToApprove(review)}
-                                disabled={isRowMutating}
+                                disabled={isRowMutating || isAmbiguous}
+                                title={
+                                  isAmbiguous
+                                    ? 'Resolve conflicting users before approving'
+                                    : undefined
+                                }
                                 aria-label={`Approve identity review for ${reviewDisplayName(review)}`}
                               >
                                 {isApproving ? (

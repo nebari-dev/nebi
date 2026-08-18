@@ -61,7 +61,7 @@ const (
 	ActionLoginFailed              = "login_failed"
 	ActionApproveFederatedIdentity = "approve_federated_identity"
 	ActionRejectFederatedIdentity  = "reject_federated_identity"
-	ActionDiscardFederatedIdentity = "discard_federated_identity_review"
+	ActionDiscardFederatedIdentity = "discard_federated_identity"
 )
 
 // Resource types

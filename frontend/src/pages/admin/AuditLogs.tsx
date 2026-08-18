@@ -19,6 +19,7 @@ const ACTION_COLORS: Record<string, string> = {
   approve_federated_identity:
     'bg-emerald-100 text-emerald-800 border-emerald-300',
   reject_federated_identity: 'bg-red-100 text-red-800 border-red-300',
+  discard_federated_identity: 'bg-zinc-100 text-zinc-800 border-zinc-300',
   share_workspace: 'bg-cyan-100 text-cyan-800 border-cyan-300',
   unshare_workspace: 'bg-yellow-100 text-yellow-800 border-yellow-300',
 };
@@ -108,6 +109,9 @@ export const AuditLogs = () => {
           </option>
           <option value="reject_federated_identity">
             Reject Federated Identity
+          </option>
+          <option value="discard_federated_identity">
+            Discard Federated Identity
           </option>
           <option value="share_workspace">Share Workspace</option>
           <option value="unshare_workspace">Unshare Workspace</option>

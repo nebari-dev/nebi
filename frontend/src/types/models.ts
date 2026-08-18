@@ -180,6 +180,10 @@ export interface FederatedIdentityReview {
   issuer: string;
   subject: string;
   collision_field: string;
+  collision_username_user_id?: string;
+  collision_username_user?: User;
+  collision_email_user_id?: string;
+  collision_email_user?: User;
   username: string;
   email: string;
   email_verified: boolean;

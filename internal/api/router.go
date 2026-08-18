@@ -352,6 +352,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 
 				// Admin proxies (for view mode toggle in admin pages)
 				remoteAdmin := remote.Group("/admin")
+				// /remote routes are local-mode only, so this local admin check is
+				// symbolic consistency. The remote server still enforces whether
+				// the stored remote token has admin access.
 				remoteAdmin.Use(middleware.RequireAdmin(localMode, rbacProvider))
 				{
 					remoteAdmin.GET("/users", remoteHandler.ListAdminUsers)

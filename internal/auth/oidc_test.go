@@ -136,8 +136,8 @@ func TestOIDCFindOrCreateUser_CaseInsensitiveCollisionRequiresReview(t *testing.
 	if review.UserID != existing.ID {
 		t.Errorf("expected review for local user %s, got %s", existing.ID, review.UserID)
 	}
-	if review.CollisionField != "username" {
-		t.Errorf("expected username collision field, got %s", review.CollisionField)
+	if review.CollisionField != models.FederatedIdentityReviewCollisionUsernameEmail {
+		t.Errorf("expected username+email collision field, got %s", review.CollisionField)
 	}
 }
 

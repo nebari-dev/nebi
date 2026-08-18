@@ -85,6 +85,50 @@ describe('FederatedIdentityReviews', () => {
     await waitFor(() => expect(rejectedReviewID).toBe('review-1'));
   });
 
+  it('shows split username and email collisions as ambiguous', async () => {
+    server.use(
+      http.get('/api/v1/admin/federated-identity-reviews', () =>
+        HttpResponse.json([
+          {
+            ...mockFederatedIdentityReview,
+            collision_field: 'username,email',
+            collision_username_user_id: 'user-alice',
+            collision_username_user: {
+              id: 'user-alice',
+              username: 'alice',
+              email: 'alice@example.com',
+              created_at: '2024-01-01T00:00:00Z',
+              updated_at: '2024-01-01T00:00:00Z',
+            },
+            collision_email_user_id: 'user-bob',
+            collision_email_user: {
+              id: 'user-bob',
+              username: 'bob',
+              email: 'bob@example.com',
+              created_at: '2024-01-01T00:00:00Z',
+              updated_at: '2024-01-01T00:00:00Z',
+            },
+            username: 'alice',
+            email: 'bob@example.com',
+          },
+        ]),
+      ),
+    );
+
+    renderWithProviders(<FederatedIdentityReviews />);
+
+    expect(await screen.findByText('multiple users')).toBeInTheDocument();
+    expect(screen.getByText('Username match')).toBeInTheDocument();
+    expect(screen.getByText('Email match')).toBeInTheDocument();
+    expect(screen.getByText('alice@example.com')).toBeInTheDocument();
+    expect(screen.getAllByText('bob@example.com')).toHaveLength(2);
+    expect(
+      screen.getByRole('button', {
+        name: /approve identity review for alice/i,
+      }),
+    ).toBeDisabled();
+  });
+
   it('shows rejected identity reviews without actions', async () => {
     const user = userEvent.setup();
     server.use(

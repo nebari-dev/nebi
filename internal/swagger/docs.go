@@ -3871,7 +3871,21 @@ const docTemplate = `{
                 "avatar_url": {
                     "type": "string"
                 },
+                "collision_email_user": {
+                    "$ref": "#/definitions/models.User"
+                },
+                "collision_email_user_id": {
+                    "description": "User matched by the incoming verified email claim, when present.",
+                    "type": "string"
+                },
                 "collision_field": {
+                    "type": "string"
+                },
+                "collision_username_user": {
+                    "$ref": "#/definitions/models.User"
+                },
+                "collision_username_user_id": {
+                    "description": "User matched by the incoming username claim, when present.",
                     "type": "string"
                 },
                 "created_at": {

@@ -536,6 +536,73 @@ func TestAdminRejectFederatedIdentityReview(t *testing.T) {
 	}
 }
 
+func TestAdminRejectFederatedIdentityReviewDoesNotFallbackInsert(t *testing.T) {
+	svc, _, db := adminTestSetup(t)
+	adminID := createTestUser(t, db, "admin")
+	localUser := models.User{
+		Username:     "local-race",
+		Email:        "race@test.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&localUser).Error; err != nil {
+		t.Fatalf("create local user: %v", err)
+	}
+	review := models.FederatedIdentityReview{
+		UserID:         localUser.ID,
+		Issuer:         "https://issuer.example.com",
+		Subject:        "sub-race",
+		CollisionField: "email",
+		Username:       "race",
+		Email:          "race@test.com",
+		EmailVerified:  true,
+		Status:         models.FederatedIdentityReviewStatusPending,
+	}
+	if err := db.Create(&review).Error; err != nil {
+		t.Fatalf("create review: %v", err)
+	}
+
+	callbackName := "nebi:test_delete_review_before_reject_update"
+	deletedBeforeUpdate := false
+	if err := db.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
+		if deletedBeforeUpdate || tx.Statement.Schema == nil || tx.Statement.Schema.Table != "federated_identity_reviews" {
+			return
+		}
+		deletedBeforeUpdate = true
+		if err := tx.Session(&gorm.Session{NewDB: true}).
+			Exec("DELETE FROM federated_identity_reviews WHERE id = ?", review.ID).
+			Error; err != nil {
+			tx.AddError(err)
+		}
+	}); err != nil {
+		t.Fatalf("register update callback: %v", err)
+	}
+	defer db.Callback().Update().Remove(callbackName)
+
+	err := svc.RejectFederatedIdentityReview(review.ID, adminID)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound after review disappeared during update, got %T: %v", err, err)
+	}
+	if !deletedBeforeUpdate {
+		t.Fatal("expected test callback to delete the review before reject update")
+	}
+
+	var rejectedCount int64
+	db.Model(&models.FederatedIdentityReview{}).
+		Where("id = ? AND status = ?", review.ID, models.FederatedIdentityReviewStatusRejected).
+		Count(&rejectedCount)
+	if rejectedCount != 0 {
+		t.Fatalf("expected reject not to recreate a rejected review, got %d", rejectedCount)
+	}
+
+	var auditCount int64
+	db.Model(&models.AuditLog{}).
+		Where("user_id = ? AND action = ? AND resource = ?", adminID, "reject_federated_identity", "federated_identity_review:"+review.ID.String()).
+		Count(&auditCount)
+	if auditCount != 0 {
+		t.Errorf("expected no reject audit log for a failed conditional update, got %d", auditCount)
+	}
+}
+
 func TestAdminDiscardFederatedIdentityReview(t *testing.T) {
 	svc, _, db := adminTestSetup(t)
 	adminID := createTestUser(t, db, "admin")
@@ -572,7 +639,7 @@ func TestAdminDiscardFederatedIdentityReview(t *testing.T) {
 	}
 
 	var auditCount int64
-	db.Model(&models.AuditLog{}).Where("user_id = ? AND action = ?", adminID, "discard_federated_identity_review").Count(&auditCount)
+	db.Model(&models.AuditLog{}).Where("user_id = ? AND action = ?", adminID, "discard_federated_identity").Count(&auditCount)
 	if auditCount != 1 {
 		t.Errorf("expected 1 audit log, got %d", auditCount)
 	}
@@ -610,6 +677,56 @@ func TestAdminApproveRejectedFederatedIdentityReviewConflicts(t *testing.T) {
 	var conflict *ConflictError
 	if !errors.As(err, &conflict) {
 		t.Fatalf("expected ConflictError, got %T: %v", err, err)
+	}
+}
+
+func TestAdminApproveAmbiguousFederatedIdentityReviewConflicts(t *testing.T) {
+	svc, _, db := adminTestSetup(t)
+	adminID := createTestUser(t, db, "admin")
+	alice := models.User{
+		Username:     "alice",
+		Email:        "alice@test.com",
+		PasswordHash: "hashed-password",
+	}
+	bob := models.User{
+		Username:     "bob",
+		Email:        "bob@test.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&alice).Error; err != nil {
+		t.Fatalf("create alice user: %v", err)
+	}
+	if err := db.Create(&bob).Error; err != nil {
+		t.Fatalf("create bob user: %v", err)
+	}
+	review := models.FederatedIdentityReview{
+		UserID:                  alice.ID,
+		Issuer:                  "https://issuer.example.com",
+		Subject:                 "sub-ambiguous",
+		CollisionField:          models.FederatedIdentityReviewCollisionUsernameEmail,
+		CollisionUsernameUserID: &alice.ID,
+		CollisionEmailUserID:    &bob.ID,
+		Username:                "alice",
+		Email:                   "bob@test.com",
+		EmailVerified:           true,
+	}
+	if err := db.Create(&review).Error; err != nil {
+		t.Fatalf("create review: %v", err)
+	}
+
+	identity, err := svc.ApproveFederatedIdentityReview(review.ID, adminID)
+	if err == nil {
+		t.Fatalf("expected conflict, got identity=%v", identity)
+	}
+	var conflict *ConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("expected ConflictError, got %T: %v", err, err)
+	}
+
+	var identityCount int64
+	db.Model(&models.FederatedIdentity{}).Where("issuer = ? AND subject = ?", review.Issuer, review.Subject).Count(&identityCount)
+	if identityCount != 0 {
+		t.Fatalf("expected no federated identity to be created, got %d", identityCount)
 	}
 }
 

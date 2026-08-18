@@ -86,15 +86,15 @@ func findOrCreateFederatedUserOnce(db *gorm.DB, claims federatedUserClaims) (*mo
 			return err
 		}
 
-		collision, field, err := federatedReviewCollision(tx, claims)
+		collision, err := federatedReviewCollision(tx, claims)
 		if err != nil {
 			return err
 		}
-		if collision != nil {
-			if err := recordFederatedIdentityReview(tx, collision.ID, field, claims); err != nil {
+		if collision != nil && collision.User != nil {
+			if err := recordFederatedIdentityReview(tx, collision, claims); err != nil {
 				return err
 			}
-			reviewRequired = fmt.Errorf("%w: existing user %s has a matching %s claim", errFederatedIdentityRequiresReview, collision.ID, field)
+			reviewRequired = fmt.Errorf("%w: existing user %s has a matching %s claim", errFederatedIdentityRequiresReview, collision.User.ID, collision.Field)
 			return nil
 		}
 		if err := deleteStalePendingFederatedIdentityReview(tx, claims); err != nil {
@@ -118,7 +118,7 @@ func findOrCreateFederatedUserOnce(db *gorm.DB, claims federatedUserClaims) (*mo
 		}
 		if err := tx.Create(&user).Error; err != nil {
 			if isUniqueConstraintError(err) {
-				return errRetryFederatedIdentityResolution
+				return fmt.Errorf("%w: %v", errRetryFederatedIdentityResolution, err)
 			}
 			return fmt.Errorf("failed to create federated user: %w", err)
 		}
@@ -141,7 +141,7 @@ func findOrCreateFederatedUserOnce(db *gorm.DB, claims federatedUserClaims) (*mo
 			return fmt.Errorf("failed to create federated identity: %w", result.Error)
 		}
 		if result.RowsAffected == 0 {
-			return errRetryFederatedIdentityResolution
+			return fmt.Errorf("%w: federated identity already exists", errRetryFederatedIdentityResolution)
 		}
 		created = true
 		return nil
@@ -197,28 +197,46 @@ func normalizeFederatedClaims(claims federatedUserClaims) federatedUserClaims {
 	return claims
 }
 
-func federatedReviewCollision(db *gorm.DB, claims federatedUserClaims) (*models.User, string, error) {
+type federatedReviewCollisionResult struct {
+	User                    *models.User
+	Field                   string
+	CollisionUsernameUserID *uuid.UUID
+	CollisionEmailUserID    *uuid.UUID
+}
+
+func federatedReviewCollision(db *gorm.DB, claims federatedUserClaims) (*federatedReviewCollisionResult, error) {
+	collision := &federatedReviewCollisionResult{}
 	if claims.PreferredUsername != "" {
-		user, err := userByField(db, "username", claims.PreferredUsername)
+		user, err := userByField(db, models.FederatedIdentityReviewCollisionUsername, claims.PreferredUsername)
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
 		if user != nil {
-			return user, "username", nil
+			collision.User = user
+			collision.Field = models.FederatedIdentityReviewCollisionUsername
+			id := user.ID
+			collision.CollisionUsernameUserID = &id
 		}
 	}
 
-	if claims.Email != "" {
-		user, err := userByField(db, "email", claims.Email)
+	if claims.EmailVerified && claims.Email != "" {
+		user, err := userByField(db, models.FederatedIdentityReviewCollisionEmail, claims.Email)
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
 		if user != nil {
-			return user, "email", nil
+			id := user.ID
+			collision.CollisionEmailUserID = &id
+			if collision.User == nil {
+				collision.User = user
+				collision.Field = models.FederatedIdentityReviewCollisionEmail
+			} else {
+				collision.Field = models.FederatedIdentityReviewCollisionUsernameEmail
+			}
 		}
 	}
 
-	return nil, "", nil
+	return collision, nil
 }
 
 func enforceRejectedFederatedIdentityReview(db *gorm.DB, claims federatedUserClaims) error {
@@ -235,7 +253,7 @@ func enforceRejectedFederatedIdentityReview(db *gorm.DB, claims federatedUserCla
 	return fmt.Errorf("%w: issuer %s subject %s", errFederatedIdentityRejected, claims.Issuer, claims.Subject)
 }
 
-func recordFederatedIdentityReview(db *gorm.DB, userID uuid.UUID, field string, claims federatedUserClaims) error {
+func recordFederatedIdentityReview(db *gorm.DB, collision *federatedReviewCollisionResult, claims federatedUserClaims) error {
 	var review models.FederatedIdentityReview
 	err := db.Where("issuer = ? AND subject = ?", claims.Issuer, claims.Subject).First(&review).Error
 	if err == nil {
@@ -243,42 +261,64 @@ func recordFederatedIdentityReview(db *gorm.DB, userID uuid.UUID, field string, 
 			return fmt.Errorf("%w: issuer %s subject %s", errFederatedIdentityRejected, claims.Issuer, claims.Subject)
 		}
 		// Keep pending reviews bound to the user and claims an admin reviewed.
-		// Profile details refresh after approval through updateFederatedIdentityProfile.
 		return nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return fmt.Errorf("failed to record federated identity review: %w", err)
 	}
 	review = models.FederatedIdentityReview{
-		UserID:         userID,
-		Issuer:         claims.Issuer,
-		Subject:        claims.Subject,
-		CollisionField: field,
-		Username:       claims.PreferredUsername,
-		Email:          claims.Email,
-		EmailVerified:  claims.EmailVerified,
-		Name:           claims.Name,
-		AvatarURL:      claims.AvatarURL,
-		Status:         models.FederatedIdentityReviewStatusPending,
+		UserID:                  collision.User.ID,
+		Issuer:                  claims.Issuer,
+		Subject:                 claims.Subject,
+		CollisionField:          collision.Field,
+		CollisionUsernameUserID: collision.CollisionUsernameUserID,
+		CollisionEmailUserID:    collision.CollisionEmailUserID,
+		Username:                claims.PreferredUsername,
+		Email:                   claims.Email,
+		EmailVerified:           claims.EmailVerified,
+		Name:                    claims.Name,
+		AvatarURL:               claims.AvatarURL,
+		Status:                  models.FederatedIdentityReviewStatusPending,
 	}
 	if err := db.Create(&review).Error; err != nil {
+		if isUniqueConstraintError(err) {
+			// A concurrent first login may have created this review after the
+			// lookup above. Treat it like the stable pending-review state.
+			return nil
+		}
 		return fmt.Errorf("failed to record federated identity review: %w", err)
 	}
 	return nil
 }
 
 func deleteStalePendingFederatedIdentityReview(db *gorm.DB, claims federatedUserClaims) error {
-	if err := db.Unscoped().
+	var review models.FederatedIdentityReview
+	err := db.
 		Where("issuer = ? AND subject = ?", claims.Issuer, claims.Subject).
 		Where("status = ? OR status = ''", models.FederatedIdentityReviewStatusPending).
-		Delete(&models.FederatedIdentityReview{}).Error; err != nil {
+		First(&review).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("load stale federated identity review: %w", err)
+	}
+	if err := db.Unscoped().Delete(&review).Error; err != nil {
 		return fmt.Errorf("delete stale federated identity review: %w", err)
 	}
+	slog.Info(
+		"Deleted stale pending federated identity review after claims no longer collide",
+		"review_id", review.ID,
+		"user_id", review.UserID,
+		"issuer", review.Issuer,
+		"subject", review.Subject,
+		"collision_field", review.CollisionField,
+	)
 	return nil
 }
 
 func userByField(db *gorm.DB, field, value string) (*models.User, error) {
-	if field != "username" && field != "email" {
+	if field != models.FederatedIdentityReviewCollisionUsername && field != models.FederatedIdentityReviewCollisionEmail {
 		return nil, fmt.Errorf("unsupported user collision field: %s", field)
 	}
 
@@ -343,7 +383,7 @@ func federatedUserUsername(db *gorm.DB, claims federatedUserClaims, suffix strin
 }
 
 func federatedUserEmail(db *gorm.DB, claims federatedUserClaims, suffix string) (string, error) {
-	if claims.Email != "" {
+	if claims.EmailVerified && claims.Email != "" {
 		base := claims.Email
 		return uniqueUserValue(emailExists, db, base, func(n int) string {
 			return federatedEmailWithSuffix(base, suffix, n)
@@ -404,9 +444,7 @@ func isUniqueConstraintError(err error) bool {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "unique constraint") ||
-		strings.Contains(msg, "duplicate key value violates unique constraint") ||
-		strings.Contains(msg, "constraint failed")
+	return strings.Contains(msg, "unique constraint")
 }
 
 func federatedIdentitySuffix(issuer, subject string) string {

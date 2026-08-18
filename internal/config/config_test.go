@@ -50,6 +50,7 @@ func TestLoad_TeamMode_AcceptsStrongJWTSecret(t *testing.T) {
 	isolate(t)
 	t.Setenv("NEBI_MODE", "team")
 	t.Setenv("NEBI_AUTH_JWT_SECRET", strings.Repeat("s", 32))
+	t.Setenv("NEBI_AUTH_AUTHORIZATION_STALE_AFTER_MINS", "30")
 
 	cfg, err := Load()
 	if err != nil {
@@ -57,6 +58,9 @@ func TestLoad_TeamMode_AcceptsStrongJWTSecret(t *testing.T) {
 	}
 	if cfg.Auth.JWTSecret != strings.Repeat("s", 32) {
 		t.Fatalf("expected configured secret to be loaded, got %q", cfg.Auth.JWTSecret)
+	}
+	if cfg.Auth.AuthorizationStaleAfterMins != 30 {
+		t.Fatalf("expected configured stale window to be loaded, got %d", cfg.Auth.AuthorizationStaleAfterMins)
 	}
 }
 

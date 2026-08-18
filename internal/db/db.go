@@ -119,6 +119,7 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 		&models.GroupPermission{},
 		&models.ResourceLock{},
 		&models.ResourceMetric{},
+		&models.AuthReconciliationStatus{},
 		&models.SystemSetting{},
 	)
 	if err != nil {

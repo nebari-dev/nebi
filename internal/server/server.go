@@ -16,6 +16,7 @@ import (
 
 	"github.com/nebari-dev/nebi/internal/api"
 	"github.com/nebari-dev/nebi/internal/api/handlers"
+	"github.com/nebari-dev/nebi/internal/auth"
 	"github.com/nebari-dev/nebi/internal/config"
 	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/db"
@@ -193,6 +194,9 @@ func Run(ctx context.Context, cfg Config) error {
 
 		var valkeyClientInterface interface{} = valkeyClient
 		router := api.NewRouter(appCfg, database, jobQueue, exec, broker, valkeyClientInterface, slog.Default())
+		if !appCfg.IsLocalMode() {
+			auth.StartAuthReconciliationMonitor(ctx, database, rbac.NewDefaultProvider(), slog.Default())
+		}
 
 		var handler http.Handler = router
 		if appCfg.IsLocalMode() {

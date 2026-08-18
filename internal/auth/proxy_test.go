@@ -1,11 +1,16 @@
 package auth
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/models"
 	"gorm.io/gorm"
@@ -17,7 +22,13 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("failed to open test db: %v", err)
 	}
-	if err := db.AutoMigrate(&models.User{}); err != nil {
+	if err := db.AutoMigrate(
+		&models.User{},
+		&models.Group{},
+		&models.GroupMember{},
+		&models.AuditLog{},
+		&models.AuthReconciliationStatus{},
+	); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
 	return db
@@ -173,18 +184,255 @@ func TestParseAdminGroups(t *testing.T) {
 	}
 }
 
-func TestSyncRolesFromGroups_MatchesWithSlash(t *testing.T) {
-	// This test verifies that groups with leading "/" are handled correctly.
-	// We can't test the actual rbac calls without a full enforcer, so we
-	// just verify the function doesn't panic with various inputs.
+func TestShouldBeAdminFromGroups_MatchesWithSlash(t *testing.T) {
+	provider := &stubRBACProvider{}
+	shouldBeAdmin := shouldBeAdminFromGroups([]string{"/admin", "/dev"}, []string{"admin"})
 
-	// Groups from Keycloak often have leading "/"
-	groups := []string{"/admin", "/dev"}
-	adminGroups := []string{"admin"}
+	if err := syncAdminRoleToDesired(uuid.New(), shouldBeAdmin, provider); err != nil {
+		t.Fatalf("sync roles: %v", err)
+	}
+	if !provider.madeAdmin {
+		t.Fatal("expected admin grant for slash-prefixed admin group")
+	}
+}
 
-	// This should not panic — it will log warnings about RBAC not being initialized,
-	// but that's expected in a unit test without a full enforcer.
-	// We're primarily testing the group matching logic.
-	_ = groups
-	_ = adminGroups
+func TestSyncAdminRoleToDesired_ReturnsAdminCheckFailure(t *testing.T) {
+	wantErr := errors.New("casbin unavailable")
+	provider := &stubRBACProvider{isAdminErr: wantErr}
+
+	err := syncAdminRoleToDesired(uuid.New(), true, provider)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected admin check error, got %v", err)
+	}
+	if provider.madeAdmin || provider.revokedAdmin {
+		t.Fatal("expected no admin mutation when status check fails")
+	}
+}
+
+func TestSyncAdminRoleToDesired_ReturnsGrantFailure(t *testing.T) {
+	wantErr := errors.New("grant failed")
+	provider := &stubRBACProvider{makeAdminErr: wantErr}
+
+	err := syncAdminRoleToDesired(uuid.New(), true, provider)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected grant error, got %v", err)
+	}
+	if !provider.madeAdmin {
+		t.Fatal("expected admin grant to be attempted")
+	}
+}
+
+func TestSyncAdminRoleToDesired_ReturnsRevokeFailure(t *testing.T) {
+	wantErr := errors.New("revoke failed")
+	provider := &stubRBACProvider{isAdmin: true, revokeAdminErr: wantErr}
+
+	err := syncAdminRoleToDesired(uuid.New(), false, provider)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected revoke error, got %v", err)
+	}
+	if !provider.revokedAdmin {
+		t.Fatal("expected admin revoke to be attempted")
+	}
+}
+
+func TestSyncProxyAdminRole_ReturnsStatusCreateFailure(t *testing.T) {
+	db := setupTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+	provider := &stubRBACProvider{}
+
+	authr, err := NewBasicAuthenticator(db, testJWTSecret, provider)
+	if err != nil {
+		t.Fatalf("NewBasicAuthenticator: %v", err)
+	}
+
+	wantErr := errors.New("status create failed")
+	name := registerDBTableFailureCallback(t, db, "create", "auth_reconciliation_statuses", wantErr)
+	defer db.Callback().Create().Remove(name)
+
+	err = authr.syncProxyAdminRole(u.ID, []string{"admin"}, []string{"admin"})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected status create error, got %v", err)
+	}
+	if !provider.madeAdmin {
+		t.Fatal("expected admin grant to be attempted before status write failed")
+	}
+}
+
+func TestSyncProxyAdminRole_ReturnsStatusUpdateFailure(t *testing.T) {
+	db := setupTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+	provider := &stubRBACProvider{}
+
+	authr, err := NewBasicAuthenticator(db, testJWTSecret, provider)
+	if err != nil {
+		t.Fatalf("NewBasicAuthenticator: %v", err)
+	}
+	if err := authr.syncProxyAdminRole(u.ID, nil, []string{"admin"}); err != nil {
+		t.Fatalf("seed status: %v", err)
+	}
+	oldSuccess := time.Now().UTC().Add(-authReconciliationSuccessRefreshAfter() - time.Second)
+	if err := db.Model(&models.AuthReconciliationStatus{}).
+		Where("user_id = ? AND kind = ?", u.ID, string(authReconciliationProxyAdmin)).
+		Update("last_success_at", oldSuccess).Error; err != nil {
+		t.Fatalf("age status: %v", err)
+	}
+
+	wantErr := errors.New("status update failed")
+	name := registerDBTableFailureCallback(t, db, "update", "auth_reconciliation_statuses", wantErr)
+	defer db.Callback().Update().Remove(name)
+
+	err = authr.syncProxyAdminRole(u.ID, nil, []string{"admin"})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected status update error, got %v", err)
+	}
+}
+
+func TestSessionFromProxy_DoesNotMintTokenWhenAdminRevokeFails(t *testing.T) {
+	db := setupTestDB(t)
+	wantErr := errors.New("revoke failed")
+	provider := &stubRBACProvider{isAdmin: true, revokeAdminErr: wantErr}
+
+	authr, err := NewBasicAuthenticator(db, testJWTSecret, provider)
+	if err != nil {
+		t.Fatalf("NewBasicAuthenticator: %v", err)
+	}
+	authr.SetIDTokenVerifier(testProxyVerifier())
+
+	resp, err := authr.SessionFromProxy(testProxyRequest(t, "alice", nil), "admin")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected revoke error, got %v", err)
+	}
+	if resp != nil {
+		t.Fatal("expected no session response when admin revoke fails")
+	}
+}
+
+func TestSessionFromProxy_MintsReconciledToken(t *testing.T) {
+	db := setupTestDB(t)
+	provider := &stubRBACProvider{}
+
+	authr, err := NewBasicAuthenticator(db, testJWTSecret, provider)
+	if err != nil {
+		t.Fatalf("NewBasicAuthenticator: %v", err)
+	}
+	authr.SetIDTokenVerifier(testProxyVerifier())
+
+	resp, err := authr.SessionFromProxy(testProxyRequest(t, "alice", []string{"engineering"}), "admin")
+	if err != nil {
+		t.Fatalf("SessionFromProxy: %v", err)
+	}
+
+	claims, err := authr.validateToken(resp.Token)
+	if err != nil {
+		t.Fatalf("validate reconciled token: %v", err)
+	}
+	if claims.AuthorizationSyncedAt == nil {
+		t.Fatal("expected reconciled proxy session token to carry authorization sync timestamp")
+	}
+}
+
+func TestExchangeIDToken_DoesNotMintTokenWhenGroupSyncFails(t *testing.T) {
+	db := setupTestDB(t)
+	wantErr := errors.New("casbin list failed")
+	provider := &stubRBACProvider{getUserGroupsErr: wantErr}
+
+	authr, err := NewBasicAuthenticator(db, testJWTSecret, provider)
+	if err != nil {
+		t.Fatalf("NewBasicAuthenticator: %v", err)
+	}
+	authr.SetIDTokenVerifier(testProxyVerifier())
+
+	resp, err := authr.ExchangeIDToken(testIDToken(t, "alice", []string{"engineering"}), "admin")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected group sync error, got %v", err)
+	}
+	if resp != nil {
+		t.Fatal("expected no device token response when group sync fails")
+	}
+}
+
+func TestExchangeIDToken_DoesNotMintTokenWhenAdminRevokeFails(t *testing.T) {
+	db := setupTestDB(t)
+	wantErr := errors.New("revoke failed")
+	provider := &stubRBACProvider{isAdmin: true, revokeAdminErr: wantErr}
+
+	authr, err := NewBasicAuthenticator(db, testJWTSecret, provider)
+	if err != nil {
+		t.Fatalf("NewBasicAuthenticator: %v", err)
+	}
+	authr.SetIDTokenVerifier(testProxyVerifier())
+
+	resp, err := authr.ExchangeIDToken(testIDToken(t, "alice", nil), "admin")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected revoke error, got %v", err)
+	}
+	if resp != nil {
+		t.Fatal("expected no device token response when admin revoke fails")
+	}
+}
+
+func TestMiddlewareRejectsProxyRequestWhenAdminRevokeFails(t *testing.T) {
+	db := setupTestDB(t)
+	provider := &stubRBACProvider{isAdmin: true, revokeAdminErr: errors.New("revoke failed")}
+
+	authr, err := NewBasicAuthenticator(db, testJWTSecret, provider)
+	if err != nil {
+		t.Fatalf("NewBasicAuthenticator: %v", err)
+	}
+	authr.SetIDTokenVerifier(testProxyVerifier())
+
+	gin.SetMode(gin.TestMode)
+	called := false
+	router := gin.New()
+	router.Use(authr.Middleware())
+	router.GET("/", func(c *gin.Context) {
+		called = true
+		c.Status(http.StatusOK)
+	})
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, testProxyRequest(t, "alice", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 when admin revoke fails, got %d", rec.Code)
+	}
+	if called {
+		t.Fatal("expected protected handler not to run")
+	}
+}
+
+func testProxyVerifier() *oidc.IDTokenVerifier {
+	return oidc.NewVerifier("", nil, &oidc.Config{
+		SkipClientIDCheck:          true,
+		SkipExpiryCheck:            true,
+		SkipIssuerCheck:            true,
+		InsecureSkipSignatureCheck: true,
+	})
+}
+
+func testProxyRequest(t *testing.T, username string, groups []string) *http.Request {
+	t.Helper()
+	rawToken := testIDToken(t, username, groups)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(&http.Cookie{Name: "IdToken-nebi", Value: rawToken})
+	return req
+}
+
+func testIDToken(t *testing.T, username string, groups []string) string {
+	t.Helper()
+	// alg=none is deliberate: testProxyVerifier skips signature checks, so
+	// these tests only need claim payloads, not cryptographic signatures.
+	token := jwt.NewWithClaims(jwt.SigningMethodNone, jwt.MapClaims{
+		"sub":                username,
+		"preferred_username": username,
+		"email":              username + "@example.com",
+		"groups":             groups,
+	})
+	rawToken, err := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
+	if err != nil {
+		t.Fatalf("sign test id token: %v", err)
+	}
+	return rawToken
 }

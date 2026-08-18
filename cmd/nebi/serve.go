@@ -52,6 +52,8 @@ Environment variables:
   NEBI_AUTH_OIDC_CLIENT_ID          OIDC client ID
   NEBI_AUTH_OIDC_CLIENT_SECRET      OIDC client secret
   NEBI_AUTH_OIDC_REDIRECT_URL       OIDC redirect URL (default: http://localhost:8460/api/v1/auth/oidc/callback)
+  NEBI_AUTH_AUTHORIZATION_STALE_AFTER_MINS
+                                    Reconciled bearer authorization freshness window in minutes (default: 1440)
   NEBI_QUEUE_TYPE                   Job queue type: "memory" or "valkey" (default: "memory")
   NEBI_QUEUE_VALKEY_ADDR            Valkey server address (default: "localhost:6379")
   NEBI_LOG_FORMAT                   Log format: "text" or "json" (default: "text")

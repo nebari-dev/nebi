@@ -31,6 +31,8 @@ import (
 
 // NewRouter creates and configures the Gin router
 func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Executor, logBroker *logstream.LogBroker, valkeyClient interface{}, logger *slog.Logger) *gin.Engine {
+	auth.ConfigureAuthReconciliationStaleAfter(time.Duration(cfg.Auth.AuthorizationStaleAfterMins) * time.Minute)
+
 	// Initialize RBAC enforcer and provider.
 	// In local mode the admin and workspace RBAC checks are unconditionally
 	// skipped (see RequireAdmin / RequireWorkspaceAccess middleware), so

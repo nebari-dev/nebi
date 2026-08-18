@@ -347,6 +347,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				// Admin proxies (for view mode toggle in admin pages)
 				remote.GET("/admin/users", remoteHandler.ListAdminUsers)
 				remote.GET("/admin/registries", remoteHandler.ListAdminRegistries)
+				remote.POST("/admin/registries", remoteHandler.CreateAdminRegistry)
+				remote.PUT("/admin/registries/:id", remoteHandler.UpdateAdminRegistry)
+				remote.DELETE("/admin/registries/:id", remoteHandler.DeleteAdminRegistry)
 				remote.GET("/admin/audit-logs", remoteHandler.ListAdminAuditLogs)
 				remote.GET("/admin/dashboard/stats", remoteHandler.GetAdminDashboardStats)
 			}

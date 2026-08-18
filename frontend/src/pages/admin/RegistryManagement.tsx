@@ -7,14 +7,19 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useDeleteRegistry, useRegistries } from '@/hooks/useRegistries';
-import { useRemoteAdminRegistries, useRemoteServer } from '@/hooks/useRemote';
+import {
+  useDeleteRemoteRegistry,
+  useRemoteAdminRegistries,
+  useRemoteServer,
+} from '@/hooks/useRemote';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 import type { OCIRegistry } from '@/types';
 
 export const RegistryManagement = () => {
   const { data: registries, isLoading: registriesLoading } = useRegistries();
-  const deleteRegistryMutation = useDeleteRegistry();
+  const deleteLocalMutation = useDeleteRegistry();
+  const deleteRemoteMutation = useDeleteRemoteRegistry();
 
   // View mode support
   const isLocalMode = useModeStore((s) => s.isLocalMode());
@@ -22,6 +27,11 @@ export const RegistryManagement = () => {
   const { data: serverStatus } = useRemoteServer();
   const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
   const shouldShowRemote = isRemoteConnected && viewMode === 'remote';
+
+  // Delete/edit must target the same server the displayed rows came from.
+  const deleteRegistryMutation = shouldShowRemote
+    ? deleteRemoteMutation
+    : deleteLocalMutation;
   const { data: remoteRegistries, isLoading: remoteLoading } =
     useRemoteAdminRegistries(shouldShowRemote);
 
@@ -82,7 +92,7 @@ export const RegistryManagement = () => {
             Manage OCI registries for workspace publishing
           </p>
         </div>
-        <CreateRegistryDialog />
+        <CreateRegistryDialog isRemote={shouldShowRemote} />
       </div>
 
       {error && (
@@ -209,6 +219,7 @@ export const RegistryManagement = () => {
           registry={editingRegistry}
           open={!!editingRegistry}
           onOpenChange={(open) => !open && setEditingRegistry(null)}
+          isRemote={shouldShowRemote}
         />
       )}
 

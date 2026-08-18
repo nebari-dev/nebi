@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -34,6 +35,17 @@ func handleServiceError(c *gin.Context, err error) {
 	}
 	slog.Error("unhandled service error", "error", err)
 	c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Internal server error"})
+}
+
+func handleBindError(c *gin.Context, err error) {
+	var maxBytesErr *http.MaxBytesError
+	if errors.As(err, &maxBytesErr) {
+		c.JSON(http.StatusRequestEntityTooLarge, ErrorResponse{
+			Error: fmt.Sprintf("request body exceeds %d bytes", maxBytesErr.Limit),
+		})
+		return
+	}
+	c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 }
 
 // getUserID extracts the user ID from the Gin context.

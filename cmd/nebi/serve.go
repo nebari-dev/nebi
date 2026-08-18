@@ -41,6 +41,7 @@ Environment variables:
   NEBI_SERVER_PORT                  Server port (default: 8460)
   NEBI_SERVER_MODE                  Server environment: "development" or "production" (default: "development")
   NEBI_SERVER_BASE_PATH             URL path prefix for reverse proxy (e.g. "/nebi")
+  NEBI_SERVER_READ_TIMEOUT_SECONDS  Max seconds to read a full request, 0 disables
   NEBI_DATABASE_DRIVER              Database driver: "sqlite" or "postgres" (default: "sqlite")
   NEBI_DATABASE_DSN                 Database connection string (default: "./nebi.db")
   NEBI_DATABASE_MAX_IDLE_CONNS      Max idle connections in pool — Postgres only (default: 10)
@@ -62,6 +63,20 @@ Environment variables:
   NEBI_PACKAGE_MANAGER_PIXI_PATH    Custom pixi binary path (optional)
   NEBI_PACKAGE_MANAGER_UV_PATH      Custom uv binary path (optional)
   NEBI_STORAGE_WORKSPACES_DIR       Directory for workspace storage (default: "./data/workspaces")
+  NEBI_LIMITS_REQUEST_BODY_BYTES    Max HTTP request body size (default: 20971520)
+  NEBI_LIMITS_MANIFEST_BYTES        Max pixi.toml size (default: 1048576)
+  NEBI_LIMITS_LOCK_BYTES            Max pixi.lock size (default: 16777216)
+  NEBI_LIMITS_METADATA_BYTES        Max stored job/package metadata size (default: 65536)
+  NEBI_LIMITS_MAX_PACKAGES          Max package names per request (default: 128)
+  NEBI_LIMITS_PACKAGE_STRING_BYTES  Max bytes per package name (default: 256)
+  NEBI_LIMITS_ACTIVE_JOBS_PER_USER  Max pending/running jobs per user (default: 4)
+  NEBI_LIMITS_ACTIVE_JOBS_PER_WORKSPACE
+                                    Max pending/running jobs per workspace (default: 2)
+  NEBI_LIMITS_ACTIVE_JOBS_GLOBAL    Max pending/running jobs server-wide (default: 100)
+  NEBI_LIMITS_JOB_TIMEOUT_SECONDS   Per-job wall-clock timeout (default: 7200)
+  NEBI_LIMITS_JOB_CPU_SECONDS       Per-job CPU-time budget (default: 7200 on Unix, 0 on Windows)
+  NEBI_LIMITS_JOB_STORAGE_BYTES     Max workspace bytes during a job (default: 21474836480)
+  NEBI_LIMITS_JOB_LOG_BYTES         Max persisted log bytes per job (default: 4194304)
   NEBI_AUTH_TOKEN                   Auth token for auto-connect when in local mode
   NEBI_REMOTE_URL                   Remote server URL for auto-connect when in local mode
   ADMIN_USERNAME                    Bootstrap admin username

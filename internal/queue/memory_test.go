@@ -63,6 +63,31 @@ func TestMemoryQueue_DequeueBlocksUntilJob(t *testing.T) {
 	}
 }
 
+func TestMemoryQueue_DequeueAfterCloseDrainsPendingJob(t *testing.T) {
+	q := NewMemoryQueue(10)
+
+	job := newTestJob()
+	if err := q.Enqueue(context.Background(), job); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	if err := q.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	got, err := q.Dequeue(context.Background())
+	if err != nil {
+		t.Fatalf("dequeue pending job after close: %v", err)
+	}
+	if got.ID != job.ID {
+		t.Fatalf("expected job ID %s, got %s", job.ID, got.ID)
+	}
+
+	got, err = q.Dequeue(context.Background())
+	if err != context.Canceled {
+		t.Fatalf("expected context.Canceled after draining closed queue, got job=%v err=%v", got, err)
+	}
+}
+
 func TestMemoryQueue_FIFO(t *testing.T) {
 	q := NewMemoryQueue(10)
 	defer q.Close()
@@ -82,6 +107,38 @@ func TestMemoryQueue_FIFO(t *testing.T) {
 	if got1.ID != job1.ID || got2.ID != job2.ID || got3.ID != job3.ID {
 		t.Errorf("expected FIFO order: %s,%s,%s got %s,%s,%s",
 			job1.ID, job2.ID, job3.ID, got1.ID, got2.ID, got3.ID)
+	}
+}
+
+func TestMemoryQueue_FairAcrossTenants(t *testing.T) {
+	q := NewMemoryQueue(10)
+	defer q.Close()
+
+	userA := uuid.New()
+	userB := uuid.New()
+	jobA1 := newTestJob()
+	jobA1.UserID = userA
+	jobA2 := newTestJob()
+	jobA2.UserID = userA
+	jobA3 := newTestJob()
+	jobA3.UserID = userA
+	jobB1 := newTestJob()
+	jobB1.UserID = userB
+
+	for _, job := range []*models.Job{jobA1, jobA2, jobA3, jobB1} {
+		if err := q.Enqueue(context.Background(), job); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+	}
+
+	got1, _ := q.Dequeue(context.Background())
+	got2, _ := q.Dequeue(context.Background())
+	got3, _ := q.Dequeue(context.Background())
+	got4, _ := q.Dequeue(context.Background())
+
+	if got1.ID != jobA1.ID || got2.ID != jobB1.ID || got3.ID != jobA2.ID || got4.ID != jobA3.ID {
+		t.Fatalf("expected fair tenant order A1,B1,A2,A3 got %s,%s,%s,%s",
+			got1.ID, got2.ID, got3.ID, got4.ID)
 	}
 }
 

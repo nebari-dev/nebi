@@ -24,7 +24,7 @@ func Login(authenticator auth.Authenticator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req auth.LoginRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+			handleBindError(c, err)
 			return
 		}
 
@@ -83,7 +83,11 @@ func CodeExchange(codeStore *auth.AuthCodeStore) gin.HandlerFunc {
 		var req struct {
 			Code string `json:"code"`
 		}
-		if err := c.ShouldBindJSON(&req); err != nil || req.Code == "" {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			handleBindError(c, err)
+			return
+		}
+		if req.Code == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "missing code"})
 			return
 		}

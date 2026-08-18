@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
@@ -12,65 +13,107 @@ import (
 	"gorm.io/gorm"
 )
 
+type lockedJobValidation func(tx *gorm.DB, ws *models.Workspace) error
+
 // submitJob validates the workspace is ready, creates a Job record, enqueues it,
 // and writes an audit log. This is the common pattern for all async operations.
 func (s *WorkspaceService) submitJob(ctx context.Context, wsID string, userID uuid.UUID,
-	jobType models.JobType, metadata map[string]interface{}, auditAction string) (*models.Job, error) {
+	jobType models.JobType, metadata map[string]interface{}, auditAction string, lockedValidations ...lockedJobValidation) (*models.Job, error) {
 
-	var ws models.Workspace
-	if err := s.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, ErrNotFound
-		}
+	if metadata == nil {
+		metadata = map[string]interface{}{}
+	}
+	if err := s.validateJobMetadata(metadata); err != nil {
 		return nil, err
 	}
 
-	if ws.Status != models.WsStatusReady {
-		return nil, &ValidationError{Message: "Workspace is not ready"}
-	}
+	var job *models.Job
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.lockJobAdmission(tx); err != nil {
+			return err
+		}
 
-	job := &models.Job{
-		Type:        jobType,
-		WorkspaceID: ws.ID,
-		Status:      models.JobStatusPending,
-		Metadata:    metadata,
-	}
-	if err := s.db.Create(job).Error; err != nil {
-		return nil, fmt.Errorf("create job: %w", err)
-	}
-	if err := s.queue.Enqueue(ctx, job); err != nil {
-		return nil, fmt.Errorf("enqueue job: %w", err)
-	}
+		var ws models.Workspace
+		if err := tx.Where("id = ?", wsID).First(&ws).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return ErrNotFound
+			}
+			return err
+		}
 
-	audit.LogAction(s.db, userID, auditAction, fmt.Sprintf("ws:%s", ws.ID.String()), metadata)
+		if ws.Status != models.WsStatusReady {
+			return &ValidationError{Message: "Workspace is not ready"}
+		}
+		for _, validate := range lockedValidations {
+			if err := validate(tx, &ws); err != nil {
+				return err
+			}
+		}
+		if err := s.checkActiveJobQuotas(tx, userID, ws.ID); err != nil {
+			return err
+		}
 
+		job = &models.Job{
+			Type:        jobType,
+			WorkspaceID: ws.ID,
+			UserID:      userID,
+			Status:      models.JobStatusPending,
+			Metadata:    metadata,
+		}
+		if err := tx.Create(job).Error; err != nil {
+			return fmt.Errorf("create job: %w", err)
+		}
+
+		audit.LogAction(tx, userID, auditAction, fmt.Sprintf("ws:%s", ws.ID.String()), metadata)
+		return nil
+	})
+	if err != nil {
+		return nil, s.finishAdmissionError(err)
+	}
+	if err := s.enqueueAdmittedJob(ctx, job); err != nil {
+		return nil, err
+	}
 	return job, nil
+}
+
+func (s *WorkspaceService) enqueueAdmittedJob(ctx context.Context, job *models.Job) error {
+	if err := s.queue.Enqueue(ctx, job); err != nil {
+		now := time.Now()
+		_ = s.db.Model(&models.Job{}).Where("id = ?", job.ID).Updates(map[string]interface{}{
+			"status":       models.JobStatusFailed,
+			"error":        fmt.Sprintf("enqueue job: %v", err),
+			"completed_at": now,
+		}).Error
+		return fmt.Errorf("enqueue job: %w", err)
+	}
+	return nil
 }
 
 // InstallPackages creates and enqueues an install-packages job.
 func (s *WorkspaceService) InstallPackages(ctx context.Context, wsID string, packages []string, userID uuid.UUID) (*models.Job, error) {
+	if err := s.validatePackages(packages); err != nil {
+		return nil, err
+	}
 	metadata := map[string]interface{}{
 		"packages": packages,
-		"user_id":  userID.String(),
 	}
-	return s.submitJob(ctx, wsID, userID, models.JobTypeInstall, metadata, audit.ActionInstallPackage)
+	return s.submitJob(ctx, wsID, userID, models.JobTypeInstall, metadata, audit.ActionInstallPackage, s.validateWorkspaceInstallPackagesForJob(packages))
 }
 
 // SolveWorkspace creates and enqueues a solve job (pixi install from current pixi.toml).
 func (s *WorkspaceService) SolveWorkspace(ctx context.Context, wsID string, userID uuid.UUID) (*models.Job, error) {
-	metadata := map[string]interface{}{
-		"user_id": userID.String(),
-	}
-	return s.submitJob(ctx, wsID, userID, models.JobTypeUpdate, metadata, audit.ActionSolveWorkspace)
+	return s.submitJob(ctx, wsID, userID, models.JobTypeUpdate, nil, audit.ActionSolveWorkspace, s.validateWorkspaceManifestForJob)
 }
 
 // RemovePackage creates and enqueues a remove-package job.
 func (s *WorkspaceService) RemovePackage(ctx context.Context, wsID string, packageName string, userID uuid.UUID) (*models.Job, error) {
+	if err := s.validatePackages([]string{packageName}); err != nil {
+		return nil, err
+	}
 	metadata := map[string]interface{}{
 		"packages": []string{packageName},
-		"user_id":  userID.String(),
 	}
-	return s.submitJob(ctx, wsID, userID, models.JobTypeRemove, metadata, audit.ActionRemovePackage)
+	return s.submitJob(ctx, wsID, userID, models.JobTypeRemove, metadata, audit.ActionRemovePackage, s.validateWorkspaceManifestAndLockForJob)
 }
 
 // ListPackages returns packages for a workspace, auto-syncing from disk for local workspaces with no DB records.
@@ -107,15 +150,19 @@ func (s *WorkspaceService) syncPackagesFromDisk(ws *models.Workspace) []models.P
 		pmType = "pixi"
 	}
 
-	pm, err := pkgmgr.New(pmType)
+	pm, err := pkgmgr.NewWithContext(context.Background(), pmType)
 	if err != nil {
 		slog.Warn("syncPackagesFromDisk: failed to create package manager", "error", err)
 		return nil
 	}
 
-	listed, err := pm.List(context.Background(), pkgmgr.ListOptions{EnvPath: wsPath})
+	listed, err := pm.List(context.Background(), s.listOptions(wsPath))
 	if err != nil {
-		slog.Warn("syncPackagesFromDisk: failed to list packages", "error", err, "path", wsPath)
+		slog.Warn("syncPackagesFromDisk: failed to list packages", "error", s.mapPackageManagerListError(err), "path", wsPath)
+		return nil
+	}
+	if err := s.validateListedPackages("package list", listed); err != nil {
+		slog.Warn("syncPackagesFromDisk: package list exceeds limits", "error", err, "path", wsPath)
 		return nil
 	}
 
@@ -141,14 +188,17 @@ func (s *WorkspaceService) syncPackagesFromDisk(ws *models.Workspace) []models.P
 func (s *WorkspaceService) SyncPackagesFromWorkspace(ctx context.Context, ws *models.Workspace) error {
 	wsPath := s.executor.GetWorkspacePath(ws)
 
-	pm, err := pkgmgr.New(ws.PackageManager)
+	pm, err := pkgmgr.NewWithContext(ctx, ws.PackageManager)
 	if err != nil {
 		return fmt.Errorf("failed to create package manager: %w", err)
 	}
 
-	pkgs, err := pm.List(ctx, pkgmgr.ListOptions{EnvPath: wsPath})
+	pkgs, err := pm.List(ctx, s.listOptions(wsPath))
 	if err != nil {
-		return fmt.Errorf("failed to list packages: %w", err)
+		return fmt.Errorf("failed to list packages: %w", s.mapPackageManagerListError(err))
+	}
+	if err := s.validateListedPackages("package list", pkgs); err != nil {
+		return err
 	}
 
 	// Clear existing packages

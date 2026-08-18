@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/glebarez/sqlite"
+	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/models"
 	"gorm.io/driver/postgres"
@@ -116,11 +117,21 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 		&models.Group{},
 		&models.GroupMember{},
 		&models.GroupPermission{},
+		&models.ResourceLock{},
+		&models.ResourceMetric{},
 		&models.AuthReconciliationStatus{},
 		&models.SystemSetting{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+
+	if err := seedResourceLocks(db); err != nil {
+		return fmt.Errorf("failed to seed resource locks: %w", err)
+	}
+
+	if err := backfillJobUserIDs(db); err != nil {
+		return fmt.Errorf("failed to backfill job user IDs: %w", err)
 	}
 
 	// Seed default roles if they don't exist
@@ -136,6 +147,25 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 	}
 
 	return nil
+}
+
+func seedResourceLocks(db *gorm.DB) error {
+	return db.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.ResourceLock{
+		Name: models.ResourceLockJobAdmission,
+	}).Error
+}
+
+func backfillJobUserIDs(db *gorm.DB) error {
+	return db.Exec(`
+		UPDATE jobs
+		SET user_id = (
+			SELECT owner_id
+			FROM workspaces
+			WHERE workspaces.id = jobs.workspace_id
+		)
+		WHERE (user_id IS NULL OR user_id = '' OR user_id = ?)
+			AND workspace_id IN (SELECT id FROM workspaces)
+	`, uuid.Nil.String()).Error
 }
 
 // seedDefaultRoles creates default roles (admin, owner, editor, viewer)

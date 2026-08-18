@@ -314,6 +314,76 @@ definitions:
       user_id:
         type: string
     type: object
+  models.FederatedIdentity:
+    properties:
+      avatar_url:
+        type: string
+      created_at:
+        type: string
+      email:
+        type: string
+      email_verified:
+        type: boolean
+      id:
+        type: string
+      issuer:
+        type: string
+      name:
+        type: string
+      subject:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+      username:
+        type: string
+    type: object
+  models.FederatedIdentityReview:
+    properties:
+      avatar_url:
+        type: string
+      collision_email_user:
+        $ref: '#/definitions/models.User'
+      collision_email_user_id:
+        description: User matched by the incoming verified email claim, when present.
+        type: string
+      collision_field:
+        type: string
+      collision_username_user:
+        $ref: '#/definitions/models.User'
+      collision_username_user_id:
+        description: User matched by the incoming username claim, when present.
+        type: string
+      created_at:
+        type: string
+      email:
+        type: string
+      email_verified:
+        type: boolean
+      id:
+        type: string
+      issuer:
+        type: string
+      name:
+        type: string
+      reviewed_at:
+        type: string
+      reviewed_by:
+        type: string
+      status:
+        type: string
+      subject:
+        type: string
+      updated_at:
+        type: string
+      user:
+        $ref: '#/definitions/models.User'
+      user_id:
+        type: string
+      username:
+        type: string
+    type: object
   models.Group:
     properties:
       created_at:
@@ -797,6 +867,79 @@ paths:
       security:
       - BearerAuth: []
       summary: Get admin dashboard statistics
+      tags:
+      - admin
+  /admin/federated-identity-reviews:
+    get:
+      parameters:
+      - description: 'Review status: pending, rejected, or all'
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.FederatedIdentityReview'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List federated identity reviews
+      tags:
+      - admin
+  /admin/federated-identity-reviews/{id}:
+    delete:
+      parameters:
+      - description: Review UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Discard a federated identity review
+      tags:
+      - admin
+  /admin/federated-identity-reviews/{id}/approve:
+    post:
+      parameters:
+      - description: Review UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.FederatedIdentity'
+      security:
+      - BearerAuth: []
+      summary: Approve a pending federated identity review
+      tags:
+      - admin
+  /admin/federated-identity-reviews/{id}/reject:
+    post:
+      parameters:
+      - description: Review UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Reject a pending federated identity review
       tags:
       - admin
   /admin/groups:

@@ -61,7 +61,7 @@ When changing auth, visibility, or permissions, check both branches — see `int
 - `db/` + `models/` — GORM models and migrations (SQLite by default; DSN via `NEBI_DATABASE_DSN`). `db.Migrate` runs server tables; `store.MigrateServerDB` adds local-mode store tables.
 - `store/` — the **CLI-side** local index, config, and credentials (keyring). Distinct from the server's `db`; this is what the CLI reads/writes on the user's machine.
 - `cliclient/` — HTTP client the CLI commands use to talk to a remote server (mirrors the handler endpoints).
-- `auth/`, `rbac/` — authenticators (local/basic/OIDC) and casbin enforcer/provider.
+- `auth/`, `rbac/` — authenticators (local/basic/OIDC) and casbin enforcer/provider. Every externally-authenticated login path must resolve users through `auth.findOrCreateFederatedUser`, matching existing external identities only by `(issuer, subject)` and never by mutable username/email claims. If that flow returns a review-gated error, clients should check `auth.FederatedIdentityReviewErrorCode` before falling through to a generic 401.
 - `queue/` (memory or valkey) + `worker/` + `executor/` (local or docker) — async job pipeline. Long operations (env builds, installs) are enqueued, run by the worker through an executor, with output streamed via `logstream/`.
 - `pkgmgr/` — package-manager abstraction (`PackageManager` interface in `pkgmgr.go`, `pixi/` impl, selected by `factory.go`). This is where Pixi/uv commands are shelled out.
 - `oci/` — push/pull of environments to OCI registries.

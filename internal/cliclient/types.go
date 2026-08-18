@@ -188,6 +188,45 @@ type AuditLog struct {
 	User        *User       `json:"user,omitempty"`
 }
 
+// FederatedIdentity represents an approved external identity binding.
+type FederatedIdentity struct {
+	ID            string `json:"id"`
+	UserID        string `json:"user_id"`
+	Issuer        string `json:"issuer"`
+	Subject       string `json:"subject"`
+	Username      string `json:"username"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
+	Name          string `json:"name"`
+	AvatarURL     string `json:"avatar_url"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
+}
+
+// FederatedIdentityReview represents an admin decision for a blocked identity link.
+type FederatedIdentityReview struct {
+	ID                      string `json:"id"`
+	UserID                  string `json:"user_id"`
+	User                    *User  `json:"user,omitempty"`
+	Issuer                  string `json:"issuer"`
+	Subject                 string `json:"subject"`
+	CollisionField          string `json:"collision_field"`
+	CollisionUsernameUserID string `json:"collision_username_user_id,omitempty"`
+	CollisionUsernameUser   *User  `json:"collision_username_user,omitempty"`
+	CollisionEmailUserID    string `json:"collision_email_user_id,omitempty"`
+	CollisionEmailUser      *User  `json:"collision_email_user,omitempty"`
+	Username                string `json:"username"`
+	Email                   string `json:"email"`
+	EmailVerified           bool   `json:"email_verified"`
+	Name                    string `json:"name"`
+	AvatarURL               string `json:"avatar_url"`
+	Status                  string `json:"status"`
+	ReviewedBy              string `json:"reviewed_by,omitempty"`
+	ReviewedAt              string `json:"reviewed_at,omitempty"`
+	CreatedAt               string `json:"created_at"`
+	UpdatedAt               string `json:"updated_at"`
+}
+
 // ServerVersion represents the response from GET /version.
 type ServerVersion struct {
 	Version   string          `json:"version"`

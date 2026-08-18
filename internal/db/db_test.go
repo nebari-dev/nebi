@@ -21,6 +21,51 @@ func testDB(t *testing.T) *gorm.DB {
 	return database
 }
 
+func TestMigrateAllowsLegacyFederatedUsersWithoutIssuerSubject(t *testing.T) {
+	database := testDB(t)
+	if err := database.AutoMigrate(&models.User{}); err != nil {
+		t.Fatalf("initial migrate: %v", err)
+	}
+	legacyUser := models.User{
+		Username:     "legacy-oidc",
+		Email:        "legacy@example.com",
+		PasswordHash: "",
+	}
+	if err := database.Create(&legacyUser).Error; err != nil {
+		t.Fatalf("create legacy user: %v", err)
+	}
+
+	if err := Migrate(database, false); err != nil {
+		t.Fatalf("expected migration to leave legacy users for review-flow migration: %v", err)
+	}
+}
+
+func TestMigrateAllowsFederatedUsersWithIssuerSubjectBinding(t *testing.T) {
+	database := testDB(t)
+	if err := database.AutoMigrate(&models.User{}, &models.FederatedIdentity{}); err != nil {
+		t.Fatalf("initial migrate: %v", err)
+	}
+	user := models.User{
+		Username:     "bound-oidc",
+		Email:        "bound@example.com",
+		PasswordHash: "",
+	}
+	if err := database.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	if err := database.Create(&models.FederatedIdentity{
+		UserID:  user.ID,
+		Issuer:  "https://issuer.example.com",
+		Subject: "subject",
+	}).Error; err != nil {
+		t.Fatalf("create federated identity: %v", err)
+	}
+
+	if err := Migrate(database, false); err != nil {
+		t.Fatalf("expected migration to succeed: %v", err)
+	}
+}
+
 func countDefaultRegistry(t *testing.T, database *gorm.DB) int64 {
 	t.Helper()
 	var count int64

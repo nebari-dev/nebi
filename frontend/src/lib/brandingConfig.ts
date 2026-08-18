@@ -5,6 +5,7 @@ export type BrandingThemeTokens = Record<string, string>;
 export type BrandingConfig = {
   title?: string;
   logoUrl?: string;
+  logoUrlDark?: string;
   faviconUrl?: string;
   theme?: {
     light?: BrandingThemeTokens;
@@ -180,12 +181,17 @@ const sanitizeBrandingConfig = (rawConfig: unknown): RuntimeBrandingConfig => {
   const dark = sanitizeBrandingThemeTokens(themeObject?.dark);
   const title = normalizeString(rawBranding.title);
   const logoUrl = normalizeString(rawBranding.logoUrl);
+  const logoUrlDark = normalizeString(rawBranding.logoUrlDark);
   const faviconUrl = normalizeString(rawBranding.faviconUrl);
   const branding =
-    title || logoUrl || faviconUrl || light || dark
+    title || logoUrl || logoUrlDark || faviconUrl || light || dark
       ? {
           title,
           logoUrl: logoUrl && isSafeAssetUrl(logoUrl) ? logoUrl : undefined,
+          logoUrlDark:
+            logoUrlDark && isSafeAssetUrl(logoUrlDark)
+              ? logoUrlDark
+              : undefined,
           faviconUrl:
             faviconUrl && isSafeAssetUrl(faviconUrl) ? faviconUrl : undefined,
           theme: light || dark ? { light, dark } : undefined,
@@ -295,8 +301,14 @@ export const loadBrandingConfig = async (): Promise<RuntimeBrandingConfig> => {
   }
 };
 
+// Dark mode prefers the dark logo, then falls back to the general custom logo;
+// light mode uses the custom logo. With no custom logo configured, the built-in
+// Nebi logo for the active color scheme is used.
 export const getBrandingLogoUrl = (isDarkMode = false): string => {
-  const configuredLogo = cachedConfig?.branding?.logoUrl;
+  const branding = cachedConfig?.branding;
+  const configuredLogo = isDarkMode
+    ? (branding?.logoUrlDark ?? branding?.logoUrl)
+    : branding?.logoUrl;
   return resolveBasePathUrl(
     configuredLogo ||
       (isDarkMode ? DEFAULT_DARK_BRANDING_LOGO_URL : DEFAULT_BRANDING_LOGO_URL),

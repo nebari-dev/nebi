@@ -176,13 +176,24 @@ func (s *AdminService) DeleteUser(userID uuid.UUID, adminUserID uuid.UUID) error
 		return err
 	}
 
-	if err := s.db.Delete(&user).Error; err != nil {
-		return fmt.Errorf("delete user: %w", err)
-	}
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Unscoped().Where("user_id = ?", user.ID).Delete(&models.FederatedIdentity{}).Error; err != nil {
+			return fmt.Errorf("delete federated identities: %w", err)
+		}
+		if err := tx.Unscoped().Where("user_id = ?", user.ID).Delete(&models.FederatedIdentityReview{}).Error; err != nil {
+			return fmt.Errorf("delete federated identity reviews: %w", err)
+		}
+		if err := tx.Delete(&user).Error; err != nil {
+			return fmt.Errorf("delete user: %w", err)
+		}
 
-	audit.LogAction(s.db, adminUserID, audit.ActionDeleteUser, "user:"+user.ID.String(), map[string]any{
-		"username": user.Username,
-	})
+		audit.LogAction(tx, adminUserID, audit.ActionDeleteUser, "user:"+user.ID.String(), map[string]any{
+			"username": user.Username,
+		})
+		return nil
+	}); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -326,9 +337,24 @@ func (s *AdminService) ListAuditLogs(userIDFilter, actionFilter string) ([]model
 }
 
 // ListFederatedIdentityReviews returns federated identity review decisions.
-func (s *AdminService) ListFederatedIdentityReviews() ([]models.FederatedIdentityReview, error) {
+func (s *AdminService) ListFederatedIdentityReviews(statusFilter string) ([]models.FederatedIdentityReview, error) {
+	if statusFilter == "" {
+		statusFilter = models.FederatedIdentityReviewStatusPending
+	}
+
+	query := s.db.Preload("User").Order("created_at DESC").Limit(100)
+	switch statusFilter {
+	case models.FederatedIdentityReviewStatusPending:
+		query = query.Where("status = ? OR status = ''", models.FederatedIdentityReviewStatusPending)
+	case models.FederatedIdentityReviewStatusRejected:
+		query = query.Where("status = ?", models.FederatedIdentityReviewStatusRejected)
+	case "all":
+	default:
+		return nil, &ValidationError{Message: "status must be 'pending', 'rejected', or 'all'"}
+	}
+
 	var reviews []models.FederatedIdentityReview
-	if err := s.db.Preload("User").Order("created_at ASC").Limit(100).Find(&reviews).Error; err != nil {
+	if err := query.Find(&reviews).Error; err != nil {
 		return nil, fmt.Errorf("fetch federated identity reviews: %w", err)
 	}
 	return reviews, nil
@@ -347,7 +373,9 @@ func (s *AdminService) ApproveFederatedIdentityReview(reviewID uuid.UUID, adminU
 			return err
 		}
 		if review.User.ID != review.UserID {
-			return ErrNotFound
+			return &ConflictError{
+				Message: fmt.Sprintf("federated identity review is linked to deleted user %s; discard it and ask the user to sign in again", review.UserID),
+			}
 		}
 		if !review.IsPending() {
 			return &ConflictError{Message: "federated identity review was rejected"}
@@ -422,6 +450,33 @@ func (s *AdminService) RejectFederatedIdentityReview(reviewID uuid.UUID, adminUs
 			"issuer":          review.Issuer,
 			"subject":         review.Subject,
 			"collision_field": review.CollisionField,
+		})
+		return nil
+	})
+}
+
+// DiscardFederatedIdentityReview permanently deletes a pending or rejected
+// review, allowing a future login for the same issuer and subject to create a
+// fresh review if a collision still exists.
+func (s *AdminService) DiscardFederatedIdentityReview(reviewID uuid.UUID, adminUserID uuid.UUID) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var review models.FederatedIdentityReview
+		if err := tx.First(&review, "id = ?", reviewID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if err := tx.Unscoped().Delete(&review).Error; err != nil {
+			return fmt.Errorf("discard federated identity review: %w", err)
+		}
+
+		audit.LogAction(tx, adminUserID, audit.ActionDiscardFederatedIdentity, audit.ResourceFederatedIdentityReview+":"+review.ID.String(), map[string]any{
+			"user_id":         review.UserID,
+			"issuer":          review.Issuer,
+			"subject":         review.Subject,
+			"collision_field": review.CollisionField,
+			"status":          review.Status,
 		})
 		return nil
 	})

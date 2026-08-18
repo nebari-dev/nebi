@@ -5,6 +5,7 @@ import type {
   DashboardStats,
   FederatedIdentity,
   FederatedIdentityReview,
+  FederatedIdentityReviewStatusFilter,
   Group,
   ShareWorkspaceRequest,
   User,
@@ -74,8 +75,12 @@ export const adminApi = {
   },
 
   // Federated Identity Reviews
-  getFederatedIdentityReviews: async (): Promise<FederatedIdentityReview[]> => {
-    const response = await apiClient.get('/admin/federated-identity-reviews');
+  getFederatedIdentityReviews: async (
+    status: FederatedIdentityReviewStatusFilter = 'pending',
+  ): Promise<FederatedIdentityReview[]> => {
+    const response = await apiClient.get('/admin/federated-identity-reviews', {
+      params: { status },
+    });
     return response.data;
   },
 
@@ -92,5 +97,9 @@ export const adminApi = {
     await apiClient.post(
       `/admin/federated-identity-reviews/${reviewId}/reject`,
     );
+  },
+
+  discardFederatedIdentityReview: async (reviewId: string): Promise<void> => {
+    await apiClient.delete(`/admin/federated-identity-reviews/${reviewId}`);
   },
 };

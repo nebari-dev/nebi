@@ -296,6 +296,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 
 			// Federated identity reviews
 			admin.GET("/federated-identity-reviews", adminHandler.ListFederatedIdentityReviews)
+			admin.DELETE("/federated-identity-reviews/:id", adminHandler.DiscardFederatedIdentityReview)
 			admin.POST("/federated-identity-reviews/:id/approve", adminHandler.ApproveFederatedIdentityReview)
 			admin.POST("/federated-identity-reviews/:id/reject", adminHandler.RejectFederatedIdentityReview)
 
@@ -350,13 +351,18 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				remote.GET("/jobs", remoteHandler.ListJobs)
 
 				// Admin proxies (for view mode toggle in admin pages)
-				remote.GET("/admin/users", remoteHandler.ListAdminUsers)
-				remote.GET("/admin/registries", remoteHandler.ListAdminRegistries)
-				remote.GET("/admin/audit-logs", remoteHandler.ListAdminAuditLogs)
-				remote.GET("/admin/dashboard/stats", remoteHandler.GetAdminDashboardStats)
-				remote.GET("/admin/federated-identity-reviews", remoteHandler.ListAdminFederatedIdentityReviews)
-				remote.POST("/admin/federated-identity-reviews/:id/approve", remoteHandler.ApproveAdminFederatedIdentityReview)
-				remote.POST("/admin/federated-identity-reviews/:id/reject", remoteHandler.RejectAdminFederatedIdentityReview)
+				remoteAdmin := remote.Group("/admin")
+				remoteAdmin.Use(middleware.RequireAdmin(localMode, rbacProvider))
+				{
+					remoteAdmin.GET("/users", remoteHandler.ListAdminUsers)
+					remoteAdmin.GET("/registries", remoteHandler.ListAdminRegistries)
+					remoteAdmin.GET("/audit-logs", remoteHandler.ListAdminAuditLogs)
+					remoteAdmin.GET("/dashboard/stats", remoteHandler.GetAdminDashboardStats)
+					remoteAdmin.GET("/federated-identity-reviews", remoteHandler.ListAdminFederatedIdentityReviews)
+					remoteAdmin.DELETE("/federated-identity-reviews/:id", remoteHandler.DiscardAdminFederatedIdentityReview)
+					remoteAdmin.POST("/federated-identity-reviews/:id/approve", remoteHandler.ApproveAdminFederatedIdentityReview)
+					remoteAdmin.POST("/federated-identity-reviews/:id/reject", remoteHandler.RejectAdminFederatedIdentityReview)
+				}
 			}
 		}
 	}

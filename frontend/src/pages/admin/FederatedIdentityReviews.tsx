@@ -3,31 +3,37 @@ import {
   Fingerprint,
   Loader2,
   ShieldAlert,
+  Trash2,
   UserRound,
   X,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   useApproveFederatedIdentityReview,
+  useDiscardFederatedIdentityReview,
   useFederatedIdentityReviews,
   useRejectFederatedIdentityReview,
 } from '@/hooks/useAdmin';
 import {
   useApproveRemoteFederatedIdentityReview,
+  useDiscardRemoteFederatedIdentityReview,
   useRejectRemoteFederatedIdentityReview,
   useRemoteFederatedIdentityReviews,
-  useRemoteServer,
+  useRemoteView,
 } from '@/hooks/useRemote';
-import { useModeStore } from '@/store/modeStore';
-import { useViewModeStore } from '@/store/viewModeStore';
 import {
   type FederatedIdentityReview,
+  type FederatedIdentityReviewStatusFilter,
   isPendingFederatedIdentityReview,
 } from '@/types';
+
+type ReviewStatusTab = Exclude<FederatedIdentityReviewStatusFilter, 'all'>;
 
 const reviewDisplayName = (review: FederatedIdentityReview) =>
   review.username || review.name || review.email || review.subject;
@@ -44,38 +50,41 @@ const mutationErrorMessage = (err: unknown) => {
 };
 
 export const FederatedIdentityReviews = () => {
+  const [statusFilter, setStatusFilter] = useState<ReviewStatusTab>('pending');
   const { data: reviews, isLoading: reviewsLoading } =
-    useFederatedIdentityReviews();
+    useFederatedIdentityReviews(statusFilter);
   const approveReview = useApproveFederatedIdentityReview();
   const rejectReview = useRejectFederatedIdentityReview();
+  const discardReview = useDiscardFederatedIdentityReview();
 
-  const isLocalMode = useModeStore((s) => s.isLocalMode());
-  const viewMode = useViewModeStore((state) => state.viewMode);
-  const { data: serverStatus } = useRemoteServer();
-  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
-  const shouldShowRemote = isRemoteConnected && viewMode === 'remote';
+  const { isRemoteView } = useRemoteView();
 
-  const { data: remoteReviews, isLoading: remoteLoading } =
-    useRemoteFederatedIdentityReviews(shouldShowRemote);
+  const {
+    data: remoteReviews,
+    isLoading: remoteLoading,
+    isError: remoteReviewsError,
+    errorUpdateCount: remoteErrorUpdateCount,
+  } = useRemoteFederatedIdentityReviews(isRemoteView, statusFilter);
   const approveRemoteReview = useApproveRemoteFederatedIdentityReview();
   const rejectRemoteReview = useRejectRemoteFederatedIdentityReview();
+  const discardRemoteReview = useDiscardRemoteFederatedIdentityReview();
 
   const displayedReviews = useMemo(() => {
-    if (!shouldShowRemote) {
+    if (!isRemoteView) {
       return reviews || [];
     }
     return remoteReviews || [];
-  }, [reviews, remoteReviews, shouldShowRemote]);
+  }, [reviews, remoteReviews, isRemoteView]);
 
-  const isLoading = reviewsLoading || (shouldShowRemote && remoteLoading);
-  const isMutating =
-    approveReview.isPending ||
-    approveRemoteReview.isPending ||
-    rejectReview.isPending ||
-    rejectRemoteReview.isPending;
+  const isLoading = isRemoteView
+    ? remoteLoading && remoteErrorUpdateCount === 0
+    : reviewsLoading;
+  const remoteUnreachable = isRemoteView && remoteReviewsError;
   const [reviewToApprove, setReviewToApprove] =
     useState<FederatedIdentityReview | null>(null);
   const [reviewToReject, setReviewToReject] =
+    useState<FederatedIdentityReview | null>(null);
+  const [reviewToDiscard, setReviewToDiscard] =
     useState<FederatedIdentityReview | null>(null);
   const [error, setError] = useState('');
 
@@ -84,7 +93,7 @@ export const FederatedIdentityReviews = () => {
 
     setError('');
     try {
-      if (shouldShowRemote) {
+      if (isRemoteView) {
         await approveRemoteReview.mutateAsync(reviewToApprove.id);
       } else {
         await approveReview.mutateAsync(reviewToApprove.id);
@@ -100,12 +109,28 @@ export const FederatedIdentityReviews = () => {
 
     setError('');
     try {
-      if (shouldShowRemote) {
+      if (isRemoteView) {
         await rejectRemoteReview.mutateAsync(reviewToReject.id);
       } else {
         await rejectReview.mutateAsync(reviewToReject.id);
       }
       setReviewToReject(null);
+    } catch (err) {
+      setError(mutationErrorMessage(err));
+    }
+  };
+
+  const handleDiscard = async () => {
+    if (!reviewToDiscard) return;
+
+    setError('');
+    try {
+      if (isRemoteView) {
+        await discardRemoteReview.mutateAsync(reviewToDiscard.id);
+      } else {
+        await discardReview.mutateAsync(reviewToDiscard.id);
+      }
+      setReviewToDiscard(null);
     } catch (err) {
       setError(mutationErrorMessage(err));
     }
@@ -122,11 +147,26 @@ export const FederatedIdentityReviews = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Identity Reviews</h1>
-        <p className="text-muted-foreground">
-          Review blocked federated identity links
-        </p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Identity Reviews</h1>
+            <p className="text-muted-foreground">
+              Review blocked federated identity links
+            </p>
+          </div>
+          <Tabs
+            value={statusFilter}
+            onValueChange={(value) => setStatusFilter(value as ReviewStatusTab)}
+          >
+            <TabsList>
+              <TabsTrigger value="pending">Pending</TabsTrigger>
+              <TabsTrigger value="rejected">Rejected</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
       </div>
+
+      {remoteUnreachable && <RemoteUnreachableBanner />}
 
       {error && (
         <div className="rounded border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-500">
@@ -134,148 +174,192 @@ export const FederatedIdentityReviews = () => {
         </div>
       )}
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="border-b bg-muted/50">
-                <tr>
-                  <th className="p-4 text-left font-medium">Status</th>
-                  <th className="p-4 text-left font-medium">Existing User</th>
-                  <th className="p-4 text-left font-medium">
-                    Incoming Identity
-                  </th>
-                  <th className="p-4 text-left font-medium">Collision</th>
-                  <th className="p-4 text-left font-medium">Issuer</th>
-                  <th className="p-4 text-left font-medium">Requested</th>
-                  <th className="p-4 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedReviews.map((review) => (
-                  <tr
-                    key={review.id}
-                    className="border-b last:border-0 hover:bg-muted/50"
-                  >
-                    <td className="p-4">
-                      {isPendingFederatedIdentityReview(review) ? (
-                        <Badge className="border-amber-300 bg-amber-100 text-amber-800">
-                          <ShieldAlert className="mr-1 h-3 w-3" />
-                          Pending
-                        </Badge>
-                      ) : (
-                        <Badge className="border-red-300 bg-red-100 text-red-800">
-                          <X className="mr-1 h-3 w-3" />
-                          Rejected
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-start gap-2">
-                        <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                        <div>
-                          <p className="font-medium">
-                            {review.user?.username || review.user_id}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {review.user?.email || review.user_id}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="max-w-[18rem]">
-                        <p className="font-medium">
-                          {reviewDisplayName(review)}
-                        </p>
-                        <div className="mt-1 flex flex-wrap items-center gap-2">
-                          {review.email && (
-                            <span className="text-sm text-muted-foreground">
-                              {review.email}
-                            </span>
-                          )}
-                          <Badge
-                            variant="outline"
-                            className={
-                              review.email_verified
-                                ? 'border-green-300 text-green-700'
-                                : 'border-zinc-300 text-zinc-700'
-                            }
-                          >
-                            {review.email_verified
-                              ? 'Email verified'
-                              : 'Email unverified'}
-                          </Badge>
-                        </div>
-                        <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
-                          sub: {review.subject}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <Badge variant="outline">
-                        {review.collision_field.replace(/_/g, ' ')}
-                      </Badge>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex max-w-[20rem] items-start gap-2">
-                        <Fingerprint className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                        <span className="break-all font-mono text-xs text-muted-foreground">
-                          {review.issuer}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap p-4 text-sm text-muted-foreground">
-                      {formatDate(review.created_at)}
-                    </td>
-                    <td className="p-4">
-                      {isPendingFederatedIdentityReview(review) ? (
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setReviewToReject(review)}
-                            disabled={isMutating}
-                            aria-label={`Reject identity review for ${reviewDisplayName(review)}`}
-                          >
-                            {isMutating ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <X className="h-4 w-4" />
-                            )}
-                            Reject
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => setReviewToApprove(review)}
-                            disabled={isMutating}
-                            aria-label={`Approve identity review for ${reviewDisplayName(review)}`}
-                          >
-                            {isMutating ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Check className="h-4 w-4" />
-                            )}
-                            Approve
-                          </Button>
-                        </div>
-                      ) : (
-                        <p className="text-right text-sm text-muted-foreground">
-                          Rejected
-                        </p>
-                      )}
-                    </td>
+      {!remoteUnreachable && (
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="border-b bg-muted/50">
+                  <tr>
+                    <th className="p-4 text-left font-medium">Status</th>
+                    <th className="p-4 text-left font-medium">Existing User</th>
+                    <th className="p-4 text-left font-medium">
+                      Incoming Identity
+                    </th>
+                    <th className="p-4 text-left font-medium">Collision</th>
+                    <th className="p-4 text-left font-medium">Issuer</th>
+                    <th className="p-4 text-left font-medium">Requested</th>
+                    <th className="p-4 text-right font-medium">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+                </thead>
+                <tbody>
+                  {displayedReviews.map((review) => {
+                    const isPending = isPendingFederatedIdentityReview(review);
+                    const isApproving =
+                      (isRemoteView
+                        ? approveRemoteReview.variables
+                        : approveReview.variables) === review.id &&
+                      (isRemoteView
+                        ? approveRemoteReview.isPending
+                        : approveReview.isPending);
+                    const isRejecting =
+                      (isRemoteView
+                        ? rejectRemoteReview.variables
+                        : rejectReview.variables) === review.id &&
+                      (isRemoteView
+                        ? rejectRemoteReview.isPending
+                        : rejectReview.isPending);
+                    const isDiscarding =
+                      (isRemoteView
+                        ? discardRemoteReview.variables
+                        : discardReview.variables) === review.id &&
+                      (isRemoteView
+                        ? discardRemoteReview.isPending
+                        : discardReview.isPending);
+                    const isRowMutating =
+                      isApproving || isRejecting || isDiscarding;
 
-      {displayedReviews.length === 0 && (
+                    return (
+                      <tr
+                        key={review.id}
+                        className="border-b last:border-0 hover:bg-muted/50"
+                      >
+                        <td className="p-4">
+                          {isPending ? (
+                            <Badge className="border-amber-300 bg-amber-100 text-amber-800">
+                              <ShieldAlert className="mr-1 h-3 w-3" />
+                              Pending
+                            </Badge>
+                          ) : (
+                            <Badge className="border-red-300 bg-red-100 text-red-800">
+                              <X className="mr-1 h-3 w-3" />
+                              Rejected
+                            </Badge>
+                          )}
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-start gap-2">
+                            <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                            <div>
+                              <p className="font-medium">
+                                {review.user?.username || 'Deleted user'}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {review.user?.email || review.user_id}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <div className="max-w-[18rem]">
+                            <p className="font-medium">
+                              {reviewDisplayName(review)}
+                            </p>
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                              {review.email && (
+                                <span className="text-sm text-muted-foreground">
+                                  {review.email}
+                                </span>
+                              )}
+                              <Badge
+                                variant="outline"
+                                className={
+                                  review.email_verified
+                                    ? 'border-green-300 text-green-700'
+                                    : 'border-zinc-300 text-zinc-700'
+                                }
+                              >
+                                {review.email_verified
+                                  ? 'Email verified'
+                                  : 'Email unverified'}
+                              </Badge>
+                            </div>
+                            <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
+                              sub: {review.subject}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <Badge variant="outline">
+                            {review.collision_field.replace(/_/g, ' ')}
+                          </Badge>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex max-w-[20rem] items-start gap-2">
+                            <Fingerprint className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                            <span className="break-all font-mono text-xs text-muted-foreground">
+                              {review.issuer}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap p-4 text-sm text-muted-foreground">
+                          {formatDate(review.created_at)}
+                        </td>
+                        <td className="p-4">
+                          {isPending ? (
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setReviewToReject(review)}
+                                disabled={isRowMutating}
+                                aria-label={`Reject identity review for ${reviewDisplayName(review)}`}
+                              >
+                                {isRejecting ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <X className="h-4 w-4" />
+                                )}
+                                Reject
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => setReviewToApprove(review)}
+                                disabled={isRowMutating}
+                                aria-label={`Approve identity review for ${reviewDisplayName(review)}`}
+                              >
+                                {isApproving ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Check className="h-4 w-4" />
+                                )}
+                                Approve
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex justify-end">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setReviewToDiscard(review)}
+                                disabled={isRowMutating}
+                                aria-label={`Discard identity review for ${reviewDisplayName(review)}`}
+                              >
+                                {isDiscarding ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                                Discard
+                              </Button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {!remoteUnreachable && displayedReviews.length === 0 && (
         <div className="py-12 text-center">
-          <p className="text-muted-foreground">No identity reviews</p>
+          <p className="text-muted-foreground">
+            No {statusFilter} identity reviews
+          </p>
         </div>
       )}
 
@@ -304,6 +388,21 @@ export const FederatedIdentityReviews = () => {
             : ''
         }
         confirmText="Reject Request"
+        cancelText="Cancel"
+        variant="destructive"
+      />
+
+      <ConfirmDialog
+        open={!!reviewToDiscard}
+        onOpenChange={(open) => !open && setReviewToDiscard(null)}
+        onConfirm={handleDiscard}
+        title="Discard Identity Review"
+        description={
+          reviewToDiscard
+            ? `Discard the review for ${reviewDisplayName(reviewToDiscard)}? The next OAuth login for this identity can create a fresh pending review if the collision still exists.`
+            : ''
+        }
+        confirmText="Discard Review"
         cancelText="Cancel"
         variant="destructive"
       />

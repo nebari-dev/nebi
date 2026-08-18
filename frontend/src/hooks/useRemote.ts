@@ -5,6 +5,7 @@ import { useViewModeStore } from '@/store/viewModeStore';
 import type {
   ConnectServerRequest,
   CreateRemoteWorkspaceRequest,
+  FederatedIdentityReviewStatusFilter,
 } from '@/types';
 
 // Slow down interval polling while the query is errored (e.g. the remote
@@ -188,10 +189,13 @@ export const useRemoteDashboardStats = (enabled: boolean) => {
   });
 };
 
-export const useRemoteFederatedIdentityReviews = (enabled: boolean) => {
+export const useRemoteFederatedIdentityReviews = (
+  enabled: boolean,
+  status: FederatedIdentityReviewStatusFilter = 'pending',
+) => {
   return useQuery({
-    queryKey: ['remote', 'admin', 'federated-identity-reviews'],
-    queryFn: remoteApi.listFederatedIdentityReviews,
+    queryKey: ['remote', 'admin', 'federated-identity-reviews', status],
+    queryFn: () => remoteApi.listFederatedIdentityReviews(status),
     enabled,
   });
 };
@@ -217,6 +221,22 @@ export const useRejectRemoteFederatedIdentityReview = () => {
   return useMutation({
     mutationFn: (reviewId: string) =>
       remoteApi.rejectFederatedIdentityReview(reviewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['remote', 'admin', 'federated-identity-reviews'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['remote', 'admin', 'audit-logs'],
+      });
+    },
+  });
+};
+
+export const useDiscardRemoteFederatedIdentityReview = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reviewId: string) =>
+      remoteApi.discardFederatedIdentityReview(reviewId),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ['remote', 'admin', 'federated-identity-reviews'],

@@ -94,6 +94,14 @@ const docTemplate = `{
                     "admin"
                 ],
                 "summary": "List federated identity reviews",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Review status: pending, rejected, or all",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -103,6 +111,33 @@ const docTemplate = `{
                                 "$ref": "#/definitions/models.FederatedIdentityReview"
                             }
                         }
+                    }
+                }
+            }
+        },
+        "/admin/federated-identity-reviews/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Discard a federated identity review",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Review UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
                     }
                 }
             }

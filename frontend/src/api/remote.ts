@@ -5,6 +5,7 @@ import type {
   DashboardStats,
   FederatedIdentity,
   FederatedIdentityReview,
+  FederatedIdentityReviewStatusFilter,
   Job,
   OCIRegistry,
   RemoteServer,
@@ -126,11 +127,12 @@ export const remoteApi = {
     return data;
   },
 
-  listFederatedIdentityReviews: async (): Promise<
-    FederatedIdentityReview[]
-  > => {
+  listFederatedIdentityReviews: async (
+    status: FederatedIdentityReviewStatusFilter = 'pending',
+  ): Promise<FederatedIdentityReview[]> => {
     const { data } = await apiClient.get(
       '/remote/admin/federated-identity-reviews',
+      { params: { status } },
     );
     return data;
   },
@@ -147,6 +149,12 @@ export const remoteApi = {
   rejectFederatedIdentityReview: async (reviewId: string): Promise<void> => {
     await apiClient.post(
       `/remote/admin/federated-identity-reviews/${reviewId}/reject`,
+    );
+  },
+
+  discardFederatedIdentityReview: async (reviewId: string): Promise<void> => {
+    await apiClient.delete(
+      `/remote/admin/federated-identity-reviews/${reviewId}`,
     );
   },
 };

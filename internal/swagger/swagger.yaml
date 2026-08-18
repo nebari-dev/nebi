@@ -861,6 +861,11 @@ paths:
       - admin
   /admin/federated-identity-reviews:
     get:
+      parameters:
+      - description: 'Review status: pending, rejected, or all'
+        in: query
+        name: status
+        type: string
       produces:
       - application/json
       responses:
@@ -873,6 +878,22 @@ paths:
       security:
       - BearerAuth: []
       summary: List federated identity reviews
+      tags:
+      - admin
+  /admin/federated-identity-reviews/{id}:
+    delete:
+      parameters:
+      - description: Review UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Discard a federated identity review
       tags:
       - admin
   /admin/federated-identity-reviews/{id}/approve:

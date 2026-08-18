@@ -17,6 +17,7 @@ import {
   useCreateUser,
   useDashboardStats,
   useDeleteUser,
+  useDiscardFederatedIdentityReview,
   useFederatedIdentityReviews,
   useIsAdmin,
   useRejectFederatedIdentityReview,
@@ -195,6 +196,22 @@ describe('useRejectFederatedIdentityReview', () => {
       ),
     );
     const { result } = renderHook(() => useRejectFederatedIdentityReview(), {
+      wrapper: createWrapper(),
+    });
+    result.current.mutate('review-1');
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  });
+});
+
+describe('useDiscardFederatedIdentityReview', () => {
+  it('calls the discard endpoint successfully', async () => {
+    server.use(
+      http.delete(
+        '/api/v1/admin/federated-identity-reviews/:id',
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
+    const { result } = renderHook(() => useDiscardFederatedIdentityReview(), {
       wrapper: createWrapper(),
     });
     result.current.mutate('review-1');

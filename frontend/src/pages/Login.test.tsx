@@ -33,6 +33,19 @@ describe('Login', () => {
     ).toBeInTheDocument();
   });
 
+  it('does not echo unknown auth redirect errors', async () => {
+    renderWithProviders(<Login isDarkMode={false} />, {
+      initialEntries: ['/login?error=Call%20IT%20at%201-800-555-0199'],
+    });
+
+    expect(
+      await screen.findByText('Authentication failed'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Call IT at 1-800-555-0199'),
+    ).not.toBeInTheDocument();
+  });
+
   it('shows login options when no proxy gateway is configured', async () => {
     renderWithProviders(<Login isDarkMode={false} />, {
       initialEntries: ['/login'],

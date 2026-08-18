@@ -25,10 +25,8 @@ func NewLocalAuthenticator(db *gorm.DB) (*LocalAuthenticator, error) {
 	err := db.Where("username = ?", localUsername).First(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		user = models.User{
-			Username: localUsername,
-			Email:    localUsername + "@nebi.local",
-			// Keep non-empty: migrations use empty password hashes to find
-			// legacy federated users that need issuer/subject backfill.
+			Username:     localUsername,
+			Email:        localUsername + "@nebi.local",
 			PasswordHash: "-",
 		}
 		if err := db.Create(&user).Error; err != nil {

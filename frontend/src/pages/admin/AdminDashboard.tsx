@@ -143,14 +143,13 @@ export const AdminDashboard = () => {
     isPendingFederatedIdentityReview,
   ).length;
 
-  const remoteQueries = [
+  const remoteRequiredQueries = [
     remoteWorkspacesQuery,
     remoteJobsQuery,
     remoteStatsQuery,
-    remoteReviewsQuery,
   ];
   const remoteUnreachable =
-    isRemoteView && remoteQueries.some((query) => query.isError);
+    isRemoteView && remoteRequiredQueries.some((query) => query.isError);
   // Full-page spinner only until the remote queries first resolve or error.
   // A refetch after an error resets a query to pending, so gating on isError
   // alone would flash the spinner on every retry (issue #217).
@@ -161,7 +160,7 @@ export const AdminDashboard = () => {
     statsLoading ||
     reviewsLoading ||
     (isRemoteView &&
-      remoteQueries.some(
+      remoteRequiredQueries.some(
         (query) => query.isLoading && query.errorUpdateCount === 0,
       ));
 

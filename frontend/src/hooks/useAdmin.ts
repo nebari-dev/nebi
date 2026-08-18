@@ -1,6 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminApi } from '@/api/admin';
-import type { CreateUserRequest, ShareWorkspaceRequest } from '@/types/models';
+import type {
+  CreateUserRequest,
+  FederatedIdentityReviewStatusFilter,
+  ShareWorkspaceRequest,
+} from '@/types/models';
 
 // Check if current user is admin
 export const useIsAdmin = () => {
@@ -120,10 +124,12 @@ export const useDashboardStats = () => {
   });
 };
 
-export const useFederatedIdentityReviews = () => {
+export const useFederatedIdentityReviews = (
+  status: FederatedIdentityReviewStatusFilter = 'pending',
+) => {
   return useQuery({
-    queryKey: ['admin', 'federated-identity-reviews'],
-    queryFn: adminApi.getFederatedIdentityReviews,
+    queryKey: ['admin', 'federated-identity-reviews', status],
+    queryFn: () => adminApi.getFederatedIdentityReviews(status),
   });
 };
 
@@ -146,6 +152,20 @@ export const useRejectFederatedIdentityReview = () => {
   return useMutation({
     mutationFn: (reviewId: string) =>
       adminApi.rejectFederatedIdentityReview(reviewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['admin', 'federated-identity-reviews'],
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'audit-logs'] });
+    },
+  });
+};
+
+export const useDiscardFederatedIdentityReview = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reviewId: string) =>
+      adminApi.discardFederatedIdentityReview(reviewId),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ['admin', 'federated-identity-reviews'],

@@ -30,9 +30,6 @@ func Login(authenticator auth.Authenticator) gin.HandlerFunc {
 
 		resp, err := authenticator.Login(req.Username, req.Password)
 		if err != nil {
-			if writeFederatedIdentityReviewJSON(c, err) {
-				return
-			}
 			if errors.Is(err, auth.ErrInvalidCredentials) {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 				return

@@ -20,6 +20,7 @@ import {
   useConnectServer,
   useCreateRemoteWorkspace,
   useDeleteRemoteWorkspace,
+  useDiscardRemoteFederatedIdentityReview,
   useDisconnectServer,
   useRejectRemoteFederatedIdentityReview,
   useRemoteFederatedIdentityReviews,
@@ -417,6 +418,25 @@ describe('useRejectRemoteFederatedIdentityReview', () => {
     );
     const { result } = renderHook(
       () => useRejectRemoteFederatedIdentityReview(),
+      {
+        wrapper: createWrapper(),
+      },
+    );
+    result.current.mutate('review-1');
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  });
+});
+
+describe('useDiscardRemoteFederatedIdentityReview', () => {
+  it('calls the remote discard endpoint successfully', async () => {
+    server.use(
+      http.delete(
+        '/api/v1/remote/admin/federated-identity-reviews/:id',
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
+    const { result } = renderHook(
+      () => useDiscardRemoteFederatedIdentityReview(),
       {
         wrapper: createWrapper(),
       },

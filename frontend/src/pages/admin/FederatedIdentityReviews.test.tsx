@@ -27,7 +27,7 @@ describe('FederatedIdentityReviews', () => {
     renderWithProviders(<FederatedIdentityReviews />);
 
     expect(await screen.findByText('Identity Reviews')).toBeInTheDocument();
-    expect(screen.getByText('Pending')).toBeInTheDocument();
+    expect(screen.getAllByText('Pending')).toHaveLength(2);
     expect(screen.getByText('https://issuer.example.com')).toBeInTheDocument();
     expect(screen.getByText('sub: subject-1')).toBeInTheDocument();
     expect(screen.getByText('Email verified')).toBeInTheDocument();
@@ -86,19 +86,26 @@ describe('FederatedIdentityReviews', () => {
   });
 
   it('shows rejected identity reviews without actions', async () => {
+    const user = userEvent.setup();
     server.use(
-      http.get('/api/v1/admin/federated-identity-reviews', () =>
-        HttpResponse.json([
+      http.get('/api/v1/admin/federated-identity-reviews', ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get('status') !== 'rejected') {
+          return HttpResponse.json([]);
+        }
+        return HttpResponse.json([
           {
             ...mockFederatedIdentityReview,
             status: 'rejected',
             reviewed_at: '2024-01-02T00:00:00Z',
           },
-        ]),
-      ),
+        ]);
+      }),
     );
 
     renderWithProviders(<FederatedIdentityReviews />);
+
+    await user.click(await screen.findByRole('button', { name: 'Rejected' }));
 
     expect(await screen.findAllByText('Rejected')).toHaveLength(2);
     expect(
@@ -110,6 +117,77 @@ describe('FederatedIdentityReviews', () => {
       screen.queryByRole('button', {
         name: /reject identity review for testuser/i,
       }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: /discard identity review for testuser/i,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('discards a rejected identity review', async () => {
+    const user = userEvent.setup();
+    let discardedReviewID = '';
+    server.use(
+      http.get('/api/v1/admin/federated-identity-reviews', ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get('status') !== 'rejected') {
+          return HttpResponse.json([]);
+        }
+        return HttpResponse.json([
+          {
+            ...mockFederatedIdentityReview,
+            status: 'rejected',
+            reviewed_at: '2024-01-02T00:00:00Z',
+          },
+        ]);
+      }),
+      http.delete(
+        '/api/v1/admin/federated-identity-reviews/:id',
+        ({ params }) => {
+          discardedReviewID = params.id as string;
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+
+    renderWithProviders(<FederatedIdentityReviews />);
+
+    await user.click(await screen.findByRole('button', { name: 'Rejected' }));
+    await screen.findByText(mockFederatedIdentityReview.issuer);
+    await user.click(
+      screen.getByRole('button', {
+        name: /discard identity review for testuser/i,
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Discard Review' }));
+
+    await waitFor(() => expect(discardedReviewID).toBe('review-1'));
+  });
+
+  it('shows the remote unreachable banner when remote reviews fail', async () => {
+    useModeStore.setState({ mode: 'local', loading: false });
+    useViewModeStore.setState({ viewMode: 'remote' });
+    server.use(
+      http.get('/api/v1/remote/server', () =>
+        HttpResponse.json({
+          status: 'connected',
+          url: 'https://remote.example.com',
+          username: 'admin',
+        }),
+      ),
+      http.get('/api/v1/remote/admin/federated-identity-reviews', () =>
+        HttpResponse.json({ error: 'Remote error' }, { status: 502 }),
+      ),
+    );
+
+    renderWithProviders(<FederatedIdentityReviews />);
+
+    expect(
+      await screen.findByText(/can't reach the remote server/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('No pending identity reviews'),
     ).not.toBeInTheDocument();
   });
 });

@@ -245,6 +245,11 @@ export const handlers = [
     () => new HttpResponse(null, { status: 204 }),
   ),
 
+  http.delete(
+    `${BASE}/admin/federated-identity-reviews/:id`,
+    () => new HttpResponse(null, { status: 204 }),
+  ),
+
   http.get(`${BASE}/remote/admin/federated-identity-reviews`, () =>
     HttpResponse.json([mockFederatedIdentityReview]),
   ),
@@ -255,6 +260,11 @@ export const handlers = [
 
   http.post(
     `${BASE}/remote/admin/federated-identity-reviews/:id/reject`,
+    () => new HttpResponse(null, { status: 204 }),
+  ),
+
+  http.delete(
+    `${BASE}/remote/admin/federated-identity-reviews/:id`,
     () => new HttpResponse(null, { status: 204 }),
   ),
 

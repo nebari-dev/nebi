@@ -13,29 +13,30 @@ type LoginProps = {
   isDarkMode: boolean;
 };
 
-const authErrorMessage = (error: string) => {
-  if (error === 'identity_review_pending') {
-    return 'Your identity link request is pending admin approval. Try again after an admin approves it.';
+const authErrorMessage = (error: string | null) => {
+  switch (error) {
+    case 'identity_review_pending':
+      return 'Your identity link request is pending admin approval. Try again after an admin approves it.';
+    case 'identity_review_rejected':
+      return 'Your identity link request was rejected by an admin. Contact an administrator if you believe this is a mistake.';
+    case 'invalid credentials':
+      return 'Invalid credentials';
+    case 'code_exchange_failed':
+      return 'Failed to complete login';
+    case 'login_failed':
+      return 'Login failed';
+    default:
+      return 'Authentication failed';
   }
-  if (error === 'identity_review_rejected') {
-    return 'Your identity link request was rejected by an admin. Contact an administrator if you believe this is a mistake.';
-  }
-  if (!error || error === 'oauth_failed') {
-    return 'Authentication failed';
-  }
-  return error;
 };
 
-const authErrorTone = (error: string) =>
+const authErrorTone = (error: string | null) =>
   error === 'identity_review_pending' ? 'warning' : 'destructive';
 
 export const Login = ({ isDarkMode }: LoginProps) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [errorTone, setErrorTone] = useState<'destructive' | 'warning'>(
-    'destructive',
-  );
+  const [authError, setAuthError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [searchParams] = useSearchParams();
@@ -84,8 +85,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
     const oauthError = searchParams.get('error');
 
     if (oauthError) {
-      setError(authErrorMessage(oauthError));
-      setErrorTone(authErrorTone(oauthError));
+      setAuthError(oauthError);
       setSessionChecked(true);
       return;
     }
@@ -100,8 +100,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
           setAuth(data.token, data.user);
           navigate('/');
         } catch {
-          setError('Failed to complete login');
-          setErrorTone('destructive');
+          setAuthError('code_exchange_failed');
           setSessionChecked(true);
         } finally {
           setLoading(false);
@@ -113,8 +112,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setErrorTone('destructive');
+    setAuthError(null);
     setLoading(true);
 
     try {
@@ -124,8 +122,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string } } };
       const authError = error.response?.data?.error;
-      setError(authError ? authErrorMessage(authError) : 'Login failed');
-      setErrorTone(authError ? authErrorTone(authError) : 'destructive');
+      setAuthError(authError || 'login_failed');
     } finally {
       setLoading(false);
     }
@@ -136,6 +133,9 @@ export const Login = ({ isDarkMode }: LoginProps) => {
 
   // Wait for session check before showing the form
   if (!sessionChecked) return null;
+
+  const errorMessage = authError ? authErrorMessage(authError) : '';
+  const errorTone = authErrorTone(authError);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
@@ -154,7 +154,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
         </div>
         <div className="px-8 pb-8">
           <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
+            {errorMessage && (
               <div
                 className={
                   errorTone === 'warning'
@@ -162,7 +162,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
                     : 'rounded-md bg-destructive/10 p-4 text-sm text-destructive'
                 }
               >
-                {error}
+                {errorMessage}
               </div>
             )}
 

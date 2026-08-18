@@ -192,6 +192,11 @@ export interface FederatedIdentityReview {
   updated_at: string;
 }
 
+export type FederatedIdentityReviewStatusFilter =
+  | 'pending'
+  | 'rejected'
+  | 'all';
+
 export const isPendingFederatedIdentityReview = (
   review: FederatedIdentityReview,
 ) => !review.status || review.status === 'pending';

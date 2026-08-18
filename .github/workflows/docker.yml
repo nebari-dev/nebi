@@ -84,7 +84,9 @@ jobs:
           username: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
           password: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
 
-      - name: Build and maybe push
+      # Build locally only; the push happens in a later step so the smoke
+      # test and vulnerability scan gate what gets published.
+      - name: Build image
         id: build
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
@@ -95,8 +97,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
-          push: ${{ steps.registry.outputs.publish == 'true' }}
-          load: ${{ steps.registry.outputs.publish != 'true' }}
+          push: false
+          load: true
           cache-from: ${{ steps.registry.outputs.publish == 'true' && 'type=gha' || '' }}
           cache-to: ${{ steps.registry.outputs.publish == 'true' && 'type=gha,mode=max' || '' }}
 
@@ -104,11 +106,6 @@ jobs:
         run: |
           IMAGE_TAG="${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}"
           echo "Testing image: ${IMAGE_TAG}"
-
-          # Unauthenticated PR builds are loaded locally (not pushed); skip pull.
-          if [ "${{ steps.registry.outputs.publish }}" = "true" ]; then
-            docker pull ${IMAGE_TAG}
-          fi
 
           # Start container with port mapping
           docker run --rm -d --name test-nebi \
@@ -142,6 +139,27 @@ jobs:
 
           # Cleanup
           docker stop test-nebi
+
+      # Scan the locally built image (base layers + compiled binary) and fail
+      # on fixable High/Critical findings (#451). Runs before the push step so
+      # an image that fails the scan is never published.
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      # Push the exact image bytes that passed the smoke test and scan.
+      - name: Push image
+        if: steps.registry.outputs.publish == 'true'
+        run: |
+          while IFS= read -r tag; do
+            [ -z "${tag}" ] && continue
+            docker push "${tag}"
+          done <<< "${{ steps.meta.outputs.tags }}"
 
       - name: Add image tags to summary
         run: |

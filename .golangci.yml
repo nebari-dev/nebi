@@ -1,45 +1,63 @@
+version: "2"
 run:
-  timeout: 5m
   tests: true
-
 linters:
-  disable-all: true
+  default: none
+  enable:
+    - govet
+    - ineffassign
+    - staticcheck
+  settings:
+    # v1 enabled gosimple, which v2 folds into staticcheck. Restrict to the
+    # S* (simplification) checks so the migration doesn't widen lint scope;
+    # enabling SA/ST/QF is a separate cleanup.
+    staticcheck:
+      checks:
+        - S*
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+    govet:
+      enable:
+        - assign
+        - atomic
+        - bools
+        - buildtag
+        - composites
+        - copylocks
+        - nilfunc
+        - printf
+        - shift
+        - stdmethods
+        - structtag
+        - tests
+        - unmarshal
+        - unreachable
+        - unusedresult
+      enable-all: false
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+        path: _test\.go
+    paths:
+      - scripts/.*
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
   enable:
     - gofmt
-    - govet
-    - gosimple
-    - ineffassign
-
-linters-settings:
-  errcheck:
-    check-blank: false
-    check-type-assertions: false
-  govet:
-    enable-all: false
-    enable:
-      - assign
-      - atomic
-      - bools
-      - buildtag
-      - composites
-      - copylocks
-      - nilfunc
-      - printf
-      - shift
-      - stdmethods
-      - structtag
-      - tests
-      - unmarshal
-      - unreachable
-      - unusedresult
-
-issues:
-  exclude-files:
-    - "scripts/.*"
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-    - path: scripts/
-      linters:
-        - typecheck
+  exclusions:
+    generated: lax
+    paths:
+      - scripts/.*
+      - third_party$
+      - builtin$
+      - examples$

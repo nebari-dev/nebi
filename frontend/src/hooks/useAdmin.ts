@@ -1,6 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminApi } from '@/api/admin';
-import type { CreateUserRequest, ShareWorkspaceRequest } from '@/types/models';
+import type {
+  CreateUserRequest,
+  FederatedIdentityReviewStatusFilter,
+  ShareWorkspaceRequest,
+} from '@/types/models';
 
 // Check if current user is admin
 export const useIsAdmin = () => {
@@ -117,5 +121,56 @@ export const useDashboardStats = () => {
   return useQuery({
     queryKey: ['admin', 'dashboard', 'stats'],
     queryFn: adminApi.getDashboardStats,
+  });
+};
+
+export const useFederatedIdentityReviews = (
+  status: FederatedIdentityReviewStatusFilter = 'pending',
+) => {
+  return useQuery({
+    queryKey: ['admin', 'federated-identity-reviews', status],
+    queryFn: () => adminApi.getFederatedIdentityReviews(status),
+  });
+};
+
+export const useApproveFederatedIdentityReview = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reviewId: string) =>
+      adminApi.approveFederatedIdentityReview(reviewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['admin', 'federated-identity-reviews'],
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'audit-logs'] });
+    },
+  });
+};
+
+export const useRejectFederatedIdentityReview = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reviewId: string) =>
+      adminApi.rejectFederatedIdentityReview(reviewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['admin', 'federated-identity-reviews'],
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'audit-logs'] });
+    },
+  });
+};
+
+export const useDiscardFederatedIdentityReview = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reviewId: string) =>
+      adminApi.discardFederatedIdentityReview(reviewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['admin', 'federated-identity-reviews'],
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'audit-logs'] });
+    },
   });
 };

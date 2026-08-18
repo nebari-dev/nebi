@@ -20,14 +20,14 @@ install-tools: ## Install development tools (swag, air, golangci-lint)
 	@go install github.com/swaggo/swag/cmd/swag@latest
 	@echo "Installing air..."
 	@go install github.com/air-verse/air@latest
-	@echo "Installing golangci-lint v1.64.8..."
-	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.64.8
+	@echo "Installing golangci-lint v2.12.2..."
+	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.12.2
 	@echo "Tools installed successfully"
 
 swagger: ## Generate Swagger documentation
 	@echo "Generating Swagger docs..."
-	@command -v swag >/dev/null 2>&1 || { echo "swag not found, installing..."; go install github.com/swaggo/swag/cmd/swag@latest; }
-	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g cmd/nebi/serve.go -o internal/swagger --packageName swagger --exclude output,cross-platform-example
+	@PATH="$$PATH:$$(go env GOPATH)/bin"; command -v swag >/dev/null 2>&1 || { echo "swag not found, installing..."; go install github.com/swaggo/swag/cmd/swag@latest; }
+	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g serve.go -d cmd/nebi,internal/api,internal/service,internal/models,internal/limits,internal/metrics,internal/auth -o internal/swagger --packageName swagger --exclude output,cross-platform-example
 	@echo "Swagger docs generated at /internal/swagger"
 
 build-frontend: ## Build frontend and copy to internal/web/dist
@@ -107,7 +107,7 @@ vet: ## Run go vet
 
 lint: fmt ## Run formatters and linters (matches CI)
 	@echo "Running golangci-lint..."
-	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint not found, installing..."; curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.64.8; }
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint not found, installing..."; curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.12.2; }
 	@PATH="$$PATH:$$(go env GOPATH)/bin" golangci-lint run ./...
 	@echo "Lint complete"
 

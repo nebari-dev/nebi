@@ -3,6 +3,9 @@ import type {
   ConnectServerRequest,
   CreateRemoteWorkspaceRequest,
   DashboardStats,
+  FederatedIdentity,
+  FederatedIdentityReview,
+  FederatedIdentityReviewStatusFilter,
   Job,
   OCIRegistry,
   RemoteServer,
@@ -122,5 +125,36 @@ export const remoteApi = {
   getDashboardStats: async (): Promise<DashboardStats> => {
     const { data } = await apiClient.get('/remote/admin/dashboard/stats');
     return data;
+  },
+
+  listFederatedIdentityReviews: async (
+    status: FederatedIdentityReviewStatusFilter = 'pending',
+  ): Promise<FederatedIdentityReview[]> => {
+    const { data } = await apiClient.get(
+      '/remote/admin/federated-identity-reviews',
+      { params: { status } },
+    );
+    return data;
+  },
+
+  approveFederatedIdentityReview: async (
+    reviewId: string,
+  ): Promise<FederatedIdentity> => {
+    const { data } = await apiClient.post(
+      `/remote/admin/federated-identity-reviews/${reviewId}/approve`,
+    );
+    return data;
+  },
+
+  rejectFederatedIdentityReview: async (reviewId: string): Promise<void> => {
+    await apiClient.post(
+      `/remote/admin/federated-identity-reviews/${reviewId}/reject`,
+    );
+  },
+
+  discardFederatedIdentityReview: async (reviewId: string): Promise<void> => {
+    await apiClient.delete(
+      `/remote/admin/federated-identity-reviews/${reviewId}`,
+    );
   },
 };

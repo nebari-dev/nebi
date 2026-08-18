@@ -2,6 +2,8 @@ import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import type {
   Collaborator,
+  FederatedIdentity,
+  FederatedIdentityReview,
   Job,
   OCIRegistry,
   Publication,
@@ -108,6 +110,37 @@ export const mockPublication: Publication = {
   published_at: '2024-01-01T00:00:00Z',
 };
 
+export const mockFederatedIdentity: FederatedIdentity = {
+  id: 'identity-1',
+  user_id: 'user-1',
+  issuer: 'https://issuer.example.com',
+  subject: 'subject-1',
+  username: 'testuser',
+  email: 'test@example.com',
+  email_verified: true,
+  name: 'Test User',
+  avatar_url: '',
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+};
+
+export const mockFederatedIdentityReview: FederatedIdentityReview = {
+  id: 'review-1',
+  user_id: 'user-1',
+  user: mockUser,
+  issuer: 'https://issuer.example.com',
+  subject: 'subject-1',
+  collision_field: 'email',
+  username: 'testuser',
+  email: 'test@example.com',
+  email_verified: true,
+  name: 'Test User',
+  avatar_url: '',
+  status: 'pending',
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+};
+
 const BASE = '/api/v1';
 
 export const handlers = [
@@ -197,6 +230,42 @@ export const handlers = [
       total_disk_usage_bytes: 0,
       total_disk_usage_formatted: '0 B',
     }),
+  ),
+
+  http.get(`${BASE}/admin/federated-identity-reviews`, () =>
+    HttpResponse.json([mockFederatedIdentityReview]),
+  ),
+
+  http.post(`${BASE}/admin/federated-identity-reviews/:id/approve`, () =>
+    HttpResponse.json(mockFederatedIdentity, { status: 201 }),
+  ),
+
+  http.post(
+    `${BASE}/admin/federated-identity-reviews/:id/reject`,
+    () => new HttpResponse(null, { status: 204 }),
+  ),
+
+  http.delete(
+    `${BASE}/admin/federated-identity-reviews/:id`,
+    () => new HttpResponse(null, { status: 204 }),
+  ),
+
+  http.get(`${BASE}/remote/admin/federated-identity-reviews`, () =>
+    HttpResponse.json([mockFederatedIdentityReview]),
+  ),
+
+  http.post(`${BASE}/remote/admin/federated-identity-reviews/:id/approve`, () =>
+    HttpResponse.json(mockFederatedIdentity, { status: 201 }),
+  ),
+
+  http.post(
+    `${BASE}/remote/admin/federated-identity-reviews/:id/reject`,
+    () => new HttpResponse(null, { status: 204 }),
+  ),
+
+  http.delete(
+    `${BASE}/remote/admin/federated-identity-reviews/:id`,
+    () => new HttpResponse(null, { status: 204 }),
   ),
 
   // Registries

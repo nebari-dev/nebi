@@ -50,7 +50,7 @@ func (h *WorkspaceHandler) ListWorkspaces(c *gin.Context) {
 func (h *WorkspaceHandler) CreateWorkspace(c *gin.Context) {
 	var req CreateWorkspaceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -143,7 +143,7 @@ func (h *WorkspaceHandler) GetPixiToml(c *gin.Context) {
 func (h *WorkspaceHandler) SavePixiToml(c *gin.Context) {
 	var req SavePixiTomlRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -237,7 +237,7 @@ func (h *WorkspaceHandler) UninstallWorkspace(c *gin.Context) {
 func (h *WorkspaceHandler) PushVersion(c *gin.Context) {
 	var req PushVersionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -382,7 +382,7 @@ func (h *WorkspaceHandler) ListTags(c *gin.Context) {
 func (h *WorkspaceHandler) InstallPackages(c *gin.Context) {
 	var req InstallPackagesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -450,7 +450,7 @@ func (h *WorkspaceHandler) ListPackages(c *gin.Context) {
 func (h *WorkspaceHandler) ShareWorkspace(c *gin.Context) {
 	var req ShareWorkspaceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -514,7 +514,7 @@ func (h *WorkspaceHandler) ListCollaborators(c *gin.Context) {
 func (h *WorkspaceHandler) RollbackToVersion(c *gin.Context) {
 	var req RollbackRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -543,7 +543,7 @@ func (h *WorkspaceHandler) RollbackToVersion(c *gin.Context) {
 func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
 	var req PublishRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -596,7 +596,7 @@ func (h *WorkspaceHandler) ListPublications(c *gin.Context) {
 func (h *WorkspaceHandler) UpdatePublication(c *gin.Context) {
 	var req UpdatePublicationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -712,7 +712,7 @@ type ShareWorkspaceWithGroupRequest struct {
 func (h *WorkspaceHandler) ShareWorkspaceWithGroup(c *gin.Context) {
 	var req ShareWorkspaceWithGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 	perm, err := h.svc.ShareWorkspaceWithGroup(c.Param("id"), getUserID(c), req.GroupID, req.Role)

@@ -10,6 +10,7 @@ import (
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrUnauthorized       = errors.New("unauthorized")
+	ErrAuthorizationStale = errors.New("authorization reconciliation is stale")
 )
 
 // LoginRequest represents a login request

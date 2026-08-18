@@ -8,15 +8,17 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Build Go binary
-FROM golang:1.24-alpine AS backend-builder
+# Pinned by exact version + digest; keep in sync with the toolchain directive
+# in go.mod (scripts/check-go-toolchain.sh gates supported lines in CI).
+FROM golang:1.26.6-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS backend-builder
 WORKDIR /app
 
 # Copy go mod files and download dependencies (cached layer)
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Install swag for API docs generation
-RUN go install github.com/swaggo/swag/cmd/swag@latest
+# Install build tools for API docs generation
+RUN apk add --no-cache make && go install github.com/swaggo/swag/cmd/swag@latest
 
 # Copy source code
 COPY . .
@@ -25,7 +27,7 @@ COPY . .
 COPY --from=frontend-builder /app/frontend/dist ./internal/web/dist
 
 # Generate swagger docs
-RUN swag init -g cmd/nebi/main.go -o ./docs --exclude output
+RUN make swagger
 
 # Build pure Go binary with CGO disabled
 ARG VERSION=dev

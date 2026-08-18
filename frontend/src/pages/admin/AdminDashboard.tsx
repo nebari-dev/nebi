@@ -5,6 +5,7 @@ import {
   HardDrive,
   Loader2,
   Package,
+  ShieldAlert,
   UserPlus,
   Users,
 } from 'lucide-react';
@@ -12,15 +13,21 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Card, CardContent } from '@/components/ui/card';
-import { useDashboardStats, useUsers } from '@/hooks/useAdmin';
+import {
+  useDashboardStats,
+  useFederatedIdentityReviews,
+  useUsers,
+} from '@/hooks/useAdmin';
 import { useJobs } from '@/hooks/useJobs';
 import {
   useRemoteDashboardStats,
+  useRemoteFederatedIdentityReviews,
   useRemoteJobs,
   useRemoteView,
   useRemoteWorkspaces,
 } from '@/hooks/useRemote';
 import { useWorkspaces } from '@/hooks/useWorkspaces';
+import { isPendingFederatedIdentityReview } from '@/types';
 
 const StatCard = ({
   title,
@@ -62,6 +69,12 @@ const quickActions = [
     to: '/admin/registries',
   },
   {
+    title: 'Review Identities',
+    description: 'Review blocked federated identity links',
+    icon: ShieldAlert,
+    to: '/admin/identity-reviews',
+  },
+  {
     title: 'View Audit Logs',
     description: 'Review system activity and events',
     icon: Activity,
@@ -74,6 +87,8 @@ export const AdminDashboard = () => {
   const { data: workspaces, isLoading: wsLoading } = useWorkspaces();
   const { data: jobs, isLoading: jobsLoading } = useJobs();
   const { data: dashboardStats, isLoading: statsLoading } = useDashboardStats();
+  const { data: identityReviews, isLoading: reviewsLoading } =
+    useFederatedIdentityReviews();
 
   // View mode support
   const { viewMode, isRemoteConnected, isRemoteView } = useRemoteView();
@@ -82,9 +97,11 @@ export const AdminDashboard = () => {
   const remoteWorkspacesQuery = useRemoteWorkspaces(isRemoteView);
   const remoteJobsQuery = useRemoteJobs(isRemoteView);
   const remoteStatsQuery = useRemoteDashboardStats(isRemoteView);
+  const remoteReviewsQuery = useRemoteFederatedIdentityReviews(isRemoteView);
   const remoteWorkspaces = remoteWorkspacesQuery.data;
   const remoteJobs = remoteJobsQuery.data;
   const remoteDashboardStats = remoteStatsQuery.data;
+  const remoteIdentityReviews = remoteReviewsQuery.data;
 
   // Select data based on view mode
   const displayedWorkspaces = useMemo(() => {
@@ -108,6 +125,13 @@ export const AdminDashboard = () => {
     return remoteDashboardStats;
   }, [dashboardStats, remoteDashboardStats, isRemoteConnected, viewMode]);
 
+  const displayedIdentityReviews = useMemo(() => {
+    if (!isRemoteConnected || viewMode === 'local') {
+      return identityReviews || [];
+    }
+    return remoteIdentityReviews || [];
+  }, [identityReviews, remoteIdentityReviews, isRemoteConnected, viewMode]);
+
   const activeJobs = displayedJobs.filter(
     (job) => job.status === 'running' || job.status === 'pending',
   ).length;
@@ -115,14 +139,17 @@ export const AdminDashboard = () => {
   const failedJobs = displayedJobs.filter(
     (job) => job.status === 'failed',
   ).length;
+  const pendingIdentityReviews = displayedIdentityReviews.filter(
+    isPendingFederatedIdentityReview,
+  ).length;
 
-  const remoteQueries = [
+  const remoteRequiredQueries = [
     remoteWorkspacesQuery,
     remoteJobsQuery,
     remoteStatsQuery,
   ];
   const remoteUnreachable =
-    isRemoteView && remoteQueries.some((query) => query.isError);
+    isRemoteView && remoteRequiredQueries.some((query) => query.isError);
   // Full-page spinner only until the remote queries first resolve or error.
   // A refetch after an error resets a query to pending, so gating on isError
   // alone would flash the spinner on every retry (issue #217).
@@ -131,8 +158,9 @@ export const AdminDashboard = () => {
     wsLoading ||
     jobsLoading ||
     statsLoading ||
+    reviewsLoading ||
     (isRemoteView &&
-      remoteQueries.some(
+      remoteRequiredQueries.some(
         (query) => query.isLoading && query.errorUpdateCount === 0,
       ));
 
@@ -150,13 +178,18 @@ export const AdminDashboard = () => {
       `${failedJobs} job${failedJobs > 1 ? 's' : ''} failed recently`,
     );
   }
+  if (pendingIdentityReviews > 0) {
+    alerts.push(
+      `${pendingIdentityReviews} identity review${pendingIdentityReviews > 1 ? 's' : ''} pending`,
+    );
+  }
 
   return (
     <div className="space-y-6">
       {remoteUnreachable && <RemoteUnreachableBanner />}
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
         <StatCard title="Total Users" value={users?.length || 0} icon={Users} />
         <StatCard
           title="Environments"
@@ -164,6 +197,11 @@ export const AdminDashboard = () => {
           icon={Boxes}
         />
         <StatCard title="Active Jobs" value={activeJobs} icon={Activity} />
+        <StatCard
+          title="Identity Reviews"
+          value={pendingIdentityReviews}
+          icon={ShieldAlert}
+        />
         <StatCard
           title="Disk Usage"
           value={displayedStats?.total_disk_usage_formatted || 'N/A'}

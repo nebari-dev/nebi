@@ -7,7 +7,6 @@ import (
 	"log/slog"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"golang.org/x/oauth2"
@@ -154,21 +153,24 @@ func (a *OIDCAuthenticator) HandleCallback(ctx context.Context, code string) (*L
 	// and end up in aggregated log stores. A presence marker is enough for ops.
 	slog.Debug("OIDC login claims parsed")
 
-	return a.loginWithVerifiedClaims(claims)
+	return a.loginWithVerifiedClaims(idToken.Issuer, idToken.Subject, claims)
 }
 
-func (a *OIDCAuthenticator) loginWithVerifiedClaims(claims oidcLoginClaims) (*LoginResponse, error) {
-	// Determine username
-	username := claims.Email
-	if username == "" {
-		username = claims.PreferredUsername
-	}
-	if username == "" {
-		username = claims.Sub
-	}
-
+func (a *OIDCAuthenticator) loginWithVerifiedClaims(issuer, tokenSubject string, claims oidcLoginClaims) (*LoginResponse, error) {
 	// Find or create user
-	user, err := a.findOrCreateUser(username, claims.Email, claims.Name, claims.Picture, claims.Sub)
+	subject := tokenSubject
+	if subject == "" {
+		subject = claims.Sub
+	}
+	user, err := a.findOrCreateUser(federatedUserClaims{
+		Issuer:            issuer,
+		Subject:           subject,
+		PreferredUsername: claims.PreferredUsername,
+		Email:             claims.Email,
+		EmailVerified:     claims.EmailVerified,
+		Name:              claims.Name,
+		AvatarURL:         claims.Picture,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to find or create user: %w", err)
 	}
@@ -191,39 +193,7 @@ func (a *OIDCAuthenticator) loginWithVerifiedClaims(claims oidcLoginClaims) (*Lo
 	}, nil
 }
 
-// findOrCreateUser finds an existing user or creates a new one
-func (a *OIDCAuthenticator) findOrCreateUser(username, email, name, avatarURL, oidcSub string) (*models.User, error) {
-	var user models.User
-
-	// Try to find user by username or email
-	result := a.db.Where("username = ? OR email = ?", username, email).First(&user)
-	if result.Error == nil {
-		// User exists - update avatar if it changed
-		if user.AvatarURL != avatarURL {
-			user.AvatarURL = avatarURL
-			a.db.Save(&user)
-		}
-		return &user, nil
-	}
-
-	if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("database error: %w", result.Error)
-	}
-
-	// Create new user
-	user = models.User{
-		ID:        uuid.New(),
-		Username:  username,
-		Email:     email,
-		AvatarURL: avatarURL,
-		// No password hash - OIDC users don't have passwords
-		PasswordHash: "",
-	}
-
-	if err := a.db.Create(&user).Error; err != nil {
-		return nil, fmt.Errorf("failed to create user: %w", err)
-	}
-
-	slog.Info("Created new user from OIDC", "user_id", user.ID, "username", user.Username, "email", email)
-	return &user, nil
+// findOrCreateUser finds an existing federated user or creates a new one.
+func (a *OIDCAuthenticator) findOrCreateUser(claims federatedUserClaims) (*models.User, error) {
+	return findOrCreateFederatedUser(a.db, claims)
 }

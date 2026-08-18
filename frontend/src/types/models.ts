@@ -159,6 +159,52 @@ export interface DashboardStats {
   total_disk_usage_formatted: string;
 }
 
+export interface FederatedIdentity {
+  id: string;
+  user_id: string;
+  issuer: string;
+  subject: string;
+  username: string;
+  email: string;
+  email_verified: boolean;
+  name: string;
+  avatar_url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FederatedIdentityReview {
+  id: string;
+  user_id: string;
+  user?: User;
+  issuer: string;
+  subject: string;
+  collision_field: string;
+  collision_username_user_id?: string;
+  collision_username_user?: User;
+  collision_email_user_id?: string;
+  collision_email_user?: User;
+  username: string;
+  email: string;
+  email_verified: boolean;
+  name: string;
+  avatar_url: string;
+  status: 'pending' | 'rejected' | '';
+  reviewed_by?: string;
+  reviewed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type FederatedIdentityReviewStatusFilter =
+  | 'pending'
+  | 'rejected'
+  | 'all';
+
+export const isPendingFederatedIdentityReview = (
+  review: FederatedIdentityReview,
+) => !review.status || review.status === 'pending';
+
 // OCI Registry types
 export interface OCIRegistry {
   id: string; // UUID

@@ -17,9 +17,11 @@ import (
 // ProxyTokenClaims represents claims extracted from an IdToken cookie
 // set by an authenticating proxy (e.g., Envoy Gateway after Keycloak OIDC).
 type ProxyTokenClaims struct {
+	Issuer            string   `json:"-"`
 	Sub               string   `json:"sub"`
 	PreferredUsername string   `json:"preferred_username"`
 	Email             string   `json:"email"`
+	EmailVerified     bool     `json:"email_verified"`
 	Name              string   `json:"name"`
 	Picture           string   `json:"picture"`
 	Groups            []string `json:"groups"`
@@ -52,58 +54,29 @@ func verifyIdTokenCookie(r *http.Request, verifier *oidc.IDTokenVerifier) (*Prox
 	if err := idToken.Claims(&claims); err != nil {
 		return nil, fmt.Errorf("failed to extract claims from verified IdToken: %w", err)
 	}
+	claims.Issuer = idToken.Issuer
+	if claims.Sub == "" {
+		claims.Sub = idToken.Subject
+	}
 
 	return &claims, nil
 }
 
-// findOrCreateProxyUser looks up a user by username or email from proxy
-// claims. If no user exists, one is created. Avatar is updated on every call.
+// findOrCreateProxyUser finds or creates the local user bound to the verified
+// proxy token issuer and subject.
 func findOrCreateProxyUser(db *gorm.DB, claims *ProxyTokenClaims) (*models.User, error) {
-	username := claims.PreferredUsername
-	if username == "" {
-		username = claims.Email
+	if claims == nil {
+		return nil, errors.New("proxy token has no claims")
 	}
-	if username == "" {
-		username = claims.Sub
-	}
-	if username == "" {
-		return nil, errors.New("proxy token has no usable identity claim")
-	}
-
-	email := claims.Email
-	if email == "" {
-		email = username + "@proxy.local"
-	}
-
-	var user models.User
-	result := db.Where("username = ? OR email = ?", username, email).First(&user)
-	if result.Error == nil {
-		// Existing user — update avatar if changed
-		if user.AvatarURL != claims.Picture {
-			user.AvatarURL = claims.Picture
-			db.Save(&user)
-		}
-		return &user, nil
-	}
-
-	if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("database error: %w", result.Error)
-	}
-
-	// Create new user
-	user = models.User{
-		ID:           uuid.New(),
-		Username:     username,
-		Email:        email,
-		AvatarURL:    claims.Picture,
-		PasswordHash: "", // proxy users don't have passwords
-	}
-	if err := db.Create(&user).Error; err != nil {
-		return nil, fmt.Errorf("failed to create proxy user: %w", err)
-	}
-
-	slog.Info("Created new user from proxy auth", "user_id", user.ID, "username", user.Username, "email", email)
-	return &user, nil
+	return findOrCreateFederatedUser(db, federatedUserClaims{
+		Issuer:            claims.Issuer,
+		Subject:           claims.Sub,
+		PreferredUsername: claims.PreferredUsername,
+		Email:             claims.Email,
+		EmailVerified:     claims.EmailVerified,
+		Name:              claims.Name,
+		AvatarURL:         claims.Picture,
+	})
 }
 
 func shouldBeAdminFromGroups(groups []string, adminGroups []string) bool {

@@ -1105,6 +1105,30 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/resource-metrics": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get resource limit and job usage metrics",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.ResourceMetrics"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/roles": {
             "get": {
                 "security": [
@@ -3591,6 +3615,67 @@ const docTemplate = `{
                 }
             }
         },
+        "limits.Limits": {
+            "type": "object",
+            "properties": {
+                "active_jobs_global": {
+                    "type": "integer"
+                },
+                "active_jobs_per_user": {
+                    "type": "integer"
+                },
+                "active_jobs_per_workspace": {
+                    "type": "integer"
+                },
+                "job_cpu_seconds": {
+                    "type": "integer"
+                },
+                "job_log_bytes": {
+                    "type": "integer"
+                },
+                "job_storage_bytes": {
+                    "type": "integer"
+                },
+                "job_timeout_seconds": {
+                    "type": "integer"
+                },
+                "lock_bytes": {
+                    "type": "integer"
+                },
+                "manifest_bytes": {
+                    "type": "integer"
+                },
+                "max_packages": {
+                    "type": "integer"
+                },
+                "metadata_bytes": {
+                    "type": "integer"
+                },
+                "package_string_bytes": {
+                    "type": "integer"
+                },
+                "request_body_bytes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "metrics.QuotaRejectionSnapshot": {
+            "type": "object",
+            "properties": {
+                "global": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "user": {
+                    "type": "integer"
+                },
+                "workspace": {
+                    "type": "integer"
+                }
+            }
+        },
         "models.AuditLog": {
             "type": "object",
             "properties": {
@@ -3736,6 +3821,9 @@ const docTemplate = `{
                 },
                 "type": {
                     "$ref": "#/definitions/models.JobType"
+                },
+                "user_id": {
+                    "type": "string"
                 },
                 "workspace": {
                     "$ref": "#/definitions/models.Workspace"
@@ -4181,6 +4269,46 @@ const docTemplate = `{
                 }
             }
         },
+        "service.ResourceMetrics": {
+            "type": "object",
+            "properties": {
+                "active_jobs_by_user": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.UserActiveJobUsage"
+                    }
+                },
+                "active_jobs_by_workspace": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.WorkspaceActiveJobUsage"
+                    }
+                },
+                "active_jobs_global": {
+                    "type": "integer"
+                },
+                "job_timeouts_total": {
+                    "type": "integer"
+                },
+                "limits": {
+                    "$ref": "#/definitions/limits.Limits"
+                },
+                "quota_rejections": {
+                    "$ref": "#/definitions/metrics.QuotaRejectionSnapshot"
+                }
+            }
+        },
+        "service.UserActiveJobUsage": {
+            "type": "object",
+            "properties": {
+                "active_jobs": {
+                    "type": "integer"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "service.UserWithAdmin": {
             "type": "object",
             "properties": {
@@ -4203,6 +4331,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.WorkspaceActiveJobUsage": {
+            "type": "object",
+            "properties": {
+                "active_jobs": {
+                    "type": "integer"
+                },
+                "workspace_id": {
                     "type": "string"
                 }
             }

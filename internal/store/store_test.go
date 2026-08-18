@@ -1,6 +1,9 @@
 package store
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/google/uuid"
@@ -83,6 +86,33 @@ func TestWorkspaceRoundTrip(t *testing.T) {
 	wss, _ = s.ListWorkspaces()
 	if len(wss) != 0 {
 		t.Fatalf("expected 0 after delete, got %d", len(wss))
+	}
+}
+
+func TestFindWorkspaceByPathCanonicalizesSymlinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink behavior differs on Windows")
+	}
+
+	s := testStore(t)
+	realDir := t.TempDir()
+	linkParent := t.TempDir()
+	linkDir := filepath.Join(linkParent, "workspace-link")
+	if err := os.Symlink(realDir, linkDir); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	ws := &LocalWorkspace{Name: "linked", Path: realDir}
+	if err := s.CreateWorkspace(ws); err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+
+	found, err := s.FindWorkspaceByPath(linkDir)
+	if err != nil {
+		t.Fatalf("FindWorkspaceByPath: %v", err)
+	}
+	if found == nil || found.ID != ws.ID {
+		t.Fatalf("expected symlink path to find workspace %s, got %+v", ws.ID, found)
 	}
 }
 

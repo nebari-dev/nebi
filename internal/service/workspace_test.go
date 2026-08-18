@@ -2,15 +2,18 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/executor"
+	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
@@ -24,12 +27,19 @@ func testSetup(t *testing.T, isLocal bool) (*WorkspaceService, *gorm.DB) {
 	t.Helper()
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+	dsn := dbPath + "?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("db handle: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(30)
+	sqlDB.SetMaxIdleConns(5)
 
 	if err := db.AutoMigrate(
 		&models.User{},
@@ -46,6 +56,8 @@ func testSetup(t *testing.T, isLocal bool) (*WorkspaceService, *gorm.DB) {
 		&models.Group{},
 		&models.GroupMember{},
 		&models.GroupPermission{},
+		&models.ResourceLock{},
+		&models.ResourceMetric{},
 	); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -67,7 +79,7 @@ func testSetup(t *testing.T, isLocal bool) (*WorkspaceService, *gorm.DB) {
 		t.Fatalf("new executor: %v", err)
 	}
 
-	svc := New(db, q, exec, isLocal, nil, rbac.NewDefaultProvider())
+	svc := New(db, q, exec, isLocal, nil, rbac.NewDefaultProvider(), limits.Defaults())
 	return svc, db
 }
 
@@ -185,6 +197,77 @@ func TestCreate_LocalSourceAccepted(t *testing.T) {
 	}
 }
 
+func TestCreate_RejectsOversizedPixiTomlBeforeWrites(t *testing.T) {
+	svc, db := testSetup(t, true)
+	limitCfg := limits.Defaults()
+	limitCfg.ManifestBytes = 8
+	svc.limits = limitCfg
+	userID := createTestUser(t, db, "alice")
+
+	_, err := svc.Create(context.Background(), CreateRequest{
+		Name:     "too-big",
+		PixiToml: strings.Repeat("x", 9),
+	}, userID)
+
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+
+	var workspaces, jobs int64
+	db.Model(&models.Workspace{}).Count(&workspaces)
+	db.Model(&models.Job{}).Count(&jobs)
+	if workspaces != 0 || jobs != 0 {
+		t.Fatalf("expected no workspace/job writes, got workspaces=%d jobs=%d", workspaces, jobs)
+	}
+}
+
+func TestCreate_RejectsTooManyManifestPackagesBeforeWrites(t *testing.T) {
+	svc, db := testSetup(t, true)
+	limitCfg := limits.Defaults()
+	limitCfg.MaxPackages = 2
+	svc.limits = limitCfg
+	userID := createTestUser(t, db, "alice")
+
+	manifest := `[project]
+name = "too-many-manifest-packages"
+
+[dependencies]
+python = "*"
+numpy = "*"
+
+[feature.test.dependencies]
+pytest = "*"
+`
+	_, err := svc.Create(context.Background(), CreateRequest{PixiToml: manifest}, userID)
+
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+
+	var workspaces, jobs int64
+	db.Model(&models.Workspace{}).Count(&workspaces)
+	db.Model(&models.Job{}).Count(&jobs)
+	if workspaces != 0 || jobs != 0 {
+		t.Fatalf("expected no workspace/job writes, got workspaces=%d jobs=%d", workspaces, jobs)
+	}
+}
+
+func TestCreate_PixiTomlDoesNotConsumeGenericMetadataLimit(t *testing.T) {
+	svc, db := testSetup(t, true)
+	limitCfg := limits.Defaults()
+	limitCfg.ManifestBytes = 256
+	limitCfg.MetadataBytes = 64
+	svc.limits = limitCfg
+	userID := createTestUser(t, db, "alice")
+
+	manifest := "[project]\nname = \"metadata-limit\"\n# " + strings.Repeat("x", 64) + "\n"
+	if _, err := svc.Create(context.Background(), CreateRequest{PixiToml: manifest}, userID); err != nil {
+		t.Fatalf("expected pixi_toml to be governed by manifest limit, got %v", err)
+	}
+}
+
 // --- List tests (local vs team mode) ---
 
 func TestList_LocalModeReturnsAll(t *testing.T) {
@@ -259,6 +342,41 @@ func TestDelete_NotFound(t *testing.T) {
 	err := svc.Delete(context.Background(), uuid.New().String(), uuid.New())
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestDelete_BypassesActiveJobQuotas(t *testing.T) {
+	svc, db := testSetup(t, true)
+	limitCfg := limits.Defaults()
+	limitCfg.ActiveJobsGlobal = 1
+	limitCfg.ActiveJobsPerUser = 1
+	limitCfg.ActiveJobsPerWorkspace = 1
+	svc.limits = limitCfg
+
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "delete-quota", userID)
+	if err := db.Model(&models.Job{}).Where("workspace_id = ?", ws.ID).Update("status", models.JobStatusCompleted).Error; err != nil {
+		t.Fatalf("complete setup jobs: %v", err)
+	}
+	if err := db.Create(&models.Job{
+		WorkspaceID: ws.ID,
+		UserID:      userID,
+		Type:        models.JobTypeUpdate,
+		Status:      models.JobStatusPending,
+	}).Error; err != nil {
+		t.Fatalf("create active job: %v", err)
+	}
+
+	if err := svc.Delete(context.Background(), ws.ID.String(), userID); err != nil {
+		t.Fatalf("delete should bypass active job quotas: %v", err)
+	}
+
+	var deleteJobs int64
+	db.Model(&models.Job{}).
+		Where("workspace_id = ? AND type = ? AND status = ?", ws.ID, models.JobTypeDelete, models.JobStatusPending).
+		Count(&deleteJobs)
+	if deleteJobs != 1 {
+		t.Fatalf("expected one pending delete job, got %d", deleteJobs)
 	}
 }
 
@@ -355,6 +473,31 @@ func TestPushVersion_WorkspaceNotReady(t *testing.T) {
 	}
 }
 
+func TestPushVersion_RejectsOversizedLockBeforeVersionWrite(t *testing.T) {
+	svc, db := testSetup(t, true)
+	limitCfg := limits.Defaults()
+	limitCfg.LockBytes = 8
+	svc.limits = limitCfg
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "push-lock-limit", userID)
+
+	_, err := svc.PushVersion(context.Background(), ws.ID.String(), PushRequest{
+		PixiToml: "[project]\nname = \"test\"",
+		PixiLock: strings.Repeat("x", 9),
+	}, userID)
+
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+
+	var versions int64
+	db.Model(&models.WorkspaceVersion{}).Where("workspace_id = ?", ws.ID).Count(&versions)
+	if versions != 0 {
+		t.Fatalf("expected no version writes, got %d", versions)
+	}
+}
+
 // --- GetPixiToml / SavePixiToml tests ---
 
 func TestPixiToml_RoundTrip(t *testing.T) {
@@ -377,6 +520,39 @@ func TestPixiToml_RoundTrip(t *testing.T) {
 	}
 	if got != content {
 		t.Errorf("round-trip mismatch: got %q, want %q", got, content)
+	}
+}
+
+func TestSavePixiToml_RejectsOversizedBeforeWrite(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "toml-limit", userID)
+	limitCfg := limits.Defaults()
+	limitCfg.ManifestBytes = 8
+	svc.limits = limitCfg
+
+	wsPath := svc.executor.GetWorkspacePath(ws)
+	if err := os.MkdirAll(wsPath, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	manifestPath := filepath.Join(wsPath, "pixi.toml")
+	original := "[project]\nname = \"toml-limit\"\n"
+	if err := os.WriteFile(manifestPath, []byte(original), 0o644); err != nil {
+		t.Fatalf("write original manifest: %v", err)
+	}
+
+	err := svc.SavePixiToml(ws.ID.String(), strings.Repeat("x", 9))
+
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	got, readErr := os.ReadFile(manifestPath)
+	if readErr != nil {
+		t.Fatalf("read manifest: %v", readErr)
+	}
+	if string(got) != original {
+		t.Fatalf("expected existing manifest unchanged, got %q", string(got))
 	}
 }
 
@@ -408,7 +584,7 @@ func TestGetPixiToml_UsesPersistedPathForManagedWorkspace(t *testing.T) {
 	}
 	q := queue.NewMemoryQueue(10)
 	t.Cleanup(func() { q.Close() })
-	svc2 := New(db, q, exec2, true, nil, rbac.NewDefaultProvider())
+	svc2 := New(db, q, exec2, true, nil, rbac.NewDefaultProvider(), limits.Defaults())
 
 	got, err := svc2.GetPixiToml(ws.ID.String())
 	if err != nil {
@@ -516,10 +692,12 @@ func TestListTags_AfterPush(t *testing.T) {
 	userID := createTestUser(t, db, "alice")
 	ws := createReadyWorkspace(t, svc, db, "tag-test", userID)
 
-	svc.PushVersion(context.Background(), ws.ID.String(), PushRequest{
+	if _, err := svc.PushVersion(context.Background(), ws.ID.String(), PushRequest{
 		Tag:      "latest",
-		PixiToml: "test",
-	}, userID)
+		PixiToml: "[project]\nname = \"tag-test\"\n",
+	}, userID); err != nil {
+		t.Fatalf("push version: %v", err)
+	}
 
 	tags, err := svc.ListTags(ws.ID.String())
 	if err != nil {
@@ -541,7 +719,8 @@ func TestListTags_AfterPush(t *testing.T) {
 // --- helpers ---
 
 func isValidationError(err error, target **ValidationError) bool {
-	ve, ok := err.(*ValidationError)
+	var ve *ValidationError
+	ok := errors.As(err, &ve)
 	if ok && target != nil {
 		*target = ve
 	}
@@ -549,7 +728,8 @@ func isValidationError(err error, target **ValidationError) bool {
 }
 
 func isConflictError(err error, target **ConflictError) bool {
-	ce, ok := err.(*ConflictError)
+	var ce *ConflictError
+	ok := errors.As(err, &ce)
 	if ok && target != nil {
 		*target = ce
 	}

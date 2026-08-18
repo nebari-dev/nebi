@@ -4,6 +4,10 @@
 server:
   port: 8460
   mode: development  # or "production"
+  # Max seconds to read a full request body. If omitted, nebi derives this
+  # from limits.request_body_bytes. Set 0 to disable. Env:
+  # NEBI_SERVER_READ_TIMEOUT_SECONDS
+  # read_timeout_seconds: 80
   # Local mode only accepts requests with loopback Host/Origin headers.
   # When nebi is served through a reverse proxy on a public hostname
   # (e.g. JupyterHub's jupyter-server-proxy), list that origin here so
@@ -55,7 +59,37 @@ package_manager:
   # uv_path: /custom/path/to/uv      # Optional: custom binary path
 
 storage:
-  environments_dir: ./data/environments
+  workspaces_dir: ./data/workspaces
+
+# Resource limits and admission quotas. For all numeric limits, 0 disables
+# that specific limit. Environment variable names are shown in comments.
+# limits:
+#   # HTTP and stored-content limits
+#   request_body_bytes: 20971520       # NEBI_LIMITS_REQUEST_BODY_BYTES
+#   manifest_bytes: 1048576           # NEBI_LIMITS_MANIFEST_BYTES
+#   lock_bytes: 16777216              # NEBI_LIMITS_LOCK_BYTES
+#   metadata_bytes: 65536             # NEBI_LIMITS_METADATA_BYTES
+#   max_packages: 128                 # NEBI_LIMITS_MAX_PACKAGES
+#   package_string_bytes: 256         # NEBI_LIMITS_PACKAGE_STRING_BYTES
+#
+#   # Active-job admission quotas. Delete jobs bypass these quotas so a
+#   # saturated workspace can still be removed.
+#   active_jobs_per_user: 4            # NEBI_LIMITS_ACTIVE_JOBS_PER_USER
+#   active_jobs_per_workspace: 2       # NEBI_LIMITS_ACTIVE_JOBS_PER_WORKSPACE
+#   active_jobs_global: 100            # NEBI_LIMITS_ACTIVE_JOBS_GLOBAL
+#
+#   # Job runtime/resource limits. job_cpu_seconds and job_storage_bytes use
+#   # fail-closed guards: if nebi cannot apply or check a configured budget,
+#   # the job fails instead of continuing unbounded. CPU and file-size setup
+#   # failures exit with code 125.
+#   job_timeout_seconds: 7200          # NEBI_LIMITS_JOB_TIMEOUT_SECONDS
+#   job_cpu_seconds: 7200              # NEBI_LIMITS_JOB_CPU_SECONDS (Unix; Windows default is 0)
+#   job_storage_bytes: 21474836480     # NEBI_LIMITS_JOB_STORAGE_BYTES
+#   job_log_bytes: 4194304             # NEBI_LIMITS_JOB_LOG_BYTES
+#
+# Per-job memory and process-count limits are intentionally not configured
+# here. Enforce those with worker pod/container limits until Nebi runs jobs in
+# isolated execution units.
 
 # Admin-provisioned OCI registries (optional). Public registries only:
 # entries carry no credentials.

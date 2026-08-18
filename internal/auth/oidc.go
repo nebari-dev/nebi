@@ -19,8 +19,8 @@ type OIDCAuthenticator struct {
 	config    *oauth2.Config
 	verifier  *oidc.IDTokenVerifier
 	db        *gorm.DB
-	jwtSecret []byte
 	basicAuth *BasicAuthenticator
+	rbac      rbac.Provider
 }
 
 // OIDCConfig holds OIDC configuration
@@ -31,6 +31,16 @@ type OIDCConfig struct {
 	ClientSecret string
 	RedirectURL  string
 	Scopes       []string
+}
+
+type oidcLoginClaims struct {
+	Email             string   `json:"email"`
+	EmailVerified     bool     `json:"email_verified"`
+	Name              string   `json:"name"`
+	PreferredUsername string   `json:"preferred_username"`
+	Sub               string   `json:"sub"`
+	Picture           string   `json:"picture"`
+	Groups            []string `json:"groups"`
 }
 
 // NewOIDCAuthenticator creates a new OIDC authenticator
@@ -93,8 +103,8 @@ func NewOIDCAuthenticator(ctx context.Context, cfg OIDCConfig, db *gorm.DB, jwtS
 		config:    oauth2Config,
 		verifier:  verifier,
 		db:        db,
-		jwtSecret: []byte(jwtSecret),
 		basicAuth: basicAuth,
+		rbac:      rbacProvider,
 	}, nil
 }
 
@@ -113,32 +123,29 @@ func (a *OIDCAuthenticator) HandleCallback(ctx context.Context, code string) (*L
 	// Exchange code for token
 	oauth2Token, err := a.config.Exchange(ctx, code)
 	if err != nil {
+		logIdentityProviderAuthFailure(authReconciliationOIDCGroups, err)
 		return nil, fmt.Errorf("failed to exchange code: %w", err)
 	}
 
 	// Extract ID token
 	rawIDToken, ok := oauth2Token.Extra("id_token").(string)
 	if !ok {
-		return nil, errors.New("no id_token in token response")
+		err := errors.New("no id_token in token response")
+		logIdentityProviderAuthFailure(authReconciliationOIDCGroups, err)
+		return nil, err
 	}
 
 	// Verify ID token
 	idToken, err := a.verifier.Verify(ctx, rawIDToken)
 	if err != nil {
+		logIdentityProviderAuthFailure(authReconciliationOIDCGroups, err)
 		return nil, fmt.Errorf("failed to verify ID token: %w", err)
 	}
 
 	// Extract claims
-	var claims struct {
-		Email             string   `json:"email"`
-		EmailVerified     bool     `json:"email_verified"`
-		Name              string   `json:"name"`
-		PreferredUsername string   `json:"preferred_username"`
-		Sub               string   `json:"sub"`
-		Picture           string   `json:"picture"`
-		Groups            []string `json:"groups"`
-	}
+	var claims oidcLoginClaims
 	if err := idToken.Claims(&claims); err != nil {
+		logIdentityProviderAuthFailure(authReconciliationOIDCGroups, err)
 		return nil, fmt.Errorf("failed to parse claims: %w", err)
 	}
 
@@ -146,13 +153,17 @@ func (a *OIDCAuthenticator) HandleCallback(ctx context.Context, code string) (*L
 	// and end up in aggregated log stores. A presence marker is enough for ops.
 	slog.Debug("OIDC login claims parsed")
 
+	return a.loginWithVerifiedClaims(idToken.Issuer, idToken.Subject, claims)
+}
+
+func (a *OIDCAuthenticator) loginWithVerifiedClaims(issuer, tokenSubject string, claims oidcLoginClaims) (*LoginResponse, error) {
 	// Find or create user
-	subject := idToken.Subject
+	subject := tokenSubject
 	if subject == "" {
 		subject = claims.Sub
 	}
 	user, err := a.findOrCreateUser(federatedUserClaims{
-		Issuer:            idToken.Issuer,
+		Issuer:            issuer,
 		Subject:           subject,
 		PreferredUsername: claims.PreferredUsername,
 		Email:             claims.Email,
@@ -164,12 +175,13 @@ func (a *OIDCAuthenticator) HandleCallback(ctx context.Context, code string) (*L
 		return nil, fmt.Errorf("failed to find or create user: %w", err)
 	}
 
-	if err := SyncOIDCGroups(a.db, user.ID, claims.Groups); err != nil {
-		slog.Warn("OIDC group sync failed; continuing login", "user_id", user.ID, "err", err)
+	if err := syncOIDCGroups(a.db, user.ID, claims.Groups, a.rbac); err != nil {
+		slog.Error("OIDC group sync failed; rejecting login", "user_id", user.ID, "error", err)
+		return nil, fmt.Errorf("sync oidc groups: %w", err)
 	}
 
 	// Generate JWT token using existing system
-	token, err := a.basicAuth.generateToken(user)
+	token, err := a.basicAuth.generateReconciledToken(user)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate JWT: %w", err)
 	}

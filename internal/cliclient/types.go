@@ -165,6 +165,7 @@ type WorkspaceTag struct {
 type Job struct {
 	ID          string                 `json:"id"`
 	WorkspaceID string                 `json:"workspace_id"`
+	UserID      string                 `json:"user_id,omitempty"`
 	Type        string                 `json:"type"`
 	Status      string                 `json:"status"`
 	Logs        string                 `json:"logs,omitempty"`

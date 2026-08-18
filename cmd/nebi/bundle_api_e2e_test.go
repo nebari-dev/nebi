@@ -71,11 +71,31 @@ func startLocalModeServer(t *testing.T) *localModeEnv {
 	os.Setenv("NEBI_DATABASE_DSN", dbPath)
 	os.Setenv("NEBI_STORAGE_WORKSPACES_DIR", wsDir)
 	os.Setenv("NEBI_SERVER_PORT", fmt.Sprintf("%d", port))
-	noopBinary := "/usr/bin/true"
-	if _, err := os.Stat(noopBinary); err != nil {
-		noopBinary = "/bin/true"
+	pixiPath := filepath.Join(t.TempDir(), "pixi")
+	pixiScript := `#!/bin/sh
+if [ "${1:-}" = "--version" ]; then
+  printf 'pixi 0.0.0-test\n'
+  exit 0
+fi
+if [ "${1:-}" = "lock" ]; then
+  if [ ! -f pixi.lock ]; then
+    printf 'version: 6\n' > pixi.lock
+  fi
+  exit 0
+fi
+if [ "${1:-}" = "list" ]; then
+  exit 0
+fi
+if [ "${1:-}" = "install" ]; then
+  mkdir -p .pixi/envs/default
+  exit 0
+fi
+exit 0
+`
+	if err := os.WriteFile(pixiPath, []byte(pixiScript), 0o755); err != nil {
+		t.Fatalf("write fake pixi: %v", err)
 	}
-	os.Setenv("NEBI_PACKAGE_MANAGER_PIXI_PATH", noopBinary)
+	os.Setenv("NEBI_PACKAGE_MANAGER_PIXI_PATH", pixiPath)
 
 	serverURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	ctx, cancel := context.WithCancel(context.Background())

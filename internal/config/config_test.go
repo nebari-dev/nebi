@@ -50,6 +50,7 @@ func TestLoad_TeamMode_AcceptsStrongJWTSecret(t *testing.T) {
 	isolate(t)
 	t.Setenv("NEBI_MODE", "team")
 	t.Setenv("NEBI_AUTH_JWT_SECRET", strings.Repeat("s", 32))
+	t.Setenv("NEBI_AUTH_AUTHORIZATION_STALE_AFTER_MINS", "30")
 
 	cfg, err := Load()
 	if err != nil {
@@ -57,6 +58,9 @@ func TestLoad_TeamMode_AcceptsStrongJWTSecret(t *testing.T) {
 	}
 	if cfg.Auth.JWTSecret != strings.Repeat("s", 32) {
 		t.Fatalf("expected configured secret to be loaded, got %q", cfg.Auth.JWTSecret)
+	}
+	if cfg.Auth.AuthorizationStaleAfterMins != 30 {
+		t.Fatalf("expected configured stale window to be loaded, got %d", cfg.Auth.AuthorizationStaleAfterMins)
 	}
 }
 
@@ -77,6 +81,84 @@ func writeConfigYAML(t *testing.T, content string) {
 	t.Helper()
 	if err := os.WriteFile("config.yaml", []byte(content), 0o600); err != nil {
 		t.Fatalf("write config.yaml: %v", err)
+	}
+}
+
+func TestLoad_LimitsFromEnv(t *testing.T) {
+	isolate(t)
+	t.Setenv("NEBI_MODE", "local")
+	t.Setenv("NEBI_LIMITS_MAX_PACKAGES", "7")
+	t.Setenv("NEBI_LIMITS_JOB_TIMEOUT_SECONDS", "9")
+	t.Setenv("NEBI_LIMITS_JOB_LOG_BYTES", "1234")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Limits.MaxPackages != 7 {
+		t.Fatalf("expected max_packages from env, got %d", cfg.Limits.MaxPackages)
+	}
+	if cfg.Limits.JobTimeoutSeconds != 9 {
+		t.Fatalf("expected job_timeout_seconds from env, got %d", cfg.Limits.JobTimeoutSeconds)
+	}
+	if cfg.Limits.JobLogBytes != 1234 {
+		t.Fatalf("expected job_log_bytes from env, got %d", cfg.Limits.JobLogBytes)
+	}
+}
+
+func TestLoad_LimitsExplicitZeroIsPreserved(t *testing.T) {
+	isolate(t)
+	t.Setenv("NEBI_MODE", "local")
+	t.Setenv("NEBI_LIMITS_REQUEST_BODY_BYTES", "0")
+	t.Setenv("NEBI_LIMITS_JOB_TIMEOUT_SECONDS", "0")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Limits.RequestBodyBytes != 0 {
+		t.Fatalf("expected request_body_bytes=0, got %d", cfg.Limits.RequestBodyBytes)
+	}
+	if cfg.Limits.JobTimeoutSeconds != 0 {
+		t.Fatalf("expected job_timeout_seconds=0, got %d", cfg.Limits.JobTimeoutSeconds)
+	}
+}
+
+func TestLoad_ServerReadTimeoutFromEnv(t *testing.T) {
+	isolate(t)
+	t.Setenv("NEBI_MODE", "local")
+	t.Setenv("NEBI_SERVER_READ_TIMEOUT_SECONDS", "90")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Server.ReadTimeoutSeconds != 90 {
+		t.Fatalf("expected read_timeout_seconds=90, got %d", cfg.Server.ReadTimeoutSeconds)
+	}
+}
+
+func TestDefaultReadTimeoutSecondsScalesWithBodyCap(t *testing.T) {
+	if got := DefaultReadTimeoutSeconds(20 * 1024 * 1024); got < 60 {
+		t.Fatalf("expected default read timeout to scale above 60s for 20MiB, got %d", got)
+	}
+	if got := DefaultReadTimeoutSeconds(0); got != 0 {
+		t.Fatalf("expected disabled body cap to disable default read timeout, got %d", got)
+	}
+}
+
+func TestLoad_DefaultReadTimeoutUsesEffectiveBodyCap(t *testing.T) {
+	isolate(t)
+	t.Setenv("NEBI_MODE", "local")
+	t.Setenv("NEBI_LIMITS_REQUEST_BODY_BYTES", "104857600")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := DefaultReadTimeoutSeconds(cfg.Limits.RequestBodyBytes)
+	if cfg.Server.ReadTimeoutSeconds != want {
+		t.Fatalf("expected read timeout %d from effective body cap, got %d", want, cfg.Server.ReadTimeoutSeconds)
 	}
 }
 

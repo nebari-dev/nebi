@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
 	"github.com/nebari-dev/nebi/internal/models"
+	"gorm.io/gorm"
 )
 
 // InstallWorkspaceEnv enqueues a job that materializes the workspace
@@ -56,22 +57,24 @@ func (s *WorkspaceService) submitEnvJob(ctx context.Context, wsID string, userID
 		return nil, &ValidationError{Message: "environment install is only available in local mode"}
 	}
 
-	var active int64
-	err := s.db.Model(&models.Job{}).
-		Where("workspace_id = ? AND type IN ? AND status IN ?",
-			wsID,
-			[]models.JobType{models.JobTypeEnvInstall, models.JobTypeEnvUninstall},
-			[]models.JobStatus{models.JobStatusPending, models.JobStatusRunning}).
-		Count(&active).Error
-	if err != nil {
-		return nil, err
+	validations := []lockedJobValidation{func(tx *gorm.DB, ws *models.Workspace) error {
+		var active int64
+		err := tx.Model(&models.Job{}).
+			Where("workspace_id = ? AND type IN ? AND status IN ?",
+				ws.ID,
+				[]models.JobType{models.JobTypeEnvInstall, models.JobTypeEnvUninstall},
+				[]models.JobStatus{models.JobStatusPending, models.JobStatusRunning}).
+			Count(&active).Error
+		if err != nil {
+			return err
+		}
+		if active > 0 {
+			return &ConflictError{Message: "an install or uninstall is already in progress for this workspace"}
+		}
+		return nil
+	}}
+	if jobType == models.JobTypeEnvInstall {
+		validations = append(validations, s.validateWorkspaceManifestAndLockForJob)
 	}
-	if active > 0 {
-		return nil, &ConflictError{Message: "an install or uninstall is already in progress for this workspace"}
-	}
-
-	metadata := map[string]interface{}{
-		"user_id": userID.String(),
-	}
-	return s.submitJob(ctx, wsID, userID, jobType, metadata, auditAction)
+	return s.submitJob(ctx, wsID, userID, jobType, nil, auditAction, validations...)
 }

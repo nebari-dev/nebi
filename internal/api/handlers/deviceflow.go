@@ -43,7 +43,7 @@ func DeviceToken(basicAuth *auth.BasicAuthenticator, adminGroups string) gin.Han
 	return func(c *gin.Context) {
 		var req DeviceTokenRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "id_token is required"})
+			handleBindError(c, err)
 			return
 		}
 

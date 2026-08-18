@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	resourcemetrics "github.com/nebari-dev/nebi/internal/metrics"
 	"github.com/nebari-dev/nebi/internal/models"
 	"gorm.io/gorm"
 )
@@ -140,6 +141,10 @@ func (s *JobService) RecordFailedEnvInstall(workspaceID uuid.UUID, errMsg string
 		CompletedAt: &now,
 	}
 	return s.db.Create(job).Error
+}
+
+func (s *JobService) RecordJobTimeout() error {
+	return resourcemetrics.IncJobTimeout(s.db)
 }
 
 // FlushLogs persists the current log content for a job.

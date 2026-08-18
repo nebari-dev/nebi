@@ -6,6 +6,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
+	"github.com/nebari-dev/nebi/internal/limits"
+	resourcemetrics "github.com/nebari-dev/nebi/internal/metrics"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/nebari-dev/nebi/internal/utils"
@@ -15,13 +17,14 @@ import (
 
 // AdminService contains business logic for admin operations.
 type AdminService struct {
-	db   *gorm.DB
-	rbac rbac.Provider
+	db     *gorm.DB
+	rbac   rbac.Provider
+	limits limits.Limits
 }
 
 // NewAdminService creates a new AdminService.
-func NewAdminService(db *gorm.DB, rbacProvider rbac.Provider) *AdminService {
-	return &AdminService{db: db, rbac: rbacProvider}
+func NewAdminService(db *gorm.DB, rbacProvider rbac.Provider, limitCfg limits.Limits) *AdminService {
+	return &AdminService{db: db, rbac: rbacProvider, limits: limitCfg}
 }
 
 // UserWithAdmin wraps a user with their admin status.
@@ -42,6 +45,25 @@ type CreateUserRequest struct {
 type DashboardStats struct {
 	TotalDiskUsageBytes     int64  `json:"total_disk_usage_bytes"`
 	TotalDiskUsageFormatted string `json:"total_disk_usage_formatted"`
+}
+
+type ResourceMetrics struct {
+	Limits                limits.Limits                          `json:"limits"`
+	ActiveJobsGlobal      int64                                  `json:"active_jobs_global"`
+	ActiveJobsByUser      []UserActiveJobUsage                   `json:"active_jobs_by_user"`
+	ActiveJobsByWorkspace []WorkspaceActiveJobUsage              `json:"active_jobs_by_workspace"`
+	QuotaRejections       resourcemetrics.QuotaRejectionSnapshot `json:"quota_rejections"`
+	JobTimeoutsTotal      int64                                  `json:"job_timeouts_total"`
+}
+
+type UserActiveJobUsage struct {
+	UserID     uuid.UUID `json:"user_id"`
+	ActiveJobs int64     `json:"active_jobs"`
+}
+
+type WorkspaceActiveJobUsage struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	ActiveJobs  int64     `json:"active_jobs"`
 }
 
 // ListUsers returns all users with their admin status.
@@ -316,6 +338,47 @@ func (s *AdminService) GetDashboardStats() (*DashboardStats, error) {
 	return &DashboardStats{
 		TotalDiskUsageBytes:     result.TotalBytes,
 		TotalDiskUsageFormatted: utils.FormatBytes(result.TotalBytes),
+	}, nil
+}
+
+func (s *AdminService) GetResourceMetrics() (*ResourceMetrics, error) {
+	var activeGlobal int64
+	if err := s.db.Model(&models.Job{}).Where("status IN ?", activeJobStatuses).Count(&activeGlobal).Error; err != nil {
+		return nil, fmt.Errorf("count active jobs: %w", err)
+	}
+
+	effectiveUserID := fmt.Sprintf("COALESCE(NULLIF(NULLIF(jobs.user_id, '%s'), ''), workspaces.owner_id)", uuid.Nil.String())
+	var activeByUser []UserActiveJobUsage
+	if err := s.db.Model(&models.Job{}).
+		Select(effectiveUserID+" AS user_id, COUNT(*) AS active_jobs").
+		Joins("LEFT JOIN workspaces ON workspaces.id = jobs.workspace_id").
+		Where("jobs.status IN ?", activeJobStatuses).
+		Where(effectiveUserID + " IS NOT NULL").
+		Group(effectiveUserID).
+		Scan(&activeByUser).Error; err != nil {
+		return nil, fmt.Errorf("count active jobs by user: %w", err)
+	}
+
+	var activeByWorkspace []WorkspaceActiveJobUsage
+	if err := s.db.Model(&models.Job{}).
+		Select("workspace_id, COUNT(*) as active_jobs").
+		Where("status IN ?", activeJobStatuses).
+		Group("workspace_id").
+		Scan(&activeByWorkspace).Error; err != nil {
+		return nil, fmt.Errorf("count active jobs by workspace: %w", err)
+	}
+
+	snapshot, err := resourcemetrics.Snapshot(s.db)
+	if err != nil {
+		return nil, err
+	}
+	return &ResourceMetrics{
+		Limits:                s.limits,
+		ActiveJobsGlobal:      activeGlobal,
+		ActiveJobsByUser:      activeByUser,
+		ActiveJobsByWorkspace: activeByWorkspace,
+		QuotaRejections:       snapshot.QuotaRejections,
+		JobTimeoutsTotal:      snapshot.JobTimeouts,
 	}, nil
 }
 

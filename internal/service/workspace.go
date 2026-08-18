@@ -10,6 +10,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/audit"
 	"github.com/nebari-dev/nebi/internal/contenthash"
 	"github.com/nebari-dev/nebi/internal/executor"
+	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
 	"github.com/nebari-dev/nebi/internal/queue"
@@ -25,11 +26,12 @@ type WorkspaceService struct {
 	rbac     rbac.Provider
 	isLocal  bool
 	encKey   []byte
+	limits   limits.Limits
 }
 
 // New creates a new WorkspaceService.
-func New(db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool, encKey []byte, rbacProvider rbac.Provider) *WorkspaceService {
-	return &WorkspaceService{db: db, queue: q, executor: exec, isLocal: isLocal, encKey: encKey, rbac: rbacProvider}
+func New(db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool, encKey []byte, rbacProvider rbac.Provider, limitCfg limits.Limits) *WorkspaceService {
+	return &WorkspaceService{db: db, queue: q, executor: exec, isLocal: isLocal, encKey: encKey, rbac: rbacProvider, limits: limitCfg}
 }
 
 // IsLocal reports whether the service is running in local/desktop mode.
@@ -105,6 +107,15 @@ func (s *WorkspaceService) Get(id string) (*WorkspaceResponse, error) {
 // Create validates and creates a new workspace, queues the creation job,
 // grants RBAC owner access, and writes an audit log entry.
 func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID uuid.UUID) (*models.Workspace, error) {
+	packageManager := req.PackageManager
+	if packageManager == "" {
+		packageManager = "pixi"
+	}
+
+	if err := s.validateManifestContent(packageManager, "pixi.toml", req.PixiToml); err != nil {
+		return nil, err
+	}
+
 	// Validate source
 	if req.Source != "" && req.Source != "managed" && req.Source != "local" {
 		return nil, &ValidationError{Message: "source must be 'managed' or 'local'"}
@@ -118,14 +129,15 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 		}
 	}
 
-	packageManager := req.PackageManager
-	if packageManager == "" {
-		packageManager = "pixi"
-	}
-
-	name, err := pixi.ResolveWorkspaceName(req.Name, req.PixiToml)
-	if err != nil {
-		return nil, &ValidationError{Message: fmt.Sprintf("invalid pixi.toml: %v", err)}
+	name := req.Name
+	if packageManager == "pixi" {
+		resolvedName, err := pixi.ResolveWorkspaceName(req.Name, req.PixiToml)
+		if err != nil {
+			return nil, &ValidationError{Message: fmt.Sprintf("invalid pixi.toml: %v", err)}
+		}
+		name = resolvedName
+	} else if name == "" {
+		return nil, &ValidationError{Message: "workspace name is required"}
 	}
 
 	ws := models.Workspace{
@@ -137,11 +149,8 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 		Path:           req.Path,
 	}
 
-	err = s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&ws).Error; err != nil {
-			return fmt.Errorf("create workspace: %w", err)
-		}
-
+	var job *models.Job
+	err := s.db.Transaction(func(tx *gorm.DB) error {
 		// Queue creation job
 		metadata := map[string]interface{}{}
 		if req.PixiToml != "" {
@@ -150,18 +159,28 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 		if req.ImportStagingDir != "" {
 			metadata["import_staging_dir"] = req.ImportStagingDir
 		}
+		if err := s.validateJobMetadata(metadata); err != nil {
+			return err
+		}
+		if err := s.lockJobAdmission(tx); err != nil {
+			return err
+		}
+		if err := s.checkActiveJobQuotas(tx, userID, uuid.Nil); err != nil {
+			return err
+		}
+		if err := tx.Create(&ws).Error; err != nil {
+			return fmt.Errorf("create workspace: %w", err)
+		}
 
-		job := &models.Job{
+		job = &models.Job{
 			Type:        models.JobTypeCreate,
 			WorkspaceID: ws.ID,
+			UserID:      userID,
 			Status:      models.JobStatusPending,
 			Metadata:    metadata,
 		}
 		if err := tx.Create(job).Error; err != nil {
 			return fmt.Errorf("create job: %w", err)
-		}
-		if err := s.queue.Enqueue(ctx, job); err != nil {
-			return fmt.Errorf("enqueue job: %w", err)
 		}
 
 		audit.LogAction(tx, userID, audit.ActionCreateWorkspace, fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
@@ -172,6 +191,10 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 		return nil
 	})
 	if err != nil {
+		return nil, s.finishAdmissionError(err)
+	}
+	if err := s.enqueueAdmittedJob(ctx, job); err != nil {
+		_ = s.db.Model(&models.Workspace{}).Where("id = ?", ws.ID).Update("status", models.WsStatusFailed).Error
 		return nil, err
 	}
 
@@ -186,31 +209,39 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 
 // Delete queues a deletion job for the workspace and writes an audit log.
 func (s *WorkspaceService) Delete(ctx context.Context, wsID string, userID uuid.UUID) error {
-	var ws models.Workspace
-	if err := s.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return ErrNotFound
+	var job *models.Job
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.lockJobAdmission(tx); err != nil {
+			return err
 		}
-		return err
-	}
 
-	job := &models.Job{
-		Type:        models.JobTypeDelete,
-		WorkspaceID: ws.ID,
-		Status:      models.JobStatusPending,
-	}
-	if err := s.db.Create(job).Error; err != nil {
-		return fmt.Errorf("create job: %w", err)
-	}
-	if err := s.queue.Enqueue(ctx, job); err != nil {
-		return fmt.Errorf("enqueue job: %w", err)
-	}
+		var ws models.Workspace
+		if err := tx.Where("id = ?", wsID).First(&ws).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return ErrNotFound
+			}
+			return err
+		}
+		job = &models.Job{
+			Type:        models.JobTypeDelete,
+			WorkspaceID: ws.ID,
+			UserID:      userID,
+			Status:      models.JobStatusPending,
+		}
+		if err := tx.Create(job).Error; err != nil {
+			return fmt.Errorf("create job: %w", err)
+		}
 
-	audit.LogAction(s.db, userID, audit.ActionDeleteWorkspace, fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
-		"name": ws.Name,
+		audit.LogAction(tx, userID, audit.ActionDeleteWorkspace, fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
+			"name": ws.Name,
+		})
+		return nil
 	})
+	if err != nil {
+		return s.finishAdmissionError(err)
+	}
 
-	return nil
+	return s.enqueueAdmittedJob(ctx, job)
 }
 
 // GetPixiToml reads the pixi.toml content from the workspace's filesystem.
@@ -241,6 +272,9 @@ func (s *WorkspaceService) SavePixiToml(wsID string, content string) error {
 		if err == gorm.ErrRecordNotFound {
 			return ErrNotFound
 		}
+		return err
+	}
+	if err := s.validateManifestContent(ws.PackageManager, "pixi.toml", content); err != nil {
 		return err
 	}
 
@@ -282,6 +316,9 @@ func (s *WorkspaceService) PushVersion(ctx context.Context, wsID string, req Pus
 		if err == gorm.ErrRecordNotFound {
 			return nil, ErrNotFound
 		}
+		return nil, err
+	}
+	if err := s.validatePushRequest(ws.PackageManager, req); err != nil {
 		return nil, err
 	}
 

@@ -4,8 +4,11 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/nebari-dev/nebi/internal/audit"
+	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
 )
 
@@ -56,6 +59,35 @@ func TestInstallWorkspaceEnv_RejectsWhileEnvJobActive(t *testing.T) {
 	_, err := svc.InstallWorkspaceEnv(context.Background(), ws.ID.String(), userID)
 	if err == nil {
 		t.Fatal("expected second install to be rejected while first job is pending")
+	}
+}
+
+func TestInstallWorkspaceEnv_RejectsOversizedLockBeforeJobWrite(t *testing.T) {
+	svc, db := testSetup(t, true)
+	limitCfg := limits.Defaults()
+	limitCfg.LockBytes = 8
+	svc.limits = limitCfg
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "env-lock-limit", userID)
+	if err := writeWorkspaceFiles(t, svc, ws, "[project]\nname = \"env-lock-limit\"\n", strings.Repeat("x", 9)); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := svc.InstallWorkspaceEnv(context.Background(), ws.ID.String(), userID)
+
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	var jobs int64
+	db.Model(&models.Job{}).Where("workspace_id = ? AND type = ?", ws.ID, models.JobTypeEnvInstall).Count(&jobs)
+	if jobs != 0 {
+		t.Fatalf("expected no env-install job writes, got %d", jobs)
+	}
+	var auditCount int64
+	db.Model(&models.AuditLog{}).Where("user_id = ? AND action = ?", userID, audit.ActionInstallEnv).Count(&auditCount)
+	if auditCount != 0 {
+		t.Fatalf("expected no env-install audit writes, got %d", auditCount)
 	}
 }
 

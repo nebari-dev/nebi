@@ -184,9 +184,10 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	logToFile("startEmbeddedServer: executor initialized")
 
 	// Create service and worker (desktop app uses local mode, no encryption key needed)
-	svc := service.New(database, jobQueue, exec, true, nil, rbac.NewDefaultProvider())
+	limitCfg := cfg.Limits
+	svc := service.New(database, jobQueue, exec, true, nil, rbac.NewDefaultProvider(), limitCfg)
 	jobSvc := service.NewJobService(database, true)
-	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), nil)
+	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), nil, limitCfg)
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	_ = workerCancel // Keep reference to avoid unused warning
 	logToFile("startEmbeddedServer: worker created")
@@ -216,8 +217,13 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	// Handler().
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Server.Port))
 	a.server = &http.Server{
-		Addr:    addr,
-		Handler: netguard.Middleware(router, false, nil),
+		Addr:              addr,
+		Handler:           netguard.Middleware(router, false, nil),
+		ReadHeaderTimeout: config.HTTPReadHeaderTimeout,
+		ReadTimeout:       cfg.Server.ReadTimeout(),
+		WriteTimeout:      limitCfg.HTTPWriteTimeout(),
+		IdleTimeout:       config.HTTPIdleTimeout,
+		MaxHeaderBytes:    config.HTTPMaxHeaderBytes,
 	}
 
 	logToFile(fmt.Sprintf("startEmbeddedServer: starting server on %s", addr))

@@ -44,7 +44,7 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 func (h *AdminHandler) CreateUser(c *gin.Context) {
 	var req CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -180,7 +180,7 @@ func (h *AdminHandler) ListRoles(c *gin.Context) {
 func (h *AdminHandler) GrantPermission(c *gin.Context) {
 	var req GrantPermissionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -255,6 +255,22 @@ func (h *AdminHandler) GetDashboardStats(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, stats)
+}
+
+// GetResourceMetrics godoc
+// @Summary Get resource limit and job usage metrics
+// @Tags admin
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} service.ResourceMetrics
+// @Router /admin/resource-metrics [get]
+func (h *AdminHandler) GetResourceMetrics(c *gin.Context) {
+	metrics, err := h.svc.GetResourceMetrics()
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, metrics)
 }
 
 // --- Request types ---

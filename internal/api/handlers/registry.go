@@ -54,7 +54,7 @@ func (h *RegistryHandler) ListRegistries(c *gin.Context) {
 func (h *RegistryHandler) CreateRegistry(c *gin.Context) {
 	var req CreateRegistryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -118,7 +118,7 @@ func (h *RegistryHandler) GetRegistry(c *gin.Context) {
 func (h *RegistryHandler) UpdateRegistry(c *gin.Context) {
 	var req UpdateRegistryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -221,7 +221,7 @@ func (h *RegistryHandler) GrantRegistryToGroup(c *gin.Context) {
 	}
 	var req GrantRegistryToGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 	if err := h.adminSvc.GrantRegistryToGroup(regID, req.GroupID, req.Action, getUserID(c)); err != nil {

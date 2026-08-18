@@ -51,7 +51,7 @@ func (h *RemoteHandler) ConnectServer(c *gin.Context) {
 		Password string `json:"password" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -157,7 +157,7 @@ func (h *RemoteHandler) CreateWorkspace(c *gin.Context) {
 	}
 	var req cliclient.CreateWorkspaceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 	ws, err := client.CreateWorkspace(c.Request.Context(), req)
@@ -291,7 +291,7 @@ func (h *RemoteHandler) PushVersion(c *gin.Context) {
 	id := c.Param("id")
 	var req cliclient.PushRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 	resp, err := client.PushVersion(c.Request.Context(), id, req)

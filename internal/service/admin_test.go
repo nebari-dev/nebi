@@ -1,10 +1,12 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"gorm.io/gorm"
@@ -13,7 +15,7 @@ import (
 func adminTestSetup(t *testing.T) (*AdminService, *WorkspaceService, *gorm.DB) {
 	t.Helper()
 	wsSvc, db := testSetup(t, false)
-	return NewAdminService(db, rbac.NewDefaultProvider()), wsSvc, db
+	return NewAdminService(db, rbac.NewDefaultProvider(), limits.Defaults()), wsSvc, db
 }
 
 // --- ListUsers ---
@@ -313,6 +315,82 @@ func TestAdminGetDashboardStats(t *testing.T) {
 	}
 	if stats.TotalDiskUsageBytes != 0 {
 		t.Errorf("expected 0 bytes with no workspaces, got %d", stats.TotalDiskUsageBytes)
+	}
+}
+
+func TestAdminGetResourceMetrics(t *testing.T) {
+	svc, wsSvc, db := adminTestSetup(t)
+	userID := createTestUser(t, db, "alice")
+
+	if _, err := wsSvc.Create(context.Background(), CreateRequest{Name: "metrics-ws"}, userID); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+
+	metrics, err := svc.GetResourceMetrics()
+	if err != nil {
+		t.Fatalf("GetResourceMetrics: %v", err)
+	}
+	if metrics.Limits.MaxPackages != limits.Defaults().MaxPackages {
+		t.Fatalf("expected default max_packages, got %d", metrics.Limits.MaxPackages)
+	}
+	if metrics.ActiveJobsGlobal != 1 {
+		t.Fatalf("expected 1 active job, got %d", metrics.ActiveJobsGlobal)
+	}
+	if len(metrics.ActiveJobsByUser) != 1 || metrics.ActiveJobsByUser[0].UserID != userID {
+		t.Fatalf("expected active job usage for %s, got %+v", userID, metrics.ActiveJobsByUser)
+	}
+}
+
+func TestAdminGetResourceMetrics_AttributesLegacyJobsToWorkspaceOwner(t *testing.T) {
+	svc, _, db := adminTestSetup(t)
+	userID := createTestUser(t, db, "alice")
+	ws := models.Workspace{
+		ID:             uuid.New(),
+		Name:           "legacy-metrics-ws",
+		OwnerID:        userID,
+		Status:         models.WsStatusReady,
+		PackageManager: "pixi",
+	}
+	if err := db.Create(&ws).Error; err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+
+	zeroUserJob := models.Job{
+		ID:          uuid.New(),
+		WorkspaceID: ws.ID,
+		UserID:      uuid.Nil,
+		Type:        models.JobTypeInstall,
+		Status:      models.JobStatusPending,
+	}
+	emptyUserJob := models.Job{
+		ID:          uuid.New(),
+		WorkspaceID: ws.ID,
+		UserID:      uuid.Nil,
+		Type:        models.JobTypeRemove,
+		Status:      models.JobStatusRunning,
+	}
+	if err := db.Create(&zeroUserJob).Error; err != nil {
+		t.Fatalf("create zero user job: %v", err)
+	}
+	if err := db.Create(&emptyUserJob).Error; err != nil {
+		t.Fatalf("create empty user job: %v", err)
+	}
+	if err := db.Model(&models.Job{}).Where("id = ?", emptyUserJob.ID).Update("user_id", "").Error; err != nil {
+		t.Fatalf("blank legacy user_id: %v", err)
+	}
+
+	metrics, err := svc.GetResourceMetrics()
+	if err != nil {
+		t.Fatalf("GetResourceMetrics: %v", err)
+	}
+	if metrics.ActiveJobsGlobal != 2 {
+		t.Fatalf("expected 2 active jobs, got %d", metrics.ActiveJobsGlobal)
+	}
+	if len(metrics.ActiveJobsByUser) != 1 {
+		t.Fatalf("expected one user bucket, got %+v", metrics.ActiveJobsByUser)
+	}
+	if metrics.ActiveJobsByUser[0].UserID != userID || metrics.ActiveJobsByUser[0].ActiveJobs != 2 {
+		t.Fatalf("expected 2 active jobs attributed to %s, got %+v", userID, metrics.ActiveJobsByUser[0])
 	}
 }
 

@@ -5,10 +5,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/audit"
+	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/pkgmgr"
 )
 
 // --- RollbackToVersion tests ---
@@ -70,6 +74,48 @@ func TestRollbackToVersion_VersionNotFound(t *testing.T) {
 	_, err := svc.RollbackToVersion(context.Background(), ws.ID.String(), 999, userID)
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestRollbackToVersion_RejectsOversizedLegacyVersionBeforeJobWrite(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "rollback-limit", userID)
+	limitCfg := limits.Defaults()
+	limitCfg.LockBytes = 8
+	svc.limits = limitCfg
+
+	version := models.WorkspaceVersion{
+		WorkspaceID:     ws.ID,
+		ManifestContent: "[project]\nname = \"legacy\"\n",
+		LockFileContent: strings.Repeat("x", 9),
+		PackageMetadata: "[]",
+		CreatedBy:       userID,
+		Description:     "legacy oversized version",
+	}
+	if err := db.Create(&version).Error; err != nil {
+		t.Fatalf("create legacy version: %v", err)
+	}
+
+	_, err := svc.RollbackToVersion(context.Background(), ws.ID.String(), version.VersionNumber, userID)
+
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	var rollbackJobs int64
+	if err := db.Model(&models.Job{}).Where("workspace_id = ? AND type = ?", ws.ID, models.JobTypeRollback).Count(&rollbackJobs).Error; err != nil {
+		t.Fatalf("count rollback jobs: %v", err)
+	}
+	if rollbackJobs != 0 {
+		t.Fatalf("expected no rollback job write, got %d", rollbackJobs)
+	}
+	var rollbackAudits int64
+	if err := db.Model(&models.AuditLog{}).Where("user_id = ? AND action = ?", userID, audit.ActionRollbackWorkspace).Count(&rollbackAudits).Error; err != nil {
+		t.Fatalf("count rollback audits: %v", err)
+	}
+	if rollbackAudits != 0 {
+		t.Fatalf("expected no rollback audit write, got %d", rollbackAudits)
 	}
 }
 
@@ -212,5 +258,116 @@ func TestCreateVersionSnapshot_MissingPixiToml(t *testing.T) {
 	err := svc.CreateVersionSnapshot(context.Background(), ws, uuid.New(), userID, "Should fail")
 	if err == nil {
 		t.Fatal("expected error for missing pixi.toml")
+	}
+}
+
+func TestCreateVersionSnapshot_RejectsOversizedLockBeforeVersionWrite(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "snapshot-lock-limit", userID)
+	limitCfg := limits.Defaults()
+	limitCfg.LockBytes = 8
+	svc.limits = limitCfg
+
+	wsPath := svc.executor.GetWorkspacePath(ws)
+	if err := os.MkdirAll(wsPath, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte("[project]\nname = \"snapshot-lock-limit\"\n"), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wsPath, "pixi.lock"), []byte(strings.Repeat("x", 9)), 0o644); err != nil {
+		t.Fatalf("write lock: %v", err)
+	}
+
+	err := svc.CreateVersionSnapshot(context.Background(), ws, uuid.New(), userID, "too large")
+
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	var versions int64
+	db.Model(&models.WorkspaceVersion{}).Where("workspace_id = ?", ws.ID).Count(&versions)
+	if versions != 0 {
+		t.Fatalf("expected no version writes, got %d", versions)
+	}
+}
+
+func TestCreateVersionSnapshot_RejectsManifestPackageLimitBeforeVersionWrite(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "snapshot-manifest-package-limit", userID)
+	limitCfg := limits.Defaults()
+	limitCfg.MaxPackages = 1
+	svc.limits = limitCfg
+
+	wsPath := svc.executor.GetWorkspacePath(ws)
+	if err := os.MkdirAll(wsPath, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	manifest := "[project]\nname = \"snapshot-manifest-package-limit\"\n\n[dependencies]\npython = \">=3.11\"\nnumpy = \"*\"\n"
+	if err := os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wsPath, "pixi.lock"), []byte("version: 6\n"), 0o644); err != nil {
+		t.Fatalf("write lock: %v", err)
+	}
+
+	err := svc.CreateVersionSnapshot(context.Background(), ws, uuid.New(), userID, "too many manifest packages")
+
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	var versions int64
+	db.Model(&models.WorkspaceVersion{}).Where("workspace_id = ?", ws.ID).Count(&versions)
+	if versions != 0 {
+		t.Fatalf("expected no version writes, got %d", versions)
+	}
+}
+
+func TestCreateVersionSnapshot_RejectsTooManyListedPackagesBeforeVersionWrite(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "snapshot-package-limit", userID)
+	limitCfg := limits.Defaults()
+	limitCfg.MaxPackages = 1
+	svc.limits = limitCfg
+
+	pmType := "static-list-" + uuid.NewString()
+	pkgmgr.Register(pmType, func(context.Context, string) (pkgmgr.PackageManager, error) {
+		return staticListPackageManager{
+			packages: []pkgmgr.Package{
+				{Name: "numpy", Version: "1.0.0"},
+				{Name: "pandas", Version: "2.0.0"},
+			},
+		}, nil
+	})
+	ws.PackageManager = pmType
+	if err := db.Save(ws).Error; err != nil {
+		t.Fatalf("save workspace package manager: %v", err)
+	}
+
+	wsPath := svc.executor.GetWorkspacePath(ws)
+	if err := os.MkdirAll(wsPath, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte("[project]\nname = \"snapshot-package-limit\"\n"), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wsPath, "pixi.lock"), []byte("version: 6\n"), 0o644); err != nil {
+		t.Fatalf("write lock: %v", err)
+	}
+
+	err := svc.CreateVersionSnapshot(context.Background(), ws, uuid.New(), userID, "too many packages")
+
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	var versions int64
+	db.Model(&models.WorkspaceVersion{}).Where("workspace_id = ?", ws.ID).Count(&versions)
+	if versions != 0 {
+		t.Fatalf("expected no version writes, got %d", versions)
 	}
 }

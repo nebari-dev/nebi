@@ -161,7 +161,7 @@ func (h *RegistryBrowseHandler) ImportEnvironment(c *gin.Context) {
 
 	var req ImportRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 

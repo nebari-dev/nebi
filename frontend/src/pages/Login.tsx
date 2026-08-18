@@ -13,10 +13,30 @@ type LoginProps = {
   isDarkMode: boolean;
 };
 
+const authErrorMessage = (error: string | null) => {
+  switch (error) {
+    case 'identity_review_pending':
+      return 'Your identity link request is pending admin approval. Try again after an admin approves it.';
+    case 'identity_review_rejected':
+      return 'Your identity link request was rejected by an admin. Contact an administrator if you believe this is a mistake.';
+    case 'invalid credentials':
+      return 'Invalid credentials';
+    case 'code_exchange_failed':
+      return 'Failed to complete login';
+    case 'login_failed':
+      return 'Login failed';
+    default:
+      return 'Authentication failed';
+  }
+};
+
+const authErrorTone = (error: string | null) =>
+  error === 'identity_review_pending' ? 'warning' : 'destructive';
+
 export const Login = ({ isDarkMode }: LoginProps) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [searchParams] = useSearchParams();
@@ -46,6 +66,8 @@ export const Login = ({ isDarkMode }: LoginProps) => {
     }
     const logoutUrl = useModeStore.getState().logoutUrl;
     if (logoutUrl) {
+      // Use the non-API redirect endpoint so gateway proxies preserve OIDC
+      // cookies before Nebi exchanges the resulting single-use code.
       window.location.href = `${getBasePath()}/auth/session`;
       return;
     }
@@ -63,7 +85,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
     const oauthError = searchParams.get('error');
 
     if (oauthError) {
-      setError('Authentication failed');
+      setAuthError(oauthError);
       setSessionChecked(true);
       return;
     }
@@ -78,7 +100,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
           setAuth(data.token, data.user);
           navigate('/');
         } catch {
-          setError('Failed to complete login');
+          setAuthError('code_exchange_failed');
           setSessionChecked(true);
         } finally {
           setLoading(false);
@@ -90,7 +112,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setAuthError(null);
     setLoading(true);
 
     try {
@@ -99,7 +121,8 @@ export const Login = ({ isDarkMode }: LoginProps) => {
       navigate('/');
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string } } };
-      setError(error.response?.data?.error || 'Login failed');
+      const authError = error.response?.data?.error;
+      setAuthError(authError || 'login_failed');
     } finally {
       setLoading(false);
     }
@@ -110,6 +133,9 @@ export const Login = ({ isDarkMode }: LoginProps) => {
 
   // Wait for session check before showing the form
   if (!sessionChecked) return null;
+
+  const errorMessage = authError ? authErrorMessage(authError) : '';
+  const errorTone = authErrorTone(authError);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
@@ -128,9 +154,15 @@ export const Login = ({ isDarkMode }: LoginProps) => {
         </div>
         <div className="px-8 pb-8">
           <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="bg-destructive/10 text-destructive p-4 rounded-md text-sm">
-                {error}
+            {errorMessage && (
+              <div
+                className={
+                  errorTone === 'warning'
+                    ? 'rounded-md border border-amber-300 bg-amber-100 p-4 text-sm text-amber-800'
+                    : 'rounded-md bg-destructive/10 p-4 text-sm text-destructive'
+                }
+              >
+                {errorMessage}
               </div>
             )}
 

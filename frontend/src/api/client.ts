@@ -12,6 +12,24 @@ export const apiClient = axios.create({
   },
 });
 
+const FEDERATED_IDENTITY_REVIEW_ERRORS = new Set([
+  'identity_review_pending',
+  'identity_review_rejected',
+]);
+
+const redirectToLogin = (errorCode?: string) => {
+  const { mode } = useModeStore.getState();
+  if (mode === 'local') {
+    return;
+  }
+
+  localStorage.removeItem('auth_token');
+  // Clear all query cache to prevent stale data
+  queryClient.clear();
+  const errorQuery = errorCode ? `?error=${encodeURIComponent(errorCode)}` : '';
+  window.location.href = `${getBasePath()}/login${errorQuery}`;
+};
+
 // Request interceptor to add auth token
 apiClient.interceptors.request.use(
   (config) => {
@@ -28,19 +46,21 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    const errorCode = error.response?.data?.error;
+    if (
+      error.response?.status === 403 &&
+      FEDERATED_IDENTITY_REVIEW_ERRORS.has(errorCode)
+    ) {
+      redirectToLogin(errorCode);
+      return Promise.reject(error);
+    }
+
     if (error.response?.status === 401) {
       // Don't redirect for /auth/session — it's expected to return 401 when no proxy
       if (error.config?.url === '/auth/session') {
         return Promise.reject(error);
       }
-      // In local mode, don't redirect to login
-      const { mode } = useModeStore.getState();
-      if (mode !== 'local') {
-        localStorage.removeItem('auth_token');
-        // Clear all query cache to prevent stale data
-        queryClient.clear();
-        window.location.href = `${getBasePath()}/login`;
-      }
+      redirectToLogin();
     }
     return Promise.reject(error);
   },

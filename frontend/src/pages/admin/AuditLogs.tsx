@@ -22,6 +22,10 @@ const ACTION_COLORS: Record<string, string> = {
   revoke_permission: 'bg-orange-100 text-orange-800 border-orange-300',
   make_admin: 'bg-purple-100 text-purple-800 border-purple-300',
   revoke_admin: 'bg-zinc-100 text-zinc-800 border-zinc-300',
+  approve_federated_identity:
+    'bg-emerald-100 text-emerald-800 border-emerald-300',
+  reject_federated_identity: 'bg-red-100 text-red-800 border-red-300',
+  discard_federated_identity: 'bg-zinc-100 text-zinc-800 border-zinc-300',
   share_workspace: 'bg-cyan-100 text-cyan-800 border-cyan-300',
   unshare_workspace: 'bg-yellow-100 text-yellow-800 border-yellow-300',
 };
@@ -34,6 +38,9 @@ const ACTION_FILTER_OPTIONS = [
   { value: 'revoke_permission', label: 'Revoke Permission' },
   { value: 'make_admin', label: 'Make Admin' },
   { value: 'revoke_admin', label: 'Revoke Admin' },
+  { value: 'approve_federated_identity', label: 'Approve Federated Identity' },
+  { value: 'reject_federated_identity', label: 'Reject Federated Identity' },
+  { value: 'discard_federated_identity', label: 'Discard Federated Identity' },
   { value: 'share_workspace', label: 'Share Workspace' },
   { value: 'unshare_workspace', label: 'Unshare Workspace' },
 ];

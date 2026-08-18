@@ -103,6 +103,8 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 	// Auto-migrate all models
 	err := db.AutoMigrate(
 		&models.User{},
+		&models.FederatedIdentity{},
+		&models.FederatedIdentityReview{},
 		&models.Role{},
 		&models.Workspace{},
 		&models.Job{},

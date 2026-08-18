@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,6 +25,8 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	}
 	if err := db.AutoMigrate(
 		&models.User{},
+		&models.FederatedIdentity{},
+		&models.FederatedIdentityReview{},
 		&models.Group{},
 		&models.GroupMember{},
 		&models.AuditLog{},
@@ -56,8 +59,11 @@ func TestFindOrCreateProxyUser_CreatesNew(t *testing.T) {
 	db := setupTestDB(t)
 
 	claims := &ProxyTokenClaims{
+		Issuer:            "https://issuer.example.com",
+		Sub:               "sub-bob",
 		PreferredUsername: "bob",
 		Email:             "bob@example.com",
+		EmailVerified:     true,
 		Picture:           "https://example.com/bob.png",
 	}
 
@@ -82,33 +88,48 @@ func TestFindOrCreateProxyUser_CreatesNew(t *testing.T) {
 	if count != 1 {
 		t.Errorf("expected 1 user in db, got %d", count)
 	}
+
+	db.Model(&models.FederatedIdentity{}).Where("issuer = ? AND subject = ?", claims.Issuer, claims.Sub).Count(&count)
+	if count != 1 {
+		t.Errorf("expected 1 federated identity in db, got %d", count)
+	}
 }
 
 func TestFindOrCreateProxyUser_FindsExisting(t *testing.T) {
 	db := setupTestDB(t)
 
-	existing := models.User{
-		ID:           uuid.New(),
-		Username:     "carol",
-		Email:        "carol@example.com",
-		AvatarURL:    "old-avatar",
-		PasswordHash: "",
-	}
-	db.Create(&existing)
-
 	claims := &ProxyTokenClaims{
+		Issuer:            "https://issuer.example.com",
+		Sub:               "sub-carol",
 		PreferredUsername: "carol",
 		Email:             "carol@example.com",
+		EmailVerified:     true,
+		Picture:           "old-avatar",
+	}
+	existing, err := findOrCreateProxyUser(db, claims)
+	if err != nil {
+		t.Fatalf("create existing user: %v", err)
+	}
+
+	changedClaims := &ProxyTokenClaims{
+		Issuer:            claims.Issuer,
+		Sub:               claims.Sub,
+		PreferredUsername: "changed-carol",
+		Email:             "changed-carol@example.com",
+		EmailVerified:     true,
 		Picture:           "new-avatar",
 	}
 
-	user, err := findOrCreateProxyUser(db, claims)
+	user, err := findOrCreateProxyUser(db, changedClaims)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if user.ID != existing.ID {
 		t.Error("expected to find existing user, got different ID")
+	}
+	if user.Username != "carol" {
+		t.Errorf("expected bound user's username to remain carol, got %s", user.Username)
 	}
 	if user.AvatarURL != "new-avatar" {
 		t.Errorf("expected avatar to be updated to new-avatar, got %s", user.AvatarURL)
@@ -119,7 +140,10 @@ func TestFindOrCreateProxyUser_FallbackToEmail(t *testing.T) {
 	db := setupTestDB(t)
 
 	claims := &ProxyTokenClaims{
-		Email: "dave@example.com",
+		Issuer:        "https://issuer.example.com",
+		Sub:           "sub-dave",
+		Email:         "dave@example.com",
+		EmailVerified: true,
 	}
 
 	user, err := findOrCreateProxyUser(db, claims)
@@ -130,13 +154,53 @@ func TestFindOrCreateProxyUser_FallbackToEmail(t *testing.T) {
 	if user.Username != "dave@example.com" {
 		t.Errorf("expected username to fall back to email, got %s", user.Username)
 	}
+	if user.Email != "dave@example.com" {
+		t.Errorf("expected user email to come from provider email, got %s", user.Email)
+	}
+}
+
+func TestFindOrCreateProxyUser_UniquifiesOnlyFallbackUsername(t *testing.T) {
+	db := setupTestDB(t)
+
+	existing := models.User{
+		ID:           uuid.New(),
+		Username:     "dave@example.com",
+		Email:        "local-dave@example.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&existing).Error; err != nil {
+		t.Fatalf("create existing user: %v", err)
+	}
+
+	claims := &ProxyTokenClaims{
+		Issuer:        "https://issuer.example.com",
+		Sub:           "sub-dave",
+		Email:         "dave@example.com",
+		EmailVerified: true,
+	}
+
+	user, err := findOrCreateProxyUser(db, claims)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if user.Username == claims.Email {
+		t.Fatal("expected fallback username to be uniquified")
+	}
+	if !strings.HasPrefix(user.Username, claims.Email+"-") {
+		t.Errorf("expected fallback username to be based on provider email, got %s", user.Username)
+	}
+	if user.Email != claims.Email {
+		t.Errorf("expected user email to come from provider email, got %s", user.Email)
+	}
 }
 
 func TestFindOrCreateProxyUser_FallbackToSub(t *testing.T) {
 	db := setupTestDB(t)
 
 	claims := &ProxyTokenClaims{
-		Sub: "sub-xyz",
+		Issuer: "https://issuer.example.com",
+		Sub:    "sub-xyz",
 	}
 
 	user, err := findOrCreateProxyUser(db, claims)
@@ -147,6 +211,28 @@ func TestFindOrCreateProxyUser_FallbackToSub(t *testing.T) {
 	if user.Username != "sub-xyz" {
 		t.Errorf("expected username to fall back to sub, got %s", user.Username)
 	}
+	if user.Email != "sub-xyz@nebi.local" {
+		t.Errorf("expected missing email to fall back to sub@nebi.local, got %s", user.Email)
+	}
+}
+
+func TestFindOrCreateProxyUser_MissingEmailFallsBackToUsername(t *testing.T) {
+	db := setupTestDB(t)
+
+	claims := &ProxyTokenClaims{
+		Issuer:            "https://issuer.example.com",
+		Sub:               "sub-frank",
+		PreferredUsername: "frank",
+	}
+
+	user, err := findOrCreateProxyUser(db, claims)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if user.Email != "frank@nebi.local" {
+		t.Errorf("expected missing email to fall back to username@nebi.local, got %s", user.Email)
+	}
 }
 
 func TestFindOrCreateProxyUser_NoIdentity(t *testing.T) {
@@ -156,6 +242,359 @@ func TestFindOrCreateProxyUser_NoIdentity(t *testing.T) {
 	_, err := findOrCreateProxyUser(db, claims)
 	if err == nil {
 		t.Error("expected error when no identity claim present")
+	}
+}
+
+func TestIsUniqueConstraintErrorOnlyMatchesUniqueConstraints(t *testing.T) {
+	db := setupTestDB(t)
+	existing := models.User{
+		ID:           uuid.New(),
+		Username:     "unique-test",
+		Email:        "unique@example.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&existing).Error; err != nil {
+		t.Fatalf("create existing user: %v", err)
+	}
+
+	duplicate := models.User{
+		ID:           uuid.New(),
+		Username:     existing.Username,
+		Email:        "duplicate@example.com",
+		PasswordHash: "hashed-password",
+	}
+	uniqueErr := db.Create(&duplicate).Error
+	if uniqueErr == nil {
+		t.Fatal("expected duplicate username error")
+	}
+	if !isUniqueConstraintError(uniqueErr) {
+		t.Fatalf("expected duplicate username to be treated as unique constraint, got %v", uniqueErr)
+	}
+
+	notNullErr := db.Exec(
+		"INSERT INTO users (id, username, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+		uuid.New().String(),
+		"missing-email",
+		"hashed-password",
+		time.Now().UTC(),
+		time.Now().UTC(),
+	).Error
+	if notNullErr == nil {
+		t.Fatal("expected missing email to violate NOT NULL")
+	}
+	if isUniqueConstraintError(notNullErr) {
+		t.Fatalf("expected NOT NULL constraint not to be treated as unique, got %v", notNullErr)
+	}
+}
+
+func TestFindOrCreateProxyUser_DoesNotLinkByUsernameOrEmail(t *testing.T) {
+	db := setupTestDB(t)
+
+	localUser := models.User{
+		ID:           uuid.New(),
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&localUser).Error; err != nil {
+		t.Fatalf("create local user: %v", err)
+	}
+
+	claims := &ProxyTokenClaims{
+		Issuer:            "https://issuer.example.com",
+		Sub:               "attacker-sub",
+		PreferredUsername: "alice",
+		Email:             "alice@example.com",
+		EmailVerified:     true,
+	}
+	user, err := findOrCreateProxyUser(db, claims)
+	if !errors.Is(err, errFederatedIdentityRequiresReview) {
+		t.Fatalf("expected review error for colliding unlinked user, got user=%v err=%v", user, err)
+	}
+
+	var review models.FederatedIdentityReview
+	if err := db.Where("issuer = ? AND subject = ?", claims.Issuer, claims.Sub).First(&review).Error; err != nil {
+		t.Fatalf("expected pending federated identity review: %v", err)
+	}
+	if review.UserID != localUser.ID {
+		t.Errorf("expected review for local user %s, got %s", localUser.ID, review.UserID)
+	}
+	if review.CollisionField != models.FederatedIdentityReviewCollisionUsernameEmail {
+		t.Errorf("expected username+email collision field, got %s", review.CollisionField)
+	}
+}
+
+func TestFindOrCreateProxyUser_PendingReviewTargetDoesNotMove(t *testing.T) {
+	db := setupTestDB(t)
+
+	alice := models.User{
+		ID:           uuid.New(),
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hashed-password",
+	}
+	admin := models.User{
+		ID:           uuid.New(),
+		Username:     "root-admin",
+		Email:        "admin@example.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&alice).Error; err != nil {
+		t.Fatalf("create alice user: %v", err)
+	}
+	if err := db.Create(&admin).Error; err != nil {
+		t.Fatalf("create admin user: %v", err)
+	}
+
+	claims := &ProxyTokenClaims{
+		Issuer:            "https://issuer.example.com",
+		Sub:               "stable-sub",
+		PreferredUsername: "alice",
+		Email:             "alice@example.com",
+		EmailVerified:     true,
+	}
+	user, err := findOrCreateProxyUser(db, claims)
+	if !errors.Is(err, errFederatedIdentityRequiresReview) {
+		t.Fatalf("expected initial review error, got user=%v err=%v", user, err)
+	}
+
+	var review models.FederatedIdentityReview
+	if err := db.Where("issuer = ? AND subject = ?", claims.Issuer, claims.Sub).First(&review).Error; err != nil {
+		t.Fatalf("expected pending federated identity review: %v", err)
+	}
+
+	changedClaims := &ProxyTokenClaims{
+		Issuer:            claims.Issuer,
+		Sub:               claims.Sub,
+		PreferredUsername: "root-admin",
+		Email:             "admin@example.com",
+		EmailVerified:     true,
+	}
+	user, err = findOrCreateProxyUser(db, changedClaims)
+	if !errors.Is(err, errFederatedIdentityRequiresReview) {
+		t.Fatalf("expected repeated review error, got user=%v err=%v", user, err)
+	}
+
+	var reviewCount int64
+	db.Model(&models.FederatedIdentityReview{}).Where("issuer = ? AND subject = ?", claims.Issuer, claims.Sub).Count(&reviewCount)
+	if reviewCount != 1 {
+		t.Fatalf("expected exactly one review row, got %d", reviewCount)
+	}
+
+	var persisted models.FederatedIdentityReview
+	if err := db.First(&persisted, "id = ?", review.ID).Error; err != nil {
+		t.Fatalf("load persisted review: %v", err)
+	}
+	if persisted.UserID != alice.ID {
+		t.Errorf("expected review to remain bound to alice %s, got %s", alice.ID, persisted.UserID)
+	}
+	if persisted.Username != "alice" || persisted.Email != "alice@example.com" {
+		t.Errorf("expected original claims to remain, got username=%q email=%q", persisted.Username, persisted.Email)
+	}
+}
+
+func TestFindOrCreateProxyUser_UnverifiedEmailUsesSyntheticUserEmail(t *testing.T) {
+	db := setupTestDB(t)
+
+	claims := &ProxyTokenClaims{
+		Issuer:            "https://issuer.example.com",
+		Sub:               "unverified-sub",
+		PreferredUsername: "erin",
+		Email:             "erin@example.com",
+		EmailVerified:     false,
+	}
+	user, err := findOrCreateProxyUser(db, claims)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if user.Email != "erin@nebi.local" {
+		t.Fatalf("expected unverified provider email not to be stored as user email, got %s", user.Email)
+	}
+
+	var identity models.FederatedIdentity
+	if err := db.Where("issuer = ? AND subject = ?", claims.Issuer, claims.Sub).First(&identity).Error; err != nil {
+		t.Fatalf("load federated identity: %v", err)
+	}
+	if identity.Email != claims.Email {
+		t.Errorf("expected profile email to be retained, got %s", identity.Email)
+	}
+	if identity.EmailVerified {
+		t.Fatal("expected email_verified=false to be retained")
+	}
+}
+
+func TestFindOrCreateProxyUser_UnverifiedEmailCollisionDoesNotRequireReview(t *testing.T) {
+	db := setupTestDB(t)
+
+	localUser := models.User{
+		ID:           uuid.New(),
+		Username:     "local-erin",
+		Email:        "erin@example.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&localUser).Error; err != nil {
+		t.Fatalf("create local user: %v", err)
+	}
+
+	claims := &ProxyTokenClaims{
+		Issuer:            "https://issuer.example.com",
+		Sub:               "unverified-local-email-sub",
+		PreferredUsername: "remote-erin",
+		Email:             "erin@example.com",
+		EmailVerified:     false,
+	}
+	user, err := findOrCreateProxyUser(db, claims)
+	if err != nil {
+		t.Fatalf("unexpected error for unverified email collision: %v", err)
+	}
+	if user.ID == localUser.ID {
+		t.Fatal("expected unverified email not to bind to the existing local user")
+	}
+	if user.Email != "remote-erin@nebi.local" {
+		t.Fatalf("expected synthetic user email for unverified provider email, got %s", user.Email)
+	}
+
+	var reviewCount int64
+	db.Model(&models.FederatedIdentityReview{}).Where("issuer = ? AND subject = ?", claims.Issuer, claims.Sub).Count(&reviewCount)
+	if reviewCount != 0 {
+		t.Fatalf("expected no review for unverified email-only collision, got %d", reviewCount)
+	}
+
+	var identity models.FederatedIdentity
+	if err := db.Where("issuer = ? AND subject = ?", claims.Issuer, claims.Sub).First(&identity).Error; err != nil {
+		t.Fatalf("load federated identity: %v", err)
+	}
+	if identity.Email != claims.Email {
+		t.Errorf("expected federated profile email to retain provider email, got %s", identity.Email)
+	}
+	if identity.EmailVerified {
+		t.Fatal("expected email_verified=false to be retained")
+	}
+}
+
+func TestFindOrCreateProxyUser_AmbiguousUsernameEmailCollisionRequiresReview(t *testing.T) {
+	db := setupTestDB(t)
+
+	alice := models.User{
+		ID:           uuid.New(),
+		Username:     "alice",
+		Email:        "alice@example.com",
+		PasswordHash: "hashed-password",
+	}
+	bob := models.User{
+		ID:           uuid.New(),
+		Username:     "bob",
+		Email:        "bob@example.com",
+		PasswordHash: "hashed-password",
+	}
+	if err := db.Create(&alice).Error; err != nil {
+		t.Fatalf("create alice user: %v", err)
+	}
+	if err := db.Create(&bob).Error; err != nil {
+		t.Fatalf("create bob user: %v", err)
+	}
+
+	claims := &ProxyTokenClaims{
+		Issuer:            "https://issuer.example.com",
+		Sub:               "ambiguous-sub",
+		PreferredUsername: "alice",
+		Email:             "bob@example.com",
+		EmailVerified:     true,
+	}
+	user, err := findOrCreateProxyUser(db, claims)
+	if !errors.Is(err, errFederatedIdentityRequiresReview) {
+		t.Fatalf("expected review error for ambiguous collision, got user=%v err=%v", user, err)
+	}
+
+	var review models.FederatedIdentityReview
+	if err := db.Where("issuer = ? AND subject = ?", claims.Issuer, claims.Sub).First(&review).Error; err != nil {
+		t.Fatalf("expected pending federated identity review: %v", err)
+	}
+	if review.UserID != alice.ID {
+		t.Errorf("expected review to target username collision user %s, got %s", alice.ID, review.UserID)
+	}
+	if review.CollisionField != models.FederatedIdentityReviewCollisionUsernameEmail {
+		t.Errorf("expected username+email collision field, got %s", review.CollisionField)
+	}
+	if review.CollisionUsernameUserID == nil || *review.CollisionUsernameUserID != alice.ID {
+		t.Fatalf("expected username collision user %s, got %v", alice.ID, review.CollisionUsernameUserID)
+	}
+	if review.CollisionEmailUserID == nil || *review.CollisionEmailUserID != bob.ID {
+		t.Fatalf("expected email collision user %s, got %v", bob.ID, review.CollisionEmailUserID)
+	}
+	if !review.HasAmbiguousCollision() {
+		t.Fatal("expected review to be marked ambiguous")
+	}
+}
+
+func TestFindOrCreateProxyUser_DistinguishesIssuersWithSameSubject(t *testing.T) {
+	db := setupTestDB(t)
+
+	first, err := findOrCreateProxyUser(db, &ProxyTokenClaims{
+		Issuer:            "https://issuer-a.example.com",
+		Sub:               "shared-sub",
+		PreferredUsername: "shared-a",
+		Email:             "shared-a@example.com",
+		EmailVerified:     true,
+	})
+	if err != nil {
+		t.Fatalf("create first user: %v", err)
+	}
+
+	second, err := findOrCreateProxyUser(db, &ProxyTokenClaims{
+		Issuer:            "https://issuer-b.example.com",
+		Sub:               "shared-sub",
+		PreferredUsername: "shared-b",
+		Email:             "shared-b@example.com",
+		EmailVerified:     true,
+	})
+	if err != nil {
+		t.Fatalf("create second user: %v", err)
+	}
+
+	if second.ID == first.ID {
+		t.Fatal("expected same subject from different issuers to remain distinct")
+	}
+
+	var count int64
+	db.Model(&models.FederatedIdentity{}).Count(&count)
+	if count != 2 {
+		t.Errorf("expected two federated identities, got %d", count)
+	}
+}
+
+func TestFindOrCreateProxyUser_RecycledClaimsRequireReview(t *testing.T) {
+	db := setupTestDB(t)
+
+	first, err := findOrCreateProxyUser(db, &ProxyTokenClaims{
+		Issuer:            "https://issuer.example.com",
+		Sub:               "old-sub",
+		PreferredUsername: "recycled",
+		Email:             "recycled@example.com",
+		EmailVerified:     true,
+	})
+	if err != nil {
+		t.Fatalf("create first user: %v", err)
+	}
+
+	second, err := findOrCreateProxyUser(db, &ProxyTokenClaims{
+		Issuer:            "https://issuer.example.com",
+		Sub:               "new-sub",
+		PreferredUsername: "recycled",
+		Email:             "recycled@example.com",
+		EmailVerified:     true,
+	})
+	if !errors.Is(err, errFederatedIdentityRequiresReview) {
+		t.Fatalf("expected review error for recycled claims, got user=%v err=%v", second, err)
+	}
+
+	var review models.FederatedIdentityReview
+	if err := db.Where("issuer = ? AND subject = ?", "https://issuer.example.com", "new-sub").First(&review).Error; err != nil {
+		t.Fatalf("expected pending federated identity review: %v", err)
+	}
+	if review.UserID != first.ID {
+		t.Errorf("expected review for existing federated user %s, got %s", first.ID, review.UserID)
 	}
 }
 
@@ -425,6 +864,7 @@ func testIDToken(t *testing.T, username string, groups []string) string {
 	// alg=none is deliberate: testProxyVerifier skips signature checks, so
 	// these tests only need claim payloads, not cryptographic signatures.
 	token := jwt.NewWithClaims(jwt.SigningMethodNone, jwt.MapClaims{
+		"iss":                "https://issuer.example.com",
 		"sub":                username,
 		"preferred_username": username,
 		"email":              username + "@example.com",

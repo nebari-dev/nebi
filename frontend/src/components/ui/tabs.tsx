@@ -135,6 +135,8 @@ function TabsTab({ className, variant, ...props }: TabsTabProps) {
   );
 }
 
+const TabsTrigger = TabsTab;
+
 /**
  * Active tab marker. Place it inside `TabsList` after the `TabsTab` children.
  */
@@ -181,6 +183,7 @@ export {
   TabsList,
   TabsPanel,
   TabsTab,
+  TabsTrigger,
   tabsIndicatorVariants,
   tabsListVariants,
   tabsTabVariants,

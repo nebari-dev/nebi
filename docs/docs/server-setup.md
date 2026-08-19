@@ -51,17 +51,50 @@ Once the server is running, authenticate from any client machine with [`nebi log
 
 The Swagger API docs are available at [http://localhost:8460/docs](http://localhost:8460/docs).
 
+## Resource Limits
+
+Nebi applies request, admission, and job-runtime limits from the `limits:` config section. Each value can also be overridden with the matching `NEBI_LIMITS_*` environment variable, for example `NEBI_LIMITS_REQUEST_BODY_BYTES`, `NEBI_LIMITS_ACTIVE_JOBS_PER_USER`, or `NEBI_LIMITS_JOB_TIMEOUT_SECONDS`.
+
+Set a numeric limit to `0` to disable that specific guard. Delete jobs are exempt from active-job quotas so users can still remove a workspace even when pending or running jobs have saturated its quota.
+
+The main job limits are:
+
+- `request_body_bytes`: maximum HTTP request body size.
+- `manifest_bytes`, `lock_bytes`, `metadata_bytes`: maximum stored manifest, lockfile, and metadata sizes.
+- `max_packages`, `package_string_bytes`: package-count and package-name size caps.
+- `active_jobs_per_user`, `active_jobs_per_workspace`, `active_jobs_global`: admission quotas for pending/running jobs.
+- `job_timeout_seconds`: wall-clock deadline for each job.
+- `job_cpu_seconds`: CPU-time budget enforced with `ulimit -t` on Unix.
+- `job_storage_bytes`: workspace storage budget checked during and after jobs.
+- `job_log_bytes`: persisted log cap per job.
+
+CPU/file-size setup is fail-closed: if a configured `ulimit` budget cannot be applied, the child command exits with code `125` and Nebi fails the job rather than running unbounded. Storage checks are also fail-closed if the workspace cannot be walked.
+
+Per-job memory and process-count limits are intentionally left to deployment isolation for now. In Kubernetes or Docker deployments, set worker pod/container memory and process limits until Nebi jobs run in isolated execution units.
+
+The HTTP server read timeout is configured separately as `server.read_timeout_seconds` or `NEBI_SERVER_READ_TIMEOUT_SECONDS`. If omitted, Nebi derives it from `limits.request_body_bytes`; set it to `0` to disable.
+
 ## Groups
 
 ### OIDC group sync
 
-When OIDC authentication is configured, nebi requests the `groups` scope alongside `openid profile email`. The IdP must return a `groups` claim in the ID token (a JSON array of strings). On every login, nebi reconciles the user's group memberships:
+When OIDC authentication is configured, nebi requests the `groups` scope alongside `openid profile email`. The IdP must return a `groups` claim in the ID token (a JSON array of strings). On every login and proxy/device session refresh, nebi reconciles the user's group memberships:
 
 - For each name in the claim, an OIDC-source group is created (if missing) and the user is added to it.
 - Memberships in OIDC-source groups that aren't in this login's claim are removed.
 - Native groups (created via the admin UI) are **never** modified by OIDC sync — even if a claim name happens to collide with a native group name.
 
-OIDC groups with zero members are kept so existing workspace shares survive temporary churn. There is no background reconcile worker; all updates happen at login time.
+OIDC groups with zero members are kept so existing workspace shares survive temporary churn. Reconciled bearer sessions carry an authorization-sync timestamp and are accepted for `NEBI_AUTH_AUTHORIZATION_STALE_AFTER_MINS` minutes, which defaults to the 24-hour JWT lifetime; legacy unstamped tokens keep the pre-schema JWT-expiration behavior. Nebi records the last trusted authorization state, continuously retries unresolved local database/Casbin reconciliation failures, and logs alerts when reconciliation is unhealthy.
+
+### Legacy federated identity migration
+
+Nebi versions that predate issuer/subject identity binding may have users created by OIDC, proxy auth, or device flow with no row in `federated_identities`. Nebi now treats the first post-upgrade login for those users like any other external-identity collision when the incoming username or verified email still matches an existing account: it creates a pending **Identity Review** for an admin to approve.
+
+After upgrading, expect a temporary burst of identity reviews as legacy users sign in. Approving a review binds that external issuer/subject to the existing Nebi account and audit-logs the decision. Rejecting a review blocks that external identity from linking to the account; admins can later discard the rejected review from the **Rejected** tab to allow a fresh review on the next login.
+
+If a user's mutable IdP claims changed before their first post-upgrade login and no longer collide with the legacy account, Nebi cannot infer the old account binding automatically. That login is treated as a new issuer/subject and creates a new Nebi account with its own binding.
+
+See [Identity Reviews](./ui.md#identity-reviews-admin) for how to review and approve these requests.
 
 ## Build Sandbox
 
@@ -97,14 +130,14 @@ Landlock is unprivileged self-sandboxing. It needs no `CAP_SYS_ADMIN`, no user n
 sandbox:
   mode: strict          # strict | permissive | off
   allowed_ports: [80, 443]
-  build_timeout: 30m
 ```
 
 | Key | Environment variable | Default |
 |---|---|---|
 | `sandbox.mode` | `NEBI_SANDBOX_MODE` | `strict` in team mode, `off` in local mode |
 | `sandbox.allowed_ports` | `NEBI_SANDBOX_ALLOWED_PORTS` | `[80, 443]` |
-| `sandbox.build_timeout` | `NEBI_SANDBOX_BUILD_TIMEOUT` | `30m` (minimum `1s`) |
+
+The wall-clock ceiling for a build job is not a sandbox setting. It is `limits.job_timeout_seconds`, described under [Resource Limits](#resource-limits).
 
 `NEBI_SANDBOX_ALLOWED_PORTS` takes a comma-separated list, for example `NEBI_SANDBOX_ALLOWED_PORTS=80,443,8443`.
 
@@ -145,13 +178,13 @@ You cannot express that through the environment. An empty environment variable r
 Turning the sandbox on is a behavior change, and `strict` is the team-mode default, so an upgrade starts enforcing it without any config change on your part. Two things that previously did not exist begin to apply:
 
 - Confinement. Builds on hosts whose kernel is older than 5.13, and on any non-Linux host, will start failing until you set `NEBI_SANDBOX_MODE=permissive` (warn and run unconfined) or `NEBI_SANDBOX_MODE=off`.
-- The wall-clock build timeout. Any job that runs longer than `sandbox.build_timeout` is killed and fails with a `build exceeded the ... time limit` error naming the configured value. Raise `NEBI_SANDBOX_BUILD_TIMEOUT` if you have legitimately long builds. It must be at least `1s`, so the ceiling can only be raised, not removed. The timeout applies in every mode, including `off`.
+- Environment scrubbing. Build subprocesses receive an allowlist rather than the server's environment, in every mode including `off`. Teams using private conda channels authenticated through `$HOME/.rattler/credentials.json` need `NEBI_SANDBOX_MODE=off` for now, because an active sandbox redirects `HOME` into the workspace.
 
 Check `uname -r` on your build hosts before upgrading. If you want the isolation but cannot guarantee the kernel yet, `permissive` gives you the confinement where it is available and a warning in the build log where it is not.
 
 ### Per-workspace package cache
 
-While the sandbox is active, `HOME` and `TMPDIR` point at `.nebi-home` and `.nebi-tmp` inside the job's own workspace directory. The pixi and rattler package caches therefore land inside the workspace instead of a location shared by every tenant.
+While the sandbox is active, `HOME` points at `.nebi/home` inside the job's own workspace directory. `TMPDIR` and the pip and uv caches are scoped to `.nebi/` in every mode. The pixi and rattler package caches therefore land inside the workspace instead of a location shared by every tenant.
 
 The trade-off is deliberate. One tenant cannot poison another tenant's cached packages, but there is no cache reuse across workspaces, so the first build in each workspace re-downloads what it needs. Size your workspace storage accordingly.
 

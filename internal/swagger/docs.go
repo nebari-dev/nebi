@@ -80,6 +80,128 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/federated-identity-reviews": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "List federated identity reviews",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Review status: pending, rejected, or all",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.FederatedIdentityReview"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/federated-identity-reviews/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Discard a federated identity review",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Review UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/admin/federated-identity-reviews/{id}/approve": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Approve a pending federated identity review",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Review UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.FederatedIdentity"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/federated-identity-reviews/{id}/reject": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Reject a pending federated identity review",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Review UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
         "/admin/groups": {
             "get": {
                 "security": [
@@ -1100,6 +1222,30 @@ const docTemplate = `{
                         "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/resource-metrics": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get resource limit and job usage metrics",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/service.ResourceMetrics"
                         }
                     }
                 }
@@ -2553,6 +2699,12 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Registry ID to compute defaults against",
+                        "name": "registry_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -2560,6 +2712,18 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/service.PublishDefaultsResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
                     "404": {
@@ -3279,6 +3443,9 @@ const docTemplate = `{
                 "password": {
                     "type": "string"
                 },
+                "restricted": {
+                    "type": "boolean"
+                },
                 "url": {
                     "type": "string"
                 },
@@ -3566,6 +3733,9 @@ const docTemplate = `{
                 "password": {
                     "type": "string"
                 },
+                "restricted": {
+                    "type": "boolean"
+                },
                 "url": {
                     "type": "string"
                 },
@@ -3587,6 +3757,67 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "version_number": {
+                    "type": "integer"
+                }
+            }
+        },
+        "limits.Limits": {
+            "type": "object",
+            "properties": {
+                "active_jobs_global": {
+                    "type": "integer"
+                },
+                "active_jobs_per_user": {
+                    "type": "integer"
+                },
+                "active_jobs_per_workspace": {
+                    "type": "integer"
+                },
+                "job_cpu_seconds": {
+                    "type": "integer"
+                },
+                "job_log_bytes": {
+                    "type": "integer"
+                },
+                "job_storage_bytes": {
+                    "type": "integer"
+                },
+                "job_timeout_seconds": {
+                    "type": "integer"
+                },
+                "lock_bytes": {
+                    "type": "integer"
+                },
+                "manifest_bytes": {
+                    "type": "integer"
+                },
+                "max_packages": {
+                    "type": "integer"
+                },
+                "metadata_bytes": {
+                    "type": "integer"
+                },
+                "package_string_bytes": {
+                    "type": "integer"
+                },
+                "request_body_bytes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "metrics.QuotaRejectionSnapshot": {
+            "type": "object",
+            "properties": {
+                "global": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "user": {
+                    "type": "integer"
+                },
+                "workspace": {
                     "type": "integer"
                 }
             }
@@ -3616,6 +3847,111 @@ const docTemplate = `{
                     "$ref": "#/definitions/models.User"
                 },
                 "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.FederatedIdentity": {
+            "type": "object",
+            "properties": {
+                "avatar_url": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "email_verified": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "issuer": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.FederatedIdentityReview": {
+            "type": "object",
+            "properties": {
+                "avatar_url": {
+                    "type": "string"
+                },
+                "collision_email_user": {
+                    "$ref": "#/definitions/models.User"
+                },
+                "collision_email_user_id": {
+                    "description": "User matched by the incoming verified email claim, when present.",
+                    "type": "string"
+                },
+                "collision_field": {
+                    "type": "string"
+                },
+                "collision_username_user": {
+                    "$ref": "#/definitions/models.User"
+                },
+                "collision_username_user_id": {
+                    "description": "User matched by the incoming username claim, when present.",
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "email_verified": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "issuer": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "reviewed_at": {
+                    "type": "string"
+                },
+                "reviewed_by": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user": {
+                    "$ref": "#/definitions/models.User"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "username": {
                     "type": "string"
                 }
             }
@@ -3736,6 +4072,9 @@ const docTemplate = `{
                 },
                 "type": {
                     "$ref": "#/definitions/models.JobType"
+                },
+                "user_id": {
+                    "type": "string"
                 },
                 "workspace": {
                     "$ref": "#/definitions/models.Workspace"
@@ -4173,10 +4512,53 @@ const docTemplate = `{
                 "namespace": {
                     "type": "string"
                 },
+                "restricted": {
+                    "type": "boolean"
+                },
                 "url": {
                     "type": "string"
                 },
                 "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.ResourceMetrics": {
+            "type": "object",
+            "properties": {
+                "active_jobs_by_user": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.UserActiveJobUsage"
+                    }
+                },
+                "active_jobs_by_workspace": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.WorkspaceActiveJobUsage"
+                    }
+                },
+                "active_jobs_global": {
+                    "type": "integer"
+                },
+                "job_timeouts_total": {
+                    "type": "integer"
+                },
+                "limits": {
+                    "$ref": "#/definitions/limits.Limits"
+                },
+                "quota_rejections": {
+                    "$ref": "#/definitions/metrics.QuotaRejectionSnapshot"
+                }
+            }
+        },
+        "service.UserActiveJobUsage": {
+            "type": "object",
+            "properties": {
+                "active_jobs": {
+                    "type": "integer"
+                },
+                "user_id": {
                     "type": "string"
                 }
             }
@@ -4203,6 +4585,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.WorkspaceActiveJobUsage": {
+            "type": "object",
+            "properties": {
+                "active_jobs": {
+                    "type": "integer"
+                },
+                "workspace_id": {
                     "type": "string"
                 }
             }

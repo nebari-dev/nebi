@@ -10,9 +10,11 @@ import (
 	"strings"
 
 	"github.com/nebari-dev/nebi/internal/config"
+	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
+	"github.com/nebari-dev/nebi/internal/process"
 	"github.com/nebari-dev/nebi/internal/sandbox"
 )
 
@@ -21,6 +23,7 @@ type LocalExecutor struct {
 	baseDir string // Base directory for workspaces (e.g., /var/lib/nebi/environments)
 	config  *config.Config
 	sandbox *sandbox.Runner
+	limits  limits.Limits
 }
 
 // NewLocalExecutor creates a new local executor
@@ -61,6 +64,7 @@ func NewLocalExecutor(cfg *config.Config) (*LocalExecutor, error) {
 		baseDir: baseDir,
 		config:  cfg,
 		sandbox: sb,
+		limits:  cfg.Limits,
 	}, nil
 }
 
@@ -103,62 +107,65 @@ func (e *LocalExecutor) GetWorkspacePath(ws *models.Workspace) string {
 // CreateWorkspace creates a new workspace on the local filesystem
 func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer, opts CreateWorkspaceOptions) error {
 	envPath := e.GetWorkspacePath(ws)
-	fmt.Fprintf(logWriter, "Creating environment at: %s\n", envPath)
+	return e.withStorageLimit(ctx, envPath, logWriter, func(ctx context.Context) error {
+		fmt.Fprintf(logWriter, "Creating environment at: %s\n", envPath)
 
-	pm, err := e.packageManagerFor(ws)
-	if err != nil {
-		return fmt.Errorf("failed to create package manager: %w", err)
-	}
-	fmt.Fprintf(logWriter, "Using package manager: %s\n", pm.Name())
+		pm, err := e.packageManagerFor(ctx, ws)
+		if err != nil {
+			return fmt.Errorf("failed to create package manager: %w", err)
+		}
+		fmt.Fprintf(logWriter, "Using package manager: %s\n", pm.Name())
 
-	switch {
-	case opts.SeedDir != "":
-		// Always clean up the staging dir, even on partial failure (e.g. a
-		// mid-walk error in seedWorkspaceFromDir leaves files behind).
-		// Owned by this branch end-to-end.
-		defer func() {
-			if rmErr := os.RemoveAll(opts.SeedDir); rmErr != nil {
-				fmt.Fprintf(logWriter, "Warning: staging cleanup failed: %v\n", rmErr)
+		switch {
+		case opts.SeedDir != "":
+			// Always clean up the staging dir, even on partial failure (e.g. a
+			// mid-walk error in seedWorkspaceFromDir leaves files behind).
+			// Owned by this branch end-to-end.
+			defer func() {
+				if rmErr := os.RemoveAll(opts.SeedDir); rmErr != nil {
+					fmt.Fprintf(logWriter, "Warning: staging cleanup failed: %v\n", rmErr)
+				}
+			}()
+			if err := os.MkdirAll(envPath, 0o755); err != nil {
+				return fmt.Errorf("create env dir: %w", err)
 			}
-		}()
-		if err := os.MkdirAll(envPath, 0o755); err != nil {
-			return fmt.Errorf("create env dir: %w", err)
-		}
-		fmt.Fprintf(logWriter, "Seeding workspace from %s\n", opts.SeedDir)
-		if err := seedWorkspaceFromDir(opts.SeedDir, envPath); err != nil {
-			return fmt.Errorf("seed workspace: %w", err)
-		}
-		if err := runPixiLock(ctx, e.sandbox, pm, envPath, logWriter); err != nil {
-			return err
+			fmt.Fprintf(logWriter, "Seeding workspace from %s\n", opts.SeedDir)
+			if err := seedWorkspaceFromDir(opts.SeedDir, envPath); err != nil {
+				return fmt.Errorf("seed workspace: %w", err)
+			}
+			if err := runPixiLock(ctx, e.sandbox, pm, envPath, logWriter, e.limits.ProcessLimits()); err != nil {
+				return err
+			}
+
+		case opts.PixiToml != "":
+			if err := os.MkdirAll(envPath, 0o755); err != nil {
+				return fmt.Errorf("create env dir: %w", err)
+			}
+			pixiTomlPath := filepath.Join(envPath, "pixi.toml")
+			fmt.Fprintf(logWriter, "Writing custom pixi.toml content\n")
+			if err := os.WriteFile(pixiTomlPath, []byte(opts.PixiToml), 0o644); err != nil {
+				return fmt.Errorf("failed to write pixi.toml: %w", err)
+			}
+			if err := runPixiLock(ctx, e.sandbox, pm, envPath, logWriter, e.limits.ProcessLimits()); err != nil {
+				return err
+			}
+
+		default:
+			initOpts := pkgmgr.InitOptions{
+				EnvPath:        envPath,
+				Name:           ws.Name,
+				Channels:       []string{"conda-forge"},
+				LogWriter:      logWriter,
+				ResourceLimits: e.limits.ProcessLimits(),
+			}
+			if err := pm.Init(ctx, initOpts); err != nil {
+				return fmt.Errorf("failed to initialize environment: %w", err)
+			}
 		}
 
-	case opts.PixiToml != "":
-		if err := os.MkdirAll(envPath, 0o755); err != nil {
-			return fmt.Errorf("create env dir: %w", err)
-		}
-		pixiTomlPath := filepath.Join(envPath, "pixi.toml")
-		fmt.Fprintf(logWriter, "Writing custom pixi.toml content\n")
-		if err := os.WriteFile(pixiTomlPath, []byte(opts.PixiToml), 0o644); err != nil {
-			return fmt.Errorf("failed to write pixi.toml: %w", err)
-		}
-		if err := runPixiLock(ctx, e.sandbox, pm, envPath, logWriter); err != nil {
-			return err
-		}
-
-	default:
-		initOpts := pkgmgr.InitOptions{
-			EnvPath:   envPath,
-			Name:      ws.Name,
-			Channels:  []string{"conda-forge"},
-			LogWriter: logWriter,
-		}
-		if err := pm.Init(ctx, initOpts); err != nil {
-			return fmt.Errorf("failed to initialize environment: %w", err)
-		}
-	}
-
-	fmt.Fprintf(logWriter, "Environment created successfully\n")
-	return nil
+		fmt.Fprintf(logWriter, "Environment created successfully\n")
+		return nil
+	})
 }
 
 // packageManagerFor resolves the package manager for a workspace, honoring
@@ -168,7 +175,7 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 // manager is wired to the build sandbox: every pixi subprocess it spawns
 // runs with a scrubbed environment and, unless the sandbox is off, confined
 // to the workspace directory.
-func (e *LocalExecutor) packageManagerFor(ws *models.Workspace) (pkgmgr.PackageManager, error) {
+func (e *LocalExecutor) packageManagerFor(ctx context.Context, ws *models.Workspace) (pkgmgr.PackageManager, error) {
 	pmType := ws.PackageManager
 	if pmType == "" {
 		pmType = e.config.PackageManager.DefaultType
@@ -180,11 +187,11 @@ func (e *LocalExecutor) packageManagerFor(ws *models.Workspace) (pkgmgr.PackageM
 	)
 	switch {
 	case pmType == "pixi" && e.config.PackageManager.PixiPath != "":
-		pm, err = pkgmgr.NewWithPath(pmType, e.config.PackageManager.PixiPath)
+		pm, err = pkgmgr.NewWithPathContext(ctx, pmType, e.config.PackageManager.PixiPath)
 	case pmType == "uv" && e.config.PackageManager.UvPath != "":
-		pm, err = pkgmgr.NewWithPath(pmType, e.config.PackageManager.UvPath)
+		pm, err = pkgmgr.NewWithPathContext(ctx, pmType, e.config.PackageManager.UvPath)
 	default:
-		pm, err = pkgmgr.New(pmType)
+		pm, err = pkgmgr.NewWithContext(ctx, pmType)
 	}
 	if err != nil {
 		return nil, err
@@ -199,14 +206,15 @@ func (e *LocalExecutor) packageManagerFor(ws *models.Workspace) (pkgmgr.PackageM
 // runPixiLock runs `pixi lock` in envPath. It resolves the dependency
 // graph and writes pixi.lock without downloading or extracting packages;
 // installing is a separate, explicit step (see InstallEnvironment).
-func runPixiLock(ctx context.Context, sb *sandbox.Runner, pm pkgmgr.PackageManager, envPath string, logWriter io.Writer) error {
+func runPixiLock(ctx context.Context, sb *sandbox.Runner, pm pkgmgr.PackageManager, envPath string, logWriter io.Writer, limitCfg limits.ProcessLimits) error {
 	pixiBinary := "pixi"
 	if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
 		pixiBinary = pixiMgr.BinaryPath()
 	}
 	lockCmd, err := sb.Command(ctx, sandbox.Spec{
-		WorkspaceDir: envPath,
-		Argv:         []string{pixiBinary, "lock"},
+		WorkspaceDir:   envPath,
+		Argv:           []string{pixiBinary, "lock"},
+		ResourceLimits: limitCfg,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to prepare sandboxed pixi lock: %w", err)
@@ -276,107 +284,127 @@ func seedWorkspaceFromDir(srcDir, dstDir string) error {
 // InstallPackages installs packages in a workspace
 func (e *LocalExecutor) InstallPackages(ctx context.Context, ws *models.Workspace, packages []string, logWriter io.Writer) error {
 	envPath := e.GetWorkspacePath(ws)
+	return e.withStorageLimit(ctx, envPath, logWriter, func(ctx context.Context) error {
 
-	fmt.Fprintf(logWriter, "Installing packages: %v\n", packages)
+		fmt.Fprintf(logWriter, "Installing packages: %v\n", packages)
 
-	pm, err := e.packageManagerFor(ws)
-	if err != nil {
-		return fmt.Errorf("failed to create package manager: %w", err)
-	}
+		pm, err := e.packageManagerFor(ctx, ws)
+		if err != nil {
+			return fmt.Errorf("failed to create package manager: %w", err)
+		}
 
-	opts := pkgmgr.InstallOptions{
-		EnvPath:   envPath,
-		Packages:  packages,
-		LogWriter: logWriter,
-		NoInstall: true,
-	}
+		opts := pkgmgr.InstallOptions{
+			EnvPath:        envPath,
+			Packages:       packages,
+			LogWriter:      logWriter,
+			NoInstall:      true,
+			ResourceLimits: e.limits.ProcessLimits(),
+		}
 
-	if err := pm.Install(ctx, opts); err != nil {
-		return fmt.Errorf("failed to install packages: %w", err)
-	}
+		if err := pm.Install(ctx, opts); err != nil {
+			return fmt.Errorf("failed to install packages: %w", err)
+		}
 
-	fmt.Fprintf(logWriter, "Packages installed successfully\n")
-	return nil
+		fmt.Fprintf(logWriter, "Packages installed successfully\n")
+		return nil
+	})
 }
 
 // RemovePackages removes packages from a workspace
 func (e *LocalExecutor) RemovePackages(ctx context.Context, ws *models.Workspace, packages []string, logWriter io.Writer) error {
 	envPath := e.GetWorkspacePath(ws)
+	return e.withStorageLimit(ctx, envPath, logWriter, func(ctx context.Context) error {
 
-	fmt.Fprintf(logWriter, "Removing packages: %v\n", packages)
+		fmt.Fprintf(logWriter, "Removing packages: %v\n", packages)
 
-	pm, err := e.packageManagerFor(ws)
-	if err != nil {
-		return fmt.Errorf("failed to create package manager: %w", err)
-	}
+		pm, err := e.packageManagerFor(ctx, ws)
+		if err != nil {
+			return fmt.Errorf("failed to create package manager: %w", err)
+		}
 
-	opts := pkgmgr.RemoveOptions{
-		EnvPath:   envPath,
-		Packages:  packages,
-		LogWriter: logWriter,
-		NoInstall: true,
-	}
+		opts := pkgmgr.RemoveOptions{
+			EnvPath:        envPath,
+			Packages:       packages,
+			LogWriter:      logWriter,
+			NoInstall:      true,
+			ResourceLimits: e.limits.ProcessLimits(),
+		}
 
-	if err := pm.Remove(ctx, opts); err != nil {
-		return fmt.Errorf("failed to remove packages: %w", err)
-	}
+		if err := pm.Remove(ctx, opts); err != nil {
+			return fmt.Errorf("failed to remove packages: %w", err)
+		}
 
-	fmt.Fprintf(logWriter, "Packages removed successfully\n")
-	return nil
+		fmt.Fprintf(logWriter, "Packages removed successfully\n")
+		return nil
+	})
 }
 
 // SolveEnvironment runs pixi lock to resolve the current pixi.toml into
 // pixi.lock. It never installs packages.
 func (e *LocalExecutor) SolveEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error {
 	envPath := e.GetWorkspacePath(ws)
+	return e.withStorageLimit(ctx, envPath, logWriter, func(ctx context.Context) error {
 
-	fmt.Fprintf(logWriter, "Running pixi lock to solve environment...\n")
+		fmt.Fprintf(logWriter, "Running pixi lock to solve environment...\n")
 
-	pm, err := e.packageManagerFor(ws)
-	if err != nil {
-		return fmt.Errorf("failed to create package manager: %w", err)
-	}
+		pm, err := e.packageManagerFor(ctx, ws)
+		if err != nil {
+			return fmt.Errorf("failed to create package manager: %w", err)
+		}
 
-	if err := runPixiLock(ctx, e.sandbox, pm, envPath, logWriter); err != nil {
-		return err
-	}
+		if err := runPixiLock(ctx, e.sandbox, pm, envPath, logWriter, e.limits.ProcessLimits()); err != nil {
+			return err
+		}
 
-	fmt.Fprintf(logWriter, "Environment solved successfully\n")
-	return nil
+		fmt.Fprintf(logWriter, "Environment solved successfully\n")
+		return nil
+	})
 }
 
 // InstallEnvironment runs `pixi install -v` in the workspace directory,
 // materializing .pixi/envs/ from the already-resolved pixi.lock.
 func (e *LocalExecutor) InstallEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error {
 	envPath := e.GetWorkspacePath(ws)
+	return e.withStorageLimit(ctx, envPath, logWriter, func(ctx context.Context) error {
 
-	pm, err := e.packageManagerFor(ws)
-	if err != nil {
-		return fmt.Errorf("failed to create package manager: %w", err)
-	}
-
-	pixiBinary := "pixi"
-	if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
-		pixiBinary = pixiMgr.BinaryPath()
-	}
-	cmd, err := e.sandbox.Command(ctx, sandbox.Spec{
-		WorkspaceDir: envPath,
-		Argv:         []string{pixiBinary, "install", "-v"},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to prepare sandboxed pixi install: %w", err)
-	}
-	cmd.Stdout = logWriter
-	cmd.Stderr = logWriter
-	fmt.Fprintf(logWriter, "Running: %s install -v\n", pixiBinary)
-	if err := cmd.Run(); err != nil {
-		if e.sandbox.IsSetupFailure(err) {
-			return fmt.Errorf("build sandbox setup failed: %w", err)
+		pm, err := e.packageManagerFor(ctx, ws)
+		if err != nil {
+			return fmt.Errorf("failed to create package manager: %w", err)
 		}
-		return fmt.Errorf("pixi install failed: %w", err)
-	}
-	fmt.Fprintf(logWriter, "Environment installed successfully\n")
-	return nil
+
+		pixiBinary := "pixi"
+		if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
+			pixiBinary = pixiMgr.BinaryPath()
+		}
+		processLimits := e.limits.ProcessLimits()
+		cmd, err := e.sandbox.Command(ctx, sandbox.Spec{
+			WorkspaceDir:   envPath,
+			Argv:           []string{pixiBinary, "install", "-v"},
+			ResourceLimits: processLimits,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to prepare sandboxed pixi install: %w", err)
+		}
+		limitLogWriter := &processLimitLogWriter{target: logWriter, limits: processLimits}
+		cmd.Stdout = limitLogWriter
+		cmd.Stderr = limitLogWriter
+		fmt.Fprintf(logWriter, "Running: %s install -v\n", pixiBinary)
+		if err := cmd.Run(); err != nil {
+			// A sandbox that could not be established is an operator problem,
+			// not a failed build, so it must not be reported as either a
+			// resource-limit kill or a pixi error.
+			if e.sandbox.IsSetupFailure(err) {
+				return fmt.Errorf("build sandbox setup failed: %w", err)
+			}
+			installErr := fmt.Errorf("pixi install failed: %w", err)
+			if limitLogWriter.SeenResourceLimitOutput() || process.IsResourceLimitExit(ctx, err, processLimits, "") {
+				return process.NewResourceLimitError(installErr)
+			}
+			return installErr
+		}
+		fmt.Fprintf(logWriter, "Environment installed successfully\n")
+		return nil
+	})
 }
 
 // ListPackages returns the packages installed in the workspace. It goes
@@ -384,11 +412,15 @@ func (e *LocalExecutor) InstallEnvironment(ctx context.Context, ws *models.Works
 // manager binary and runs inside the build sandbox: `pixi list` parses a
 // user-supplied manifest and lockfile, so it is as untrusted as a build.
 func (e *LocalExecutor) ListPackages(ctx context.Context, ws *models.Workspace) ([]pkgmgr.Package, error) {
-	pm, err := e.packageManagerFor(ws)
+	pm, err := e.packageManagerFor(ctx, ws)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create package manager: %w", err)
 	}
-	return pm.List(ctx, pkgmgr.ListOptions{EnvPath: e.GetWorkspacePath(ws)})
+	return pm.List(ctx, pkgmgr.ListOptions{
+		EnvPath:        e.GetWorkspacePath(ws),
+		MaxOutputBytes: e.limits.MetadataBytes,
+		ResourceLimits: e.limits.ProcessLimits(),
+	})
 }
 
 // UninstallEnvironment removes the installed environment (.pixi/envs)
@@ -408,6 +440,38 @@ func (e *LocalExecutor) UninstallEnvironment(ctx context.Context, ws *models.Wor
 func (e *LocalExecutor) IsEnvInstalled(ws *models.Workspace) bool {
 	info, err := os.Stat(filepath.Join(e.GetWorkspacePath(ws), ".pixi", "envs"))
 	return err == nil && info.IsDir()
+}
+
+// CleanupJobArtifacts removes transient files left by interrupted or
+// resource-limited jobs without deleting user-owned local workspace content.
+func (e *LocalExecutor) CleanupJobArtifacts(ctx context.Context, ws *models.Workspace, jobType models.JobType, logWriter io.Writer) error {
+	envPath := e.GetWorkspacePath(ws)
+	if jobType == models.JobTypeCreate && ws.Source != "local" {
+		fmt.Fprintf(logWriter, "Cleaning up partial workspace at: %s\n", envPath)
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := os.RemoveAll(envPath); err != nil {
+			return fmt.Errorf("cleanup partial workspace: %w", err)
+		}
+		return nil
+	}
+
+	paths := process.WorkspaceTransientDirs(envPath)
+	if jobType == models.JobTypeEnvInstall {
+		paths = append(paths, filepath.Join(envPath, ".pixi", "envs"))
+	}
+
+	for _, path := range paths {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		fmt.Fprintf(logWriter, "Cleaning up job artifact: %s\n", path)
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("cleanup job artifact %s: %w", path, err)
+		}
+	}
+	return nil
 }
 
 // DeleteWorkspace removes a workspace from the filesystem.

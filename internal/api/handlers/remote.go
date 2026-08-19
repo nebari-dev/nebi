@@ -51,7 +51,7 @@ func (h *RemoteHandler) ConnectServer(c *gin.Context) {
 		Password string `json:"password" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -157,7 +157,7 @@ func (h *RemoteHandler) CreateWorkspace(c *gin.Context) {
 	}
 	var req cliclient.CreateWorkspaceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 	ws, err := client.CreateWorkspace(c.Request.Context(), req)
@@ -291,7 +291,7 @@ func (h *RemoteHandler) PushVersion(c *gin.Context) {
 	id := c.Param("id")
 	var req cliclient.PushRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 	resp, err := client.PushVersion(c.Request.Context(), id, req)
@@ -392,4 +392,66 @@ func (h *RemoteHandler) GetAdminDashboardStats(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, stats)
+}
+
+// ListAdminFederatedIdentityReviews proxies identity-review listing to the remote server.
+func (h *RemoteHandler) ListAdminFederatedIdentityReviews(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		h.notConnected(c, err)
+		return
+	}
+	reviews, err := client.ListFederatedIdentityReviews(c.Request.Context(), c.Query("status"))
+	if err != nil {
+		if cliclient.IsNotFound(err) {
+			c.JSON(http.StatusOK, []cliclient.FederatedIdentityReview{})
+			return
+		}
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, reviews)
+}
+
+// ApproveAdminFederatedIdentityReview proxies identity-review approval to the remote server.
+func (h *RemoteHandler) ApproveAdminFederatedIdentityReview(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		h.notConnected(c, err)
+		return
+	}
+	identity, err := client.ApproveFederatedIdentityReview(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.JSON(http.StatusCreated, identity)
+}
+
+// RejectAdminFederatedIdentityReview proxies identity-review rejection to the remote server.
+func (h *RemoteHandler) RejectAdminFederatedIdentityReview(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		h.notConnected(c, err)
+		return
+	}
+	if err := client.RejectFederatedIdentityReview(c.Request.Context(), c.Param("id")); err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// DiscardAdminFederatedIdentityReview proxies identity-review deletion to the remote server.
+func (h *RemoteHandler) DiscardAdminFederatedIdentityReview(c *gin.Context) {
+	client, err := h.getClient()
+	if err != nil {
+		h.notConnected(c, err)
+		return
+	}
+	if err := client.DiscardFederatedIdentityReview(c.Request.Context(), c.Param("id")); err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
+		return
+	}
+	c.Status(http.StatusNoContent)
 }

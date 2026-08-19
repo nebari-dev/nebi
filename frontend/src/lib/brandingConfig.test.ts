@@ -247,4 +247,99 @@ describe('brandingConfig', () => {
     const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
     expect(favicon?.getAttribute('href')).toBe('/favicon.ico');
   });
+
+  it('uses the configured dark logo in dark mode and the light logo otherwise', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        branding: {
+          logoUrl: '/assets/acme-logo.svg',
+          logoUrlDark: '/assets/acme-logo-dark.svg',
+        },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import(
+      './brandingConfig'
+    );
+    const config = await loadBrandingConfig();
+
+    expect(config.branding?.logoUrlDark).toBe('/assets/acme-logo-dark.svg');
+    expect(getBrandingLogoUrl()).toBe('/assets/acme-logo.svg');
+    expect(getBrandingLogoUrl(true)).toBe('/assets/acme-logo-dark.svg');
+  });
+
+  it('falls back to the light logo in dark mode when no dark logo is configured', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        branding: { logoUrl: '/assets/acme-logo.svg' },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import(
+      './brandingConfig'
+    );
+    await loadBrandingConfig();
+
+    expect(getBrandingLogoUrl(true)).toBe('/assets/acme-logo.svg');
+  });
+
+  it('uses the dark logo alone when only a dark logo is configured', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        branding: { logoUrlDark: '/assets/acme-logo-dark.svg' },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import(
+      './brandingConfig'
+    );
+    await loadBrandingConfig();
+
+    expect(getBrandingLogoUrl(true)).toBe('/assets/acme-logo-dark.svg');
+    expect(getBrandingLogoUrl()).toBe('/nebi-logo.svg');
+  });
+
+  it('ignores an unsafe dark logo URL and falls back to the light logo', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        branding: {
+          logoUrl: '/assets/acme-logo.svg',
+          logoUrlDark: 'javascript:alert(1)',
+        },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import(
+      './brandingConfig'
+    );
+    await loadBrandingConfig();
+
+    expect(getBrandingLogoUrl(true)).toBe('/assets/acme-logo.svg');
+  });
+
+  it('prepends base path for a root-relative dark logo', async () => {
+    (window as BasePathWindow).__NEBI_BASE_PATH__ = '/nebi';
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        branding: { logoUrlDark: '/brand/logo-dark.svg' },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadBrandingConfig, getBrandingLogoUrl } = await import(
+      './brandingConfig'
+    );
+    await loadBrandingConfig();
+
+    expect(getBrandingLogoUrl(true)).toBe('/nebi/brand/logo-dark.svg');
+  });
 });

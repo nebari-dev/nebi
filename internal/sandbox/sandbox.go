@@ -17,6 +17,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/nebari-dev/nebi/internal/limits"
+	"github.com/nebari-dev/nebi/internal/process"
 )
 
 // Mode controls how failures to confine a build are handled.
@@ -35,16 +38,6 @@ const (
 // not be established, as distinct from the build failing on its own merits.
 const SetupFailureExitCode = 125
 
-// Job-scoped subdirectories created inside the workspace when the sandbox is
-// active. HOME is scoped so the package cache stays per-workspace; a shared
-// cache would let one tenant poison packages for another. In off mode
-// neither directory is created and the parent's HOME and TMPDIR pass
-// through, since there is no isolation to preserve.
-const (
-	homeDirName = ".nebi-home"
-	tmpDirName  = ".nebi-tmp"
-)
-
 // Config is the sandbox slice of application configuration.
 type Config struct {
 	Mode         Mode
@@ -60,6 +53,9 @@ type Spec struct {
 	Argv []string
 	// ParentEnv defaults to os.Environ() when nil.
 	ParentEnv []string
+	// ResourceLimits bounds the build's CPU time and file sizes. The zero
+	// value applies no limits.
+	ResourceLimits limits.ProcessLimits
 }
 
 // Runner builds sandboxed commands.
@@ -175,6 +171,11 @@ func (r *Runner) Mode() Mode { return r.cfg.Mode }
 
 // Command returns an *exec.Cmd for spec. Stdout/Stderr are left for the
 // caller to wire to the job's log writer.
+//
+// Job-scoped directories live under the workspace's .nebi/ tree, whose layout
+// internal/process owns. Reusing that layout rather than inventing a parallel
+// one keeps these directories covered by process.WorkspaceTransientDirs,
+// which failed-job cleanup walks.
 func (r *Runner) Command(ctx context.Context, spec Spec) (*exec.Cmd, error) {
 	if len(spec.Argv) == 0 {
 		return nil, errors.New("sandbox: argv must not be empty")
@@ -183,20 +184,22 @@ func (r *Runner) Command(ctx context.Context, spec Spec) (*exec.Cmd, error) {
 		return nil, fmt.Errorf("sandbox: workspace dir %q must be absolute", spec.WorkspaceDir)
 	}
 
-	// Scoping HOME and TMPDIR into the workspace only makes sense when the
-	// sandbox is active. In off mode the build is unconfined anyway, so the
-	// redirection buys no isolation while breaking pixi's credential lookup
-	// under $HOME and, for local workspaces, filling the user's own project
-	// directory with the package cache.
-	var home, tmp string
+	// TMPDIR and the language caches are scoped to the workspace in every
+	// mode, matching what internal/process does for unsandboxed builds.
+	if err := process.PrepareWorkspaceDirs(spec.WorkspaceDir); err != nil {
+		return nil, fmt.Errorf("sandbox: %w", err)
+	}
+	tmp := process.WorkspaceTmpDir(spec.WorkspaceDir)
+
+	// Scoping HOME into the workspace only makes sense when the sandbox is
+	// active. In off mode the build is unconfined anyway, so the redirection
+	// buys no isolation while breaking pixi's credential lookup under $HOME.
+	var home string
 	argv := spec.Argv
 	if r.cfg.Mode != ModeOff {
-		home = filepath.Join(spec.WorkspaceDir, homeDirName)
-		tmp = filepath.Join(spec.WorkspaceDir, tmpDirName)
-		for _, dir := range []string{home, tmp} {
-			if err := os.MkdirAll(dir, 0o700); err != nil {
-				return nil, fmt.Errorf("sandbox: create %s: %w", dir, err)
-			}
+		home = process.WorkspaceHomeDir(spec.WorkspaceDir)
+		if err := os.MkdirAll(home, 0o700); err != nil {
+			return nil, fmt.Errorf("sandbox: create %s: %w", home, err)
 		}
 		argv = r.shimArgv(spec)
 	}
@@ -206,9 +209,15 @@ func (r *Runner) Command(ctx context.Context, spec Spec) (*exec.Cmd, error) {
 		parent = os.Environ()
 	}
 
-	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	// The resource-limit wrapper shells out to /bin/sh, which applies the
+	// ulimits and then execs argv. Both rlimits and the Landlock ruleset the
+	// shim installs survive that exec, so the two layers compose: sh limits,
+	// shim confines, build runs.
+	cmd := process.CommandContext(ctx, argv[0], argv[1:], spec.ResourceLimits)
 	cmd.Dir = spec.WorkspaceDir
-	cmd.Env = buildEnv(parent, home, tmp)
+	// Allowlist first so no parent secret survives, then layer the
+	// workspace-scoped overrides on top; last occurrence wins.
+	cmd.Env = dedupEnv(append(buildEnv(parent, home, tmp), process.WorkspaceEnvOverrides(spec.WorkspaceDir)...))
 	return cmd, nil
 }
 

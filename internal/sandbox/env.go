@@ -72,3 +72,29 @@ func buildEnv(parent []string, home, tmpDir string) []string {
 	}
 	return out
 }
+
+// dedupEnv collapses repeated keys, keeping the last occurrence. os/exec does
+// this itself when it spawns the process, so doing it up front changes nothing
+// about the child; it just makes cmd.Env exactly the environment the build will
+// see, which matters for a list whose whole purpose is to be auditable.
+func dedupEnv(env []string) []string {
+	lastIndex := make(map[string]int, len(env))
+	for i, kv := range env {
+		key, _, ok := strings.Cut(kv, "=")
+		if !ok {
+			continue
+		}
+		lastIndex[key] = i
+	}
+	out := make([]string, 0, len(lastIndex))
+	for i, kv := range env {
+		key, _, ok := strings.Cut(kv, "=")
+		if !ok {
+			continue
+		}
+		if lastIndex[key] == i {
+			out = append(out, kv)
+		}
+	}
+	return out
+}

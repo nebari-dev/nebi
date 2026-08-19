@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/nebari-dev/nebi/internal/limits"
 	"time"
 )
 
@@ -84,8 +86,9 @@ func TestCommand_StrictModeWrapsInShim(t *testing.T) {
 	}
 }
 
-// Both sides of the scoping branch are pinned: strict/permissive redirect
-// HOME and TMPDIR into the workspace, off leaves the parent's alone.
+// Both sides of the HOME scoping branch are pinned: strict/permissive redirect
+// it into the workspace, off leaves the parent's alone. TMPDIR is scoped in
+// every mode, so it is checked here too.
 func TestCommand_ActiveModesCreateJobScopedHomeAndTmp(t *testing.T) {
 	for _, mode := range []Mode{ModeStrict, ModePermissive} {
 		t.Run(string(mode), func(t *testing.T) {
@@ -101,15 +104,15 @@ func TestCommand_ActiveModesCreateJobScopedHomeAndTmp(t *testing.T) {
 				t.Fatalf("Command: %v", err)
 			}
 
-			wantHome := "HOME=" + filepath.Join(ws, ".nebi-home")
-			wantTmp := "TMPDIR=" + filepath.Join(ws, ".nebi-tmp")
+			wantHome := "HOME=" + filepath.Join(ws, ".nebi", "home")
+			wantTmp := "TMPDIR=" + filepath.Join(ws, ".nebi", "tmp")
 			if !slices.Contains(cmd.Env, wantHome) || !slices.Contains(cmd.Env, wantTmp) {
 				t.Fatalf("expected %q and %q in env, got %v", wantHome, wantTmp, cmd.Env)
 			}
 			if slices.Contains(cmd.Env, "HOME=/home/dev") {
 				t.Fatalf("parent HOME must not survive an active sandbox: %v", cmd.Env)
 			}
-			for _, dir := range []string{filepath.Join(ws, ".nebi-home"), filepath.Join(ws, ".nebi-tmp")} {
+			for _, dir := range []string{filepath.Join(ws, ".nebi", "home"), filepath.Join(ws, ".nebi", "tmp")} {
 				if _, err := statDir(dir); err != nil {
 					t.Fatalf("expected %q to exist: %v", dir, err)
 				}
@@ -120,9 +123,13 @@ func TestCommand_ActiveModesCreateJobScopedHomeAndTmp(t *testing.T) {
 
 // In off mode the build is unconfined anyway, so redirecting HOME buys no
 // security and costs real things: for local workspaces the workspace dir is
-// the user's own project folder, which would collect a multi-GB conda cache,
-// and pixi/rattler lose $HOME/.rattler/credentials.json.
-func TestCommand_OffModeLeavesParentHomeAndTmpAlone(t *testing.T) {
+// the user's own project folder, and pixi/rattler lose
+// $HOME/.rattler/credentials.json.
+//
+// TMPDIR is a separate matter. internal/process scopes it into the workspace
+// for every build, sandboxed or not, so off mode keeps that rather than
+// inheriting the parent's.
+func TestCommand_OffModeLeavesParentHomeAlone(t *testing.T) {
 	r := newTestRunner(t, ModeOff)
 	ws := t.TempDir()
 
@@ -135,15 +142,18 @@ func TestCommand_OffModeLeavesParentHomeAndTmpAlone(t *testing.T) {
 		t.Fatalf("Command: %v", err)
 	}
 
-	for _, want := range []string{"HOME=/home/dev", "TMPDIR=/var/tmp"} {
-		if !slices.Contains(cmd.Env, want) {
-			t.Fatalf("expected %q to pass through in off mode, got %v", want, cmd.Env)
-		}
+	if !slices.Contains(cmd.Env, "HOME=/home/dev") {
+		t.Fatalf("expected HOME to pass through in off mode, got %v", cmd.Env)
 	}
-	for _, name := range []string{".nebi-home", ".nebi-tmp"} {
-		if _, err := os.Stat(filepath.Join(ws, name)); !os.IsNotExist(err) {
-			t.Fatalf("off mode must not create %s in the workspace (err=%v)", name, err)
-		}
+	if slices.Contains(cmd.Env, "TMPDIR=/var/tmp") {
+		t.Fatalf("expected TMPDIR to be scoped to the workspace, got %v", cmd.Env)
+	}
+	if want := "TMPDIR=" + filepath.Join(ws, ".nebi", "tmp"); !slices.Contains(cmd.Env, want) {
+		t.Fatalf("expected %q, got %v", want, cmd.Env)
+	}
+	// Off mode must not create the sandbox-only HOME.
+	if _, err := os.Stat(filepath.Join(ws, ".nebi", "home")); !os.IsNotExist(err) {
+		t.Fatalf("off mode must not create .nebi/home in the workspace (err=%v)", err)
 	}
 }
 
@@ -440,3 +450,60 @@ type exitCodeErr struct{ code int }
 
 func (e *exitCodeErr) Error() string { return "exit status" }
 func (e *exitCodeErr) ExitCode() int { return e.code }
+
+// TestCommand_AppliesResourceLimits pins the seam between this package and
+// internal/process: a Spec carrying resource limits must produce a command that
+// actually enforces them. The two features arrived independently (env scrubbing
+// and Landlock here, rlimits there) and both wrap the same exec.Cmd, so a
+// regression would silently drop one layer while the other kept working.
+//
+// The limits are applied by a /bin/sh wrapper that ulimits and then execs, so
+// the real binary must still be the thing that ends up running, and the
+// workspace env must survive the extra hop.
+func TestCommand_AppliesResourceLimits(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the resource-limit wrapper is unix-only")
+	}
+	ws := t.TempDir()
+	script := filepath.Join(ws, "show-limits")
+	// -H -f reports the hard file-size limit in 512-byte blocks.
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nulimit -H -f\n"), 0o755); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+
+	r := newTestRunner(t, ModeOff)
+	cmd, err := r.Command(context.Background(), Spec{
+		WorkspaceDir:   ws,
+		Argv:           []string{script},
+		ParentEnv:      []string{"PATH=/bin:/usr/bin"},
+		ResourceLimits: limits.ProcessLimits{FileBytes: 512 * 4096},
+	})
+	if err != nil {
+		t.Fatalf("Command: %v", err)
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("run: %v (output %q)", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != "4096" {
+		t.Fatalf("file-size rlimit not applied: ulimit -H -f reported %q, want %q", got, "4096")
+	}
+}
+
+// The zero value must mean "no limits", not "a limit of zero", which would
+// make every build fail the moment it wrote a byte.
+func TestCommand_ZeroResourceLimitsLeaveCommandUnwrapped(t *testing.T) {
+	ws := t.TempDir()
+	r := newTestRunner(t, ModeOff)
+	cmd, err := r.Command(context.Background(), Spec{
+		WorkspaceDir: ws,
+		Argv:         []string{"/usr/bin/pixi", "lock"},
+		ParentEnv:    []string{"PATH=/bin"},
+	})
+	if err != nil {
+		t.Fatalf("Command: %v", err)
+	}
+	if cmd.Path != "/usr/bin/pixi" {
+		t.Fatalf("expected the real binary to run unwrapped, got %q with args %v", cmd.Path, cmd.Args)
+	}
+}

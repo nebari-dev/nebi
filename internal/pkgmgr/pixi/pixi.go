@@ -13,14 +13,20 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/pkgmgr"
+	"github.com/nebari-dev/nebi/internal/process"
 	"github.com/nebari-dev/nebi/internal/sandbox"
 	"github.com/pelletier/go-toml/v2"
 )
 
 func init() {
-	pkgmgr.Register("pixi", func(customPath string) (pkgmgr.PackageManager, error) {
-		return NewWithPath(customPath)
+	pkgmgr.Register("pixi", func(ctx context.Context, customPath string) (pkgmgr.PackageManager, error) {
+		return NewWithPathContext(ctx, customPath)
+	})
+	pkgmgr.RegisterManifestContentParser("pixi", pkgmgr.ManifestContentParser{
+		PackageNames:           ManifestPackageNames,
+		DefaultDependencyNames: ManifestDefaultDependencyNames,
 	})
 }
 
@@ -32,11 +38,17 @@ type PixiManager struct {
 
 // New creates a new PixiManager instance
 func New() (*PixiManager, error) {
-	return NewWithPath("")
+	return NewWithPathContext(context.Background(), "")
 }
 
 // NewWithPath creates a new PixiManager with a custom pixi binary path
 func NewWithPath(customPath string) (*PixiManager, error) {
+	return NewWithPathContext(context.Background(), customPath)
+}
+
+// NewWithPathContext creates a new PixiManager with a custom pixi binary path,
+// using ctx for setup work so job deadlines also cover package-manager setup.
+func NewWithPathContext(ctx context.Context, customPath string) (*PixiManager, error) {
 	pixiPath := customPath
 	if pixiPath == "" {
 		// First check if pixi is already installed at the default location
@@ -54,7 +66,6 @@ func NewWithPath(customPath string) (*PixiManager, error) {
 			path, err := exec.LookPath("pixi")
 			if err != nil {
 				// Pixi not found, attempt automatic installation
-				ctx := context.Background()
 				installedPath, installErr := InstallPixi(ctx)
 				if installErr != nil {
 					return nil, fmt.Errorf("pixi not found in PATH and auto-installation failed: %w", installErr)
@@ -67,7 +78,7 @@ func NewWithPath(customPath string) (*PixiManager, error) {
 	}
 
 	// Verify pixi is executable
-	if err := exec.Command(pixiPath, "--version").Run(); err != nil {
+	if err := exec.CommandContext(ctx, pixiPath, "--version").Run(); err != nil {
 		return nil, fmt.Errorf("pixi binary is not executable: %w", err)
 	}
 
@@ -90,17 +101,31 @@ func (p *PixiManager) BinaryPath() string {
 func (p *PixiManager) SetSandbox(s *sandbox.Runner) { p.sandbox = s }
 
 // command builds the exec.Cmd for a pixi invocation in workDir, routing
-// through the sandbox when one is configured.
-func (p *PixiManager) command(ctx context.Context, workDir string, args ...string) (*exec.Cmd, error) {
-	if p.sandbox == nil {
-		cmd := exec.CommandContext(ctx, p.pixiPath, args...)
-		cmd.Dir = workDir
-		return cmd, nil
+// through the sandbox when one is configured. Either way the command carries
+// the configured OS resource limits and runs with its temp and cache
+// directories scoped to the workspace.
+//
+// The difference is the environment. A sandboxed build gets an allowlist, so
+// no server secret reaches user-supplied build code. Without a sandbox the
+// parent environment is inherited: that path is the CLI, which already runs
+// as the invoking user and has nothing to withhold from itself.
+func (p *PixiManager) command(ctx context.Context, workDir string, limitCfg limits.ProcessLimits, args ...string) (*exec.Cmd, error) {
+	if p.sandbox != nil {
+		return p.sandbox.Command(ctx, sandbox.Spec{
+			WorkspaceDir:   workDir,
+			Argv:           append([]string{p.pixiPath}, args...),
+			ResourceLimits: limitCfg,
+		})
 	}
-	return p.sandbox.Command(ctx, sandbox.Spec{
-		WorkspaceDir: workDir,
-		Argv:         append([]string{p.pixiPath}, args...),
-	})
+
+	env, err := process.PreparedWorkspaceEnv(workDir)
+	if err != nil {
+		return nil, fmt.Errorf("prepare pixi workspace env: %w", err)
+	}
+	cmd := process.CommandContext(ctx, p.pixiPath, args, limitCfg)
+	cmd.Dir = workDir
+	cmd.Env = env
+	return cmd, nil
 }
 
 // streamOutput reads from a pipe and writes to the writer line by line for real-time streaming
@@ -153,7 +178,7 @@ func (p *PixiManager) Init(ctx context.Context, opts pkgmgr.InitOptions) error {
 	}
 
 	// Execute pixi init in the target directory
-	cmd, err := p.command(ctx, opts.EnvPath, args...)
+	cmd, err := p.command(ctx, opts.EnvPath, opts.ResourceLimits, args...)
 	if err != nil {
 		return fmt.Errorf("failed to prepare pixi init: %w", err)
 	}
@@ -230,7 +255,7 @@ func (p *PixiManager) Install(ctx context.Context, opts pkgmgr.InstallOptions) e
 	args := append(append(baseArgs, "--"), opts.Packages...)
 
 	// Execute pixi add
-	cmd, err := p.command(ctx, opts.EnvPath, args...)
+	cmd, err := p.command(ctx, opts.EnvPath, opts.ResourceLimits, args...)
 	if err != nil {
 		return fmt.Errorf("failed to prepare pixi add: %w", err)
 	}
@@ -307,7 +332,7 @@ func (p *PixiManager) Remove(ctx context.Context, opts pkgmgr.RemoveOptions) err
 	args := append(append(baseArgs, "--"), opts.Packages...)
 
 	// Execute pixi remove
-	cmd, err := p.command(ctx, opts.EnvPath, args...)
+	cmd, err := p.command(ctx, opts.EnvPath, opts.ResourceLimits, args...)
 	if err != nil {
 		return fmt.Errorf("failed to prepare pixi remove: %w", err)
 	}
@@ -371,28 +396,45 @@ func (p *PixiManager) List(ctx context.Context, opts pkgmgr.ListOptions) ([]pkgm
 	}
 
 	// Run pixi list to get all installed packages with actual versions
-	cmd, err := p.command(ctx, opts.EnvPath, "list")
+	cmd, err := p.command(ctx, opts.EnvPath, opts.ResourceLimits, "list")
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare pixi list: %w", err)
 	}
 
-	var stdout, stderr bytes.Buffer
+	stdout := newCappedOutputBuffer(opts.MaxOutputBytes)
+	stderr := newCappedOutputBuffer(opts.MaxOutputBytes)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		if stdout.Exceeded() {
+			return nil, &pkgmgr.OutputLimitError{Command: "pixi list", Stream: "stdout", Limit: opts.MaxOutputBytes}
+		}
+		if stderr.Exceeded() {
+			return nil, &pkgmgr.OutputLimitError{Command: "pixi list", Stream: "stderr", Limit: opts.MaxOutputBytes}
+		}
 		// pixi list returns an error when no packages are installed; treat as empty list
 		if strings.Contains(stderr.String(), "No packages found") {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("pixi list failed: %w, stderr: %s", err, stderr.String())
+		listErr := fmt.Errorf("pixi list failed: %w, stderr: %s", err, stderr.String())
+		if process.IsResourceLimitExit(ctx, err, opts.ResourceLimits, stderr.String()) {
+			return nil, process.NewResourceLimitError(listErr)
+		}
+		return nil, listErr
+	}
+	if stdout.Exceeded() {
+		return nil, &pkgmgr.OutputLimitError{Command: "pixi list", Stream: "stdout", Limit: opts.MaxOutputBytes}
+	}
+	if stderr.Exceeded() {
+		return nil, &pkgmgr.OutputLimitError{Command: "pixi list", Stream: "stderr", Limit: opts.MaxOutputBytes}
 	}
 
 	// Parse pixi list output
 	// Format: Package  Version  Build  Size  Kind  Source
 	// Example: polars  1.35.2   pyh6a1acc5_0  501.9 KiB  conda  https://...
 	var packages []pkgmgr.Package
-	scanner := bufio.NewScanner(&stdout)
+	scanner := bufio.NewScanner(stdout.Reader())
 
 	// Skip header line
 	if scanner.Scan() {
@@ -424,6 +466,49 @@ func (p *PixiManager) List(ctx context.Context, opts pkgmgr.ListOptions) ([]pkgm
 	return packages, nil
 }
 
+type cappedOutputBuffer struct {
+	buf      bytes.Buffer
+	limit    int
+	exceeded bool
+}
+
+func newCappedOutputBuffer(limit int) cappedOutputBuffer {
+	return cappedOutputBuffer{limit: limit}
+}
+
+func (b *cappedOutputBuffer) Write(p []byte) (int, error) {
+	if b.limit <= 0 {
+		_, err := b.buf.Write(p)
+		return len(p), err
+	}
+	remaining := b.limit - b.buf.Len()
+	if remaining > 0 {
+		toWrite := len(p)
+		if toWrite > remaining {
+			toWrite = remaining
+		}
+		if _, err := b.buf.Write(p[:toWrite]); err != nil {
+			return 0, err
+		}
+	}
+	if len(p) > remaining {
+		b.exceeded = true
+	}
+	return len(p), nil
+}
+
+func (b *cappedOutputBuffer) Exceeded() bool {
+	return b.exceeded
+}
+
+func (b *cappedOutputBuffer) String() string {
+	return b.buf.String()
+}
+
+func (b *cappedOutputBuffer) Reader() io.Reader {
+	return bytes.NewReader(b.buf.Bytes())
+}
+
 // Update updates packages in an environment
 func (p *PixiManager) Update(ctx context.Context, opts pkgmgr.UpdateOptions) error {
 	if opts.EnvPath == "" {
@@ -440,7 +525,7 @@ func (p *PixiManager) Update(ctx context.Context, opts pkgmgr.UpdateOptions) err
 	}
 
 	// Execute pixi update
-	cmd, err := p.command(ctx, opts.EnvPath, args...)
+	cmd, err := p.command(ctx, opts.EnvPath, opts.ResourceLimits, args...)
 	if err != nil {
 		return fmt.Errorf("failed to prepare pixi update: %w", err)
 	}
@@ -466,6 +551,73 @@ func validatePackageArgs(packages []string) error {
 		}
 	}
 	return nil
+}
+
+var dependencySectionNames = map[string]struct{}{
+	"dependencies":       {},
+	"host-dependencies":  {},
+	"build-dependencies": {},
+	"pypi-dependencies":  {},
+}
+
+// ManifestPackageNames returns every package key declared in dependency
+// sections, including feature and target dependency tables.
+func ManifestPackageNames(content string) ([]string, error) {
+	if strings.TrimSpace(content) == "" {
+		return nil, nil
+	}
+
+	var parsed map[string]interface{}
+	if err := toml.Unmarshal([]byte(content), &parsed); err != nil {
+		return nil, err
+	}
+
+	var names []string
+	collectManifestPackageNames(parsed, &names)
+	return names, nil
+}
+
+// ManifestDefaultDependencyNames returns package keys declared in the default
+// dependencies table, which is where plain `pixi add <package>` writes.
+func ManifestDefaultDependencyNames(content string) ([]string, error) {
+	if strings.TrimSpace(content) == "" {
+		return nil, nil
+	}
+
+	var parsed map[string]interface{}
+	if err := toml.Unmarshal([]byte(content), &parsed); err != nil {
+		return nil, err
+	}
+
+	packages, ok := parsed["dependencies"].(map[string]interface{})
+	if !ok {
+		return nil, nil
+	}
+
+	names := make([]string, 0, len(packages))
+	for name := range packages {
+		names = append(names, name)
+	}
+	return names, nil
+}
+
+func collectManifestPackageNames(value interface{}, names *[]string) {
+	section, ok := value.(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	for key, child := range section {
+		if _, isDependencySection := dependencySectionNames[key]; isDependencySection {
+			if packages, ok := child.(map[string]interface{}); ok {
+				for name := range packages {
+					*names = append(*names, name)
+				}
+			}
+			continue
+		}
+		collectManifestPackageNames(child, names)
+	}
 }
 
 // pixiManifest represents the structure of a pixi.toml file
@@ -527,8 +679,8 @@ func (p *PixiManager) GetManifest(ctx context.Context, envPath string) (*pkgmgr.
 }
 
 // executeCommand is a helper to execute pixi commands with proper error handling
-func (p *PixiManager) executeCommand(ctx context.Context, workDir string, args ...string) (string, error) {
-	cmd, err := p.command(ctx, workDir, args...)
+func (p *PixiManager) executeCommand(ctx context.Context, workDir string, limitCfg limits.ProcessLimits, args ...string) (string, error) {
+	cmd, err := p.command(ctx, workDir, limitCfg, args...)
 	if err != nil {
 		return "", fmt.Errorf("failed to prepare pixi command: %w", err)
 	}

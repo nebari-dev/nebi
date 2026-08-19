@@ -55,27 +55,28 @@ func newSandboxTestExecutor(t *testing.T, dump string) (*LocalExecutor, *models.
 	return e, ws
 }
 
-// assertOffModeHome checks the off-mode half of the HOME/TMPDIR contract:
-// the parent's own HOME survives and no job-scoped directory is planted in
-// the workspace. Redirecting HOME here would give the build nothing it could
-// not already reach (it is unconfined in off mode) while dropping a
-// multi-GB package cache into what is, for local workspaces, the user's own
-// project directory, and hiding $HOME/.rattler/credentials.json from pixi.
-// The active-mode half is pinned in internal/sandbox.
+// assertOffModeHome checks the off-mode half of the HOME contract: the
+// parent's own HOME survives and no job-scoped home is planted in the
+// workspace. Redirecting HOME here would give the build nothing it could not
+// already reach (it is unconfined in off mode) while dropping a multi-GB
+// package cache into what is, for local workspaces, the user's own project
+// directory, and hiding $HOME/.rattler/credentials.json from pixi.
+//
+// TMPDIR is not part of this contract: internal/process scopes it into the
+// workspace for every build. The active-mode half is pinned in
+// internal/sandbox.
 func assertOffModeHome(t *testing.T, env, wsPath, parentHome string) {
 	t.Helper()
 
-	scoped := filepath.Join(wsPath, ".nebi-home")
+	scoped := filepath.Join(wsPath, ".nebi", "home")
 	if strings.Contains(env, "HOME="+scoped) {
 		t.Fatalf("off mode must not redirect HOME into the workspace:\n%s", env)
 	}
 	if !strings.Contains(env, "HOME="+parentHome) {
 		t.Fatalf("expected the parent HOME %q to pass through in off mode:\n%s", parentHome, env)
 	}
-	for _, name := range []string{".nebi-home", ".nebi-tmp"} {
-		if _, err := os.Stat(filepath.Join(wsPath, name)); !os.IsNotExist(err) {
-			t.Fatalf("off mode must not create %s in the workspace (err=%v)", name, err)
-		}
+	if _, err := os.Stat(scoped); !os.IsNotExist(err) {
+		t.Fatalf("off mode must not create .nebi/home in the workspace (err=%v)", err)
 	}
 }
 

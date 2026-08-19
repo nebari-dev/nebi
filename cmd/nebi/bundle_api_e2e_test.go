@@ -127,6 +127,10 @@ lock)
 		printf 'version: 6\nenvironments: {}\npackages: []\n' > pixi.lock
 	fi
 	;;
+install)
+	# The real pixi materializes .pixi/envs, which IsEnvInstalled looks for.
+	mkdir -p .pixi/envs/default
+	;;
 esac
 exit 0
 `

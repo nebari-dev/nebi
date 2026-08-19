@@ -29,7 +29,7 @@ func TestReconcile_CreatesEntries(t *testing.T) {
 	db := reconcileTestSetup(t)
 
 	err := ReconcileConfigRegistries(db, []config.RegistryEntryConfig{
-		{Name: "acme", URL: "registry.acme.com", Namespace: "acme-envs", Default: true},
+		{Name: "acme", URL: "registry.acme.com", Namespace: "acme-envs", Default: true, Restricted: true},
 	})
 	if err != nil {
 		t.Fatalf("reconcile: %v", err)
@@ -44,6 +44,9 @@ func TestReconcile_CreatesEntries(t *testing.T) {
 	}
 	if !reg.IsDefault {
 		t.Error("expected is_default=true")
+	}
+	if !reg.Restricted {
+		t.Error("expected restricted=true")
 	}
 	// Config-managed registries are public-only: no credentials stored.
 	if reg.Username != "" || reg.Password != "" || reg.APIToken != "" {
@@ -62,13 +65,14 @@ func TestReconcile_UpdatesExisting(t *testing.T) {
 
 	entries[0].URL = "new.acme.com"
 	entries[0].Namespace = "new-envs"
+	entries[0].Restricted = true
 	if err := ReconcileConfigRegistries(db, entries); err != nil {
 		t.Fatalf("second reconcile: %v", err)
 	}
 
 	reg := getRegistryByName(t, db, "acme")
-	if reg.URL != "new.acme.com" || reg.Namespace != "new-envs" {
-		t.Errorf("expected updated fields, got url=%q namespace=%q", reg.URL, reg.Namespace)
+	if reg.URL != "new.acme.com" || reg.Namespace != "new-envs" || !reg.Restricted {
+		t.Errorf("expected updated fields, got url=%q namespace=%q restricted=%v", reg.URL, reg.Namespace, reg.Restricted)
 	}
 
 	var count int64

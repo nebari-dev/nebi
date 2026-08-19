@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -34,6 +35,13 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 	var latestVersion models.WorkspaceVersion
 	if err := s.db.Where("workspace_id = ?", wsID).Order("version_number DESC").First(&latestVersion).Error; err != nil {
 		return nil, &ValidationError{Message: "Workspace has no versions to publish"}
+	}
+
+	if req.RegistryID == uuid.Nil {
+		return nil, &ValidationError{Message: "Registry not found"}
+	}
+	if err := ensureRegistryAccess(s.db, s.rbac, s.isLocal, userID, req.RegistryID, "write"); err != nil {
+		return nil, err
 	}
 
 	ep, err := s.loadRegistryEndpoint(req.RegistryID)
@@ -118,8 +126,8 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 	return publicationToResult(&publication), nil
 }
 
-// ListPublications returns all publications for a workspace.
-func (s *WorkspaceService) ListPublications(wsID string) ([]PublicationResult, error) {
+// ListPublications returns publications for a workspace that the user can read.
+func (s *WorkspaceService) ListPublications(wsID string, userID uuid.UUID) ([]PublicationResult, error) {
 	var ws models.Workspace
 	if err := s.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -137,15 +145,21 @@ func (s *WorkspaceService) ListPublications(wsID string) ([]PublicationResult, e
 		return nil, fmt.Errorf("fetch publications: %w", err)
 	}
 
-	results := make([]PublicationResult, len(publications))
-	for i, pub := range publications {
-		results[i] = *publicationToResult(&pub)
+	results := make([]PublicationResult, 0, len(publications))
+	for _, pub := range publications {
+		hasAccess, err := hasRegistryAccess(s.rbac, s.isLocal, userID, pub.Registry, "read")
+		if err != nil {
+			return nil, fmt.Errorf("check registry read access: %w", err)
+		}
+		if hasAccess {
+			results = append(results, *publicationToResult(&pub))
+		}
 	}
 	return results, nil
 }
 
 // UpdatePublication updates a publication's visibility.
-func (s *WorkspaceService) UpdatePublication(ctx context.Context, wsID string, pubID string, isPublic bool) (*PublicationResult, error) {
+func (s *WorkspaceService) UpdatePublication(ctx context.Context, wsID string, pubID string, isPublic bool, userID uuid.UUID) (*PublicationResult, error) {
 	var ws models.Workspace
 	if err := s.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -159,6 +173,10 @@ func (s *WorkspaceService) UpdatePublication(ctx context.Context, wsID string, p
 		if err == gorm.ErrRecordNotFound {
 			return nil, ErrNotFound
 		}
+		return nil, err
+	}
+
+	if err := ensureRegistryAccess(s.db, s.rbac, s.isLocal, userID, publication.RegistryID, "write"); err != nil {
 		return nil, err
 	}
 
@@ -190,7 +208,7 @@ func (s *WorkspaceService) UpdatePublication(ctx context.Context, wsID string, p
 }
 
 // GetPublishDefaults returns default values for the publish dialog.
-func (s *WorkspaceService) GetPublishDefaults(wsID string) (*PublishDefaultsResult, error) {
+func (s *WorkspaceService) GetPublishDefaults(wsID string, userID uuid.UUID, registryID uuid.UUID) (*PublishDefaultsResult, error) {
 	var ws models.Workspace
 	if err := s.db.Where("id = ?", wsID).First(&ws).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -200,8 +218,19 @@ func (s *WorkspaceService) GetPublishDefaults(wsID string) (*PublishDefaultsResu
 	}
 
 	var registry models.OCIRegistry
-	if err := s.db.Where("is_default = ?", true).First(&registry).Error; err != nil {
+	registryQuery := s.db.Where("is_default = ?", true)
+	if registryID != uuid.Nil {
+		registryQuery = s.db.Where("id = ?", registryID)
+	}
+	if err := registryQuery.First(&registry).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if err := ensureRegistryAccess(s.db, s.rbac, s.isLocal, userID, registry.ID, "read"); err != nil {
+		var forbiddenErr *ForbiddenError
+		if errors.As(err, &forbiddenErr) {
 			return nil, ErrNotFound
 		}
 		return nil, err

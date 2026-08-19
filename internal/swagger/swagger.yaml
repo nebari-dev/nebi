@@ -45,6 +45,8 @@ definitions:
         type: string
       password:
         type: string
+      restricted:
+        type: boolean
       url:
         type: string
       username:
@@ -238,6 +240,8 @@ definitions:
         type: string
       password:
         type: string
+      restricted:
+        type: boolean
       url:
         type: string
       username:
@@ -768,6 +772,8 @@ definitions:
         type: string
       namespace:
         type: string
+      restricted:
+        type: boolean
       url:
         type: string
       username:
@@ -2520,6 +2526,10 @@ paths:
         name: id
         required: true
         type: string
+      - description: Registry ID to compute defaults against
+        in: query
+        name: registry_id
+        type: string
       produces:
       - application/json
       responses:
@@ -2527,6 +2537,14 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/service.PublishDefaultsResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "404":
           description: Not Found
           schema:

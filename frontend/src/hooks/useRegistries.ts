@@ -92,10 +92,13 @@ export const usePublishWorkspace = () => {
 };
 
 // Query hook for publish defaults (server-computed)
-export const usePublishDefaults = (workspaceId: string) => {
+export const usePublishDefaults = (
+  workspaceId: string,
+  registryId?: string,
+) => {
   return useQuery({
-    queryKey: ['publish-defaults', workspaceId],
-    queryFn: () => registriesApi.getPublishDefaults(workspaceId),
+    queryKey: ['publish-defaults', workspaceId, registryId],
+    queryFn: () => registriesApi.getPublishDefaults(workspaceId, registryId),
     enabled: !!workspaceId,
   });
 };

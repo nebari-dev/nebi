@@ -86,6 +86,7 @@ export const mockRegistry: OCIRegistry = {
   is_default: true,
   namespace: 'myorg',
   config_managed: false,
+  restricted: false,
   created_at: '2024-01-01T00:00:00Z',
 };
 

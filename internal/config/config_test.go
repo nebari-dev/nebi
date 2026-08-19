@@ -189,6 +189,7 @@ registries:
       url: registry.acme.com
       namespace: acme-envs
       default: true
+      restricted: true
 `)
 
 	cfg, err := Load()
@@ -202,7 +203,7 @@ registries:
 		t.Fatalf("expected 1 entry, got %d", len(cfg.Registries.Entries))
 	}
 	e := cfg.Registries.Entries[0]
-	if e.Name != "acme" || e.URL != "registry.acme.com" || e.Namespace != "acme-envs" || !e.Default {
+	if e.Name != "acme" || e.URL != "registry.acme.com" || e.Namespace != "acme-envs" || !e.Default || !e.Restricted {
 		t.Errorf("entry fields not parsed correctly: %+v", e)
 	}
 }

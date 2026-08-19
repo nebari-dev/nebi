@@ -144,6 +144,14 @@ export const RegistryManagement = () => {
                             Managed
                           </Badge>
                         )}
+                        {registry.restricted && (
+                          <Badge
+                            variant="outline"
+                            title="Only groups granted access can use this registry."
+                          >
+                            Restricted
+                          </Badge>
+                        )}
                       </div>
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">

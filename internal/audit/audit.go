@@ -55,6 +55,7 @@ const (
 	ActionUninstallEnv             = "uninstall_environment"
 	ActionPublishWorkspace         = "publish_workspace"
 	ActionImportWorkspace          = "import_workspace"
+	ActionRegistryAccessDenied     = "registry_access_denied"
 	ActionPush                     = "push"
 	ActionReassignTag              = "reassign_tag"
 	ActionLogin                    = "login"

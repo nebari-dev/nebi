@@ -11,6 +11,7 @@ import { useViewModeStore } from '@/store/viewModeStore';
 import type {
   ConnectServerRequest,
   CreateRemoteWorkspaceRequest,
+  FederatedIdentityReviewStatusFilter,
 } from '@/types';
 
 // Slow down interval polling while the query is errored (e.g. the remote
@@ -271,4 +272,67 @@ export const useRemoteDashboardStats = (enabled: boolean) => {
       refetchInterval: pollWithErrorBackoff(30000),
     }),
   );
+};
+
+export const useRemoteFederatedIdentityReviews = (
+  enabled: boolean,
+  status: FederatedIdentityReviewStatusFilter = 'pending',
+) => {
+  return withRemoteFlags(
+    useQuery({
+      queryKey: ['remote', 'admin', 'federated-identity-reviews', status],
+      queryFn: () => remoteApi.listFederatedIdentityReviews(status),
+      enabled,
+      notifyOnChangeProps: remoteFlagNotifyProps,
+      refetchInterval: retryWhileUnreachable,
+    }),
+  );
+};
+
+export const useApproveRemoteFederatedIdentityReview = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reviewId: string) =>
+      remoteApi.approveFederatedIdentityReview(reviewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['remote', 'admin', 'federated-identity-reviews'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['remote', 'admin', 'audit-logs'],
+      });
+    },
+  });
+};
+
+export const useRejectRemoteFederatedIdentityReview = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reviewId: string) =>
+      remoteApi.rejectFederatedIdentityReview(reviewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['remote', 'admin', 'federated-identity-reviews'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['remote', 'admin', 'audit-logs'],
+      });
+    },
+  });
+};
+
+export const useDiscardRemoteFederatedIdentityReview = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reviewId: string) =>
+      remoteApi.discardFederatedIdentityReview(reviewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['remote', 'admin', 'federated-identity-reviews'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['remote', 'admin', 'audit-logs'],
+      });
+    },
+  });
 };

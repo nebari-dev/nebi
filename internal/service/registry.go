@@ -8,18 +8,21 @@ import (
 	"github.com/google/uuid"
 	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/rbac"
 	"gorm.io/gorm"
 )
 
 // RegistryService contains business logic for OCI registry operations.
 type RegistryService struct {
-	db     *gorm.DB
-	encKey []byte
+	db      *gorm.DB
+	encKey  []byte
+	isLocal bool
+	rbac    rbac.Provider
 }
 
 // NewRegistryService creates a new RegistryService.
-func NewRegistryService(db *gorm.DB, encKey []byte) *RegistryService {
-	return &RegistryService{db: db, encKey: encKey}
+func NewRegistryService(db *gorm.DB, encKey []byte, isLocal bool, rbacProvider rbac.Provider) *RegistryService {
+	return &RegistryService{db: db, encKey: encKey, isLocal: isLocal, rbac: rbacProvider}
 }
 
 // RegistryResult is the response type for registry operations.
@@ -32,30 +35,33 @@ type RegistryResult struct {
 	IsDefault     bool      `json:"is_default"`
 	Namespace     string    `json:"namespace"`
 	ConfigManaged bool      `json:"config_managed"`
+	Restricted    bool      `json:"restricted"`
 	CreatedAt     string    `json:"created_at"`
 }
 
 // CreateRegistryRequest holds parameters for creating a registry.
 type CreateRegistryReq struct {
-	Name      string
-	URL       string
-	Username  string
-	Password  string
-	APIToken  string
-	IsDefault bool
-	Namespace string
-	CreatedBy uuid.UUID
+	Name       string
+	URL        string
+	Username   string
+	Password   string
+	APIToken   string
+	IsDefault  bool
+	Namespace  string
+	Restricted bool
+	CreatedBy  uuid.UUID
 }
 
 // UpdateRegistryReq holds parameters for updating a registry.
 type UpdateRegistryReq struct {
-	Name      *string
-	URL       *string
-	Username  *string
-	Password  *string
-	APIToken  *string
-	IsDefault *bool
-	Namespace *string
+	Name       *string
+	URL        *string
+	Username   *string
+	Password   *string
+	APIToken   *string
+	IsDefault  *bool
+	Namespace  *string
+	Restricted *bool
 }
 
 // ListRegistries returns all registries with admin-level detail (includes username, token status).
@@ -76,16 +82,22 @@ func (s *RegistryService) ListRegistries() ([]RegistryResult, error) {
 	return result, nil
 }
 
-// ListPublicRegistries returns registries with public-safe info (no credentials).
-func (s *RegistryService) ListPublicRegistries() ([]RegistryResult, error) {
+// ListPublicRegistries returns registries the user can read with public-safe info (no credentials).
+func (s *RegistryService) ListPublicRegistries(userID uuid.UUID) ([]RegistryResult, error) {
 	var registries []models.OCIRegistry
 	if err := s.db.Find(&registries).Error; err != nil {
 		return nil, fmt.Errorf("fetch registries: %w", err)
 	}
 
-	result := make([]RegistryResult, len(registries))
-	for i, reg := range registries {
-		result[i] = registryToResult(reg, "", false)
+	result := make([]RegistryResult, 0, len(registries))
+	for _, reg := range registries {
+		hasAccess, err := hasRegistryAccess(s.rbac, s.isLocal, userID, reg, "read")
+		if err != nil {
+			return nil, fmt.Errorf("check registry read access: %w", err)
+		}
+		if hasAccess {
+			result = append(result, registryToResult(reg, "", false))
+		}
 	}
 	return result, nil
 }
@@ -133,14 +145,15 @@ func (s *RegistryService) CreateRegistry(req CreateRegistryReq) (*RegistryResult
 	}
 
 	registry := models.OCIRegistry{
-		Name:      req.Name,
-		URL:       req.URL,
-		Username:  req.Username,
-		Password:  encPassword,
-		APIToken:  encAPIToken,
-		IsDefault: req.IsDefault,
-		Namespace: req.Namespace,
-		CreatedBy: req.CreatedBy,
+		Name:       req.Name,
+		URL:        req.URL,
+		Username:   req.Username,
+		Password:   encPassword,
+		APIToken:   encAPIToken,
+		IsDefault:  req.IsDefault,
+		Namespace:  req.Namespace,
+		Restricted: req.Restricted,
+		CreatedBy:  req.CreatedBy,
 	}
 
 	if err := s.db.Create(&registry).Error; err != nil {
@@ -208,6 +221,9 @@ func (s *RegistryService) UpdateRegistry(id string, req UpdateRegistryReq) (*Reg
 	if req.Namespace != nil {
 		registry.Namespace = *req.Namespace
 	}
+	if req.Restricted != nil {
+		registry.Restricted = *req.Restricted
+	}
 
 	if err := s.db.Save(&registry).Error; err != nil {
 		return nil, fmt.Errorf("update registry: %w", err)
@@ -249,8 +265,16 @@ type RegistryWithCredentials struct {
 	APIToken string
 }
 
-// GetRegistryWithCredentials returns a registry with decrypted credentials for OCI operations.
-func (s *RegistryService) GetRegistryWithCredentials(id string) (*RegistryWithCredentials, error) {
+// GetRegistryWithCredentials returns a readable registry with decrypted credentials for OCI operations.
+func (s *RegistryService) GetRegistryWithCredentials(id string, userID uuid.UUID) (*RegistryWithCredentials, error) {
+	regID, err := uuid.Parse(id)
+	if err != nil {
+		return nil, &ValidationError{Message: "Invalid registry ID"}
+	}
+	if err := ensureRegistryAccess(s.db, s.rbac, s.isLocal, userID, regID, "read"); err != nil {
+		return nil, err
+	}
+
 	var registry models.OCIRegistry
 	if err := s.db.Where("id = ?", id).First(&registry).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -310,6 +334,7 @@ func registryToResult(reg models.OCIRegistry, username string, hasAPIToken bool)
 		IsDefault:     reg.IsDefault,
 		Namespace:     reg.Namespace,
 		ConfigManaged: reg.ConfigManaged,
+		Restricted:    reg.Restricted,
 		CreatedAt:     reg.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
 }

@@ -50,7 +50,7 @@ func (h *WorkspaceHandler) ListWorkspaces(c *gin.Context) {
 func (h *WorkspaceHandler) CreateWorkspace(c *gin.Context) {
 	var req CreateWorkspaceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -143,7 +143,7 @@ func (h *WorkspaceHandler) GetPixiToml(c *gin.Context) {
 func (h *WorkspaceHandler) SavePixiToml(c *gin.Context) {
 	var req SavePixiTomlRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -237,7 +237,7 @@ func (h *WorkspaceHandler) UninstallWorkspace(c *gin.Context) {
 func (h *WorkspaceHandler) PushVersion(c *gin.Context) {
 	var req PushVersionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -382,7 +382,7 @@ func (h *WorkspaceHandler) ListTags(c *gin.Context) {
 func (h *WorkspaceHandler) InstallPackages(c *gin.Context) {
 	var req InstallPackagesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -450,7 +450,7 @@ func (h *WorkspaceHandler) ListPackages(c *gin.Context) {
 func (h *WorkspaceHandler) ShareWorkspace(c *gin.Context) {
 	var req ShareWorkspaceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -514,7 +514,7 @@ func (h *WorkspaceHandler) ListCollaborators(c *gin.Context) {
 func (h *WorkspaceHandler) RollbackToVersion(c *gin.Context) {
 	var req RollbackRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -543,7 +543,7 @@ func (h *WorkspaceHandler) RollbackToVersion(c *gin.Context) {
 func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
 	var req PublishRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
@@ -570,7 +570,7 @@ func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
 // @Failure 404 {object} ErrorResponse
 // @Router /workspaces/{id}/publications [get]
 func (h *WorkspaceHandler) ListPublications(c *gin.Context) {
-	publications, err := h.svc.ListPublications(c.Param("id"))
+	publications, err := h.svc.ListPublications(c.Param("id"), getUserID(c))
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -596,11 +596,11 @@ func (h *WorkspaceHandler) ListPublications(c *gin.Context) {
 func (h *WorkspaceHandler) UpdatePublication(c *gin.Context) {
 	var req UpdatePublicationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 
-	result, err := h.svc.UpdatePublication(c.Request.Context(), c.Param("id"), c.Param("pubId"), *req.IsPublic)
+	result, err := h.svc.UpdatePublication(c.Request.Context(), c.Param("id"), c.Param("pubId"), *req.IsPublic, getUserID(c))
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -615,11 +615,24 @@ func (h *WorkspaceHandler) UpdatePublication(c *gin.Context) {
 // @Security BearerAuth
 // @Produce json
 // @Param id path string true "Workspace ID"
+// @Param registry_id query string false "Registry ID to compute defaults against"
 // @Success 200 {object} service.PublishDefaultsResult
+// @Failure 400 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /workspaces/{id}/publish-defaults [get]
 func (h *WorkspaceHandler) GetPublishDefaults(c *gin.Context) {
-	defaults, err := h.svc.GetPublishDefaults(c.Param("id"))
+	registryID := uuid.Nil
+	if rawRegistryID := c.Query("registry_id"); rawRegistryID != "" {
+		parsedID, err := uuid.Parse(rawRegistryID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid registry ID"})
+			return
+		}
+		registryID = parsedID
+	}
+
+	defaults, err := h.svc.GetPublishDefaults(c.Param("id"), getUserID(c), registryID)
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -712,7 +725,7 @@ type ShareWorkspaceWithGroupRequest struct {
 func (h *WorkspaceHandler) ShareWorkspaceWithGroup(c *gin.Context) {
 	var req ShareWorkspaceWithGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		handleBindError(c, err)
 		return
 	}
 	perm, err := h.svc.ShareWorkspaceWithGroup(c.Param("id"), getUserID(c), req.GroupID, req.Role)

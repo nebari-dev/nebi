@@ -3,6 +3,9 @@ import type {
   Collaborator,
   CreateUserRequest,
   DashboardStats,
+  FederatedIdentity,
+  FederatedIdentityReview,
+  FederatedIdentityReviewStatusFilter,
   Group,
   ShareWorkspaceRequest,
   User,
@@ -69,5 +72,34 @@ export const adminApi = {
   getDashboardStats: async (): Promise<DashboardStats> => {
     const response = await apiClient.get('/admin/dashboard/stats');
     return response.data;
+  },
+
+  // Federated Identity Reviews
+  getFederatedIdentityReviews: async (
+    status: FederatedIdentityReviewStatusFilter = 'pending',
+  ): Promise<FederatedIdentityReview[]> => {
+    const response = await apiClient.get('/admin/federated-identity-reviews', {
+      params: { status },
+    });
+    return response.data;
+  },
+
+  approveFederatedIdentityReview: async (
+    reviewId: string,
+  ): Promise<FederatedIdentity> => {
+    const response = await apiClient.post(
+      `/admin/federated-identity-reviews/${reviewId}/approve`,
+    );
+    return response.data;
+  },
+
+  rejectFederatedIdentityReview: async (reviewId: string): Promise<void> => {
+    await apiClient.post(
+      `/admin/federated-identity-reviews/${reviewId}/reject`,
+    );
+  },
+
+  discardFederatedIdentityReview: async (reviewId: string): Promise<void> => {
+    await apiClient.delete(`/admin/federated-identity-reviews/${reviewId}`);
   },
 };

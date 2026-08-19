@@ -17,6 +17,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
+	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/queue"
 )
@@ -112,6 +113,32 @@ func buildTeamTestRouter(t *testing.T, logger *slog.Logger) (http.Handler, strin
 	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, nil, logger), login.Token
 }
 
+func buildLimitedLocalRouter(t *testing.T, limitCfg limits.Limits) http.Handler {
+	t.Helper()
+
+	cfg := &config.Config{Mode: "local", Limits: limitCfg}
+	cfg.Auth.JWTSecret = "test-secret-for-router-test"
+	cfg.Database.Driver = "sqlite"
+	cfg.Database.DSN = filepath.Join(t.TempDir(), "limited-router-test.db")
+	cfg.Storage.WorkspacesDir = t.TempDir()
+	cfg.Registries.SeedDefault = true
+
+	database, err := db.New(cfg.Database)
+	if err != nil {
+		t.Fatalf("db.New: %v", err)
+	}
+	if err := db.Migrate(database, cfg.Registries.SeedDefault); err != nil {
+		t.Fatalf("db.Migrate: %v", err)
+	}
+
+	exec, err := executor.NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, nil, logger)
+}
+
 func TestCORSMiddlewareNoInvalidCredentialedWildcard(t *testing.T) {
 	r := buildTestRouter(t, "")
 
@@ -138,6 +165,21 @@ func TestCORSMiddlewareNoInvalidCredentialedWildcard(t *testing.T) {
 		if acac != "" {
 			t.Fatalf("%s: expected no Access-Control-Allow-Credentials, got %q", path, acac)
 		}
+	}
+}
+
+func TestWorkspaceCreateRejectsOversizedRequestBody(t *testing.T) {
+	r := buildLimitedLocalRouter(t, limits.Limits{RequestBodyBytes: 32})
+
+	body := `{"name":"big","pixi_toml":"` + strings.Repeat("x", 64) + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413 for oversized body, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

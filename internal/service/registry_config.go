@@ -31,8 +31,8 @@ import (
 // process won the race to create the row; it falls back to updating that
 // row instead of failing boot.
 //
-// Config-managed registries are public (unauthenticated) only, so rows
-// never carry credentials; a takeover clears any the user had stored.
+// Config-managed registries are credentialless, so rows never carry
+// credentials; a takeover clears any the user had stored.
 func ReconcileConfigRegistries(db *gorm.DB, entries []config.RegistryEntryConfig) error {
 	names := make([]string, 0, len(entries))
 	for _, e := range entries {
@@ -85,6 +85,7 @@ func reconcileRegistryEntry(tx *gorm.DB, e config.RegistryEntryConfig) error {
 			IsDefault:     e.Default,
 			Namespace:     e.Namespace,
 			ConfigManaged: true,
+			Restricted:    e.Restricted,
 		}
 		// Run the create under a savepoint: on Postgres a failed statement
 		// aborts the enclosing transaction (SQLSTATE 25P02), so a plain
@@ -139,6 +140,7 @@ func updateManagedRegistryRow(tx *gorm.DB, row *models.OCIRegistry, e config.Reg
 	row.IsDefault = e.Default
 	row.Namespace = e.Namespace
 	row.ConfigManaged = true
+	row.Restricted = e.Restricted
 	// Every boot saves each managed row, so updated_at churns even when
 	// nothing actually changed. Accepted: reconciliation stays simple and
 	// declarative rather than diffing fields to skip a no-op write.

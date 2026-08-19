@@ -27,7 +27,7 @@ func NewLocalAuthenticator(db *gorm.DB) (*LocalAuthenticator, error) {
 		user = models.User{
 			Username:     localUsername,
 			Email:        localUsername + "@nebi.local",
-			PasswordHash: "-", // no password; local mode never checks credentials
+			PasswordHash: "-",
 		}
 		if err := db.Create(&user).Error; err != nil {
 			return nil, fmt.Errorf("failed to create local-user: %w", err)

@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 import {
+  mockFederatedIdentity,
+  mockFederatedIdentityReview,
   mockJob,
   mockRegistry,
   mockUser,
@@ -15,10 +17,14 @@ import {
   ERROR_BACKOFF_INTERVAL,
   pollWithErrorBackoff,
   retryWhileUnreachable,
+  useApproveRemoteFederatedIdentityReview,
   useConnectServer,
   useCreateRemoteWorkspace,
   useDeleteRemoteWorkspace,
+  useDiscardRemoteFederatedIdentityReview,
   useDisconnectServer,
+  useRejectRemoteFederatedIdentityReview,
+  useRemoteFederatedIdentityReviews,
   useRemoteJobs,
   useRemoteRegistries,
   useRemoteServer,
@@ -452,5 +458,86 @@ describe('useRemoteUsers', () => {
       wrapper: createWrapper(),
     });
     expect(result.current.fetchStatus).toBe('idle');
+  });
+});
+
+describe('useRemoteFederatedIdentityReviews', () => {
+  it('fetches remote federated identity reviews when enabled', async () => {
+    const { result } = renderHook(
+      () => useRemoteFederatedIdentityReviews(true),
+      {
+        wrapper: createWrapper(),
+      },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([mockFederatedIdentityReview]);
+  });
+
+  it('does not fetch when disabled', () => {
+    const { result } = renderHook(
+      () => useRemoteFederatedIdentityReviews(false),
+      {
+        wrapper: createWrapper(),
+      },
+    );
+    expect(result.current.fetchStatus).toBe('idle');
+  });
+});
+
+describe('useApproveRemoteFederatedIdentityReview', () => {
+  it('calls the remote approve endpoint successfully', async () => {
+    server.use(
+      http.post(
+        '/api/v1/remote/admin/federated-identity-reviews/:id/approve',
+        () => HttpResponse.json(mockFederatedIdentity, { status: 201 }),
+      ),
+    );
+    const { result } = renderHook(
+      () => useApproveRemoteFederatedIdentityReview(),
+      {
+        wrapper: createWrapper(),
+      },
+    );
+    result.current.mutate('review-1');
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual(mockFederatedIdentity);
+  });
+});
+
+describe('useRejectRemoteFederatedIdentityReview', () => {
+  it('calls the remote reject endpoint successfully', async () => {
+    server.use(
+      http.post(
+        '/api/v1/remote/admin/federated-identity-reviews/:id/reject',
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
+    const { result } = renderHook(
+      () => useRejectRemoteFederatedIdentityReview(),
+      {
+        wrapper: createWrapper(),
+      },
+    );
+    result.current.mutate('review-1');
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  });
+});
+
+describe('useDiscardRemoteFederatedIdentityReview', () => {
+  it('calls the remote discard endpoint successfully', async () => {
+    server.use(
+      http.delete(
+        '/api/v1/remote/admin/federated-identity-reviews/:id',
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
+    const { result } = renderHook(
+      () => useDiscardRemoteFederatedIdentityReview(),
+      {
+        wrapper: createWrapper(),
+      },
+    );
+    result.current.mutate('review-1');
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
   });
 });

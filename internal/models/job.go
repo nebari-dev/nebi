@@ -40,6 +40,7 @@ type Job struct {
 	ID          uuid.UUID              `gorm:"type:text;primary_key" json:"id"`
 	WorkspaceID uuid.UUID              `gorm:"type:text;index" json:"workspace_id"`
 	Workspace   Workspace              `gorm:"foreignKey:WorkspaceID" json:"workspace,omitempty"`
+	UserID      uuid.UUID              `gorm:"type:text;index" json:"user_id,omitempty"`
 	Type        JobType                `gorm:"not null" json:"type"`
 	Status      JobStatus              `gorm:"not null;default:'pending'" json:"status"`
 	Logs        string                 `gorm:"type:text" json:"logs"`

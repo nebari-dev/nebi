@@ -45,6 +45,8 @@ definitions:
         type: string
       password:
         type: string
+      restricted:
+        type: boolean
       url:
         type: string
       username:
@@ -238,6 +240,8 @@ definitions:
         type: string
       password:
         type: string
+      restricted:
+        type: boolean
       url:
         type: string
       username:
@@ -252,6 +256,46 @@ definitions:
       updated_at:
         type: string
       version_number:
+        type: integer
+    type: object
+  limits.Limits:
+    properties:
+      active_jobs_global:
+        type: integer
+      active_jobs_per_user:
+        type: integer
+      active_jobs_per_workspace:
+        type: integer
+      job_cpu_seconds:
+        type: integer
+      job_log_bytes:
+        type: integer
+      job_storage_bytes:
+        type: integer
+      job_timeout_seconds:
+        type: integer
+      lock_bytes:
+        type: integer
+      manifest_bytes:
+        type: integer
+      max_packages:
+        type: integer
+      metadata_bytes:
+        type: integer
+      package_string_bytes:
+        type: integer
+      request_body_bytes:
+        type: integer
+    type: object
+  metrics.QuotaRejectionSnapshot:
+    properties:
+      global:
+        type: integer
+      total:
+        type: integer
+      user:
+        type: integer
+      workspace:
         type: integer
     type: object
   models.AuditLog:
@@ -272,6 +316,76 @@ definitions:
       user:
         $ref: '#/definitions/models.User'
       user_id:
+        type: string
+    type: object
+  models.FederatedIdentity:
+    properties:
+      avatar_url:
+        type: string
+      created_at:
+        type: string
+      email:
+        type: string
+      email_verified:
+        type: boolean
+      id:
+        type: string
+      issuer:
+        type: string
+      name:
+        type: string
+      subject:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+      username:
+        type: string
+    type: object
+  models.FederatedIdentityReview:
+    properties:
+      avatar_url:
+        type: string
+      collision_email_user:
+        $ref: '#/definitions/models.User'
+      collision_email_user_id:
+        description: User matched by the incoming verified email claim, when present.
+        type: string
+      collision_field:
+        type: string
+      collision_username_user:
+        $ref: '#/definitions/models.User'
+      collision_username_user_id:
+        description: User matched by the incoming username claim, when present.
+        type: string
+      created_at:
+        type: string
+      email:
+        type: string
+      email_verified:
+        type: boolean
+      id:
+        type: string
+      issuer:
+        type: string
+      name:
+        type: string
+      reviewed_at:
+        type: string
+      reviewed_by:
+        type: string
+      status:
+        type: string
+      subject:
+        type: string
+      updated_at:
+        type: string
+      user:
+        $ref: '#/definitions/models.User'
+      user_id:
+        type: string
+      username:
         type: string
     type: object
   models.Group:
@@ -352,6 +466,8 @@ definitions:
         $ref: '#/definitions/models.JobStatus'
       type:
         $ref: '#/definitions/models.JobType'
+      user_id:
+        type: string
       workspace:
         $ref: '#/definitions/models.Workspace'
       workspace_id:
@@ -656,9 +772,37 @@ definitions:
         type: string
       namespace:
         type: string
+      restricted:
+        type: boolean
       url:
         type: string
       username:
+        type: string
+    type: object
+  service.ResourceMetrics:
+    properties:
+      active_jobs_by_user:
+        items:
+          $ref: '#/definitions/service.UserActiveJobUsage'
+        type: array
+      active_jobs_by_workspace:
+        items:
+          $ref: '#/definitions/service.WorkspaceActiveJobUsage'
+        type: array
+      active_jobs_global:
+        type: integer
+      job_timeouts_total:
+        type: integer
+      limits:
+        $ref: '#/definitions/limits.Limits'
+      quota_rejections:
+        $ref: '#/definitions/metrics.QuotaRejectionSnapshot'
+    type: object
+  service.UserActiveJobUsage:
+    properties:
+      active_jobs:
+        type: integer
+      user_id:
         type: string
     type: object
   service.UserWithAdmin:
@@ -676,6 +820,13 @@ definitions:
       updated_at:
         type: string
       username:
+        type: string
+    type: object
+  service.WorkspaceActiveJobUsage:
+    properties:
+      active_jobs:
+        type: integer
+      workspace_id:
         type: string
     type: object
 host: localhost:8460
@@ -722,6 +873,79 @@ paths:
       security:
       - BearerAuth: []
       summary: Get admin dashboard statistics
+      tags:
+      - admin
+  /admin/federated-identity-reviews:
+    get:
+      parameters:
+      - description: 'Review status: pending, rejected, or all'
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.FederatedIdentityReview'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List federated identity reviews
+      tags:
+      - admin
+  /admin/federated-identity-reviews/{id}:
+    delete:
+      parameters:
+      - description: Review UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Discard a federated identity review
+      tags:
+      - admin
+  /admin/federated-identity-reviews/{id}/approve:
+    post:
+      parameters:
+      - description: Review UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.FederatedIdentity'
+      security:
+      - BearerAuth: []
+      summary: Approve a pending federated identity review
+      tags:
+      - admin
+  /admin/federated-identity-reviews/{id}/reject:
+    post:
+      parameters:
+      - description: Review UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Reject a pending federated identity review
       tags:
       - admin
   /admin/groups:
@@ -1374,6 +1598,20 @@ paths:
       security:
       - BearerAuth: []
       summary: Revoke a group's access to a registry (admin only)
+      tags:
+      - admin
+  /admin/resource-metrics:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.ResourceMetrics'
+      security:
+      - BearerAuth: []
+      summary: Get resource limit and job usage metrics
       tags:
       - admin
   /admin/roles:
@@ -2288,6 +2526,10 @@ paths:
         name: id
         required: true
         type: string
+      - description: Registry ID to compute defaults against
+        in: query
+        name: registry_id
+        type: string
       produces:
       - application/json
       responses:
@@ -2295,6 +2537,14 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/service.PublishDefaultsResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "404":
           description: Not Found
           schema:

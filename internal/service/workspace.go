@@ -421,16 +421,24 @@ func (s *WorkspaceService) PushVersion(ctx context.Context, wsID string, req Pus
 	}, nil
 }
 
-// ListVersions returns versions for a workspace (excluding large file contents).
+// ListVersions returns versions for a workspace, excluding large file contents
+// from the response while deriving the display version from pixi.toml.
 func (s *WorkspaceService) ListVersions(wsID string) ([]models.WorkspaceVersion, error) {
 	var versions []models.WorkspaceVersion
 	err := s.db.
-		Select("id", "workspace_id", "version_number", "job_id", "created_by", "description", "created_at").
+		Select("id", "workspace_id", "version_number", "manifest_content", "job_id", "created_by", "description", "created_at").
 		Where("workspace_id = ?", wsID).
 		Order("version_number DESC").
 		Find(&versions).Error
 	if err != nil {
 		return nil, err
+	}
+	for i := range versions {
+		manifestVersion, err := pixi.ExtractWorkspaceVersion(versions[i].ManifestContent)
+		if err == nil {
+			versions[i].ManifestVersion = manifestVersion
+		}
+		versions[i].ManifestContent = ""
 	}
 	return versions, nil
 }
@@ -446,6 +454,10 @@ func (s *WorkspaceService) GetVersion(wsID string, versionNum string) (*models.W
 			return nil, ErrNotFound
 		}
 		return nil, err
+	}
+	manifestVersion, err := pixi.ExtractWorkspaceVersion(version.ManifestContent)
+	if err == nil {
+		version.ManifestVersion = manifestVersion
 	}
 	return &version, nil
 }

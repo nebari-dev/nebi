@@ -311,6 +311,58 @@ func TestListRegistries_WithMockRemote(t *testing.T) {
 	}
 }
 
+func TestListVersions_WithMockRemotePreservesManifestVersion(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && r.URL.Path == "/api/v1/workspaces/ws-1/versions" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"id":               "version-1",
+					"workspace_id":     "ws-1",
+					"version_number":   1,
+					"manifest_version": "0.0.3",
+					"description":      "Initial workspace creation",
+					"created_at":       "2026-08-14T07:35:38Z",
+				},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer mockServer.Close()
+
+	db := setupTestDB(t)
+	router := setupRouter(db)
+	db.Model(&store.Config{}).Where("id = ?", 1).Update("server_url", mockServer.URL)
+	db.Model(&store.Credentials{}).Where("id = ?", 1).Updates(map[string]any{
+		"token":    "valid-token",
+		"username": "testuser",
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/remote/workspaces/ws-1/versions", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var versions []map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &versions); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(versions) != 1 {
+		t.Fatalf("expected 1 version, got %d", len(versions))
+	}
+	if versions[0]["manifest_version"] != "0.0.3" {
+		t.Errorf("expected manifest_version=0.0.3, got %v", versions[0]["manifest_version"])
+	}
+	if versions[0]["description"] != "Initial workspace creation" {
+		t.Errorf("expected description to be preserved, got %v", versions[0]["description"])
+	}
+}
+
 func TestListJobs_NotConnected(t *testing.T) {
 	db := setupTestDB(t)
 	router := setupRouter(db)

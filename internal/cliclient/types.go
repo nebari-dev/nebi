@@ -94,10 +94,12 @@ type PublishResponse struct {
 
 // WorkspaceVersion represents a version of a workspace.
 type WorkspaceVersion struct {
-	ID            string `json:"id"`
-	WsID          string `json:"workspace_id"`
-	VersionNumber int32  `json:"version_number"`
-	CreatedAt     string `json:"created_at"`
+	ID              string `json:"id"`
+	WsID            string `json:"workspace_id"`
+	VersionNumber   int32  `json:"version_number"`
+	ManifestVersion string `json:"manifest_version,omitempty"`
+	Description     string `json:"description,omitempty"`
+	CreatedAt       string `json:"created_at"`
 }
 
 // Registry represents an OCI registry.

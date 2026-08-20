@@ -25,6 +25,9 @@ import { UserBadge } from '@/components/ui/user-badge';
 import { capitalize, getWorkspaceStatusColor } from '@/lib/utils';
 import type { RemoteWorkspaceTag, RemoteWorkspaceVersion } from '@/types';
 
+const getVersionLabel = (version: RemoteWorkspaceVersion) =>
+  version.manifest_version || 'Not set';
+
 export const RemoteWorkspaceDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -303,7 +306,10 @@ export const RemoteWorkspaceDetail = () => {
                   <table className="w-full">
                     <thead className="border-b bg-muted/50">
                       <tr>
-                        <th className="text-left p-4 font-medium">Version</th>
+                        <th className="text-left p-4 font-medium">
+                          Workspace Version
+                        </th>
+                        <th className="text-left p-4 font-medium">Snapshot</th>
                         <th className="text-left p-4 font-medium">
                           Description
                         </th>
@@ -317,7 +323,12 @@ export const RemoteWorkspaceDetail = () => {
                           className="hover:bg-muted/50"
                         >
                           <td className="p-4">
-                            <Badge variant="outline">v{v.version_number}</Badge>
+                            <Badge variant="outline">
+                              {getVersionLabel(v)}
+                            </Badge>
+                          </td>
+                          <td className="p-4 text-sm text-muted-foreground">
+                            #{v.version_number}
                           </td>
                           <td className="p-4 text-sm text-muted-foreground">
                             {v.description || '-'}
@@ -357,7 +368,7 @@ export const RemoteWorkspaceDetail = () => {
                     <thead className="border-b bg-muted/50">
                       <tr>
                         <th className="text-left p-4 font-medium">Tag</th>
-                        <th className="text-left p-4 font-medium">Version</th>
+                        <th className="text-left p-4 font-medium">Snapshot</th>
                         <th className="text-left p-4 font-medium">Created</th>
                       </tr>
                     </thead>
@@ -368,7 +379,7 @@ export const RemoteWorkspaceDetail = () => {
                             <Badge variant="outline">{t.tag}</Badge>
                           </td>
                           <td className="p-4 text-sm text-muted-foreground">
-                            v{t.version_number}
+                            #{t.version_number}
                           </td>
                           <td className="p-4 text-sm text-muted-foreground">
                             {t.created_at

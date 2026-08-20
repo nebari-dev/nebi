@@ -583,6 +583,59 @@ func TestExtractWorkspaceName(t *testing.T) {
 	}
 }
 
+func TestExtractWorkspaceVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+		wantErr bool
+	}{
+		{
+			name:    "workspace section",
+			content: "[workspace]\nname = \"my-env\"\nversion = \"0.0.3\"\n",
+			want:    "0.0.3",
+		},
+		{
+			name:    "project fallback",
+			content: "[project]\nname = \"old-env\"\nversion = \"1.2.0\"\n",
+			want:    "1.2.0",
+		},
+		{
+			name:    "workspace preferred over project",
+			content: "[workspace]\nversion = \"2.0.0\"\n[project]\nversion = \"1.0.0\"\n",
+			want:    "2.0.0",
+		},
+		{
+			name:    "missing version",
+			content: "[workspace]\nname = \"my-env\"\n",
+			want:    "",
+		},
+		{
+			name:    "invalid toml",
+			content: "[workspace\nversion = \"0.0.3\"\n",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ExtractWorkspaceVersion(tt.content)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got version %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestErrorHandling tests error cases
 func TestErrorHandling(t *testing.T) {
 	_, err := exec.LookPath("pixi")

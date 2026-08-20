@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 220">
+  <!-- Top face (purple) - shrunk 15% toward centroid (110,62) -->
+  <polygon points="110,18 187,62 110,106 33,62" fill="#9A3DCC"/>
+  <!-- Left face (gold) - shrunk 15% toward centroid (65,136) -->
+  <polygon points="27,73 104,117 104,199 27,155" fill="#EAB54F"/>
+  <!-- Right face (teal) - shrunk 15% toward centroid (155,136) -->
+  <polygon points="116,117 193,73 193,155 116,199" fill="#359D96"/>
+</svg>

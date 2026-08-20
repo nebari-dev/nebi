@@ -1,41 +1,40 @@
-# Website
+# Nebi Docs
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
+This website is built with [Astro](https://astro.build) + [Starlight](https://starlight.astro.build) and the shared [`@nebari/starlight`](https://github.com/nebari-dev/starlight) theme.
 
 ## Installation
 
 ```bash
-yarn
+npm install
 ```
 
 ## Local Development
 
 ```bash
-yarn start
+npm run dev
 ```
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+This starts a local development server with hot reload.
 
 ## Build
 
 ```bash
-yarn build
+npm run build
 ```
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+This generates the static site in `dist/`. The build also validates internal docs links through the Starlight links validator plugin.
+
+## Preview
+
+```bash
+npm run preview
+```
+
+This serves the built `dist/` output locally.
 
 ## Deployment
 
-Using SSH:
+The docs workflow builds `docs/` and deploys `docs/dist` to Cloudflare Pages with `cloudflare/wrangler-action`. Pushes to `main` deploy production, and same-repository pull requests get preview deployments when the Cloudflare secrets are available:
 
-```bash
-USE_SSH=true yarn deploy
-```
-
-Not using SSH:
-
-```bash
-GIT_USER=<Your GitHub username> yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`

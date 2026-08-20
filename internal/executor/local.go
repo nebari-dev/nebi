@@ -15,12 +15,14 @@ import (
 	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
 	"github.com/nebari-dev/nebi/internal/process"
+	"github.com/nebari-dev/nebi/internal/sandbox"
 )
 
 // LocalExecutor runs operations on the local machine
 type LocalExecutor struct {
 	baseDir string // Base directory for workspaces (e.g., /var/lib/nebi/environments)
 	config  *config.Config
+	sandbox *sandbox.Runner
 	limits  limits.Limits
 }
 
@@ -42,9 +44,26 @@ func NewLocalExecutor(cfg *config.Config) (*LocalExecutor, error) {
 		return nil, fmt.Errorf("failed to create base directory: %w", err)
 	}
 
+	// Builds run untrusted, user-supplied manifests. Every pixi subprocess
+	// this executor spawns goes through the sandbox runner, which scrubs the
+	// environment down to an allowlist and (unless mode is "off") confines
+	// the process to the workspace directory.
+	sandboxMode := cfg.Sandbox.Mode
+	if sandboxMode == "" {
+		sandboxMode = "off"
+	}
+	sb, err := sandbox.NewRunner(sandbox.Config{
+		Mode:         sandbox.Mode(sandboxMode),
+		AllowedPorts: cfg.Sandbox.AllowedPorts,
+	}, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize build sandbox: %w", err)
+	}
+
 	return &LocalExecutor{
 		baseDir: baseDir,
 		config:  cfg,
+		sandbox: sb,
 		limits:  cfg.Limits,
 	}, nil
 }
@@ -114,7 +133,7 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 			if err := seedWorkspaceFromDir(opts.SeedDir, envPath); err != nil {
 				return fmt.Errorf("seed workspace: %w", err)
 			}
-			if err := runPixiLock(ctx, pm, envPath, logWriter, e.limits.ProcessLimits()); err != nil {
+			if err := runPixiLock(ctx, e.sandbox, pm, envPath, logWriter, e.limits.ProcessLimits()); err != nil {
 				return err
 			}
 
@@ -127,7 +146,7 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 			if err := os.WriteFile(pixiTomlPath, []byte(opts.PixiToml), 0o644); err != nil {
 				return fmt.Errorf("failed to write pixi.toml: %w", err)
 			}
-			if err := runPixiLock(ctx, pm, envPath, logWriter, e.limits.ProcessLimits()); err != nil {
+			if err := runPixiLock(ctx, e.sandbox, pm, envPath, logWriter, e.limits.ProcessLimits()); err != nil {
 				return err
 			}
 
@@ -151,39 +170,62 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 
 // packageManagerFor resolves the package manager for a workspace, honoring
 // the configured default type and explicit binary paths.
+//
+// Server-side builds evaluate user-supplied manifests, so the resulting
+// manager is wired to the build sandbox: every pixi subprocess it spawns
+// runs with a scrubbed environment and, unless the sandbox is off, confined
+// to the workspace directory.
 func (e *LocalExecutor) packageManagerFor(ctx context.Context, ws *models.Workspace) (pkgmgr.PackageManager, error) {
 	pmType := ws.PackageManager
 	if pmType == "" {
 		pmType = e.config.PackageManager.DefaultType
 	}
-	if pmType == "pixi" && e.config.PackageManager.PixiPath != "" {
-		return pkgmgr.NewWithPathContext(ctx, pmType, e.config.PackageManager.PixiPath)
+
+	var (
+		pm  pkgmgr.PackageManager
+		err error
+	)
+	switch {
+	case pmType == "pixi" && e.config.PackageManager.PixiPath != "":
+		pm, err = pkgmgr.NewWithPathContext(ctx, pmType, e.config.PackageManager.PixiPath)
+	case pmType == "uv" && e.config.PackageManager.UvPath != "":
+		pm, err = pkgmgr.NewWithPathContext(ctx, pmType, e.config.PackageManager.UvPath)
+	default:
+		pm, err = pkgmgr.NewWithContext(ctx, pmType)
 	}
-	if pmType == "uv" && e.config.PackageManager.UvPath != "" {
-		return pkgmgr.NewWithPathContext(ctx, pmType, e.config.PackageManager.UvPath)
+	if err != nil {
+		return nil, err
 	}
-	return pkgmgr.NewWithContext(ctx, pmType)
+
+	if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
+		pixiMgr.SetSandbox(e.sandbox)
+	}
+	return pm, nil
 }
 
 // runPixiLock runs `pixi lock` in envPath. It resolves the dependency
 // graph and writes pixi.lock without downloading or extracting packages;
 // installing is a separate, explicit step (see InstallEnvironment).
-func runPixiLock(ctx context.Context, pm pkgmgr.PackageManager, envPath string, logWriter io.Writer, limitCfg limits.ProcessLimits) error {
+func runPixiLock(ctx context.Context, sb *sandbox.Runner, pm pkgmgr.PackageManager, envPath string, logWriter io.Writer, limitCfg limits.ProcessLimits) error {
 	pixiBinary := "pixi"
 	if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
 		pixiBinary = pixiMgr.BinaryPath()
 	}
-	lockCmd := process.CommandContext(ctx, pixiBinary, []string{"lock"}, limitCfg)
-	lockCmd.Dir = envPath
-	env, err := process.PreparedWorkspaceEnv(envPath)
+	lockCmd, err := sb.Command(ctx, sandbox.Spec{
+		WorkspaceDir:   envPath,
+		Argv:           []string{pixiBinary, "lock"},
+		ResourceLimits: limitCfg,
+	})
 	if err != nil {
-		return fmt.Errorf("prepare pixi workspace env: %w", err)
+		return fmt.Errorf("failed to prepare sandboxed pixi lock: %w", err)
 	}
-	lockCmd.Env = env
 	lockCmd.Stdout = logWriter
 	lockCmd.Stderr = logWriter
 	fmt.Fprintf(logWriter, "Running: %s lock\n", pixiBinary)
 	if err := lockCmd.Run(); err != nil {
+		if sb.IsSetupFailure(err) {
+			return fmt.Errorf("build sandbox setup failed: %w", err)
+		}
 		return fmt.Errorf("failed to lock pixi environment: %w", err)
 	}
 	fmt.Fprintf(logWriter, "Lockfile resolved successfully\n")
@@ -310,7 +352,7 @@ func (e *LocalExecutor) SolveEnvironment(ctx context.Context, ws *models.Workspa
 			return fmt.Errorf("failed to create package manager: %w", err)
 		}
 
-		if err := runPixiLock(ctx, pm, envPath, logWriter, e.limits.ProcessLimits()); err != nil {
+		if err := runPixiLock(ctx, e.sandbox, pm, envPath, logWriter, e.limits.ProcessLimits()); err != nil {
 			return err
 		}
 
@@ -335,18 +377,25 @@ func (e *LocalExecutor) InstallEnvironment(ctx context.Context, ws *models.Works
 			pixiBinary = pixiMgr.BinaryPath()
 		}
 		processLimits := e.limits.ProcessLimits()
-		cmd := process.CommandContext(ctx, pixiBinary, []string{"install", "-v"}, processLimits)
-		cmd.Dir = envPath
-		env, err := process.PreparedWorkspaceEnv(envPath)
+		cmd, err := e.sandbox.Command(ctx, sandbox.Spec{
+			WorkspaceDir:   envPath,
+			Argv:           []string{pixiBinary, "install", "-v"},
+			ResourceLimits: processLimits,
+		})
 		if err != nil {
-			return fmt.Errorf("prepare pixi workspace env: %w", err)
+			return fmt.Errorf("failed to prepare sandboxed pixi install: %w", err)
 		}
-		cmd.Env = env
 		limitLogWriter := &processLimitLogWriter{target: logWriter, limits: processLimits}
 		cmd.Stdout = limitLogWriter
 		cmd.Stderr = limitLogWriter
 		fmt.Fprintf(logWriter, "Running: %s install -v\n", pixiBinary)
 		if err := cmd.Run(); err != nil {
+			// A sandbox that could not be established is an operator problem,
+			// not a failed build, so it must not be reported as either a
+			// resource-limit kill or a pixi error.
+			if e.sandbox.IsSetupFailure(err) {
+				return fmt.Errorf("build sandbox setup failed: %w", err)
+			}
 			installErr := fmt.Errorf("pixi install failed: %w", err)
 			if limitLogWriter.SeenResourceLimitOutput() || process.IsResourceLimitExit(ctx, err, processLimits, "") {
 				return process.NewResourceLimitError(installErr)
@@ -355,6 +404,22 @@ func (e *LocalExecutor) InstallEnvironment(ctx context.Context, ws *models.Works
 		}
 		fmt.Fprintf(logWriter, "Environment installed successfully\n")
 		return nil
+	})
+}
+
+// ListPackages returns the packages installed in the workspace. It goes
+// through packageManagerFor so the listing honors the configured package
+// manager binary and runs inside the build sandbox: `pixi list` parses a
+// user-supplied manifest and lockfile, so it is as untrusted as a build.
+func (e *LocalExecutor) ListPackages(ctx context.Context, ws *models.Workspace) ([]pkgmgr.Package, error) {
+	pm, err := e.packageManagerFor(ctx, ws)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create package manager: %w", err)
+	}
+	return pm.List(ctx, pkgmgr.ListOptions{
+		EnvPath:        e.GetWorkspacePath(ws),
+		MaxOutputBytes: e.limits.MetadataBytes,
+		ResourceLimits: e.limits.ProcessLimits(),
 	})
 }
 

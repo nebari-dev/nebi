@@ -61,6 +61,28 @@ package_manager:
 storage:
   workspaces_dir: ./data/workspaces
 
+# Isolation for untrusted environment builds (pixi).
+# Every build subprocess always runs with a scrubbed environment, in every mode
+# and on every platform, so NEBI_* variables and registry credentials never
+# reach build code. The settings below control the additional Linux (Landlock)
+# confinement of the filesystem and network.
+# All values shown are the defaults. See docs/docs/server-setup.md.
+sandbox:
+  # strict     - fail the build when the kernel cannot confine it
+  # permissive - confine when possible, warn and run unconfined when not
+  # off        - no confinement (the environment allowlist still applies)
+  # Unset, this is "strict" in team mode and "off" in local mode.
+  # mode: strict
+
+  # TCP ports build code may connect to. Enforced on Landlock ABI v4
+  # (Linux 6.7+); older kernels leave the network unrestricted and warn.
+  # An empty list denies ALL TCP, it does not mean "unrestricted". Setting
+  # NEBI_SANDBOX_ALLOWED_PORTS to an empty string does not work for that;
+  # an empty environment variable reads as unset and the default applies.
+  # allowed_ports: [80, 443]
+
+  # The wall-clock ceiling for a build job is limits.job_timeout_seconds below.
+
 # Resource limits and admission quotas. For all numeric limits, 0 disables
 # that specific limit. Environment variable names are shown in comments.
 # limits:

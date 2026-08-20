@@ -77,6 +77,105 @@ func TestLoad_LocalMode_AllowsDefaultJWTSecret(t *testing.T) {
 	}
 }
 
+func TestLoad_SandboxDefaultsToStrictInTeamMode(t *testing.T) {
+	isolate(t)
+	t.Setenv("NEBI_MODE", "team")
+	t.Setenv("NEBI_AUTH_JWT_SECRET", strings.Repeat("s", 32))
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Sandbox.Mode != "strict" {
+		t.Fatalf("expected sandbox mode strict in team mode, got %q", cfg.Sandbox.Mode)
+	}
+}
+
+func TestLoad_SandboxDefaultsToOffInLocalMode(t *testing.T) {
+	isolate(t)
+	t.Setenv("NEBI_MODE", "local")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Sandbox.Mode != "off" {
+		t.Fatalf("expected sandbox mode off in local mode, got %q", cfg.Sandbox.Mode)
+	}
+}
+
+func TestLoad_SandboxModeExplicitOverridesDefault(t *testing.T) {
+	isolate(t)
+	t.Setenv("NEBI_MODE", "team")
+	t.Setenv("NEBI_AUTH_JWT_SECRET", strings.Repeat("s", 32))
+	t.Setenv("NEBI_SANDBOX_MODE", "permissive")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Sandbox.Mode != "permissive" {
+		t.Fatalf("expected explicit permissive mode to win, got %q", cfg.Sandbox.Mode)
+	}
+}
+
+func TestLoad_SandboxModeRejectsUnknownValue(t *testing.T) {
+	isolate(t)
+	t.Setenv("NEBI_MODE", "local")
+	t.Setenv("NEBI_SANDBOX_MODE", "banana")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error for unknown sandbox mode")
+	}
+}
+
+func TestLoad_SandboxDefaultPorts(t *testing.T) {
+	isolate(t)
+	t.Setenv("NEBI_MODE", "local")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Sandbox.AllowedPorts) != 2 || cfg.Sandbox.AllowedPorts[0] != 80 || cfg.Sandbox.AllowedPorts[1] != 443 {
+		t.Fatalf("expected default allowed ports [80 443], got %v", cfg.Sandbox.AllowedPorts)
+	}
+}
+
+// viper's AutomaticEnv does not reach nested structs without an explicit
+// BindEnv (see the comment in Load), so the non-string sandbox fields need
+// coverage that exercises the env path rather than the SetDefault path.
+func TestLoad_SandboxPortsFromEnv(t *testing.T) {
+	isolate(t)
+	t.Setenv("NEBI_MODE", "local")
+	t.Setenv("NEBI_SANDBOX_ALLOWED_PORTS", "8080,9418")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Sandbox.AllowedPorts) != 2 || cfg.Sandbox.AllowedPorts[0] != 8080 || cfg.Sandbox.AllowedPorts[1] != 9418 {
+		t.Fatalf("expected allowed ports [8080 9418] from env, got %v", cfg.Sandbox.AllowedPorts)
+	}
+}
+
+// Ports are narrowed to uint16 when handed to the kernel, so an out-of-range
+// entry would silently wrap (70000 becomes 4464) and open a port the operator
+// never named. Reject it at load instead.
+func TestLoad_SandboxRejectsOutOfRangePorts(t *testing.T) {
+	for _, ports := range []string{"70000", "-1", "0", "80,65536"} {
+		t.Run(ports, func(t *testing.T) {
+			isolate(t)
+			t.Setenv("NEBI_MODE", "local")
+			t.Setenv("NEBI_SANDBOX_ALLOWED_PORTS", ports)
+
+			if _, err := Load(); err == nil {
+				t.Fatalf("expected error for out-of-range allowed_ports %q", ports)
+			}
+		})
+	}
+}
+
 func writeConfigYAML(t *testing.T, content string) {
 	t.Helper()
 	if err := os.WriteFile("config.yaml", []byte(content), 0o600); err != nil {

@@ -13,8 +13,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"github.com/nebari-dev/nebi/internal/process"
+	"github.com/nebari-dev/nebi/internal/sandbox"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -30,7 +32,8 @@ func init() {
 
 // PixiManager implements the PackageManager interface for pixi
 type PixiManager struct {
-	pixiPath string // Path to pixi binary
+	pixiPath string          // Path to pixi binary
+	sandbox  *sandbox.Runner // Optional; when set, every pixi subprocess is sandboxed
 }
 
 // New creates a new PixiManager instance
@@ -92,6 +95,39 @@ func (p *PixiManager) BinaryPath() string {
 	return p.pixiPath
 }
 
+// SetSandbox makes every pixi subprocess run through the build sandbox.
+// Server and worker processes set this; the CLI, which already runs as the
+// invoking user, leaves it nil.
+func (p *PixiManager) SetSandbox(s *sandbox.Runner) { p.sandbox = s }
+
+// command builds the exec.Cmd for a pixi invocation in workDir, routing
+// through the sandbox when one is configured. Either way the command carries
+// the configured OS resource limits and runs with its temp and cache
+// directories scoped to the workspace.
+//
+// The difference is the environment. A sandboxed build gets an allowlist, so
+// no server secret reaches user-supplied build code. Without a sandbox the
+// parent environment is inherited: that path is the CLI, which already runs
+// as the invoking user and has nothing to withhold from itself.
+func (p *PixiManager) command(ctx context.Context, workDir string, limitCfg limits.ProcessLimits, args ...string) (*exec.Cmd, error) {
+	if p.sandbox != nil {
+		return p.sandbox.Command(ctx, sandbox.Spec{
+			WorkspaceDir:   workDir,
+			Argv:           append([]string{p.pixiPath}, args...),
+			ResourceLimits: limitCfg,
+		})
+	}
+
+	env, err := process.PreparedWorkspaceEnv(workDir)
+	if err != nil {
+		return nil, fmt.Errorf("prepare pixi workspace env: %w", err)
+	}
+	cmd := process.CommandContext(ctx, p.pixiPath, args, limitCfg)
+	cmd.Dir = workDir
+	cmd.Env = env
+	return cmd, nil
+}
+
 // streamOutput reads from a pipe and writes to the writer line by line for real-time streaming
 func (p *PixiManager) streamOutput(reader io.Reader, writer io.Writer) {
 	defer func() {
@@ -141,15 +177,11 @@ func (p *PixiManager) Init(ctx context.Context, opts pkgmgr.InitOptions) error {
 		args = append(args, "--channel", channel)
 	}
 
-	env, err := process.PreparedWorkspaceEnv(opts.EnvPath)
-	if err != nil {
-		return fmt.Errorf("prepare pixi workspace env: %w", err)
-	}
-
 	// Execute pixi init in the target directory
-	cmd := process.CommandContext(ctx, p.pixiPath, args, opts.ResourceLimits)
-	cmd.Dir = opts.EnvPath
-	cmd.Env = env
+	cmd, err := p.command(ctx, opts.EnvPath, opts.ResourceLimits, args...)
+	if err != nil {
+		return fmt.Errorf("failed to prepare pixi init: %w", err)
+	}
 
 	// Use LogWriter if provided, otherwise buffer
 	if opts.LogWriter != nil {
@@ -222,15 +254,11 @@ func (p *PixiManager) Install(ctx context.Context, opts pkgmgr.InstallOptions) e
 	}
 	args := append(append(baseArgs, "--"), opts.Packages...)
 
-	env, err := process.PreparedWorkspaceEnv(opts.EnvPath)
-	if err != nil {
-		return fmt.Errorf("prepare pixi workspace env: %w", err)
-	}
-
 	// Execute pixi add
-	cmd := process.CommandContext(ctx, p.pixiPath, args, opts.ResourceLimits)
-	cmd.Dir = opts.EnvPath
-	cmd.Env = env
+	cmd, err := p.command(ctx, opts.EnvPath, opts.ResourceLimits, args...)
+	if err != nil {
+		return fmt.Errorf("failed to prepare pixi add: %w", err)
+	}
 
 	// Use LogWriter if provided, otherwise buffer
 	if opts.LogWriter != nil {
@@ -303,15 +331,11 @@ func (p *PixiManager) Remove(ctx context.Context, opts pkgmgr.RemoveOptions) err
 	}
 	args := append(append(baseArgs, "--"), opts.Packages...)
 
-	env, err := process.PreparedWorkspaceEnv(opts.EnvPath)
-	if err != nil {
-		return fmt.Errorf("prepare pixi workspace env: %w", err)
-	}
-
 	// Execute pixi remove
-	cmd := process.CommandContext(ctx, p.pixiPath, args, opts.ResourceLimits)
-	cmd.Dir = opts.EnvPath
-	cmd.Env = env
+	cmd, err := p.command(ctx, opts.EnvPath, opts.ResourceLimits, args...)
+	if err != nil {
+		return fmt.Errorf("failed to prepare pixi remove: %w", err)
+	}
 
 	// Use LogWriter if provided, otherwise buffer
 	if opts.LogWriter != nil {
@@ -372,13 +396,10 @@ func (p *PixiManager) List(ctx context.Context, opts pkgmgr.ListOptions) ([]pkgm
 	}
 
 	// Run pixi list to get all installed packages with actual versions
-	env, err := process.PreparedWorkspaceEnv(opts.EnvPath)
+	cmd, err := p.command(ctx, opts.EnvPath, opts.ResourceLimits, "list")
 	if err != nil {
-		return nil, fmt.Errorf("prepare pixi workspace env: %w", err)
+		return nil, fmt.Errorf("failed to prepare pixi list: %w", err)
 	}
-	cmd := process.CommandContext(ctx, p.pixiPath, []string{"list"}, opts.ResourceLimits)
-	cmd.Dir = opts.EnvPath
-	cmd.Env = env
 
 	stdout := newCappedOutputBuffer(opts.MaxOutputBytes)
 	stderr := newCappedOutputBuffer(opts.MaxOutputBytes)
@@ -503,15 +524,11 @@ func (p *PixiManager) Update(ctx context.Context, opts pkgmgr.UpdateOptions) err
 		args = append(append(args, "--"), opts.Packages...)
 	}
 
-	env, err := process.PreparedWorkspaceEnv(opts.EnvPath)
-	if err != nil {
-		return fmt.Errorf("prepare pixi workspace env: %w", err)
-	}
-
 	// Execute pixi update
-	cmd := process.CommandContext(ctx, p.pixiPath, args, opts.ResourceLimits)
-	cmd.Dir = opts.EnvPath
-	cmd.Env = env
+	cmd, err := p.command(ctx, opts.EnvPath, opts.ResourceLimits, args...)
+	if err != nil {
+		return fmt.Errorf("failed to prepare pixi update: %w", err)
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -662,9 +679,11 @@ func (p *PixiManager) GetManifest(ctx context.Context, envPath string) (*pkgmgr.
 }
 
 // executeCommand is a helper to execute pixi commands with proper error handling
-func (p *PixiManager) executeCommand(ctx context.Context, workDir string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, p.pixiPath, args...)
-	cmd.Dir = workDir
+func (p *PixiManager) executeCommand(ctx context.Context, workDir string, limitCfg limits.ProcessLimits, args ...string) (string, error) {
+	cmd, err := p.command(ctx, workDir, limitCfg, args...)
+	if err != nil {
+		return "", fmt.Errorf("failed to prepare pixi command: %w", err)
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

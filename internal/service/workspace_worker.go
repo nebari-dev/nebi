@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"github.com/nebari-dev/nebi/internal/process"
 	"github.com/nebari-dev/nebi/internal/utils"
 	"gorm.io/gorm"
@@ -68,14 +67,9 @@ func (s *WorkspaceService) CreateVersionSnapshot(ctx context.Context, ws *models
 		return err
 	}
 
-	// Get package list from package manager
-	pm, err := pkgmgr.NewWithContext(ctx, ws.PackageManager)
-	if err != nil {
-		return fmt.Errorf("failed to create package manager: %w", err)
-	}
-
-	var pkgs []pkgmgr.Package
-	pkgs, err = pm.List(ctx, s.listOptions(envPath))
+	// Get the package list through the executor, so the listing runs in the
+	// build sandbox and honors config.package_manager.pixi_path.
+	pkgs, err := s.executor.ListPackages(ctx, ws)
 	if err != nil {
 		mappedErr := s.mapPackageManagerListError(err)
 		var validationErr *ValidationError

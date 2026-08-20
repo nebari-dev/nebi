@@ -76,6 +76,7 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(completionCmd)
 	rootCmd.AddCommand(infoCmd)
+	rootCmd.AddCommand(sandboxExecCmd)
 }
 
 func main() {

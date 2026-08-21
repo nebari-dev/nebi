@@ -326,7 +326,11 @@ func TestCreateVersionSnapshot_RejectsManifestPackageLimitBeforeVersionWrite(t *
 	}
 }
 
-func TestCreateVersionSnapshot_RejectsTooManyListedPackagesBeforeVersionWrite(t *testing.T) {
+func TestCreateVersionSnapshot_AllowsResolvedPackagesAboveMaxPackages(t *testing.T) {
+	// max_packages caps what a user asks for (manifest entries, install
+	// requests), not what the resolver produces: a small manifest routinely
+	// resolves to hundreds of transitive packages, and imported workspaces
+	// arrive with a fully resolved lockfile.
 	svc, db := testSetup(t, true)
 	userID := createTestUser(t, db, "alice")
 	ws := createReadyWorkspace(t, svc, db, "snapshot-package-limit", userID)
@@ -342,6 +346,10 @@ func TestCreateVersionSnapshot_RejectsTooManyListedPackagesBeforeVersionWrite(t 
 				{Name: "pandas", Version: "2.0.0"},
 			},
 		}, nil
+	})
+	pkgmgr.RegisterManifestContentParser(pmType, pkgmgr.ManifestContentParser{
+		PackageNames:           func(string) ([]string, error) { return []string{"numpy"}, nil },
+		DefaultDependencyNames: func(string) ([]string, error) { return []string{"numpy"}, nil },
 	})
 	ws.PackageManager = pmType
 	if err := db.Save(ws).Error; err != nil {
@@ -359,15 +367,17 @@ func TestCreateVersionSnapshot_RejectsTooManyListedPackagesBeforeVersionWrite(t 
 		t.Fatalf("write lock: %v", err)
 	}
 
-	err := svc.CreateVersionSnapshot(context.Background(), ws, uuid.New(), userID, "too many packages")
-
-	var ve *ValidationError
-	if !isValidationError(err, &ve) {
-		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	err := svc.CreateVersionSnapshot(context.Background(), ws, uuid.New(), userID, "resolved packages above cap")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	var versions int64
-	db.Model(&models.WorkspaceVersion{}).Where("workspace_id = ?", ws.ID).Count(&versions)
-	if versions != 0 {
-		t.Fatalf("expected no version writes, got %d", versions)
+
+	var versions []models.WorkspaceVersion
+	db.Where("workspace_id = ?", ws.ID).Find(&versions)
+	if len(versions) != 1 {
+		t.Fatalf("expected 1 version, got %d", len(versions))
+	}
+	if !strings.Contains(versions[0].PackageMetadata, "numpy") || !strings.Contains(versions[0].PackageMetadata, "pandas") {
+		t.Fatalf("expected both resolved packages in metadata, got %q", versions[0].PackageMetadata)
 	}
 }

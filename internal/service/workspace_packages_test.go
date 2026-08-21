@@ -543,7 +543,9 @@ func TestListPackages_NotFound(t *testing.T) {
 	}
 }
 
-func TestSyncPackagesFromWorkspace_RejectsTooManyListedPackagesBeforeDBWrite(t *testing.T) {
+func TestSyncPackagesFromWorkspace_AllowsResolvedPackagesAboveMaxPackages(t *testing.T) {
+	// max_packages caps user-requested packages, not resolver output: a
+	// small manifest routinely resolves to hundreds of transitive packages.
 	svc, db := testSetup(t, true)
 	limitCfg := limits.Defaults()
 	limitCfg.MaxPackages = 1
@@ -564,23 +566,17 @@ func TestSyncPackagesFromWorkspace_RejectsTooManyListedPackagesBeforeDBWrite(t *
 	if err := db.Save(ws).Error; err != nil {
 		t.Fatalf("save workspace package manager: %v", err)
 	}
-	existing := models.Package{WorkspaceID: ws.ID, Name: "existing", Version: "0.1.0"}
-	if err := db.Create(&existing).Error; err != nil {
-		t.Fatalf("create existing package: %v", err)
+
+	if err := svc.SyncPackagesFromWorkspace(context.Background(), ws); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	err := svc.SyncPackagesFromWorkspace(context.Background(), ws)
-
-	var ve *ValidationError
-	if !isValidationError(err, &ve) {
-		t.Fatalf("expected ValidationError, got %T: %v", err, err)
-	}
 	var packages []models.Package
 	if err := db.Where("workspace_id = ?", ws.ID).Find(&packages).Error; err != nil {
 		t.Fatalf("list packages: %v", err)
 	}
-	if len(packages) != 1 || packages[0].Name != "existing" {
-		t.Fatalf("expected existing package rows to remain untouched, got %#v", packages)
+	if len(packages) != 2 {
+		t.Fatalf("expected both resolved packages saved, got %#v", packages)
 	}
 }
 

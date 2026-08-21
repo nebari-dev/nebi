@@ -5,9 +5,17 @@ on:
   push:
     branches:
       - "main"
+    tags:
+      - "v*"
+
+permissions:
+  actions: read
+  contents: write
+  id-token: write
+  attestations: write
 
 concurrency:
-  group: ${{ github.ref }}
+  group: release-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -25,8 +33,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+
+      - name: Load pinned tool versions
+        id: tool_versions
+        run: bash .github/scripts/load-tool-versions.sh
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
@@ -84,8 +96,37 @@ jobs:
           username: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
           password: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
 
+      - name: Set up Go for release image tools
+        if: steps.registry.outputs.publish == 'true'
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Install release image tools
+        if: steps.registry.outputs.publish == 'true'
+        run: |
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          go install "github.com/sigstore/cosign/v2/cmd/cosign@${COSIGN_VERSION}"
+          go install "github.com/google/go-containerregistry/cmd/crane@${CRANE_VERSION}"
+          go install "github.com/anchore/syft/cmd/syft@${SYFT_VERSION}"
+
+      - name: Select image references
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}"
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          if [ -z "$first_tag" ]; then
+            echo "Docker metadata produced no tags."
+            exit 1
+          fi
+
+          echo "tag=${first_tag}" >> "$GITHUB_OUTPUT"
+          echo "publish_tag=${image}:publish-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
       # Build locally only; the push happens in a later step so the smoke
-      # test and vulnerability scan gate what gets published.
+      # test, vulnerability scan, and signing gate what gets published.
       - name: Build image
         id: build
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
@@ -94,25 +135,31 @@ jobs:
           file: ./Dockerfile
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ steps.image.outputs.publish_tag }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
           push: false
           load: true
           cache-from: ${{ steps.registry.outputs.publish == 'true' && 'type=gha' || '' }}
           cache-to: ${{ steps.registry.outputs.publish == 'true' && 'type=gha,mode=max' || '' }}
+          provenance: false
+          sbom: false
 
-      - name: Smoke test
+      - name: Smoke test image
         run: |
-          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}"
+          set -e
+          IMAGE_TAG="${{ steps.image.outputs.tag }}"
           echo "Testing image: ${IMAGE_TAG}"
+          trap 'docker rm -f test-nebi >/dev/null 2>&1 || true' EXIT
 
           # Start container with port mapping
           docker run --rm -d --name test-nebi \
             -p 8460:8460 \
             -e NEBI_AUTH_JWT_SECRET=test-secret-that-is-at-least-32-chars-long \
             -e NEBI_DATABASE_DSN=/tmp/test.db \
-            ${IMAGE_TAG}
+            "${IMAGE_TAG}"
 
           # Wait for startup
           sleep 10
@@ -143,36 +190,159 @@ jobs:
       # Scan the locally built image (base layers + compiled binary) and fail
       # on fixable High/Critical findings (#451). Runs before the push step so
       # an image that fails the scan is never published.
-      - name: Scan image for vulnerabilities
+      - name: Scan image vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          scan-type: image
+          image-ref: ${{ steps.image.outputs.tag }}
+          version: ${{ steps.tool_versions.outputs.TRIVY_VERSION }}
           format: table
           exit-code: '1'
-          severity: CRITICAL,HIGH
           ignore-unfixed: true
+          severity: HIGH,CRITICAL
 
-      # Push the exact image bytes that passed the smoke test and scan.
-      - name: Push image
+      - name: Generate image SBOM
         if: steps.registry.outputs.publish == 'true'
+        run: syft "${{ steps.image.outputs.tag }}" -o spdx-json=nebi-container-image.sbom.spdx.json
+
+      - name: Push gated image candidate
+        id: push_candidate
+        if: steps.registry.outputs.publish == 'true'
+        shell: bash
         run: |
-          while IFS= read -r tag; do
-            [ -z "${tag}" ] && continue
-            docker push "${tag}"
-          done <<< "${{ steps.meta.outputs.tags }}"
+          set -euo pipefail
+          candidate="${{ steps.image.outputs.publish_tag }}"
+          docker push "$candidate"
+          digest="$(docker buildx imagetools inspect "$candidate" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          if [ -z "$digest" ] || [ "$digest" = "null" ]; then
+            echo "Could not determine pushed image digest for ${candidate}."
+            exit 1
+          fi
+          echo "tag=${candidate}" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+      # PR builds may publish temporary image refs when same-repo secrets are
+      # present; keep public signing and attestation records off PRs while #512
+      # tracks splitting release OIDC permissions into narrower workflows.
+      - name: Sign published image digest
+        if: github.event_name != 'pull_request' && steps.registry.outputs.publish == 'true'
+        run: cosign sign --yes "${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}@${{ steps.push_candidate.outputs.digest }}"
+
+      - name: Attest published image digest
+        if: github.event_name != 'pull_request' && steps.registry.outputs.publish == 'true'
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # pinned commit
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push_candidate.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Attest published image SBOM
+        if: github.event_name != 'pull_request' && steps.registry.outputs.publish == 'true'
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # pinned commit
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push_candidate.outputs.digest }}
+          sbom-path: nebi-container-image.sbom.spdx.json
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Publish final image tags
+        if: steps.registry.outputs.publish == 'true'
+        shell: bash
+        env:
+          FINAL_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          candidate="${{ steps.image.outputs.publish_tag }}"
+          signed_digest="${{ steps.push_candidate.outputs.digest }}"
+
+          printf '%s\n' "$FINAL_TAGS" | while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            docker tag "$candidate" "$tag"
+            docker push "$tag"
+
+            pushed_digest="$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+            if [ "$pushed_digest" != "$signed_digest" ]; then
+              echo "Final tag ${tag} points to ${pushed_digest}, expected signed digest ${signed_digest}."
+              exit 1
+            fi
+          done
+
+      - name: Delete gated image candidate on failure
+        if: failure() && steps.push_candidate.outputs.tag != ''
+        shell: bash
+        run: crane delete "${{ steps.push_candidate.outputs.tag }}"
+
+      - name: Sign container image release metadata
+        if: startsWith(github.ref, 'refs/tags/') && steps.registry.outputs.publish == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}"
+          digest="${{ steps.push_candidate.outputs.digest }}"
+          cat > nebi-container-image.json <<EOF
+          {
+            "component": "container",
+            "image": "${image}",
+            "digest": "${digest}",
+            "reference": "${image}@${digest}",
+            "source_commit": "${GITHUB_SHA}",
+            "workflow": "${GITHUB_WORKFLOW}",
+            "run_id": "${GITHUB_RUN_ID}",
+            "run_attempt": "${GITHUB_RUN_ATTEMPT}"
+          }
+          EOF
+          cosign sign-blob --bundle=nebi-container-image.json.sigstore.json nebi-container-image.json --yes
+
+      - name: Attest container image release metadata
+        if: startsWith(github.ref, 'refs/tags/') && steps.registry.outputs.publish == 'true'
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # pinned commit
+        with:
+          subject-path: nebi-container-image.json
+          create-storage-record: false
+
+      - name: Wait for CLI release draft
+        if: startsWith(github.ref, 'refs/tags/') && steps.registry.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/wait-for-release-workflow.sh Release
+
+      - name: Upload container image release metadata
+        if: startsWith(github.ref, 'refs/tags/') && steps.registry.outputs.publish == 'true'
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+        with:
+          draft: true
+          fail_on_unmatched_files: true
+          files: |
+            nebi-container-image.json
+            nebi-container-image.json.sigstore.json
+
+      - name: Publish release when all gated assets are current
+        if: startsWith(github.ref, 'refs/tags/') && steps.registry.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/publish-release-if-ready.sh
 
       - name: Add image tags to summary
         run: |
-          echo "## Docker Image Built: ${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Platforms:** linux/amd64" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Pull Command:" >> $GITHUB_STEP_SUMMARY
-          echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### All Tags:" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.meta.outputs.tags }}" | sed 's/,/\n/g' >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Docker Image Built: ${{ env.IMAGE_NAME }}"
+            echo ""
+            echo "**Platforms:** linux/amd64"
+            if [ "${{ steps.registry.outputs.publish }}" = "true" ]; then
+              echo "**Digest:** ${{ steps.push_candidate.outputs.digest }}"
+            fi
+            echo ""
+            echo "### Pull Command:"
+            echo '```bash'
+            echo "docker pull ${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}"
+            echo '```'
+            echo ""
+            echo "### All Tags:"
+            echo '```'
+            printf '%s\n' "${{ steps.meta.outputs.tags }}" | sed 's/,/\n/g'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

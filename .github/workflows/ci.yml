@@ -103,6 +103,10 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
+      - name: Load pinned tool versions
+        id: tool_versions
+        run: bash .github/scripts/load-tool-versions.sh
+
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
@@ -113,7 +117,8 @@ jobs:
 
       # The Release workflow regenerates these docs and GoReleaser refuses a
       # dirty tree, so stale committed docs break releases. Catch the drift on
-      # the PR that causes it instead. Uses swag@latest to match release.yml.
+      # the PR that causes it instead. Uses SWAG_VERSION through Makefile to
+      # match release.yml.
       - name: Check Swagger docs are up to date
         run: |
           make swagger
@@ -125,7 +130,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.12.2
+          version: ${{ steps.tool_versions.outputs.GOLANGCI_LINT_VERSION }}
 
   backend-test:
     name: Backend / Test
@@ -133,6 +138,9 @@ jobs:
     needs: frontend-build
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Load pinned tool versions
+        run: bash .github/scripts/load-tool-versions.sh
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -148,7 +156,7 @@ jobs:
       - name: Install swag
         run: |
           go mod download
-          go install github.com/swaggo/swag/cmd/swag
+          go install "github.com/swaggo/swag/cmd/swag@${SWAG_VERSION}"
 
       - name: Run tests (unit + e2e)
         run: go test -tags=e2e -v -race -coverprofile=coverage.out ./cmd/... ./internal/...
@@ -166,6 +174,9 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
+      - name: Load pinned tool versions
+        run: bash .github/scripts/load-tool-versions.sh
+
       # Rejects toolchains on Go release lines that no longer receive
       # security fixes (#451). Warns (release gate fails) when a newer
       # patch of the pinned line exists.
@@ -181,7 +192,7 @@ jobs:
       # affected symbols the code actually calls.
       - name: govulncheck (source)
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
           govulncheck ./cmd/... ./internal/...
 
   build-binaries:
@@ -191,6 +202,10 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
+
+      - name: Load pinned tool versions
+        id: tool_versions
+        run: bash .github/scripts/load-tool-versions.sh
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -207,7 +222,7 @@ jobs:
       - name: Install build tools
         run: |
           go mod download
-          go install github.com/swaggo/swag/cmd/swag@latest
+          go install "github.com/swaggo/swag/cmd/swag@${SWAG_VERSION}"
 
       - name: Generate Swagger docs
         run: make swagger
@@ -216,7 +231,7 @@ jobs:
         uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
         with:
           distribution: goreleaser
-          version: latest
+          version: ${{ steps.tool_versions.outputs.GORELEASER_VERSION }}
           args: build --snapshot --clean
 
       # Binary-mode scan of a compiled artifact: checks the symbols actually
@@ -227,7 +242,7 @@ jobs:
       # an unstripped build of the same package, toolchain, and deps.
       - name: govulncheck (compiled binary)
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
           go build -trimpath -o /tmp/nebi-scan ./cmd/nebi
           govulncheck -mode=binary /tmp/nebi-scan
 

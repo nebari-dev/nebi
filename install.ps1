@@ -15,6 +15,9 @@ param(
 $ErrorActionPreference = "Stop"
 
 $Repo = "nebari-dev/nebi"
+$CosignIssuer = "https://token.actions.githubusercontent.com"
+$ReleaseWorkflow = "release.yml"
+$DesktopWorkflow = "desktop.yml"
 
 if (-not $InstallDir) {
     $InstallDir = Join-Path $env:LOCALAPPDATA "nebi"
@@ -27,8 +30,92 @@ function Write-Info {
 
 function Write-Err {
     param([string]$Message)
-    Write-Host "Error: $Message" -ForegroundColor Red
+    [Console]::Error.WriteLine("Error: $Message")
     exit 1
+}
+
+function Invoke-Download {
+    param(
+        [string]$Uri,
+        [string]$OutFile
+    )
+    Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing
+}
+
+function Confirm-CosignBlob {
+    param(
+        [string]$ArtifactPath,
+        [string]$BundlePath,
+        [string]$Workflow
+    )
+
+    if (-not (Get-Command cosign -ErrorAction SilentlyContinue)) {
+        Write-Err "cosign is required to verify nebi release signatures. Install cosign and rerun this installer."
+    }
+
+    $identity = "https://github.com/$Repo/.github/workflows/$Workflow@refs/tags/$Version"
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $output = & cosign verify-blob `
+            --bundle $BundlePath `
+            --certificate-identity $identity `
+            --certificate-oidc-issuer $CosignIssuer `
+            $ArtifactPath 2>&1
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+    if ($LASTEXITCODE -ne 0) {
+        $output | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+        Write-Err "Signature verification failed for $(Split-Path -Leaf $ArtifactPath)."
+    }
+}
+
+function Get-Sha256 {
+    param([string]$Path)
+    return (Get-FileHash -Algorithm SHA256 -Path $Path).Hash.ToLowerInvariant()
+}
+
+function Confirm-ChecksumFromFile {
+    param(
+        [string]$ArtifactPath,
+        [string]$ChecksumsPath
+    )
+
+    $artifactName = Split-Path -Leaf $ArtifactPath
+    $expected = $null
+    foreach ($line in Get-Content $ChecksumsPath) {
+        $parts = $line -split '\s+'
+        if ($parts.Length -ge 2) {
+            $candidate = $parts[1].TrimStart("*")
+            if ($candidate -eq $artifactName) {
+                $expected = $parts[0].ToLowerInvariant()
+                break
+            }
+        }
+    }
+
+    if (-not $expected) {
+        Write-Err "Checksum for $artifactName not found in $(Split-Path -Leaf $ChecksumsPath)."
+    }
+
+    $actual = Get-Sha256 $ArtifactPath
+    if ($actual -ne $expected) {
+        Write-Err "Checksum verification failed for $artifactName."
+    }
+}
+
+function Confirm-AssetSignature {
+    param(
+        [string]$ArtifactPath,
+        [string]$ArtifactUrl,
+        [string]$Workflow
+    )
+
+    $bundlePath = "$ArtifactPath.sigstore.json"
+    Write-Info "Downloading signature for $(Split-Path -Leaf $ArtifactPath)..."
+    Invoke-Download -Uri "$ArtifactUrl.sigstore.json" -OutFile $bundlePath
+    Confirm-CosignBlob -ArtifactPath $ArtifactPath -BundlePath $bundlePath -Workflow $Workflow
 }
 
 $TempDir = Join-Path ([System.IO.Path]::GetTempPath()) "nebi-install-$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
@@ -66,12 +153,23 @@ try {
     Write-Info "Downloading $ArchiveName..."
     $ArchivePath = Join-Path $TempDir $ArchiveName
     try {
-        Invoke-WebRequest -Uri $DownloadUrl -OutFile $ArchivePath -UseBasicParsing
+        Invoke-Download -Uri $DownloadUrl -OutFile $ArchivePath
     } catch {
         Write-Info "No Windows binary available for nebi $Version. Skipping installation."
         $env:NEBI_INSTALL_SKIPPED = "true"
         return
     }
+
+    $ChecksumsPath = Join-Path $TempDir "checksums.txt"
+    $ChecksumsSigPath = "$ChecksumsPath.sigstore.json"
+    Write-Info "Downloading release checksums..."
+    Invoke-Download -Uri "https://github.com/$Repo/releases/download/$Version/checksums.txt" -OutFile $ChecksumsPath
+    Invoke-Download -Uri "https://github.com/$Repo/releases/download/$Version/checksums.txt.sigstore.json" -OutFile $ChecksumsSigPath
+
+    Write-Info "Verifying $ArchiveName..."
+    Confirm-CosignBlob -ArtifactPath $ChecksumsPath -BundlePath $ChecksumsSigPath -Workflow $ReleaseWorkflow
+    Confirm-ChecksumFromFile -ArtifactPath $ArchivePath -ChecksumsPath $ChecksumsPath
+    Confirm-AssetSignature -ArtifactPath $ArchivePath -ArtifactUrl $DownloadUrl -Workflow $ReleaseWorkflow
 
     # Extract archive
     Write-Info "Extracting archive..."
@@ -114,8 +212,12 @@ try {
         }
 
         $DesktopPath = Join-Path $DesktopDir "Nebi.exe"
+        $DesktopDownloadPath = Join-Path $TempDir $DesktopExe
         Write-Info "Downloading $DesktopExe..."
-        Invoke-WebRequest -Uri $DesktopUrl -OutFile $DesktopPath -UseBasicParsing
+        Invoke-Download -Uri $DesktopUrl -OutFile $DesktopDownloadPath
+        Write-Info "Verifying $DesktopExe..."
+        Confirm-AssetSignature -ArtifactPath $DesktopDownloadPath -ArtifactUrl $DesktopUrl -Workflow $DesktopWorkflow
+        Copy-Item -Path $DesktopDownloadPath -Destination $DesktopPath -Force
 
         Write-Info "Desktop app installed to $DesktopPath"
     }

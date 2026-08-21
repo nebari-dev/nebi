@@ -14,7 +14,7 @@ Run from the repo root unless noted.
 # Dev (hot reload, frontend + backend together)
 ADMIN_USERNAME=admin ADMIN_PASSWORD=<pw> make dev   # frontend :8461, backend :8460, docs :8460/docs
 
-make install-tools   # installs swag, air, golangci-lint v1.64.8
+make install-tools   # installs swag, air, golangci-lint v2.12.2
 
 # Build
 make build           # full single binary: frontend build → embed → backend (bin/nebi)

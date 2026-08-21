@@ -1,6 +1,8 @@
 .PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all build-desktop
 
 # Variables
+include .github/tool-versions.env
+
 BINARY_NAME=nebi
 FRONTEND_DIR=frontend
 BUILD_DIR=bin
@@ -17,22 +19,22 @@ help: ## Show this help message
 
 install-tools: ## Install development tools (swag, air, golangci-lint)
 	@echo "Installing swag..."
-	@go install github.com/swaggo/swag/cmd/swag@latest
+	@go install github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION)
 	@echo "Installing air..."
-	@go install github.com/air-verse/air@latest
-	@echo "Installing golangci-lint v2.12.2..."
-	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.12.2
+	@go install github.com/air-verse/air@$(AIR_VERSION)
+	@echo "Installing golangci-lint $(GOLANGCI_LINT_VERSION)..."
+	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$$(go env GOPATH)/bin" $(GOLANGCI_LINT_VERSION)
 	@echo "Tools installed successfully"
 
 swagger: ## Generate Swagger documentation
 	@echo "Generating Swagger docs..."
-	@PATH="$$PATH:$$(go env GOPATH)/bin"; command -v swag >/dev/null 2>&1 || { echo "swag not found, installing..."; go install github.com/swaggo/swag/cmd/swag@latest; }
+	@PATH="$$PATH:$$(go env GOPATH)/bin"; command -v swag >/dev/null 2>&1 || { echo "swag not found, installing..."; go install github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION); }
 	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g serve.go -d cmd/nebi,internal/api,internal/service,internal/models,internal/limits,internal/metrics,internal/auth -o internal/swagger --packageName swagger --exclude output,cross-platform-example
 	@echo "Swagger docs generated at /internal/swagger"
 
 build-frontend: ## Build frontend and copy to internal/web/dist
 	@echo "Building frontend..."
-	@cd $(FRONTEND_DIR) && npm install && npm run build
+	@cd $(FRONTEND_DIR) && npm ci && npm run build
 	@echo "Copying frontend build to internal/web/dist..."
 	@rm -rf internal/web/dist
 	@cp -r $(FRONTEND_DIR)/dist internal/web/dist
@@ -58,7 +60,7 @@ dev: swagger ## Run with hot reload (frontend + backend)
 	@echo "Starting nebi in development mode with hot reload..."
 	@if [ ! -d "frontend/node_modules" ]; then \
 		echo "Frontend dependencies not found. Installing..."; \
-		cd frontend && npm install; \
+		cd frontend && npm ci; \
 	fi
 	@echo ""
 	@if [ -f .env ]; then \
@@ -73,7 +75,7 @@ dev: swagger ## Run with hot reload (frontend + backend)
 	@echo ""
 	@echo "Press Ctrl+C to stop all services"
 	@echo ""
-	@command -v air >/dev/null 2>&1 || { echo "air not found, installing..."; go install github.com/air-verse/air@latest; }
+	@command -v air >/dev/null 2>&1 || { echo "air not found, installing..."; go install github.com/air-verse/air@$(AIR_VERSION); }
 	@bash -c 'export PATH="$$PATH:$$(go env GOPATH)/bin"; set -a; [ -f .env ] && source .env; set +a; trap "kill 0" EXIT; (cd frontend && npm run dev) & air'
 
 migrate: ## Run database migrations
@@ -107,7 +109,7 @@ vet: ## Run go vet
 
 lint: fmt ## Run formatters and linters (matches CI)
 	@echo "Running golangci-lint..."
-	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint not found, installing..."; curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.12.2; }
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint not found, installing..."; curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$$(go env GOPATH)/bin" $(GOLANGCI_LINT_VERSION); }
 	@PATH="$$PATH:$$(go env GOPATH)/bin" golangci-lint run ./...
 	@echo "Lint complete"
 
@@ -145,5 +147,5 @@ build-all: build-frontend ## Build binaries for all platforms
 
 build-desktop: build-frontend ## Build Wails desktop app with version info
 	@echo "Building desktop app..."
-	@wails build -ldflags "-X main.Version=$(VERSION) -X main.Commit=$(COMMIT)"
+	@wails build -s -ldflags "-X main.Version=$(VERSION) -X main.Commit=$(COMMIT)"
 	@echo "Desktop app built: build/bin/Nebi.app"

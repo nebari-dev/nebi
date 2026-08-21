@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile
 # Stage 1: Build frontend
-FROM node:20-alpine AS frontend-builder
+FROM node:20.20.2-alpine3.23@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci --prefer-offline --no-audit
@@ -18,7 +18,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Install build tools for API docs generation
-RUN apk add --no-cache make && go install github.com/swaggo/swag/cmd/swag@latest
+COPY .github/tool-versions.env .github/tool-versions.env
+RUN apk add --no-cache make && \
+    . .github/tool-versions.env && \
+    go install github.com/swaggo/swag/cmd/swag@${SWAG_VERSION}
 
 # Copy source code
 COPY . .
@@ -37,7 +40,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     -o /nebi ./cmd/nebi
 
 # Stage 3: Final image with pixi
-FROM ghcr.io/prefix-dev/pixi:latest
+FROM ghcr.io/prefix-dev/pixi:0.76.2-noble@sha256:8b206ef57005a902cb53f50dbaa47893a4038ca269f0b00038b51f18b1313cd4
 WORKDIR /app
 
 # Install CA certificates (required for OIDC/HTTPS connections)

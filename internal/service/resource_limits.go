@@ -206,10 +206,13 @@ func (s *WorkspaceService) mapPackageManagerListError(err error) error {
 	return err
 }
 
+// validateListedPackages checks per-entry constraints on resolver output.
+// MaxPackages deliberately does not apply here: it caps user-requested
+// packages (manifest entries, install requests), while a resolved
+// environment routinely contains hundreds of transitive packages. Total
+// size of resolver output is bounded by MetadataBytes at the list and
+// serialization layers.
 func (s *WorkspaceService) validateListedPackages(name string, packages []pkgmgr.Package) error {
-	if s.limits.MaxPackages > 0 && len(packages) > s.limits.MaxPackages {
-		return &ValidationError{Message: fmt.Sprintf("%s exceeds maximum count %d", name, s.limits.MaxPackages)}
-	}
 	for i, pkg := range packages {
 		fields := []struct {
 			name  string

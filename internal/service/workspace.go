@@ -12,7 +12,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
+	"github.com/nebari-dev/nebi/internal/pixi"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"gorm.io/gorm"
@@ -107,12 +107,7 @@ func (s *WorkspaceService) Get(id string) (*WorkspaceResponse, error) {
 // Create validates and creates a new workspace, queues the creation job,
 // grants RBAC owner access, and writes an audit log entry.
 func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID uuid.UUID) (*models.Workspace, error) {
-	packageManager := req.PackageManager
-	if packageManager == "" {
-		packageManager = "pixi"
-	}
-
-	if err := s.validateManifestContent(packageManager, "pixi.toml", req.PixiToml); err != nil {
+	if err := s.validateManifestContent("pixi.toml", req.PixiToml); err != nil {
 		return nil, err
 	}
 
@@ -129,28 +124,21 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 		}
 	}
 
-	name := req.Name
-	if packageManager == "pixi" {
-		resolvedName, err := pixi.ResolveWorkspaceName(req.Name, req.PixiToml)
-		if err != nil {
-			return nil, &ValidationError{Message: fmt.Sprintf("invalid pixi.toml: %v", err)}
-		}
-		name = resolvedName
-	} else if name == "" {
-		return nil, &ValidationError{Message: "workspace name is required"}
+	name, err := pixi.ResolveWorkspaceName(req.Name, req.PixiToml)
+	if err != nil {
+		return nil, &ValidationError{Message: fmt.Sprintf("invalid pixi.toml: %v", err)}
 	}
 
 	ws := models.Workspace{
-		Name:           name,
-		OwnerID:        userID,
-		Status:         models.WsStatusPending,
-		PackageManager: packageManager,
-		Source:         req.Source,
-		Path:           req.Path,
+		Name:    name,
+		OwnerID: userID,
+		Status:  models.WsStatusPending,
+		Source:  req.Source,
+		Path:    req.Path,
 	}
 
 	var job *models.Job
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err = s.db.Transaction(func(tx *gorm.DB) error {
 		// Queue creation job
 		metadata := map[string]interface{}{}
 		if req.PixiToml != "" {
@@ -184,8 +172,7 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 		}
 
 		audit.LogAction(tx, userID, audit.ActionCreateWorkspace, fmt.Sprintf("ws:%s", ws.ID.String()), map[string]interface{}{
-			"name":            ws.Name,
-			"package_manager": ws.PackageManager,
+			"name": ws.Name,
 		})
 
 		return nil
@@ -274,7 +261,7 @@ func (s *WorkspaceService) SavePixiToml(wsID string, content string) error {
 		}
 		return err
 	}
-	if err := s.validateManifestContent(ws.PackageManager, "pixi.toml", content); err != nil {
+	if err := s.validateManifestContent("pixi.toml", content); err != nil {
 		return err
 	}
 
@@ -318,7 +305,7 @@ func (s *WorkspaceService) PushVersion(ctx context.Context, wsID string, req Pus
 		}
 		return nil, err
 	}
-	if err := s.validatePushRequest(ws.PackageManager, req); err != nil {
+	if err := s.validatePushRequest(req); err != nil {
 		return nil, err
 	}
 

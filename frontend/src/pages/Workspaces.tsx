@@ -33,7 +33,6 @@ type UnifiedWorkspace = {
   id: string;
   name: string;
   status: string;
-  package_manager: string;
   created_at: string;
   location: 'local' | 'remote';
   // Local-only fields
@@ -106,7 +105,6 @@ export const Workspaces = () => {
         id: ws.id,
         name: ws.name,
         status: ws.status,
-        package_manager: ws.package_manager,
         created_at: ws.created_at,
         location: 'local' as const,
         source: ws.source,
@@ -125,7 +123,6 @@ export const Workspaces = () => {
         id: ws.id,
         name: ws.name,
         status: ws.status,
-        package_manager: ws.package_manager,
         created_at: ws.created_at,
         location: 'local' as const,
         source: ws.source,
@@ -141,7 +138,6 @@ export const Workspaces = () => {
         id: ws.id,
         name: ws.name,
         status: ws.status,
-        package_manager: ws.package_manager,
         created_at: ws.created_at,
         location: 'remote' as const,
         owner: ws.owner,
@@ -166,13 +162,11 @@ export const Workspaces = () => {
       if (createTarget === 'server' && isRemoteConnected) {
         await createRemoteMutation.mutateAsync({
           name: wsName,
-          package_manager: 'pixi',
           pixi_toml: tomlContent,
         });
       } else {
         const ws = await createMutation.mutateAsync({
           name: wsName,
-          package_manager: 'pixi',
           pixi_toml: tomlContent,
           ...(localPath.trim()
             ? { path: localPath.trim(), source: 'local' as const }

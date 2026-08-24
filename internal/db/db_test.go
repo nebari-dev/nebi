@@ -138,3 +138,32 @@ func TestMigrate_BackfillsMarkerForExistingRow(t *testing.T) {
 		t.Errorf("expected marker backfilled, got error: %v", err)
 	}
 }
+
+func TestMigrateDropsLegacyPackageManagerColumn(t *testing.T) {
+	database := testDB(t)
+
+	// Simulate a database created before the package_manager column was
+	// removed: NOT NULL with no default, which would break inserts if left.
+	if err := database.Exec(
+		"CREATE TABLE `workspaces` (`id` text PRIMARY KEY, `name` text NOT NULL, `package_manager` text NOT NULL)",
+	).Error; err != nil {
+		t.Fatalf("create legacy table: %v", err)
+	}
+
+	if err := Migrate(database, false); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	if database.Migrator().HasColumn(&models.Workspace{}, "package_manager") {
+		t.Fatal("expected package_manager column to be dropped")
+	}
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	if err := database.Create(&owner).Error; err != nil {
+		t.Fatalf("create owner: %v", err)
+	}
+	ws := models.Workspace{Name: "post-migration", OwnerID: owner.ID}
+	if err := database.Create(&ws).Error; err != nil {
+		t.Fatalf("create workspace after migration: %v", err)
+	}
+}

@@ -262,9 +262,8 @@ func contains(s, sub string) bool { return bytes.Contains([]byte(s), []byte(sub)
 func createWorkspaceViaAPI(t *testing.T, serverURL, token, name, pixiToml string) string {
 	t.Helper()
 	body := map[string]interface{}{
-		"name":            name,
-		"package_manager": "pixi",
-		"pixi_toml":       pixiToml,
+		"name":      name,
+		"pixi_toml": pixiToml,
 	}
 	b, _ := json.Marshal(body)
 	req, _ := http.NewRequest(http.MethodPost, serverURL+"/api/v1/workspaces", bytes.NewReader(b))

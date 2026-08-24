@@ -119,11 +119,9 @@ type LogConfig struct {
 	Level  string `mapstructure:"level"`  // "debug", "info", "warn", "error"
 }
 
-// PackageManagerConfig holds package manager configuration
+// PackageManagerConfig holds pixi configuration
 type PackageManagerConfig struct {
-	DefaultType string `mapstructure:"default_type"` // "pixi" or "uv"
-	PixiPath    string `mapstructure:"pixi_path"`    // Custom pixi binary path (optional)
-	UvPath      string `mapstructure:"uv_path"`      // Custom uv binary path (optional)
+	PixiPath string `mapstructure:"pixi_path"` // Custom pixi binary path (optional)
 }
 
 // StorageConfig holds storage configuration
@@ -180,7 +178,6 @@ func Load() (*Config, error) {
 	v.SetDefault("queue.valkey_addr", "localhost:6379")
 	v.SetDefault("log.format", "text")
 	v.SetDefault("log.level", "info")
-	v.SetDefault("package_manager.default_type", "pixi")
 	v.SetDefault("storage.workspaces_dir", "./data/workspaces")
 	defaultLimits := limits.Defaults()
 	v.SetDefault("limits.request_body_bytes", defaultLimits.RequestBodyBytes)
@@ -219,9 +216,7 @@ func Load() (*Config, error) {
 	// viper's AutomaticEnv + Unmarshal does not propagate env vars into
 	// nested structs without explicit BindEnv. Bind each nested key so that
 	// e.g. NEBI_PACKAGE_MANAGER_PIXI_PATH overrides the pixi_path field.
-	_ = v.BindEnv("package_manager.default_type", "NEBI_PACKAGE_MANAGER_DEFAULT_TYPE")
 	_ = v.BindEnv("package_manager.pixi_path", "NEBI_PACKAGE_MANAGER_PIXI_PATH")
-	_ = v.BindEnv("package_manager.uv_path", "NEBI_PACKAGE_MANAGER_UV_PATH")
 	_ = v.BindEnv("storage.workspaces_dir", "NEBI_STORAGE_WORKSPACES_DIR")
 	_ = v.BindEnv("server.host", "NEBI_SERVER_HOST")
 	_ = v.BindEnv("server.port", "NEBI_SERVER_PORT")

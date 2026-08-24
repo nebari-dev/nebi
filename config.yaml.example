@@ -54,9 +54,7 @@ log:
   level: info   # debug, info, warn, error
 
 package_manager:
-  default_type: pixi
   # pixi_path: /custom/path/to/pixi  # Optional: custom binary path
-  # uv_path: /custom/path/to/uv      # Optional: custom binary path
 
 storage:
   workspaces_dir: ./data/workspaces

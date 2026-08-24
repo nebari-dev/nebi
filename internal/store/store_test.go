@@ -6,8 +6,47 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
+
+func TestOpenDropsLegacyPackageManagerColumn(t *testing.T) {
+	dataDir := t.TempDir()
+
+	// Simulate a CLI database created before the package_manager column was
+	// removed: NOT NULL with no default, which would break inserts if left.
+	legacy, err := gorm.Open(sqlite.Open(filepath.Join(dataDir, "nebi.db")), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		t.Fatalf("open legacy db: %v", err)
+	}
+	if err := legacy.Exec(
+		"CREATE TABLE `workspaces` (`id` text PRIMARY KEY, `name` text NOT NULL, `package_manager` text NOT NULL)",
+	).Error; err != nil {
+		t.Fatalf("create legacy table: %v", err)
+	}
+	if sqlDB, err := legacy.DB(); err == nil {
+		sqlDB.Close()
+	}
+
+	s, err := Open(dataDir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+
+	if s.db.Migrator().HasColumn(&LocalWorkspace{}, "package_manager") {
+		t.Fatal("expected package_manager column to be dropped")
+	}
+
+	ws := &LocalWorkspace{Name: "post-migration", Path: "/tmp/post-migration"}
+	if err := s.CreateWorkspace(ws); err != nil {
+		t.Fatalf("create workspace after migration: %v", err)
+	}
+}
 
 func testStore(t *testing.T) *Store {
 	t.Helper()
@@ -551,8 +590,5 @@ func TestDefaults(t *testing.T) {
 	}
 	if got.Source != "local" {
 		t.Errorf("expected source 'local', got %q", got.Source)
-	}
-	if got.PackageManager != "pixi" {
-		t.Errorf("expected package_manager 'pixi', got %q", got.PackageManager)
 	}
 }

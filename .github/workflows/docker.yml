@@ -152,20 +152,35 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
 
-      # Push the exact image bytes that passed the smoke test and scan.
-      - name: Push image
+      # Push a linux/amd64 + linux/arm64 manifest list (#417). The amd64 half
+      # is rebuilt from the BuildKit cache written by the build step above, so
+      # the layers that passed the smoke test and scan are what gets pushed.
+      # arm64 is cross-compiled and published untested/unscanned by design
+      # (see the issue's out-of-scope note).
+      - name: Push multi-arch image
         if: steps.registry.outputs.publish == 'true'
-        run: |
-          while IFS= read -r tag; do
-            [ -z "${tag}" ] && continue
-            docker push "${tag}"
-          done <<< "${{ steps.meta.outputs.tags }}"
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: ./Dockerfile
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Add image tags to summary
         run: |
           echo "## Docker Image Built: ${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Platforms:** linux/amd64" >> $GITHUB_STEP_SUMMARY
+          if [[ '${{ steps.registry.outputs.publish }}' == 'true' ]]; then
+            echo "**Platforms:** linux/amd64, linux/arm64" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Platforms:** linux/amd64 (local build only, not published)" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Pull Command:" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY

@@ -26,8 +26,9 @@ func (s *WorkspaceService) RollbackToVersion(ctx context.Context, wsID string, v
 		return nil, err
 	}
 
-	if ws.Status != models.WsStatusReady {
-		return nil, &ValidationError{Message: "Workspace is not ready"}
+	// Failed workspaces may roll back to a known-good version (issue #497).
+	if ws.Status != models.WsStatusReady && ws.Status != models.WsStatusFailed {
+		return nil, &ValidationError{Message: fmt.Sprintf("Workspace is not ready (status: %s)", ws.Status)}
 	}
 
 	// Verify version exists and belongs to this workspace

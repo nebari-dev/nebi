@@ -41,8 +41,11 @@ func (s *WorkspaceService) submitJob(ctx context.Context, wsID string, userID uu
 			return err
 		}
 
-		if ws.Status != models.WsStatusReady {
-			return &ValidationError{Message: "Workspace is not ready"}
+		// A failed workspace may accept new jobs so a corrected spec or a
+		// rollback can recover it (issue #497); only transitional states
+		// (pending/creating/deleting) reject job submission.
+		if ws.Status != models.WsStatusReady && ws.Status != models.WsStatusFailed {
+			return &ValidationError{Message: fmt.Sprintf("Workspace is not ready (status: %s)", ws.Status)}
 		}
 		for _, validate := range lockedValidations {
 			if err := validate(tx, &ws); err != nil {

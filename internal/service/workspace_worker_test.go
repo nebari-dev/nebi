@@ -293,50 +293,13 @@ func TestCreateVersionSnapshot_RejectsOversizedLockBeforeVersionWrite(t *testing
 	}
 }
 
-func TestCreateVersionSnapshot_RejectsManifestPackageLimitBeforeVersionWrite(t *testing.T) {
-	svc, db := testSetup(t, true)
-	userID := createTestUser(t, db, "alice")
-	ws := createReadyWorkspace(t, svc, db, "snapshot-manifest-package-limit", userID)
-	limitCfg := limits.Defaults()
-	limitCfg.MaxPackages = 1
-	svc.limits = limitCfg
-
-	wsPath := svc.executor.GetWorkspacePath(ws)
-	if err := os.MkdirAll(wsPath, 0o755); err != nil {
-		t.Fatalf("mkdir workspace: %v", err)
-	}
-	manifest := "[project]\nname = \"snapshot-manifest-package-limit\"\n\n[dependencies]\npython = \">=3.11\"\nnumpy = \"*\"\n"
-	if err := os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte(manifest), 0o644); err != nil {
-		t.Fatalf("write manifest: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(wsPath, "pixi.lock"), []byte("version: 6\n"), 0o644); err != nil {
-		t.Fatalf("write lock: %v", err)
-	}
-
-	err := svc.CreateVersionSnapshot(context.Background(), ws, uuid.New(), userID, "too many manifest packages")
-
-	var ve *ValidationError
-	if !isValidationError(err, &ve) {
-		t.Fatalf("expected ValidationError, got %T: %v", err, err)
-	}
-	var versions int64
-	db.Model(&models.WorkspaceVersion{}).Where("workspace_id = ?", ws.ID).Count(&versions)
-	if versions != 0 {
-		t.Fatalf("expected no version writes, got %d", versions)
-	}
-}
-
-func TestCreateVersionSnapshot_AllowsResolvedPackagesAboveMaxPackages(t *testing.T) {
-	// max_packages caps what a user asks for (manifest entries, install
-	// requests), not what the resolver produces: a small manifest routinely
+func TestCreateVersionSnapshot_StoresAllResolvedPackages(t *testing.T) {
+	// Resolver output is never count-capped: a small manifest routinely
 	// resolves to hundreds of transitive packages, and imported workspaces
 	// arrive with a fully resolved lockfile.
 	svc, db := testSetup(t, true)
 	userID := createTestUser(t, db, "alice")
 	ws := createReadyWorkspace(t, svc, db, "snapshot-package-limit", userID)
-	limitCfg := limits.Defaults()
-	limitCfg.MaxPackages = 1
-	svc.limits = limitCfg
 
 	pmType := "static-list-" + uuid.NewString()
 	pkgmgr.Register(pmType, func(context.Context, string) (pkgmgr.PackageManager, error) {

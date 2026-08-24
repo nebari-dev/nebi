@@ -106,60 +106,26 @@ func TestInstallPackages_NotFound(t *testing.T) {
 	}
 }
 
-func TestInstallPackages_RejectsTooManyPackagesBeforeJobWrite(t *testing.T) {
+func TestInstallPackages_AllowsLargePackageRequest(t *testing.T) {
+	// There is no cap on how many packages a request may name; abuse is
+	// bounded by request size, job quotas, and job runtime limits.
 	svc, db := testSetup(t, true)
-	limitCfg := limits.Defaults()
-	limitCfg.MaxPackages = 1
-	svc.limits = limitCfg
 	userID := createTestUser(t, db, "alice")
-	ws := createReadyWorkspace(t, svc, db, "too-many-pkgs", userID)
+	ws := createReadyWorkspace(t, svc, db, "many-pkgs", userID)
 
-	_, err := svc.InstallPackages(context.Background(), ws.ID.String(), []string{"numpy", "pandas"}, userID)
+	packages := make([]string, 200)
+	for i := range packages {
+		packages[i] = fmt.Sprintf("pkg-%d", i)
+	}
 
-	var ve *ValidationError
-	if !isValidationError(err, &ve) {
-		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	if _, err := svc.InstallPackages(context.Background(), ws.ID.String(), packages, userID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	var jobs int64
 	db.Model(&models.Job{}).Where("workspace_id = ? AND type = ?", ws.ID, models.JobTypeInstall).Count(&jobs)
-	if jobs != 0 {
-		t.Fatalf("expected no install job writes, got %d", jobs)
-	}
-	var auditCount int64
-	db.Model(&models.AuditLog{}).Where("user_id = ? AND action = ?", userID, audit.ActionInstallPackage).Count(&auditCount)
-	if auditCount != 0 {
-		t.Fatalf("expected no install audit writes, got %d", auditCount)
-	}
-}
-
-func TestInstallPackages_RejectsProjectedManifestPackageLimitBeforeJobWrite(t *testing.T) {
-	svc, db := testSetup(t, true)
-	limitCfg := limits.Defaults()
-	limitCfg.MaxPackages = 1
-	svc.limits = limitCfg
-	userID := createTestUser(t, db, "alice")
-	ws := createReadyWorkspace(t, svc, db, "projected-package-limit", userID)
-	manifest := "[project]\nname = \"projected-package-limit\"\n\n[dependencies]\npython = \">=3.11\"\n"
-	if err := writeWorkspaceFiles(t, svc, ws, manifest, "version: 6\n"); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err := svc.InstallPackages(context.Background(), ws.ID.String(), []string{"numpy"}, userID)
-
-	var ve *ValidationError
-	if !isValidationError(err, &ve) {
-		t.Fatalf("expected ValidationError, got %T: %v", err, err)
-	}
-	var jobs int64
-	db.Model(&models.Job{}).Where("workspace_id = ? AND type = ?", ws.ID, models.JobTypeInstall).Count(&jobs)
-	if jobs != 0 {
-		t.Fatalf("expected no install job writes, got %d", jobs)
-	}
-	var auditCount int64
-	db.Model(&models.AuditLog{}).Where("user_id = ? AND action = ?", userID, audit.ActionInstallPackage).Count(&auditCount)
-	if auditCount != 0 {
-		t.Fatalf("expected no install audit writes, got %d", auditCount)
+	if jobs != 1 {
+		t.Fatalf("expected 1 install job, got %d", jobs)
 	}
 }
 
@@ -543,13 +509,10 @@ func TestListPackages_NotFound(t *testing.T) {
 	}
 }
 
-func TestSyncPackagesFromWorkspace_AllowsResolvedPackagesAboveMaxPackages(t *testing.T) {
-	// max_packages caps user-requested packages, not resolver output: a
-	// small manifest routinely resolves to hundreds of transitive packages.
+func TestSyncPackagesFromWorkspace_SavesAllResolvedPackages(t *testing.T) {
+	// Resolver output is never count-capped: a small manifest routinely
+	// resolves to hundreds of transitive packages.
 	svc, db := testSetup(t, true)
-	limitCfg := limits.Defaults()
-	limitCfg.MaxPackages = 1
-	svc.limits = limitCfg
 	userID := createTestUser(t, db, "alice")
 	ws := createReadyWorkspace(t, svc, db, "listed-package-limit", userID)
 

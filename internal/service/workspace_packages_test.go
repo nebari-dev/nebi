@@ -107,8 +107,6 @@ func TestInstallPackages_NotFound(t *testing.T) {
 }
 
 func TestInstallPackages_AllowsLargePackageRequest(t *testing.T) {
-	// There is no cap on how many packages a request may name; abuse is
-	// bounded by request size, job quotas, and job runtime limits.
 	svc, db := testSetup(t, true)
 	userID := createTestUser(t, db, "alice")
 	ws := createReadyWorkspace(t, svc, db, "many-pkgs", userID)
@@ -510,8 +508,6 @@ func TestListPackages_NotFound(t *testing.T) {
 }
 
 func TestSyncPackagesFromWorkspace_SavesAllResolvedPackages(t *testing.T) {
-	// Resolver output is never count-capped: a small manifest routinely
-	// resolves to hundreds of transitive packages.
 	svc, db := testSetup(t, true)
 	userID := createTestUser(t, db, "alice")
 	ws := createReadyWorkspace(t, svc, db, "listed-package-limit", userID)

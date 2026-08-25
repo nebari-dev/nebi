@@ -132,10 +132,6 @@ func (s *WorkspaceService) mapPackageManagerListError(err error) error {
 	return err
 }
 
-// validateListedPackages checks per-entry constraints on resolver output.
-// There is deliberately no count cap: a resolved environment routinely
-// contains hundreds of transitive packages. Total size of resolver output
-// is bounded by MetadataBytes at the list and serialization layers.
 func (s *WorkspaceService) validateListedPackages(name string, packages []pkgmgr.Package) error {
 	for i, pkg := range packages {
 		fields := []struct {

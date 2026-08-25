@@ -226,8 +226,6 @@ func TestCreate_RejectsOversizedPixiTomlBeforeWrites(t *testing.T) {
 }
 
 func TestCreate_AllowsManifestWithManyPackages(t *testing.T) {
-	// Manifest package count is not capped; manifest size is bounded by
-	// manifest_bytes and each entry by package_string_bytes.
 	svc, db := testSetup(t, true)
 	userID := createTestUser(t, db, "alice")
 

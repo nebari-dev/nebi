@@ -294,9 +294,6 @@ func TestCreateVersionSnapshot_RejectsOversizedLockBeforeVersionWrite(t *testing
 }
 
 func TestCreateVersionSnapshot_StoresAllResolvedPackages(t *testing.T) {
-	// Resolver output is never count-capped: a small manifest routinely
-	// resolves to hundreds of transitive packages, and imported workspaces
-	// arrive with a fully resolved lockfile.
 	svc, db := testSetup(t, true)
 	userID := createTestUser(t, db, "alice")
 	ws := createReadyWorkspace(t, svc, db, "snapshot-package-limit", userID)

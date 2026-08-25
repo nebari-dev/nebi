@@ -69,7 +69,6 @@ storage:
 #   manifest_bytes: 1048576           # NEBI_LIMITS_MANIFEST_BYTES
 #   lock_bytes: 16777216              # NEBI_LIMITS_LOCK_BYTES
 #   metadata_bytes: 65536             # NEBI_LIMITS_METADATA_BYTES
-#   max_packages: 128                 # NEBI_LIMITS_MAX_PACKAGES
 #   package_string_bytes: 256         # NEBI_LIMITS_PACKAGE_STRING_BYTES
 #
 #   # Active-job admission quotas. Delete jobs bypass these quotas so a

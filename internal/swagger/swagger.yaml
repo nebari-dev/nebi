@@ -278,8 +278,6 @@ definitions:
         type: integer
       manifest_bytes:
         type: integer
-      max_packages:
-        type: integer
       metadata_bytes:
         type: integer
       package_string_bytes:

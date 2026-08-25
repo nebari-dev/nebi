@@ -293,46 +293,10 @@ func TestCreateVersionSnapshot_RejectsOversizedLockBeforeVersionWrite(t *testing
 	}
 }
 
-func TestCreateVersionSnapshot_RejectsManifestPackageLimitBeforeVersionWrite(t *testing.T) {
-	svc, db := testSetup(t, true)
-	userID := createTestUser(t, db, "alice")
-	ws := createReadyWorkspace(t, svc, db, "snapshot-manifest-package-limit", userID)
-	limitCfg := limits.Defaults()
-	limitCfg.MaxPackages = 1
-	svc.limits = limitCfg
-
-	wsPath := svc.executor.GetWorkspacePath(ws)
-	if err := os.MkdirAll(wsPath, 0o755); err != nil {
-		t.Fatalf("mkdir workspace: %v", err)
-	}
-	manifest := "[project]\nname = \"snapshot-manifest-package-limit\"\n\n[dependencies]\npython = \">=3.11\"\nnumpy = \"*\"\n"
-	if err := os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte(manifest), 0o644); err != nil {
-		t.Fatalf("write manifest: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(wsPath, "pixi.lock"), []byte("version: 6\n"), 0o644); err != nil {
-		t.Fatalf("write lock: %v", err)
-	}
-
-	err := svc.CreateVersionSnapshot(context.Background(), ws, uuid.New(), userID, "too many manifest packages")
-
-	var ve *ValidationError
-	if !isValidationError(err, &ve) {
-		t.Fatalf("expected ValidationError, got %T: %v", err, err)
-	}
-	var versions int64
-	db.Model(&models.WorkspaceVersion{}).Where("workspace_id = ?", ws.ID).Count(&versions)
-	if versions != 0 {
-		t.Fatalf("expected no version writes, got %d", versions)
-	}
-}
-
-func TestCreateVersionSnapshot_RejectsTooManyListedPackagesBeforeVersionWrite(t *testing.T) {
+func TestCreateVersionSnapshot_StoresAllResolvedPackages(t *testing.T) {
 	svc, db := testSetup(t, true)
 	userID := createTestUser(t, db, "alice")
 	ws := createReadyWorkspace(t, svc, db, "snapshot-package-limit", userID)
-	limitCfg := limits.Defaults()
-	limitCfg.MaxPackages = 1
-	svc.limits = limitCfg
 
 	pmType := "static-list-" + uuid.NewString()
 	pkgmgr.Register(pmType, func(context.Context, string) (pkgmgr.PackageManager, error) {
@@ -342,6 +306,10 @@ func TestCreateVersionSnapshot_RejectsTooManyListedPackagesBeforeVersionWrite(t 
 				{Name: "pandas", Version: "2.0.0"},
 			},
 		}, nil
+	})
+	pkgmgr.RegisterManifestContentParser(pmType, pkgmgr.ManifestContentParser{
+		PackageNames:           func(string) ([]string, error) { return []string{"numpy"}, nil },
+		DefaultDependencyNames: func(string) ([]string, error) { return []string{"numpy"}, nil },
 	})
 	ws.PackageManager = pmType
 	if err := db.Save(ws).Error; err != nil {
@@ -359,15 +327,17 @@ func TestCreateVersionSnapshot_RejectsTooManyListedPackagesBeforeVersionWrite(t 
 		t.Fatalf("write lock: %v", err)
 	}
 
-	err := svc.CreateVersionSnapshot(context.Background(), ws, uuid.New(), userID, "too many packages")
-
-	var ve *ValidationError
-	if !isValidationError(err, &ve) {
-		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	err := svc.CreateVersionSnapshot(context.Background(), ws, uuid.New(), userID, "resolved packages above cap")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	var versions int64
-	db.Model(&models.WorkspaceVersion{}).Where("workspace_id = ?", ws.ID).Count(&versions)
-	if versions != 0 {
-		t.Fatalf("expected no version writes, got %d", versions)
+
+	var versions []models.WorkspaceVersion
+	db.Where("workspace_id = ?", ws.ID).Find(&versions)
+	if len(versions) != 1 {
+		t.Fatalf("expected 1 version, got %d", len(versions))
+	}
+	if !strings.Contains(versions[0].PackageMetadata, "numpy") || !strings.Contains(versions[0].PackageMetadata, "pandas") {
+		t.Fatalf("expected both resolved packages in metadata, got %q", versions[0].PackageMetadata)
 	}
 }

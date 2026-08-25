@@ -54,7 +54,6 @@ func TestMiddlewareRejectsNonLocalOrigins(t *testing.T) {
 	for _, origin := range []string{
 		"https://evil.example.com",
 		"http://evil.example.com:8460",
-		"null",
 		"file://",
 	} {
 		req := httptest.NewRequest(http.MethodPost, "http://localhost:8460/api/v1/workspaces", nil)
@@ -64,6 +63,29 @@ func TestMiddlewareRejectsNonLocalOrigins(t *testing.T) {
 
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("Origin %q: expected 403, got %d", origin, rec.Code)
+		}
+	}
+}
+
+// The Wails webview reaches the network listener directly in `wails dev`
+// (VITE_API_URL points the frontend at it), sending "wails://..." Origins on
+// macOS/Linux — or "null" from some webviews. These must pass, matching the
+// origins corsMiddleware echoes (issue #530).
+func TestMiddlewareAllowsWebviewOrigins(t *testing.T) {
+	guard := netguard.Middleware(okHandler(), false, nil)
+
+	for _, origin := range []string{
+		"wails://wails.localhost",
+		"wails://wails.localhost:34115",
+		"null",
+	} {
+		req := httptest.NewRequest(http.MethodPost, "http://localhost:8460/api/v1/workspaces", nil)
+		req.Header.Set("Origin", origin)
+		rec := httptest.NewRecorder()
+		guard.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Origin %q: expected 200, got %d", origin, rec.Code)
 		}
 	}
 }

@@ -97,7 +97,7 @@ func (s *WorkspaceService) InstallPackages(ctx context.Context, wsID string, pac
 	metadata := map[string]interface{}{
 		"packages": packages,
 	}
-	return s.submitJob(ctx, wsID, userID, models.JobTypeInstall, metadata, audit.ActionInstallPackage, s.validateWorkspaceInstallPackagesForJob(packages))
+	return s.submitJob(ctx, wsID, userID, models.JobTypeInstall, metadata, audit.ActionInstallPackage, s.validateWorkspaceManifestAndLockForJob)
 }
 
 // SolveWorkspace creates and enqueues a solve job (pixi install from current pixi.toml).

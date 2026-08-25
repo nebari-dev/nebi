@@ -30,13 +30,10 @@ func (s *WorkspaceService) validateManifestContent(packageManager string, name s
 	if s.limits.ManifestBytes > 0 && len(content) > s.limits.ManifestBytes {
 		return &ValidationError{Message: fmt.Sprintf("%s exceeds %d bytes", name, s.limits.ManifestBytes)}
 	}
-	if s.limits.MaxPackages > 0 || s.limits.PackageStringBytes > 0 {
+	if s.limits.PackageStringBytes > 0 {
 		packages, err := pkgmgr.ManifestPackageNames(packageManager, content)
 		if err != nil {
 			return &ValidationError{Message: fmt.Sprintf("invalid %s: %v", name, err)}
-		}
-		if s.limits.MaxPackages > 0 && len(packages) > s.limits.MaxPackages {
-			return &ValidationError{Message: fmt.Sprintf("%s package entries exceed maximum count %d", name, s.limits.MaxPackages)}
 		}
 		for i, pkg := range packages {
 			if strings.TrimSpace(pkg) == "" {
@@ -93,18 +90,6 @@ func (s *WorkspaceService) validateWorkspaceManifestAndLockForJob(_ *gorm.DB, ws
 	return s.validateWorkspaceFileForJob(filepath.Join(envPath, "pixi.lock"), "pixi.lock", s.limits.LockBytes, s.validateLockContent)
 }
 
-func (s *WorkspaceService) validateWorkspaceInstallPackagesForJob(packages []string) lockedJobValidation {
-	return func(_ *gorm.DB, ws *models.Workspace) error {
-		envPath := s.executor.GetWorkspacePath(ws)
-		if err := s.validateWorkspaceFileForJob(filepath.Join(envPath, "pixi.toml"), "pixi.toml", s.limits.ManifestBytes, func(name string, content string) error {
-			return s.validateManifestAfterPackageInstall(ws.PackageManager, name, content, packages)
-		}); err != nil {
-			return err
-		}
-		return s.validateWorkspaceFileForJob(filepath.Join(envPath, "pixi.lock"), "pixi.lock", s.limits.LockBytes, s.validateLockContent)
-	}
-}
-
 func (s *WorkspaceService) validateWorkspaceFileForJob(path string, name string, maxBytes int, validate func(string, string) error) error {
 	content, err := s.readLimitedTextFile(path, name, maxBytes)
 	if err != nil {
@@ -116,68 +101,9 @@ func (s *WorkspaceService) validateWorkspaceFileForJob(path string, name string,
 	return validate(name, content)
 }
 
-func (s *WorkspaceService) validateManifestAfterPackageInstall(packageManager string, name string, content string, packages []string) error {
-	if err := s.validateManifestContent(packageManager, name, content); err != nil {
-		return err
-	}
-	if content == "" || s.limits.MaxPackages <= 0 {
-		return nil
-	}
-
-	manifestPackages, err := pkgmgr.ManifestPackageNames(packageManager, content)
-	if err != nil {
-		return &ValidationError{Message: fmt.Sprintf("invalid %s: %v", name, err)}
-	}
-	defaultDependencies, err := pkgmgr.ManifestDefaultDependencyNames(packageManager, content)
-	if err != nil {
-		return &ValidationError{Message: fmt.Sprintf("invalid %s: %v", name, err)}
-	}
-
-	defaultDependencySet := make(map[string]struct{}, len(defaultDependencies))
-	for _, pkg := range defaultDependencies {
-		defaultDependencySet[pkg] = struct{}{}
-	}
-
-	projected := len(manifestPackages)
-	newPackages := make(map[string]struct{}, len(packages))
-	for _, pkg := range packages {
-		packageName := installPackageEntryName(pkg)
-		if _, exists := defaultDependencySet[packageName]; exists {
-			continue
-		}
-		if _, counted := newPackages[packageName]; counted {
-			continue
-		}
-		newPackages[packageName] = struct{}{}
-		projected++
-	}
-
-	if projected > s.limits.MaxPackages {
-		return &ValidationError{Message: fmt.Sprintf("%s package entries would exceed maximum count %d", name, s.limits.MaxPackages)}
-	}
-	return nil
-}
-
-func installPackageEntryName(pkg string) string {
-	packageName := strings.TrimSpace(pkg)
-	if _, after, ok := strings.Cut(packageName, "::"); ok && after != "" {
-		packageName = after
-	}
-	if idx := strings.IndexAny(packageName, " <>=!~"); idx > 0 {
-		packageName = packageName[:idx]
-	}
-	if packageName == "" {
-		return strings.TrimSpace(pkg)
-	}
-	return packageName
-}
-
 func (s *WorkspaceService) validatePackages(packages []string) error {
 	if len(packages) == 0 {
 		return &ValidationError{Message: "packages must not be empty"}
-	}
-	if s.limits.MaxPackages > 0 && len(packages) > s.limits.MaxPackages {
-		return &ValidationError{Message: fmt.Sprintf("packages exceeds maximum count %d", s.limits.MaxPackages)}
 	}
 	for i, pkg := range packages {
 		if strings.TrimSpace(pkg) == "" {
@@ -207,9 +133,6 @@ func (s *WorkspaceService) mapPackageManagerListError(err error) error {
 }
 
 func (s *WorkspaceService) validateListedPackages(name string, packages []pkgmgr.Package) error {
-	if s.limits.MaxPackages > 0 && len(packages) > s.limits.MaxPackages {
-		return &ValidationError{Message: fmt.Sprintf("%s exceeds maximum count %d", name, s.limits.MaxPackages)}
-	}
 	for i, pkg := range packages {
 		fields := []struct {
 			name  string

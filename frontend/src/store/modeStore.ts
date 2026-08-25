@@ -50,12 +50,20 @@ export const useModeStore = create<ModeState>()((set, get) => ({
         }
       }
     }
-    // Default to team mode when /version never answers, but never downgrade
-    // networkMode in the desktop app — pinning 'online' there would wedge
-    // every loopback query in 'paused' while the OS reports offline, which is
-    // exactly the issue #217 scenario.
-    setQueryNetworkMode(isDesktopApp() ? 'always' : 'online');
-    set({ mode: 'team', features: {}, logoutUrl: null, loading: false });
+    // When /version never answers, fall back by surface: the desktop app is
+    // always local mode, so resolving to team there would strand it on the
+    // Login page over a transient API hiccup (issue #530) — everywhere else
+    // default to team. Never downgrade networkMode in the desktop app —
+    // pinning 'online' there would wedge every loopback query in 'paused'
+    // while the OS reports offline, which is exactly the issue #217 scenario.
+    const desktop = isDesktopApp();
+    setQueryNetworkMode(desktop ? 'always' : 'online');
+    set({
+      mode: desktop ? 'local' : 'team',
+      features: {},
+      logoutUrl: null,
+      loading: false,
+    });
   },
   isLocalMode: () => get().mode === 'local',
 }));

@@ -51,15 +51,7 @@ type OutputLimitError struct {
 }
 
 func (e *OutputLimitError) Error() string {
-	command := e.Command
-	if command == "" {
-		command = "pixi"
-	}
-	stream := e.Stream
-	if stream == "" {
-		stream = "output"
-	}
-	return fmt.Sprintf("%s %s exceeds %d bytes", command, stream, e.Limit)
+	return fmt.Sprintf("%s %s exceeds %d bytes", e.Command, e.Stream, e.Limit)
 }
 
 // UpdateOptions contains parameters for updating packages

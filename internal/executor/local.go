@@ -149,7 +149,7 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 
 // pixiFor resolves the pixi manager, honoring a configured binary path.
 func (e *LocalExecutor) pixiFor(ctx context.Context) (*pixi.PixiManager, error) {
-	return pixi.NewWithPathContext(ctx, e.config.PackageManager.PixiPath)
+	return pixi.NewWithPathContext(ctx, e.config.PixiPath)
 }
 
 // runPixiLock runs `pixi lock` in envPath. It resolves the dependency

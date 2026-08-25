@@ -42,7 +42,7 @@ func startLocalModeServer(t *testing.T) *localModeEnv {
 		"NEBI_DATABASE_DSN",
 		"NEBI_STORAGE_WORKSPACES_DIR",
 		"NEBI_SERVER_PORT",
-		"NEBI_PACKAGE_MANAGER_PIXI_PATH",
+		"NEBI_PIXI_PATH",
 	}
 	saved := make(map[string]string, len(envVars))
 	for _, k := range envVars {
@@ -95,7 +95,7 @@ exit 0
 	if err := os.WriteFile(pixiPath, []byte(pixiScript), 0o755); err != nil {
 		t.Fatalf("write fake pixi: %v", err)
 	}
-	os.Setenv("NEBI_PACKAGE_MANAGER_PIXI_PATH", pixiPath)
+	os.Setenv("NEBI_PIXI_PATH", pixiPath)
 
 	serverURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	ctx, cancel := context.WithCancel(context.Background())

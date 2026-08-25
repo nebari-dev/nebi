@@ -216,10 +216,8 @@ func TestDeleteWorkspace_ManagedDirAlreadyGone(t *testing.T) {
 
 func TestLocalExecutor_CreateWorkspace_SeedDirPopulatesWorkspace(t *testing.T) {
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
-		PackageManager: config.PackageManagerConfig{
-			PixiPath: "/usr/bin/true", // no-op pixi install
-		},
+		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PixiPath: "/usr/bin/true", // no-op pixi install
 	}
 	exec, err := NewLocalExecutor(cfg)
 	if err != nil {
@@ -271,11 +269,9 @@ func TestLocalExecutor_CreateWorkspaceRejectsStorageLimit(t *testing.T) {
 	limitCfg := limits.Defaults()
 	limitCfg.JobStorageBytes = 4
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
-		PackageManager: config.PackageManagerConfig{
-			PixiPath: "/usr/bin/true",
-		},
-		Limits: limitCfg,
+		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PixiPath: "/usr/bin/true",
+		Limits:   limitCfg,
 	}
 	exec, err := NewLocalExecutor(cfg)
 	if err != nil {
@@ -456,10 +452,8 @@ esac
 `)
 
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
-		PackageManager: config.PackageManagerConfig{
-			PixiPath: pixiBin,
-		},
+		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PixiPath: pixiBin,
 	}
 	exec, err := NewLocalExecutor(cfg)
 	if err != nil {
@@ -489,10 +483,8 @@ func TestLocalExecutor_CreateWorkspace_PixiTomlRunsLockNotInstall(t *testing.T) 
 	pixiBin, argsLog := writeRecordingStub(t)
 
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
-		PackageManager: config.PackageManagerConfig{
-			PixiPath: pixiBin,
-		},
+		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PixiPath: pixiBin,
 	}
 	exec, err := NewLocalExecutor(cfg)
 	if err != nil {
@@ -523,10 +515,8 @@ func TestLocalExecutor_SolveEnvironment_RunsLockNotInstall(t *testing.T) {
 	pixiBin, argsLog := writeRecordingStub(t)
 
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
-		PackageManager: config.PackageManagerConfig{
-			PixiPath: pixiBin,
-		},
+		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PixiPath: pixiBin,
 	}
 	exec, err := NewLocalExecutor(cfg)
 	if err != nil {
@@ -558,10 +548,8 @@ func TestLocalExecutor_InstallEnvironment_RunsPixiInstall(t *testing.T) {
 	pixiBin, argsLog := writeRecordingStub(t)
 
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
-		PackageManager: config.PackageManagerConfig{
-			PixiPath: pixiBin,
-		},
+		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PixiPath: pixiBin,
 	}
 	exec, err := NewLocalExecutor(cfg)
 	if err != nil {
@@ -641,10 +629,8 @@ func TestLocalExecutor_PackageOps_UseNoInstall(t *testing.T) {
 	pixiBin, argsLog := writeRecordingStub(t)
 
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
-		PackageManager: config.PackageManagerConfig{
-			PixiPath: pixiBin,
-		},
+		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PixiPath: pixiBin,
 	}
 	exec, err := NewLocalExecutor(cfg)
 	if err != nil {

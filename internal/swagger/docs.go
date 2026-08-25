@@ -3788,9 +3788,6 @@ const docTemplate = `{
                 "manifest_bytes": {
                     "type": "integer"
                 },
-                "max_packages": {
-                    "type": "integer"
-                },
                 "metadata_bytes": {
                     "type": "integer"
                 },

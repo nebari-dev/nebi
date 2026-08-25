@@ -793,9 +793,6 @@ func TestAdminGetResourceMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetResourceMetrics: %v", err)
 	}
-	if metrics.Limits.MaxPackages != limits.Defaults().MaxPackages {
-		t.Fatalf("expected default max_packages, got %d", metrics.Limits.MaxPackages)
-	}
 	if metrics.ActiveJobsGlobal != 1 {
 		t.Fatalf("expected 1 active job, got %d", metrics.ActiveJobsGlobal)
 	}

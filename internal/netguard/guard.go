@@ -17,7 +17,8 @@ import (
 //     127.0.0.1, ::1). Set allowAnyHost when the operator explicitly bound a
 //     non-loopback interface and therefore expects non-loopback Host values.
 //
-//   - The Origin header, when present, must be a loopback http(s) origin or
+//   - The Origin header, when present, must be a local UI origin (see
+//     IsLocalUIOrigin: loopback http(s), the Wails webview, or "null") or
 //     one of allowedOrigins (operator-configured via server.allowed_origins /
 //     NEBI_SERVER_ALLOWED_ORIGINS, e.g. the public hostname of a reverse
 //     proxy such as JupyterHub's jupyter-server-proxy — browsers send the
@@ -30,7 +31,7 @@ func Middleware(next http.Handler, allowAnyHost bool, allowedOrigins []string) h
 			http.Error(w, "Forbidden: local mode only accepts requests addressed to a local host", http.StatusForbidden)
 			return
 		}
-		if origin := r.Header.Get("Origin"); origin != "" && !IsLoopbackOrigin(origin) && !OriginAllowed(origin, allowedOrigins) {
+		if origin := r.Header.Get("Origin"); origin != "" && !IsLocalUIOrigin(origin) && !OriginAllowed(origin, allowedOrigins) {
 			http.Error(w, "Forbidden: local mode only accepts requests from a local origin", http.StatusForbidden)
 			return
 		}
@@ -56,6 +57,15 @@ func OriginAllowed(origin string, allowed []string) bool {
 
 func normalizeOrigin(origin string) string {
 	return strings.ToLower(strings.TrimRight(strings.TrimSpace(origin), "/"))
+}
+
+// IsLocalUIOrigin reports whether an Origin header value is one a local UI
+// surface produces: a loopback http(s) origin (e.g. the Vite dev server), a
+// Wails webview origin ("wails://..." on macOS/Linux), or the opaque "null"
+// origin some webviews produce. Used by both this package's Middleware and
+// the API's CORS middleware so the two checks cannot drift apart.
+func IsLocalUIOrigin(origin string) bool {
+	return IsLoopbackOrigin(origin) || strings.HasPrefix(origin, "wails://") || origin == "null"
 }
 
 // IsLoopbackOrigin reports whether an Origin header value is an http(s)

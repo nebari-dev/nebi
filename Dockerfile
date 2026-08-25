@@ -29,9 +29,13 @@ COPY --from=frontend-builder /app/frontend/dist ./internal/web/dist
 # Generate swagger docs
 RUN make swagger
 
-# Build pure Go binary with CGO disabled
+# Build pure Go binary with CGO disabled. TARGETOS/TARGETARCH are set by
+# BuildKit to the build's target platform; CI builds each platform on a
+# native runner, so this is always a native compile there.
 ARG VERSION=dev
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath \
     -ldflags "-s -w -X main.Version=${VERSION}" \
     -o /nebi ./cmd/nebi

@@ -42,7 +42,7 @@ func (s *WorkspaceService) submitJob(ctx context.Context, wsID string, userID uu
 		}
 
 		if ws.Status.IsTransitional() {
-			return &ValidationError{Message: fmt.Sprintf("Workspace cannot accept jobs while %s", ws.Status)}
+			return &ValidationError{Message: fmt.Sprintf("Workspace is not ready to accept jobs while status is: '%s'", ws.Status)}
 		}
 		for _, validate := range lockedValidations {
 			if err := validate(tx, &ws); err != nil {

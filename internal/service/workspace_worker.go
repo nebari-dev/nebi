@@ -27,7 +27,7 @@ func (s *WorkspaceService) RollbackToVersion(ctx context.Context, wsID string, v
 	}
 
 	if ws.Status.IsTransitional() {
-		return nil, &ValidationError{Message: fmt.Sprintf("Workspace cannot accept jobs while %s", ws.Status)}
+		return nil, &ValidationError{Message: fmt.Sprintf("Workspace is not ready to accept jobs while status is: '%s'", ws.Status)}
 	}
 
 	// Verify version exists and belongs to this workspace

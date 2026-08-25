@@ -119,14 +119,6 @@ export const Layout = ({
                     )}
                   </NavLink>
                 )}
-                <Button
-                  variant="ghost"
-                  className="gap-2"
-                  onClick={() => openExternal('https://nebi.nebari.dev/')}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Docs
-                </Button>
               </nav>
             </div>
             <div className="flex items-center gap-4">
@@ -171,27 +163,39 @@ export const Layout = ({
                   </button>
                 </div>
               )}
-              {isAdmin && (
-                <NavLink to="/admin">
-                  {({ isActive }) => (
-                    <Button
-                      variant={isActive ? 'secondary' : 'ghost'}
-                      className="gap-2"
-                    >
-                      <Shield className="h-4 w-4" />
-                      Admin
-                    </Button>
-                  )}
-                </NavLink>
-              )}
-              {!isLocalMode && (
-                <ProfileMenu
-                  user={user}
-                  themeMode={themeMode}
-                  onThemeChange={onThemeChange}
-                  onLogout={handleLogout}
-                />
-              )}
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Docs"
+                  title="Docs"
+                  onClick={() => openExternal('https://nebi.nebari.dev/')}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+                {isAdmin && (
+                  <NavLink to="/admin">
+                    {({ isActive }) => (
+                      <Button
+                        variant={isActive ? 'secondary' : 'ghost'}
+                        size="icon"
+                        aria-label="Admin"
+                        title="Admin"
+                      >
+                        <Shield className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </NavLink>
+                )}
+                {!isLocalMode && (
+                  <ProfileMenu
+                    user={user}
+                    themeMode={themeMode}
+                    onThemeChange={onThemeChange}
+                    onLogout={handleLogout}
+                  />
+                )}
+              </div>
             </div>
           </div>
         </div>

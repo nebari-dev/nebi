@@ -16,6 +16,7 @@ const registry: OCIRegistry = {
   is_default: false,
   namespace: 'nebari',
   config_managed: false,
+  restricted: false,
   created_at: '2026-01-01T00:00:00Z',
 };
 

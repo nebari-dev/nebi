@@ -1,6 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { useModeStore } from '@/store/modeStore';
 import {
   mockAdminUser,
   mockCollaborator,
@@ -27,6 +28,19 @@ import {
 } from './useAdmin';
 
 describe('useIsAdmin', () => {
+  afterEach(() => {
+    useModeStore.setState({ mode: null, features: {}, loading: true });
+  });
+
+  it('does not probe the admin API in local mode and resolves as not-admin', () => {
+    useModeStore.setState({ mode: 'local', features: {}, loading: false });
+    const { result } = renderHook(() => useIsAdmin(), {
+      wrapper: createWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(result.current.data).toBeUndefined();
+  });
+
   it('returns true when admin endpoint succeeds', async () => {
     const { result } = renderHook(() => useIsAdmin(), {
       wrapper: createWrapper(),

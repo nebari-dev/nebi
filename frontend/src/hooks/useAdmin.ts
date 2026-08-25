@@ -1,13 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminApi } from '@/api/admin';
+import { useModeStore } from '@/store/modeStore';
 import type {
   CreateUserRequest,
   FederatedIdentityReviewStatusFilter,
   ShareWorkspaceRequest,
 } from '@/types/models';
 
-// Check if current user is admin
+// Check if current user is admin. Local mode bypasses auth entirely, so there
+// is no admin role to probe for — the query stays disabled there and the
+// undefined data reads as not-admin.
 export const useIsAdmin = () => {
+  const isLocalMode = useModeStore((s) => s.isLocalMode());
   return useQuery({
     queryKey: ['user', 'is_admin'],
     queryFn: async () => {
@@ -19,6 +23,7 @@ export const useIsAdmin = () => {
       }
     },
     retry: false,
+    enabled: !isLocalMode,
   });
 };
 

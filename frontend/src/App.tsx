@@ -1,4 +1,4 @@
-import { QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import type { ReactElement } from 'react';
 import { useEffect } from 'react';
@@ -9,9 +9,9 @@ import {
   Route,
   Routes,
 } from 'react-router-dom';
-import { adminApi } from './api/admin';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { Layout } from './components/layout/Layout';
+import { useIsAdmin } from './hooks/useAdmin';
 import { useThemePreference } from './hooks/useThemePreference';
 import { getBasePath } from './lib/basePath';
 import { queryClient } from './lib/queryClient';
@@ -58,19 +58,16 @@ const PrivateRoute = ({ children }: { children: ReactElement }) => {
   return isAuthenticated ? children : <Navigate to="/login" />;
 };
 
-const AdminRoute = () => {
-  const { data: isAdmin, isLoading } = useQuery({
-    queryKey: ['user', 'is_admin'],
-    queryFn: async () => {
-      try {
-        await adminApi.getUsers();
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    retry: false,
-  });
+// Exported for tests. Admin is a team-mode surface: local mode has no auth or
+// roles, so /admin/* redirects away without ever probing the admin API (the
+// useIsAdmin query is disabled there).
+export const AdminRoute = () => {
+  const isLocalMode = useModeStore((state) => state.isLocalMode());
+  const { data: isAdmin, isLoading } = useIsAdmin();
+
+  if (isLocalMode) {
+    return <Navigate to="/workspaces" replace />;
+  }
 
   if (isLoading) {
     return (

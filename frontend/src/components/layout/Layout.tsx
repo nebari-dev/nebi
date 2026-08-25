@@ -171,7 +171,7 @@ export const Layout = ({
                   </button>
                 </div>
               )}
-              {isAdmin && (
+              {!isLocalMode && isAdmin && (
                 <NavLink to="/admin">
                   {({ isActive }) => (
                     <Button

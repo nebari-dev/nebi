@@ -33,11 +33,13 @@ export const EditRegistryDialog = ({
   const [apiToken, setApiToken] = useState('');
   const [namespace, setNamespace] = useState('');
   const [isDefault, setIsDefault] = useState(false);
+  const [restricted, setRestricted] = useState(false);
   const [error, setError] = useState('');
   const nameId = useId();
   const urlId = useId();
   const namespaceId = useId();
   const isDefaultId = useId();
+  const restrictedId = useId();
   const usernameId = useId();
   const passwordId = useId();
   const apiTokenId = useId();
@@ -57,6 +59,7 @@ export const EditRegistryDialog = ({
       setApiToken(''); // Don't pre-fill token for security
       setNamespace(registry.namespace || '');
       setIsDefault(registry.is_default);
+      setRestricted(registry.restricted);
     }
   }, [registry]);
 
@@ -81,6 +84,7 @@ export const EditRegistryDialog = ({
           api_token: apiToken || undefined, // Only update if provided
           namespace: namespace || undefined,
           is_default: isDefault,
+          restricted,
         },
       });
       onOpenChange(false);
@@ -167,6 +171,28 @@ export const EditRegistryDialog = ({
               >
                 Set as default registry
               </label>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                id={restrictedId}
+                checked={restricted}
+                onChange={(e) => setRestricted(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-input"
+              />
+              <div className="space-y-1">
+                <label
+                  htmlFor={restrictedId}
+                  className="text-sm font-medium cursor-pointer"
+                >
+                  Restrict access to granted groups
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  When off, all logged-in users can browse, import, and publish.
+                  When on, only groups granted access can use this registry.
+                </p>
+              </div>
             </div>
           </div>
 

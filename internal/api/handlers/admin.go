@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/service"
 )
 
@@ -217,6 +218,88 @@ func (h *AdminHandler) ListPermissions(c *gin.Context) {
 // @Router /admin/permissions/{id} [delete]
 func (h *AdminHandler) RevokePermission(c *gin.Context) {
 	if err := h.svc.RevokePermission(c.Param("id"), getAdminUserID(c)); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// ListFederatedIdentityReviews godoc
+// @Summary List federated identity reviews
+// @Tags admin
+// @Security BearerAuth
+// @Produce json
+// @Param status query string false "Review status: pending, rejected, or all"
+// @Success 200 {array} models.FederatedIdentityReview
+// @Router /admin/federated-identity-reviews [get]
+func (h *AdminHandler) ListFederatedIdentityReviews(c *gin.Context) {
+	reviews, err := h.svc.ListFederatedIdentityReviews(c.DefaultQuery("status", models.FederatedIdentityReviewStatusPending))
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, reviews)
+}
+
+// ApproveFederatedIdentityReview godoc
+// @Summary Approve a pending federated identity review
+// @Tags admin
+// @Security BearerAuth
+// @Produce json
+// @Param id path string true "Review UUID"
+// @Success 201 {object} models.FederatedIdentity
+// @Router /admin/federated-identity-reviews/{id}/approve [post]
+func (h *AdminHandler) ApproveFederatedIdentityReview(c *gin.Context) {
+	reviewID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid review ID"})
+		return
+	}
+
+	identity, err := h.svc.ApproveFederatedIdentityReview(reviewID, getAdminUserID(c))
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, identity)
+}
+
+// RejectFederatedIdentityReview godoc
+// @Summary Reject a pending federated identity review
+// @Tags admin
+// @Security BearerAuth
+// @Param id path string true "Review UUID"
+// @Success 204
+// @Router /admin/federated-identity-reviews/{id}/reject [post]
+func (h *AdminHandler) RejectFederatedIdentityReview(c *gin.Context) {
+	reviewID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid review ID"})
+		return
+	}
+
+	if err := h.svc.RejectFederatedIdentityReview(reviewID, getAdminUserID(c)); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// DiscardFederatedIdentityReview godoc
+// @Summary Discard a federated identity review
+// @Tags admin
+// @Security BearerAuth
+// @Param id path string true "Review UUID"
+// @Success 204
+// @Router /admin/federated-identity-reviews/{id} [delete]
+func (h *AdminHandler) DiscardFederatedIdentityReview(c *gin.Context) {
+	reviewID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid review ID"})
+		return
+	}
+
+	if err := h.svc.DiscardFederatedIdentityReview(reviewID, getAdminUserID(c)); err != nil {
 		handleServiceError(c, err)
 		return
 	}

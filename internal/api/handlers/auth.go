@@ -55,6 +55,9 @@ func SessionRedirect(basicAuth *auth.BasicAuthenticator, proxyAdminGroups string
 	return func(c *gin.Context) {
 		resp, err := basicAuth.SessionFromProxy(c.Request, proxyAdminGroups)
 		if err != nil {
+			if redirectFederatedIdentityReview(c, err, http.StatusFound, basePath) {
+				return
+			}
 			// No valid proxy session — redirect to login without code
 			c.Redirect(http.StatusFound, basePath+"/login")
 			return
@@ -114,9 +117,30 @@ func SessionCheck(basicAuth *auth.BasicAuthenticator, proxyAdminGroups string) g
 	return func(c *gin.Context) {
 		resp, err := basicAuth.SessionFromProxy(c.Request, proxyAdminGroups)
 		if err != nil {
+			if writeFederatedIdentityReviewJSON(c, err) {
+				return
+			}
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "no proxy session"})
 			return
 		}
 		c.JSON(http.StatusOK, resp)
 	}
+}
+
+func writeFederatedIdentityReviewJSON(c *gin.Context, err error) bool {
+	code, ok := auth.FederatedIdentityReviewErrorCode(err)
+	if !ok {
+		return false
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": code})
+	return true
+}
+
+func redirectFederatedIdentityReview(c *gin.Context, err error, status int, basePath string) bool {
+	code, ok := auth.FederatedIdentityReviewErrorCode(err)
+	if !ok {
+		return false
+	}
+	c.Redirect(status, basePath+"/login?error="+code)
+	return true
 }

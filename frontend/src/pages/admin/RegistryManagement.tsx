@@ -2,6 +2,7 @@ import { Loader2, Pencil, Star, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { CreateRegistryDialog } from '@/components/admin/CreateRegistryDialog';
 import { EditRegistryDialog } from '@/components/admin/EditRegistryDialog';
+import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -10,10 +11,8 @@ import { useDeleteRegistry, useRegistries } from '@/hooks/useRegistries';
 import {
   useDeleteRemoteRegistry,
   useRemoteAdminRegistries,
-  useRemoteServer,
+  useRemoteView,
 } from '@/hooks/useRemote';
-import { useModeStore } from '@/store/modeStore';
-import { useViewModeStore } from '@/store/viewModeStore';
 import type { OCIRegistry } from '@/types';
 
 export const RegistryManagement = () => {
@@ -22,18 +21,17 @@ export const RegistryManagement = () => {
   const deleteRemoteMutation = useDeleteRemoteRegistry();
 
   // View mode support
-  const isLocalMode = useModeStore((s) => s.isLocalMode());
-  const viewMode = useViewModeStore((state) => state.viewMode);
-  const { data: serverStatus } = useRemoteServer();
-  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
-  const shouldShowRemote = isRemoteConnected && viewMode === 'remote';
+  const { viewMode, isRemoteConnected, isRemoteView } = useRemoteView();
 
   // Delete/edit must target the same server the displayed rows came from.
-  const deleteRegistryMutation = shouldShowRemote
+  const deleteRegistryMutation = isRemoteView
     ? deleteRemoteMutation
     : deleteLocalMutation;
-  const { data: remoteRegistries, isLoading: remoteLoading } =
-    useRemoteAdminRegistries(shouldShowRemote);
+  const {
+    data: remoteRegistries,
+    isFirstLoad: remoteFirstLoad,
+    isUnreachable: remoteIsUnreachable,
+  } = useRemoteAdminRegistries(isRemoteView);
 
   // Show registries based on view mode
   const displayedRegistries = useMemo(() => {
@@ -47,7 +45,10 @@ export const RegistryManagement = () => {
     }
   }, [registries, remoteRegistries, isRemoteConnected, viewMode]);
 
-  const isLoading = registriesLoading || (shouldShowRemote && remoteLoading);
+  const remoteUnreachable = isRemoteView && remoteIsUnreachable;
+  // Full-page spinner only until the remote list first resolves or errors
+  // (see isFirstLoad in useRemote.ts).
+  const isLoading = registriesLoading || (isRemoteView && remoteFirstLoad);
 
   const [editingRegistry, setEditingRegistry] = useState<OCIRegistry | null>(
     null,
@@ -92,7 +93,7 @@ export const RegistryManagement = () => {
             Manage OCI registries for workspace publishing
           </p>
         </div>
-        <CreateRegistryDialog isRemote={shouldShowRemote} />
+        <CreateRegistryDialog isRemote={isRemoteView} />
       </div>
 
       {error && (
@@ -100,6 +101,8 @@ export const RegistryManagement = () => {
           {error}
         </div>
       )}
+
+      {remoteUnreachable && <RemoteUnreachableBanner />}
 
       <Card>
         <CardContent className="p-0">
@@ -154,6 +157,14 @@ export const RegistryManagement = () => {
                             Managed
                           </Badge>
                         )}
+                        {registry.restricted && (
+                          <Badge
+                            variant="outline"
+                            title="Only groups granted access can use this registry."
+                          >
+                            Restricted
+                          </Badge>
+                        )}
                       </div>
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">
@@ -205,7 +216,7 @@ export const RegistryManagement = () => {
         </CardContent>
       </Card>
 
-      {displayedRegistries.length === 0 && (
+      {displayedRegistries.length === 0 && !remoteUnreachable && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">
             No registries configured. Add your first registry to start
@@ -219,7 +230,7 @@ export const RegistryManagement = () => {
           registry={editingRegistry}
           open={!!editingRegistry}
           onOpenChange={(open) => !open && setEditingRegistry(null)}
-          isRemote={shouldShowRemote}
+          isRemote={isRemoteView}
         />
       )}
 

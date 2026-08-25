@@ -139,13 +139,14 @@ type RegistriesConfig struct {
 	Entries     []RegistryEntryConfig `mapstructure:"entries"`
 }
 
-// RegistryEntryConfig is one admin-provisioned OCI registry. Only public
-// (unauthenticated) registries are supported; there are no credential fields.
+// RegistryEntryConfig is one admin-provisioned OCI registry. Only
+// credentialless registry entries are supported; there are no credential fields.
 type RegistryEntryConfig struct {
-	Name      string `mapstructure:"name"`      // required, unique; reconciliation identity
-	URL       string `mapstructure:"url"`       // required, e.g. "quay.io"
-	Namespace string `mapstructure:"namespace"` // organization/namespace on the registry
-	Default   bool   `mapstructure:"default"`   // at most one entry may set this
+	Name       string `mapstructure:"name"`       // required, unique; reconciliation identity
+	URL        string `mapstructure:"url"`        // required, e.g. "quay.io"
+	Namespace  string `mapstructure:"namespace"`  // organization/namespace on the registry
+	Default    bool   `mapstructure:"default"`    // at most one entry may set this
+	Restricted bool   `mapstructure:"restricted"` // when true, only granted groups can use this registry
 }
 
 // Load reads configuration from file and environment variables

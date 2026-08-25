@@ -86,6 +86,16 @@ When OIDC authentication is configured, nebi requests the `groups` scope alongsi
 
 OIDC groups with zero members are kept so existing workspace shares survive temporary churn. Reconciled bearer sessions carry an authorization-sync timestamp and are accepted for `NEBI_AUTH_AUTHORIZATION_STALE_AFTER_MINS` minutes, which defaults to the 24-hour JWT lifetime; legacy unstamped tokens keep the pre-schema JWT-expiration behavior. Nebi records the last trusted authorization state, continuously retries unresolved local database/Casbin reconciliation failures, and logs alerts when reconciliation is unhealthy.
 
+### Legacy federated identity migration
+
+Nebi versions that predate issuer/subject identity binding may have users created by OIDC, proxy auth, or device flow with no row in `federated_identities`. Nebi now treats the first post-upgrade login for those users like any other external-identity collision when the incoming username or verified email still matches an existing account: it creates a pending **Identity Review** for an admin to approve.
+
+After upgrading, expect a temporary burst of identity reviews as legacy users sign in. Approving a review binds that external issuer/subject to the existing Nebi account and audit-logs the decision. Rejecting a review blocks that external identity from linking to the account; admins can later discard the rejected review from the **Rejected** tab to allow a fresh review on the next login.
+
+If a user's mutable IdP claims changed before their first post-upgrade login and no longer collide with the legacy account, Nebi cannot infer the old account binding automatically. That login is treated as a new issuer/subject and creates a new Nebi account with its own binding.
+
+See [Identity Reviews](./ui.md#identity-reviews-admin) for how to review and approve these requests.
+
 ## What's Next
 
 - See the [CLI Team Workflows](./cli-team.md) for push/pull examples

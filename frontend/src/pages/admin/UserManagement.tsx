@@ -1,6 +1,7 @@
 import { Loader2, Shield, ShieldOff, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { CreateUserDialog } from '@/components/admin/CreateUserDialog';
+import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,10 +12,8 @@ import {
   useUserGroups,
   useUsers,
 } from '@/hooks/useAdmin';
-import { useRemoteServer, useRemoteUsers } from '@/hooks/useRemote';
+import { useRemoteUsers, useRemoteView } from '@/hooks/useRemote';
 import { useAuthStore } from '@/store/authStore';
-import { useModeStore } from '@/store/modeStore';
-import { useViewModeStore } from '@/store/viewModeStore';
 
 interface UserGroupsCellProps {
   userId: string;
@@ -50,13 +49,12 @@ export const UserManagement = () => {
   const currentUser = useAuthStore((state) => state.user);
 
   // View mode support
-  const isLocalMode = useModeStore((s) => s.isLocalMode());
-  const viewMode = useViewModeStore((state) => state.viewMode);
-  const { data: serverStatus } = useRemoteServer();
-  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
-  const { data: remoteUsers, isLoading: remoteLoading } = useRemoteUsers(
-    isRemoteConnected && viewMode === 'remote',
-  );
+  const { viewMode, isRemoteConnected, isRemoteView } = useRemoteView();
+  const {
+    data: remoteUsers,
+    isFirstLoad: remoteFirstLoad,
+    isUnreachable: remoteIsUnreachable,
+  } = useRemoteUsers(isRemoteView);
 
   // Show users based on view mode
   const displayedUsers = useMemo(() => {
@@ -70,9 +68,10 @@ export const UserManagement = () => {
     }
   }, [users, remoteUsers, isRemoteConnected, viewMode]);
 
-  const isLoading =
-    usersLoading ||
-    (isRemoteConnected && viewMode === 'remote' && remoteLoading);
+  const remoteUnreachable = isRemoteView && remoteIsUnreachable;
+  // Full-page spinner only until the remote list first resolves or errors
+  // (see isFirstLoad in useRemote.ts).
+  const isLoading = usersLoading || (isRemoteView && remoteFirstLoad);
 
   const [confirmAction, setConfirmAction] = useState<{
     type: 'toggle' | 'delete';
@@ -127,6 +126,8 @@ export const UserManagement = () => {
           {error}
         </div>
       )}
+
+      {remoteUnreachable && <RemoteUnreachableBanner />}
 
       <Card>
         <CardContent className="p-0">
@@ -239,7 +240,7 @@ export const UserManagement = () => {
         </CardContent>
       </Card>
 
-      {displayedUsers.length === 0 && (
+      {displayedUsers.length === 0 && !remoteUnreachable && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">No users found</p>
         </div>

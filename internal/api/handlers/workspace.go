@@ -570,7 +570,7 @@ func (h *WorkspaceHandler) PublishWorkspace(c *gin.Context) {
 // @Failure 404 {object} ErrorResponse
 // @Router /workspaces/{id}/publications [get]
 func (h *WorkspaceHandler) ListPublications(c *gin.Context) {
-	publications, err := h.svc.ListPublications(c.Param("id"))
+	publications, err := h.svc.ListPublications(c.Param("id"), getUserID(c))
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -600,7 +600,7 @@ func (h *WorkspaceHandler) UpdatePublication(c *gin.Context) {
 		return
 	}
 
-	result, err := h.svc.UpdatePublication(c.Request.Context(), c.Param("id"), c.Param("pubId"), *req.IsPublic)
+	result, err := h.svc.UpdatePublication(c.Request.Context(), c.Param("id"), c.Param("pubId"), *req.IsPublic, getUserID(c))
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -615,11 +615,24 @@ func (h *WorkspaceHandler) UpdatePublication(c *gin.Context) {
 // @Security BearerAuth
 // @Produce json
 // @Param id path string true "Workspace ID"
+// @Param registry_id query string false "Registry ID to compute defaults against"
 // @Success 200 {object} service.PublishDefaultsResult
+// @Failure 400 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /workspaces/{id}/publish-defaults [get]
 func (h *WorkspaceHandler) GetPublishDefaults(c *gin.Context) {
-	defaults, err := h.svc.GetPublishDefaults(c.Param("id"))
+	registryID := uuid.Nil
+	if rawRegistryID := c.Query("registry_id"); rawRegistryID != "" {
+		parsedID, err := uuid.Parse(rawRegistryID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid registry ID"})
+			return
+		}
+		registryID = parsedID
+	}
+
+	defaults, err := h.svc.GetPublishDefaults(c.Param("id"), getUserID(c), registryID)
 	if err != nil {
 		handleServiceError(c, err)
 		return

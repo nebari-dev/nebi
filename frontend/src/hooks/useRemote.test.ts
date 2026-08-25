@@ -1,9 +1,11 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 import {
+  mockFederatedIdentity,
+  mockFederatedIdentityReview,
   mockJob,
   mockRegistry,
   mockUser,
@@ -14,12 +16,17 @@ import { createWrapper } from '@/test/utils';
 import {
   ERROR_BACKOFF_INTERVAL,
   pollWithErrorBackoff,
+  retryWhileUnreachable,
+  useApproveRemoteFederatedIdentityReview,
   useConnectServer,
   useCreateRemoteRegistry,
   useCreateRemoteWorkspace,
   useDeleteRemoteRegistry,
   useDeleteRemoteWorkspace,
+  useDiscardRemoteFederatedIdentityReview,
   useDisconnectServer,
+  useRejectRemoteFederatedIdentityReview,
+  useRemoteFederatedIdentityReviews,
   useRemoteJobs,
   useRemoteRegistries,
   useRemoteServer,
@@ -53,6 +60,19 @@ describe('pollWithErrorBackoff', () => {
 
   it('backs off to the slow interval once the query errors', () => {
     expect(pollWithErrorBackoff(5000)({ state: { status: 'error' } })).toBe(
+      ERROR_BACKOFF_INTERVAL,
+    );
+  });
+});
+
+describe('retryWhileUnreachable', () => {
+  it('does not poll while the query is healthy', () => {
+    expect(retryWhileUnreachable({ state: { status: 'success' } })).toBe(false);
+    expect(retryWhileUnreachable({ state: { status: 'pending' } })).toBe(false);
+  });
+
+  it('retries on the error-backoff cadence once the query errors, so the unreachable banner self-heals', () => {
+    expect(retryWhileUnreachable({ state: { status: 'error' } })).toBe(
       ERROR_BACKOFF_INTERVAL,
     );
   });
@@ -230,6 +250,88 @@ describe('useRemoteWorkspaces', () => {
       wrapper: createWrapper(),
     });
     await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+
+  it('reports isFirstLoad until the query first resolves', async () => {
+    const { result } = renderHook(() => useRemoteWorkspaces(true), {
+      wrapper: createWrapper(),
+    });
+    expect(result.current.isFirstLoad).toBe(true);
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.isFirstLoad).toBe(false);
+    expect(result.current.isUnreachable).toBe(false);
+  });
+
+  it('reports isUnreachable (and clears isFirstLoad) once the query errors', async () => {
+    server.use(
+      http.get('/api/v1/remote/workspaces', () => HttpResponse.error()),
+    );
+    const { result } = renderHook(() => useRemoteWorkspaces(true), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isUnreachable).toBe(true));
+    expect(result.current.isFirstLoad).toBe(false);
+  });
+
+  it('holds isUnreachable while a retry refetch is in flight, then clears it on success', async () => {
+    // Refetching a never-succeeded query resets it to pending and clears
+    // isError, so isUnreachable must bridge that window or the banner
+    // flashes off during every failed retry.
+    let requests = 0;
+    server.use(
+      http.get('/api/v1/remote/workspaces', async () => {
+        requests += 1;
+        if (requests === 1) {
+          return HttpResponse.error();
+        }
+        // Hang the retry long enough for the pending window to be observable.
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return HttpResponse.json([mockRemoteWorkspace]);
+      }),
+    );
+    const { result } = renderHook(() => useRemoteWorkspaces(true), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isUnreachable).toBe(true));
+
+    result.current.refetch();
+    await waitFor(() => expect(result.current.isPending).toBe(true));
+    expect(result.current.isUnreachable).toBe(true);
+    expect(result.current.isFirstLoad).toBe(false);
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true), {
+      timeout: 2000,
+    });
+    expect(result.current.isUnreachable).toBe(false);
+  });
+
+  it('does not re-render consumers when a refetch returns unchanged data', async () => {
+    // withRemoteFlags spreads the query result, which reads every field of
+    // TanStack's tracked-props proxy and so marks them all tracked — hence the
+    // pinned notifyOnChangeProps on the wrapped queries. Without it, isFetching
+    // and dataUpdatedAt re-render every consumer on each 5s poll tick even when
+    // the payload is identical.
+    let renders = 0;
+    const { result } = renderHook(
+      () => {
+        renders += 1;
+        return useRemoteWorkspaces(true);
+      },
+      { wrapper: createWrapper() },
+    );
+    await waitFor(() => expect(result.current.data).toBeDefined());
+
+    const rendersAfterLoad = renders;
+    // Fire outside act() so the fetch-start and fetch-settle notifications
+    // land in separate flushes, the way a real poll tick does — awaiting
+    // refetch() inside act() batches them into one and hides the churn.
+    const refetched = result.current.refetch();
+    await act(async () => {
+      await refetched;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(result.current.data).toBeDefined();
+    expect(renders).toBe(rendersAfterLoad);
   });
 });
 
@@ -422,5 +524,86 @@ describe('useRemoteUsers', () => {
       wrapper: createWrapper(),
     });
     expect(result.current.fetchStatus).toBe('idle');
+  });
+});
+
+describe('useRemoteFederatedIdentityReviews', () => {
+  it('fetches remote federated identity reviews when enabled', async () => {
+    const { result } = renderHook(
+      () => useRemoteFederatedIdentityReviews(true),
+      {
+        wrapper: createWrapper(),
+      },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([mockFederatedIdentityReview]);
+  });
+
+  it('does not fetch when disabled', () => {
+    const { result } = renderHook(
+      () => useRemoteFederatedIdentityReviews(false),
+      {
+        wrapper: createWrapper(),
+      },
+    );
+    expect(result.current.fetchStatus).toBe('idle');
+  });
+});
+
+describe('useApproveRemoteFederatedIdentityReview', () => {
+  it('calls the remote approve endpoint successfully', async () => {
+    server.use(
+      http.post(
+        '/api/v1/remote/admin/federated-identity-reviews/:id/approve',
+        () => HttpResponse.json(mockFederatedIdentity, { status: 201 }),
+      ),
+    );
+    const { result } = renderHook(
+      () => useApproveRemoteFederatedIdentityReview(),
+      {
+        wrapper: createWrapper(),
+      },
+    );
+    result.current.mutate('review-1');
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual(mockFederatedIdentity);
+  });
+});
+
+describe('useRejectRemoteFederatedIdentityReview', () => {
+  it('calls the remote reject endpoint successfully', async () => {
+    server.use(
+      http.post(
+        '/api/v1/remote/admin/federated-identity-reviews/:id/reject',
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
+    const { result } = renderHook(
+      () => useRejectRemoteFederatedIdentityReview(),
+      {
+        wrapper: createWrapper(),
+      },
+    );
+    result.current.mutate('review-1');
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  });
+});
+
+describe('useDiscardRemoteFederatedIdentityReview', () => {
+  it('calls the remote discard endpoint successfully', async () => {
+    server.use(
+      http.delete(
+        '/api/v1/remote/admin/federated-identity-reviews/:id',
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
+    const { result } = renderHook(
+      () => useDiscardRemoteFederatedIdentityReview(),
+      {
+        wrapper: createWrapper(),
+      },
+    );
+    result.current.mutate('review-1');
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
   });
 });

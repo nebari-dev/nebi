@@ -18,6 +18,7 @@ type OCIRegistry struct {
 	IsDefault     bool       `gorm:"default:false" json:"is_default"`
 	Namespace     string     `json:"namespace"`                           // e.g., "nebari_environments" - organization or namespace on the registry
 	ConfigManaged bool       `gorm:"default:false" json:"config_managed"` // provisioned from config.yaml; locked against API modification
+	Restricted    bool       `gorm:"default:false" json:"restricted"`     // when true, registry access is limited to granted groups
 	CreatedBy     uuid.UUID  `gorm:"type:uuid" json:"created_by"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`

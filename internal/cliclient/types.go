@@ -110,30 +110,33 @@ type Registry struct {
 	Namespace     string `json:"namespace,omitempty"`
 	HasAPIToken   bool   `json:"has_api_token"`
 	ConfigManaged bool   `json:"config_managed"`
+	Restricted    bool   `json:"restricted"`
 	CreatedAt     string `json:"created_at"`
 	UpdatedAt     string `json:"updated_at"`
 }
 
 // CreateRegistryRequest represents a request to create a registry.
 type CreateRegistryRequest struct {
-	Name      string  `json:"name"`
-	URL       string  `json:"url"`
-	Username  *string `json:"username,omitempty"`
-	Password  *string `json:"password,omitempty"`
-	APIToken  *string `json:"api_token,omitempty"`
-	IsDefault *bool   `json:"is_default,omitempty"`
-	Namespace *string `json:"namespace,omitempty"`
+	Name       string  `json:"name"`
+	URL        string  `json:"url"`
+	Username   *string `json:"username,omitempty"`
+	Password   *string `json:"password,omitempty"`
+	APIToken   *string `json:"api_token,omitempty"`
+	IsDefault  *bool   `json:"is_default,omitempty"`
+	Namespace  *string `json:"namespace,omitempty"`
+	Restricted *bool   `json:"restricted,omitempty"`
 }
 
 // UpdateRegistryRequest represents a request to update a registry.
 type UpdateRegistryRequest struct {
-	Name      *string `json:"name,omitempty"`
-	URL       *string `json:"url,omitempty"`
-	Username  *string `json:"username,omitempty"`
-	Password  *string `json:"password,omitempty"`
-	APIToken  *string `json:"api_token,omitempty"`
-	IsDefault *bool   `json:"is_default,omitempty"`
-	Namespace *string `json:"namespace,omitempty"`
+	Name       *string `json:"name,omitempty"`
+	URL        *string `json:"url,omitempty"`
+	Username   *string `json:"username,omitempty"`
+	Password   *string `json:"password,omitempty"`
+	APIToken   *string `json:"api_token,omitempty"`
+	IsDefault  *bool   `json:"is_default,omitempty"`
+	Namespace  *string `json:"namespace,omitempty"`
+	Restricted *bool   `json:"restricted,omitempty"`
 }
 
 // RollbackRequest represents a request to rollback a workspace to a previous version.
@@ -191,6 +194,45 @@ type AuditLog struct {
 	DetailsJSON interface{} `json:"details_json,omitempty"`
 	Timestamp   string      `json:"timestamp"`
 	User        *User       `json:"user,omitempty"`
+}
+
+// FederatedIdentity represents an approved external identity binding.
+type FederatedIdentity struct {
+	ID            string `json:"id"`
+	UserID        string `json:"user_id"`
+	Issuer        string `json:"issuer"`
+	Subject       string `json:"subject"`
+	Username      string `json:"username"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
+	Name          string `json:"name"`
+	AvatarURL     string `json:"avatar_url"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
+}
+
+// FederatedIdentityReview represents an admin decision for a blocked identity link.
+type FederatedIdentityReview struct {
+	ID                      string `json:"id"`
+	UserID                  string `json:"user_id"`
+	User                    *User  `json:"user,omitempty"`
+	Issuer                  string `json:"issuer"`
+	Subject                 string `json:"subject"`
+	CollisionField          string `json:"collision_field"`
+	CollisionUsernameUserID string `json:"collision_username_user_id,omitempty"`
+	CollisionUsernameUser   *User  `json:"collision_username_user,omitempty"`
+	CollisionEmailUserID    string `json:"collision_email_user_id,omitempty"`
+	CollisionEmailUser      *User  `json:"collision_email_user,omitempty"`
+	Username                string `json:"username"`
+	Email                   string `json:"email"`
+	EmailVerified           bool   `json:"email_verified"`
+	Name                    string `json:"name"`
+	AvatarURL               string `json:"avatar_url"`
+	Status                  string `json:"status"`
+	ReviewedBy              string `json:"reviewed_by,omitempty"`
+	ReviewedAt              string `json:"reviewed_at,omitempty"`
+	CreatedAt               string `json:"created_at"`
+	UpdatedAt               string `json:"updated_at"`
 }
 
 // ServerVersion represents the response from GET /version.

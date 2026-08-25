@@ -193,7 +193,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	svc := service.New(db, q, exec, localMode, encKey, rbacProvider, limitCfg)
 	adminSvc := service.NewAdminService(db, rbacProvider, limitCfg)
 	groupSvc := service.NewGroupService(db, rbacProvider)
-	registrySvc := service.NewRegistryService(db, encKey)
+	registrySvc := service.NewRegistryService(db, encKey, localMode, rbacProvider)
 	jobSvc := service.NewJobService(db, localMode)
 
 	wsHandler := handlers.NewWorkspaceHandler(svc)
@@ -294,6 +294,12 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 			admin.POST("/permissions", adminHandler.GrantPermission)
 			admin.DELETE("/permissions/:id", adminHandler.RevokePermission)
 
+			// Federated identity reviews
+			admin.GET("/federated-identity-reviews", adminHandler.ListFederatedIdentityReviews)
+			admin.DELETE("/federated-identity-reviews/:id", adminHandler.DiscardFederatedIdentityReview)
+			admin.POST("/federated-identity-reviews/:id/approve", adminHandler.ApproveFederatedIdentityReview)
+			admin.POST("/federated-identity-reviews/:id/reject", adminHandler.RejectFederatedIdentityReview)
+
 			// Audit logs
 			admin.GET("/audit-logs", adminHandler.ListAuditLogs)
 
@@ -345,13 +351,24 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				remote.GET("/jobs", remoteHandler.ListJobs)
 
 				// Admin proxies (for view mode toggle in admin pages)
-				remote.GET("/admin/users", remoteHandler.ListAdminUsers)
-				remote.GET("/admin/registries", remoteHandler.ListAdminRegistries)
-				remote.POST("/admin/registries", remoteHandler.CreateAdminRegistry)
-				remote.PUT("/admin/registries/:id", remoteHandler.UpdateAdminRegistry)
-				remote.DELETE("/admin/registries/:id", remoteHandler.DeleteAdminRegistry)
-				remote.GET("/admin/audit-logs", remoteHandler.ListAdminAuditLogs)
-				remote.GET("/admin/dashboard/stats", remoteHandler.GetAdminDashboardStats)
+				remoteAdmin := remote.Group("/admin")
+				// /remote routes are local-mode only, so this local admin check is
+				// symbolic consistency. The remote server still enforces whether
+				// the stored remote token has admin access.
+				remoteAdmin.Use(middleware.RequireAdmin(localMode, rbacProvider))
+				{
+					remoteAdmin.GET("/users", remoteHandler.ListAdminUsers)
+					remoteAdmin.GET("/registries", remoteHandler.ListAdminRegistries)
+					remoteAdmin.POST("/registries", remoteHandler.CreateAdminRegistry)
+					remoteAdmin.PUT("/registries/:id", remoteHandler.UpdateAdminRegistry)
+					remoteAdmin.DELETE("/registries/:id", remoteHandler.DeleteAdminRegistry)
+					remoteAdmin.GET("/audit-logs", remoteHandler.ListAdminAuditLogs)
+					remoteAdmin.GET("/dashboard/stats", remoteHandler.GetAdminDashboardStats)
+					remoteAdmin.GET("/federated-identity-reviews", remoteHandler.ListAdminFederatedIdentityReviews)
+					remoteAdmin.DELETE("/federated-identity-reviews/:id", remoteHandler.DiscardAdminFederatedIdentityReview)
+					remoteAdmin.POST("/federated-identity-reviews/:id/approve", remoteHandler.ApproveAdminFederatedIdentityReview)
+					remoteAdmin.POST("/federated-identity-reviews/:id/reject", remoteHandler.RejectAdminFederatedIdentityReview)
+				}
 			}
 		}
 	}

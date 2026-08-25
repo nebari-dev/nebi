@@ -17,20 +17,59 @@ func PreparedWorkspaceEnv(envPath string) ([]string, error) {
 }
 
 // WorkspaceEnv returns workspace-scoped environment overrides for child
-// package-manager processes.
+// package-manager processes, layered over the parent environment.
+//
+// Callers that must not leak the parent environment to untrusted build code
+// (see internal/sandbox) use WorkspaceEnvOverrides instead and layer it over
+// their own allowlist.
 func WorkspaceEnv(envPath string) []string {
+	if envPath == "" {
+		return nil
+	}
+	return append(os.Environ(), WorkspaceEnvOverrides(envPath)...)
+}
+
+// WorkspaceEnvOverrides returns only the workspace-scoped variables, without
+// inheriting anything from the parent environment.
+func WorkspaceEnvOverrides(envPath string) []string {
 	if envPath == "" {
 		return nil
 	}
 
 	dirs := workspaceEnvDirs(envPath)
-	return append(os.Environ(),
-		"TMPDIR="+dirs.tmp,
-		"TMP="+dirs.tmp,
-		"TEMP="+dirs.tmp,
-		"PIP_CACHE_DIR="+dirs.pipCache,
-		"UV_CACHE_DIR="+dirs.uvCache,
-	)
+	return []string{
+		"TMPDIR=" + dirs.tmp,
+		"TMP=" + dirs.tmp,
+		"TEMP=" + dirs.tmp,
+		"PIP_CACHE_DIR=" + dirs.pipCache,
+		"UV_CACHE_DIR=" + dirs.uvCache,
+	}
+}
+
+// WorkspaceHomeDir returns the workspace-scoped HOME. It is only used when the
+// build sandbox is active; see internal/sandbox for why HOME is left alone
+// otherwise. Kept here so the sandbox reuses this package's directory layout,
+// which WorkspaceTransientDirs already knows how to clean up.
+func WorkspaceHomeDir(envPath string) string {
+	if envPath == "" {
+		return ""
+	}
+	return workspaceEnvDirs(envPath).home
+}
+
+// WorkspaceTmpDir returns the workspace-scoped TMPDIR.
+func WorkspaceTmpDir(envPath string) string {
+	if envPath == "" {
+		return ""
+	}
+	return workspaceEnvDirs(envPath).tmp
+}
+
+// PrepareWorkspaceDirs creates the workspace-owned process directories.
+// PreparedWorkspaceEnv does this as a side effect; callers that build their
+// own environment need it on its own.
+func PrepareWorkspaceDirs(envPath string) error {
+	return prepareWorkspaceEnvDirs(envPath)
 }
 
 type workspaceDirs struct {

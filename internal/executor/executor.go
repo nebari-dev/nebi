@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/pkgmgr"
 )
 
 // CreateWorkspaceOptions tunes CreateWorkspace. PixiToml seeds a newly
@@ -33,6 +34,10 @@ type Executor interface {
 	InstallEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error
 	UninstallEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error
 	IsEnvInstalled(ws *models.Workspace) bool
+	// ListPackages returns the packages installed in the workspace. It runs the
+	// package manager against a user-controlled workspace, so it goes through
+	// the same sandbox as every other build-adjacent invocation.
+	ListPackages(ctx context.Context, ws *models.Workspace) ([]pkgmgr.Package, error)
 	GetWorkspacePath(ws *models.Workspace) string
 	// StagingRoot returns a directory under the executor's storage root
 	// suitable for one-off staging (e.g. bundle import pre-extraction).

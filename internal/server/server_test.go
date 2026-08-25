@@ -1,6 +1,13 @@
 package server
 
-import "testing"
+import (
+	"bytes"
+	"log/slog"
+	"strings"
+	"testing"
+
+	"github.com/nebari-dev/nebi/internal/config"
+)
 
 func TestResolveBindHost(t *testing.T) {
 	tests := []struct {
@@ -92,6 +99,52 @@ func TestServerURL(t *testing.T) {
 			got := serverURL(tt.host, tt.port, tt.basePath)
 			if got != tt.want {
 				t.Fatalf("expected %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
+// The shim's per-build warning only reaches the job log, so an operator
+// running a fleet in permissive mode has no server-side signal that
+// confinement is not being enforced. This pins the startup warning that
+// supplies one.
+func TestWarnIfSandboxNotEnforcing(t *testing.T) {
+	tests := []struct {
+		name        string
+		deployMode  string
+		sandboxMode string
+		wantLogged  string
+	}{
+		{name: "strict is the enforcing default and says nothing", deployMode: "team", sandboxMode: "strict"},
+		{name: "permissive warns that builds may run unconfined", deployMode: "team", sandboxMode: "permissive", wantLogged: "UNCONFINED"},
+		{name: "off in team mode warns that confinement is disabled", deployMode: "team", sandboxMode: "off", wantLogged: "DISABLED"},
+		{name: "off in local mode is the intended default", deployMode: "local", sandboxMode: "off"},
+		{name: "permissive in local mode still warns", deployMode: "local", sandboxMode: "permissive", wantLogged: "UNCONFINED"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			previous := slog.Default()
+			t.Cleanup(func() { slog.SetDefault(previous) })
+			slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+
+			cfg := &config.Config{Mode: tt.deployMode}
+			cfg.Sandbox.Mode = tt.sandboxMode
+			warnIfSandboxNotEnforcing(cfg)
+
+			got := buf.String()
+			if tt.wantLogged == "" {
+				if got != "" {
+					t.Fatalf("expected no warning, got: %s", got)
+				}
+				return
+			}
+			if !strings.Contains(got, tt.wantLogged) {
+				t.Fatalf("expected a warning mentioning %q, got: %s", tt.wantLogged, got)
+			}
+			if !strings.Contains(got, "sandbox_mode="+tt.sandboxMode) {
+				t.Fatalf("expected the configured mode in the warning, got: %s", got)
 			}
 		})
 	}

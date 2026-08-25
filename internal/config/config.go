@@ -28,6 +28,7 @@ type Config struct {
 	Log            LogConfig            `mapstructure:"log"`
 	PackageManager PackageManagerConfig `mapstructure:"package_manager"`
 	Storage        StorageConfig        `mapstructure:"storage"`
+	Sandbox        SandboxConfig        `mapstructure:"sandbox"`
 	Limits         limits.Limits        `mapstructure:"limits"`
 	Registries     RegistriesConfig     `mapstructure:"registries"`
 }
@@ -131,6 +132,23 @@ type StorageConfig struct {
 	WorkspacesDir string `mapstructure:"workspaces_dir"` // Directory where workspaces are stored
 }
 
+// SandboxConfig controls isolation of untrusted package/build subprocesses.
+//
+// Mode semantics:
+//
+//	strict     - builds fail if the kernel cannot enforce filesystem confinement
+//	permissive - confine when possible, warn and continue when not
+//	off        - no confinement (the environment allowlist still applies)
+//
+// Mode defaults to "strict" in team mode and "off" in local mode.
+//
+// The wall-clock ceiling for a build job is limits.job_timeout_seconds, not a
+// sandbox setting.
+type SandboxConfig struct {
+	Mode         string `mapstructure:"mode"`
+	AllowedPorts []int  `mapstructure:"allowed_ports"` // TCP ports build code may connect to
+}
+
 // RegistriesConfig holds admin-provisioned OCI registry configuration.
 // Entries are declarative: at boot they are reconciled into the database,
 // marked config-managed, and locked against API/UI/CLI modification.
@@ -182,6 +200,8 @@ func Load() (*Config, error) {
 	v.SetDefault("log.level", "info")
 	v.SetDefault("package_manager.default_type", "pixi")
 	v.SetDefault("storage.workspaces_dir", "./data/workspaces")
+	v.SetDefault("sandbox.mode", "")
+	v.SetDefault("sandbox.allowed_ports", []int{80, 443})
 	defaultLimits := limits.Defaults()
 	v.SetDefault("limits.request_body_bytes", defaultLimits.RequestBodyBytes)
 	v.SetDefault("limits.manifest_bytes", defaultLimits.ManifestBytes)
@@ -242,6 +262,8 @@ func Load() (*Config, error) {
 	_ = v.BindEnv("queue.valkey_addr", "NEBI_QUEUE_VALKEY_ADDR")
 	_ = v.BindEnv("log.format", "NEBI_LOG_FORMAT")
 	_ = v.BindEnv("log.level", "NEBI_LOG_LEVEL")
+	_ = v.BindEnv("sandbox.mode", "NEBI_SANDBOX_MODE")
+	_ = v.BindEnv("sandbox.allowed_ports", "NEBI_SANDBOX_ALLOWED_PORTS")
 	_ = v.BindEnv("limits.request_body_bytes", "NEBI_LIMITS_REQUEST_BODY_BYTES")
 	_ = v.BindEnv("limits.manifest_bytes", "NEBI_LIMITS_MANIFEST_BYTES")
 	_ = v.BindEnv("limits.lock_bytes", "NEBI_LIMITS_LOCK_BYTES")
@@ -283,6 +305,29 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid mode %q: must be \"local\" or \"team\"", cfg.Mode)
 	}
 
+	// Sandbox mode defaults by deployment mode: team servers run untrusted
+	// build code for multiple tenants and fail closed; local/desktop is a
+	// single user on their own machine.
+	if cfg.Sandbox.Mode == "" {
+		if cfg.IsLocalMode() {
+			cfg.Sandbox.Mode = "off"
+		} else {
+			cfg.Sandbox.Mode = "strict"
+		}
+	}
+	switch cfg.Sandbox.Mode {
+	case "strict", "permissive", "off":
+	default:
+		return nil, fmt.Errorf("invalid sandbox.mode %q (NEBI_SANDBOX_MODE): must be \"strict\", \"permissive\", or \"off\"", cfg.Sandbox.Mode)
+	}
+	// Ports are narrowed to uint16 when handed to the kernel, so an
+	// out-of-range entry would wrap silently (70000 becomes 4464) and open a
+	// port the operator never named while the intended one stays closed.
+	for _, p := range cfg.Sandbox.AllowedPorts {
+		if p < 1 || p > 65535 {
+			return nil, fmt.Errorf("invalid sandbox.allowed_ports entry %d (NEBI_SANDBOX_ALLOWED_PORTS): must be between 1 and 65535", p)
+		}
+	}
 	if err := normalizeRegistries(&cfg.Registries); err != nil {
 		return nil, err
 	}

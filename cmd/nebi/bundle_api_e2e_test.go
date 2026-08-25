@@ -71,31 +71,7 @@ func startLocalModeServer(t *testing.T) *localModeEnv {
 	os.Setenv("NEBI_DATABASE_DSN", dbPath)
 	os.Setenv("NEBI_STORAGE_WORKSPACES_DIR", wsDir)
 	os.Setenv("NEBI_SERVER_PORT", fmt.Sprintf("%d", port))
-	pixiPath := filepath.Join(t.TempDir(), "pixi")
-	pixiScript := `#!/bin/sh
-if [ "${1:-}" = "--version" ]; then
-  printf 'pixi 0.0.0-test\n'
-  exit 0
-fi
-if [ "${1:-}" = "lock" ]; then
-  if [ ! -f pixi.lock ]; then
-    printf 'version: 6\n' > pixi.lock
-  fi
-  exit 0
-fi
-if [ "${1:-}" = "list" ]; then
-  exit 0
-fi
-if [ "${1:-}" = "install" ]; then
-  mkdir -p .pixi/envs/default
-  exit 0
-fi
-exit 0
-`
-	if err := os.WriteFile(pixiPath, []byte(pixiScript), 0o755); err != nil {
-		t.Fatalf("write fake pixi: %v", err)
-	}
-	os.Setenv("NEBI_PACKAGE_MANAGER_PIXI_PATH", pixiPath)
+	os.Setenv("NEBI_PACKAGE_MANAGER_PIXI_PATH", writeFakePixi(t))
 
 	serverURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -127,6 +103,46 @@ exit 0
 		wsDir:     wsDir,
 		ociHost:   ociURL.Host,
 	}
+}
+
+// fakePixiScript stands in for the pixi binary in local-mode e2e tests: these
+// tests exercise the HTTP and OCI plumbing, not dependency solving, so they
+// must not shell out to a real solver.
+//
+// It is not a pure no-op, because the server depends on one side effect of a
+// real `pixi lock`: it writes pixi.lock, and the create job snapshots
+// pixi.toml + pixi.lock immediately afterwards. A workspace built by a stub
+// that never produces a lockfile gets no version row, and publishing it then
+// fails with "Workspace has no versions to publish". So emulate exactly that
+// one side effect and nothing else.
+//
+// The lockfile is written only when absent, so a workspace seeded from an
+// imported bundle keeps the lockfile that shipped in the bundle. Only `lock`
+// touches the filesystem; `--version` and the like must stay inert because
+// they run with the server's working directory, not a workspace.
+const fakePixiScript = `#!/bin/sh
+case "$1" in
+lock)
+	if [ ! -f pixi.lock ]; then
+		printf 'version: 6\nenvironments: {}\npackages: []\n' > pixi.lock
+	fi
+	;;
+install)
+	# The real pixi materializes .pixi/envs, which IsEnvInstalled looks for.
+	mkdir -p .pixi/envs/default
+	;;
+esac
+exit 0
+`
+
+// writeFakePixi writes fakePixiScript to a temp dir and returns its path.
+func writeFakePixi(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "fake-pixi")
+	if err := os.WriteFile(path, []byte(fakePixiScript), 0o755); err != nil {
+		t.Fatalf("write fake pixi: %v", err)
+	}
+	return path
 }
 
 // TestE2E_BundlePublishImportViaAPI_LocalMode verifies that importing a bundle

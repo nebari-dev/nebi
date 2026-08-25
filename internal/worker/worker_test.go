@@ -158,6 +158,17 @@ func (e *fakeExecutor) IsEnvInstalled(ws *models.Workspace) bool {
 	info, err := os.Stat(filepath.Join(e.GetWorkspacePath(ws), ".pixi", "envs"))
 	return err == nil && info.IsDir()
 }
+
+// ListPackages mirrors the real executor, which resolves the workspace's
+// package manager and lists through it. Going through pkgmgr here is what lets
+// a test inject list behavior by setting ws.PackageManager.
+func (e *fakeExecutor) ListPackages(ctx context.Context, ws *models.Workspace) ([]pkgmgr.Package, error) {
+	pm, err := pkgmgr.NewWithContext(ctx, ws.PackageManager)
+	if err != nil {
+		return nil, err
+	}
+	return pm.List(ctx, pkgmgr.ListOptions{EnvPath: e.GetWorkspacePath(ws)})
+}
 func (e *fakeExecutor) CleanupJobArtifacts(ctx context.Context, ws *models.Workspace, jobType models.JobType, w io.Writer) error {
 	e.cleanupCalls++
 	e.cleanupJobTypes = append(e.cleanupJobTypes, jobType)
@@ -910,6 +921,52 @@ func TestProcessJob_UpdateReinstallResourceFailureFailsAndCleansUp(t *testing.T)
 	}
 	if resp.InstallStatus != models.InstallStatusFailed {
 		t.Errorf("expected install_status %q, got %q", models.InstallStatusFailed, resp.InstallStatus)
+	}
+}
+
+// TestProcessJob_ShutdownIsNotReportedAsTimeout proves a cancelled parent
+// context (worker shutdown) is not mislabelled as a job timeout. processJob
+// asks the context whether it expired rather than unwrapping the build error,
+// and a cancelled context reports context.Canceled, not DeadlineExceeded.
+func TestProcessJob_ShutdownIsNotReportedAsTimeout(t *testing.T) {
+	db, svc, jobSvc, exec := setupWorkerTest(t)
+	exec.blockInstall = true
+
+	_, job := newTestWorkspace(t, db, exec, "shutdown-ws", models.JobTypeInstall,
+		map[string]interface{}{"packages": []string{"numpy"}})
+
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w.jobTimeout = time.Hour
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		w.processJob(ctx, job)
+	}()
+	time.AfterFunc(50*time.Millisecond, cancel)
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("processJob did not return after parent cancellation")
+	}
+
+	var stored models.Job
+	if err := db.First(&stored, "id = ?", job.ID).Error; err != nil {
+		t.Fatalf("reload job: %v", err)
+	}
+	if strings.Contains(stored.Error, "wall-clock timeout") {
+		t.Errorf("shutdown was reported as a job timeout: %q", stored.Error)
+	}
+
+	adminSvc := service.NewAdminService(db, rbac.NewDefaultProvider(), limits.Defaults())
+	metrics, err := adminSvc.GetResourceMetrics()
+	if err != nil {
+		t.Fatalf("GetResourceMetrics: %v", err)
+	}
+	if metrics.JobTimeoutsTotal != 0 {
+		t.Errorf("shutdown recorded a timeout metric: %d", metrics.JobTimeoutsTotal)
 	}
 }
 

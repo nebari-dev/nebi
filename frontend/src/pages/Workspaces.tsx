@@ -262,27 +262,29 @@ export const Workspaces = () => {
             Manage your development workspaces
           </p>
         </div>
-        <SplitButton
-          onPrimary={() => {
-            setShowCreate(!showCreate);
-            setCreateTarget(isRemoteView ? 'server' : 'local');
-            setError('');
-          }}
-          primaryLabel={
-            <>
-              <Plus className="h-4 w-4 mr-2" />
-              New Workspace
-            </>
-          }
-          menuLabel="Open workspace actions"
-          menuItems={[
-            {
-              label: 'Import Workspace from Registry',
-              icon: <Download className="h-4 w-4" />,
-              onClick: () => navigate('/registries'),
-            },
-          ]}
-        />
+        {!showCreate && (
+          <SplitButton
+            onPrimary={() => {
+              setShowCreate(true);
+              setCreateTarget(isRemoteView ? 'server' : 'local');
+              setError('');
+            }}
+            primaryLabel={
+              <>
+                <Plus className="h-4 w-4 mr-2" />
+                New Workspace
+              </>
+            }
+            menuLabel="Open workspace actions"
+            menuItems={[
+              {
+                label: 'Import Workspace from Registry',
+                icon: <Download className="h-4 w-4" />,
+                onClick: () => navigate('/registries'),
+              },
+            ]}
+          />
+        )}
       </div>
 
       {error && (

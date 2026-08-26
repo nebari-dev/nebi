@@ -693,7 +693,7 @@ func isFatalResourceFailure(ctx context.Context, err error) bool {
 func (w *Worker) executeRollback(ctx context.Context, ws *models.Workspace, version *models.WorkspaceVersion, logWriter io.Writer) error {
 	envPath := w.svc.GetWorkspacePath(ws)
 
-	if err := w.svc.ValidateVersionContent(ws.PackageManager, version.ManifestContent, version.LockFileContent); err != nil {
+	if err := w.svc.ValidateVersionContent(version.ManifestContent, version.LockFileContent); err != nil {
 		return err
 	}
 

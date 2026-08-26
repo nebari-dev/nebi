@@ -33,7 +33,6 @@ type UnifiedWorkspace = {
   id: string;
   name: string;
   status: string;
-  package_manager: string;
   created_at: string;
   location: 'local' | 'remote';
   // Local-only fields
@@ -106,7 +105,6 @@ export const Workspaces = () => {
         id: ws.id,
         name: ws.name,
         status: ws.status,
-        package_manager: ws.package_manager,
         created_at: ws.created_at,
         location: 'local' as const,
         source: ws.source,
@@ -125,7 +123,6 @@ export const Workspaces = () => {
         id: ws.id,
         name: ws.name,
         status: ws.status,
-        package_manager: ws.package_manager,
         created_at: ws.created_at,
         location: 'local' as const,
         source: ws.source,
@@ -141,7 +138,6 @@ export const Workspaces = () => {
         id: ws.id,
         name: ws.name,
         status: ws.status,
-        package_manager: ws.package_manager,
         created_at: ws.created_at,
         location: 'remote' as const,
         owner: ws.owner,
@@ -166,13 +162,11 @@ export const Workspaces = () => {
       if (createTarget === 'server' && isRemoteConnected) {
         await createRemoteMutation.mutateAsync({
           name: wsName,
-          package_manager: 'pixi',
           pixi_toml: tomlContent,
         });
       } else {
         const ws = await createMutation.mutateAsync({
           name: wsName,
-          package_manager: 'pixi',
           pixi_toml: tomlContent,
           ...(localPath.trim()
             ? { path: localPath.trim(), source: 'local' as const }
@@ -262,27 +256,29 @@ export const Workspaces = () => {
             Manage your development workspaces
           </p>
         </div>
-        <SplitButton
-          onPrimary={() => {
-            setShowCreate(!showCreate);
-            setCreateTarget(isRemoteView ? 'server' : 'local');
-            setError('');
-          }}
-          primaryLabel={
-            <>
-              <Plus className="h-4 w-4 mr-2" />
-              New Workspace
-            </>
-          }
-          menuLabel="Open workspace actions"
-          menuItems={[
-            {
-              label: 'Import Workspace from Registry',
-              icon: <Download className="h-4 w-4" />,
-              onClick: () => navigate('/registries'),
-            },
-          ]}
-        />
+        {!showCreate && (
+          <SplitButton
+            onPrimary={() => {
+              setShowCreate(true);
+              setCreateTarget(isRemoteView ? 'server' : 'local');
+              setError('');
+            }}
+            primaryLabel={
+              <>
+                <Plus className="h-4 w-4 mr-2" />
+                New Workspace
+              </>
+            }
+            menuLabel="Open workspace actions"
+            menuItems={[
+              {
+                label: 'Import Workspace from Registry',
+                icon: <Download className="h-4 w-4" />,
+                onClick: () => navigate('/registries'),
+              },
+            ]}
+          />
+        )}
       </div>
 
       {error && (
@@ -457,6 +453,7 @@ export const Workspaces = () => {
                           <InstallControls
                             workspaceId={ws.id}
                             installStatus={ws.install_status}
+                            appearance="icon"
                             onStarted={(job) =>
                               setEnvJobNotice({
                                 wsId: ws.id,
@@ -470,8 +467,7 @@ export const Workspaces = () => {
                         {ws.location === 'local' && ws.source !== 'local' && (
                           <Button
                             variant="ghost"
-                            size="sm"
-                            className="gap-1.5"
+                            size="icon"
                             onClick={(e) => handleCopyPull(e, ws.name, ws.id)}
                             aria-label={`Copy pull command for ${ws.name}`}
                             title="Copy nebi pull command"
@@ -486,7 +482,7 @@ export const Workspaces = () => {
 
                         <Button
                           variant="ghost"
-                          size="sm"
+                          size="icon"
                           onClick={(e) => {
                             e.stopPropagation();
                             setConfirmDelete({
@@ -497,6 +493,7 @@ export const Workspaces = () => {
                           }}
                           disabled={isDeletePending}
                           aria-label={`Delete ${ws.name}`}
+                          title="Delete workspace"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

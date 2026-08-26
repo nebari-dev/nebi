@@ -128,6 +128,15 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
+	// Drop the legacy package_manager column: pixi is the only package
+	// manager, and the column was NOT NULL so leaving it would break inserts
+	// on databases created before its removal.
+	if db.Migrator().HasColumn(&models.Workspace{}, "package_manager") {
+		if err := db.Migrator().DropColumn(&models.Workspace{}, "package_manager"); err != nil {
+			return fmt.Errorf("failed to drop workspaces.package_manager column: %w", err)
+		}
+	}
+
 	if err := seedResourceLocks(db); err != nil {
 		return fmt.Errorf("failed to seed resource locks: %w", err)
 	}

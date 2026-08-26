@@ -118,9 +118,6 @@ func TestCreate_Defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if ws.PackageManager != "pixi" {
-		t.Errorf("expected default package_manager=pixi, got %q", ws.PackageManager)
-	}
 	if ws.Status != models.WsStatusPending {
 		t.Errorf("expected status=pending, got %q", ws.Status)
 	}

@@ -1,4 +1,4 @@
-.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker-uv build-docker test-pkgmgr build-all build-desktop
+.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker test-pixi build-all build-desktop
 
 # Variables
 BINARY_NAME=nebi
@@ -116,17 +116,12 @@ build-docker-pixi: ## Build pixi Docker image
 	@docker build -f docker/pixi.Dockerfile -t nebi-pixi:latest .
 	@echo "Docker image built: nebi-pixi:latest"
 
-build-docker-uv: ## Build uv Docker image
-	@echo "Building uv Docker image..."
-	@docker build -f docker/uv.Dockerfile -t nebi-uv:latest .
-	@echo "Docker image built: nebi-uv:latest"
-
-build-docker: build-docker-pixi build-docker-uv ## Build all Docker images
+build-docker: build-docker-pixi ## Build all Docker images
 	@echo "All Docker images built successfully"
 
-test-pkgmgr: ## Test package manager operations
-	@echo "Running package manager tests..."
-	@go test -v ./internal/pkgmgr/...
+test-pixi: ## Test pixi operations
+	@echo "Running pixi tests..."
+	@go test -v ./internal/pixi/...
 
 build-all: build-frontend ## Build binaries for all platforms
 	@echo "Building for all platforms..."

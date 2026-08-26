@@ -94,11 +94,9 @@ func runPush(cmd *cobra.Command, args []string) error {
 		// Workspace doesn't exist — create it
 		fmt.Fprintf(os.Stderr, "Creating workspace %q...\n", wsName)
 		pixiTomlStr := string(pixiToml)
-		pkgMgr := "pixi"
 		newWs, createErr := client.CreateWorkspace(ctx, cliclient.CreateWorkspaceRequest{
-			Name:           wsName,
-			PackageManager: &pkgMgr,
-			PixiToml:       &pixiTomlStr,
+			Name:     wsName,
+			PixiToml: &pixiTomlStr,
 		})
 		if createErr != nil {
 			return fmt.Errorf("failed to create workspace %q: %w", wsName, createErr)

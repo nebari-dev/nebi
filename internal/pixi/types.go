@@ -1,43 +1,18 @@
-package pkgmgr
+package pixi
 
 import (
-	"context"
 	"fmt"
 	"io"
 
 	"github.com/nebari-dev/nebi/internal/limits"
 )
 
-// PackageManager is the interface that all package managers must implement
-type PackageManager interface {
-	// Name returns the package manager name (e.g., "pixi", "uv")
-	Name() string
-
-	// Init creates a new environment
-	Init(ctx context.Context, opts InitOptions) error
-
-	// Install adds packages to an environment
-	Install(ctx context.Context, opts InstallOptions) error
-
-	// Remove removes packages from an environment
-	Remove(ctx context.Context, opts RemoveOptions) error
-
-	// List returns installed packages
-	List(ctx context.Context, opts ListOptions) ([]Package, error)
-
-	// Update updates packages in an environment
-	Update(ctx context.Context, opts UpdateOptions) error
-
-	// GetManifest returns the parsed manifest file
-	GetManifest(ctx context.Context, envPath string) (*Manifest, error)
-}
-
 // InitOptions contains parameters for initializing a new environment
 type InitOptions struct {
 	EnvPath        string               // Path where environment will be created
 	Name           string               // Environment name
 	Python         string               // Python version (if applicable)
-	Channels       []string             // Conda channels (pixi only)
+	Channels       []string             // Conda channels
 	LogWriter      io.Writer            // Optional writer for streaming command output
 	ResourceLimits limits.ProcessLimits // Optional OS process limits
 }
@@ -64,10 +39,10 @@ type RemoveOptions struct {
 type ListOptions struct {
 	EnvPath        string               // Path to environment
 	ResourceLimits limits.ProcessLimits // Optional OS process limits
-	MaxOutputBytes int                  // Optional cap for package-manager list output
+	MaxOutputBytes int                  // Optional cap for pixi list output
 }
 
-// OutputLimitError reports that a package-manager command produced more output
+// OutputLimitError reports that a pixi command produced more output
 // than the caller was willing to keep in memory.
 type OutputLimitError struct {
 	Command string
@@ -76,15 +51,7 @@ type OutputLimitError struct {
 }
 
 func (e *OutputLimitError) Error() string {
-	command := e.Command
-	if command == "" {
-		command = "package manager"
-	}
-	stream := e.Stream
-	if stream == "" {
-		stream = "output"
-	}
-	return fmt.Sprintf("%s %s exceeds %d bytes", command, stream, e.Limit)
+	return fmt.Sprintf("%s %s exceeds %d bytes", e.Command, e.Stream, e.Limit)
 }
 
 // UpdateOptions contains parameters for updating packages
@@ -98,10 +65,10 @@ type UpdateOptions struct {
 type Package struct {
 	Name    string
 	Version string
-	Channel string // For conda-based managers
+	Channel string // Conda channel, when known
 }
 
-// Manifest represents a package manager manifest file
+// Manifest represents a parsed pixi.toml manifest file
 type Manifest struct {
 	Name     string
 	Packages map[string]string // name -> version

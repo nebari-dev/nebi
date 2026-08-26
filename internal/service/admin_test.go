@@ -805,11 +805,10 @@ func TestAdminGetResourceMetrics_AttributesLegacyJobsToWorkspaceOwner(t *testing
 	svc, _, db := adminTestSetup(t)
 	userID := createTestUser(t, db, "alice")
 	ws := models.Workspace{
-		ID:             uuid.New(),
-		Name:           "legacy-metrics-ws",
-		OwnerID:        userID,
-		Status:         models.WsStatusReady,
-		PackageManager: "pixi",
+		ID:      uuid.New(),
+		Name:    "legacy-metrics-ws",
+		OwnerID: userID,
+		Status:  models.WsStatusReady,
 	}
 	if err := db.Create(&ws).Error; err != nil {
 		t.Fatalf("create workspace: %v", err)

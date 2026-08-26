@@ -46,10 +46,9 @@ func TestDeleteWorkspace_ManagedRemovesDir(t *testing.T) {
 	exec := testExecutor(t)
 
 	ws := &models.Workspace{
-		ID:             uuid.New(),
-		Name:           "managed-ws",
-		Source:         "managed",
-		PackageManager: "pixi",
+		ID:     uuid.New(),
+		Name:   "managed-ws",
+		Source: "managed",
 	}
 
 	// Create the directory that the executor would manage
@@ -83,11 +82,10 @@ func TestDeleteWorkspace_LocalPreservesDir(t *testing.T) {
 	}
 
 	ws := &models.Workspace{
-		ID:             uuid.New(),
-		Name:           "local-ws",
-		Source:         "local",
-		Path:           userProjectDir,
-		PackageManager: "pixi",
+		ID:     uuid.New(),
+		Name:   "local-ws",
+		Source: "local",
+		Path:   userProjectDir,
 	}
 
 	var buf bytes.Buffer
@@ -218,11 +216,8 @@ func TestDeleteWorkspace_ManagedDirAlreadyGone(t *testing.T) {
 
 func TestLocalExecutor_CreateWorkspace_SeedDirPopulatesWorkspace(t *testing.T) {
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
-		PackageManager: config.PackageManagerConfig{
-			DefaultType: "pixi",
-			PixiPath:    "/usr/bin/true", // no-op pixi install
-		},
+		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PixiPath: "/usr/bin/true", // no-op pixi install
 	}
 	exec, err := NewLocalExecutor(cfg)
 	if err != nil {
@@ -236,9 +231,8 @@ func TestLocalExecutor_CreateWorkspace_SeedDirPopulatesWorkspace(t *testing.T) {
 	writeSeedFile(t, stagingDir, "data/sample.csv", "a,b\n1,2\n")
 
 	ws := &models.Workspace{
-		ID:             uuid.New(),
-		Name:           "seeded",
-		PackageManager: "pixi",
+		ID:   uuid.New(),
+		Name: "seeded",
 	}
 
 	var log bytes.Buffer
@@ -275,19 +269,16 @@ func TestLocalExecutor_CreateWorkspaceRejectsStorageLimit(t *testing.T) {
 	limitCfg := limits.Defaults()
 	limitCfg.JobStorageBytes = 4
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
-		PackageManager: config.PackageManagerConfig{
-			DefaultType: "pixi",
-			PixiPath:    "/usr/bin/true",
-		},
-		Limits: limitCfg,
+		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PixiPath: "/usr/bin/true",
+		Limits:   limitCfg,
 	}
 	exec, err := NewLocalExecutor(cfg)
 	if err != nil {
 		t.Fatalf("NewLocalExecutor: %v", err)
 	}
 
-	ws := &models.Workspace{ID: uuid.New(), Name: "storage-limit", PackageManager: "pixi"}
+	ws := &models.Workspace{ID: uuid.New(), Name: "storage-limit"}
 	var log bytes.Buffer
 	err = exec.CreateWorkspace(context.Background(), ws, &log, CreateWorkspaceOptions{
 		PixiToml: "[project]\nname = \"storage-limit\"\n",
@@ -461,11 +452,8 @@ esac
 `)
 
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
-		PackageManager: config.PackageManagerConfig{
-			DefaultType: "pixi",
-			PixiPath:    pixiBin,
-		},
+		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PixiPath: pixiBin,
 	}
 	exec, err := NewLocalExecutor(cfg)
 	if err != nil {
@@ -476,7 +464,7 @@ esac
 	writeSeedFile(t, stagingDir, "pixi.toml", "[project]\nname = \"x\"\n")
 	writeSeedFile(t, stagingDir, "pixi.lock", "version: 6\n")
 
-	ws := &models.Workspace{ID: uuid.New(), Name: "fail-seed", PackageManager: "pixi"}
+	ws := &models.Workspace{ID: uuid.New(), Name: "fail-seed"}
 	var log bytes.Buffer
 	err = exec.CreateWorkspace(context.Background(), ws, &log, CreateWorkspaceOptions{SeedDir: stagingDir})
 	if err == nil {
@@ -495,18 +483,15 @@ func TestLocalExecutor_CreateWorkspace_PixiTomlRunsLockNotInstall(t *testing.T) 
 	pixiBin, argsLog := writeRecordingStub(t)
 
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
-		PackageManager: config.PackageManagerConfig{
-			DefaultType: "pixi",
-			PixiPath:    pixiBin,
-		},
+		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PixiPath: pixiBin,
 	}
 	exec, err := NewLocalExecutor(cfg)
 	if err != nil {
 		t.Fatalf("NewLocalExecutor: %v", err)
 	}
 
-	ws := &models.Workspace{ID: uuid.New(), Name: "lock-only", PackageManager: "pixi"}
+	ws := &models.Workspace{ID: uuid.New(), Name: "lock-only"}
 	var log bytes.Buffer
 	err = exec.CreateWorkspace(context.Background(), ws, &log, CreateWorkspaceOptions{
 		PixiToml: "[project]\nname = \"lock-only\"\n",
@@ -530,18 +515,15 @@ func TestLocalExecutor_SolveEnvironment_RunsLockNotInstall(t *testing.T) {
 	pixiBin, argsLog := writeRecordingStub(t)
 
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
-		PackageManager: config.PackageManagerConfig{
-			DefaultType: "pixi",
-			PixiPath:    pixiBin,
-		},
+		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PixiPath: pixiBin,
 	}
 	exec, err := NewLocalExecutor(cfg)
 	if err != nil {
 		t.Fatalf("NewLocalExecutor: %v", err)
 	}
 
-	ws := &models.Workspace{ID: uuid.New(), Name: "solve-lock", PackageManager: "pixi"}
+	ws := &models.Workspace{ID: uuid.New(), Name: "solve-lock"}
 	if err := os.MkdirAll(exec.GetWorkspacePath(ws), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -566,18 +548,15 @@ func TestLocalExecutor_InstallEnvironment_RunsPixiInstall(t *testing.T) {
 	pixiBin, argsLog := writeRecordingStub(t)
 
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
-		PackageManager: config.PackageManagerConfig{
-			DefaultType: "pixi",
-			PixiPath:    pixiBin,
-		},
+		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PixiPath: pixiBin,
 	}
 	exec, err := NewLocalExecutor(cfg)
 	if err != nil {
 		t.Fatalf("NewLocalExecutor: %v", err)
 	}
 
-	ws := &models.Workspace{ID: uuid.New(), Name: "install-env", PackageManager: "pixi"}
+	ws := &models.Workspace{ID: uuid.New(), Name: "install-env"}
 	if err := os.MkdirAll(exec.GetWorkspacePath(ws), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -599,7 +578,7 @@ func TestLocalExecutor_InstallEnvironment_RunsPixiInstall(t *testing.T) {
 func TestLocalExecutor_UninstallEnvironment_RemovesEnvsDir(t *testing.T) {
 	exec := testExecutor(t)
 
-	ws := &models.Workspace{ID: uuid.New(), Name: "uninstall-env", PackageManager: "pixi"}
+	ws := &models.Workspace{ID: uuid.New(), Name: "uninstall-env"}
 	envPath := exec.GetWorkspacePath(ws)
 	if err := os.MkdirAll(filepath.Join(envPath, ".pixi", "envs", "default"), 0o755); err != nil {
 		t.Fatal(err)
@@ -634,7 +613,7 @@ func TestLocalExecutor_UninstallEnvironment_RemovesEnvsDir(t *testing.T) {
 
 func TestLocalExecutor_IsEnvInstalled_FalseWithoutEnvs(t *testing.T) {
 	exec := testExecutor(t)
-	ws := &models.Workspace{ID: uuid.New(), Name: "no-envs", PackageManager: "pixi"}
+	ws := &models.Workspace{ID: uuid.New(), Name: "no-envs"}
 	if err := os.MkdirAll(exec.GetWorkspacePath(ws), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -650,18 +629,15 @@ func TestLocalExecutor_PackageOps_UseNoInstall(t *testing.T) {
 	pixiBin, argsLog := writeRecordingStub(t)
 
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
-		PackageManager: config.PackageManagerConfig{
-			DefaultType: "pixi",
-			PixiPath:    pixiBin,
-		},
+		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		PixiPath: pixiBin,
 	}
 	exec, err := NewLocalExecutor(cfg)
 	if err != nil {
 		t.Fatalf("NewLocalExecutor: %v", err)
 	}
 
-	ws := &models.Workspace{ID: uuid.New(), Name: "pkg-ops", PackageManager: "pixi"}
+	ws := &models.Workspace{ID: uuid.New(), Name: "pkg-ops"}
 	if err := os.MkdirAll(exec.GetWorkspacePath(ws), 0o755); err != nil {
 		t.Fatal(err)
 	}

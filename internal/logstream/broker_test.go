@@ -30,43 +30,8 @@ func TestPublishDeliversBurstLargerThanOldBuffer(t *testing.T) {
 	}
 }
 
-func TestPublishWaitsForSlowSubscriberWithinTimeout(t *testing.T) {
+func TestPublishDropsWhenFullAndEmitsMarker(t *testing.T) {
 	b := NewBroker()
-	b.sendTimeout = 500 * time.Millisecond
-	jobID := uuid.New()
-	ch := b.Subscribe(jobID)
-
-	// Fill the buffer completely.
-	for i := 0; i < subscriberBufferSize; i++ {
-		b.Publish(jobID, "fill")
-	}
-
-	// A consumer that starts draining shortly after the producer blocks.
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		<-ch
-	}()
-
-	start := time.Now()
-	b.Publish(jobID, "late")
-	elapsed := time.Since(start)
-	if elapsed >= b.sendTimeout {
-		t.Fatalf("Publish took %v, should have unblocked once consumer read", elapsed)
-	}
-
-	b.Close(jobID)
-	var last string
-	for line := range ch {
-		last = line
-	}
-	if last != "late" {
-		t.Fatalf("last line = %q, want %q (no drop expected)", last, "late")
-	}
-}
-
-func TestPublishDropsAfterTimeoutAndEmitsMarker(t *testing.T) {
-	b := NewBroker()
-	b.sendTimeout = 10 * time.Millisecond
 	jobID := uuid.New()
 	ch := b.Subscribe(jobID)
 
@@ -74,14 +39,14 @@ func TestPublishDropsAfterTimeoutAndEmitsMarker(t *testing.T) {
 		b.Publish(jobID, fmt.Sprintf("fill %d", i))
 	}
 
-	// Nobody is reading: these must be dropped after the bounded wait,
-	// and Publish must return promptly rather than blocking the producer.
+	// Nobody is reading: these must be dropped immediately, and Publish
+	// must return promptly rather than blocking the producer.
 	const dropped = 3
 	start := time.Now()
 	for i := 0; i < dropped; i++ {
 		b.Publish(jobID, fmt.Sprintf("lost %d", i))
 	}
-	if elapsed := time.Since(start); elapsed > time.Second {
+	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
 		t.Fatalf("Publish blocked for %v with a full buffer", elapsed)
 	}
 
@@ -115,7 +80,6 @@ func TestPublishDropsAfterTimeoutAndEmitsMarker(t *testing.T) {
 
 func TestDropMarkerNotRepeatedOnceDelivered(t *testing.T) {
 	b := NewBroker()
-	b.sendTimeout = 10 * time.Millisecond
 	jobID := uuid.New()
 	ch := b.Subscribe(jobID)
 
@@ -152,7 +116,6 @@ func TestDropMarkerNotRepeatedOnceDelivered(t *testing.T) {
 
 func TestPublishIsolatesSlowSubscriberFromFastOne(t *testing.T) {
 	b := NewBroker()
-	b.sendTimeout = 10 * time.Millisecond
 	jobID := uuid.New()
 	slow := b.Subscribe(jobID)
 	fast := b.Subscribe(jobID)
@@ -186,7 +149,6 @@ func TestPublishIsolatesSlowSubscriberFromFastOne(t *testing.T) {
 
 func TestConcurrentPublishDoesNotRace(t *testing.T) {
 	b := NewBroker()
-	b.sendTimeout = time.Millisecond
 	jobID := uuid.New()
 	ch := b.Subscribe(jobID)
 

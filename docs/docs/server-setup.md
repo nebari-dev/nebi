@@ -61,7 +61,7 @@ The main job limits are:
 
 - `request_body_bytes`: maximum HTTP request body size.
 - `manifest_bytes`, `lock_bytes`, `metadata_bytes`: maximum stored manifest, lockfile, and metadata sizes.
-- `max_packages`, `package_string_bytes`: package-count and package-name size caps.
+- `package_string_bytes`: package-name size cap.
 - `active_jobs_per_user`, `active_jobs_per_workspace`, `active_jobs_global`: admission quotas for pending/running jobs.
 - `job_timeout_seconds`: wall-clock deadline for each job.
 - `job_cpu_seconds`: CPU-time budget enforced with `ulimit -t` on Unix.

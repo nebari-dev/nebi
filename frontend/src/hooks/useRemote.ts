@@ -40,6 +40,7 @@ export const retryWhileUnreachable = ({
 }) => (state.status === 'error' ? ERROR_BACKOFF_INTERVAL : false);
 
 export const useRemoteServer = () => {
+  const isLocalMode = useModeStore((s) => s.isLocalMode());
   return useQuery({
     queryKey: ['remote', 'server'],
     queryFn: remoteApi.getServer,
@@ -48,6 +49,9 @@ export const useRemoteServer = () => {
     // useRemoteView) never unmounts — it is the app's only connection-status
     // self-heal, so a transient local error must not stop it.
     refetchInterval: 10000,
+    // The /remote/* endpoints are only registered by the backend in local
+    // mode; polling them in remote mode just produces a 404 every cycle.
+    enabled: isLocalMode,
   });
 };
 

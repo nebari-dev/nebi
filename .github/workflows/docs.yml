@@ -84,6 +84,9 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: docs
+          # A brand-new Worker can't accept `versions upload`; seed it with a
+          # one-time `deploy` if it doesn't exist yet.
+          preCommands: npx wrangler deployments list > /dev/null 2>&1 || npx wrangler deploy
           command: versions upload --preview-alias ${{ steps.site.outputs.alias }}
 
       - name: Extract preview URL

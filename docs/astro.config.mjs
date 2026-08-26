@@ -27,7 +27,14 @@ export default defineConfig({
         baseUrl: 'https://github.com/nebari-dev/nebi/edit/main/docs/',
       },
       plugins: [
-        nebari({ githubHref: 'https://github.com/nebari-dev/nebi' }),
+        nebari({
+          githubHref: 'https://github.com/nebari-dev/nebi',
+          logo: {
+            light: '/nebi-logo.svg',
+            dark: '/nebi-logo-dark.svg',
+            alt: 'Nebi',
+          },
+        }),
         starlightLinksValidator(),
       ],
       sidebar: [

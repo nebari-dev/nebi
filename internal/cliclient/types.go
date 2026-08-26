@@ -26,22 +26,20 @@ type User struct {
 
 // Workspace represents a workspace.
 type Workspace struct {
-	ID             string    `json:"id"`
-	Name           string    `json:"name"`
-	Status         string    `json:"status"`
-	InstallStatus  string    `json:"install_status,omitempty"` // local-mode servers only
-	PackageManager string    `json:"package_manager"`
-	SizeBytes      int64     `json:"size_bytes,omitempty"`
-	Owner          *User     `json:"owner,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Status        string    `json:"status"`
+	InstallStatus string    `json:"install_status,omitempty"` // local-mode servers only
+	SizeBytes     int64     `json:"size_bytes,omitempty"`
+	Owner         *User     `json:"owner,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // CreateWorkspaceRequest represents a request to create a workspace.
 type CreateWorkspaceRequest struct {
-	Name           string  `json:"name"`
-	PackageManager *string `json:"package_manager,omitempty"`
-	PixiToml       *string `json:"pixi_toml,omitempty"`
+	Name     string  `json:"name"`
+	PixiToml *string `json:"pixi_toml,omitempty"`
 }
 
 // Package represents a package in a workspace.

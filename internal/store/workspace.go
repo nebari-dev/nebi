@@ -96,9 +96,6 @@ func (s *Store) CreateWorkspace(ws *LocalWorkspace) error {
 	if ws.Source == "" {
 		ws.Source = "local"
 	}
-	if ws.PackageManager == "" {
-		ws.PackageManager = "pixi"
-	}
 	if err := normalizeLocalWorkspacePath(ws); err != nil {
 		return err
 	}

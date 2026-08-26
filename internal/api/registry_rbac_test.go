@@ -107,10 +107,9 @@ func TestRegistryRoutesRequireRegistryRBAC(t *testing.T) {
 		t.Fatalf("create registry: %v", err)
 	}
 	workspace := models.Workspace{
-		Name:           "private-pub",
-		OwnerID:        user.ID,
-		Status:         models.WsStatusReady,
-		PackageManager: "pixi",
+		Name:    "private-pub",
+		OwnerID: user.ID,
+		Status:  models.WsStatusReady,
 	}
 	if err := database.Create(&workspace).Error; err != nil {
 		t.Fatalf("create workspace: %v", err)

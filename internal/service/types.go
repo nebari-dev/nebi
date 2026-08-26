@@ -9,7 +9,6 @@ import (
 // CreateRequest holds parameters for creating a workspace.
 type CreateRequest struct {
 	Name             string
-	PackageManager   string
 	PixiToml         string
 	Source           string
 	Path             string

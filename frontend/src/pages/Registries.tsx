@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   Check,
   ChevronRight,
+  ChevronUp,
   Copy,
   Download,
   Globe,
@@ -27,6 +28,7 @@ import {
 } from '@/hooks/useRegistries';
 import { useRemoteRegistries, useRemoteView } from '@/hooks/useRemote';
 import { buildImportCommand } from '@/lib/registry';
+import { cn } from '@/lib/utils';
 
 export const Registries = () => {
   const navigate = useNavigate();
@@ -185,7 +187,9 @@ const RepositoryRow = ({
   const importNameId = useId();
 
   const tags = tagData?.tags || [];
-  const effectiveTag = selectedTag || tags[0]?.name || '';
+  const defaultTag =
+    tags.find((tag) => tag.name === 'latest')?.name || tags[0]?.name || '';
+  const effectiveTag = selectedTag || defaultTag;
 
   const handleCopyImportCmd = async () => {
     if (!registry || !effectiveTag) return;
@@ -195,7 +199,11 @@ const RepositoryRow = ({
     setTimeout(() => setCopiedTag(null), 2000);
   };
 
-  const handleOpenImport = () => {
+  const handleToggleImport = () => {
+    if (showImport) {
+      setShowImport(false);
+      return;
+    }
     if (!effectiveTag) return;
     const repoBaseName = repoName.split('/').pop() || repoName;
     setImportName(`${repoBaseName}-${effectiveTag}`);
@@ -227,7 +235,12 @@ const RepositoryRow = ({
 
   return (
     <>
-      <tr className="border-b last:border-0 hover:bg-muted/50">
+      <tr
+        className={cn(
+          'hover:bg-muted/50',
+          !showImport && 'border-b last:border-0',
+        )}
+      >
         <td className="p-4 font-mono text-sm">{repoName}</td>
         {showVisibility && (
           <td className="p-4">
@@ -294,18 +307,33 @@ const RepositoryRow = ({
           <div className="flex items-center justify-end gap-2">
             <Button
               size="sm"
-              onClick={handleOpenImport}
-              disabled={!effectiveTag || tagsLoading}
-              title="Import this environment into a new workspace"
+              variant={showImport ? 'outline' : 'default'}
+              onClick={handleToggleImport}
+              disabled={!showImport && (!effectiveTag || tagsLoading)}
+              aria-expanded={showImport}
+              title={
+                showImport
+                  ? 'Close the import panel'
+                  : 'Import this environment into a new workspace'
+              }
             >
-              <Download className="mr-2 h-4 w-4" />
-              Import
+              {showImport ? (
+                <>
+                  <ChevronUp className="mr-2 h-4 w-4" />
+                  Close
+                </>
+              ) : (
+                <>
+                  <Download className="mr-2 h-4 w-4" />
+                  Import
+                </>
+              )}
             </Button>
           </div>
         </td>
       </tr>
       {showImport && registry && (
-        <tr>
+        <tr className="border-b last:border-0">
           <td colSpan={colSpan} className="p-4 bg-muted/30">
             <div className="space-y-4">
               {error && (

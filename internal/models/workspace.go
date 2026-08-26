@@ -18,6 +18,14 @@ const (
 	WsStatusDeleting WorkspaceStatus = "deleting"
 )
 
+// IsTransitional reports whether the workspace is mid-transition
+// (pending/creating/deleting) and therefore cannot accept jobs. Ready and
+// failed workspaces are settled: a failed workspace may accept new jobs so a
+// corrected spec or a rollback can recover it (issue #497).
+func (w WorkspaceStatus) IsTransitional() bool {
+	return w != WsStatusReady && w != WsStatusFailed
+}
+
 // InstallStatus describes whether a workspace's environment is
 // materialized on disk (.pixi/envs). It is derived from disk state and
 // env job state, never stored in the database. Local mode only.
@@ -31,20 +39,19 @@ const (
 	InstallStatusFailed       InstallStatus = "install_failed"
 )
 
-// Workspace represents a package manager workspace
+// Workspace represents a pixi workspace
 type Workspace struct {
-	ID             uuid.UUID       `gorm:"type:text;primary_key" json:"id"`
-	Name           string          `gorm:"not null" json:"name"`
-	OwnerID        uuid.UUID       `gorm:"type:text;index" json:"owner_id"`
-	Owner          User            `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
-	Status         WorkspaceStatus `gorm:"not null;default:'pending'" json:"status"`
-	PackageManager string          `gorm:"not null" json:"package_manager"` // "pixi" or "uv"
-	Source         string          `gorm:"default:'managed'" json:"source"` // "managed", "local"
-	Path           string          `json:"path,omitempty"`                  // filesystem path (local-mode)
-	SizeBytes      int64           `gorm:"default:0" json:"size_bytes,omitempty"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
-	DeletedAt      gorm.DeletedAt  `gorm:"index" json:"-"`
+	ID        uuid.UUID       `gorm:"type:text;primary_key" json:"id"`
+	Name      string          `gorm:"not null" json:"name"`
+	OwnerID   uuid.UUID       `gorm:"type:text;index" json:"owner_id"`
+	Owner     User            `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
+	Status    WorkspaceStatus `gorm:"not null;default:'pending'" json:"status"`
+	Source    string          `gorm:"default:'managed'" json:"source"` // "managed", "local"
+	Path      string          `json:"path,omitempty"`                  // filesystem path (local-mode)
+	SizeBytes int64           `gorm:"default:0" json:"size_bytes,omitempty"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
+	DeletedAt gorm.DeletedAt  `gorm:"index" json:"-"`
 }
 
 // TableName ensures GORM uses the "workspaces" table

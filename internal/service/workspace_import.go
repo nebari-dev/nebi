@@ -128,7 +128,6 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 
 	ws, err := s.Create(ctx, CreateRequest{
 		Name:             req.Name,
-		PackageManager:   "pixi",
 		ImportStagingDir: stagingDir,
 	}, userID)
 	if err != nil {

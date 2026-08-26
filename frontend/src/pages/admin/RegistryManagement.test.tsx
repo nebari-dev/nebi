@@ -41,8 +41,17 @@ vi.mock('@/hooks/useRegistries', () => ({
 }));
 
 vi.mock('@/hooks/useRemote', () => ({
-  useRemoteServer: () => ({ data: undefined }),
-  useRemoteAdminRegistries: () => ({ data: undefined, isLoading: false }),
+  useRemoteView: () => ({
+    isLocalMode: false,
+    viewMode: 'local',
+    isRemoteConnected: false,
+    isRemoteView: false,
+  }),
+  useRemoteAdminRegistries: () => ({
+    data: undefined,
+    isFirstLoad: false,
+    isUnreachable: false,
+  }),
 }));
 
 describe('RegistryManagement', () => {

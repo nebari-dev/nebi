@@ -18,6 +18,14 @@ const (
 	WsStatusDeleting WorkspaceStatus = "deleting"
 )
 
+// IsTransitional reports whether the workspace is mid-transition
+// (pending/creating/deleting) and therefore cannot accept jobs. Ready and
+// failed workspaces are settled: a failed workspace may accept new jobs so a
+// corrected spec or a rollback can recover it (issue #497).
+func (w WorkspaceStatus) IsTransitional() bool {
+	return w != WsStatusReady && w != WsStatusFailed
+}
+
 // InstallStatus describes whether a workspace's environment is
 // materialized on disk (.pixi/envs). It is derived from disk state and
 // env job state, never stored in the database. Local mode only.

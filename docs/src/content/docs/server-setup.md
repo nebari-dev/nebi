@@ -96,7 +96,7 @@ After upgrading, expect a temporary burst of identity reviews as legacy users si
 
 If a user's mutable IdP claims changed before their first post-upgrade login and no longer collide with the legacy account, Nebi cannot infer the old account binding automatically. That login is treated as a new issuer/subject and creates a new Nebi account with its own binding.
 
-See [Identity Reviews](./ui.md#identity-reviews-admin) for how to review and approve these requests.
+See [Identity Reviews](/ui/#identity-reviews-admin) for how to review and approve these requests.
 
 ## What's Next
 

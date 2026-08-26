@@ -6,6 +6,7 @@
 
 # Generated files
 /.astro
+/.wrangler
 
 # Misc
 .DS_Store

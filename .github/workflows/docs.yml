@@ -22,6 +22,7 @@ concurrency:
 
 env:
   CF_PROJECT: nebi
+  CF_WORKER: nebi-app
 
 jobs:
   docs:
@@ -42,21 +43,18 @@ jobs:
         run: npm ci
         working-directory: docs
 
-      - name: Compute site and deploy branch
+      - name: Compute site and preview alias
         id: site
         env:
           HEAD_REF: ${{ github.head_ref || github.ref_name }}
         run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "site=https://nebi.nebari.dev" >> "$GITHUB_OUTPUT"
-            echo "base=/" >> "$GITHUB_OUTPUT"
-            echo "branch=main" >> "$GITHUB_OUTPUT"
-          else
-            ALIAS=$(printf '%s' "$HEAD_REF" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g')
-            echo "site=https://${ALIAS}.${CF_PROJECT}.pages.dev" >> "$GITHUB_OUTPUT"
-            echo "base=/" >> "$GITHUB_OUTPUT"
-            echo "branch=${HEAD_REF}" >> "$GITHUB_OUTPUT"
-          fi
+          # Preview URLs live on the nebi-app Worker and are only known after
+          # upload, so the build always uses the production site for canonicals.
+          echo "site=https://nebi.nebari.dev" >> "$GITHUB_OUTPUT"
+          echo "base=/" >> "$GITHUB_OUTPUT"
+          echo "branch=${HEAD_REF}" >> "$GITHUB_OUTPUT"
+          ALIAS=$(printf '%s' "$HEAD_REF" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | cut -c1-50 | sed -e 's/^-*//' -e 's/-*$//')
+          echo "alias=${ALIAS}" >> "$GITHUB_OUTPUT"
 
       - name: Build
         run: npm run build
@@ -80,9 +78,28 @@ jobs:
           fi
           echo "ok=${OK}" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy to Cloudflare Pages
+      - name: Upload preview to the nebi-app Worker
+        id: preview-deploy
+        if: ${{ github.event_name == 'pull_request' && steps.candeploy.outputs.ok == 'true' }}
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: docs
+          command: versions upload --preview-alias ${{ steps.site.outputs.alias }}
+
+      - name: Extract preview URL
+        id: preview
+        if: ${{ steps.preview-deploy.outcome == 'success' }}
+        env:
+          WRANGLER_OUTPUT: ${{ steps.preview-deploy.outputs.command-output }}
+        run: |
+          URL=$(printf '%s\n' "$WRANGLER_OUTPUT" | grep -Eo 'https://[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.workers\.dev' | tail -n1)
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy production to Cloudflare Pages
         id: deploy
-        if: ${{ steps.candeploy.outputs.ok == 'true' }}
+        if: ${{ github.ref == 'refs/heads/main' && steps.candeploy.outputs.ok == 'true' }}
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -91,11 +108,11 @@ jobs:
           command: pages deploy docs/dist --project-name=${{ env.CF_PROJECT }} --branch=${{ steps.site.outputs.branch }}
 
       - name: Comment preview URL
-        if: ${{ github.event_name == 'pull_request' && steps.deploy.outcome == 'success' }}
+        if: ${{ github.event_name == 'pull_request' && steps.preview-deploy.outcome == 'success' }}
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: docs-preview
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           message: |
-            **Docs preview** for `${{ github.event.pull_request.head.ref }}`:
-            ${{ steps.deploy.outputs.pages-deployment-alias-url }}
+            **Docs preview** for `${{ github.event.pull_request.head.ref }}` (via the `${{ env.CF_WORKER }}` Worker):
+            ${{ steps.preview.outputs.url }}

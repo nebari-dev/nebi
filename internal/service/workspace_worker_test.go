@@ -341,3 +341,25 @@ func TestCreateVersionSnapshot_StoresAllResolvedPackages(t *testing.T) {
 		t.Fatalf("expected both resolved packages in metadata, got %q", versions[0].PackageMetadata)
 	}
 }
+
+// Regression test for https://github.com/nebari-dev/nebi/issues/497: rolling
+// back to a known-good version must be possible from the "failed" state.
+func TestRollbackToVersion_AllowedOnFailedWorkspace(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "rollback-after-failure", userID)
+
+	svc.PushVersion(context.Background(), ws.ID.String(), PushRequest{
+		PixiToml: "[project]\nname = \"test\"",
+		PixiLock: "version: 6",
+	}, userID)
+	db.Model(ws).Update("status", models.WsStatusFailed)
+
+	job, err := svc.RollbackToVersion(context.Background(), ws.ID.String(), 1, userID)
+	if err != nil {
+		t.Fatalf("rollback on failed workspace should be allowed, got %T: %v", err, err)
+	}
+	if job.Type != models.JobTypeRollback {
+		t.Errorf("expected job type %q, got %q", models.JobTypeRollback, job.Type)
+	}
+}

@@ -589,3 +589,27 @@ func TestDeleteAllPackages(t *testing.T) {
 		t.Errorf("expected 0 packages after delete all, got %d", count)
 	}
 }
+
+// Regression test for https://github.com/nebari-dev/nebi/issues/497: a failed
+// solve must not leave the workspace terminally stuck. A workspace in the
+// "failed" state must accept a new solve job so a corrected spec can recover it.
+func TestSolveWorkspace_AllowedOnFailedWorkspace(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "solve-after-failure", userID)
+	if err := writeWorkspaceFiles(t, svc, ws, "[project]\nname = \"solve-after-failure\"\n", "version: 6\n"); err != nil {
+		t.Fatal(err)
+	}
+	db.Model(ws).Update("status", models.WsStatusFailed)
+
+	job, err := svc.SolveWorkspace(context.Background(), ws.ID.String(), userID)
+	if err != nil {
+		t.Fatalf("solve on failed workspace should be allowed, got %T: %v", err, err)
+	}
+	if job.Type != models.JobTypeUpdate {
+		t.Errorf("expected job type %q, got %q", models.JobTypeUpdate, job.Type)
+	}
+	if job.Status != models.JobStatusPending {
+		t.Errorf("expected job status %q, got %q", models.JobStatusPending, job.Status)
+	}
+}

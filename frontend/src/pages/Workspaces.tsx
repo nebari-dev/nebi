@@ -262,27 +262,29 @@ export const Workspaces = () => {
             Manage your development workspaces
           </p>
         </div>
-        <SplitButton
-          onPrimary={() => {
-            setShowCreate(!showCreate);
-            setCreateTarget(isRemoteView ? 'server' : 'local');
-            setError('');
-          }}
-          primaryLabel={
-            <>
-              <Plus className="h-4 w-4 mr-2" />
-              New Workspace
-            </>
-          }
-          menuLabel="Open workspace actions"
-          menuItems={[
-            {
-              label: 'Import Workspace from Registry',
-              icon: <Download className="h-4 w-4" />,
-              onClick: () => navigate('/registries'),
-            },
-          ]}
-        />
+        {!showCreate && (
+          <SplitButton
+            onPrimary={() => {
+              setShowCreate(true);
+              setCreateTarget(isRemoteView ? 'server' : 'local');
+              setError('');
+            }}
+            primaryLabel={
+              <>
+                <Plus className="h-4 w-4 mr-2" />
+                New Workspace
+              </>
+            }
+            menuLabel="Open workspace actions"
+            menuItems={[
+              {
+                label: 'Import Workspace from Registry',
+                icon: <Download className="h-4 w-4" />,
+                onClick: () => navigate('/registries'),
+              },
+            ]}
+          />
+        )}
       </div>
 
       {error && (
@@ -457,6 +459,7 @@ export const Workspaces = () => {
                           <InstallControls
                             workspaceId={ws.id}
                             installStatus={ws.install_status}
+                            appearance="icon"
                             onStarted={(job) =>
                               setEnvJobNotice({
                                 wsId: ws.id,
@@ -470,8 +473,7 @@ export const Workspaces = () => {
                         {ws.location === 'local' && ws.source !== 'local' && (
                           <Button
                             variant="ghost"
-                            size="sm"
-                            className="gap-1.5"
+                            size="icon"
                             onClick={(e) => handleCopyPull(e, ws.name, ws.id)}
                             aria-label={`Copy pull command for ${ws.name}`}
                             title="Copy nebi pull command"
@@ -486,7 +488,7 @@ export const Workspaces = () => {
 
                         <Button
                           variant="ghost"
-                          size="sm"
+                          size="icon"
                           onClick={(e) => {
                             e.stopPropagation();
                             setConfirmDelete({
@@ -497,6 +499,7 @@ export const Workspaces = () => {
                           }}
                           disabled={isDeletePending}
                           aria-label={`Delete ${ws.name}`}
+                          title="Delete workspace"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

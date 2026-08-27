@@ -39,20 +39,19 @@ const (
 	InstallStatusFailed       InstallStatus = "install_failed"
 )
 
-// Workspace represents a package manager workspace
+// Workspace represents a pixi workspace
 type Workspace struct {
-	ID             uuid.UUID       `gorm:"type:text;primary_key" json:"id"`
-	Name           string          `gorm:"not null" json:"name"`
-	OwnerID        uuid.UUID       `gorm:"type:text;index" json:"owner_id"`
-	Owner          User            `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
-	Status         WorkspaceStatus `gorm:"not null;default:'pending'" json:"status"`
-	PackageManager string          `gorm:"not null" json:"package_manager"` // "pixi" or "uv"
-	Source         string          `gorm:"default:'managed'" json:"source"` // "managed", "local"
-	Path           string          `json:"path,omitempty"`                  // filesystem path (local-mode)
-	SizeBytes      int64           `gorm:"default:0" json:"size_bytes,omitempty"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
-	DeletedAt      gorm.DeletedAt  `gorm:"index" json:"-"`
+	ID        uuid.UUID       `gorm:"type:text;primary_key" json:"id"`
+	Name      string          `gorm:"not null" json:"name"`
+	OwnerID   uuid.UUID       `gorm:"type:text;index" json:"owner_id"`
+	Owner     User            `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
+	Status    WorkspaceStatus `gorm:"not null;default:'pending'" json:"status"`
+	Source    string          `gorm:"default:'managed'" json:"source"` // "managed", "local"
+	Path      string          `json:"path,omitempty"`                  // filesystem path (local-mode)
+	SizeBytes int64           `gorm:"default:0" json:"size_bytes,omitempty"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
+	DeletedAt gorm.DeletedAt  `gorm:"index" json:"-"`
 }
 
 // TableName ensures GORM uses the "workspaces" table

@@ -55,11 +55,10 @@ func (h *WorkspaceHandler) CreateWorkspace(c *gin.Context) {
 	}
 
 	ws, err := h.svc.Create(c.Request.Context(), service.CreateRequest{
-		Name:           req.Name,
-		PackageManager: req.PackageManager,
-		PixiToml:       req.PixiToml,
-		Source:         req.Source,
-		Path:           req.Path,
+		Name:     req.Name,
+		PixiToml: req.PixiToml,
+		Source:   req.Source,
+		Path:     req.Path,
 	}, getUserID(c))
 	if err != nil {
 		handleServiceError(c, err)
@@ -643,11 +642,10 @@ func (h *WorkspaceHandler) GetPublishDefaults(c *gin.Context) {
 // --- Request/Response types ---
 
 type CreateWorkspaceRequest struct {
-	Name           string `json:"name"`
-	PackageManager string `json:"package_manager"`
-	PixiToml       string `json:"pixi_toml"`
-	Source         string `json:"source"`
-	Path           string `json:"path"`
+	Name     string `json:"name"`
+	PixiToml string `json:"pixi_toml"`
+	Source   string `json:"source"`
+	Path     string `json:"path"`
 }
 
 type PixiTomlResponse struct {

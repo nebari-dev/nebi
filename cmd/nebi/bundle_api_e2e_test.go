@@ -42,7 +42,7 @@ func startLocalModeServer(t *testing.T) *localModeEnv {
 		"NEBI_DATABASE_DSN",
 		"NEBI_STORAGE_WORKSPACES_DIR",
 		"NEBI_SERVER_PORT",
-		"NEBI_PACKAGE_MANAGER_PIXI_PATH",
+		"NEBI_PIXI_PATH",
 	}
 	saved := make(map[string]string, len(envVars))
 	for _, k := range envVars {
@@ -95,7 +95,7 @@ exit 0
 	if err := os.WriteFile(pixiPath, []byte(pixiScript), 0o755); err != nil {
 		t.Fatalf("write fake pixi: %v", err)
 	}
-	os.Setenv("NEBI_PACKAGE_MANAGER_PIXI_PATH", pixiPath)
+	os.Setenv("NEBI_PIXI_PATH", pixiPath)
 
 	serverURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -262,9 +262,8 @@ func contains(s, sub string) bool { return bytes.Contains([]byte(s), []byte(sub)
 func createWorkspaceViaAPI(t *testing.T, serverURL, token, name, pixiToml string) string {
 	t.Helper()
 	body := map[string]interface{}{
-		"name":            name,
-		"package_manager": "pixi",
-		"pixi_toml":       pixiToml,
+		"name":      name,
+		"pixi_toml": pixiToml,
 	}
 	b, _ := json.Marshal(body)
 	req, _ := http.NewRequest(http.MethodPost, serverURL+"/api/v1/workspaces", bytes.NewReader(b))

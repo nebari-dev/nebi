@@ -10,8 +10,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/nebari-dev/nebi/internal/pkgmgr"
 )
 
 // TestPixiAvailable checks if pixi is available in PATH
@@ -34,8 +32,8 @@ func TestNew(t *testing.T) {
 		t.Fatalf("Failed to create PixiManager: %v", err)
 	}
 
-	if pm.Name() != "pixi" {
-		t.Errorf("Expected name 'pixi', got '%s'", pm.Name())
+	if pm.BinaryPath() == "" {
+		t.Error("Expected a resolved pixi binary path, got empty string")
 	}
 }
 
@@ -115,7 +113,7 @@ func TestInit(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	ctx := context.Background()
-	opts := pkgmgr.InitOptions{
+	opts := InitOptions{
 		EnvPath:  tmpDir,
 		Name:     "test-env",
 		Channels: []string{"conda-forge"},
@@ -155,7 +153,7 @@ func TestInstallAndList(t *testing.T) {
 	ctx := context.Background()
 
 	// Initialize environment
-	initOpts := pkgmgr.InitOptions{
+	initOpts := InitOptions{
 		EnvPath:  tmpDir,
 		Name:     "test-env",
 		Channels: []string{"conda-forge"},
@@ -165,7 +163,7 @@ func TestInstallAndList(t *testing.T) {
 	}
 
 	// Install a small package (python itself is usually quick)
-	installOpts := pkgmgr.InstallOptions{
+	installOpts := InstallOptions{
 		EnvPath:  tmpDir,
 		Packages: []string{"python=3.11"},
 	}
@@ -174,7 +172,7 @@ func TestInstallAndList(t *testing.T) {
 	}
 
 	// List packages
-	listOpts := pkgmgr.ListOptions{
+	listOpts := ListOptions{
 		EnvPath: tmpDir,
 	}
 	packages, err := pm.List(ctx, listOpts)
@@ -219,7 +217,7 @@ func TestGetManifest(t *testing.T) {
 	ctx := context.Background()
 
 	// Initialize environment
-	initOpts := pkgmgr.InitOptions{
+	initOpts := InitOptions{
 		EnvPath:  tmpDir,
 		Name:     "test-manifest",
 		Channels: []string{"conda-forge"},
@@ -270,7 +268,7 @@ func TestRemove(t *testing.T) {
 	ctx := context.Background()
 
 	// Initialize environment
-	initOpts := pkgmgr.InitOptions{
+	initOpts := InitOptions{
 		EnvPath:  tmpDir,
 		Name:     "test-env",
 		Channels: []string{"conda-forge"},
@@ -280,7 +278,7 @@ func TestRemove(t *testing.T) {
 	}
 
 	// Install a package
-	installOpts := pkgmgr.InstallOptions{
+	installOpts := InstallOptions{
 		EnvPath:  tmpDir,
 		Packages: []string{"python=3.11"},
 	}
@@ -289,7 +287,7 @@ func TestRemove(t *testing.T) {
 	}
 
 	// Remove the package
-	removeOpts := pkgmgr.RemoveOptions{
+	removeOpts := RemoveOptions{
 		EnvPath:  tmpDir,
 		Packages: []string{"python"},
 	}
@@ -298,7 +296,7 @@ func TestRemove(t *testing.T) {
 	}
 
 	// Verify package is removed
-	listOpts := pkgmgr.ListOptions{
+	listOpts := ListOptions{
 		EnvPath: tmpDir,
 	}
 	packages, err := pm.List(ctx, listOpts)
@@ -323,7 +321,7 @@ func TestPackageCommandsSeparateUserArgs(t *testing.T) {
 		{
 			name: "install",
 			run: func(ctx context.Context, pm *PixiManager, envPath string) error {
-				return pm.Install(ctx, pkgmgr.InstallOptions{
+				return pm.Install(ctx, InstallOptions{
 					EnvPath:  envPath,
 					Packages: []string{"--config", "python=3.11"},
 				})
@@ -333,7 +331,7 @@ func TestPackageCommandsSeparateUserArgs(t *testing.T) {
 		{
 			name: "install no-install",
 			run: func(ctx context.Context, pm *PixiManager, envPath string) error {
-				return pm.Install(ctx, pkgmgr.InstallOptions{
+				return pm.Install(ctx, InstallOptions{
 					EnvPath:   envPath,
 					Packages:  []string{"--config", "python=3.11"},
 					NoInstall: true,
@@ -344,7 +342,7 @@ func TestPackageCommandsSeparateUserArgs(t *testing.T) {
 		{
 			name: "remove",
 			run: func(ctx context.Context, pm *PixiManager, envPath string) error {
-				return pm.Remove(ctx, pkgmgr.RemoveOptions{
+				return pm.Remove(ctx, RemoveOptions{
 					EnvPath:  envPath,
 					Packages: []string{"--manifest-path", "python"},
 				})
@@ -354,7 +352,7 @@ func TestPackageCommandsSeparateUserArgs(t *testing.T) {
 		{
 			name: "remove no-install",
 			run: func(ctx context.Context, pm *PixiManager, envPath string) error {
-				return pm.Remove(ctx, pkgmgr.RemoveOptions{
+				return pm.Remove(ctx, RemoveOptions{
 					EnvPath:   envPath,
 					Packages:  []string{"--manifest-path", "python"},
 					NoInstall: true,
@@ -365,7 +363,7 @@ func TestPackageCommandsSeparateUserArgs(t *testing.T) {
 		{
 			name: "update",
 			run: func(ctx context.Context, pm *PixiManager, envPath string) error {
-				return pm.Update(ctx, pkgmgr.UpdateOptions{
+				return pm.Update(ctx, UpdateOptions{
 					EnvPath:  envPath,
 					Packages: []string{"--frozen", "python"},
 				})
@@ -421,11 +419,11 @@ exit 0
 		t.Fatalf("create PixiManager with fake pixi: %v", err)
 	}
 
-	_, err = pm.List(context.Background(), pkgmgr.ListOptions{
+	_, err = pm.List(context.Background(), ListOptions{
 		EnvPath:        tmpDir,
 		MaxOutputBytes: 64,
 	})
-	var outputLimitErr *pkgmgr.OutputLimitError
+	var outputLimitErr *OutputLimitError
 	if !errors.As(err, &outputLimitErr) {
 		t.Fatalf("expected OutputLimitError, got %T: %v", err, err)
 	}
@@ -598,25 +596,25 @@ func TestErrorHandling(t *testing.T) {
 	ctx := context.Background()
 
 	// Test Init with empty path
-	err = pm.Init(ctx, pkgmgr.InitOptions{Name: "test"})
+	err = pm.Init(ctx, InitOptions{Name: "test"})
 	if err == nil {
 		t.Error("Expected error for empty EnvPath, got nil")
 	}
 
 	// Test Init with empty name
-	err = pm.Init(ctx, pkgmgr.InitOptions{EnvPath: "/tmp/test"})
+	err = pm.Init(ctx, InitOptions{EnvPath: "/tmp/test"})
 	if err == nil {
 		t.Error("Expected error for empty Name, got nil")
 	}
 
 	// Test Install with empty path
-	err = pm.Install(ctx, pkgmgr.InstallOptions{Packages: []string{"python"}})
+	err = pm.Install(ctx, InstallOptions{Packages: []string{"python"}})
 	if err == nil {
 		t.Error("Expected error for empty EnvPath, got nil")
 	}
 
 	// Test Install with no packages
-	err = pm.Install(ctx, pkgmgr.InstallOptions{EnvPath: "/tmp/test"})
+	err = pm.Install(ctx, InstallOptions{EnvPath: "/tmp/test"})
 	if err == nil {
 		t.Error("Expected error for empty Packages, got nil")
 	}

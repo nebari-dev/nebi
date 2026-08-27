@@ -3482,9 +3482,6 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
-                "package_manager": {
-                    "type": "string"
-                },
                 "path": {
                     "type": "string"
                 },
@@ -4248,10 +4245,6 @@ const docTemplate = `{
                     "$ref": "#/definitions/models.User"
                 },
                 "owner_id": {
-                    "type": "string"
-                },
-                "package_manager": {
-                    "description": "\"pixi\" or \"uv\"",
                     "type": "string"
                 },
                 "path": {

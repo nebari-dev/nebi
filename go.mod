@@ -2,7 +2,7 @@ module github.com/nebari-dev/nebi
 
 go 1.25.0
 
-toolchain go1.26.6
+toolchain go1.26.7
 
 require (
 	github.com/alicebob/miniredis/v2 v2.37.0

@@ -2,7 +2,8 @@ import { Boxes, ExternalLink, Settings, Shield } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useIsAdmin } from '@/hooks/useAdmin';
-import { useRemoteServer } from '@/hooks/useRemote';
+import { useHostJobNotifications } from '@/hooks/useHostJobNotifications';
+import { useRemoteView } from '@/hooks/useRemote';
 import type { ThemeMode } from '@/hooks/useThemePreference';
 import { useVersion } from '@/hooks/useVersion';
 import { getBrandingLogoUrl } from '@/lib/brandingConfig';
@@ -24,13 +25,15 @@ export const Layout = ({
   onThemeChange,
 }: LayoutProps) => {
   const { user, clearAuth } = useAuthStore();
-  const isLocalMode = useModeStore((s) => s.isLocalMode());
   const navigate = useNavigate();
   const { data: isAdmin } = useIsAdmin();
-  const { viewMode, setViewMode } = useViewModeStore();
-  const { data: serverStatus } = useRemoteServer();
+  const { setViewMode } = useViewModeStore();
   const { data: versionInfo } = useVersion();
-  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
+  // Layout never unmounts, so this call keeps a permanent observer on the
+  // remote/server query — the app's only connection-status self-heal (see the
+  // useRemoteServer comment in hooks/useRemote.ts).
+  const { isLocalMode, viewMode, isRemoteConnected } = useRemoteView();
+  useHostJobNotifications();
 
   const location = useLocation();
   const isAdminPage = location.pathname.startsWith('/admin');
@@ -118,14 +121,6 @@ export const Layout = ({
                     )}
                   </NavLink>
                 )}
-                <Button
-                  variant="ghost"
-                  className="gap-2"
-                  onClick={() => openExternal('https://nebi.nebari.dev/')}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Docs
-                </Button>
               </nav>
             </div>
             <div className="flex items-center gap-4">
@@ -170,27 +165,39 @@ export const Layout = ({
                   </button>
                 </div>
               )}
-              {isAdmin && (
-                <NavLink to="/admin">
-                  {({ isActive }) => (
-                    <Button
-                      variant={isActive ? 'secondary' : 'ghost'}
-                      className="gap-2"
-                    >
-                      <Shield className="h-4 w-4" />
-                      Admin
-                    </Button>
-                  )}
-                </NavLink>
-              )}
-              {!isLocalMode && (
-                <ProfileMenu
-                  user={user}
-                  themeMode={themeMode}
-                  onThemeChange={onThemeChange}
-                  onLogout={handleLogout}
-                />
-              )}
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Docs"
+                  title="Docs"
+                  onClick={() => openExternal('https://nebi.nebari.dev/')}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+                {isAdmin && (
+                  <NavLink to="/admin">
+                    {({ isActive }) => (
+                      <Button
+                        variant={isActive ? 'secondary' : 'ghost'}
+                        size="icon"
+                        aria-label="Admin"
+                        title="Admin"
+                      >
+                        <Shield className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </NavLink>
+                )}
+                {!isLocalMode && (
+                  <ProfileMenu
+                    user={user}
+                    themeMode={themeMode}
+                    onThemeChange={onThemeChange}
+                    onLogout={handleLogout}
+                  />
+                )}
+              </div>
             </div>
           </div>
         </div>

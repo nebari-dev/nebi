@@ -2,6 +2,7 @@
   "branding": {
     "title": "",
     "logoUrl": "",
+    "logoUrlDark": "",
     "faviconUrl": "",
     "theme": {
       "light": {},

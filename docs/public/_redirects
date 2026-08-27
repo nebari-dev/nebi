@@ -1,0 +1,5 @@
+/docs/cli-guide /cli-local/ 301
+/docs/architecture /nebi-components/ 301
+/docs /introduction/ 301
+/docs/ /introduction/ 301
+/docs/* /:splat 301

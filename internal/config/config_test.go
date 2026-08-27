@@ -87,16 +87,12 @@ func writeConfigYAML(t *testing.T, content string) {
 func TestLoad_LimitsFromEnv(t *testing.T) {
 	isolate(t)
 	t.Setenv("NEBI_MODE", "local")
-	t.Setenv("NEBI_LIMITS_MAX_PACKAGES", "7")
 	t.Setenv("NEBI_LIMITS_JOB_TIMEOUT_SECONDS", "9")
 	t.Setenv("NEBI_LIMITS_JOB_LOG_BYTES", "1234")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if cfg.Limits.MaxPackages != 7 {
-		t.Fatalf("expected max_packages from env, got %d", cfg.Limits.MaxPackages)
 	}
 	if cfg.Limits.JobTimeoutSeconds != 9 {
 		t.Fatalf("expected job_timeout_seconds from env, got %d", cfg.Limits.JobTimeoutSeconds)
@@ -189,6 +185,7 @@ registries:
       url: registry.acme.com
       namespace: acme-envs
       default: true
+      restricted: true
 `)
 
 	cfg, err := Load()
@@ -202,7 +199,7 @@ registries:
 		t.Fatalf("expected 1 entry, got %d", len(cfg.Registries.Entries))
 	}
 	e := cfg.Registries.Entries[0]
-	if e.Name != "acme" || e.URL != "registry.acme.com" || e.Namespace != "acme-envs" || !e.Default {
+	if e.Name != "acme" || e.URL != "registry.acme.com" || e.Namespace != "acme-envs" || !e.Default || !e.Restricted {
 		t.Errorf("entry fields not parsed correctly: %+v", e)
 	}
 }

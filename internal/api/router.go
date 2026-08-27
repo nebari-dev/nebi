@@ -193,7 +193,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 	svc := service.New(db, q, exec, localMode, encKey, rbacProvider, limitCfg)
 	adminSvc := service.NewAdminService(db, rbacProvider, limitCfg)
 	groupSvc := service.NewGroupService(db, rbacProvider)
-	registrySvc := service.NewRegistryService(db, encKey)
+	registrySvc := service.NewRegistryService(db, encKey, localMode, rbacProvider)
 	jobSvc := service.NewJobService(db, localMode)
 
 	wsHandler := handlers.NewWorkspaceHandler(svc)
@@ -655,19 +655,20 @@ func isHTTPSRequest(c *gin.Context) bool {
 // <script type="module" crossorigin> bundle from loading.
 //
 // In local mode the API is used only by local UIs, so instead of a wildcard
-// the allowed origin is echoed only for those: loopback http(s) origins (the
-// SPA served by this process, the Vite dev server), the desktop webview
-// ("wails://..." on macOS/Linux, opaque "null" origins some webviews produce),
-// and any operator-configured server.allowed_origins (a reverse proxy such as
+// the allowed origin is echoed only for those: local UI origins (see
+// netguard.IsLocalUIOrigin — loopback http(s) origins like the SPA served by
+// this process or the Vite dev server, the desktop webview's "wails://..."
+// on macOS/Linux, and the opaque "null" origin some webviews produce), and
+// any operator-configured server.allowed_origins (a reverse proxy such as
 // jupyter-server-proxy, whose public origin browsers send on CORS-mode
-// requests like Vite's crossorigin module bundles). Webview requests arrive
-// through the in-process Wails handler, never the network listener (see
-// netguard.Middleware, which enforces the same origin rules on requests).
+// requests like Vite's crossorigin module bundles). netguard.Middleware
+// enforces the same origin rules on the network listener, so a webview
+// talking to it directly (wails dev with VITE_API_URL set) is admitted too.
 func corsMiddleware(localMode bool, allowedOrigins []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if localMode {
 			origin := c.Request.Header.Get("Origin")
-			if netguard.IsLoopbackOrigin(origin) || netguard.OriginAllowed(origin, allowedOrigins) || strings.HasPrefix(origin, "wails://") || origin == "null" {
+			if netguard.IsLocalUIOrigin(origin) || netguard.OriginAllowed(origin, allowedOrigins) {
 				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 				c.Writer.Header().Set("Vary", "Origin")
 			}

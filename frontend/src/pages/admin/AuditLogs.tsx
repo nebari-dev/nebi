@@ -1,13 +1,12 @@
 import { Loader2, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { useAuditLogs } from '@/hooks/useAdmin';
-import { useRemoteAuditLogs, useRemoteServer } from '@/hooks/useRemote';
-import { useModeStore } from '@/store/modeStore';
-import { useViewModeStore } from '@/store/viewModeStore';
+import { useRemoteAuditLogs, useRemoteView } from '@/hooks/useRemote';
 
 const ACTION_COLORS: Record<string, string> = {
   create_user: 'bg-green-100 text-green-800 border-green-300',
@@ -31,18 +30,18 @@ export const AuditLogs = () => {
   });
 
   // View mode support
-  const isLocalMode = useModeStore((s) => s.isLocalMode());
-  const viewMode = useViewModeStore((state) => state.viewMode);
-  const { data: serverStatus } = useRemoteServer();
-  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
-  const shouldShowRemote = isRemoteConnected && viewMode === 'remote';
+  const { viewMode, isRemoteConnected, isRemoteView } = useRemoteView();
 
   const { data: logs, isLoading: logsLoading } = useAuditLogs(
     filters.user_id || filters.action ? filters : undefined,
   );
 
-  const { data: remoteLogs, isLoading: remoteLoading } = useRemoteAuditLogs(
-    shouldShowRemote,
+  const {
+    data: remoteLogs,
+    isFirstLoad: remoteFirstLoad,
+    isUnreachable: remoteIsUnreachable,
+  } = useRemoteAuditLogs(
+    isRemoteView,
     filters.user_id || filters.action ? filters : undefined,
   );
 
@@ -58,7 +57,10 @@ export const AuditLogs = () => {
     }
   }, [logs, remoteLogs, isRemoteConnected, viewMode]);
 
-  const isLoading = logsLoading || (shouldShowRemote && remoteLoading);
+  const remoteUnreachable = isRemoteView && remoteIsUnreachable;
+  // Full-page spinner only until the remote list first resolves or errors
+  // (see isFirstLoad in useRemote.ts).
+  const isLoading = logsLoading || (isRemoteView && remoteFirstLoad);
 
   if (isLoading) {
     return (
@@ -76,6 +78,8 @@ export const AuditLogs = () => {
           View all system activity and changes
         </p>
       </div>
+
+      {remoteUnreachable && <RemoteUnreachableBanner />}
 
       <div className="flex gap-4">
         <div className="flex-1">
@@ -174,7 +178,7 @@ export const AuditLogs = () => {
         </CardContent>
       </Card>
 
-      {displayedLogs.length === 0 && (
+      {displayedLogs.length === 0 && !remoteUnreachable && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">
             {filters.user_id || filters.action

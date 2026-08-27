@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   Check,
   ChevronRight,
+  ChevronUp,
   Copy,
   Download,
   Globe,
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -24,10 +26,9 @@ import {
   useRegistryRepositories,
   useRepositoryTags,
 } from '@/hooks/useRegistries';
-import { useRemoteRegistries, useRemoteServer } from '@/hooks/useRemote';
+import { useRemoteRegistries, useRemoteView } from '@/hooks/useRemote';
 import { buildImportCommand } from '@/lib/registry';
-import { useModeStore } from '@/store/modeStore';
-import { useViewModeStore } from '@/store/viewModeStore';
+import { cn } from '@/lib/utils';
 
 export const Registries = () => {
   const navigate = useNavigate();
@@ -36,12 +37,12 @@ export const Registries = () => {
     usePublicRegistries();
 
   // View mode support for local desktop app
-  const isLocalMode = useModeStore((s) => s.isLocalMode());
-  const viewMode = useViewModeStore((state) => state.viewMode);
-  const { data: serverStatus } = useRemoteServer();
-  const isRemoteConnected = isLocalMode && serverStatus?.status === 'connected';
-  const { data: remoteRegistries, isLoading: remoteLoading } =
-    useRemoteRegistries(isRemoteConnected);
+  const { viewMode, isRemoteConnected, isRemoteView } = useRemoteView();
+  const {
+    data: remoteRegistries,
+    isFirstLoad: remoteFirstLoad,
+    isUnreachable: remoteIsUnreachable,
+  } = useRemoteRegistries(isRemoteConnected);
 
   // Show registries based on view mode when connected to remote
   const displayedRegistries = useMemo(() => {
@@ -56,7 +57,10 @@ export const Registries = () => {
     }
   }, [registries, remoteRegistries, isRemoteConnected, viewMode]);
 
-  const isLoading = registriesLoading || (isRemoteConnected && remoteLoading);
+  const remoteUnreachable = isRemoteView && remoteIsUnreachable;
+  // Full-page spinner only until the remote list first resolves or errors
+  // (see isFirstLoad in useRemote.ts).
+  const isLoading = registriesLoading || (isRemoteConnected && remoteFirstLoad);
 
   if (isLoading) {
     return (
@@ -85,6 +89,8 @@ export const Registries = () => {
           </Button>
         )}
       </div>
+
+      {remoteUnreachable && <RemoteUnreachableBanner />}
 
       <Card>
         <CardContent className="p-0">
@@ -132,7 +138,7 @@ export const Registries = () => {
         </CardContent>
       </Card>
 
-      {displayedRegistries.length === 0 && (
+      {displayedRegistries.length === 0 && !remoteUnreachable && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">
             No registries configured.{' '}
@@ -181,7 +187,9 @@ const RepositoryRow = ({
   const importNameId = useId();
 
   const tags = tagData?.tags || [];
-  const effectiveTag = selectedTag || tags[0]?.name || '';
+  const defaultTag =
+    tags.find((tag) => tag.name === 'latest')?.name || tags[0]?.name || '';
+  const effectiveTag = selectedTag || defaultTag;
 
   const handleCopyImportCmd = async () => {
     if (!registry || !effectiveTag) return;
@@ -191,7 +199,11 @@ const RepositoryRow = ({
     setTimeout(() => setCopiedTag(null), 2000);
   };
 
-  const handleOpenImport = () => {
+  const handleToggleImport = () => {
+    if (showImport) {
+      setShowImport(false);
+      return;
+    }
     if (!effectiveTag) return;
     const repoBaseName = repoName.split('/').pop() || repoName;
     setImportName(`${repoBaseName}-${effectiveTag}`);
@@ -223,7 +235,12 @@ const RepositoryRow = ({
 
   return (
     <>
-      <tr className="border-b last:border-0 hover:bg-muted/50">
+      <tr
+        className={cn(
+          'hover:bg-muted/50',
+          !showImport && 'border-b last:border-0',
+        )}
+      >
         <td className="p-4 font-mono text-sm">{repoName}</td>
         {showVisibility && (
           <td className="p-4">
@@ -290,18 +307,33 @@ const RepositoryRow = ({
           <div className="flex items-center justify-end gap-2">
             <Button
               size="sm"
-              onClick={handleOpenImport}
-              disabled={!effectiveTag || tagsLoading}
-              title="Import this environment into a new workspace"
+              variant={showImport ? 'outline' : 'default'}
+              onClick={handleToggleImport}
+              disabled={!showImport && (!effectiveTag || tagsLoading)}
+              aria-expanded={showImport}
+              title={
+                showImport
+                  ? 'Close the import panel'
+                  : 'Import this environment into a new workspace'
+              }
             >
-              <Download className="mr-2 h-4 w-4" />
-              Import
+              {showImport ? (
+                <>
+                  <ChevronUp className="mr-2 h-4 w-4" />
+                  Close
+                </>
+              ) : (
+                <>
+                  <Download className="mr-2 h-4 w-4" />
+                  Import
+                </>
+              )}
             </Button>
           </div>
         </td>
       </tr>
       {showImport && registry && (
-        <tr>
+        <tr className="border-b last:border-0">
           <td colSpan={colSpan} className="p-4 bg-muted/30">
             <div className="space-y-4">
               {error && (

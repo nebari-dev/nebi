@@ -12,7 +12,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/audit"
 	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/pkgmgr"
+	"github.com/nebari-dev/nebi/internal/pixi"
 )
 
 // --- RollbackToVersion tests ---
@@ -194,7 +194,7 @@ func TestSoftDeleteWorkspace(t *testing.T) {
 
 func TestCreateVersionSnapshot(t *testing.T) {
 	// This test requires a working pixi binary because CreateVersionSnapshot
-	// calls pkgmgr.List to capture package metadata in the snapshot.
+	// runs pixi list to capture package metadata in the snapshot.
 	if _, err := exec.LookPath("pixi"); err != nil {
 		t.Skip("pixi not in PATH, skipping snapshot test")
 	}
@@ -293,60 +293,15 @@ func TestCreateVersionSnapshot_RejectsOversizedLockBeforeVersionWrite(t *testing
 	}
 }
 
-func TestCreateVersionSnapshot_RejectsManifestPackageLimitBeforeVersionWrite(t *testing.T) {
-	svc, db := testSetup(t, true)
-	userID := createTestUser(t, db, "alice")
-	ws := createReadyWorkspace(t, svc, db, "snapshot-manifest-package-limit", userID)
-	limitCfg := limits.Defaults()
-	limitCfg.MaxPackages = 1
-	svc.limits = limitCfg
-
-	wsPath := svc.executor.GetWorkspacePath(ws)
-	if err := os.MkdirAll(wsPath, 0o755); err != nil {
-		t.Fatalf("mkdir workspace: %v", err)
-	}
-	manifest := "[project]\nname = \"snapshot-manifest-package-limit\"\n\n[dependencies]\npython = \">=3.11\"\nnumpy = \"*\"\n"
-	if err := os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte(manifest), 0o644); err != nil {
-		t.Fatalf("write manifest: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(wsPath, "pixi.lock"), []byte("version: 6\n"), 0o644); err != nil {
-		t.Fatalf("write lock: %v", err)
-	}
-
-	err := svc.CreateVersionSnapshot(context.Background(), ws, uuid.New(), userID, "too many manifest packages")
-
-	var ve *ValidationError
-	if !isValidationError(err, &ve) {
-		t.Fatalf("expected ValidationError, got %T: %v", err, err)
-	}
-	var versions int64
-	db.Model(&models.WorkspaceVersion{}).Where("workspace_id = ?", ws.ID).Count(&versions)
-	if versions != 0 {
-		t.Fatalf("expected no version writes, got %d", versions)
-	}
-}
-
-func TestCreateVersionSnapshot_RejectsTooManyListedPackagesBeforeVersionWrite(t *testing.T) {
+func TestCreateVersionSnapshot_StoresAllResolvedPackages(t *testing.T) {
 	svc, db := testSetup(t, true)
 	userID := createTestUser(t, db, "alice")
 	ws := createReadyWorkspace(t, svc, db, "snapshot-package-limit", userID)
-	limitCfg := limits.Defaults()
-	limitCfg.MaxPackages = 1
-	svc.limits = limitCfg
 
-	pmType := "static-list-" + uuid.NewString()
-	pkgmgr.Register(pmType, func(context.Context, string) (pkgmgr.PackageManager, error) {
-		return staticListPackageManager{
-			packages: []pkgmgr.Package{
-				{Name: "numpy", Version: "1.0.0"},
-				{Name: "pandas", Version: "2.0.0"},
-			},
-		}, nil
+	stubPixiList(t, []pixi.Package{
+		{Name: "numpy", Version: "1.0.0"},
+		{Name: "pandas", Version: "2.0.0"},
 	})
-	ws.PackageManager = pmType
-	if err := db.Save(ws).Error; err != nil {
-		t.Fatalf("save workspace package manager: %v", err)
-	}
 
 	wsPath := svc.executor.GetWorkspacePath(ws)
 	if err := os.MkdirAll(wsPath, 0o755); err != nil {
@@ -359,15 +314,39 @@ func TestCreateVersionSnapshot_RejectsTooManyListedPackagesBeforeVersionWrite(t 
 		t.Fatalf("write lock: %v", err)
 	}
 
-	err := svc.CreateVersionSnapshot(context.Background(), ws, uuid.New(), userID, "too many packages")
-
-	var ve *ValidationError
-	if !isValidationError(err, &ve) {
-		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	err := svc.CreateVersionSnapshot(context.Background(), ws, uuid.New(), userID, "resolved packages above cap")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	var versions int64
-	db.Model(&models.WorkspaceVersion{}).Where("workspace_id = ?", ws.ID).Count(&versions)
-	if versions != 0 {
-		t.Fatalf("expected no version writes, got %d", versions)
+
+	var versions []models.WorkspaceVersion
+	db.Where("workspace_id = ?", ws.ID).Find(&versions)
+	if len(versions) != 1 {
+		t.Fatalf("expected 1 version, got %d", len(versions))
+	}
+	if !strings.Contains(versions[0].PackageMetadata, "numpy") || !strings.Contains(versions[0].PackageMetadata, "pandas") {
+		t.Fatalf("expected both resolved packages in metadata, got %q", versions[0].PackageMetadata)
+	}
+}
+
+// Regression test for https://github.com/nebari-dev/nebi/issues/497: rolling
+// back to a known-good version must be possible from the "failed" state.
+func TestRollbackToVersion_AllowedOnFailedWorkspace(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "rollback-after-failure", userID)
+
+	svc.PushVersion(context.Background(), ws.ID.String(), PushRequest{
+		PixiToml: "[project]\nname = \"test\"",
+		PixiLock: "version: 6",
+	}, userID)
+	db.Model(ws).Update("status", models.WsStatusFailed)
+
+	job, err := svc.RollbackToVersion(context.Background(), ws.ID.String(), 1, userID)
+	if err != nil {
+		t.Fatalf("rollback on failed workspace should be allowed, got %T: %v", err, err)
+	}
+	if job.Type != models.JobTypeRollback {
+		t.Errorf("expected job type %q, got %q", models.JobTypeRollback, job.Type)
 	}
 }

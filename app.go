@@ -19,7 +19,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/netguard"
-	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
+	"github.com/nebari-dev/nebi/internal/pixi"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/nebari-dev/nebi/internal/service"
@@ -235,11 +235,10 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 
 // WailsWorkspace represents a simplified workspace for the Wails frontend
 type WailsWorkspace struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	Status         string `json:"status"`
-	PackageManager string `json:"packageManager"`
-	CreatedAt      string `json:"createdAt"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"createdAt"`
 }
 
 // ListWorkspaces returns all workspaces
@@ -256,11 +255,10 @@ func (a *App) ListWorkspaces() ([]WailsWorkspace, error) {
 	result := make([]WailsWorkspace, len(workspaces))
 	for i, ws := range workspaces {
 		result[i] = WailsWorkspace{
-			ID:             ws.ID.String(),
-			Name:           ws.Name,
-			Status:         string(ws.Status),
-			PackageManager: ws.PackageManager,
-			CreatedAt:      ws.CreatedAt.Format("2006-01-02 15:04:05"),
+			ID:        ws.ID.String(),
+			Name:      ws.Name,
+			Status:    string(ws.Status),
+			CreatedAt: ws.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
 	}
 	return result, nil
@@ -278,9 +276,8 @@ func (a *App) CreateWorkspace(name string, pixiToml string) (*WailsWorkspace, er
 	}
 
 	ws := models.Workspace{
-		Name:           name,
-		Status:         models.WsStatusPending,
-		PackageManager: "pixi",
+		Name:   name,
+		Status: models.WsStatusPending,
 	}
 
 	if err := a.db.Create(&ws).Error; err != nil {
@@ -288,11 +285,10 @@ func (a *App) CreateWorkspace(name string, pixiToml string) (*WailsWorkspace, er
 	}
 
 	return &WailsWorkspace{
-		ID:             ws.ID.String(),
-		Name:           ws.Name,
-		Status:         string(ws.Status),
-		PackageManager: ws.PackageManager,
-		CreatedAt:      ws.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:        ws.ID.String(),
+		Name:      ws.Name,
+		Status:    string(ws.Status),
+		CreatedAt: ws.CreatedAt.Format("2006-01-02 15:04:05"),
 	}, nil
 }
 
@@ -317,10 +313,9 @@ func (a *App) GetWorkspace(id string) (*WailsWorkspace, error) {
 	}
 
 	return &WailsWorkspace{
-		ID:             ws.ID.String(),
-		Name:           ws.Name,
-		Status:         string(ws.Status),
-		PackageManager: ws.PackageManager,
-		CreatedAt:      ws.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:        ws.ID.String(),
+		Name:      ws.Name,
+		Status:    string(ws.Status),
+		CreatedAt: ws.CreatedAt.Format("2006-01-02 15:04:05"),
 	}, nil
 }

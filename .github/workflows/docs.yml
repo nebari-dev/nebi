@@ -5,12 +5,27 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
+      - '.github/workflows/docs.yml'
   pull_request:
     paths:
       - 'docs/**'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CF_WORKER: nebi-docs
 
 jobs:
-  build:
+  docs:
+    name: Build and deploy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -19,7 +34,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: docs/package-lock.json
 
@@ -27,6 +42,79 @@ jobs:
         run: npm ci
         working-directory: docs
 
+      - name: Compute site and preview alias
+        id: site
+        env:
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        run: |
+          # Worker preview URLs are only known after upload, so the build
+          # always uses the production site for canonical URLs.
+          echo "site=https://nebi.nebari.dev" >> "$GITHUB_OUTPUT"
+          echo "base=/" >> "$GITHUB_OUTPUT"
+          ALIAS=$(printf '%s' "$HEAD_REF" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | cut -c1-50 | sed -e 's/^-*//' -e 's/-*$//')
+          echo "alias=${ALIAS}" >> "$GITHUB_OUTPUT"
+
       - name: Build
         run: npm run build
         working-directory: docs
+        env:
+          SITE: ${{ steps.site.outputs.site }}
+          BASE: ${{ steps.site.outputs.base }}
+
+      - name: Determine deployability
+        id: candeploy
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          OK=true
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            if [ -z "${CF_TOKEN}" ] || [ -z "${CF_ACCOUNT}" ] || [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+              OK=false
+              echo "::notice::Cloudflare secrets unavailable; skipping preview deploy (build still gates)."
+            fi
+          fi
+          echo "ok=${OK}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload preview version to the nebi-docs Worker
+        id: preview-deploy
+        if: ${{ github.ref != 'refs/heads/main' && steps.candeploy.outputs.ok == 'true' }}
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: docs
+          # A brand-new Worker can't accept `versions upload`; seed it with a
+          # one-time `deploy` if it doesn't exist yet.
+          preCommands: npx wrangler deployments list > /dev/null 2>&1 || npx wrangler deploy
+          command: versions upload --preview-alias ${{ steps.site.outputs.alias }}
+
+      - name: Extract preview URL
+        id: preview
+        if: ${{ steps.preview-deploy.outcome == 'success' }}
+        env:
+          WRANGLER_OUTPUT: ${{ steps.preview-deploy.outputs.command-output }}
+        run: |
+          URL=$(printf '%s\n' "$WRANGLER_OUTPUT" | grep -Eo 'https://[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.workers\.dev' | tail -n1)
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+          echo "::notice::Preview URL: ${URL}"
+
+      - name: Deploy production to the nebi-docs Worker
+        id: deploy
+        if: ${{ github.ref == 'refs/heads/main' && steps.candeploy.outputs.ok == 'true' }}
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: docs
+          command: deploy
+
+      - name: Comment preview URL
+        if: ${{ github.event_name == 'pull_request' && steps.preview-deploy.outcome == 'success' }}
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: docs-preview
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          message: |
+            **Docs preview** for `${{ github.event.pull_request.head.ref }}` (via the `${{ env.CF_WORKER }}` Worker):
+            ${{ steps.preview.outputs.url }}

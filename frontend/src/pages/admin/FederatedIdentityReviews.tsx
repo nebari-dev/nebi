@@ -131,9 +131,8 @@ export const FederatedIdentityReviews = () => {
 
   const {
     data: remoteReviews,
-    isLoading: remoteLoading,
-    isError: remoteReviewsError,
-    errorUpdateCount: remoteErrorUpdateCount,
+    isFirstLoad: remoteFirstLoad,
+    isUnreachable: remoteReviewsUnreachable,
   } = useRemoteFederatedIdentityReviews(isRemoteView, statusFilter);
   const approveRemoteReview = useApproveRemoteFederatedIdentityReview();
   const rejectRemoteReview = useRejectRemoteFederatedIdentityReview();
@@ -146,10 +145,8 @@ export const FederatedIdentityReviews = () => {
     return remoteReviews || [];
   }, [reviews, remoteReviews, isRemoteView]);
 
-  const isLoading = isRemoteView
-    ? remoteLoading && remoteErrorUpdateCount === 0
-    : reviewsLoading;
-  const remoteUnreachable = isRemoteView && remoteReviewsError;
+  const isLoading = isRemoteView ? remoteFirstLoad : reviewsLoading;
+  const remoteUnreachable = isRemoteView && remoteReviewsUnreachable;
   const [reviewToApprove, setReviewToApprove] =
     useState<FederatedIdentityReview | null>(null);
   const [reviewToReject, setReviewToReject] =

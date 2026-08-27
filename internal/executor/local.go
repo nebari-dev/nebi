@@ -12,8 +12,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/pkgmgr"
-	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
+	"github.com/nebari-dev/nebi/internal/pixi"
 	"github.com/nebari-dev/nebi/internal/process"
 )
 
@@ -91,11 +90,10 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 	return e.withStorageLimit(ctx, envPath, logWriter, func(ctx context.Context) error {
 		fmt.Fprintf(logWriter, "Creating environment at: %s\n", envPath)
 
-		pm, err := e.packageManagerFor(ctx, ws)
+		pm, err := e.pixiFor(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to create package manager: %w", err)
+			return fmt.Errorf("failed to create pixi manager: %w", err)
 		}
-		fmt.Fprintf(logWriter, "Using package manager: %s\n", pm.Name())
 
 		switch {
 		case opts.SeedDir != "":
@@ -132,7 +130,7 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 			}
 
 		default:
-			initOpts := pkgmgr.InitOptions{
+			initOpts := pixi.InitOptions{
 				EnvPath:        envPath,
 				Name:           ws.Name,
 				Channels:       []string{"conda-forge"},
@@ -149,30 +147,16 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 	})
 }
 
-// packageManagerFor resolves the package manager for a workspace, honoring
-// the configured default type and explicit binary paths.
-func (e *LocalExecutor) packageManagerFor(ctx context.Context, ws *models.Workspace) (pkgmgr.PackageManager, error) {
-	pmType := ws.PackageManager
-	if pmType == "" {
-		pmType = e.config.PackageManager.DefaultType
-	}
-	if pmType == "pixi" && e.config.PackageManager.PixiPath != "" {
-		return pkgmgr.NewWithPathContext(ctx, pmType, e.config.PackageManager.PixiPath)
-	}
-	if pmType == "uv" && e.config.PackageManager.UvPath != "" {
-		return pkgmgr.NewWithPathContext(ctx, pmType, e.config.PackageManager.UvPath)
-	}
-	return pkgmgr.NewWithContext(ctx, pmType)
+// pixiFor resolves the pixi manager, honoring a configured binary path.
+func (e *LocalExecutor) pixiFor(ctx context.Context) (*pixi.PixiManager, error) {
+	return pixi.NewWithPathContext(ctx, e.config.PixiPath)
 }
 
 // runPixiLock runs `pixi lock` in envPath. It resolves the dependency
 // graph and writes pixi.lock without downloading or extracting packages;
 // installing is a separate, explicit step (see InstallEnvironment).
-func runPixiLock(ctx context.Context, pm pkgmgr.PackageManager, envPath string, logWriter io.Writer, limitCfg limits.ProcessLimits) error {
-	pixiBinary := "pixi"
-	if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
-		pixiBinary = pixiMgr.BinaryPath()
-	}
+func runPixiLock(ctx context.Context, pm *pixi.PixiManager, envPath string, logWriter io.Writer, limitCfg limits.ProcessLimits) error {
+	pixiBinary := pm.BinaryPath()
 	lockCmd := process.CommandContext(ctx, pixiBinary, []string{"lock"}, limitCfg)
 	lockCmd.Dir = envPath
 	env, err := process.PreparedWorkspaceEnv(envPath)
@@ -246,12 +230,12 @@ func (e *LocalExecutor) InstallPackages(ctx context.Context, ws *models.Workspac
 
 		fmt.Fprintf(logWriter, "Installing packages: %v\n", packages)
 
-		pm, err := e.packageManagerFor(ctx, ws)
+		pm, err := e.pixiFor(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to create package manager: %w", err)
+			return fmt.Errorf("failed to create pixi manager: %w", err)
 		}
 
-		opts := pkgmgr.InstallOptions{
+		opts := pixi.InstallOptions{
 			EnvPath:        envPath,
 			Packages:       packages,
 			LogWriter:      logWriter,
@@ -275,12 +259,12 @@ func (e *LocalExecutor) RemovePackages(ctx context.Context, ws *models.Workspace
 
 		fmt.Fprintf(logWriter, "Removing packages: %v\n", packages)
 
-		pm, err := e.packageManagerFor(ctx, ws)
+		pm, err := e.pixiFor(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to create package manager: %w", err)
+			return fmt.Errorf("failed to create pixi manager: %w", err)
 		}
 
-		opts := pkgmgr.RemoveOptions{
+		opts := pixi.RemoveOptions{
 			EnvPath:        envPath,
 			Packages:       packages,
 			LogWriter:      logWriter,
@@ -305,9 +289,9 @@ func (e *LocalExecutor) SolveEnvironment(ctx context.Context, ws *models.Workspa
 
 		fmt.Fprintf(logWriter, "Running pixi lock to solve environment...\n")
 
-		pm, err := e.packageManagerFor(ctx, ws)
+		pm, err := e.pixiFor(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to create package manager: %w", err)
+			return fmt.Errorf("failed to create pixi manager: %w", err)
 		}
 
 		if err := runPixiLock(ctx, pm, envPath, logWriter, e.limits.ProcessLimits()); err != nil {
@@ -325,15 +309,12 @@ func (e *LocalExecutor) InstallEnvironment(ctx context.Context, ws *models.Works
 	envPath := e.GetWorkspacePath(ws)
 	return e.withStorageLimit(ctx, envPath, logWriter, func(ctx context.Context) error {
 
-		pm, err := e.packageManagerFor(ctx, ws)
+		pm, err := e.pixiFor(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to create package manager: %w", err)
+			return fmt.Errorf("failed to create pixi manager: %w", err)
 		}
 
-		pixiBinary := "pixi"
-		if pixiMgr, ok := pm.(*pixi.PixiManager); ok {
-			pixiBinary = pixiMgr.BinaryPath()
-		}
+		pixiBinary := pm.BinaryPath()
 		processLimits := e.limits.ProcessLimits()
 		cmd := process.CommandContext(ctx, pixiBinary, []string{"install", "-v"}, processLimits)
 		cmd.Dir = envPath

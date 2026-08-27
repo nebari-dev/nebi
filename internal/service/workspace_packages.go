@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"gorm.io/gorm"
 )
 
@@ -41,8 +40,8 @@ func (s *WorkspaceService) submitJob(ctx context.Context, wsID string, userID uu
 			return err
 		}
 
-		if ws.Status != models.WsStatusReady {
-			return &ValidationError{Message: "Workspace is not ready"}
+		if ws.Status.IsTransitional() {
+			return &ValidationError{Message: fmt.Sprintf("Workspace is not ready to accept jobs while status is: '%s'", ws.Status)}
 		}
 		for _, validate := range lockedValidations {
 			if err := validate(tx, &ws); err != nil {
@@ -97,7 +96,7 @@ func (s *WorkspaceService) InstallPackages(ctx context.Context, wsID string, pac
 	metadata := map[string]interface{}{
 		"packages": packages,
 	}
-	return s.submitJob(ctx, wsID, userID, models.JobTypeInstall, metadata, audit.ActionInstallPackage, s.validateWorkspaceInstallPackagesForJob(packages))
+	return s.submitJob(ctx, wsID, userID, models.JobTypeInstall, metadata, audit.ActionInstallPackage, s.validateWorkspaceManifestAndLockForJob)
 }
 
 // SolveWorkspace creates and enqueues a solve job (pixi install from current pixi.toml).
@@ -145,20 +144,9 @@ func (s *WorkspaceService) ListPackages(wsID string) ([]models.Package, error) {
 func (s *WorkspaceService) syncPackagesFromDisk(ws *models.Workspace) []models.Package {
 	wsPath := s.executor.GetWorkspacePath(ws)
 
-	pmType := ws.PackageManager
-	if pmType == "" {
-		pmType = "pixi"
-	}
-
-	pm, err := pkgmgr.NewWithContext(context.Background(), pmType)
+	listed, err := pixiListPackages(context.Background(), s.listOptions(wsPath))
 	if err != nil {
-		slog.Warn("syncPackagesFromDisk: failed to create package manager", "error", err)
-		return nil
-	}
-
-	listed, err := pm.List(context.Background(), s.listOptions(wsPath))
-	if err != nil {
-		slog.Warn("syncPackagesFromDisk: failed to list packages", "error", s.mapPackageManagerListError(err), "path", wsPath)
+		slog.Warn("syncPackagesFromDisk: failed to list packages", "error", s.mapPixiListError(err), "path", wsPath)
 		return nil
 	}
 	if err := s.validateListedPackages("package list", listed); err != nil {
@@ -188,14 +176,9 @@ func (s *WorkspaceService) syncPackagesFromDisk(ws *models.Workspace) []models.P
 func (s *WorkspaceService) SyncPackagesFromWorkspace(ctx context.Context, ws *models.Workspace) error {
 	wsPath := s.executor.GetWorkspacePath(ws)
 
-	pm, err := pkgmgr.NewWithContext(ctx, ws.PackageManager)
+	pkgs, err := pixiListPackages(ctx, s.listOptions(wsPath))
 	if err != nil {
-		return fmt.Errorf("failed to create package manager: %w", err)
-	}
-
-	pkgs, err := pm.List(ctx, s.listOptions(wsPath))
-	if err != nil {
-		return fmt.Errorf("failed to list packages: %w", s.mapPackageManagerListError(err))
+		return fmt.Errorf("failed to list packages: %w", s.mapPixiListError(err))
 	}
 	if err := s.validateListedPackages("package list", pkgs); err != nil {
 		return err

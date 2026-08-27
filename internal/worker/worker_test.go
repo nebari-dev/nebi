@@ -16,7 +16,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/pkgmgr"
+	"github.com/nebari-dev/nebi/internal/pixi"
 	"github.com/nebari-dev/nebi/internal/process"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
@@ -25,55 +25,15 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// testPackageManager is a registered no-op manager used by worker tests.
-// Keeping the create flow on its happy path means the test reaches db.Save(ws)
-// via UpdateWorkspaceSize regardless of how the worker's error handling around
+// Worker tests stub the service's pixi list dependency so job flows stay on
+// their happy path (empty package lists) without a real pixi binary. Keeping
+// the create flow on its happy path means tests reach db.Save(ws) via
+// UpdateWorkspaceSize regardless of how the worker's error handling around
 // SyncPackagesFromWorkspace / CreateVersionSnapshot is refactored later.
-const testPackageManager = "test-noop"
-const testListResourceLimitPackageManager = "test-list-resource-limit"
-
 func init() {
-	pkgmgr.Register(testPackageManager, func(context.Context, string) (pkgmgr.PackageManager, error) {
-		return noopPackageManager{}, nil
+	service.SetPixiListPackagesForTests(func(context.Context, pixi.ListOptions) ([]pixi.Package, error) {
+		return nil, nil
 	})
-	pkgmgr.RegisterManifestContentParser(testPackageManager, pkgmgr.ManifestContentParser{
-		PackageNames:           emptyManifestPackageNames,
-		DefaultDependencyNames: emptyManifestPackageNames,
-	})
-	pkgmgr.Register(testListResourceLimitPackageManager, func(context.Context, string) (pkgmgr.PackageManager, error) {
-		return listResourceLimitPackageManager{}, nil
-	})
-	pkgmgr.RegisterManifestContentParser(testListResourceLimitPackageManager, pkgmgr.ManifestContentParser{
-		PackageNames:           emptyManifestPackageNames,
-		DefaultDependencyNames: emptyManifestPackageNames,
-	})
-}
-
-func emptyManifestPackageNames(string) ([]string, error) {
-	return nil, nil
-}
-
-type noopPackageManager struct{}
-
-func (noopPackageManager) Name() string                                         { return testPackageManager }
-func (noopPackageManager) Init(context.Context, pkgmgr.InitOptions) error       { return nil }
-func (noopPackageManager) Install(context.Context, pkgmgr.InstallOptions) error { return nil }
-func (noopPackageManager) Remove(context.Context, pkgmgr.RemoveOptions) error   { return nil }
-func (noopPackageManager) List(context.Context, pkgmgr.ListOptions) ([]pkgmgr.Package, error) {
-	return nil, nil
-}
-func (noopPackageManager) Update(context.Context, pkgmgr.UpdateOptions) error { return nil }
-func (noopPackageManager) GetManifest(context.Context, string) (*pkgmgr.Manifest, error) {
-	return &pkgmgr.Manifest{}, nil
-}
-
-type listResourceLimitPackageManager struct {
-	noopPackageManager
-}
-
-func (listResourceLimitPackageManager) Name() string { return testListResourceLimitPackageManager }
-func (listResourceLimitPackageManager) List(context.Context, pkgmgr.ListOptions) ([]pkgmgr.Package, error) {
-	return nil, process.NewResourceLimitError(errors.New("pixi list failed: exit status 125"))
 }
 
 // fakeExecutor is a minimal Executor stub for worker tests. CreateWorkspace
@@ -197,10 +157,9 @@ func TestExecuteJob_CreatePersistsWorkspacePath(t *testing.T) {
 	}
 
 	ws := &models.Workspace{
-		Name:           "regr-294",
-		OwnerID:        user.ID,
-		Status:         models.WsStatusPending,
-		PackageManager: testPackageManager,
+		Name:    "regr-294",
+		OwnerID: user.ID,
+		Status:  models.WsStatusPending,
 	}
 	if err := db.Create(ws).Error; err != nil {
 		t.Fatalf("create ws: %v", err)
@@ -241,10 +200,9 @@ func TestExecuteJob_UpdateSetsWorkspaceReady(t *testing.T) {
 	}
 
 	ws := &models.Workspace{
-		Name:           "update-ready",
-		OwnerID:        user.ID,
-		Status:         models.WsStatusPending,
-		PackageManager: testPackageManager,
+		Name:    "update-ready",
+		OwnerID: user.ID,
+		Status:  models.WsStatusPending,
 	}
 	if err := db.Create(ws).Error; err != nil {
 		t.Fatalf("create ws: %v", err)
@@ -285,10 +243,9 @@ func TestExecuteJob_UpdateSetsWorkspaceFailedOnSolveError(t *testing.T) {
 	}
 
 	ws := &models.Workspace{
-		Name:           "update-failed",
-		OwnerID:        user.ID,
-		Status:         models.WsStatusReady,
-		PackageManager: testPackageManager,
+		Name:    "update-failed",
+		OwnerID: user.ID,
+		Status:  models.WsStatusReady,
 	}
 	if err := db.Create(ws).Error; err != nil {
 		t.Fatalf("create ws: %v", err)
@@ -451,10 +408,10 @@ func TestProcessJob_DoesNotSavePackagesWhenInstallSnapshotExceedsLimit(t *testin
 func TestProcessJob_FailsCreateAndCleansUpWhenPackageListHitsResourceLimit(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
 	ws, job := newTestWorkspace(t, db, exec, "list-resource-limit", models.JobTypeCreate, nil)
-	ws.PackageManager = testListResourceLimitPackageManager
-	if err := db.Save(ws).Error; err != nil {
-		t.Fatalf("save package manager: %v", err)
-	}
+	restore := service.SetPixiListPackagesForTests(func(context.Context, pixi.ListOptions) ([]pixi.Package, error) {
+		return nil, process.NewResourceLimitError(errors.New("pixi list failed: exit status 125"))
+	})
+	t.Cleanup(restore)
 
 	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
 	w.processJob(context.Background(), job)
@@ -545,10 +502,9 @@ func newTestWorkspace(t *testing.T, db *gorm.DB, exec *fakeExecutor, name string
 	}
 
 	ws := &models.Workspace{
-		Name:           name,
-		OwnerID:        user.ID,
-		Status:         models.WsStatusReady,
-		PackageManager: testPackageManager,
+		Name:    name,
+		OwnerID: user.ID,
+		Status:  models.WsStatusReady,
 	}
 	if err := db.Create(ws).Error; err != nil {
 		t.Fatalf("create ws: %v", err)

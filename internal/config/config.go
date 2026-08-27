@@ -20,16 +20,16 @@ const minReadTimeoutSeconds = 30
 
 // Config holds all application configuration
 type Config struct {
-	Mode           string               `mapstructure:"mode"` // "local" or "team" (default: "team")
-	Server         ServerConfig         `mapstructure:"server"`
-	Database       DatabaseConfig       `mapstructure:"database"`
-	Auth           AuthConfig           `mapstructure:"auth"`
-	Queue          QueueConfig          `mapstructure:"queue"`
-	Log            LogConfig            `mapstructure:"log"`
-	PackageManager PackageManagerConfig `mapstructure:"package_manager"`
-	Storage        StorageConfig        `mapstructure:"storage"`
-	Limits         limits.Limits        `mapstructure:"limits"`
-	Registries     RegistriesConfig     `mapstructure:"registries"`
+	Mode       string           `mapstructure:"mode"` // "local" or "team" (default: "team")
+	Server     ServerConfig     `mapstructure:"server"`
+	Database   DatabaseConfig   `mapstructure:"database"`
+	Auth       AuthConfig       `mapstructure:"auth"`
+	Queue      QueueConfig      `mapstructure:"queue"`
+	Log        LogConfig        `mapstructure:"log"`
+	PixiPath   string           `mapstructure:"pixi_path"` // Custom pixi binary path (optional)
+	Storage    StorageConfig    `mapstructure:"storage"`
+	Limits     limits.Limits    `mapstructure:"limits"`
+	Registries RegistriesConfig `mapstructure:"registries"`
 }
 
 // IsLocalMode returns true when the server is running in local/desktop mode.
@@ -119,13 +119,6 @@ type LogConfig struct {
 	Level  string `mapstructure:"level"`  // "debug", "info", "warn", "error"
 }
 
-// PackageManagerConfig holds package manager configuration
-type PackageManagerConfig struct {
-	DefaultType string `mapstructure:"default_type"` // "pixi" or "uv"
-	PixiPath    string `mapstructure:"pixi_path"`    // Custom pixi binary path (optional)
-	UvPath      string `mapstructure:"uv_path"`      // Custom uv binary path (optional)
-}
-
 // StorageConfig holds storage configuration
 type StorageConfig struct {
 	WorkspacesDir string `mapstructure:"workspaces_dir"` // Directory where workspaces are stored
@@ -180,7 +173,6 @@ func Load() (*Config, error) {
 	v.SetDefault("queue.valkey_addr", "localhost:6379")
 	v.SetDefault("log.format", "text")
 	v.SetDefault("log.level", "info")
-	v.SetDefault("package_manager.default_type", "pixi")
 	v.SetDefault("storage.workspaces_dir", "./data/workspaces")
 	defaultLimits := limits.Defaults()
 	v.SetDefault("limits.request_body_bytes", defaultLimits.RequestBodyBytes)
@@ -215,12 +207,13 @@ func Load() (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
+	// NEBI_PACKAGE_MANAGER_PIXI_PATH is the pre-0.15 name, kept as an alias
+	// so existing deployments keep working.
+	_ = v.BindEnv("pixi_path", "NEBI_PIXI_PATH", "NEBI_PACKAGE_MANAGER_PIXI_PATH")
+
 	// viper's AutomaticEnv + Unmarshal does not propagate env vars into
 	// nested structs without explicit BindEnv. Bind each nested key so that
-	// e.g. NEBI_PACKAGE_MANAGER_PIXI_PATH overrides the pixi_path field.
-	_ = v.BindEnv("package_manager.default_type", "NEBI_PACKAGE_MANAGER_DEFAULT_TYPE")
-	_ = v.BindEnv("package_manager.pixi_path", "NEBI_PACKAGE_MANAGER_PIXI_PATH")
-	_ = v.BindEnv("package_manager.uv_path", "NEBI_PACKAGE_MANAGER_UV_PATH")
+	// e.g. NEBI_STORAGE_WORKSPACES_DIR overrides the workspaces_dir field.
 	_ = v.BindEnv("storage.workspaces_dir", "NEBI_STORAGE_WORKSPACES_DIR")
 	_ = v.BindEnv("server.host", "NEBI_SERVER_HOST")
 	_ = v.BindEnv("server.port", "NEBI_SERVER_PORT")

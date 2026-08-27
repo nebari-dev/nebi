@@ -13,22 +13,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"github.com/nebari-dev/nebi/internal/process"
 	"github.com/pelletier/go-toml/v2"
 )
 
-func init() {
-	pkgmgr.Register("pixi", func(ctx context.Context, customPath string) (pkgmgr.PackageManager, error) {
-		return NewWithPathContext(ctx, customPath)
-	})
-	pkgmgr.RegisterManifestContentParser("pixi", pkgmgr.ManifestContentParser{
-		PackageNames:           ManifestPackageNames,
-		DefaultDependencyNames: ManifestDefaultDependencyNames,
-	})
-}
-
-// PixiManager implements the PackageManager interface for pixi
+// PixiManager runs pixi commands against workspace environments
 type PixiManager struct {
 	pixiPath string // Path to pixi binary
 }
@@ -82,11 +71,6 @@ func NewWithPathContext(ctx context.Context, customPath string) (*PixiManager, e
 	return &PixiManager{pixiPath: pixiPath}, nil
 }
 
-// Name returns the package manager name
-func (p *PixiManager) Name() string {
-	return "pixi"
-}
-
 // BinaryPath returns the path to the pixi binary
 func (p *PixiManager) BinaryPath() string {
 	return p.pixiPath
@@ -118,7 +102,7 @@ func (p *PixiManager) streamOutput(reader io.Reader, writer io.Writer) {
 }
 
 // Init creates a new pixi environment
-func (p *PixiManager) Init(ctx context.Context, opts pkgmgr.InitOptions) error {
+func (p *PixiManager) Init(ctx context.Context, opts InitOptions) error {
 	if opts.EnvPath == "" {
 		return fmt.Errorf("environment path is required")
 	}
@@ -204,7 +188,7 @@ func (p *PixiManager) Init(ctx context.Context, opts pkgmgr.InitOptions) error {
 }
 
 // Install adds packages to an environment
-func (p *PixiManager) Install(ctx context.Context, opts pkgmgr.InstallOptions) error {
+func (p *PixiManager) Install(ctx context.Context, opts InstallOptions) error {
 	if opts.EnvPath == "" {
 		return fmt.Errorf("environment path is required")
 	}
@@ -285,7 +269,7 @@ func (p *PixiManager) Install(ctx context.Context, opts pkgmgr.InstallOptions) e
 }
 
 // Remove removes packages from an environment
-func (p *PixiManager) Remove(ctx context.Context, opts pkgmgr.RemoveOptions) error {
+func (p *PixiManager) Remove(ctx context.Context, opts RemoveOptions) error {
 	if opts.EnvPath == "" {
 		return fmt.Errorf("environment path is required")
 	}
@@ -366,7 +350,7 @@ func (p *PixiManager) Remove(ctx context.Context, opts pkgmgr.RemoveOptions) err
 }
 
 // List returns installed packages in an environment
-func (p *PixiManager) List(ctx context.Context, opts pkgmgr.ListOptions) ([]pkgmgr.Package, error) {
+func (p *PixiManager) List(ctx context.Context, opts ListOptions) ([]Package, error) {
 	if opts.EnvPath == "" {
 		return nil, fmt.Errorf("environment path is required")
 	}
@@ -387,10 +371,10 @@ func (p *PixiManager) List(ctx context.Context, opts pkgmgr.ListOptions) ([]pkgm
 
 	if err := cmd.Run(); err != nil {
 		if stdout.Exceeded() {
-			return nil, &pkgmgr.OutputLimitError{Command: "pixi list", Stream: "stdout", Limit: opts.MaxOutputBytes}
+			return nil, &OutputLimitError{Command: "pixi list", Stream: "stdout", Limit: opts.MaxOutputBytes}
 		}
 		if stderr.Exceeded() {
-			return nil, &pkgmgr.OutputLimitError{Command: "pixi list", Stream: "stderr", Limit: opts.MaxOutputBytes}
+			return nil, &OutputLimitError{Command: "pixi list", Stream: "stderr", Limit: opts.MaxOutputBytes}
 		}
 		// pixi list returns an error when no packages are installed; treat as empty list
 		if strings.Contains(stderr.String(), "No packages found") {
@@ -403,16 +387,16 @@ func (p *PixiManager) List(ctx context.Context, opts pkgmgr.ListOptions) ([]pkgm
 		return nil, listErr
 	}
 	if stdout.Exceeded() {
-		return nil, &pkgmgr.OutputLimitError{Command: "pixi list", Stream: "stdout", Limit: opts.MaxOutputBytes}
+		return nil, &OutputLimitError{Command: "pixi list", Stream: "stdout", Limit: opts.MaxOutputBytes}
 	}
 	if stderr.Exceeded() {
-		return nil, &pkgmgr.OutputLimitError{Command: "pixi list", Stream: "stderr", Limit: opts.MaxOutputBytes}
+		return nil, &OutputLimitError{Command: "pixi list", Stream: "stderr", Limit: opts.MaxOutputBytes}
 	}
 
 	// Parse pixi list output
 	// Format: Package  Version  Build  Size  Kind  Source
 	// Example: polars  1.35.2   pyh6a1acc5_0  501.9 KiB  conda  https://...
-	var packages []pkgmgr.Package
+	var packages []Package
 	scanner := bufio.NewScanner(stdout.Reader())
 
 	// Skip header line
@@ -430,7 +414,7 @@ func (p *PixiManager) List(ctx context.Context, opts pkgmgr.ListOptions) ([]pkgm
 		// Split by whitespace and extract package name (field 0) and version (field 1)
 		fields := strings.Fields(line)
 		if len(fields) >= 2 {
-			packages = append(packages, pkgmgr.Package{
+			packages = append(packages, Package{
 				Name:    fields[0],
 				Version: fields[1],
 				Channel: "", // Could parse from Source field if needed
@@ -489,7 +473,7 @@ func (b *cappedOutputBuffer) Reader() io.Reader {
 }
 
 // Update updates packages in an environment
-func (p *PixiManager) Update(ctx context.Context, opts pkgmgr.UpdateOptions) error {
+func (p *PixiManager) Update(ctx context.Context, opts UpdateOptions) error {
 	if opts.EnvPath == "" {
 		return fmt.Errorf("environment path is required")
 	}
@@ -613,7 +597,7 @@ type pixiManifest struct {
 }
 
 // GetManifest returns the parsed pixi.toml manifest file
-func (p *PixiManager) GetManifest(ctx context.Context, envPath string) (*pkgmgr.Manifest, error) {
+func (p *PixiManager) GetManifest(ctx context.Context, envPath string) (*Manifest, error) {
 	if envPath == "" {
 		return nil, fmt.Errorf("environment path is required")
 	}
@@ -651,7 +635,7 @@ func (p *PixiManager) GetManifest(ctx context.Context, envPath string) (*pkgmgr.
 		}
 	}
 
-	manifest := &pkgmgr.Manifest{
+	manifest := &Manifest{
 		Name:     pixiManifest.Project.Name,
 		Packages: packages,
 		Channels: pixiManifest.Project.Channels,

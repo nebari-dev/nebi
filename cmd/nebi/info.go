@@ -55,11 +55,10 @@ type infoResult struct {
 	AuthSource string `json:"auth_source"`
 
 	// Workspace section (empty when not in a tracked workspace)
-	Workspace      string `json:"workspace,omitempty"`
-	WorkspacePath  string `json:"workspace_path,omitempty"`
-	PackageManager string `json:"package_manager,omitempty"`
-	Origin         string `json:"origin,omitempty"`
-	LocalEdits     string `json:"local_edits,omitempty"`
+	Workspace     string `json:"workspace,omitempty"`
+	WorkspacePath string `json:"workspace_path,omitempty"`
+	Origin        string `json:"origin,omitempty"`
+	LocalEdits    string `json:"local_edits,omitempty"`
 }
 
 func runInfo(cmd *cobra.Command, args []string) error {
@@ -177,7 +176,6 @@ func fillWorkspaceInfo(result *infoResult) {
 
 	result.Workspace = ws.Name
 	result.WorkspacePath = ws.Path
-	result.PackageManager = ws.PackageManager
 
 	if ws.OriginName != "" {
 		action := ws.OriginAction
@@ -275,7 +273,6 @@ func printInfo(r infoResult) {
 		fmt.Println("──────────────")
 		printField("Name", r.Workspace)
 		printField("Path", r.WorkspacePath)
-		printField("Package manager", r.PackageManager)
 		printField("Origin", r.Origin)
 		if r.LocalEdits != "" {
 			printField("Local edits", r.LocalEdits)

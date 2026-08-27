@@ -12,7 +12,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/audit"
 	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/pkgmgr"
+	"github.com/nebari-dev/nebi/internal/pixi"
 )
 
 // --- RollbackToVersion tests ---
@@ -194,7 +194,7 @@ func TestSoftDeleteWorkspace(t *testing.T) {
 
 func TestCreateVersionSnapshot(t *testing.T) {
 	// This test requires a working pixi binary because CreateVersionSnapshot
-	// calls pkgmgr.List to capture package metadata in the snapshot.
+	// runs pixi list to capture package metadata in the snapshot.
 	if _, err := exec.LookPath("pixi"); err != nil {
 		t.Skip("pixi not in PATH, skipping snapshot test")
 	}
@@ -298,23 +298,10 @@ func TestCreateVersionSnapshot_StoresAllResolvedPackages(t *testing.T) {
 	userID := createTestUser(t, db, "alice")
 	ws := createReadyWorkspace(t, svc, db, "snapshot-package-limit", userID)
 
-	pmType := "static-list-" + uuid.NewString()
-	pkgmgr.Register(pmType, func(context.Context, string) (pkgmgr.PackageManager, error) {
-		return staticListPackageManager{
-			packages: []pkgmgr.Package{
-				{Name: "numpy", Version: "1.0.0"},
-				{Name: "pandas", Version: "2.0.0"},
-			},
-		}, nil
+	stubPixiList(t, []pixi.Package{
+		{Name: "numpy", Version: "1.0.0"},
+		{Name: "pandas", Version: "2.0.0"},
 	})
-	pkgmgr.RegisterManifestContentParser(pmType, pkgmgr.ManifestContentParser{
-		PackageNames:           func(string) ([]string, error) { return []string{"numpy"}, nil },
-		DefaultDependencyNames: func(string) ([]string, error) { return []string{"numpy"}, nil },
-	})
-	ws.PackageManager = pmType
-	if err := db.Save(ws).Error; err != nil {
-		t.Fatalf("save workspace package manager: %v", err)
-	}
 
 	wsPath := svc.executor.GetWorkspacePath(ws)
 	if err := os.MkdirAll(wsPath, 0o755); err != nil {

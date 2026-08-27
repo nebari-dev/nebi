@@ -4,7 +4,6 @@ export namespace main {
 	    id: string;
 	    name: string;
 	    status: string;
-	    packageManager: string;
 	    createdAt: string;
 	
 	    static createFrom(source: any = {}) {
@@ -16,7 +15,6 @@ export namespace main {
 	        this.id = source["id"];
 	        this.name = source["name"];
 	        this.status = source["status"];
-	        this.packageManager = source["packageManager"];
 	        this.createdAt = source["createdAt"];
 	    }
 	}

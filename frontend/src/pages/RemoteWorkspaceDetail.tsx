@@ -19,6 +19,14 @@ import { remoteApi } from '@/api/remote';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs';
 import { UserBadge } from '@/components/ui/user-badge';
 import { capitalize, getWorkspaceStatusColor } from '@/lib/utils';
@@ -287,39 +295,32 @@ export const RemoteWorkspaceDetail = () => {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : versions && versions.length > 0 ? (
-                <div className="rounded-md border">
-                  <table className="w-full">
-                    <thead className="border-b bg-muted/50">
-                      <tr>
-                        <th className="text-left p-4 font-medium">Version</th>
-                        <th className="text-left p-4 font-medium">
-                          Description
-                        </th>
-                        <th className="text-left p-4 font-medium">Created</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {versions.map((v: RemoteWorkspaceVersion) => (
-                        <tr
-                          key={v.id || v.version_number}
-                          className="hover:bg-muted/50"
-                        >
-                          <td className="p-4">
-                            <Badge variant="outline">v{v.version_number}</Badge>
-                          </td>
-                          <td className="p-4 text-sm text-muted-foreground">
-                            {v.description || '-'}
-                          </td>
-                          <td className="p-4 text-sm text-muted-foreground">
-                            {v.created_at
-                              ? new Date(v.created_at).toLocaleString()
-                              : '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <Table aria-label="Version history">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Version</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Created</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {versions.map((v: RemoteWorkspaceVersion) => (
+                      <TableRow key={v.id || v.version_number}>
+                        <TableCell>
+                          <Badge variant="outline">v{v.version_number}</Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {v.description || '-'}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {v.created_at
+                            ? new Date(v.created_at).toLocaleString()
+                            : '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-8">
                   No versions available
@@ -340,34 +341,32 @@ export const RemoteWorkspaceDetail = () => {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : tags && tags.length > 0 ? (
-                <div className="rounded-md border">
-                  <table className="w-full">
-                    <thead className="border-b bg-muted/50">
-                      <tr>
-                        <th className="text-left p-4 font-medium">Tag</th>
-                        <th className="text-left p-4 font-medium">Version</th>
-                        <th className="text-left p-4 font-medium">Created</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {tags.map((t: RemoteWorkspaceTag) => (
-                        <tr key={t.tag} className="hover:bg-muted/50">
-                          <td className="p-4">
-                            <Badge variant="outline">{t.tag}</Badge>
-                          </td>
-                          <td className="p-4 text-sm text-muted-foreground">
-                            v{t.version_number}
-                          </td>
-                          <td className="p-4 text-sm text-muted-foreground">
-                            {t.created_at
-                              ? new Date(t.created_at).toLocaleString()
-                              : '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <Table aria-label="Tags">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tag</TableHead>
+                      <TableHead>Version</TableHead>
+                      <TableHead>Created</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {tags.map((t: RemoteWorkspaceTag) => (
+                      <TableRow key={t.tag}>
+                        <TableCell>
+                          <Badge variant="outline">{t.tag}</Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          v{t.version_number}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {t.created_at
+                            ? new Date(t.created_at).toLocaleString()
+                            : '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-8">
                   No tags available

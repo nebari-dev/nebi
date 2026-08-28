@@ -33,7 +33,14 @@ import { CollaboratorsList } from '@/components/sharing/CollaboratorsList';
 import { ShareButton } from '@/components/sharing/ShareButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs';
 import { UserBadge } from '@/components/ui/user-badge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
@@ -549,50 +556,40 @@ export const WorkspaceDetail = () => {
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              <Card>
-                <CardContent className="p-0">
-                  <div>
-                    <table className="w-full">
-                      <thead className="border-b bg-muted/70">
-                        <tr>
-                          <th className="text-left p-4 font-medium">Package</th>
-                          <th className="text-left p-4 font-medium">
-                            Installed Version
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {packages?.length === 0 ? (
-                          <tr>
-                            <td
-                              colSpan={2}
-                              className="p-8 text-center text-muted-foreground"
-                            >
-                              No packages installed
-                            </td>
-                          </tr>
-                        ) : (
-                          packages?.map((pkg) => (
-                            <tr key={pkg.id} className="hover:bg-muted/50">
-                              <td className="p-4">
-                                <div className="flex items-center gap-2">
-                                  <Package className="h-4 w-4 text-muted-foreground" />
-                                  <span className="font-medium">
-                                    {pkg.name}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="p-4 text-muted-foreground font-mono text-sm">
-                                {pkg.version || '-'}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
+              <Table aria-label="Packages">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Package</TableHead>
+                    <TableHead>Installed Version</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {packages?.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={2}
+                        className="p-8 text-center text-muted-foreground"
+                      >
+                        No packages installed
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    packages?.map((pkg) => (
+                      <TableRow key={pkg.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Package className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-medium">{pkg.name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground font-mono">
+                          {pkg.version || '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
             )}
           </div>
         </TabsPanel>

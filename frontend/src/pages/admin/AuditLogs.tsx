@@ -2,7 +2,6 @@ import { Loader2, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -11,6 +10,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { useAuditLogs } from '@/hooks/useAdmin';
 import { useRemoteAuditLogs, useRemoteView } from '@/hooks/useRemote';
 
@@ -146,61 +153,54 @@ export const AuditLogs = () => {
         </Select>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="border-b bg-muted/50">
-                <tr>
-                  <th className="text-left p-4 font-medium">Timestamp</th>
-                  <th className="text-left p-4 font-medium">User</th>
-                  <th className="text-left p-4 font-medium">Action</th>
-                  <th className="text-left p-4 font-medium">Resource</th>
-                  <th className="text-left p-4 font-medium">Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedLogs.map((log) => (
-                  <tr
-                    key={log.id}
-                    className="border-b last:border-0 hover:bg-muted/50"
-                  >
-                    <td className="p-4 text-sm text-muted-foreground whitespace-nowrap">
-                      {new Date(log.timestamp).toLocaleString()}
-                    </td>
-                    <td className="p-4 font-medium">
-                      {log.user?.username || log.user_id}
-                    </td>
-                    <td className="p-4">
-                      <Badge
-                        className={
-                          ACTION_COLORS[log.action] ||
-                          'bg-zinc-100 text-zinc-800 border-zinc-300'
-                        }
-                      >
-                        {log.action.replace(/_/g, ' ')}
-                      </Badge>
-                    </td>
-                    <td className="p-4 font-mono text-sm">{log.resource}</td>
-                    <td className="p-4 text-sm text-muted-foreground">
-                      {log.details_json && (
-                        <details className="cursor-pointer">
-                          <summary className="hover:text-foreground">
-                            View Details
-                          </summary>
-                          <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto max-w-md">
-                            {JSON.stringify(log.details_json, null, 2)}
-                          </pre>
-                        </details>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+      <Table aria-label="Audit logs">
+        <TableHeader>
+          <TableRow
+            className={displayedLogs.length > 0 ? undefined : 'border-0'}
+          >
+            <TableHead>Timestamp</TableHead>
+            <TableHead>User</TableHead>
+            <TableHead>Action</TableHead>
+            <TableHead>Resource</TableHead>
+            <TableHead>Details</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {displayedLogs.map((log) => (
+            <TableRow key={log.id}>
+              <TableCell className="text-muted-foreground whitespace-nowrap">
+                {new Date(log.timestamp).toLocaleString()}
+              </TableCell>
+              <TableCell className="font-medium">
+                {log.user?.username || log.user_id}
+              </TableCell>
+              <TableCell>
+                <Badge
+                  className={
+                    ACTION_COLORS[log.action] ||
+                    'bg-zinc-100 text-zinc-800 border-zinc-300'
+                  }
+                >
+                  {log.action.replace(/_/g, ' ')}
+                </Badge>
+              </TableCell>
+              <TableCell className="font-mono">{log.resource}</TableCell>
+              <TableCell className="text-muted-foreground">
+                {log.details_json && (
+                  <details className="cursor-pointer">
+                    <summary className="hover:text-foreground">
+                      View Details
+                    </summary>
+                    <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto max-w-md">
+                      {JSON.stringify(log.details_json, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
 
       {displayedLogs.length === 0 && !remoteUnreachable && (
         <div className="text-center py-12">

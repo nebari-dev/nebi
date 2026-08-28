@@ -67,7 +67,6 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-
   @keyframes nebari-fade-in {
     from {
       opacity: 0;
@@ -76,7 +75,6 @@
       opacity: 1;
     }
   }
-
   @keyframes nebari-fade-out {
     from {
       opacity: 1;
@@ -85,7 +83,6 @@
       opacity: 0;
     }
   }
-
   @keyframes nebari-slide-up-fade {
     from {
       opacity: 0;
@@ -96,7 +93,6 @@
       transform: translateY(0);
     }
   }
-
   @keyframes nebari-slide-down-fade {
     from {
       opacity: 1;
@@ -105,6 +101,28 @@
     to {
       opacity: 0;
       transform: translateY(6px);
+    }
+  }
+
+  --duration-loading: 1600ms;
+
+  --animate-skeleton-pulse: nebari-skeleton-pulse var(--duration-loading)
+    var(--ease-standard) infinite;
+
+  --color-header-foreground: var(--header-foreground);
+
+  --color-header: var(--header);
+
+  --color-canvas-foreground: var(--canvas-foreground);
+
+  --color-canvas: var(--canvas);
+  @keyframes nebari-skeleton-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
     }
   }
 }
@@ -150,6 +168,10 @@
   --sidebar-accent-foreground: oklch(32.95% 0.0209 254.12);
   --sidebar-border: oklch(78.06% 0.0056 286.27);
   --sidebar-ring: oklch(61.98% 0.2159 311.67);
+  --canvas: oklch(100% 0 0);
+  --canvas-foreground: oklch(26.94% 0.0037 286.15);
+  --header: oklch(97.91% 0 0);
+  --header-foreground: oklch(26.94% 0.0037 286.15);
 }
 
 .dark {
@@ -193,6 +215,10 @@
   --sidebar-accent-foreground: oklch(95.04% 0.0042 236.5);
   --sidebar-border: oklch(47.01% 0.0112 285.96);
   --sidebar-ring: oklch(69.98% 0.1926 311.48);
+  --canvas: oklch(21.86% 0.0039 286.08);
+  --canvas-foreground: oklch(97.91% 0 0);
+  --header: oklch(26.94% 0.0037 286.15);
+  --header-foreground: oklch(97.91% 0 0);
 }
 
 body {

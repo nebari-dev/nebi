@@ -4,8 +4,15 @@ import { CreateGroupDialog } from '@/components/admin/CreateGroupDialog';
 import { GroupMembersDialog } from '@/components/admin/GroupMembersDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { useDeleteGroup, useGroups } from '@/hooks/useGroups';
 import type { GroupWithMemberCount } from '@/types/models';
 
@@ -52,92 +59,81 @@ export const Groups = () => {
         </div>
       )}
 
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">
-              Loading…
-            </div>
-          ) : rows.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">
-              No groups yet.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="border-b bg-muted/50">
-                  <tr>
-                    <th className="text-left p-4 font-medium">Name</th>
-                    <th className="text-left p-4 font-medium">Description</th>
-                    <th className="text-left p-4 font-medium">Source</th>
-                    <th className="text-left p-4 font-medium">Members</th>
-                    <th className="text-left p-4 font-medium">Created</th>
-                    <th className="text-right p-4 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((g) => (
-                    <tr
-                      key={g.id}
-                      className="border-b last:border-0 hover:bg-muted/50"
+      {isLoading ? (
+        <div className="rounded-md border border-border bg-card p-8 text-center text-muted-foreground">
+          Loading…
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="rounded-md border border-border bg-card p-8 text-center text-muted-foreground">
+          No groups yet.
+        </div>
+      ) : (
+        <Table aria-label="Groups">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Description</TableHead>
+              <TableHead>Source</TableHead>
+              <TableHead>Members</TableHead>
+              <TableHead>Created</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((g) => (
+              <TableRow key={g.id}>
+                <TableCell className="font-medium">{g.name}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {g.description}
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    variant="outline"
+                    className={
+                      g.source === 'oidc'
+                        ? 'border-blue-500/40 text-blue-500'
+                        : ''
+                    }
+                  >
+                    {g.source}
+                  </Badge>
+                </TableCell>
+                <TableCell>{g.member_count}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {new Date(g.created_at).toLocaleDateString()}
+                </TableCell>
+                <TableCell>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="View members"
+                      aria-label={`View members of ${g.name}`}
+                      onClick={() => setMembersOf(g)}
                     >
-                      <td className="p-4 font-medium">{g.name}</td>
-                      <td className="p-4 text-sm text-muted-foreground">
-                        {g.description}
-                      </td>
-                      <td className="p-4">
-                        <Badge
-                          variant="outline"
-                          className={
-                            g.source === 'oidc'
-                              ? 'border-blue-500/40 text-blue-500'
-                              : ''
-                          }
-                        >
-                          {g.source}
-                        </Badge>
-                      </td>
-                      <td className="p-4">{g.member_count}</td>
-                      <td className="p-4 text-sm text-muted-foreground">
-                        {new Date(g.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="p-4">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            title="View members"
-                            aria-label={`View members of ${g.name}`}
-                            onClick={() => setMembersOf(g)}
-                          >
-                            <Users className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            title={
-                              g.source === 'oidc'
-                                ? 'OIDC groups cannot be deleted'
-                                : 'Delete group'
-                            }
-                            disabled={g.source === 'oidc'}
-                            aria-label={`Delete ${g.name}`}
-                            onClick={() =>
-                              setConfirm({ id: g.id, name: g.name })
-                            }
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                      <Users className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title={
+                        g.source === 'oidc'
+                          ? 'OIDC groups cannot be deleted'
+                          : 'Delete group'
+                      }
+                      disabled={g.source === 'oidc'}
+                      aria-label={`Delete ${g.name}`}
+                      onClick={() => setConfirm({ id: g.id, name: g.name })}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
 
       <ConfirmDialog
         open={!!confirm}

@@ -4,8 +4,15 @@ import { CreateUserDialog } from '@/components/admin/CreateUserDialog';
 import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   useDeleteUser,
   useToggleAdmin,
@@ -129,122 +136,115 @@ export const UserManagement = () => {
 
       {remoteUnreachable && <RemoteUnreachableBanner />}
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="border-b bg-muted/50">
-                <tr>
-                  <th className="text-left p-4 font-medium">Username</th>
-                  <th className="text-left p-4 font-medium">Email</th>
-                  <th className="text-left p-4 font-medium">Role</th>
-                  <th className="text-left p-4 font-medium">Groups</th>
-                  <th className="text-left p-4 font-medium">Created</th>
-                  <th className="text-right p-4 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedUsers.map((user) => (
-                  <tr
-                    key={user.id}
-                    className="border-b last:border-0 hover:bg-muted/50"
+      <Table aria-label="Users">
+        <TableHeader>
+          <TableRow
+            className={displayedUsers.length > 0 ? undefined : 'border-0'}
+          >
+            <TableHead>Username</TableHead>
+            <TableHead>Email</TableHead>
+            <TableHead>Role</TableHead>
+            <TableHead>Groups</TableHead>
+            <TableHead>Created</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {displayedUsers.map((user) => (
+            <TableRow key={user.id}>
+              <TableCell className="font-medium">
+                {user.username}
+                {user.id === currentUser?.id && (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    (you)
+                  </span>
+                )}
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {user.email}
+              </TableCell>
+              <TableCell>
+                {user.is_admin ? (
+                  <Badge className="bg-purple-100 text-purple-800 border-purple-300">
+                    <Shield className="h-3 w-3 mr-1" />
+                    Admin
+                  </Badge>
+                ) : (
+                  <Badge variant="outline">User</Badge>
+                )}
+              </TableCell>
+              <TableCell>
+                <UserGroupsCell userId={user.id} />
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {new Date(user.created_at).toLocaleDateString()}
+              </TableCell>
+              <TableCell>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setConfirmAction({
+                        type: 'toggle',
+                        userId: user.id,
+                        username: user.username,
+                        currentIsAdmin: user.is_admin,
+                      })
+                    }
+                    disabled={
+                      toggleAdminMutation.isPending ||
+                      user.id === currentUser?.id
+                    }
+                    title={
+                      user.id === currentUser?.id
+                        ? 'Cannot modify your own admin status'
+                        : user.is_admin
+                          ? 'Revoke Admin'
+                          : 'Grant Admin'
+                    }
+                    aria-label={
+                      user.is_admin
+                        ? `Revoke admin for ${user.username}`
+                        : `Grant admin to ${user.username}`
+                    }
                   >
-                    <td className="p-4 font-medium">
-                      {user.username}
-                      {user.id === currentUser?.id && (
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          (you)
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4 text-sm text-muted-foreground">
-                      {user.email}
-                    </td>
-                    <td className="p-4">
-                      {user.is_admin ? (
-                        <Badge className="bg-purple-100 text-purple-800 border-purple-300">
-                          <Shield className="h-3 w-3 mr-1" />
-                          Admin
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline">User</Badge>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      <UserGroupsCell userId={user.id} />
-                    </td>
-                    <td className="p-4 text-sm text-muted-foreground">
-                      {new Date(user.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="p-4">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            setConfirmAction({
-                              type: 'toggle',
-                              userId: user.id,
-                              username: user.username,
-                              currentIsAdmin: user.is_admin,
-                            })
-                          }
-                          disabled={
-                            toggleAdminMutation.isPending ||
-                            user.id === currentUser?.id
-                          }
-                          title={
-                            user.id === currentUser?.id
-                              ? 'Cannot modify your own admin status'
-                              : user.is_admin
-                                ? 'Revoke Admin'
-                                : 'Grant Admin'
-                          }
-                          aria-label={
-                            user.is_admin
-                              ? `Revoke admin for ${user.username}`
-                              : `Grant admin to ${user.username}`
-                          }
-                        >
-                          {user.is_admin ? (
-                            <ShieldOff className="h-4 w-4" />
-                          ) : (
-                            <Shield className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            if (user.id === currentUser?.id) return;
-                            setConfirmAction({
-                              type: 'delete',
-                              userId: user.id,
-                              username: user.username,
-                            });
-                          }}
-                          disabled={
-                            deleteUserMutation.isPending ||
-                            user.id === currentUser?.id
-                          }
-                          title={
-                            user.id === currentUser?.id
-                              ? 'Cannot delete yourself'
-                              : 'Delete User'
-                          }
-                          aria-label={`Delete ${user.username}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+                    {user.is_admin ? (
+                      <ShieldOff className="h-4 w-4" />
+                    ) : (
+                      <Shield className="h-4 w-4" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (user.id === currentUser?.id) return;
+                      setConfirmAction({
+                        type: 'delete',
+                        userId: user.id,
+                        username: user.username,
+                      });
+                    }}
+                    disabled={
+                      deleteUserMutation.isPending ||
+                      user.id === currentUser?.id
+                    }
+                    title={
+                      user.id === currentUser?.id
+                        ? 'Cannot delete yourself'
+                        : 'Delete User'
+                    }
+                    aria-label={`Delete ${user.username}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
 
       {displayedUsers.length === 0 && !remoteUnreachable && (
         <div className="text-center py-12">

@@ -205,22 +205,12 @@ func TestMigrateDropsLegacyPackageManagerColumnWithReferencingRows(t *testing.T)
 	).Error; err != nil {
 		t.Fatalf("insert referencing job: %v", err)
 	}
-	// A previously failed migration attempt strands the rebuild table.
-	if err := database.Exec(
-		"CREATE TABLE `workspaces__temp` (`id` text PRIMARY KEY)",
-	).Error; err != nil {
-		t.Fatalf("create stranded temp table: %v", err)
-	}
-
 	if err := Migrate(database, false); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
 	if database.Migrator().HasColumn(&models.Workspace{}, "package_manager") {
 		t.Fatal("expected package_manager column to be dropped")
-	}
-	if database.Migrator().HasTable("workspaces__temp") {
-		t.Fatal("expected stranded workspaces__temp table to be removed")
 	}
 
 	var wsCount, jobCount int64

@@ -100,16 +100,6 @@ func New(cfg config.DatabaseConfig) (*gorm.DB, error) {
 func Migrate(db *gorm.DB, seedRegistry bool) error {
 	slog.Info("Running database migrations...")
 
-	// The SQLite driver rebuilds tables through a workspaces__temp copy; a
-	// failed rebuild (e.g. the package_manager drop below, before it ran
-	// with foreign keys suspended) strands that table with rows already
-	// copied, and any later rebuild's CREATE TABLE would collide with it.
-	if db.Dialector.Name() == "sqlite" {
-		if err := db.Exec("DROP TABLE IF EXISTS `workspaces__temp`").Error; err != nil {
-			return fmt.Errorf("failed to drop stranded workspaces__temp table: %w", err)
-		}
-	}
-
 	// Auto-migrate all models
 	err := db.AutoMigrate(
 		&models.User{},

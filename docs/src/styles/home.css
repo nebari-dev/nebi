@@ -1,0 +1,80 @@
+.nebi-hero-logo {
+  width: min(150px, 42vw);
+  height: auto;
+}
+
+.nebi-demo-section {
+  margin-block: clamp(3rem, 8vw, 5rem);
+}
+
+.nebi-demo-section h2 {
+  margin-block-end: 1.5rem;
+  text-align: center;
+}
+
+.nebi-demo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.nebi-demo-grid figure {
+  margin: 0;
+}
+
+.nebi-demo-grid figcaption {
+  margin-block-end: 0.6rem;
+  color: var(--sl-color-gray-2);
+  font-weight: 700;
+  text-align: center;
+}
+
+.nebi-demo-grid img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: contain;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 8px;
+  background: var(--sl-color-bg);
+  box-shadow: var(--sl-shadow-md);
+}
+
+.nebi-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 1rem;
+  margin-block: 3rem;
+}
+
+.nebi-feature-grid article {
+  margin: 0;
+  height: 100%;
+  min-height: 12rem;
+  padding: 1.25rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 8px;
+  background: var(--sl-color-bg-nav);
+}
+
+.nebi-feature-grid h2 {
+  margin-block: 0 0.75rem;
+  font-size: var(--sl-text-h4);
+}
+
+.nebi-feature-grid p {
+  margin: 0;
+  color: var(--sl-color-gray-2);
+}
+
+@media (max-width: 52rem) {
+  .nebi-demo-grid,
+  .nebi-feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .nebi-feature-grid article {
+    min-height: auto;
+  }
+}

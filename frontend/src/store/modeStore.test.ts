@@ -87,16 +87,18 @@ describe('fetchMode', () => {
     expect(queryClient.getDefaultOptions().queries?.networkMode).toBe('online');
   });
 
-  it('keeps networkMode always when the request fails in the desktop app', async () => {
+  it('falls back to local mode and keeps networkMode always when the request fails in the desktop app', async () => {
     server.use(http.get('/api/v1/version', () => HttpResponse.error()));
-    // The Wails runtime marks the desktop app, whose loopback backend must
-    // never be paused by OS offline events (issue #217).
+    // The Wails runtime marks the desktop app, which is always local mode: a
+    // team fallback would strand it on the Login page (issue #530), and its
+    // loopback backend must never be paused by OS offline events (issue #217).
     window.runtime = { BrowserOpenURL: () => {} };
 
     try {
       await useModeStore.getState().fetchMode();
 
-      expect(useModeStore.getState().mode).toBe('team');
+      expect(useModeStore.getState().mode).toBe('local');
+      expect(useModeStore.getState().isLocalMode()).toBe(true);
       expect(queryClient.getDefaultOptions().queries?.networkMode).toBe(
         'always',
       );

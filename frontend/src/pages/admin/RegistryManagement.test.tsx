@@ -13,6 +13,7 @@ const managedRegistry: OCIRegistry = {
   is_default: true,
   namespace: 'acme-envs',
   config_managed: true,
+  restricted: false,
   created_at: '2026-01-01T00:00:00Z',
 };
 
@@ -25,6 +26,7 @@ const userRegistry: OCIRegistry = {
   is_default: false,
   namespace: 'me',
   config_managed: false,
+  restricted: true,
   created_at: '2026-01-02T00:00:00Z',
 };
 
@@ -39,14 +41,28 @@ vi.mock('@/hooks/useRegistries', () => ({
 }));
 
 vi.mock('@/hooks/useRemote', () => ({
-  useRemoteServer: () => ({ data: undefined }),
-  useRemoteAdminRegistries: () => ({ data: undefined, isLoading: false }),
+  useRemoteView: () => ({
+    isLocalMode: false,
+    viewMode: 'local',
+    isRemoteConnected: false,
+    isRemoteView: false,
+  }),
+  useRemoteAdminRegistries: () => ({
+    data: undefined,
+    isFirstLoad: false,
+    isUnreachable: false,
+  }),
 }));
 
 describe('RegistryManagement', () => {
   it('shows a Managed badge for config-managed registries', () => {
     renderWithProviders(<RegistryManagement />);
     expect(screen.getByText('Managed')).toBeInTheDocument();
+  });
+
+  it('shows a Restricted badge for restricted registries', () => {
+    renderWithProviders(<RegistryManagement />);
+    expect(screen.getByText('Restricted')).toBeInTheDocument();
   });
 
   it('disables edit and delete for config-managed registries only', () => {

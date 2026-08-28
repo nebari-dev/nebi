@@ -25,7 +25,6 @@ export const makeWorkspace = (id: string, name: string) => ({
   owner_id: mockUser.id,
   owner: mockUser,
   status: 'ready',
-  package_manager: 'pixi',
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
   size_bytes: 1024,
@@ -41,6 +40,8 @@ const registries = [
     has_api_token: true,
     is_default: true,
     namespace: 'nebari',
+    config_managed: false,
+    restricted: false,
     created_at: '2026-01-01T00:00:00Z',
   },
 ];

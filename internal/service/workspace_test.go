@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -117,9 +118,6 @@ func TestCreate_Defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if ws.PackageManager != "pixi" {
-		t.Errorf("expected default package_manager=pixi, got %q", ws.PackageManager)
-	}
 	if ws.Status != models.WsStatusPending {
 		t.Errorf("expected status=pending, got %q", ws.Status)
 	}
@@ -224,35 +222,24 @@ func TestCreate_RejectsOversizedPixiTomlBeforeWrites(t *testing.T) {
 	}
 }
 
-func TestCreate_RejectsTooManyManifestPackagesBeforeWrites(t *testing.T) {
+func TestCreate_AllowsManifestWithManyPackages(t *testing.T) {
 	svc, db := testSetup(t, true)
-	limitCfg := limits.Defaults()
-	limitCfg.MaxPackages = 2
-	svc.limits = limitCfg
 	userID := createTestUser(t, db, "alice")
 
-	manifest := `[project]
-name = "too-many-manifest-packages"
-
-[dependencies]
-python = "*"
-numpy = "*"
-
-[feature.test.dependencies]
-pytest = "*"
-`
-	_, err := svc.Create(context.Background(), CreateRequest{PixiToml: manifest}, userID)
-
-	var ve *ValidationError
-	if !isValidationError(err, &ve) {
-		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	var sb strings.Builder
+	sb.WriteString("[project]\nname = \"many-manifest-packages\"\n\n[dependencies]\n")
+	for i := 0; i < 200; i++ {
+		fmt.Fprintf(&sb, "pkg-%d = \"*\"\n", i)
 	}
 
-	var workspaces, jobs int64
+	if _, err := svc.Create(context.Background(), CreateRequest{PixiToml: sb.String()}, userID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var workspaces int64
 	db.Model(&models.Workspace{}).Count(&workspaces)
-	db.Model(&models.Job{}).Count(&jobs)
-	if workspaces != 0 || jobs != 0 {
-		t.Fatalf("expected no workspace/job writes, got workspaces=%d jobs=%d", workspaces, jobs)
+	if workspaces != 1 {
+		t.Fatalf("expected 1 workspace, got %d", workspaces)
 	}
 }
 

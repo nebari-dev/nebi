@@ -31,7 +31,7 @@ cd frontend && npm run check:fix   # biome autofix
 make test                                    # go test -tags=e2e -v ./...
 go test -tags=e2e ./internal/service/...     # one package
 go test -tags=e2e -run TestName ./cmd/nebi   # one test
-make test-pkgmgr                             # pixi/uv package-manager tests
+make test-pixi                               # pixi integration tests
 cd frontend && npm test                      # vitest run (single run)
 cd frontend && npm run test:watch
 
@@ -63,7 +63,7 @@ When changing auth, visibility, or permissions, check both branches — see `int
 - `cliclient/` — HTTP client the CLI commands use to talk to a remote server (mirrors the handler endpoints).
 - `auth/`, `rbac/` — authenticators (local/basic/OIDC) and casbin enforcer/provider. Every externally-authenticated login path must resolve users through `auth.findOrCreateFederatedUser`, matching existing external identities only by `(issuer, subject)` and never by mutable username/email claims. If that flow returns a review-gated error, clients should check `auth.FederatedIdentityReviewErrorCode` before falling through to a generic 401.
 - `queue/` (memory or valkey) + `worker/` + `executor/` (local or docker) — async job pipeline. Long operations (env builds, installs) are enqueued, run by the worker through an executor, with output streamed via `logstream/`.
-- `pkgmgr/` — package-manager abstraction (`PackageManager` interface in `pkgmgr.go`, `pixi/` impl, selected by `factory.go`). This is where Pixi/uv commands are shelled out.
+- `pixi/` — pixi integration (`PixiManager`). This is where pixi commands are shelled out.
 - `oci/` — push/pull of environments to OCI registries.
 - `swagger/` — generated; do not hand-edit (run `make swagger`).
 
@@ -74,7 +74,7 @@ In dev the Vite server (`:8461`) proxies to the backend (`:8460`); in production
 
 Two frontend invariants worth knowing (see issue #217):
 - **TanStack Query `networkMode` is per app mode**, set in `src/lib/queryClient.ts` + `src/store/modeStore.ts`: `'always'` in local (desktop) mode because the loopback backend stays reachable even when the OS reports offline, `'online'` in team mode where the API is a real network hop. Every query and mutation inherits this default — don't pin `'online'` in a code path that can run in the desktop app, or offline events will wedge loopback queries in `paused`.
-- **`GET /remote/server` reporting `status: 'connected'` means a server URL + token are stored** (a local DB read), not that the remote is reachable. Reachability surfaces as errors on the remote data queries; new or updated pages should gate remote data and the unreachable banner with `useRemoteView()` from `src/hooks/useRemote.ts`. Workspaces, Jobs, and the Admin Dashboard use it today; Registries and the remaining admin pages still hand-roll the derivation (migration tracked in https://github.com/nebari-dev/nebi/issues/504). If that status ever becomes a real liveness probe, revisit the banner logic, which assumes it never flips on remote outages.
+- **`GET /remote/server` reporting `status: 'connected'` means a server URL + token are stored** (a local DB read), not that the remote is reachable. Reachability surfaces as errors on the remote data queries; pages gate remote data and the unreachable banner with `useRemoteView()` from `src/hooks/useRemote.ts`, and consume the `isFirstLoad` / `isUnreachable` flags the remote query hooks return rather than re-deriving them from TanStack internals. Any query whose `isUnreachable` flag a page renders must keep retrying on its own — `pollWithErrorBackoff` if it polls anyway, `retryWhileUnreachable` if it shouldn't poll while healthy — because an errored query without an interval only refetches on remount (`refetchOnWindowFocus` is `false` app-wide, so focus is not a recovery path), so the banner would stick after the server recovered. Queries wrapped in `withRemoteFlags` must also pin `notifyOnChangeProps` (the wrapper spreads the result, which otherwise marks every field tracked and re-renders consumers on every poll tick). The remote workspace *detail* page (`RemoteWorkspaceDetail.tsx`) and the per-workspace hooks predate this pattern and are not yet migrated (tracked in https://github.com/nebari-dev/nebi/issues/507). If that status ever becomes a real liveness probe, revisit the banner logic, which assumes it never flips on remote outages.
 
 ## Conventions
 - Backend lint is `golangci-lint` (config in `.golangci.yml`); frontend lint/format is Biome (`frontend/biome.json`). CI runs `biome ci` and `go test -tags=e2e -race`.

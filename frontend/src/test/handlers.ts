@@ -34,7 +34,6 @@ export const mockWorkspace: Workspace = {
   name: 'test-workspace',
   owner_id: 'user-1',
   status: 'ready',
-  package_manager: 'pixi',
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
   size_bytes: 1024,
@@ -86,6 +85,7 @@ export const mockRegistry: OCIRegistry = {
   is_default: true,
   namespace: 'myorg',
   config_managed: false,
+  restricted: false,
   created_at: '2024-01-01T00:00:00Z',
 };
 

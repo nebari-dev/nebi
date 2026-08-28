@@ -20,16 +20,16 @@ const minReadTimeoutSeconds = 30
 
 // Config holds all application configuration
 type Config struct {
-	Mode           string               `mapstructure:"mode"` // "local" or "team" (default: "team")
-	Server         ServerConfig         `mapstructure:"server"`
-	Database       DatabaseConfig       `mapstructure:"database"`
-	Auth           AuthConfig           `mapstructure:"auth"`
-	Queue          QueueConfig          `mapstructure:"queue"`
-	Log            LogConfig            `mapstructure:"log"`
-	PackageManager PackageManagerConfig `mapstructure:"package_manager"`
-	Storage        StorageConfig        `mapstructure:"storage"`
-	Limits         limits.Limits        `mapstructure:"limits"`
-	Registries     RegistriesConfig     `mapstructure:"registries"`
+	Mode       string           `mapstructure:"mode"` // "local" or "team" (default: "team")
+	Server     ServerConfig     `mapstructure:"server"`
+	Database   DatabaseConfig   `mapstructure:"database"`
+	Auth       AuthConfig       `mapstructure:"auth"`
+	Queue      QueueConfig      `mapstructure:"queue"`
+	Log        LogConfig        `mapstructure:"log"`
+	PixiPath   string           `mapstructure:"pixi_path"` // Custom pixi binary path (optional)
+	Storage    StorageConfig    `mapstructure:"storage"`
+	Limits     limits.Limits    `mapstructure:"limits"`
+	Registries RegistriesConfig `mapstructure:"registries"`
 }
 
 // IsLocalMode returns true when the server is running in local/desktop mode.
@@ -119,13 +119,6 @@ type LogConfig struct {
 	Level  string `mapstructure:"level"`  // "debug", "info", "warn", "error"
 }
 
-// PackageManagerConfig holds package manager configuration
-type PackageManagerConfig struct {
-	DefaultType string `mapstructure:"default_type"` // "pixi" or "uv"
-	PixiPath    string `mapstructure:"pixi_path"`    // Custom pixi binary path (optional)
-	UvPath      string `mapstructure:"uv_path"`      // Custom uv binary path (optional)
-}
-
 // StorageConfig holds storage configuration
 type StorageConfig struct {
 	WorkspacesDir string `mapstructure:"workspaces_dir"` // Directory where workspaces are stored
@@ -139,13 +132,14 @@ type RegistriesConfig struct {
 	Entries     []RegistryEntryConfig `mapstructure:"entries"`
 }
 
-// RegistryEntryConfig is one admin-provisioned OCI registry. Only public
-// (unauthenticated) registries are supported; there are no credential fields.
+// RegistryEntryConfig is one admin-provisioned OCI registry. Only
+// credentialless registry entries are supported; there are no credential fields.
 type RegistryEntryConfig struct {
-	Name      string `mapstructure:"name"`      // required, unique; reconciliation identity
-	URL       string `mapstructure:"url"`       // required, e.g. "quay.io"
-	Namespace string `mapstructure:"namespace"` // organization/namespace on the registry
-	Default   bool   `mapstructure:"default"`   // at most one entry may set this
+	Name       string `mapstructure:"name"`       // required, unique; reconciliation identity
+	URL        string `mapstructure:"url"`        // required, e.g. "quay.io"
+	Namespace  string `mapstructure:"namespace"`  // organization/namespace on the registry
+	Default    bool   `mapstructure:"default"`    // at most one entry may set this
+	Restricted bool   `mapstructure:"restricted"` // when true, only granted groups can use this registry
 }
 
 // Load reads configuration from file and environment variables
@@ -179,14 +173,12 @@ func Load() (*Config, error) {
 	v.SetDefault("queue.valkey_addr", "localhost:6379")
 	v.SetDefault("log.format", "text")
 	v.SetDefault("log.level", "info")
-	v.SetDefault("package_manager.default_type", "pixi")
 	v.SetDefault("storage.workspaces_dir", "./data/workspaces")
 	defaultLimits := limits.Defaults()
 	v.SetDefault("limits.request_body_bytes", defaultLimits.RequestBodyBytes)
 	v.SetDefault("limits.manifest_bytes", defaultLimits.ManifestBytes)
 	v.SetDefault("limits.lock_bytes", defaultLimits.LockBytes)
 	v.SetDefault("limits.metadata_bytes", defaultLimits.MetadataBytes)
-	v.SetDefault("limits.max_packages", defaultLimits.MaxPackages)
 	v.SetDefault("limits.package_string_bytes", defaultLimits.PackageStringBytes)
 	v.SetDefault("limits.active_jobs_per_user", defaultLimits.ActiveJobsPerUser)
 	v.SetDefault("limits.active_jobs_per_workspace", defaultLimits.ActiveJobsPerWorkspace)
@@ -215,12 +207,13 @@ func Load() (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
+	// NEBI_PACKAGE_MANAGER_PIXI_PATH is the pre-0.15 name, kept as an alias
+	// so existing deployments keep working.
+	_ = v.BindEnv("pixi_path", "NEBI_PIXI_PATH", "NEBI_PACKAGE_MANAGER_PIXI_PATH")
+
 	// viper's AutomaticEnv + Unmarshal does not propagate env vars into
 	// nested structs without explicit BindEnv. Bind each nested key so that
-	// e.g. NEBI_PACKAGE_MANAGER_PIXI_PATH overrides the pixi_path field.
-	_ = v.BindEnv("package_manager.default_type", "NEBI_PACKAGE_MANAGER_DEFAULT_TYPE")
-	_ = v.BindEnv("package_manager.pixi_path", "NEBI_PACKAGE_MANAGER_PIXI_PATH")
-	_ = v.BindEnv("package_manager.uv_path", "NEBI_PACKAGE_MANAGER_UV_PATH")
+	// e.g. NEBI_STORAGE_WORKSPACES_DIR overrides the workspaces_dir field.
 	_ = v.BindEnv("storage.workspaces_dir", "NEBI_STORAGE_WORKSPACES_DIR")
 	_ = v.BindEnv("server.host", "NEBI_SERVER_HOST")
 	_ = v.BindEnv("server.port", "NEBI_SERVER_PORT")
@@ -246,7 +239,6 @@ func Load() (*Config, error) {
 	_ = v.BindEnv("limits.manifest_bytes", "NEBI_LIMITS_MANIFEST_BYTES")
 	_ = v.BindEnv("limits.lock_bytes", "NEBI_LIMITS_LOCK_BYTES")
 	_ = v.BindEnv("limits.metadata_bytes", "NEBI_LIMITS_METADATA_BYTES")
-	_ = v.BindEnv("limits.max_packages", "NEBI_LIMITS_MAX_PACKAGES")
 	_ = v.BindEnv("limits.package_string_bytes", "NEBI_LIMITS_PACKAGE_STRING_BYTES")
 	_ = v.BindEnv("limits.active_jobs_per_user", "NEBI_LIMITS_ACTIVE_JOBS_PER_USER")
 	_ = v.BindEnv("limits.active_jobs_per_workspace", "NEBI_LIMITS_ACTIVE_JOBS_PER_WORKSPACE")

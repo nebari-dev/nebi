@@ -54,9 +54,7 @@ log:
   level: info   # debug, info, warn, error
 
 package_manager:
-  default_type: pixi
   # pixi_path: /custom/path/to/pixi  # Optional: custom binary path
-  # uv_path: /custom/path/to/uv      # Optional: custom binary path
 
 storage:
   workspaces_dir: ./data/workspaces
@@ -69,7 +67,6 @@ storage:
 #   manifest_bytes: 1048576           # NEBI_LIMITS_MANIFEST_BYTES
 #   lock_bytes: 16777216              # NEBI_LIMITS_LOCK_BYTES
 #   metadata_bytes: 65536             # NEBI_LIMITS_METADATA_BYTES
-#   max_packages: 128                 # NEBI_LIMITS_MAX_PACKAGES
 #   package_string_bytes: 256         # NEBI_LIMITS_PACKAGE_STRING_BYTES
 #
 #   # Active-job admission quotas. Delete jobs bypass these quotas so a
@@ -91,8 +88,7 @@ storage:
 # here. Enforce those with worker pod/container limits until Nebi runs jobs in
 # isolated execution units.
 
-# Admin-provisioned OCI registries (optional). Public registries only:
-# entries carry no credentials.
+# Admin-provisioned OCI registries (optional). Entries carry no credentials.
 # Entries are declarative: reconciled into the database at every boot,
 # marked as config-managed, and locked against UI/API/CLI modification.
 # Removing an entry here removes it from the database on next boot.
@@ -106,6 +102,7 @@ storage:
 #       url: registry.acme.com
 #       namespace: acme-envs
 #       default: true   # at most one entry may set this
+#       restricted: false # set true to require group grants for access
 
 # Environment variables can override any setting above
 # Example: NEBI_AUTH_OIDC_CLIENT_ID=your-id

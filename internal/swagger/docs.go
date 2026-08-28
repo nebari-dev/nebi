@@ -2699,6 +2699,12 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Registry ID to compute defaults against",
+                        "name": "registry_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -2706,6 +2712,18 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/service.PublishDefaultsResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
                     "404": {
@@ -3425,6 +3443,9 @@ const docTemplate = `{
                 "password": {
                     "type": "string"
                 },
+                "restricted": {
+                    "type": "boolean"
+                },
                 "url": {
                     "type": "string"
                 },
@@ -3459,9 +3480,6 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "name": {
-                    "type": "string"
-                },
-                "package_manager": {
                     "type": "string"
                 },
                 "path": {
@@ -3712,6 +3730,9 @@ const docTemplate = `{
                 "password": {
                     "type": "string"
                 },
+                "restricted": {
+                    "type": "boolean"
+                },
                 "url": {
                     "type": "string"
                 },
@@ -3765,9 +3786,6 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "manifest_bytes": {
-                    "type": "integer"
-                },
-                "max_packages": {
                     "type": "integer"
                 },
                 "metadata_bytes": {
@@ -4229,10 +4247,6 @@ const docTemplate = `{
                 "owner_id": {
                     "type": "string"
                 },
-                "package_manager": {
-                    "description": "\"pixi\" or \"uv\"",
-                    "type": "string"
-                },
                 "path": {
                     "description": "filesystem path (local-mode)",
                     "type": "string"
@@ -4487,6 +4501,9 @@ const docTemplate = `{
                 },
                 "namespace": {
                     "type": "string"
+                },
+                "restricted": {
+                    "type": "boolean"
                 },
                 "url": {
                     "type": "string"

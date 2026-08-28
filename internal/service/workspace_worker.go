@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/pkgmgr"
 	"github.com/nebari-dev/nebi/internal/process"
 	"github.com/nebari-dev/nebi/internal/utils"
 	"gorm.io/gorm"
@@ -26,8 +25,8 @@ func (s *WorkspaceService) RollbackToVersion(ctx context.Context, wsID string, v
 		return nil, err
 	}
 
-	if ws.Status != models.WsStatusReady {
-		return nil, &ValidationError{Message: "Workspace is not ready"}
+	if ws.Status.IsTransitional() {
+		return nil, &ValidationError{Message: fmt.Sprintf("Workspace is not ready to accept jobs while status is: '%s'", ws.Status)}
 	}
 
 	// Verify version exists and belongs to this workspace
@@ -38,7 +37,7 @@ func (s *WorkspaceService) RollbackToVersion(ctx context.Context, wsID string, v
 		}
 		return nil, err
 	}
-	if err := s.ValidateVersionContent(ws.PackageManager, version.ManifestContent, version.LockFileContent); err != nil {
+	if err := s.ValidateVersionContent(version.ManifestContent, version.LockFileContent); err != nil {
 		return nil, err
 	}
 
@@ -64,20 +63,14 @@ func (s *WorkspaceService) CreateVersionSnapshot(ctx context.Context, ws *models
 	if err != nil {
 		return fmt.Errorf("failed to read pixi.lock: %w", err)
 	}
-	if err := s.ValidateVersionContent(ws.PackageManager, manifestContent, lockContent); err != nil {
+	if err := s.ValidateVersionContent(manifestContent, lockContent); err != nil {
 		return err
 	}
 
-	// Get package list from package manager
-	pm, err := pkgmgr.NewWithContext(ctx, ws.PackageManager)
+	// Get package list from pixi
+	pkgs, err := pixiListPackages(ctx, s.listOptions(envPath))
 	if err != nil {
-		return fmt.Errorf("failed to create package manager: %w", err)
-	}
-
-	var pkgs []pkgmgr.Package
-	pkgs, err = pm.List(ctx, s.listOptions(envPath))
-	if err != nil {
-		mappedErr := s.mapPackageManagerListError(err)
+		mappedErr := s.mapPixiListError(err)
 		var validationErr *ValidationError
 		if errors.As(mappedErr, &validationErr) || ctx.Err() != nil || process.IsResourceLimitError(mappedErr) {
 			return fmt.Errorf("failed to list packages: %w", mappedErr)

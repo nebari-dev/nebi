@@ -50,6 +50,15 @@ func Open(dataDir string) (*Store, error) {
 		return nil, fmt.Errorf("migrating schema: %w", err)
 	}
 
+	// Drop the legacy package_manager column: pixi is the only package
+	// manager, and the column was NOT NULL so leaving it would break inserts
+	// in databases created before its removal.
+	if db.Migrator().HasColumn(&LocalWorkspace{}, "package_manager") {
+		if err := db.Migrator().DropColumn(&LocalWorkspace{}, "package_manager"); err != nil {
+			return nil, fmt.Errorf("dropping workspaces.package_manager column: %w", err)
+		}
+	}
+
 	// Seed singleton rows
 	db.Exec("INSERT OR IGNORE INTO store_config (id) VALUES (1)")
 	db.Exec("INSERT OR IGNORE INTO store_credentials (id) VALUES (1)")

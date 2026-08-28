@@ -228,6 +228,19 @@
   --sign-out-foreground: #ff6b6b;
 }
 
+/* Tailwind v4 defaults unspecified border colors to currentColor; restore the
+   semantic token so bare `border`/`border-r`/`divide-*` utilities stay on the
+   design-system border color instead of rendering at text color. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-border);
+  }
+}
+
 body {
   font-family: var(--font-sans);
   background-color: var(--color-canvas);

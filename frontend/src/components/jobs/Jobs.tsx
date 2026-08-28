@@ -1,16 +1,9 @@
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Copy,
-  Loader2,
-  Radio,
-} from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Radio } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CodeBlock, CodeBlockBody } from '@/components/ui/code-block';
 import { useJobLogStream } from '@/hooks/useJobLogStream';
 import { useJobs } from '@/hooks/useJobs';
 import { useRemoteJobs, useRemoteView } from '@/hooks/useRemote';
@@ -33,37 +26,6 @@ const typeColors: Record<JobType, string> = {
   rollback: 'bg-purple-100 text-purple-800 border-purple-300',
   env_install: 'bg-blue-100 text-blue-800 border-blue-300',
   env_uninstall: 'bg-orange-100 text-orange-800 border-orange-300',
-};
-
-const CopyButton = ({ text }: { text: string }) => {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handleCopy}
-      className="h-7 gap-1"
-    >
-      {copied ? (
-        <>
-          <Check className="h-3 w-3" />
-          Copied
-        </>
-      ) : (
-        <>
-          <Copy className="h-3 w-3" />
-          Copy
-        </>
-      )}
-    </Button>
-  );
 };
 
 const JobCard = ({
@@ -149,33 +111,36 @@ const JobCard = ({
 
           {(isStreaming || displayLogs) && (
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <h4 className="font-semibold">Logs</h4>
-                  {isStreaming && (
-                    <Badge variant="outline" className="text-xs">
-                      <Radio className="h-2 w-2 mr-1 animate-pulse" />
-                      Live
-                    </Badge>
-                  )}
-                </div>
-                {displayLogs && <CopyButton text={displayLogs} />}
+              <div className="flex items-center gap-2 mb-2">
+                <h4 className="font-semibold">Logs</h4>
+                {isStreaming && (
+                  <Badge variant="outline" className="text-xs">
+                    <Radio className="h-2 w-2 mr-1 animate-pulse" />
+                    Live
+                  </Badge>
+                )}
               </div>
-              <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto max-h-96 overflow-y-auto font-mono whitespace-pre-wrap text-sm">
-                {displayLogs || 'Waiting for logs...'}
-              </pre>
+              <CodeBlock
+                dark
+                code={displayLogs || 'Waiting for logs...'}
+                className="w-full"
+                showCopyButton={!!displayLogs}
+              >
+                <CodeBlockBody maxLines={16} aria-label="Job logs" />
+              </CodeBlock>
             </div>
           )}
 
           {job.error && (
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-semibold text-destructive">Error</h4>
-                <CopyButton text={job.error} />
-              </div>
-              <pre className="bg-red-950 text-red-100 p-4 rounded-md overflow-x-auto font-mono whitespace-pre-wrap">
-                {job.error}
-              </pre>
+              <h4 className="font-semibold text-destructive mb-2">Error</h4>
+              <CodeBlock
+                dark
+                code={job.error}
+                className="w-full border-destructive-foreground/40"
+              >
+                <CodeBlockBody aria-label="Job error output" />
+              </CodeBlock>
             </div>
           )}
 
@@ -190,15 +155,12 @@ const JobCard = ({
 
                 return (
                   <div key={key}>
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="text-sm font-medium text-muted-foreground capitalize">
-                        {key.replace(/_/g, ' ')}
-                      </div>
-                      <CopyButton text={content} />
+                    <div className="text-sm font-medium text-muted-foreground capitalize mb-1">
+                      {key.replace(/_/g, ' ')}
                     </div>
-                    <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto font-mono whitespace-pre">
-                      {content}
-                    </pre>
+                    <CodeBlock dark code={content} className="w-full">
+                      <CodeBlockBody aria-label={`${key} metadata`} />
+                    </CodeBlock>
                   </div>
                 );
               })}

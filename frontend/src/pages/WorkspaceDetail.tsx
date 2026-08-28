@@ -33,6 +33,7 @@ import { CollaboratorsList } from '@/components/sharing/CollaboratorsList';
 import { ShareButton } from '@/components/sharing/ShareButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { CodeBlock, CodeBlockBody } from '@/components/ui/code-block';
 import {
   Table,
   TableBody,
@@ -92,7 +93,6 @@ export const WorkspaceDetail = () => {
   const [isEditingToml, setIsEditingToml] = useState(false);
   const [savingToml, setSavingToml] = useState(false);
   const [loadingToml, setLoadingToml] = useState(false);
-  const [copiedToml, setCopiedToml] = useState(false);
   const [copiedImportId, setCopiedImportId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
   const [saveInstallJobId, setSaveInstallJobId] = useState<string | null>(null);
@@ -126,12 +126,6 @@ export const WorkspaceDetail = () => {
       void loadPixiToml();
     }
   }, [activeTab, pixiToml, loadPixiToml]);
-
-  const handleCopyToml = async () => {
-    await navigator.clipboard.writeText(pixiToml);
-    setCopiedToml(true);
-    setTimeout(() => setCopiedToml(false), 2000);
-  };
 
   const handleCopyImport = async (pub: {
     registry_url: string;
@@ -695,26 +689,6 @@ export const WorkspaceDetail = () => {
                   </Button>
                 </>
               )}
-              {pixiToml && !isEditingToml && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCopyToml}
-                  className="gap-2"
-                >
-                  {copiedToml ? (
-                    <>
-                      <Check className="h-4 w-4" />
-                      Copied
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-4 w-4" />
-                      Copy
-                    </>
-                  )}
-                </Button>
-              )}
             </div>
           </div>
           {loadingToml ? (
@@ -732,9 +706,9 @@ export const WorkspaceDetail = () => {
               }}
             />
           ) : pixiToml ? (
-            <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto font-mono text-sm whitespace-pre">
-              {pixiToml}
-            </pre>
+            <CodeBlock dark code={pixiToml} className="w-full">
+              <CodeBlockBody aria-label="pixi.toml contents" />
+            </CodeBlock>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
               Failed to load pixi.toml

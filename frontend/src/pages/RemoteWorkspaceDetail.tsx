@@ -19,6 +19,7 @@ import { remoteApi } from '@/api/remote';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CodeBlock, CodeBlockBody } from '@/components/ui/code-block';
 import {
   Table,
   TableBody,
@@ -38,7 +39,6 @@ export const RemoteWorkspaceDetail = () => {
   const wsId = id || '';
 
   const [activeTab, setActiveTab] = useState('overview');
-  const [copiedToml, setCopiedToml] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
 
   const { data: workspace, isLoading: wsLoading } = useQuery({
@@ -64,14 +64,6 @@ export const RemoteWorkspaceDetail = () => {
     queryFn: () => remoteApi.getPixiToml(wsId),
     enabled: !!wsId && activeTab === 'toml',
   });
-
-  const handleCopyToml = async () => {
-    if (pixiTomlData?.content) {
-      await navigator.clipboard.writeText(pixiTomlData.content);
-      setCopiedToml(true);
-      setTimeout(() => setCopiedToml(false), 2000);
-    }
-  };
 
   if (wsLoading) {
     return (
@@ -242,29 +234,7 @@ export const RemoteWorkspaceDetail = () => {
         <TabsPanel value="toml">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>pixi.toml Configuration</CardTitle>
-                {pixiTomlData?.content && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCopyToml}
-                    className="gap-2"
-                  >
-                    {copiedToml ? (
-                      <>
-                        <Check className="h-4 w-4" />
-                        Copied
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="h-4 w-4" />
-                        Copy
-                      </>
-                    )}
-                  </Button>
-                )}
-              </div>
+              <CardTitle>pixi.toml Configuration</CardTitle>
             </CardHeader>
             <CardContent>
               {tomlLoading ? (
@@ -272,9 +242,9 @@ export const RemoteWorkspaceDetail = () => {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : pixiTomlData?.content ? (
-                <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto font-mono text-sm whitespace-pre">
-                  {pixiTomlData.content}
-                </pre>
+                <CodeBlock dark code={pixiTomlData.content} className="w-full">
+                  <CodeBlockBody aria-label="pixi.toml contents" />
+                </CodeBlock>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   Failed to load pixi.toml

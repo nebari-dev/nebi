@@ -2,6 +2,7 @@ import { Loader2, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
+import { CodeBlock, CodeBlockBody } from '@/components/ui/code-block';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -191,9 +192,16 @@ export const AuditLogs = () => {
                     <summary className="hover:text-foreground">
                       View Details
                     </summary>
-                    <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto max-w-md">
-                      {JSON.stringify(log.details_json, null, 2)}
-                    </pre>
+                    <CodeBlock
+                      dark
+                      code={JSON.stringify(log.details_json, null, 2)}
+                      className="mt-2 w-full max-w-md text-xs"
+                    >
+                      <CodeBlockBody
+                        maxLines={12}
+                        aria-label="Audit log details"
+                      />
+                    </CodeBlock>
                   </details>
                 )}
               </TableCell>

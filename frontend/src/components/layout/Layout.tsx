@@ -1,6 +1,18 @@
 import { Boxes, ExternalLink, Settings, Shield } from 'lucide-react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Outlet,
+  NavLink as RouterNavLink,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import {
+  MenuBarActions,
+  MenuBarBrand,
+  MenuBarNav,
+  NavigationMenu,
+  NavLink,
+} from '@/components/ui/navigation-menu';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import { useHostJobNotifications } from '@/hooks/useHostJobNotifications';
 import { useRemoteView } from '@/hooks/useRemote';
@@ -18,6 +30,27 @@ type LayoutProps = {
   isDarkMode: boolean;
   onThemeChange: (themeMode: ThemeMode) => void;
 };
+
+const registriesIcon = (
+  <svg
+    aria-hidden="true"
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4"
+  >
+    <path d="M11.5 20h-6.5a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v5.5" />
+    <path d="M9 17h2" />
+    <path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+    <path d="M20.2 20.2l1.8 1.8" />
+  </svg>
+);
 
 export const Layout = ({
   themeMode,
@@ -54,161 +87,126 @@ export const Layout = ({
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b bg-card">
-        <div
-          className={isAdminPage ? 'px-4 py-4' : 'container mx-auto px-4 py-4'}
+    <div className="min-h-screen bg-canvas flex flex-col">
+      <NavigationMenu className="h-14 shrink-0 justify-between border-border bg-header pl-4 text-header-foreground">
+        <MenuBarBrand
+          href="/workspaces"
+          aria-label="Go to workspaces"
+          onClick={(event) => {
+            event.preventDefault();
+            navigate('/workspaces');
+          }}
         >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-8">
-              <NavLink to="/workspaces">
-                <img
-                  src={getBrandingLogoUrl(isDarkMode)}
-                  alt="Nebi"
-                  className="h-10 w-auto"
+          <img
+            src={getBrandingLogoUrl(isDarkMode)}
+            alt="Nebi"
+            className="h-8 w-auto"
+          />
+        </MenuBarBrand>
+        <MenuBarNav aria-label="Primary" className="ml-4">
+          <NavLink
+            render={<RouterNavLink to="/workspaces" />}
+            active={location.pathname.startsWith('/workspaces')}
+            icon={<Boxes className="h-4 w-4" />}
+          >
+            Workspaces
+          </NavLink>
+          <NavLink
+            render={<RouterNavLink to="/registries" />}
+            active={location.pathname.startsWith('/registries')}
+            icon={registriesIcon}
+          >
+            Registries
+          </NavLink>
+          {isLocalMode && (
+            <NavLink
+              render={<RouterNavLink to="/settings" />}
+              active={location.pathname.startsWith('/settings')}
+              icon={<Settings className="h-4 w-4" />}
+            >
+              Settings
+            </NavLink>
+          )}
+        </MenuBarNav>
+        <MenuBarActions className="gap-2">
+          {/* View Mode Toggle - only show when remote is connected */}
+          {isRemoteConnected && (
+            <div className="flex items-center gap-0.5 p-[3px] bg-muted rounded-lg border border-border">
+              <button
+                type="button"
+                onClick={() => setViewMode('local')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                  viewMode === 'local'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground-strong hover:text-foreground'
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full transition-all ${
+                    viewMode === 'local'
+                      ? 'bg-primary shadow-[0_0_6px_rgba(155,61,204,0.4)]'
+                      : 'bg-muted-foreground/50'
+                  }`}
                 />
-              </NavLink>
-              <nav className="flex gap-1" aria-label="Primary">
-                <NavLink to="/workspaces">
-                  {({ isActive }) => (
-                    <Button
-                      variant={isActive ? 'secondary' : 'ghost'}
-                      className="gap-2"
-                    >
-                      <Boxes className="h-4 w-4" />
-                      Workspaces
-                    </Button>
-                  )}
-                </NavLink>
-                <NavLink to="/registries">
-                  {({ isActive }) => (
-                    <Button
-                      variant={isActive ? 'secondary' : 'ghost'}
-                      className="gap-2"
-                    >
-                      <svg
-                        aria-hidden="true"
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="h-4 w-4"
-                      >
-                        <path d="M11.5 20h-6.5a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v5.5" />
-                        <path d="M9 17h2" />
-                        <path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
-                        <path d="M20.2 20.2l1.8 1.8" />
-                      </svg>
-                      Registries
-                    </Button>
-                  )}
-                </NavLink>
-                {isLocalMode && (
-                  <NavLink to="/settings">
-                    {({ isActive }) => (
-                      <Button
-                        variant={isActive ? 'secondary' : 'ghost'}
-                        className="gap-2"
-                      >
-                        <Settings className="h-4 w-4" />
-                        Settings
-                      </Button>
-                    )}
-                  </NavLink>
-                )}
-              </nav>
+                Local
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('remote')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                  viewMode === 'remote'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground-strong hover:text-foreground'
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full transition-all ${
+                    viewMode === 'remote'
+                      ? 'bg-primary shadow-[0_0_6px_rgba(155,61,204,0.4)]'
+                      : 'bg-muted-foreground/50'
+                  }`}
+                />
+                Remote
+              </button>
             </div>
-            <div className="flex items-center gap-4">
-              {/* View Mode Toggle - only show when remote is connected */}
-              {isRemoteConnected && (
-                <div className="flex items-center gap-0.5 p-[3px] bg-muted rounded-lg border border-border">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('local')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                      viewMode === 'local'
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full transition-all ${
-                        viewMode === 'local'
-                          ? 'bg-primary shadow-[0_0_6px_rgba(155,61,204,0.4)]'
-                          : 'bg-muted-foreground/50'
-                      }`}
-                    />
-                    Local
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('remote')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                      viewMode === 'remote'
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full transition-all ${
-                        viewMode === 'remote'
-                          ? 'bg-primary shadow-[0_0_6px_rgba(155,61,204,0.4)]'
-                          : 'bg-muted-foreground/50'
-                      }`}
-                    />
-                    Remote
-                  </button>
-                </div>
-              )}
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Docs"
-                  title="Docs"
-                  onClick={() => openExternal('https://nebi.nebari.dev/')}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                </Button>
-                {isAdmin && (
-                  <NavLink to="/admin">
-                    {({ isActive }) => (
-                      <Button
-                        variant={isActive ? 'secondary' : 'ghost'}
-                        size="icon"
-                        aria-label="Admin"
-                        title="Admin"
-                      >
-                        <Shield className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </NavLink>
-                )}
-                {!isLocalMode && (
-                  <ProfileMenu
-                    user={user}
-                    themeMode={themeMode}
-                    onThemeChange={onThemeChange}
-                    onLogout={handleLogout}
-                  />
-                )}
-              </div>
-            </div>
+          )}
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Docs"
+              title="Docs"
+              className="hover:bg-header-action-hover hover:no-underline active:bg-header-action-hover"
+              onClick={() => openExternal('https://nebi.nebari.dev/')}
+            >
+              <ExternalLink className="h-4 w-4" />
+            </Button>
+            {isAdmin && (
+              <Button
+                render={<RouterNavLink to="/admin" />}
+                variant={isAdminPage ? 'secondary' : 'ghost'}
+                size="icon"
+                aria-label="Admin"
+                title="Admin"
+                className="hover:bg-header-action-hover hover:no-underline active:bg-header-action-hover"
+              >
+                <Shield className="h-4 w-4" />
+              </Button>
+            )}
+            {!isLocalMode && (
+              <ProfileMenu
+                user={user}
+                themeMode={themeMode}
+                onThemeChange={onThemeChange}
+                onLogout={handleLogout}
+              />
+            )}
           </div>
-        </div>
-      </header>
+        </MenuBarActions>
+      </NavigationMenu>
       <main
         aria-label={isAdminPage ? 'Admin content' : 'Main content'}
-        className={
-          isAdminPage
-            ? 'flex-1 overflow-hidden'
-            : 'container mx-auto px-4 py-8 flex-1'
-        }
+        className={isAdminPage ? 'flex-1 overflow-hidden' : 'flex-1 px-12 py-6'}
       >
         <Outlet />
       </main>

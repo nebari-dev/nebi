@@ -1,12 +1,9 @@
-import { Select as SelectPrimitive } from '@base-ui-components/react/select';
+import { Select as SelectPrimitive } from '@base-ui/react/select';
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
 import type * as React from 'react';
 import { cn } from '@/lib/utils';
 
-// Local compatibility exception: the published @nebari/select Trigger.Props
-// omits React's ref prop, but PublishDialog preserves pre-migration autofocus
-// on the registry combobox. Remove this when the registry exposes trigger refs.
-type SelectTriggerProps = React.ComponentProps<typeof SelectPrimitive.Trigger>;
+type SelectTriggerProps = SelectPrimitive.Trigger.Props;
 
 type SelectContentProps = SelectPrimitive.Popup.Props &
   Pick<
@@ -21,7 +18,7 @@ type SelectContentProps = SelectPrimitive.Popup.Props &
 const Select = SelectPrimitive.Root;
 
 const selectTriggerClassName =
-  "flex h-9 w-full items-center justify-between gap-1.5 rounded-md border border-input bg-background py-2 pr-2 pl-2.5 text-sm whitespace-nowrap shadow-xs outline-none hover:border-border-strong focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:hover:border-ring data-[pressed]:border-ring data-[pressed]:ring-2 data-[pressed]:ring-ring data-[pressed]:hover:border-ring data-[popup-open]:border-ring data-[popup-open]:ring-2 data-[popup-open]:ring-ring data-[popup-open]:hover:border-ring disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-muted-foreground aria-invalid:border-destructive-foreground aria-invalid:ring-2 aria-invalid:ring-destructive-foreground aria-invalid:hover:border-destructive-foreground aria-invalid:focus-visible:border-destructive-foreground aria-invalid:focus-visible:ring-destructive-foreground aria-invalid:data-[pressed]:border-destructive-foreground aria-invalid:data-[pressed]:ring-destructive-foreground aria-invalid:data-[popup-open]:border-destructive-foreground aria-invalid:data-[popup-open]:ring-destructive-foreground data-placeholder:text-muted-foreground *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4";
+  "flex h-9 w-full items-center justify-between gap-1.5 rounded-md border border-input bg-background py-2 pr-2 pl-2.5 text-sm whitespace-nowrap shadow-xs outline-none hover:border-border-strong focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:hover:border-ring data-[pressed]:border-ring data-[pressed]:ring-2 data-[pressed]:ring-ring data-[pressed]:hover:border-ring data-[popup-open]:border-ring data-[popup-open]:ring-2 data-[popup-open]:ring-ring data-[popup-open]:hover:border-ring disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:text-muted-foreground-strong aria-invalid:border-destructive-foreground aria-invalid:ring-2 aria-invalid:ring-destructive-foreground aria-invalid:hover:border-destructive-foreground aria-invalid:focus-visible:border-destructive-foreground aria-invalid:focus-visible:ring-destructive-foreground aria-invalid:data-[pressed]:border-destructive-foreground aria-invalid:data-[pressed]:ring-destructive-foreground aria-invalid:data-[popup-open]:border-destructive-foreground aria-invalid:data-[popup-open]:ring-destructive-foreground data-placeholder:text-muted-foreground *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4";
 
 /** Groups related options inside the popup list. */
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
@@ -46,16 +43,10 @@ function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
 }
 
 /** Combobox button that opens the popup and shows the selected value. */
-function SelectTrigger({
-  className,
-  children,
-  ref,
-  ...props
-}: SelectTriggerProps) {
+function SelectTrigger({ className, children, ...props }: SelectTriggerProps) {
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
-      ref={ref}
       className={cn(selectTriggerClassName, className)}
       {...props}
     >
@@ -97,7 +88,7 @@ function SelectContent({
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
           className={cn(
-            'relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-md bg-popover text-popover-foreground opacity-100 shadow-md ring-1 ring-foreground/10 data-[starting-style]:translate-y-1 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-1 data-[ending-style]:opacity-0 motion-safe:transition-[opacity,transform] motion-safe:duration-[--duration-base] motion-safe:ease-[--ease-emphasized]',
+            'relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-md bg-popover text-popover-foreground opacity-100 shadow-md ring-1 ring-foreground/10 data-[starting-style]:translate-y-1 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-1 data-[ending-style]:opacity-0 motion-safe:transition-[opacity,transform] motion-safe:duration-(--duration-base) motion-safe:ease-(--ease-emphasized)',
             className,
           )}
           {...props}

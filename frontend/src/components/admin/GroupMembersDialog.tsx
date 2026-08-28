@@ -9,12 +9,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  Select,
   SelectContent,
   SelectItem,
-  SelectRoot,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select-v2';
+} from '@/components/ui/select';
 import { useUsers } from '@/hooks/useAdmin';
 import {
   useAddGroupMember,
@@ -137,21 +137,34 @@ export const GroupMembersDialog = ({ group, open, onOpenChange }: Props) => {
             <div className="space-y-2">
               <h3 className="text-sm font-medium">Add member</h3>
               <div className="flex gap-2">
-                <SelectRoot
+                <Select
                   value={selectedUser}
-                  onValueChange={setSelectedUser}
+                  onValueChange={(value: string | null) =>
+                    setSelectedUser(value ?? '')
+                  }
                 >
                   <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Select a user" />
+                    <SelectValue>
+                      {(value: string | null) => {
+                        const user = availableUsers.find(
+                          (item) => item.id === value,
+                        );
+                        if (!user) {
+                          return 'Select a user';
+                        }
+                        return `${user.username} — ${user.email}`;
+                      }}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="">Select a user</SelectItem>
                     {availableUsers.map((u) => (
                       <SelectItem key={u.id} value={u.id}>
                         {u.username} — {u.email}
                       </SelectItem>
                     ))}
                   </SelectContent>
-                </SelectRoot>
+                </Select>
                 <Button
                   onClick={handleAdd}
                   disabled={!selectedUser || addMutation.isPending}

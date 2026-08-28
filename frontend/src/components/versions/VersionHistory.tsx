@@ -107,7 +107,7 @@ export const VersionHistory = ({
   if (!versions || versions.length === 0) {
     return (
       <Card>
-        <CardContent className="pt-6">
+        <CardContent>
           <div className="text-center py-12">
             <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-semibold mb-2">
@@ -151,15 +151,15 @@ export const VersionHistory = ({
                     isLatest ? 'border-primary shadow-md' : ''
                   } ${isExpanded ? 'ring-2 ring-primary/20' : ''}`}
                 >
-                  <CardContent className="pt-6">
+                  <CardContent>
                     <div className="flex items-start gap-4">
                       {/* Timeline dot */}
                       <div className="relative flex-shrink-0 mt-1">
                         <div
-                          className={`w-10 h-10 rounded-full border-4 border-background flex items-center justify-center font-bold text-sm ${
+                          className={`w-10 h-10 rounded-full border-4 border-card flex items-center justify-center font-bold text-sm ${
                             isLatest
                               ? 'bg-primary text-primary-foreground'
-                              : 'bg-muted text-muted-foreground'
+                              : 'bg-muted text-muted-foreground-strong'
                           }`}
                         >
                           v{version.version_number}

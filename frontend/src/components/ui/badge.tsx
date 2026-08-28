@@ -1,4 +1,4 @@
-import { useRender } from '@base-ui-components/react/use-render';
+import { useRender } from '@base-ui/react/use-render';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
@@ -30,10 +30,10 @@ interface BadgeProps
     VariantProps<typeof badgeVariants> {}
 
 /**
- * Badge implemented from the Nebari Figma spec - a small status/label chip.
+ * Badge implemented from the Nebari Figma spec — a small status/label chip.
  * Variants are driven by `class-variance-authority`; polymorphism is provided
  * by Base UI's `render` prop, so a `Badge` can become a link (or any element)
- * while keeping its styling (`<Badge render={<a href="..." />}>`).
+ * while keeping its styling (`<Badge render={<a href="…" />}>`).
  */
 function Badge({
   className,

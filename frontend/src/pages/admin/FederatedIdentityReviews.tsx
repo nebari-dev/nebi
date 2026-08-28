@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTab } from '@/components/ui/tabs';
 import {
   useApproveFederatedIdentityReview,
   useDiscardFederatedIdentityReview,
@@ -233,8 +233,8 @@ export const FederatedIdentityReviews = () => {
             onValueChange={(value) => setStatusFilter(value as ReviewStatusTab)}
           >
             <TabsList>
-              <TabsTrigger value="pending">Pending</TabsTrigger>
-              <TabsTrigger value="rejected">Rejected</TabsTrigger>
+              <TabsTab value="pending">Pending</TabsTab>
+              <TabsTab value="rejected">Rejected</TabsTab>
             </TabsList>
           </Tabs>
         </div>

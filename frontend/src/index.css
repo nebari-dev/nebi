@@ -57,7 +57,8 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
   --color-scrim: var(--scrim);
-  --color-nav-hover: #f5effe;
+  --color-header-action-hover: var(--header-action-hover);
+  --color-sign-out-foreground: var(--sign-out-foreground);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
   --radius-sm: calc(var(--radius) * 0.6);
@@ -172,6 +173,9 @@
   --canvas-foreground: oklch(26.94% 0.0037 286.15);
   --header: oklch(97.91% 0 0);
   --header-foreground: oklch(26.94% 0.0037 286.15);
+  /* App-defined header interaction tokens (Nebari app-header recipe) */
+  --header-action-hover: #d9d9dc;
+  --sign-out-foreground: #d2161c;
 }
 
 .dark {
@@ -180,14 +184,14 @@
   --scrim: rgba(0, 0, 0, 0.6);
   --card: oklch(33.01% 0.0052 286.11);
   --card-foreground: oklch(97.91% 0 0);
-  --popover: oklch(26.94% 0.0037 286.15);
+  --popover: oklch(33.01% 0.0052 286.11);
   --popover-foreground: oklch(97.91% 0 0);
   --primary: oklch(61.98% 0.2159 311.67);
   --primary-foreground: oklch(0% 0 0);
   --primary-hover: oklch(69.98% 0.1926 311.48);
   --secondary: oklch(40% 0.0269 250.57);
   --secondary-foreground: oklch(95.04% 0.0042 236.5);
-  --muted: oklch(33.01% 0.0052 286.11);
+  --muted: oklch(39.94% 0.0066 286.1);
   --muted-foreground: oklch(69.88% 0.013 286.06);
   --muted-foreground-strong: oklch(78.06% 0.0056 286.27);
   --accent: oklch(40% 0.0269 250.57);
@@ -219,12 +223,15 @@
   --canvas-foreground: oklch(97.91% 0 0);
   --header: oklch(26.94% 0.0037 286.15);
   --header-foreground: oklch(97.91% 0 0);
+  /* App-defined header interaction tokens (Nebari app-header recipe) */
+  --header-action-hover: #4a4a50;
+  --sign-out-foreground: #ff6b6b;
 }
 
 body {
   font-family: var(--font-sans);
-  background-color: var(--color-background);
-  color: var(--color-foreground);
+  background-color: var(--color-canvas);
+  color: var(--color-canvas-foreground);
 }
 
 pre,

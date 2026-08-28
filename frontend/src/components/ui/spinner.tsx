@@ -30,7 +30,7 @@ type SpinnerProps = Omit<LucideProps, 'size'> &
   };
 
 /**
- * Minimal loading spinner - an `animate-spin` wrapper around lucide's
+ * Minimal loading spinner — an `animate-spin` wrapper around lucide's
  * `LoaderCircle`. Exposes `role="status"` so assistive tech announces it and
  * tests can query it. Used by `Button`'s `loading` state.
  */

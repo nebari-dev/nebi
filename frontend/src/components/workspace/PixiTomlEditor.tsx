@@ -1,6 +1,7 @@
 import { FileCode, Loader2, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { CodeBlock } from '@/components/ui/code-block';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import {
@@ -483,15 +484,22 @@ export const PixiTomlEditor = ({
           >
             pixi.toml Configuration
           </label>
-          <Textarea
-            id={tomlEditorId}
-            placeholder="Enter your pixi.toml content"
-            value={tomlValue}
-            onChange={(e) => handleTomlEdit(e.target.value)}
-            rows={12}
-            required
-            className="font-mono text-sm"
-          />
+          {/* Reuse the Nebari CodeBlock frame (dark-forced subtree, card
+              surface, floating copy button) around the editable textarea so
+              TOML mode matches the read-only pixi.toml view on the workspace
+              detail page. `pr-12` mirrors CodeBlockBody's clearance for the
+              floating copy button. */}
+          <CodeBlock dark code={tomlValue} className="w-full">
+            <Textarea
+              id={tomlEditorId}
+              placeholder="Enter your pixi.toml content"
+              value={tomlValue}
+              onChange={(e) => handleTomlEdit(e.target.value)}
+              rows={12}
+              required
+              className="rounded-none border-0 bg-transparent px-4 py-4 pr-12 font-mono text-sm leading-relaxed focus-visible:ring-inset"
+            />
+          </CodeBlock>
           <p className="text-xs text-muted-foreground">
             Define your project dependencies and configuration in TOML format
           </p>

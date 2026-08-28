@@ -54,20 +54,16 @@ describe('RegistryRepositories', () => {
     mockTags = [{ name: 'v1' }, { name: 'latest' }, { name: 'v2' }];
     renderPage();
 
-    const select = screen.getByLabelText<HTMLSelectElement>(
-      'Select tag for team/app',
-    );
-    expect(select.value).toBe('latest');
+    const select = screen.getByLabelText('Select tag for team/app');
+    expect(select).toHaveTextContent('latest');
   });
 
   it('falls back to the first tag when there is no latest tag', () => {
     mockTags = [{ name: 'v1' }, { name: 'v2' }];
     renderPage();
 
-    const select = screen.getByLabelText<HTMLSelectElement>(
-      'Select tag for team/app',
-    );
-    expect(select.value).toBe('v1');
+    const select = screen.getByLabelText('Select tag for team/app');
+    expect(select).toHaveTextContent('v1');
   });
 
   it('uses the default tag in the command preview and prefilled workspace name', async () => {

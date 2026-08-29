@@ -153,22 +153,36 @@ Use `--concurrency N` to set how many files download at the same time (default 8
 
 ### Referring to a configured registry by name
 
-A reference that does not begin with a registry host is resolved against the
-registries you added with `nebi registry add --local`, the same way `nebi
-publish --local` resolves its target. Prefix the reference with a registry
-name to pick one, or leave the prefix off to use the default:
+Prefix a reference with the name of a registry you added with
+`nebi registry add --local` to pull from it, or use a bare one-segment name to
+pull from the default registry. This is the same lookup `nebi publish --local`
+uses for its target:
 
 ```bash
 # Pull from the registry named "myreg"
 nebi import myreg:my-env:v1
 
+# Reach a nested repository through that registry
+nebi import myreg:myorg/my-env:v1
+
 # Pull from the default registry
 nebi import my-env:v1
 ```
 
-A reference that already names a host is never resolved, so
-`nebi import quay.io/nebari/data-science:v1.0` behaves exactly as before and
-works on a machine that has no registries configured.
+Everything else names its own host and is pulled directly, with no lookup, so
+`nebi import quay.io/nebari/data-science:v1.0` works on a machine that has no
+registries configured.
+
+:::caution A slash means a hostname
+`nebi import registry/my-env:v1` pulls from a host called `registry`, not from
+`my-env` inside the default registry. A namespace-relative path and a
+`host/repository` pair are written identically, so Nebi reads the first segment
+as a host whenever the reference contains a slash. Name the registry when you
+mean the other thing: `nebi import myreg:registry/my-env:v1`.
+
+The same applies to a port: `registry:5000/my-env:v1` is the host
+`registry:5000`, because the digits after the colon mark it as one.
+:::
 
 :::note The tag is still required
 `nebi import myreg:my-env` is read as repository `myreg`, tag `my-env`, because

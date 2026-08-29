@@ -33,7 +33,7 @@ Two terms appear throughout these commands:
 | `nebi pull [<name>[:<tag>]]` | Pull workspace specs from a server |
 | `nebi diff [<ref-a>] [<ref-b>]` | Compare workspace specs |
 | `nebi publish [name]` | Publish a workspace bundle to an OCI registry (uses content hash tag by default) |
-| `nebi import <oci-reference>` | Import a workspace bundle from an OCI registry, restoring pixi files and asset layers (a reference with no host resolves against the local registries) |
+| `nebi import <oci-reference>` | Import a workspace bundle from an OCI registry, restoring pixi files and asset layers (a bare name or a `<registry-name>:` prefix resolves against the local registries) |
 
 ## Connection Commands
 

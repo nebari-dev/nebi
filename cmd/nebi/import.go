@@ -28,11 +28,14 @@ var importCmd = &cobra.Command{
 The OCI reference should be in the format: registry/repository:tag
 (e.g., quay.io/nebari/my-env:v1)
 
-A reference whose first segment is not a registry host is resolved
-against the registries configured with 'nebi registry add --local':
-prefix it with '<registry-name>:' to pick one, or leave the prefix off
-to use the default registry. References that already name a host never
-consult the local store.
+A single-segment reference, or one prefixed with '<registry-name>:', is
+resolved against the registries configured with 'nebi registry add
+--local'. The prefix picks a registry; without one the default is used.
+
+Anything else is taken as naming its own host, including a reference
+whose first segment carries a port or is followed by a slash. Use the
+'<registry-name>:' prefix to reach a nested repository through a
+configured registry.
 
 Restores pixi.toml, pixi.lock, and any bundled asset files to the output
 directory. Works entirely locally — no server connection needed.
@@ -44,6 +47,7 @@ Examples:
   nebi import quay.io/nebari/my-env:v1
   nebi import ghcr.io/myorg/data-science:latest -o ./my-project
   nebi import myreg:my-env:v1
+  nebi import myreg:myorg/my-env:v1
   nebi import my-env:v1`,
 	Args: cobra.ExactArgs(1),
 	RunE: runImport,
@@ -144,34 +148,55 @@ func hasScheme(ref string) bool {
 
 // looksLikeHost reports whether a reference's first segment names a
 // registry host rather than a registry alias. A dot covers every public
-// registry and any FQDN, a colon covers host:port, and localhost is the
-// one hostless name in common use.
+// registry and any FQDN, and localhost is the one hostless name in
+// common use. Callers strip any ":port" before asking.
 func looksLikeHost(segment string) bool {
-	return strings.Contains(segment, ".") || strings.Contains(segment, ":") || segment == "localhost"
+	return strings.Contains(segment, ".") || segment == "localhost"
+}
+
+// isAllDigits reports whether s is a non-empty run of ASCII digits. This
+// is the only thing separating "<host>:<port>/<repo>" from
+// "<alias>:<repo>", which are otherwise the same shape. Empty must be
+// false so that "myreg:" stays an alias naming no repository.
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // splitImportRef separates an optional registry alias from the repository
-// path of a tag-stripped import reference.
+// path of a tag-stripped import reference. A reference that names a host
+// is returned untouched with hasHost=true and never reaches the local
+// store.
 //
-// A reference whose first segment looks like a host is returned untouched
-// with hasHost=true, so every reference that resolves today keeps its
-// exact meaning and never reads the local store.
+// The grammar is genuinely ambiguous in two places, so the rule is
+// deliberately narrow:
+//
+//   - "<alias>:<repo>" and "<host>:<port>/<repo>" are the same shape.
+//     An all-digit run after the colon is a port, anything else an alias.
+//   - "<host>/<repo>" and a namespace-relative "<org>/<repo>" are also
+//     the same shape, and nothing can tell them apart. A slash therefore
+//     means the first segment is a host, which is what it means without
+//     this feature and what 'nebi publish' prints. To reach a nested
+//     repository through a configured registry, name the registry:
+//     "myreg:org/my-env:v1".
 func splitImportRef(ref string) (alias, repo string, hasHost bool) {
-	first := ref
-	if i := strings.Index(ref, "/"); i >= 0 {
-		first = ref[:i]
-	}
+	first, _, hasSlash := strings.Cut(ref, "/")
 
-	// "<alias>:<repository path>" is the only form that puts a colon in
-	// the first segment without naming a port.
-	if name, _, found := strings.Cut(first, ":"); found {
-		if looksLikeHost(name) {
+	if name, port, found := strings.Cut(first, ":"); found {
+		if looksLikeHost(name) || isAllDigits(port) {
 			return "", ref, true
 		}
 		return name, ref[len(name)+1:], false
 	}
 
-	if looksLikeHost(first) {
+	if hasSlash || looksLikeHost(first) {
 		return "", ref, true
 	}
 	return "", ref, false
@@ -183,6 +208,9 @@ func splitImportRef(ref string) (alias, repo string, hasHost bool) {
 // bundle by the same name.
 func resolveImportRef(alias, repo string) (string, bool, error) {
 	if repo == "" {
+		if alias == "" {
+			return "", false, fmt.Errorf("empty reference; use registry/repository:tag (e.g., quay.io/nebari/my-env:v1)")
+		}
 		return "", false, fmt.Errorf("registry %q named with no repository; use %s:<repository>:<tag>", alias, alias)
 	}
 
@@ -192,32 +220,25 @@ func resolveImportRef(alias, repo string) (string, bool, error) {
 	}
 	defer s.Close()
 
-	var reg *store.LocalRegistry
-	if alias != "" {
-		reg, err = s.GetRegistryByName(alias)
-		if err != nil {
-			return "", false, fmt.Errorf("registry %q not found in local store; run 'nebi registry list --local' to see what is configured", alias)
-		}
-	} else {
-		// A bare name that matches a configured registry is almost
-		// certainly an alias whose tag was swallowed by the reference
-		// parser, so say that rather than pulling a repository of the
-		// same name from the default registry.
-		if !strings.Contains(repo, "/") {
-			if _, nameErr := s.GetRegistryByName(repo); nameErr == nil {
-				return "", false, fmt.Errorf("%q names a configured registry, not a repository; use %s:<repository>:<tag>", repo, repo)
-			}
-		}
-		reg, err = s.GetDefaultRegistry()
-		if err != nil {
-			return "", false, fmt.Errorf("%q does not name a registry host and no default registry is configured; use a full reference such as quay.io/org/my-env:v1, or set a default with 'nebi registry add --local --default'", repo)
+	// A bare name that matches a configured registry is almost certainly
+	// an alias whose tag was swallowed by the reference parser, so say
+	// that rather than pulling a repository of the same name from the
+	// default registry.
+	if alias == "" {
+		if _, nameErr := s.GetRegistryByName(repo); nameErr == nil {
+			return "", false, fmt.Errorf("%q names a configured registry, not a repository; use %s:<repository>:<tag>", repo, repo)
 		}
 	}
 
-	host, ns, plainHTTP := oci.ParseRegistryURLFull(reg.URL)
-	if reg.Namespace != "" {
-		ns = reg.Namespace
+	reg, err := resolveLocalRegistry(s, alias)
+	if err != nil {
+		if alias == "" {
+			return "", false, fmt.Errorf("%q does not name a registry host and no default registry is configured; use a full reference such as quay.io/org/my-env:v1, or set a default with 'nebi registry add --local --default'", repo)
+		}
+		return "", false, err
 	}
+
+	host, ns, plainHTTP := registryTarget(reg)
 
 	parts := []string{host}
 	if ns != "" {

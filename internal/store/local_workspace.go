@@ -13,7 +13,6 @@ type LocalWorkspace struct {
 	ID             uuid.UUID      `gorm:"type:text;primary_key" json:"id"`
 	Name           string         `gorm:"not null" json:"name"`
 	Status         string         `gorm:"not null;default:'ready'" json:"status"`
-	PackageManager string         `gorm:"not null" json:"package_manager"`
 	Path           string         `gorm:"" json:"path,omitempty"`
 	Source         string         `gorm:"default:'managed'" json:"source"`
 	OriginID       string         `json:"origin_id,omitempty"`

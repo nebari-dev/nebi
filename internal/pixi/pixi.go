@@ -1,0 +1,735 @@
+package pixi
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
+
+	"github.com/nebari-dev/nebi/internal/process"
+	"github.com/pelletier/go-toml/v2"
+)
+
+// PixiManager runs pixi commands against workspace environments
+type PixiManager struct {
+	pixiPath string // Path to pixi binary
+}
+
+// New creates a new PixiManager instance
+func New() (*PixiManager, error) {
+	return NewWithPathContext(context.Background(), "")
+}
+
+// NewWithPath creates a new PixiManager with a custom pixi binary path
+func NewWithPath(customPath string) (*PixiManager, error) {
+	return NewWithPathContext(context.Background(), customPath)
+}
+
+// NewWithPathContext creates a new PixiManager with a custom pixi binary path,
+// using ctx for setup work so job deadlines also cover package-manager setup.
+func NewWithPathContext(ctx context.Context, customPath string) (*PixiManager, error) {
+	pixiPath := customPath
+	if pixiPath == "" {
+		// First check if pixi is already installed at the default location
+		installDir, err := getInstallDir()
+		if err == nil {
+			defaultPixiPath := filepath.Join(installDir, "pixi")
+			if _, err := os.Stat(defaultPixiPath); err == nil {
+				// Pixi already installed, use it
+				pixiPath = defaultPixiPath
+			}
+		}
+
+		// If not found at default location, try PATH
+		if pixiPath == "" {
+			path, err := exec.LookPath("pixi")
+			if err != nil {
+				// Pixi not found, attempt automatic installation
+				installedPath, installErr := InstallPixi(ctx)
+				if installErr != nil {
+					return nil, fmt.Errorf("pixi not found in PATH and auto-installation failed: %w", installErr)
+				}
+				pixiPath = installedPath
+			} else {
+				pixiPath = path
+			}
+		}
+	}
+
+	// Verify pixi is executable
+	if err := exec.CommandContext(ctx, pixiPath, "--version").Run(); err != nil {
+		return nil, fmt.Errorf("pixi binary is not executable: %w", err)
+	}
+
+	return &PixiManager{pixiPath: pixiPath}, nil
+}
+
+// BinaryPath returns the path to the pixi binary
+func (p *PixiManager) BinaryPath() string {
+	return p.pixiPath
+}
+
+// streamOutput reads from a pipe and writes to the writer line by line for real-time streaming
+func (p *PixiManager) streamOutput(reader io.Reader, writer io.Writer) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("streamOutput panic recovered", "panic", r)
+		}
+	}()
+
+	scanner := bufio.NewScanner(reader)
+	// Increase buffer size to handle long lines from pixi output (up to 1MB per line)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if _, err := fmt.Fprintf(writer, "%s\n", line); err != nil {
+			slog.Error("Failed to write log line", "error", err)
+			return
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		slog.Error("Scanner error in streamOutput", "error", err)
+	}
+}
+
+// Init creates a new pixi environment
+func (p *PixiManager) Init(ctx context.Context, opts InitOptions) error {
+	if opts.EnvPath == "" {
+		return fmt.Errorf("environment path is required")
+	}
+	if opts.Name == "" {
+		return fmt.Errorf("environment name is required")
+	}
+
+	// Create the directory if it doesn't exist
+	if err := os.MkdirAll(opts.EnvPath, 0755); err != nil {
+		return fmt.Errorf("failed to create environment directory: %w", err)
+	}
+
+	// Build pixi init command
+	// We run pixi init in the target directory
+	// The project name will be set to the directory name by pixi
+	args := []string{"init"}
+
+	// Add channels if specified
+	for _, channel := range opts.Channels {
+		args = append(args, "--channel", channel)
+	}
+
+	env, err := process.PreparedWorkspaceEnv(opts.EnvPath)
+	if err != nil {
+		return fmt.Errorf("prepare pixi workspace env: %w", err)
+	}
+
+	// Execute pixi init in the target directory
+	cmd := process.CommandContext(ctx, p.pixiPath, args, opts.ResourceLimits)
+	cmd.Dir = opts.EnvPath
+	cmd.Env = env
+
+	// Use LogWriter if provided, otherwise buffer
+	if opts.LogWriter != nil {
+		fmt.Fprintf(opts.LogWriter, "Running: pixi %s\n", strings.Join(args, " "))
+
+		// Use pipes for real-time streaming
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stdout pipe: %w", err)
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stderr pipe: %w", err)
+		}
+
+		// Start the command
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("failed to start command: %w", err)
+		}
+
+		// Stream output in real-time with WaitGroup to ensure goroutines complete
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			p.streamOutput(stdout, opts.LogWriter)
+		}()
+		go func() {
+			defer wg.Done()
+			p.streamOutput(stderr, opts.LogWriter)
+		}()
+
+		// Wait for command to complete
+		err = cmd.Wait()
+
+		// Wait for all output to be streamed
+		wg.Wait()
+
+		if err != nil {
+			return fmt.Errorf("pixi init failed: %w", err)
+		}
+	} else {
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("pixi init failed: %w, stderr: %s", err, stderr.String())
+		}
+	}
+
+	return nil
+}
+
+// Install adds packages to an environment
+func (p *PixiManager) Install(ctx context.Context, opts InstallOptions) error {
+	if opts.EnvPath == "" {
+		return fmt.Errorf("environment path is required")
+	}
+	if len(opts.Packages) == 0 {
+		return fmt.Errorf("at least one package is required")
+	}
+	if err := validatePackageArgs(opts.Packages); err != nil {
+		return err
+	}
+
+	// Build pixi add command with verbose flag for better logging
+	baseArgs := []string{"add", "-v"}
+	if opts.NoInstall {
+		baseArgs = append(baseArgs, "--no-install")
+	}
+	args := append(append(baseArgs, "--"), opts.Packages...)
+
+	env, err := process.PreparedWorkspaceEnv(opts.EnvPath)
+	if err != nil {
+		return fmt.Errorf("prepare pixi workspace env: %w", err)
+	}
+
+	// Execute pixi add
+	cmd := process.CommandContext(ctx, p.pixiPath, args, opts.ResourceLimits)
+	cmd.Dir = opts.EnvPath
+	cmd.Env = env
+
+	// Use LogWriter if provided, otherwise buffer
+	if opts.LogWriter != nil {
+		fmt.Fprintf(opts.LogWriter, "Running: pixi %s\n", strings.Join(args, " "))
+
+		// Use pipes for real-time streaming
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stdout pipe: %w", err)
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stderr pipe: %w", err)
+		}
+
+		// Start the command
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("failed to start command: %w", err)
+		}
+
+		// Stream output in real-time with WaitGroup to ensure goroutines complete
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			p.streamOutput(stdout, opts.LogWriter)
+		}()
+		go func() {
+			defer wg.Done()
+			p.streamOutput(stderr, opts.LogWriter)
+		}()
+
+		// Wait for command to complete
+		err = cmd.Wait()
+
+		// Wait for all output to be streamed
+		wg.Wait()
+
+		if err != nil {
+			return fmt.Errorf("pixi add failed: %w", err)
+		}
+	} else {
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("pixi add failed: %w, stderr: %s", err, stderr.String())
+		}
+	}
+
+	return nil
+}
+
+// Remove removes packages from an environment
+func (p *PixiManager) Remove(ctx context.Context, opts RemoveOptions) error {
+	if opts.EnvPath == "" {
+		return fmt.Errorf("environment path is required")
+	}
+	if len(opts.Packages) == 0 {
+		return fmt.Errorf("at least one package is required")
+	}
+	if err := validatePackageArgs(opts.Packages); err != nil {
+		return err
+	}
+
+	// Build pixi remove command
+	baseArgs := []string{"remove", "-v"}
+	if opts.NoInstall {
+		baseArgs = append(baseArgs, "--no-install")
+	}
+	args := append(append(baseArgs, "--"), opts.Packages...)
+
+	env, err := process.PreparedWorkspaceEnv(opts.EnvPath)
+	if err != nil {
+		return fmt.Errorf("prepare pixi workspace env: %w", err)
+	}
+
+	// Execute pixi remove
+	cmd := process.CommandContext(ctx, p.pixiPath, args, opts.ResourceLimits)
+	cmd.Dir = opts.EnvPath
+	cmd.Env = env
+
+	// Use LogWriter if provided, otherwise buffer
+	if opts.LogWriter != nil {
+		fmt.Fprintf(opts.LogWriter, "Running: pixi %s\n", strings.Join(args, " "))
+
+		// Use pipes for real-time streaming
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stdout pipe: %w", err)
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return fmt.Errorf("failed to create stderr pipe: %w", err)
+		}
+
+		// Start the command
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("failed to start command: %w", err)
+		}
+
+		// Stream output in real-time with WaitGroup to ensure goroutines complete
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			p.streamOutput(stdout, opts.LogWriter)
+		}()
+		go func() {
+			defer wg.Done()
+			p.streamOutput(stderr, opts.LogWriter)
+		}()
+
+		// Wait for command to complete
+		err = cmd.Wait()
+
+		// Wait for all output to be streamed
+		wg.Wait()
+
+		if err != nil {
+			return fmt.Errorf("pixi remove failed: %w", err)
+		}
+	} else {
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("pixi remove failed: %w, stderr: %s", err, stderr.String())
+		}
+	}
+
+	return nil
+}
+
+// List returns installed packages in an environment
+func (p *PixiManager) List(ctx context.Context, opts ListOptions) ([]Package, error) {
+	if opts.EnvPath == "" {
+		return nil, fmt.Errorf("environment path is required")
+	}
+
+	// Run pixi list to get all installed packages with actual versions
+	env, err := process.PreparedWorkspaceEnv(opts.EnvPath)
+	if err != nil {
+		return nil, fmt.Errorf("prepare pixi workspace env: %w", err)
+	}
+	cmd := process.CommandContext(ctx, p.pixiPath, []string{"list"}, opts.ResourceLimits)
+	cmd.Dir = opts.EnvPath
+	cmd.Env = env
+
+	stdout := newCappedOutputBuffer(opts.MaxOutputBytes)
+	stderr := newCappedOutputBuffer(opts.MaxOutputBytes)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		if stdout.Exceeded() {
+			return nil, &OutputLimitError{Command: "pixi list", Stream: "stdout", Limit: opts.MaxOutputBytes}
+		}
+		if stderr.Exceeded() {
+			return nil, &OutputLimitError{Command: "pixi list", Stream: "stderr", Limit: opts.MaxOutputBytes}
+		}
+		// pixi list returns an error when no packages are installed; treat as empty list
+		if strings.Contains(stderr.String(), "No packages found") {
+			return nil, nil
+		}
+		listErr := fmt.Errorf("pixi list failed: %w, stderr: %s", err, stderr.String())
+		if process.IsResourceLimitExit(ctx, err, opts.ResourceLimits, stderr.String()) {
+			return nil, process.NewResourceLimitError(listErr)
+		}
+		return nil, listErr
+	}
+	if stdout.Exceeded() {
+		return nil, &OutputLimitError{Command: "pixi list", Stream: "stdout", Limit: opts.MaxOutputBytes}
+	}
+	if stderr.Exceeded() {
+		return nil, &OutputLimitError{Command: "pixi list", Stream: "stderr", Limit: opts.MaxOutputBytes}
+	}
+
+	// Parse pixi list output
+	// Format: Package  Version  Build  Size  Kind  Source
+	// Example: polars  1.35.2   pyh6a1acc5_0  501.9 KiB  conda  https://...
+	var packages []Package
+	scanner := bufio.NewScanner(stdout.Reader())
+
+	// Skip header line
+	if scanner.Scan() {
+		// First line is header: "Package  Version  Build ..."
+	}
+
+	// Parse each package line
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		// Split by whitespace and extract package name (field 0) and version (field 1)
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			packages = append(packages, Package{
+				Name:    fields[0],
+				Version: fields[1],
+				Channel: "", // Could parse from Source field if needed
+			})
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("failed to parse pixi list output: %w", err)
+	}
+
+	return packages, nil
+}
+
+type cappedOutputBuffer struct {
+	buf      bytes.Buffer
+	limit    int
+	exceeded bool
+}
+
+func newCappedOutputBuffer(limit int) cappedOutputBuffer {
+	return cappedOutputBuffer{limit: limit}
+}
+
+func (b *cappedOutputBuffer) Write(p []byte) (int, error) {
+	if b.limit <= 0 {
+		_, err := b.buf.Write(p)
+		return len(p), err
+	}
+	remaining := b.limit - b.buf.Len()
+	if remaining > 0 {
+		toWrite := len(p)
+		if toWrite > remaining {
+			toWrite = remaining
+		}
+		if _, err := b.buf.Write(p[:toWrite]); err != nil {
+			return 0, err
+		}
+	}
+	if len(p) > remaining {
+		b.exceeded = true
+	}
+	return len(p), nil
+}
+
+func (b *cappedOutputBuffer) Exceeded() bool {
+	return b.exceeded
+}
+
+func (b *cappedOutputBuffer) String() string {
+	return b.buf.String()
+}
+
+func (b *cappedOutputBuffer) Reader() io.Reader {
+	return bytes.NewReader(b.buf.Bytes())
+}
+
+// Update updates packages in an environment
+func (p *PixiManager) Update(ctx context.Context, opts UpdateOptions) error {
+	if opts.EnvPath == "" {
+		return fmt.Errorf("environment path is required")
+	}
+
+	// Build pixi update command
+	args := []string{"update"}
+	if len(opts.Packages) > 0 {
+		if err := validatePackageArgs(opts.Packages); err != nil {
+			return err
+		}
+		args = append(append(args, "--"), opts.Packages...)
+	}
+
+	env, err := process.PreparedWorkspaceEnv(opts.EnvPath)
+	if err != nil {
+		return fmt.Errorf("prepare pixi workspace env: %w", err)
+	}
+
+	// Execute pixi update
+	cmd := process.CommandContext(ctx, p.pixiPath, args, opts.ResourceLimits)
+	cmd.Dir = opts.EnvPath
+	cmd.Env = env
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("pixi update failed: %w, stderr: %s", err, stderr.String())
+	}
+
+	return nil
+}
+
+func validatePackageArgs(packages []string) error {
+	for _, pkg := range packages {
+		if strings.TrimSpace(pkg) == "" {
+			return fmt.Errorf("package argument cannot be empty")
+		}
+		if strings.ContainsAny(pkg, "\x00\r\n") {
+			return fmt.Errorf("package argument %q contains unsupported control characters", pkg)
+		}
+	}
+	return nil
+}
+
+var dependencySectionNames = map[string]struct{}{
+	"dependencies":       {},
+	"host-dependencies":  {},
+	"build-dependencies": {},
+	"pypi-dependencies":  {},
+}
+
+// ManifestPackageNames returns every package key declared in dependency
+// sections, including feature and target dependency tables.
+func ManifestPackageNames(content string) ([]string, error) {
+	if strings.TrimSpace(content) == "" {
+		return nil, nil
+	}
+
+	var parsed map[string]interface{}
+	if err := toml.Unmarshal([]byte(content), &parsed); err != nil {
+		return nil, err
+	}
+
+	var names []string
+	collectManifestPackageNames(parsed, &names)
+	return names, nil
+}
+
+// ManifestDefaultDependencyNames returns package keys declared in the default
+// dependencies table, which is where plain `pixi add <package>` writes.
+func ManifestDefaultDependencyNames(content string) ([]string, error) {
+	if strings.TrimSpace(content) == "" {
+		return nil, nil
+	}
+
+	var parsed map[string]interface{}
+	if err := toml.Unmarshal([]byte(content), &parsed); err != nil {
+		return nil, err
+	}
+
+	packages, ok := parsed["dependencies"].(map[string]interface{})
+	if !ok {
+		return nil, nil
+	}
+
+	names := make([]string, 0, len(packages))
+	for name := range packages {
+		names = append(names, name)
+	}
+	return names, nil
+}
+
+func collectManifestPackageNames(value interface{}, names *[]string) {
+	section, ok := value.(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	for key, child := range section {
+		if _, isDependencySection := dependencySectionNames[key]; isDependencySection {
+			if packages, ok := child.(map[string]interface{}); ok {
+				for name := range packages {
+					*names = append(*names, name)
+				}
+			}
+			continue
+		}
+		collectManifestPackageNames(child, names)
+	}
+}
+
+// pixiManifest represents the structure of a pixi.toml file
+type pixiManifest struct {
+	Project struct {
+		Name     string   `toml:"name"`
+		Channels []string `toml:"channels"`
+	} `toml:"project"`
+	Dependencies map[string]interface{} `toml:"dependencies"`
+}
+
+// GetManifest returns the parsed pixi.toml manifest file
+func (p *PixiManager) GetManifest(ctx context.Context, envPath string) (*Manifest, error) {
+	if envPath == "" {
+		return nil, fmt.Errorf("environment path is required")
+	}
+
+	manifestPath := filepath.Join(envPath, "pixi.toml")
+
+	// Read the manifest file
+	content, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read pixi.toml: %w", err)
+	}
+
+	// Parse TOML
+	var pixiManifest pixiManifest
+	if err := toml.Unmarshal(content, &pixiManifest); err != nil {
+		return nil, fmt.Errorf("failed to parse pixi.toml: %w", err)
+	}
+
+	// Convert dependencies to map[string]string
+	packages := make(map[string]string)
+	for name, value := range pixiManifest.Dependencies {
+		// Dependencies can be strings (version) or tables (complex spec)
+		switch v := value.(type) {
+		case string:
+			packages[name] = v
+		case map[string]interface{}:
+			// If it's a table, try to extract version
+			if version, ok := v["version"].(string); ok {
+				packages[name] = version
+			} else {
+				packages[name] = "*" // Unknown version
+			}
+		default:
+			packages[name] = "*" // Unknown version
+		}
+	}
+
+	manifest := &Manifest{
+		Name:     pixiManifest.Project.Name,
+		Packages: packages,
+		Channels: pixiManifest.Project.Channels,
+		Raw:      content,
+	}
+
+	return manifest, nil
+}
+
+// executeCommand is a helper to execute pixi commands with proper error handling
+func (p *PixiManager) executeCommand(ctx context.Context, workDir string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, p.pixiPath, args...)
+	cmd.Dir = workDir
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("command failed: %w, stderr: %s", err, stderr.String())
+	}
+
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// pixiManifestWithWorkspace represents pixi.toml with both [workspace] and [project] sections.
+// Modern pixi uses [workspace], older versions used [project].
+type pixiManifestWithWorkspace struct {
+	Workspace struct {
+		Name     string   `toml:"name"`
+		Channels []string `toml:"channels"`
+	} `toml:"workspace"`
+	Project struct {
+		Name     string   `toml:"name"`
+		Channels []string `toml:"channels"`
+	} `toml:"project"`
+}
+
+// ValidateWorkspaceName checks that a workspace name is valid for use with nebi.
+// Names must not be empty, contain path separators or colons (which are ambiguous
+// with filesystem paths and server refs), or be reserved names like "." or "..".
+func ValidateWorkspaceName(name string) error {
+	if name == "" {
+		return fmt.Errorf("workspace name must not be empty")
+	}
+	if strings.ContainsAny(name, `/\:`) {
+		return fmt.Errorf("workspace name %q must not contain '/', '\\', or ':'", name)
+	}
+	if name == "." || name == ".." {
+		return fmt.Errorf("workspace name %q is reserved and cannot be used", name)
+	}
+	return nil
+}
+
+// ExtractWorkspaceName reads the workspace name from pixi.toml content.
+// It first looks for [workspace] name, then falls back to [project] name.
+// Returns an error if no name field is found in either section, or if the
+// name is invalid (contains path separators, colons, or is a reserved name).
+func ExtractWorkspaceName(content string) (string, error) {
+	var manifest pixiManifestWithWorkspace
+	if err := toml.Unmarshal([]byte(content), &manifest); err != nil {
+		return "", fmt.Errorf("failed to parse pixi.toml: %w", err)
+	}
+
+	var name string
+
+	// Prefer [workspace] name (modern pixi format)
+	if manifest.Workspace.Name != "" {
+		name = manifest.Workspace.Name
+	} else if manifest.Project.Name != "" {
+		// Fall back to [project] name (older format)
+		name = manifest.Project.Name
+	} else {
+		return "", fmt.Errorf("pixi.toml must have [workspace] name field")
+	}
+
+	if err := ValidateWorkspaceName(name); err != nil {
+		return "", fmt.Errorf("pixi.toml workspace name is invalid: %w", err)
+	}
+
+	return name, nil
+}
+
+// ResolveWorkspaceName returns the workspace name to use, preferring an explicit
+// name argument over extracting one from pixi.toml content. If both are empty,
+// it returns an error.
+func ResolveWorkspaceName(name string, pixiToml string) (string, error) {
+	if name != "" {
+		return name, nil
+	}
+
+	if pixiToml != "" {
+		return ExtractWorkspaceName(pixiToml)
+	}
+
+	return "", fmt.Errorf("workspace name is required")
+}

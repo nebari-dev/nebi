@@ -32,20 +32,20 @@ updates:
       day: "monday"
       time: "08:00"
       timezone: "US/Eastern"
-    ignore:
-      # Ignore all React updates
-      - dependency-name: "react"
-      - dependency-name: "react-dom"
     groups:
-      # Keep Docusaurus packages together so compatible versions move in one PR
-      docusaurus:
+      # Keep Astro docs packages together so compatible versions move in one PR
+      astro-docs:
         applies-to: version-updates
         patterns:
-          - "@docusaurus/*"
+          - "astro"
+          - "astro-*"
+          - "@astrojs/*"
+          - "@nebari/starlight"
+          - "starlight-*"
       # Group all patch and minor updates into a single PR
       patch-and-minor:
         applies-to: version-updates
         update-types:
           - "minor"
           - "patch"
-    # Non-Docusaurus major updates are not grouped, so each opens its own PR
+    # Non-Astro major updates are not grouped, so each opens its own PR

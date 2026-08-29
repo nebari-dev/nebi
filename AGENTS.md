@@ -31,7 +31,7 @@ cd frontend && npm run check:fix   # biome autofix
 make test                                    # go test -tags=e2e -v ./...
 go test -tags=e2e ./internal/service/...     # one package
 go test -tags=e2e -run TestName ./cmd/nebi   # one test
-make test-pkgmgr                             # pixi/uv package-manager tests
+make test-pixi                               # pixi integration tests
 cd frontend && npm test                      # vitest run (single run)
 cd frontend && npm run test:watch
 
@@ -63,7 +63,7 @@ When changing auth, visibility, or permissions, check both branches — see `int
 - `cliclient/` — HTTP client the CLI commands use to talk to a remote server (mirrors the handler endpoints).
 - `auth/`, `rbac/` — authenticators (local/basic/OIDC) and casbin enforcer/provider. Every externally-authenticated login path must resolve users through `auth.findOrCreateFederatedUser`, matching existing external identities only by `(issuer, subject)` and never by mutable username/email claims. If that flow returns a review-gated error, clients should check `auth.FederatedIdentityReviewErrorCode` before falling through to a generic 401.
 - `queue/` (memory or valkey) + `worker/` + `executor/` (local or docker) — async job pipeline. Long operations (env builds, installs) are enqueued, run by the worker through an executor, with output streamed via `logstream/`.
-- `pkgmgr/` — package-manager abstraction (`PackageManager` interface in `pkgmgr.go`, `pixi/` impl, selected by `factory.go`). This is where Pixi/uv commands are shelled out.
+- `pixi/` — pixi integration (`PixiManager`). This is where pixi commands are shelled out.
 - `oci/` — push/pull of environments to OCI registries.
 - `swagger/` — generated; do not hand-edit (run `make swagger`).
 

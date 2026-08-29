@@ -90,6 +90,6 @@ nebi/
 │   ├── queue/            # Job queue (memory/valkey)
 │   ├── server/           # Server initialization logic
 │   ├── worker/           # Background job processor
-│   └── pkgmgr/           # Pixi abstractions
+│   └── pixi/             # Pixi CLI integration
 └── frontend/             # React web UI
 ```

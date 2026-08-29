@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
-	"github.com/nebari-dev/nebi/internal/pkgmgr/pixi"
+	"github.com/nebari-dev/nebi/internal/pixi"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
 )

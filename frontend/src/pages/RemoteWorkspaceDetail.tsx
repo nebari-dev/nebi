@@ -11,7 +11,6 @@ import {
   History,
   IdCard,
   Loader2,
-  Package,
   User,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -159,17 +158,6 @@ export const RemoteWorkspaceDetail = () => {
                     {capitalize(workspace.status)}
                   </Badge>
                 </div>
-              </div>
-
-              {/* Package Manager */}
-              <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
-                <div className="flex items-center gap-1.5 text-muted-foreground">
-                  <Package className="h-3 w-3 shrink-0" />
-                  <span className="text-sm font-medium">Package Manager</span>
-                </div>
-                <code className="text-sm font-mono">
-                  {workspace.package_manager || 'pixi'}
-                </code>
               </div>
 
               {/* Size */}

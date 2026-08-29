@@ -30,7 +30,6 @@ export interface Workspace {
   owner?: User; // Optional owner details
   status: WorkspaceStatus;
   install_status?: InstallStatus;
-  package_manager: string;
   created_at: string;
   updated_at: string;
   size_bytes?: number;
@@ -44,7 +43,6 @@ export interface Workspace {
 
 export interface CreateWorkspaceRequest {
   name?: string;
-  package_manager?: string;
   pixi_toml?: string;
   path?: string;
   source?: 'local' | 'managed';
@@ -295,7 +293,6 @@ export interface RemoteWorkspace {
   id: string;
   name: string;
   status: string;
-  package_manager: string;
   size_bytes: number;
   owner?: {
     id: string;
@@ -323,7 +320,6 @@ export interface RemoteWorkspaceTag {
 
 export interface CreateRemoteWorkspaceRequest {
   name: string;
-  package_manager?: string;
   pixi_toml?: string;
 }
 

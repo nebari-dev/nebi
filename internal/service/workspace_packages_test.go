@@ -14,31 +14,17 @@ import (
 	"github.com/nebari-dev/nebi/internal/limits"
 	resourcemetrics "github.com/nebari-dev/nebi/internal/metrics"
 	"github.com/nebari-dev/nebi/internal/models"
-	"github.com/nebari-dev/nebi/internal/pkgmgr"
+	"github.com/nebari-dev/nebi/internal/pixi"
 )
 
-type staticListPackageManager struct {
-	packages []pkgmgr.Package
-}
-
-func (m staticListPackageManager) Name() string { return "static-list" }
-func (m staticListPackageManager) Init(context.Context, pkgmgr.InitOptions) error {
-	return nil
-}
-func (m staticListPackageManager) Install(context.Context, pkgmgr.InstallOptions) error {
-	return nil
-}
-func (m staticListPackageManager) Remove(context.Context, pkgmgr.RemoveOptions) error {
-	return nil
-}
-func (m staticListPackageManager) List(context.Context, pkgmgr.ListOptions) ([]pkgmgr.Package, error) {
-	return m.packages, nil
-}
-func (m staticListPackageManager) Update(context.Context, pkgmgr.UpdateOptions) error {
-	return nil
-}
-func (m staticListPackageManager) GetManifest(context.Context, string) (*pkgmgr.Manifest, error) {
-	return &pkgmgr.Manifest{}, nil
+// stubPixiList replaces the pixi list implementation with one returning the
+// given packages, restoring the original when the test finishes.
+func stubPixiList(t *testing.T, packages []pixi.Package) {
+	t.Helper()
+	restore := SetPixiListPackagesForTests(func(context.Context, pixi.ListOptions) ([]pixi.Package, error) {
+		return packages, nil
+	})
+	t.Cleanup(restore)
 }
 
 // --- InstallPackages tests ---
@@ -512,20 +498,10 @@ func TestSyncPackagesFromWorkspace_SavesAllResolvedPackages(t *testing.T) {
 	userID := createTestUser(t, db, "alice")
 	ws := createReadyWorkspace(t, svc, db, "listed-package-limit", userID)
 
-	pmType := "static-list-" + uuid.NewString()
-	pkgmgr.Register(pmType, func(context.Context, string) (pkgmgr.PackageManager, error) {
-		return staticListPackageManager{
-			packages: []pkgmgr.Package{
-				{Name: "numpy", Version: "1.0.0"},
-				{Name: "pandas", Version: "2.0.0"},
-			},
-		}, nil
+	stubPixiList(t, []pixi.Package{
+		{Name: "numpy", Version: "1.0.0"},
+		{Name: "pandas", Version: "2.0.0"},
 	})
-	ws.PackageManager = pmType
-	if err := db.Save(ws).Error; err != nil {
-		t.Fatalf("save workspace package manager: %v", err)
-	}
-
 	if err := svc.SyncPackagesFromWorkspace(context.Background(), ws); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -151,6 +151,31 @@ Imported quay.io/nebari/data-science:v1.0 -> /home/user/my-project (3 asset file
 
 Use `--concurrency N` to set how many files download at the same time (default 8).
 
+### Referring to a configured registry by name
+
+A reference that does not begin with a registry host is resolved against the
+registries you added with `nebi registry add --local`, the same way `nebi
+publish --local` resolves its target. Prefix the reference with a registry
+name to pick one, or leave the prefix off to use the default:
+
+```bash
+# Pull from the registry named "myreg"
+nebi import myreg:my-env:v1
+
+# Pull from the default registry
+nebi import my-env:v1
+```
+
+A reference that already names a host is never resolved, so
+`nebi import quay.io/nebari/data-science:v1.0` behaves exactly as before and
+works on a machine that has no registries configured.
+
+:::note The tag is still required
+`nebi import myreg:my-env` is read as repository `myreg`, tag `my-env`, because
+the reference parser splits on the last colon. Spell out all three parts:
+`myreg:my-env:v1`.
+:::
+
 :::note Imports do not overwrite existing files
 If the bundle includes asset files, `nebi import` refuses to write
 into a non-empty output directory. Use `-o ./some-new-dir` to land

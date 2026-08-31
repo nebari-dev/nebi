@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
+	"github.com/nebari-dev/nebi/internal/oci"
 	"github.com/nebari-dev/nebi/internal/pixi"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
@@ -231,6 +232,32 @@ func parseWsRef(ref string) (string, string) {
 		return ref[:idx], ref[idx+1:]
 	}
 	return ref, ""
+}
+
+// resolveLocalRegistry returns the local-store registry a command should
+// address: the one named, or the default when name is empty. Shared by
+// 'publish --local' and 'import' so both sides of a bundle's round trip
+// resolve the same name the same way.
+func resolveLocalRegistry(s *store.Store, name string) (*store.LocalRegistry, error) {
+	if name != "" {
+		reg, err := s.GetRegistryByName(name)
+		if err != nil {
+			return nil, fmt.Errorf("registry %q not found in local store; run 'nebi registry list --local' to see what is configured", name)
+		}
+		return reg, nil
+	}
+	return s.GetDefaultRegistry()
+}
+
+// registryTarget returns the host, namespace and transport a registry
+// record addresses. An explicit Namespace on the record wins over one
+// embedded in the URL.
+func registryTarget(reg *store.LocalRegistry) (host, namespace string, plainHTTP bool) {
+	host, namespace, plainHTTP = oci.ParseRegistryURLFull(reg.URL)
+	if reg.Namespace != "" {
+		namespace = reg.Namespace
+	}
+	return host, namespace, plainHTTP
 }
 
 // formatTimestamp parses an ISO 8601 timestamp and returns a human-friendly format.

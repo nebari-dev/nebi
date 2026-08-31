@@ -132,7 +132,7 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 	// manager, and the column was NOT NULL so leaving it would break inserts
 	// on databases created before its removal.
 	if db.Migrator().HasColumn(&models.Workspace{}, "package_manager") {
-		if err := db.Migrator().DropColumn(&models.Workspace{}, "package_manager"); err != nil {
+		if err := dropLegacyPackageManagerColumn(db); err != nil {
 			return fmt.Errorf("failed to drop workspaces.package_manager column: %w", err)
 		}
 	}
@@ -158,6 +158,31 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 	}
 
 	return nil
+}
+
+// dropLegacyPackageManagerColumn removes the legacy workspaces.package_manager
+// column. On SQLite the driver emulates DropColumn by rebuilding the table
+// (create workspaces__temp, copy rows, drop workspaces, rename), and dropping
+// the old table violates the foreign keys that jobs/publications rows hold on
+// it, so enforcement is suspended for the duration. The foreign_keys pragma is
+// connection-scoped (the DSN pragma re-enables it on every new pooled
+// connection) and a no-op inside a transaction, so every statement is pinned
+// to a single connection and the pragma is flipped outside the rebuild's
+// transaction.
+func dropLegacyPackageManagerColumn(db *gorm.DB) error {
+	if db.Dialector.Name() != "sqlite" {
+		return db.Migrator().DropColumn(&models.Workspace{}, "package_manager")
+	}
+	return db.Connection(func(conn *gorm.DB) error {
+		if err := conn.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
+			return err
+		}
+		dropErr := conn.Migrator().DropColumn(&models.Workspace{}, "package_manager")
+		if err := conn.Exec("PRAGMA foreign_keys = ON").Error; err != nil && dropErr == nil {
+			dropErr = err
+		}
+		return dropErr
+	})
 }
 
 func seedResourceLocks(db *gorm.DB) error {

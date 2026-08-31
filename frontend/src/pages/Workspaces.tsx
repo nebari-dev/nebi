@@ -8,6 +8,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { SplitButton } from '@/components/ui/split-button';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { InstallControls } from '@/components/workspace/InstallControls';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
 import {
@@ -390,122 +398,114 @@ export const Workspaces = () => {
         </Card>
       )}
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead
-                className={`bg-muted/50 ${displayedWorkspaces.length > 0 ? 'border-b' : ''}`}
-              >
-                <tr>
-                  <th className="text-left p-4 font-medium">Name</th>
-                  <th className="text-left p-4 font-medium">Status</th>
-                  <th className="text-left p-4 font-medium">Size</th>
-                  <th className="text-left p-4 font-medium">Created</th>
-                  <th className="text-right p-4 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedWorkspaces.map((ws) => (
-                  <tr
-                    key={`${ws.location}-${ws.id}`}
-                    className="border-b last:border-0 hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() =>
-                      ws.location === 'remote'
-                        ? navigate(`/remote/workspaces/${ws.id}`)
-                        : navigate(`/workspaces/${ws.id}`)
-                    }
+      <Table aria-label="Workspaces">
+        <TableHeader>
+          <TableRow
+            className={displayedWorkspaces.length > 0 ? undefined : 'border-0'}
+          >
+            <TableHead>Name</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Size</TableHead>
+            <TableHead>Created</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {displayedWorkspaces.map((ws) => (
+            <TableRow
+              key={`${ws.location}-${ws.id}`}
+              className="cursor-pointer"
+              onClick={() =>
+                ws.location === 'remote'
+                  ? navigate(`/remote/workspaces/${ws.id}`)
+                  : navigate(`/workspaces/${ws.id}`)
+              }
+            >
+              <TableCell className="font-medium">
+                <div className="flex items-center gap-2">{ws.name}</div>
+                {ws.location === 'local' && ws.path && (
+                  <div
+                    className="text-xs text-muted-foreground font-normal mt-0.5 font-mono truncate max-w-sm"
+                    title={ws.path}
                   >
-                    <td className="p-4 font-medium">
-                      <div className="flex items-center gap-2">{ws.name}</div>
-                      {ws.location === 'local' && ws.path && (
-                        <div
-                          className="text-xs text-muted-foreground font-normal mt-0.5 font-mono truncate max-w-sm"
-                          title={ws.path}
-                        >
-                          {ws.path}
-                        </div>
+                    {ws.path}
+                  </div>
+                )}
+              </TableCell>
+              <TableCell>
+                <div className="flex items-center gap-1.5">
+                  <Badge className={getWorkspaceStatusColor(ws.status)}>
+                    {capitalize(ws.status)}
+                  </Badge>
+                  {ws.install_status && (
+                    <Badge className={getInstallStatusColor(ws.install_status)}>
+                      {capitalize(ws.install_status.replaceAll('_', ' '))}
+                    </Badge>
+                  )}
+                </div>
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {ws.location === 'local' ? ws.size_formatted || '-' : '-'}
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {new Date(ws.created_at).toLocaleDateString()}
+              </TableCell>
+              <TableCell>
+                <div className="flex justify-end gap-2">
+                  {ws.location === 'local' && (
+                    <InstallControls
+                      workspaceId={ws.id}
+                      installStatus={ws.install_status}
+                      appearance="icon"
+                      onStarted={(job) =>
+                        setEnvJobNotice({
+                          wsId: ws.id,
+                          wsName: ws.name,
+                          jobId: job.id,
+                          type: job.type,
+                        })
+                      }
+                    />
+                  )}
+                  {ws.location === 'local' && ws.source !== 'local' && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => handleCopyPull(e, ws.name, ws.id)}
+                      aria-label={`Copy pull command for ${ws.name}`}
+                      title="Copy nebi pull command"
+                    >
+                      {copiedPullId === ws.id ? (
+                        <Check className="h-4 w-4" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
                       )}
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-1.5">
-                        <Badge className={getWorkspaceStatusColor(ws.status)}>
-                          {capitalize(ws.status)}
-                        </Badge>
-                        {ws.install_status && (
-                          <Badge
-                            className={getInstallStatusColor(ws.install_status)}
-                          >
-                            {capitalize(ws.install_status.replaceAll('_', ' '))}
-                          </Badge>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-4 text-sm text-muted-foreground">
-                      {ws.location === 'local' ? ws.size_formatted || '-' : '-'}
-                    </td>
-                    <td className="p-4 text-sm text-muted-foreground">
-                      {new Date(ws.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="p-4">
-                      <div className="flex justify-end gap-2">
-                        {ws.location === 'local' && (
-                          <InstallControls
-                            workspaceId={ws.id}
-                            installStatus={ws.install_status}
-                            appearance="icon"
-                            onStarted={(job) =>
-                              setEnvJobNotice({
-                                wsId: ws.id,
-                                wsName: ws.name,
-                                jobId: job.id,
-                                type: job.type,
-                              })
-                            }
-                          />
-                        )}
-                        {ws.location === 'local' && ws.source !== 'local' && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={(e) => handleCopyPull(e, ws.name, ws.id)}
-                            aria-label={`Copy pull command for ${ws.name}`}
-                            title="Copy nebi pull command"
-                          >
-                            {copiedPullId === ws.id ? (
-                              <Check className="h-4 w-4" />
-                            ) : (
-                              <Copy className="h-4 w-4" />
-                            )}
-                          </Button>
-                        )}
+                    </Button>
+                  )}
 
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setConfirmDelete({
-                              id: ws.id,
-                              name: ws.name,
-                              location: ws.location,
-                            });
-                          }}
-                          disabled={isDeletePending}
-                          aria-label={`Delete ${ws.name}`}
-                          title="Delete workspace"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDelete({
+                        id: ws.id,
+                        name: ws.name,
+                        location: ws.location,
+                      });
+                    }}
+                    disabled={isDeletePending}
+                    aria-label={`Delete ${ws.name}`}
+                    title="Delete workspace"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
 
       {displayedWorkspaces.length === 0 &&
         !showCreate &&

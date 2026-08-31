@@ -12,12 +12,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  Select,
   SelectContent,
   SelectItem,
-  SelectRoot,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select-v2';
+} from '@/components/ui/select';
 import {
   useCollaborators,
   useIsAdmin,
@@ -297,21 +297,34 @@ export const ShareDialog = ({
                       >
                         User
                       </label>
-                      <SelectRoot
+                      <Select
                         value={selectedUser}
-                        onValueChange={setSelectedUser}
+                        onValueChange={(value: string | null) =>
+                          setSelectedUser(value ?? '')
+                        }
                       >
                         <SelectTrigger id={userSelectId} className="w-full">
-                          <SelectValue placeholder="Select user..." />
+                          <SelectValue>
+                            {(value: string | null) => {
+                              const user = availableUsers.find(
+                                (item) => item.id === value,
+                              );
+                              if (!user) {
+                                return 'Select user...';
+                              }
+                              return `${user.username} (${user.email})`;
+                            }}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="">Select user...</SelectItem>
                           {availableUsers.map((user) => (
                             <SelectItem key={user.id} value={user.id}>
                               {user.username} ({user.email})
                             </SelectItem>
                           ))}
                         </SelectContent>
-                      </SelectRoot>
+                      </Select>
                     </div>
 
                     <div className="space-y-2">
@@ -321,14 +334,22 @@ export const ShareDialog = ({
                       >
                         Access Level
                       </label>
-                      <SelectRoot
+                      <Select
                         value={selectedRole}
-                        onValueChange={(value) =>
-                          setSelectedRole(value as 'editor' | 'viewer')
+                        onValueChange={(value: string | null) =>
+                          setSelectedRole(
+                            (value ?? 'viewer') as 'editor' | 'viewer',
+                          )
                         }
                       >
                         <SelectTrigger id={userRoleSelectId} className="w-full">
-                          <SelectValue />
+                          <SelectValue>
+                            {(value: string | null) =>
+                              value === 'editor'
+                                ? 'Editor (Can modify)'
+                                : 'Viewer (Read-only)'
+                            }
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="viewer">
@@ -338,7 +359,7 @@ export const ShareDialog = ({
                             Editor (Can modify)
                           </SelectItem>
                         </SelectContent>
-                      </SelectRoot>
+                      </Select>
                     </div>
 
                     <Button
@@ -374,21 +395,34 @@ export const ShareDialog = ({
                     >
                       Group
                     </label>
-                    <SelectRoot
+                    <Select
                       value={selectedGroup}
-                      onValueChange={setSelectedGroup}
+                      onValueChange={(value: string | null) =>
+                        setSelectedGroup(value ?? '')
+                      }
                     >
                       <SelectTrigger id={groupSelectId} className="w-full">
-                        <SelectValue placeholder="Select group..." />
+                        <SelectValue>
+                          {(value: string | null) => {
+                            const group = availableGroups.find(
+                              (item) => item.id === value,
+                            );
+                            if (!group) {
+                              return 'Select group...';
+                            }
+                            return `${group.name} (${group.source})`;
+                          }}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="">Select group...</SelectItem>
                         {availableGroups.map((g) => (
                           <SelectItem key={g.id} value={g.id}>
                             {g.name} ({g.source})
                           </SelectItem>
                         ))}
                       </SelectContent>
-                    </SelectRoot>
+                    </Select>
                   </div>
 
                   <div className="space-y-2">
@@ -398,14 +432,22 @@ export const ShareDialog = ({
                     >
                       Access Level
                     </label>
-                    <SelectRoot
+                    <Select
                       value={selectedRole}
-                      onValueChange={(value) =>
-                        setSelectedRole(value as 'editor' | 'viewer')
+                      onValueChange={(value: string | null) =>
+                        setSelectedRole(
+                          (value ?? 'viewer') as 'editor' | 'viewer',
+                        )
                       }
                     >
                       <SelectTrigger id={groupRoleSelectId} className="w-full">
-                        <SelectValue />
+                        <SelectValue>
+                          {(value: string | null) =>
+                            value === 'editor'
+                              ? 'Editor (Can modify)'
+                              : 'Viewer (Read-only)'
+                          }
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="viewer">
@@ -415,7 +457,7 @@ export const ShareDialog = ({
                           Editor (Can modify)
                         </SelectItem>
                       </SelectContent>
-                    </SelectRoot>
+                    </Select>
                   </div>
 
                   <Button

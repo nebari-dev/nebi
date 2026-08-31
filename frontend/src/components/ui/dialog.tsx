@@ -1,4 +1,4 @@
-import { Dialog as DialogPrimitive } from '@base-ui-components/react/dialog';
+import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 import { XIcon } from 'lucide-react';
 import type * as React from 'react';
 import { cn } from '@/lib/utils';
@@ -49,7 +49,7 @@ function DialogOverlay({ className, ...props }: DialogOverlayProps) {
       data-slot="dialog-overlay"
       className={(state) =>
         cn(
-          'fixed inset-0 z-50 bg-scrim data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 motion-safe:transition-[opacity] motion-safe:duration-[--duration-base] motion-safe:ease-[--ease-standard]',
+          'fixed inset-0 z-50 bg-scrim data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 motion-safe:transition-[opacity] motion-safe:duration-(--duration-base) motion-safe:ease-(--ease-standard)',
           typeof className === 'function' ? className(state) : className,
         )
       }
@@ -85,7 +85,7 @@ function DialogContent({
           data-slot="dialog-content"
           className={(state) =>
             cn(
-              'relative grid max-h-[min(calc(100vh-2rem),42rem)] w-full max-w-lg gap-4 overflow-hidden rounded-md border border-border bg-popover p-6 text-popover-foreground shadow-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[starting-style]:translate-y-2 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-2 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 motion-safe:transition-[opacity,transform] motion-safe:duration-[--duration-base] motion-safe:ease-[--ease-emphasized]',
+              'relative grid max-h-[min(calc(100vh-2rem),42rem)] w-full max-w-lg gap-4 overflow-hidden rounded-md border border-border bg-popover p-6 text-popover-foreground shadow-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[starting-style]:translate-y-2 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 data-[ending-style]:translate-y-2 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 motion-safe:transition-[opacity,transform] motion-safe:duration-(--duration-base) motion-safe:ease-(--ease-emphasized)',
               typeof className === 'function' ? className(state) : className,
             )
           }

@@ -1,11 +1,11 @@
-import { useRender } from '@base-ui-components/react/use-render';
+import { useRender } from '@base-ui/react/use-render';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { Children, isValidElement, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { Spinner } from '@/components/ui/spinner';
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium underline-offset-4 outline-none motion-safe:transition-[color,background-color,border-color,opacity,transform] motion-safe:duration-[--duration-fast] motion-safe:ease-[--ease-standard] motion-safe:active:scale-[0.97] hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[disabled]:pointer-events-none data-[disabled]:text-muted-foreground data-[disabled]:no-underline data-[disabled]:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium underline-offset-4 outline-none motion-safe:transition-[color,background-color,border-color,opacity,transform] motion-safe:duration-(--duration-fast) motion-safe:ease-(--ease-standard) motion-safe:active:scale-[0.97] hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[disabled]:pointer-events-none data-[disabled]:text-muted-foreground data-[disabled]:no-underline data-[disabled]:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       // Disabled and loading collapse to a muted look (Figma): the component
@@ -52,7 +52,7 @@ type ButtonProps = useRender.ComponentProps<'button'> &
     loading?: boolean;
     /**
      * Optional label shown beside the Spinner while `loading`, replacing the
-     * button's normal content (e.g. `loadingText="Saving..."`). Ignored for
+     * button's normal content (e.g. `loadingText="Saving…"`). Ignored for
      * icon-only sizes.
      */
     loadingText?: ReactNode;
@@ -62,7 +62,7 @@ type ButtonProps = useRender.ComponentProps<'button'> &
  * Button implemented from the Nebari Figma spec. Variants and sizes are driven
  * by `class-variance-authority`; polymorphism is provided by Base UI's `render`
  * prop, so a `Button` can become a link or any other element while keeping its
- * styling (`<Button render={<a href="..." />}>`).
+ * styling (`<Button render={<a href="…" />}>`).
  */
 function Button({
   className,

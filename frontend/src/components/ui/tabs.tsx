@@ -1,4 +1,4 @@
-import { Tabs as TabsPrimitive } from '@base-ui-components/react/tabs';
+import { Tabs as TabsPrimitive } from '@base-ui/react/tabs';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { type ComponentProps, createContext, useContext } from 'react';
 import { cn } from '@/lib/utils';
@@ -135,8 +135,6 @@ function TabsTab({ className, variant, ...props }: TabsTabProps) {
   );
 }
 
-const TabsTrigger = TabsTab;
-
 /**
  * Active tab marker. Place it inside `TabsList` after the `TabsTab` children.
  */
@@ -183,7 +181,6 @@ export {
   TabsList,
   TabsPanel,
   TabsTab,
-  TabsTrigger,
   tabsIndicatorVariants,
   tabsListVariants,
   tabsTabVariants,

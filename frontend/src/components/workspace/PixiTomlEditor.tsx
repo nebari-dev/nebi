@@ -1,8 +1,17 @@
 import { FileCode, Loader2, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { CodeBlock } from '@/components/ui/code-block';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 
 interface Package {
@@ -394,43 +403,39 @@ export const PixiTomlEditor = ({
             >
               Packages
             </h3>
-            <div className="border rounded-lg overflow-hidden">
-              <table className="w-full" aria-labelledby={packagesHeadingId}>
-                <thead className="bg-muted/50 border-b">
-                  <tr>
-                    <th className="text-left p-3 text-sm font-medium">Name</th>
-                    <th className="text-left p-3 text-sm font-medium">
-                      Version Constraint
-                    </th>
-                    <th className="w-16"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {packages.map((pkg) => (
-                    <tr key={pkg.name} className="hover:bg-muted/30">
-                      <td className="p-3">
-                        <span className="font-mono text-sm">{pkg.name}</span>
-                      </td>
-                      <td className="p-3">
-                        <span className="font-mono text-sm text-muted-foreground">
-                          {pkg.version || '-'}
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemovePackage(pkg.name)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Table aria-labelledby={packagesHeadingId}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Version Constraint</TableHead>
+                  <TableHead className="w-16" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {packages.map((pkg) => (
+                  <TableRow key={pkg.name}>
+                    <TableCell>
+                      <span className="font-mono">{pkg.name}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-mono text-muted-foreground">
+                        {pkg.version || '-'}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemovePackage(pkg.name)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
 
           <div className="flex gap-2">
@@ -479,15 +484,22 @@ export const PixiTomlEditor = ({
           >
             pixi.toml Configuration
           </label>
-          <Textarea
-            id={tomlEditorId}
-            placeholder="Enter your pixi.toml content"
-            value={tomlValue}
-            onChange={(e) => handleTomlEdit(e.target.value)}
-            rows={12}
-            required
-            className="font-mono text-sm"
-          />
+          {/* Reuse the Nebari CodeBlock frame (dark-forced subtree, card
+              surface, floating copy button) around the editable textarea so
+              TOML mode matches the read-only pixi.toml view on the workspace
+              detail page. `pr-12` mirrors CodeBlockBody's clearance for the
+              floating copy button. */}
+          <CodeBlock dark code={tomlValue} className="w-full">
+            <Textarea
+              id={tomlEditorId}
+              placeholder="Enter your pixi.toml content"
+              value={tomlValue}
+              onChange={(e) => handleTomlEdit(e.target.value)}
+              rows={12}
+              required
+              className="rounded-none border-0 bg-transparent px-4 py-4 pr-12 font-mono text-sm leading-relaxed focus-visible:ring-inset"
+            />
+          </CodeBlock>
           <p className="text-xs text-muted-foreground">
             Define your project dependencies and configuration in TOML format
           </p>

@@ -45,20 +45,21 @@ and get typed not-found errors.
    to react to: `ErrNotAuthenticated`, `ErrUnauthorized`,
    `ErrForbidden`, `ErrNotFound`, `ErrConflict`, matched with
    `errors.Is`. The server side maps cleanly off HTTP status codes
-   (`cliclient.APIError`); the OCI side maps oras errors
+   (`cliclient.APIError`); the OCI side maps ORAS (OCI Registry As
+   Storage, `oras.land/oras-go/v2`) errors
    (`errcode.ErrorResponse`, `errdef.ErrNotFound`).
 
 ## Findings (friction the spike surfaced)
 
 - **`internal/oci` has no typed errors.** Every failure is a bare
-  `fmt.Errorf` string. The chain does preserve oras's typed errors via
+  `fmt.Errorf` string. The chain does preserve ORAS's typed errors via
   `%w`, so `mapOCIError` works — but it works by reaching through
-  `internal/oci` into oras internals. Making remotes peers should
+  `internal/oci` into ORAS internals. Making remotes peers should
   include giving `internal/oci` (or the remote layer) first-class error
   types.
 - **`oci.ListRepositories`/`oci.ListTags` cannot reach plain-HTTP
   registries** — unlike the pull/publish paths, they never set
-  `PlainHTTP`. The spike lists via oras directly. Worth fixing
+  `PlainHTTP`. The spike lists via ORAS directly. Worth fixing
   regardless of this issue.
 - **OCI push conflict detection is read-before-write.** The server
   rejects an existing tag atomically (409); OCI tag pushes overwrite

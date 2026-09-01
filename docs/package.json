@@ -11,12 +11,12 @@
     "preview": "astro preview"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.41.9",
+    "@astrojs/starlight": "^0.41.10",
     "@mermaid-js/layout-elk": "^0.2.3",
     "@nebari/starlight": "^0.3.0",
     "astro": "^7.2.5",
     "astro-mermaid": "^2.1.0",
-    "mermaid": "^11.17.1",
+    "mermaid": "^11.17.2",
     "pagefind": "^1.5.2",
     "starlight-links-validator": "^0.25.3",
     "vanilla-cookieconsent": "^3.1.0"

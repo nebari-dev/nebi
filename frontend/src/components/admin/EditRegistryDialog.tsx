@@ -9,18 +9,22 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useUpdateRegistry } from '@/hooks/useRegistries';
+import { useUpdateRemoteRegistry } from '@/hooks/useRemote';
 import type { OCIRegistry } from '@/types';
 
 interface EditRegistryDialogProps {
   registry: OCIRegistry;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Update the registry on the connected remote server instead of locally. */
+  isRemote?: boolean;
 }
 
 export const EditRegistryDialog = ({
   registry,
   open,
   onOpenChange,
+  isRemote = false,
 }: EditRegistryDialogProps) => {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
@@ -41,7 +45,9 @@ export const EditRegistryDialog = ({
   const apiTokenId = useId();
   const nameInputRef = useRef<HTMLInputElement>(null);
 
-  const updateMutation = useUpdateRegistry();
+  const updateLocalMutation = useUpdateRegistry();
+  const updateRemoteMutation = useUpdateRemoteRegistry();
+  const updateMutation = isRemote ? updateRemoteMutation : updateLocalMutation;
 
   // Initialize form with registry data
   useEffect(() => {

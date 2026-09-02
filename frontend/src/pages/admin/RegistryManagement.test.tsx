@@ -52,6 +52,9 @@ vi.mock('@/hooks/useRemote', () => ({
     isFirstLoad: false,
     isUnreachable: false,
   }),
+  useCreateRemoteRegistry: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateRemoteRegistry: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteRemoteRegistry: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 describe('RegistryManagement', () => {

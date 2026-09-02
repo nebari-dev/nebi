@@ -10,8 +10,16 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useCreateRegistry } from '@/hooks/useRegistries';
+import { useCreateRemoteRegistry } from '@/hooks/useRemote';
 
-export const CreateRegistryDialog = () => {
+interface CreateRegistryDialogProps {
+  /** Create the registry on the connected remote server instead of locally. */
+  isRemote?: boolean;
+}
+
+export const CreateRegistryDialog = ({
+  isRemote = false,
+}: CreateRegistryDialogProps) => {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
@@ -32,7 +40,9 @@ export const CreateRegistryDialog = () => {
   const apiTokenId = useId();
   const nameInputRef = useRef<HTMLInputElement>(null);
 
-  const createMutation = useCreateRegistry();
+  const createLocalMutation = useCreateRegistry();
+  const createRemoteMutation = useCreateRemoteRegistry();
+  const createMutation = isRemote ? createRemoteMutation : createLocalMutation;
 
   useEffect(() => {
     if (open) {

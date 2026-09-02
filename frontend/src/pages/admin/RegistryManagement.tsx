@@ -15,15 +15,25 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useDeleteRegistry, useRegistries } from '@/hooks/useRegistries';
-import { useRemoteAdminRegistries, useRemoteView } from '@/hooks/useRemote';
+import {
+  useDeleteRemoteRegistry,
+  useRemoteAdminRegistries,
+  useRemoteView,
+} from '@/hooks/useRemote';
 import type { OCIRegistry } from '@/types';
 
 export const RegistryManagement = () => {
   const { data: registries, isLoading: registriesLoading } = useRegistries();
-  const deleteRegistryMutation = useDeleteRegistry();
+  const deleteLocalMutation = useDeleteRegistry();
+  const deleteRemoteMutation = useDeleteRemoteRegistry();
 
   // View mode support
   const { viewMode, isRemoteConnected, isRemoteView } = useRemoteView();
+
+  // Delete/edit must target the same server the displayed rows came from.
+  const deleteRegistryMutation = isRemoteView
+    ? deleteRemoteMutation
+    : deleteLocalMutation;
   const {
     data: remoteRegistries,
     isFirstLoad: remoteFirstLoad,
@@ -90,7 +100,7 @@ export const RegistryManagement = () => {
             Manage OCI registries for workspace publishing
           </p>
         </div>
-        <CreateRegistryDialog />
+        <CreateRegistryDialog isRemote={isRemoteView} />
       </div>
 
       {error && (
@@ -220,6 +230,7 @@ export const RegistryManagement = () => {
           registry={editingRegistry}
           open={!!editingRegistry}
           onOpenChange={(open) => !open && setEditingRegistry(null)}
+          isRemote={isRemoteView}
         />
       )}
 

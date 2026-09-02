@@ -167,3 +167,63 @@ func TestMigrateDropsLegacyPackageManagerColumn(t *testing.T) {
 		t.Fatalf("create workspace after migration: %v", err)
 	}
 }
+
+func TestMigrateDropsLegacyPackageManagerColumnWithReferencingRows(t *testing.T) {
+	database := testDB(t)
+
+	// Simulate a real pre-removal database: the SQLite driver emulates
+	// DropColumn by rebuilding the table, and DROP TABLE on the old
+	// workspaces violates the foreign keys held by referencing jobs rows
+	// when enforcement is on (it is, via the DSN pragma).
+	if err := database.Exec(
+		"CREATE TABLE `users` (`id` text PRIMARY KEY, `username` text, `email` text, `password_hash` text NOT NULL)",
+	).Error; err != nil {
+		t.Fatalf("create legacy users table: %v", err)
+	}
+	if err := database.Exec(
+		"CREATE TABLE `workspaces` (`id` text PRIMARY KEY, `name` text NOT NULL, `package_manager` text NOT NULL, `owner_id` text, CONSTRAINT `fk_workspaces_owner` FOREIGN KEY (`owner_id`) REFERENCES `users`(`id`))",
+	).Error; err != nil {
+		t.Fatalf("create legacy workspaces table: %v", err)
+	}
+	if err := database.Exec(
+		"CREATE TABLE `jobs` (`id` text PRIMARY KEY, `workspace_id` text, `type` text NOT NULL, `status` text NOT NULL DEFAULT \"pending\", CONSTRAINT `fk_jobs_workspace` FOREIGN KEY (`workspace_id`) REFERENCES `workspaces`(`id`))",
+	).Error; err != nil {
+		t.Fatalf("create legacy jobs table: %v", err)
+	}
+	if err := database.Exec(
+		"INSERT INTO `users` (`id`, `username`, `email`, `password_hash`) VALUES ('user-1', 'owner', 'owner@example.com', 'x')",
+	).Error; err != nil {
+		t.Fatalf("insert legacy user: %v", err)
+	}
+	if err := database.Exec(
+		"INSERT INTO `workspaces` (`id`, `name`, `package_manager`, `owner_id`) VALUES ('ws-1', 'legacy', 'pixi', 'user-1')",
+	).Error; err != nil {
+		t.Fatalf("insert legacy workspace: %v", err)
+	}
+	if err := database.Exec(
+		"INSERT INTO `jobs` (`id`, `workspace_id`, `type`) VALUES ('job-1', 'ws-1', 'create')",
+	).Error; err != nil {
+		t.Fatalf("insert referencing job: %v", err)
+	}
+	if err := Migrate(database, false); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	if database.Migrator().HasColumn(&models.Workspace{}, "package_manager") {
+		t.Fatal("expected package_manager column to be dropped")
+	}
+
+	var wsCount, jobCount int64
+	if err := database.Table("workspaces").Count(&wsCount).Error; err != nil {
+		t.Fatalf("count workspaces: %v", err)
+	}
+	if wsCount != 1 {
+		t.Fatalf("expected 1 workspace to survive the migration, got %d", wsCount)
+	}
+	if err := database.Table("jobs").Count(&jobCount).Error; err != nil {
+		t.Fatalf("count jobs: %v", err)
+	}
+	if jobCount != 1 {
+		t.Fatalf("expected 1 job to survive the migration, got %d", jobCount)
+	}
+}

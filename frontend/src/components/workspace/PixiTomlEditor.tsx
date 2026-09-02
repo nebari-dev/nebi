@@ -484,12 +484,11 @@ export const PixiTomlEditor = ({
           >
             pixi.toml Configuration
           </label>
-          {/* Reuse the Nebari CodeBlock frame (dark-forced subtree, card
-              surface, floating copy button) around the editable textarea so
+          {/* Reuse the Nebari CodeBlock frame around the editable textarea so
               TOML mode matches the read-only pixi.toml view on the workspace
               detail page. `pr-12` mirrors CodeBlockBody's clearance for the
               floating copy button. */}
-          <CodeBlock dark code={tomlValue} className="w-full">
+          <CodeBlock code={tomlValue} className="w-full">
             <Textarea
               id={tomlEditorId}
               placeholder="Enter your pixi.toml content"

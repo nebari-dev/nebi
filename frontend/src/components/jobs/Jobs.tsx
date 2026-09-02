@@ -121,7 +121,6 @@ const JobCard = ({
                 )}
               </div>
               <CodeBlock
-                dark
                 code={displayLogs || 'Waiting for logs...'}
                 className="w-full"
                 showCopyButton={!!displayLogs}
@@ -135,7 +134,6 @@ const JobCard = ({
             <div>
               <h4 className="font-semibold text-destructive mb-2">Error</h4>
               <CodeBlock
-                dark
                 code={job.error}
                 className="w-full border-destructive-foreground/40"
               >
@@ -158,7 +156,7 @@ const JobCard = ({
                     <div className="text-sm font-medium text-muted-foreground capitalize mb-1">
                       {key.replace(/_/g, ' ')}
                     </div>
-                    <CodeBlock dark code={content} className="w-full">
+                    <CodeBlock code={content} className="w-full">
                       <CodeBlockBody aria-label={`${key} metadata`} />
                     </CodeBlock>
                   </div>

@@ -27,11 +27,11 @@ const tabsTabVariants = cva(
   {
     variants: {
       variant: {
-        pill: 'h-[calc(100%-1px)] rounded-sm border border-border bg-card px-2 py-1 data-[active]:border-border-strong data-[active]:shadow-[0_1px_1.5px_rgb(0_0_0_/_0.1)] data-[disabled]:bg-muted data-[orientation=vertical]:h-8',
+        pill: 'h-[calc(100%-1px)] rounded-sm border border-transparent px-2 py-1 data-[active]:border-border-strong data-[active]:bg-card data-[active]:shadow-[0_1px_1.5px_rgb(0_0_0_/_0.1)] data-[disabled]:bg-muted data-[orientation=vertical]:h-8',
         underline: 'rounded-none px-0 pb-2',
         line: 'rounded-none px-0 pb-2',
         toggle:
-          'h-[calc(100%-1px)] rounded-sm border border-border bg-card px-2 py-1 data-[active]:border-border-strong data-[active]:shadow-[0_1px_1.5px_rgb(0_0_0_/_0.1)] data-[disabled]:bg-muted data-[orientation=vertical]:h-8',
+          'h-[calc(100%-1px)] rounded-sm border border-transparent px-2 py-1 data-[active]:border-border-strong data-[active]:bg-card data-[active]:shadow-[0_1px_1.5px_rgb(0_0_0_/_0.1)] data-[disabled]:bg-muted data-[orientation=vertical]:h-8',
       },
     },
     defaultVariants: {

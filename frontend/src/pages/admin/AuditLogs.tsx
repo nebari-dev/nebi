@@ -193,7 +193,6 @@ export const AuditLogs = () => {
                       View Details
                     </summary>
                     <CodeBlock
-                      dark
                       code={JSON.stringify(log.details_json, null, 2)}
                       className="mt-2 w-full max-w-md text-xs"
                     >

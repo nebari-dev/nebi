@@ -242,7 +242,7 @@ export const RemoteWorkspaceDetail = () => {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : pixiTomlData?.content ? (
-                <CodeBlock dark code={pixiTomlData.content} className="w-full">
+                <CodeBlock code={pixiTomlData.content} className="w-full">
                   <CodeBlockBody aria-label="pixi.toml contents" />
                 </CodeBlock>
               ) : (

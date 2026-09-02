@@ -706,7 +706,7 @@ export const WorkspaceDetail = () => {
               }}
             />
           ) : pixiToml ? (
-            <CodeBlock dark code={pixiToml} className="w-full">
+            <CodeBlock code={pixiToml} className="w-full">
               <CodeBlockBody aria-label="pixi.toml contents" />
             </CodeBlock>
           ) : (

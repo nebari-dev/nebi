@@ -225,7 +225,7 @@
   --header-foreground: oklch(97.91% 0 0);
   /* App-defined header interaction tokens (Nebari app-header recipe) */
   --header-action-hover: #4a4a50;
-  --sign-out-foreground: #ff6b6b;
+  --sign-out-foreground: #ff9b9b;
 }
 
 /* Tailwind v4 defaults unspecified border colors to currentColor; restore the

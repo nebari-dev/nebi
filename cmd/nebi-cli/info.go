@@ -24,8 +24,8 @@ func init() {
 
 var infoCmd = &cobra.Command{
 	Use:   "info",
-	Short: "Show nebi system information",
-	Long: `Display comprehensive information about the nebi CLI, server connection,
+	Short: "Show Nebi system information",
+	Long: `Display comprehensive information about the Nebi CLI, server connection,
 authentication status, and current workspace.
 
 Examples:
@@ -74,9 +74,9 @@ func runInfo(cmd *cobra.Command, args []string) error {
 		result.DataDir = shortenPath(dataDir, home)
 	}
 
-	// Workspaces dir — same resolution `nebi serve` uses (config file,
+	// Workspaces dir — same resolution `nebi-web` uses (config file,
 	// NEBI_STORAGE_WORKSPACES_DIR, or the built-in default)
-	if cfg, err := config.Load(); err == nil && cfg.Storage.WorkspacesDir != "" {
+	if cfg, err := config.Load(config.WithMode(config.ModeLocal)); err == nil && cfg.Storage.WorkspacesDir != "" {
 		home, _ := os.UserHomeDir()
 		result.WorkspacesDir = shortenPath(cfg.Storage.WorkspacesDir, home)
 	}

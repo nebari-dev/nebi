@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/nebari-dev/nebi/internal/cliclient"
+	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/oci"
 	"github.com/nebari-dev/nebi/internal/server"
 )
@@ -31,14 +32,13 @@ type localModeEnv struct {
 	ociHost   string
 }
 
-// startLocalModeServer spins up a private Nebi server in NEBI_MODE=local
+// startLocalModeServer spins up a private local-mode Nebi server
 // (independent of the shared TestMain team-mode server) plus an in-memory
 // OCI registry. Env vars are snapshotted/restored via t.Cleanup so the
 // shared server is unaffected.
 func startLocalModeServer(t *testing.T) *localModeEnv {
 	t.Helper()
 	envVars := []string{
-		"NEBI_MODE",
 		"NEBI_DATABASE_DSN",
 		"NEBI_STORAGE_WORKSPACES_DIR",
 		"NEBI_SERVER_PORT",
@@ -67,7 +67,6 @@ func startLocalModeServer(t *testing.T) *localModeEnv {
 		t.Fatalf("find free port: %v", err)
 	}
 
-	os.Setenv("NEBI_MODE", "local")
 	os.Setenv("NEBI_DATABASE_DSN", dbPath)
 	os.Setenv("NEBI_STORAGE_WORKSPACES_DIR", wsDir)
 	os.Setenv("NEBI_SERVER_PORT", fmt.Sprintf("%d", port))
@@ -103,9 +102,10 @@ exit 0
 	serverErr := make(chan error, 1)
 	go func() {
 		serverErr <- server.Run(ctx, server.Config{
-			Port:    port,
-			Mode:    "both",
-			Version: "e2e-bundle-api-test",
+			Port:        port,
+			Mode:        "both",
+			RuntimeMode: config.ModeLocal,
+			Version:     "e2e-bundle-api-test",
 		})
 	}()
 	waitForHealth(serverURL+"/api/v1/health", serverErr, io.Discard)

@@ -130,7 +130,7 @@ info "Installing nebi ${VERSION} for ${OS_NAME}/${ARCH_NAME}..."
 # Create temp directory
 TMPDIR="$(mktemp -d)"
 
-# Download and install CLI
+# Download and install command-line binaries
 ARCHIVE_NAME="nebi_${VERSION_NUM}_${ARCHIVE_OS}_${ARCH_NAME}.tar.gz"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE_NAME}"
 
@@ -143,18 +143,35 @@ fi
 info "Extracting archive..."
 tar -xzf "${TMPDIR}/${ARCHIVE_NAME}" -C "$TMPDIR"
 
-# Install binary
 mkdir -p "$INSTALL_DIR"
-if [ -w "$INSTALL_DIR" ]; then
-    cp "${TMPDIR}/nebi" "${INSTALL_DIR}/nebi"
-    chmod +x "${INSTALL_DIR}/nebi"
-else
-    info "Install directory ${INSTALL_DIR} requires elevated permissions, using sudo..."
-    sudo cp "${TMPDIR}/nebi" "${INSTALL_DIR}/nebi"
-    sudo chmod +x "${INSTALL_DIR}/nebi"
+
+install_binary() {
+    src="$1"
+    dest="$2"
+    if [ -w "$INSTALL_DIR" ]; then
+        cp "$src" "${INSTALL_DIR}/${dest}"
+        chmod +x "${INSTALL_DIR}/${dest}"
+    else
+        info "Install directory ${INSTALL_DIR} requires elevated permissions, using sudo..."
+        sudo cp "$src" "${INSTALL_DIR}/${dest}"
+        sudo chmod +x "${INSTALL_DIR}/${dest}"
+    fi
+}
+
+if [ ! -x "${TMPDIR}/nebi" ]; then
+    error "nebi not found in ${ARCHIVE_NAME}."
 fi
 
+install_binary "${TMPDIR}/nebi" "nebi"
 info "nebi installed to ${INSTALL_DIR}/nebi"
+
+for bin in nebi-server nebi-web; do
+    if [ ! -x "${TMPDIR}/${bin}" ]; then
+        error "${bin} not found in ${ARCHIVE_NAME}."
+    fi
+    install_binary "${TMPDIR}/${bin}" "$bin"
+    info "${bin} installed to ${INSTALL_DIR}/${bin}"
+done
 
 # Verify installation
 if [ -x "${INSTALL_DIR}/nebi" ]; then
@@ -189,7 +206,14 @@ if [ "$DESKTOP" -eq 1 ]; then
             $DOWNLOAD_OUT "${TMPDIR}/${DESKTOP_ARCHIVE}" "$DESKTOP_URL" || \
                 error "Failed to download desktop app: ${DESKTOP_URL}"
             unzip -q "${TMPDIR}/${DESKTOP_ARCHIVE}" -d "$TMPDIR"
-            if [ -d "${TMPDIR}/Nebi.app" ]; then
+            if [ -d "${TMPDIR}/nebi-desktop.app" ]; then
+                if [ -w "/Applications" ]; then
+                    cp -R "${TMPDIR}/nebi-desktop.app" "/Applications/Nebi.app"
+                else
+                    sudo cp -R "${TMPDIR}/nebi-desktop.app" "/Applications/Nebi.app"
+                fi
+                info "Desktop app installed to /Applications/Nebi.app"
+            elif [ -d "${TMPDIR}/Nebi.app" ]; then
                 if [ -w "/Applications" ]; then
                     cp -R "${TMPDIR}/Nebi.app" "/Applications/Nebi.app"
                 else
@@ -197,7 +221,7 @@ if [ "$DESKTOP" -eq 1 ]; then
                 fi
                 info "Desktop app installed to /Applications/Nebi.app"
             else
-                error "Nebi.app not found in the downloaded archive."
+                error "Nebi.app or nebi-desktop.app not found in the downloaded archive."
             fi
             ;;
     esac

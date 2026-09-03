@@ -33,7 +33,7 @@ Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables to create the ad
 ```bash
 make help           # Show all targets
 make dev            # Run with hot reload
-make build          # Build binary
+make build          # Build CLI, server, and local web binaries
 make test           # Run tests
 make swagger        # Generate API docs
 ```
@@ -43,7 +43,7 @@ make swagger        # Generate API docs
 Nebi includes a desktop application built with [Wails](https://wails.io/).
 
 **Prerequisites:**
-- Go 1.24+
+- Go 1.25+
 - Node.js 20+
 - [Wails CLI](https://wails.io/docs/gettingstarted/installation)
 
@@ -79,7 +79,9 @@ The built application will be in `build/bin/`.
 
 ```
 nebi/
-├── cmd/nebi/             # Unified CLI + server entry point
+├── cmd/nebi-cli/         # CLI client entry point
+├── cmd/nebi-server/      # Team server entry point
+├── cmd/nebi-web/         # Local web entry point
 ├── internal/
 │   ├── api/              # HTTP handlers and routing
 │   ├── auth/             # Authentication (JWT, basic auth)

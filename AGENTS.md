@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## What Nebi is
 
-Nebi is environment management for teams, built on top of [Pixi](https://pixi.sh). It versions, shares, and access-controls Pixi/uv environments, syncing them between machines and OCI registries (Quay, GHCR, etc.). It ships as a **single Go binary** that is simultaneously a CLI, an HTTP server, and (via Wails) a desktop app — all from one codebase.
+Nebi is environment management for teams, built on top of [Pixi](https://pixi.sh). It versions, shares, and access-controls Pixi/uv environments, syncing them between machines and OCI registries (Quay, GHCR, etc.). It ships separate CLI, server, local web, and Wails desktop executables from one codebase.
 
 ## Commands
 
@@ -17,10 +17,10 @@ ADMIN_USERNAME=admin ADMIN_PASSWORD=<pw> make dev   # frontend :8461, backend :8
 make install-tools   # installs swag, air, golangci-lint v1.64.8
 
 # Build
-make build           # full single binary: frontend build → embed → backend (bin/nebi)
+make build           # CLI + server + local web binaries
 make build-frontend  # just the React app, copies dist into internal/web/dist
 make build-backend   # regenerates swagger, then go build (needs frontend/dist to exist)
-make build-desktop   # Wails desktop app → build/bin/Nebi.app
+make build-desktop   # Wails desktop app → build/bin/Nebi.app (executable: nebi-desktop)
 
 # Lint / format (match CI)
 make lint                          # go fmt + golangci-lint
@@ -30,12 +30,12 @@ cd frontend && npm run check:fix   # biome autofix
 # Tests
 make test                                    # go test -tags=e2e -v ./...
 go test -tags=e2e ./internal/service/...     # one package
-go test -tags=e2e -run TestName ./cmd/nebi   # one test
+go test -tags=e2e -run TestName ./cmd/nebi-cli   # one test
 make test-pixi                               # pixi integration tests
 cd frontend && npm test                      # vitest run (single run)
 cd frontend && npm run test:watch
 
-make swagger         # regenerate API docs from serve.go annotations into internal/swagger
+make swagger         # regenerate API docs from server annotations into internal/swagger
 ```
 
 > **Build ordering matters.** The backend embeds `frontend/dist` via `go:embed`, so the frontend must be built (or stubbed with an empty `internal/web/dist`) before the Go binary will compile. `make build` handles this; CI builds the frontend as a separate job and downloads the artifact before the backend job.
@@ -44,12 +44,14 @@ make swagger         # regenerate API docs from serve.go annotations into intern
 
 ## Architecture
 
-### One binary, two entry points
-- `cmd/nebi/main.go` — the **CLI + server** binary. Uses cobra; subcommands (`init`, `push`, `pull`, `diff`, `serve`, `login`, …) are one file each in `cmd/nebi/`. `serve.go` boots the HTTP server.
-- `main.go` + `app.go` (repo root, `package main`) — the **Wails desktop app**. It runs the same API router in-process on a goroutine, embedding `frontend/dist` directly. The desktop app always forces `NEBI_MODE=local`.
+### Separate Binaries
+- `cmd/nebi-cli/main.go` — the **CLI client** binary. Uses cobra; subcommands (`init`, `push`, `pull`, `diff`, `login`, …) are one file each in `cmd/nebi-cli/`.
+- `cmd/nebi-server/main.go` — the **team server** binary. It boots the HTTP API server and worker in team mode.
+- `cmd/nebi-web/main.go` — the **local web** binary. It boots the same embedded React frontend, API router, and worker in local mode.
+- `main.go` + `app.go` (repo root, `package main`) — the **Wails desktop app**. It runs the same API router in-process on a goroutine, embedding `frontend/dist` directly.
 
 ### Local mode vs. team mode
-This is the single most important architectural distinction. `config.IsLocalMode()` (`NEBI_MODE`, default `team`) switches behavior throughout:
+This is the single most important architectural distinction. `config.IsLocalMode()` reflects the explicit runtime mode selected by the binary entry point:
 - **local** (desktop / single user): authentication is bypassed, casbin RBAC checks are skipped, all workspaces are visible, no encryption key needed.
 - **team** (multi-user server): real auth (basic / JWT / OIDC-via-Keycloak), casbin RBAC enforcement, owner + permission/group-based workspace filtering, encrypted credentials.
 

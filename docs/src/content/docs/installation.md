@@ -12,19 +12,21 @@ curl -fsSL https://pixi.sh/install.sh | bash
 
 See the [Pixi installation docs](https://pixi.sh) for more options.
 
-## Recommended: Install with Pixi
+## Recommended: Install Released Binaries
 
-Install the CLI (`nebi` package) and the desktop application (`nebi-desktop`) with [pixi global install](https://pixi.prefix.dev/latest/reference/cli/pixi/global/install/#pixi-global-install).
+Install the CLI, server, and local web app from the latest GitHub release:
 
 ```bash
-pixi global install nebi
+curl -fsSL https://nebi.nebari.dev/install.sh | sh
 ```
+
+Pass `--desktop` to the installer command to install the desktop application too.
 
 ## Installation script
 
 ### Linux & MacOS
 
-This installs the latest release of `nebi` to `~/.local/bin` (CLI and desktop app):
+This installs the latest release to `~/.local/bin`:
 
 ```bash
 curl -fsSL https://nebi.nebari.dev/install.sh | sh -s -- --desktop
@@ -57,18 +59,33 @@ irm https://nebi.nebari.dev/install.ps1 | iex
 
 ## Install with conda
 
-Nebi CLI and desktop packages are distributed on conda-forge, you can install it with conda in your base environment:
+The currently published conda-forge packages provide the CLI and desktop app. The CLI package installs the `nebi` command:
 
 ```bash
-conda install conda-forge::nebi
+conda install conda-forge::nebi-cli conda-forge::nebi-desktop
 ```
+
+The split `nebi-server` and `nebi-web` conda-forge packages are part of the binary split release process. Until those feedstocks are published, install those binaries from GitHub Releases or from source.
 
 ## Install from source
 
 For certain cases like development or testing, you can install Nebi from source.
 
-Prerequisite: Go version 1.24+
+Prerequisites: Go 1.25+ and Node.js 20+
+
+From a source checkout:
 
 ```bash
-go install github.com/nebari-dev/nebi/cmd/nebi@latest
+make build
 ```
+
+This builds `bin/nebi`, `bin/nebi-server`, and `bin/nebi-web`.
+
+From a source checkout, build the desktop app with Wails because it packages a native app wrapper:
+
+```bash
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+make build-desktop
+```
+
+Desktop source builds also require Node.js 20+. On Linux, install GTK/WebKit dependencies first; see the [desktop app section in the contributing guide](https://github.com/nebari-dev/nebi/blob/main/CONTRIBUTING.md#desktop-app).

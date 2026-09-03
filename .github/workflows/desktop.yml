@@ -29,7 +29,7 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux
-            artifact: Nebi
+            artifact: nebi-desktop
             asset_name: nebi-desktop-linux-amd64
             build_tags: "-tags webkit2_41"
           - os: macos-latest
@@ -39,7 +39,7 @@ jobs:
             build_tags: ""
           - os: windows-latest
             platform: windows
-            artifact: Nebi.exe
+            artifact: nebi-desktop.exe
             asset_name: nebi-desktop-windows-amd64.exe
             build_tags: ""
 
@@ -164,12 +164,12 @@ jobs:
           xcrun stapler validate build/bin/Nebi.app
 
       # macOS .app bundles must be packaged into a single archive before they
-      # leave the runner. Uploading the raw Nebi.app directory strips the
+      # leave the runner. Uploading the raw app directory strips the
       # bundle wrapper (upload-artifact roots the archive at the dir's
       # contents, so it unzips to a bare Contents/ folder) and loses the
       # executable bit and symlinks. `ditto` is Apple's bundle-aware archiver:
       # it preserves the wrapper, permissions, symlinks, and xattrs so the
-      # downloaded zip unzips to a launchable Nebi.app.
+      # downloaded zip unzips to a launchable app bundle.
       - name: Package macOS app
         if: matrix.os == 'macos-latest'
         run: |
@@ -182,7 +182,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nebi-linux
-          path: build/bin/Nebi
+          path: build/bin/nebi-desktop
 
       - name: Upload artifact (macOS)
         if: matrix.os == 'macos-latest' && !startsWith(github.ref, 'refs/tags/')
@@ -196,7 +196,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nebi-windows
-          path: build/bin/Nebi.exe
+          path: build/bin/nebi-desktop.exe
 
       # Smoke test: launch the built binary and confirm it doesn't crash within
       # 10s. Catches runtime regressions a build-only step misses — e.g. the
@@ -206,7 +206,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           set +e
-          xvfb-run -a timeout 10 ./build/bin/Nebi
+          xvfb-run -a timeout 10 ./build/bin/nebi-desktop
           code=$?
           set -e
           # `timeout` exits 124 when it kills the still-running process, which
@@ -222,9 +222,9 @@ jobs:
         run: |
           open ./build/bin/Nebi.app
           sleep 10
-          if pgrep -x Nebi > /dev/null; then
+          if pgrep -x nebi-desktop > /dev/null; then
             echo "Smoke test passed: binary stayed alive for 10s"
-            pkill -x Nebi || true
+            pkill -x nebi-desktop || true
           else
             echo "Smoke test failed: Nebi.app exited or crashed within 10s"
             exit 1
@@ -234,7 +234,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          $proc = Start-Process -FilePath "build/bin/Nebi.exe" -PassThru
+          $proc = Start-Process -FilePath "build/bin/nebi-desktop.exe" -PassThru
           Start-Sleep -Seconds 10
           if (-not $proc.HasExited) {
             Write-Host "Smoke test passed: binary stayed alive for 10s"
@@ -249,7 +249,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/')
         run: |
           cd build/bin
-          tar -czvf ${{ matrix.asset_name }}.tar.gz Nebi
+          tar -czvf ${{ matrix.asset_name }}.tar.gz nebi-desktop
 
       - name: Upload to release (Linux)
         if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/')
@@ -267,7 +267,7 @@ jobs:
         if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
-          Copy-Item "build/bin/Nebi.exe" "build/bin/${{ matrix.asset_name }}"
+          Copy-Item "build/bin/nebi-desktop.exe" "build/bin/${{ matrix.asset_name }}"
 
       - name: Upload to release (Windows)
         if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/')

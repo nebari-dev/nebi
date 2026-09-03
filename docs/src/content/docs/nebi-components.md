@@ -2,7 +2,7 @@
 title: "Nebi components"
 ---
 
-It has three components: a **CLI**, a **desktop app**, and a **team server**. All share the same core libraries but serve different use cases.
+It has four executables: **nebi**, **nebi-server**, **nebi-web**, and **nebi-desktop**. They share the same core libraries but serve different use cases.
 
 ## System overview
 
@@ -10,7 +10,7 @@ It has three components: a **CLI**, a **desktop app**, and a **team server**. Al
 
 ## CLI
 
-The CLI is a standalone tool for managing and tracking Pixi workspaces on your local machines, both for [solo use](/cli-local/) and for [team workflows](/cli-team/) backed by a Nebi server. Every command is documented in the [CLI reference](/cli-reference/).
+`nebi` is a standalone CLI tool for managing and tracking Pixi workspaces on your local machines, both for [solo use](/cli-local/) and for [team workflows](/cli-team/) backed by a Nebi server. Its source entry point lives in `cmd/nebi-cli`, and every command is documented in the [CLI reference](/cli-reference/).
 
 - **Local database**: Track workspace names, paths, and versions in a local database
 - **Pixi shell/run**: Open a pixi shell or run pixi tasks by workspace name
@@ -33,7 +33,7 @@ Bundles are packed into an OCI Image Manifest with custom media types for the sp
 
 ## Nebi Server
 
-The [Nebi server](/server-setup/) is the team deployment of Nebi. It runs the desktop app interface but in a **server and team mode** with full multi-user support.
+`nebi-server` is the team deployment of Nebi. It serves the REST API, bundled React frontend, and worker stack with full multi-user support.
 
 - **Authentication**: JWT-based sessions with pluggable backends — basic auth, OIDC, or proxy auth
 - **Role-based AC**: Apache Casbin-based access control with per-workspace permissions (read, write, admin) for users
@@ -43,3 +43,7 @@ The [Nebi server](/server-setup/) is the team deployment of Nebi. It runs the de
 - **Job queue**: In-memory queue (single instance) or Valkey (distributed deployments) to process workspace creation and updating requests.
 
 Learn more: [Nebi server setup](/server-setup/).
+
+## Local web app
+
+`nebi-web` serves the bundled React frontend for a single-user local workflow. It uses local authentication bypass and binds to loopback by default.

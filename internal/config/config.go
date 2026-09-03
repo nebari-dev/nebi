@@ -18,9 +18,17 @@ const (
 const readTimeoutBytesPerSecond int64 = 256 * 1024
 const minReadTimeoutSeconds = 30
 
+// Mode identifies which Nebi runtime is using the shared server stack.
+type Mode string
+
+const (
+	ModeTeam  Mode = "team"
+	ModeLocal Mode = "local"
+)
+
 // Config holds all application configuration
 type Config struct {
-	Mode       string           `mapstructure:"mode"` // "local" or "team" (default: "team")
+	Mode       Mode             `mapstructure:"-"`
 	Server     ServerConfig     `mapstructure:"server"`
 	Database   DatabaseConfig   `mapstructure:"database"`
 	Auth       AuthConfig       `mapstructure:"auth"`
@@ -34,7 +42,7 @@ type Config struct {
 
 // IsLocalMode returns true when the server is running in local/desktop mode.
 func (c *Config) IsLocalMode() bool {
-	return c.Mode == "local"
+	return c.Mode == ModeLocal
 }
 
 // ServerConfig holds HTTP server configuration
@@ -142,12 +150,33 @@ type RegistryEntryConfig struct {
 	Restricted bool   `mapstructure:"restricted"` // when true, only granted groups can use this registry
 }
 
-// Load reads configuration from file and environment variables
-func Load() (*Config, error) {
+type loadOptions struct {
+	mode Mode
+}
+
+// LoadOption customizes configuration loading.
+type LoadOption func(*loadOptions)
+
+// WithMode sets the explicit runtime mode for this process.
+func WithMode(mode Mode) LoadOption {
+	return func(opts *loadOptions) {
+		opts.mode = mode
+	}
+}
+
+// Load reads configuration from file and environment variables.
+func Load(options ...LoadOption) (*Config, error) {
+	opts := loadOptions{mode: ModeTeam}
+	for _, option := range options {
+		option(&opts)
+	}
+	if err := validateMode(opts.mode); err != nil {
+		return nil, err
+	}
+
 	v := viper.New()
 
 	// Set defaults for local development
-	v.SetDefault("mode", "team")
 	v.SetDefault("server.host", "")
 	v.SetDefault("server.port", 8460)
 	v.SetDefault("server.mode", "development")
@@ -253,6 +282,7 @@ func Load() (*Config, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
+	cfg.Mode = opts.mode
 	if err := cfg.Limits.Validate(); err != nil {
 		return nil, err
 	}
@@ -266,14 +296,6 @@ func Load() (*Config, error) {
 	// Normalize base path: ensure leading slash, strip trailing slash
 	if cfg.Server.BasePath != "" {
 		cfg.Server.BasePath = "/" + strings.Trim(cfg.Server.BasePath, "/")
-	}
-
-	// Validate mode
-	switch cfg.Mode {
-	case "", "team", "local":
-		// valid — empty defaults to "team" via IsLocalMode()
-	default:
-		return nil, fmt.Errorf("invalid mode %q: must be \"local\" or \"team\"", cfg.Mode)
 	}
 
 	if err := normalizeRegistries(&cfg.Registries); err != nil {
@@ -291,6 +313,15 @@ func Load() (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+func validateMode(mode Mode) error {
+	switch mode {
+	case ModeTeam, ModeLocal:
+		return nil
+	default:
+		return fmt.Errorf("invalid mode %q: must be %q or %q", mode, ModeLocal, ModeTeam)
+	}
 }
 
 const (

@@ -3,9 +3,9 @@ testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
-  args_bin = ["serve"]
-  bin = "./tmp/main"
-  cmd = "swag init -g cmd/nebi/serve.go -o internal/swagger --packageName swagger && go build -o ./tmp/main ./cmd/nebi"
+  args_bin = []
+  bin = "./tmp/nebi-server"
+  cmd = "swag init -g main.go -d cmd/nebi-server,internal/api,internal/service,internal/models,internal/limits,internal/metrics,internal/auth -o internal/swagger --packageName swagger && go build -o ./tmp/nebi-server ./cmd/nebi-server"
   delay = 1000
   exclude_dir = ["assets", "tmp", "vendor", "testdata", "docs", "web", "internal/swagger"]
   exclude_file = []

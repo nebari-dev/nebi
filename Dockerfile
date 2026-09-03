@@ -33,12 +33,14 @@ RUN make swagger
 # BuildKit to the build's target platform; CI builds each platform on a
 # native runner, so this is always a native compile there.
 ARG VERSION=dev
+ARG NEBI_BINARY=nebi-server
 ARG TARGETOS
 ARG TARGETARCH
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+RUN case "${NEBI_BINARY}" in nebi-server|nebi-web) ;; *) echo "unsupported NEBI_BINARY=${NEBI_BINARY}" >&2; exit 1 ;; esac && \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath \
     -ldflags "-s -w -X main.Version=${VERSION}" \
-    -o /nebi ./cmd/nebi
+    -o /nebi ./cmd/${NEBI_BINARY}
 
 # Stage 3: Final image with pixi
 FROM ghcr.io/prefix-dev/pixi:latest
@@ -47,7 +49,7 @@ WORKDIR /app
 # Install CA certificates (required for OIDC/HTTPS connections)
 RUN apt-get update && apt-get install -y ca-certificates git && rm -rf /var/lib/apt/lists/*
 
-# Copy the static binary
+# Copy the selected static binary
 COPY --from=backend-builder /nebi /app/nebi
 
 # Copy RBAC configuration
@@ -60,4 +62,4 @@ EXPOSE 8460
 ENV GIN_MODE=release
 
 # Run the binary
-ENTRYPOINT ["/app/nebi", "serve"]
+ENTRYPOINT ["/app/nebi"]

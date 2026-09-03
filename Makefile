@@ -1,7 +1,9 @@
-.PHONY: help build build-frontend build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker test-pixi build-all build-desktop
+.PHONY: help build build-frontend build-cli build-server build-web build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker test-pixi build-all build-platforms build-desktop
 
 # Variables
-BINARY_NAME=nebi
+CLI_BINARY=nebi
+SERVER_BINARY=nebi-server
+WEB_BINARY=nebi-web
 FRONTEND_DIR=frontend
 BUILD_DIR=bin
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -27,7 +29,7 @@ install-tools: ## Install development tools (swag, air, golangci-lint)
 swagger: ## Generate Swagger documentation
 	@echo "Generating Swagger docs..."
 	@PATH="$$PATH:$$(go env GOPATH)/bin"; command -v swag >/dev/null 2>&1 || { echo "swag not found, installing..."; go install github.com/swaggo/swag/cmd/swag@latest; }
-	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g serve.go -d cmd/nebi,internal/api,internal/service,internal/models,internal/limits,internal/metrics,internal/auth -o internal/swagger --packageName swagger --exclude output,cross-platform-example
+	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g main.go -d cmd/nebi-server,internal/api,internal/service,internal/models,internal/limits,internal/metrics,internal/auth -o internal/swagger --packageName swagger --exclude output,cross-platform-example
 	@echo "Swagger docs generated at /internal/swagger"
 
 build-frontend: ## Build frontend and copy to internal/web/dist
@@ -38,21 +40,35 @@ build-frontend: ## Build frontend and copy to internal/web/dist
 	@cp -r $(FRONTEND_DIR)/dist internal/web/dist
 	@echo "Frontend build complete"
 
-build-backend: swagger ## Build nebi binary
-	@echo "Building nebi..."
+build-cli: ## Build CLI client binary
+	@echo "Building $(CLI_BINARY)..."
 	@mkdir -p $(BUILD_DIR)
-	@go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/nebi
-	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)"
+	@go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY) ./cmd/nebi-cli
+	@echo "Build complete: $(BUILD_DIR)/$(CLI_BINARY)"
 
-build: build-frontend build-backend ## Build complete single binary (frontend + backend)
-	@echo "Single binary build complete: $(BUILD_DIR)/$(BINARY_NAME)"
+build-server: build-frontend swagger ## Build team server binary
+	@echo "Building $(SERVER_BINARY)..."
+	@mkdir -p $(BUILD_DIR)
+	@go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(SERVER_BINARY) ./cmd/nebi-server
+	@echo "Build complete: $(BUILD_DIR)/$(SERVER_BINARY)"
 
-run: build ## Run the server (without hot reload)
-	@echo "Starting nebi server..."
+build-web: build-frontend swagger ## Build local web binary
+	@echo "Building $(WEB_BINARY)..."
+	@mkdir -p $(BUILD_DIR)
+	@go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(WEB_BINARY) ./cmd/nebi-web
+	@echo "Build complete: $(BUILD_DIR)/$(WEB_BINARY)"
+
+build-backend: build-server build-web ## Build server and web binaries
+
+build: build-cli build-server build-web ## Build CLI, server, and web binaries
+	@echo "Build complete: $(BUILD_DIR)/$(CLI_BINARY), $(BUILD_DIR)/$(SERVER_BINARY), $(BUILD_DIR)/$(WEB_BINARY)"
+
+run: build-server ## Run the team server (without hot reload)
+	@echo "Starting nebi-server..."
 	@if [ -f .env ]; then \
 		echo "✓ Loading environment variables from .env..."; \
 	fi
-	@bash -c 'set -a; [ -f .env ] && source .env; set +a; $(BUILD_DIR)/$(BINARY_NAME) serve'
+	@bash -c 'set -a; [ -f .env ] && source .env; set +a; $(BUILD_DIR)/$(SERVER_BINARY)'
 
 dev: swagger ## Run with hot reload (frontend + backend)
 	@echo "Starting nebi in development mode with hot reload..."
@@ -78,7 +94,7 @@ dev: swagger ## Run with hot reload (frontend + backend)
 
 migrate: ## Run database migrations
 	@echo "Running migrations..."
-	@go run cmd/nebi/main.go serve
+	@go run ./cmd/nebi-server
 
 test: ## Run tests (unit + e2e)
 	@echo "Running tests..."
@@ -123,22 +139,35 @@ test-pixi: ## Test pixi operations
 	@echo "Running pixi tests..."
 	@go test -v ./internal/pixi/...
 
-build-all: build-frontend ## Build binaries for all platforms
+build-all: build build-desktop ## Build all four binaries
+	@echo "All binaries built"
+
+build-platforms: build-frontend swagger ## Build CLI/server/web binaries for all platforms
 	@echo "Building for all platforms..."
 	@mkdir -p $(BUILD_DIR)
 	@echo "Building linux/amd64..."
-	@GOOS=linux GOARCH=amd64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/nebi
+	@GOOS=linux GOARCH=amd64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY)-linux-amd64 ./cmd/nebi-cli
+	@GOOS=linux GOARCH=amd64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(SERVER_BINARY)-linux-amd64 ./cmd/nebi-server
+	@GOOS=linux GOARCH=amd64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(WEB_BINARY)-linux-amd64 ./cmd/nebi-web
 	@echo "Building linux/arm64..."
-	@GOOS=linux GOARCH=arm64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/nebi
+	@GOOS=linux GOARCH=arm64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY)-linux-arm64 ./cmd/nebi-cli
+	@GOOS=linux GOARCH=arm64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(SERVER_BINARY)-linux-arm64 ./cmd/nebi-server
+	@GOOS=linux GOARCH=arm64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(WEB_BINARY)-linux-arm64 ./cmd/nebi-web
 	@echo "Building darwin/amd64..."
-	@GOOS=darwin GOARCH=amd64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/nebi
+	@GOOS=darwin GOARCH=amd64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY)-darwin-amd64 ./cmd/nebi-cli
+	@GOOS=darwin GOARCH=amd64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(SERVER_BINARY)-darwin-amd64 ./cmd/nebi-server
+	@GOOS=darwin GOARCH=amd64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(WEB_BINARY)-darwin-amd64 ./cmd/nebi-web
 	@echo "Building darwin/arm64..."
-	@GOOS=darwin GOARCH=arm64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/nebi
+	@GOOS=darwin GOARCH=arm64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY)-darwin-arm64 ./cmd/nebi-cli
+	@GOOS=darwin GOARCH=arm64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(SERVER_BINARY)-darwin-arm64 ./cmd/nebi-server
+	@GOOS=darwin GOARCH=arm64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(WEB_BINARY)-darwin-arm64 ./cmd/nebi-web
 	@echo "Building windows/amd64..."
-	@GOOS=windows GOARCH=amd64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/nebi
+	@GOOS=windows GOARCH=amd64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY)-windows-amd64.exe ./cmd/nebi-cli
+	@GOOS=windows GOARCH=amd64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(SERVER_BINARY)-windows-amd64.exe ./cmd/nebi-server
+	@GOOS=windows GOARCH=amd64 go build $(BUILDFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(WEB_BINARY)-windows-amd64.exe ./cmd/nebi-web
 	@echo "All platform builds complete"
 
 build-desktop: build-frontend ## Build Wails desktop app with version info
 	@echo "Building desktop app..."
 	@wails build -ldflags "-X main.Version=$(VERSION) -X main.Commit=$(COMMIT)"
-	@echo "Desktop app built: build/bin/Nebi.app"
+	@echo "Desktop app built: build/bin/Nebi.app (executable: nebi-desktop)"

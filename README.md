@@ -53,22 +53,25 @@ Nebi builds on Pixi to add what teams need: version history, rollback, sharing e
 
 ### Install
 
-Pixi is a required Nebi dependency. If not already installed, install pixi as described in the [pixi docs](https://pixi.prefix.dev/latest/installation/). Then use pixi to install Nebi:
+Pixi is a required Nebi dependency. If not already installed, install pixi as described in the [pixi docs](https://pixi.prefix.dev/latest/installation/). Then install Nebi's released command-line binaries:
 
 ```sh
-# Installs CLI + Desktop App (recommended)
-pixi global install nebi
+curl -fsSL https://nebi.nebari.dev/install.sh | sh
 ```
 
-If you only need the CLI or the desktop app individually:
+Add `--desktop` to the installer command to install the desktop app too.
+
+If you prefer conda-forge packages, the currently published Pixi packages are:
 
 ```sh
-# CLI only
+# CLI package, installs the `nebi` command
 pixi global install nebi-cli
 
 # Desktop app only
 pixi global install nebi-desktop
 ```
+
+The split `nebi-server` and `nebi-web` conda-forge packages are release prerequisites for this binary split. Until those feedstocks are published, install those binaries from GitHub Releases or from source.
 
 [Alternative installation methods](#alternative-installation-methods) are also available.
 
@@ -76,15 +79,13 @@ pixi global install nebi-desktop
 
 #### Set up
 
-Start a local Nebi server (set your own admin credentials):
+Start a local Nebi web app:
 
 ```bash
-export ADMIN_USERNAME=admin
-export ADMIN_PASSWORD=your-password
-nebi serve
+nebi-web
 ```
 
-This starts the Nebi server at [http://localhost:8460](http://localhost:8460).
+This starts the local web UI and API at [http://localhost:8460](http://localhost:8460).
 
 In a new terminal, connect the CLI to the server:
 
@@ -169,13 +170,23 @@ Download pre-built binaries from the [releases page](https://github.com/nebari-d
 
 ### Build from Source
 
+From a source checkout:
+
 ```sh
-go install github.com/nebari-dev/nebi/cmd/nebi@latest
+make build
 ```
 
-Requires Go 1.24+.
+This builds `bin/nebi`, `bin/nebi-server`, and `bin/nebi-web`. Requires Go 1.25+ and Node.js 20+.
+
+From a source checkout, build the desktop app with Wails because it packages the native app wrapper:
+
+```sh
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+make build-desktop
+```
+
+Desktop source builds also require Node.js 20+. On Linux, install GTK/WebKit dependencies first as described in [CONTRIBUTING.md](CONTRIBUTING.md#desktop-app).
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, build instructions, and project structure.
-

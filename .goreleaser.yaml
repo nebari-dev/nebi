@@ -9,8 +9,8 @@ before:
     - sh -c "rm -rf internal/web/dist && cp -r frontend/dist internal/web/dist"
 
 builds:
-  - id: nebi
-    main: ./cmd/nebi
+  - id: nebi-cli
+    main: ./cmd/nebi-cli
     binary: nebi
     env:
       - CGO_ENABLED=0
@@ -27,11 +27,55 @@ builds:
     ldflags:
       - -s -w
       - -X main.Version={{.Version}}
-      - -X main.commit={{.Commit}}
+      - -X main.Commit={{.Commit}}
+      - -X main.date={{.Date}}
+  - id: nebi-server
+    main: ./cmd/nebi-server
+    binary: nebi-server
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.Commit={{.Commit}}
+      - -X main.date={{.Date}}
+  - id: nebi-web
+    main: ./cmd/nebi-web
+    binary: nebi-web
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.Commit={{.Commit}}
       - -X main.date={{.Date}}
 
 archives:
   - id: nebi
+    ids:
+      - nebi-cli
+      - nebi-server
+      - nebi-web
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_
       {{- if eq .Os "darwin" }}macOS
@@ -57,7 +101,9 @@ notarize:
   macos:
     - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
       ids:
-        - nebi
+        - nebi-cli
+        - nebi-server
+        - nebi-web
       sign:
         certificate: "{{.Env.MACOS_SIGN_P12}}"       # base64 of the Developer ID Application .p12
         password: "{{.Env.MACOS_SIGN_PASSWORD}}"

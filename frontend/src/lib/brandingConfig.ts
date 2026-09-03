@@ -100,6 +100,12 @@ const toCssVariableName = (tokenName: string): string | undefined => {
   if (trimmed === '') {
     return undefined;
   }
+  if (trimmed === '--color-nav-hover') {
+    return '--header-action-hover';
+  }
+  if (trimmed.startsWith('--color-')) {
+    return `--${trimmed.slice('--color-'.length)}`;
+  }
   if (trimmed.startsWith('--')) {
     return trimmed;
   }
@@ -107,10 +113,13 @@ const toCssVariableName = (tokenName: string): string | undefined => {
   if (kebabCase === 'radius') {
     return '--radius';
   }
-  if (kebabCase.startsWith('color-')) {
-    return `--${kebabCase}`;
+  if (kebabCase === 'nav-hover') {
+    return '--header-action-hover';
   }
-  return `--color-${kebabCase}`;
+  if (kebabCase.startsWith('color-')) {
+    return `--${kebabCase.slice('color-'.length)}`;
+  }
+  return `--${kebabCase}`;
 };
 
 const sanitizeBrandingThemeTokens = (

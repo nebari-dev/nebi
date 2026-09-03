@@ -43,6 +43,7 @@ describe('PublishDialog', () => {
     const registrySelect = await screen.findByRole('combobox', {
       name: 'Registry',
     });
+    await waitFor(() => expect(registrySelect).toHaveFocus());
     await user.click(registrySelect);
     expect(
       await screen.findByRole('option', {

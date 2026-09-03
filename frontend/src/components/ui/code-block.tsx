@@ -44,6 +44,12 @@ type CodeBlockProps = React.ComponentProps<'div'> & {
    * {@link CodeBlockCopyButton} inside a {@link CodeBlockHeader}, to avoid two.
    */
   showCopyButton?: boolean;
+  /**
+   * Force the dark palette for this block regardless of the surrounding theme.
+   * Applies the theme's `.dark` class to the root so its semantic tokens
+   * (`bg-card`, `text-foreground`, …) resolve against the dark collection.
+   */
+  dark?: boolean;
 };
 
 /**
@@ -61,6 +67,7 @@ function CodeBlock({
   code,
   showLineNumbers = false,
   showCopyButton = true,
+  dark = false,
   children,
   ...props
 }: CodeBlockProps) {
@@ -70,7 +77,11 @@ function CodeBlock({
     >
       <div
         data-slot="code-block"
+        data-dark={dark || undefined}
         className={cn(
+          // `dark` remaps the semantic tokens below to the dark palette for
+          // this subtree, so the block can be dark on an otherwise light page.
+          dark && 'dark',
           // `relative` anchors the floating copy button to this root.
           // `w-[clamp(...)]` makes the block grow with the viewport between a
           // 20rem floor and a 48rem ceiling, so typical-length lines fit

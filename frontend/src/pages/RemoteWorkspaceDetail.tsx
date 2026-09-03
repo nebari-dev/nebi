@@ -209,14 +209,17 @@ export const RemoteWorkspaceDetail = () => {
                   <code className="text-xs font-mono text-muted-foreground">
                     {workspace.id}
                   </code>
-                  <button
+                  <Button
                     type="button"
-                    className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-muted-foreground-strong"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground hover:text-muted-foreground-strong"
                     onClick={async () => {
                       await navigator.clipboard.writeText(workspace.id);
                       setCopiedId(true);
                       setTimeout(() => setCopiedId(false), 2000);
                     }}
+                    aria-label="Copy workspace ID"
                     title="Copy ID"
                   >
                     {copiedId ? (
@@ -224,7 +227,7 @@ export const RemoteWorkspaceDetail = () => {
                     ) : (
                       <Copy className="h-3 w-3" />
                     )}
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>

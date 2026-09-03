@@ -138,26 +138,15 @@ export const GroupMembersDialog = ({ group, open, onOpenChange }: Props) => {
               <h3 className="text-sm font-medium">Add member</h3>
               <div className="flex gap-2">
                 <Select
-                  value={selectedUser}
+                  value={selectedUser || null}
                   onValueChange={(value: string | null) =>
                     setSelectedUser(value ?? '')
                   }
                 >
                   <SelectTrigger className="flex-1">
-                    <SelectValue>
-                      {(value: string | null) => {
-                        const user = availableUsers.find(
-                          (item) => item.id === value,
-                        );
-                        if (!user) {
-                          return 'Select a user';
-                        }
-                        return `${user.username} — ${user.email}`;
-                      }}
-                    </SelectValue>
+                    <SelectValue placeholder="Select a user" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Select a user</SelectItem>
                     {availableUsers.map((u) => (
                       <SelectItem key={u.id} value={u.id}>
                         {u.username} — {u.email}

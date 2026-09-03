@@ -298,26 +298,15 @@ export const ShareDialog = ({
                         User
                       </label>
                       <Select
-                        value={selectedUser}
+                        value={selectedUser || null}
                         onValueChange={(value: string | null) =>
                           setSelectedUser(value ?? '')
                         }
                       >
                         <SelectTrigger id={userSelectId} className="w-full">
-                          <SelectValue>
-                            {(value: string | null) => {
-                              const user = availableUsers.find(
-                                (item) => item.id === value,
-                              );
-                              if (!user) {
-                                return 'Select user...';
-                              }
-                              return `${user.username} (${user.email})`;
-                            }}
-                          </SelectValue>
+                          <SelectValue placeholder="Select user..." />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Select user...</SelectItem>
                           {availableUsers.map((user) => (
                             <SelectItem key={user.id} value={user.id}>
                               {user.username} ({user.email})
@@ -396,26 +385,15 @@ export const ShareDialog = ({
                       Group
                     </label>
                     <Select
-                      value={selectedGroup}
+                      value={selectedGroup || null}
                       onValueChange={(value: string | null) =>
                         setSelectedGroup(value ?? '')
                       }
                     >
                       <SelectTrigger id={groupSelectId} className="w-full">
-                        <SelectValue>
-                          {(value: string | null) => {
-                            const group = availableGroups.find(
-                              (item) => item.id === value,
-                            );
-                            if (!group) {
-                              return 'Select group...';
-                            }
-                            return `${group.name} (${group.source})`;
-                          }}
-                        </SelectValue>
+                        <SelectValue placeholder="Select group..." />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Select group...</SelectItem>
                         {availableGroups.map((g) => (
                           <SelectItem key={g.id} value={g.id}>
                             {g.name} ({g.source})

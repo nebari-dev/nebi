@@ -106,14 +106,14 @@ export const Layout = ({
         <MenuBarNav aria-label="Primary" className="ml-4">
           <NavLink
             render={<RouterNavLink to="/workspaces" />}
-            active={location.pathname.startsWith('/workspaces')}
+            active={location.pathname === '/workspaces'}
             icon={<Boxes className="h-4 w-4" />}
           >
             Workspaces
           </NavLink>
           <NavLink
             render={<RouterNavLink to="/registries" />}
-            active={location.pathname.startsWith('/registries')}
+            active={location.pathname === '/registries'}
             icon={registriesIcon}
           >
             Registries
@@ -121,7 +121,7 @@ export const Layout = ({
           {isLocalMode && (
             <NavLink
               render={<RouterNavLink to="/settings" />}
-              active={location.pathname.startsWith('/settings')}
+              active={location.pathname === '/settings'}
               icon={<Settings className="h-4 w-4" />}
             >
               Settings

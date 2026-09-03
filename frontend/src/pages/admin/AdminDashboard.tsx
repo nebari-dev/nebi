@@ -12,6 +12,7 @@ import {
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   useDashboardStats,
@@ -207,18 +208,11 @@ export const AdminDashboard = () => {
 
       {/* Alert Banner */}
       {alerts.length > 0 && (
-        <Card
-          size="sm"
-          className="border-warning-foreground/40 bg-warning text-warning-foreground"
-        >
-          <CardContent className="flex items-center gap-3">
-            <AlertTriangle className="h-5 w-5 shrink-0" />
-            <div>
-              <p className="text-sm font-medium">System Alerts</p>
-              <p className="text-sm">{alerts.join(' \u00B7 ')}</p>
-            </div>
-          </CardContent>
-        </Card>
+        <Alert variant="warning">
+          <AlertTriangle className="h-5 w-5 shrink-0" />
+          <AlertTitle>System Alerts</AlertTitle>
+          <AlertDescription>{alerts.join(' \u00B7 ')}</AlertDescription>
+        </Alert>
       )}
 
       {/* Quick Actions */}

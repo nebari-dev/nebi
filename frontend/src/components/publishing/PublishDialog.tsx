@@ -193,7 +193,7 @@ export const PublishDialog = ({
                     Registry
                   </label>
                   <Select
-                    value={selectedRegistry}
+                    value={selectedRegistry || null}
                     onValueChange={(registry: string | null) =>
                       setSelectedRegistry(registry ?? '')
                     }
@@ -204,22 +204,9 @@ export const PublishDialog = ({
                       id={registryId}
                       className="w-full"
                     >
-                      <SelectValue>
-                        {(value: string | null) => {
-                          const registry = registries?.find(
-                            (item) => item.id === value,
-                          );
-                          if (!registry) {
-                            return 'Select a registry';
-                          }
-                          return `${registry.name} (${registry.url})${
-                            registry.is_default ? ' (Default)' : ''
-                          }`;
-                        }}
-                      </SelectValue>
+                      <SelectValue placeholder="Select a registry" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Select a registry</SelectItem>
                       {registries?.map((registry) => (
                         <SelectItem key={registry.id} value={registry.id}>
                           {registry.name} ({registry.url})

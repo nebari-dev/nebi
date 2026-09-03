@@ -428,6 +428,7 @@ export const PixiTomlEditor = ({
                         variant="ghost"
                         size="sm"
                         onClick={() => handleRemovePackage(pkg.name)}
+                        aria-label={`Remove ${pkg.name}`}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

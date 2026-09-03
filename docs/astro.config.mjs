@@ -20,6 +20,7 @@ export default defineConfig({
       description: 'Environment management for teams',
       favicon: '/img/nebi-icon.svg',
       customCss: ['./src/styles/home.css'],
+      lastUpdated: true,
       components: {
         Head: './src/starlight/Head.astro',
       },

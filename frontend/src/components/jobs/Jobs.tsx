@@ -7,7 +7,7 @@ import { CodeBlock, CodeBlockBody } from '@/components/ui/code-block';
 import { useJobLogStream } from '@/hooks/useJobLogStream';
 import { useJobs } from '@/hooks/useJobs';
 import { useRemoteJobs, useRemoteView } from '@/hooks/useRemote';
-import { capitalize } from '@/lib/utils';
+import { capitalize } from '@/lib/strings';
 import type { Job, JobType } from '@/types';
 
 const statusColors = {

@@ -43,7 +43,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs';
-import { UserBadge } from '@/components/ui/user-badge';
+import { UserBadge } from '@/components/user-badge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
 import { InstallControls } from '@/components/workspace/InstallControls';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
@@ -53,11 +53,8 @@ import { usePackages } from '@/hooks/usePackages';
 import { usePublications, useUpdatePublication } from '@/hooks/useRegistries';
 import { useWorkspace } from '@/hooks/useWorkspaces';
 import { buildImportCommand } from '@/lib/registry';
-import {
-  capitalize,
-  getInstallStatusColor,
-  getWorkspaceStatusColor,
-} from '@/lib/utils';
+import { getInstallStatusColor, getWorkspaceStatusColor } from '@/lib/status';
+import { capitalize } from '@/lib/strings';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';

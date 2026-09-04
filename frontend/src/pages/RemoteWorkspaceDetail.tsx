@@ -29,8 +29,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs';
-import { UserBadge } from '@/components/ui/user-badge';
-import { capitalize, getWorkspaceStatusColor } from '@/lib/utils';
+import { UserBadge } from '@/components/user-badge';
+import { getWorkspaceStatusColor } from '@/lib/status';
+import { capitalize } from '@/lib/strings';
 import type { RemoteWorkspaceTag, RemoteWorkspaceVersion } from '@/types';
 
 export const RemoteWorkspaceDetail = () => {

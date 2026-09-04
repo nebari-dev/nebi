@@ -13,10 +13,10 @@ import {
   NavigationMenu,
   NavLink,
 } from '@/components/ui/navigation-menu';
+import type { ThemeMode } from '@/hooks/use-theme-preference';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import { useHostJobNotifications } from '@/hooks/useHostJobNotifications';
 import { useRemoteView } from '@/hooks/useRemote';
-import type { ThemeMode } from '@/hooks/useThemePreference';
 import { useVersion } from '@/hooks/useVersion';
 import { getBrandingLogoUrl } from '@/lib/brandingConfig';
 import { openExternal } from '@/lib/openExternal';
@@ -91,7 +91,7 @@ export const Layout = ({
       <NavigationMenu className="h-14 shrink-0 justify-between border-border bg-header pl-4 text-header-foreground">
         <MenuBarBrand
           href="/workspaces"
-          aria-label="Go to workspaces"
+          aria-label="Go to homepage"
           onClick={(event) => {
             event.preventDefault();
             navigate('/workspaces');
@@ -144,7 +144,7 @@ export const Layout = ({
                 <span
                   className={`w-1.5 h-1.5 rounded-full transition-all ${
                     viewMode === 'local'
-                      ? 'bg-primary shadow-[0_0_6px_rgba(155,61,204,0.4)]'
+                      ? 'bg-primary shadow-[0_0_6px] shadow-primary/40'
                       : 'bg-muted-foreground/50'
                   }`}
                 />
@@ -162,7 +162,7 @@ export const Layout = ({
                 <span
                   className={`w-1.5 h-1.5 rounded-full transition-all ${
                     viewMode === 'remote'
-                      ? 'bg-primary shadow-[0_0_6px_rgba(155,61,204,0.4)]'
+                      ? 'bg-primary shadow-[0_0_6px] shadow-primary/40'
                       : 'bg-muted-foreground/50'
                   }`}
                 />

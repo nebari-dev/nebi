@@ -17,7 +17,9 @@
       "vite.config.ts",
       "!!**/dist",
       "!wailsjs",
-      "!src/components/ui"
+      "!src/components/ui",
+      "!src/hooks/use-theme-preference.ts",
+      "!src/hooks/theme-provider.tsx"
     ]
   },
 

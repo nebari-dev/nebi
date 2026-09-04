@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { capitalize, cn } from './utils';
+import { capitalize, cn, getWorkspaceVersionLabel } from './utils';
 
 describe('cn', () => {
   it('merges class names', () => {
@@ -45,5 +45,20 @@ describe('capitalize', () => {
 
   it('does not alter the rest of the string', () => {
     expect(capitalize('hELLO WORLD')).toBe('HELLO WORLD');
+  });
+});
+
+describe('getWorkspaceVersionLabel', () => {
+  it('uses the manifest version when present', () => {
+    expect(
+      getWorkspaceVersionLabel({
+        manifest_version: '0.0.3',
+        version_number: 1,
+      }),
+    ).toBe('0.0.3');
+  });
+
+  it('falls back to the snapshot number', () => {
+    expect(getWorkspaceVersionLabel({ version_number: 2 })).toBe('Snapshot 2');
   });
 });

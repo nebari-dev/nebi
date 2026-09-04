@@ -87,7 +87,7 @@ func (s *Store) GetVersion(wsID uuid.UUID, versionNumber int) (*LocalWorkspaceVe
 }
 
 // RollbackToVersion writes the target version's pixi.toml and pixi.lock
-// to the workspace's directory and creates a new "Rolled back to version N"
+// to the workspace's directory and creates a new "Rolled back to snapshot N"
 // snapshot. It does NOT run pixi install — callers should print a hint
 // telling the user to run it themselves. Returns the newly-created
 // rollback snapshot. If disk content already matches the rollback target,
@@ -123,7 +123,7 @@ func (s *Store) RollbackToVersion(wsID uuid.UUID, versionNumber int) (*LocalWork
 		}
 	}
 
-	description := fmt.Sprintf("Rolled back to version %d", versionNumber)
+	description := fmt.Sprintf("Rolled back to snapshot %d", versionNumber)
 	v, _, err := s.CreateVersion(wsID, target.ManifestContent, target.LockFileContent, description)
 	if err != nil {
 		return nil, fmt.Errorf("snapshotting rollback: %w", err)

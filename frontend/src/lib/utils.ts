@@ -38,3 +38,10 @@ export function getInstallStatusColor(status: string): string {
     installStatusColors[status] || 'bg-zinc-100 text-zinc-800 border-zinc-300'
   );
 }
+
+export function getWorkspaceVersionLabel(version: {
+  manifest_version?: string;
+  version_number: number;
+}): string {
+  return version.manifest_version || `Snapshot ${version.version_number}`;
+}

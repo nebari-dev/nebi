@@ -30,7 +30,11 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs';
 import { UserBadge } from '@/components/ui/user-badge';
-import { capitalize, getWorkspaceStatusColor } from '@/lib/utils';
+import {
+  capitalize,
+  getWorkspaceStatusColor,
+  getWorkspaceVersionLabel,
+} from '@/lib/utils';
 import type { RemoteWorkspaceTag, RemoteWorkspaceVersion } from '@/types';
 
 export const RemoteWorkspaceDetail = () => {
@@ -271,7 +275,8 @@ export const RemoteWorkspaceDetail = () => {
                 <Table aria-label="Version history">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Version</TableHead>
+                      <TableHead>Workspace Version</TableHead>
+                      <TableHead>Snapshot</TableHead>
                       <TableHead>Description</TableHead>
                       <TableHead>Created</TableHead>
                     </TableRow>
@@ -280,7 +285,12 @@ export const RemoteWorkspaceDetail = () => {
                     {versions.map((v: RemoteWorkspaceVersion) => (
                       <TableRow key={v.id || v.version_number}>
                         <TableCell>
-                          <Badge variant="outline">v{v.version_number}</Badge>
+                          <Badge variant="outline">
+                            {getWorkspaceVersionLabel(v)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          #{v.version_number}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {v.description || '-'}
@@ -318,7 +328,7 @@ export const RemoteWorkspaceDetail = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Tag</TableHead>
-                      <TableHead>Version</TableHead>
+                      <TableHead>Snapshot</TableHead>
                       <TableHead>Created</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -329,7 +339,7 @@ export const RemoteWorkspaceDetail = () => {
                           <Badge variant="outline">{t.tag}</Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          v{t.version_number}
+                          #{t.version_number}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {t.created_at

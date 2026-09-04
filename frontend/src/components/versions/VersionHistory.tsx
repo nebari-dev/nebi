@@ -19,12 +19,18 @@ import {
   useRollback,
   useVersions,
 } from '@/hooks/useVersions';
+import { getWorkspaceVersionLabel } from '@/lib/utils';
 import type { WorkspaceVersion } from '@/types';
 
 interface VersionHistoryProps {
   environmentId: string;
   environmentStatus: string;
 }
+
+const getVersionTitle = (version: WorkspaceVersion) =>
+  version.manifest_version
+    ? `Workspace version ${getWorkspaceVersionLabel(version)}`
+    : getWorkspaceVersionLabel(version);
 
 export const VersionHistory = ({
   environmentId,
@@ -162,7 +168,7 @@ export const VersionHistory = ({
                               : 'bg-muted text-muted-foreground-strong'
                           }`}
                         >
-                          v{version.version_number}
+                          #{version.version_number}
                         </div>
                       </div>
 
@@ -172,8 +178,13 @@ export const VersionHistory = ({
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
                               <h3 className="font-semibold text-lg">
-                                Version {version.version_number}
+                                {getVersionTitle(version)}
                               </h3>
+                              {version.manifest_version && (
+                                <Badge variant="outline">
+                                  Snapshot {version.version_number}
+                                </Badge>
+                              )}
                               {isLatest && (
                                 <Badge className="bg-primary/10 text-primary border-primary/20">
                                   Current
@@ -289,7 +300,7 @@ export const VersionHistory = ({
         title="Rollback Workspace"
         description={
           confirmRollback
-            ? `Are you sure you want to rollback to version ${confirmRollback.version_number}? This will restore the workspace to its state at that version and create a new version snapshot.`
+            ? `Are you sure you want to rollback to snapshot ${confirmRollback.version_number}? This will restore the workspace to its state at that snapshot and create a new snapshot.`
             : ''
         }
         confirmText="Rollback"

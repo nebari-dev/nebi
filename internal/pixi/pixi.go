@@ -666,10 +666,12 @@ func (p *PixiManager) executeCommand(ctx context.Context, workDir string, args .
 type pixiManifestWithWorkspace struct {
 	Workspace struct {
 		Name     string   `toml:"name"`
+		Version  string   `toml:"version"`
 		Channels []string `toml:"channels"`
 	} `toml:"workspace"`
 	Project struct {
 		Name     string   `toml:"name"`
+		Version  string   `toml:"version"`
 		Channels []string `toml:"channels"`
 	} `toml:"project"`
 }
@@ -717,6 +719,22 @@ func ExtractWorkspaceName(content string) (string, error) {
 	}
 
 	return name, nil
+}
+
+// ExtractWorkspaceVersion reads the workspace version from pixi.toml content.
+// It first looks for [workspace] version, then falls back to [project] version.
+// An empty version is valid because pixi.toml does not require this field.
+func ExtractWorkspaceVersion(content string) (string, error) {
+	var manifest pixiManifestWithWorkspace
+	if err := toml.Unmarshal([]byte(content), &manifest); err != nil {
+		return "", fmt.Errorf("failed to parse pixi.toml: %w", err)
+	}
+
+	if manifest.Workspace.Version != "" {
+		return manifest.Workspace.Version, nil
+	}
+
+	return manifest.Project.Version, nil
 }
 
 // ResolveWorkspaceName returns the workspace name to use, preferring an explicit

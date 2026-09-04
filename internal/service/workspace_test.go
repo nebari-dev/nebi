@@ -651,12 +651,71 @@ func TestListVersions_Empty(t *testing.T) {
 	}
 }
 
+func TestListVersions_IncludesManifestVersion(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "versioned", userID)
+
+	if err := db.Create(&models.WorkspaceVersion{
+		WorkspaceID:     ws.ID,
+		VersionNumber:   1,
+		ManifestContent: "[workspace]\nname = \"versioned\"\nversion = \"0.0.3\"\n",
+		LockFileContent: "version: 6\n",
+		PackageMetadata: "[]",
+		ContentHash:     "sha-test",
+		CreatedBy:       userID,
+		Description:     "Initial workspace creation",
+		ManifestVersion: "ignored",
+	}).Error; err != nil {
+		t.Fatalf("create version: %v", err)
+	}
+
+	versions, err := svc.ListVersions(ws.ID.String())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(versions) != 1 {
+		t.Fatalf("expected 1 version, got %d", len(versions))
+	}
+	if versions[0].ManifestVersion != "0.0.3" {
+		t.Errorf("expected manifest version 0.0.3, got %q", versions[0].ManifestVersion)
+	}
+	if versions[0].ManifestContent != "" {
+		t.Errorf("manifest content should not be returned in list view")
+	}
+}
+
 func TestGetVersion_NotFound(t *testing.T) {
 	svc, _ := testSetup(t, true)
 
 	_, err := svc.GetVersion(uuid.New().String(), "1")
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestGetVersion_IncludesManifestVersion(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "single-versioned", userID)
+
+	if err := db.Create(&models.WorkspaceVersion{
+		WorkspaceID:     ws.ID,
+		VersionNumber:   1,
+		ManifestContent: "[workspace]\nname = \"single-versioned\"\nversion = \"0.0.4\"\n",
+		LockFileContent: "version: 6\n",
+		PackageMetadata: "[]",
+		CreatedBy:       userID,
+	}).Error; err != nil {
+		t.Fatalf("create version: %v", err)
+	}
+
+	version, err := svc.GetVersion(ws.ID.String(), "1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if version.ManifestVersion != "0.0.4" {
+		t.Errorf("expected manifest version 0.0.4, got %q", version.ManifestVersion)
 	}
 }
 

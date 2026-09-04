@@ -594,7 +594,7 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return err
 		}
 
-		if err := w.createVersionSnapshot(ctx, ws, job.ID, userID, fmt.Sprintf("Rolled back to version %d", version.VersionNumber)); err != nil {
+		if err := w.createVersionSnapshot(ctx, ws, job.ID, userID, fmt.Sprintf("Rolled back to snapshot %d", version.VersionNumber)); err != nil {
 			return err
 		}
 

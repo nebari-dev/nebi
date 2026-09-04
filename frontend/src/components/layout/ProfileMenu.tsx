@@ -130,7 +130,7 @@ export const ProfileMenu = ({
             </div>
           </div>
           <hr className="my-1 border-border" />
-          <div className="px-2 py-2">
+          <div className="py-2">
             <fieldset
               aria-label="Theme"
               className="flex h-[34px] min-w-0 items-center gap-1 rounded-md border-0 bg-muted p-1"

@@ -70,7 +70,9 @@ go.work.sum
 
 # Claude
 CLAUDE.md
-.claude/
+.claude/*
+# Keep registry-installed Claude skills (e.g. frontend/.claude/skills/nebari-ui)
+!.claude/skills/
 
 # Git worktrees
 .worktrees/

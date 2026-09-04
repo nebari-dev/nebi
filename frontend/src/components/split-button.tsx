@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 
 // Local-only: the @nebari registry does not publish split-button.
@@ -57,6 +57,7 @@ export const SplitButton = ({
           {menuItems.map((item) => (
             <button
               key={item.label}
+              type="button"
               className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
               onClick={() => {
                 setOpen(false);

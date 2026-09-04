@@ -1,9 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  THEME_MODE_STORAGE_KEY,
-  useThemePreference,
-} from './useThemePreference';
+import { THEME_STORAGE_KEY } from '@/lib/theme';
+import { useThemePreference } from './use-theme-preference';
 
 let storedValues: Record<string, string>;
 
@@ -27,11 +25,14 @@ const setLocalStorage = () => {
 
 const setMatchMedia = (matches: boolean) => {
   let listener: ((event: MediaQueryListEvent) => void) | undefined;
+  const state = { matches };
 
   vi.stubGlobal(
     'matchMedia',
     vi.fn().mockImplementation((media: string) => ({
-      matches,
+      get matches() {
+        return state.matches;
+      },
       media,
       onchange: null,
       addEventListener: vi.fn(
@@ -46,17 +47,20 @@ const setMatchMedia = (matches: boolean) => {
 
   return {
     change(nextMatches: boolean) {
+      state.matches = nextMatches;
       listener?.({ matches: nextMatches } as MediaQueryListEvent);
     },
   };
 };
 
-describe('useThemePreference', () => {
+const renderThemePreference = () =>
+  renderHook(() => useThemePreference({ storageKey: THEME_STORAGE_KEY }));
+
+describe('useThemePreference (nebi storage key)', () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
     setLocalStorage();
     document.documentElement.classList.remove('dark');
-    document.documentElement.style.colorScheme = '';
     setMatchMedia(false);
   });
 
@@ -67,34 +71,42 @@ describe('useThemePreference', () => {
   it('defaults to the system preference when no theme is stored', async () => {
     setMatchMedia(true);
 
-    const { result } = renderHook(() => useThemePreference());
+    const { result } = renderThemePreference();
 
     expect(result.current.themeMode).toBe('system');
     expect(result.current.isDarkMode).toBe(true);
 
     await waitFor(() => {
       expect(document.documentElement).toHaveClass('dark');
-      expect(storedValues[THEME_MODE_STORAGE_KEY]).toBe('system');
     });
   });
 
-  it('persists explicit theme choices and applies them to the root element', async () => {
-    const { result } = renderHook(() => useThemePreference());
+  it('restores a preference saved under the legacy nebi key', () => {
+    storedValues[THEME_STORAGE_KEY] = 'dark';
+
+    const { result } = renderThemePreference();
+
+    expect(result.current.themeMode).toBe('dark');
+    expect(result.current.isDarkMode).toBe(true);
+  });
+
+  it('persists explicit theme choices under the nebi key and applies them to the root element', async () => {
+    const { result } = renderThemePreference();
 
     act(() => result.current.setThemeMode('dark'));
 
     expect(result.current.themeMode).toBe('dark');
     expect(result.current.isDarkMode).toBe(true);
+    expect(storedValues[THEME_STORAGE_KEY]).toBe('dark');
 
     await waitFor(() => {
       expect(document.documentElement).toHaveClass('dark');
-      expect(storedValues[THEME_MODE_STORAGE_KEY]).toBe('dark');
     });
   });
 
   it('updates system mode when the OS preference changes', async () => {
     const media = setMatchMedia(false);
-    const { result } = renderHook(() => useThemePreference());
+    const { result } = renderThemePreference();
 
     expect(result.current.isDarkMode).toBe(false);
 

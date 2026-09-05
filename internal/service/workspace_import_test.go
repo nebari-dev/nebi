@@ -158,6 +158,49 @@ platforms = ["linux-64"]
 	}
 }
 
+func TestImportFromRegistry_UsesConfiguredLockLimit(t *testing.T) {
+	svc, db := testSetup(t, true)
+	svc.limits.LockBytes = 32
+	userID := createTestUser(t, db, "alice")
+
+	srv := httptest.NewServer(registry.New())
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+
+	srcDir := t.TempDir()
+	os.WriteFile(filepath.Join(srcDir, "pixi.toml"),
+		[]byte("[workspace]\nname = \"limited\"\n"), 0o644)
+	os.WriteFile(filepath.Join(srcDir, "pixi.lock"), []byte(strings.Repeat("L", 33)), 0o644)
+
+	reg := oci.Registry{Host: u.Host, Namespace: "demo", PlainHTTP: true}
+	if _, err := oci.Publish(context.Background(), srcDir, reg, "limited", "v1"); err != nil {
+		t.Fatalf("seed publish: %v", err)
+	}
+	dbReg := models.OCIRegistry{
+		Name:      "limited-src",
+		URL:       "http://" + u.Host,
+		Namespace: "demo",
+		IsDefault: true,
+	}
+	db.Create(&dbReg)
+
+	_, err := svc.ImportFromRegistry(context.Background(), dbReg.ID.String(), ImportFromRegistryRequest{
+		Repository: "limited",
+		Tag:        "v1",
+		Name:       "limited-import",
+	}, userID)
+	if err == nil {
+		t.Fatal("expected import to reject pixi.lock above configured limit")
+	}
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if !strings.Contains(ve.Message, "pixi.lock layer size 33 bytes exceeds cap 32 bytes") {
+		t.Fatalf("expected configured lock cap error, got %v", err)
+	}
+}
+
 func TestImportFromRegistry_RequiresRegistryReadAccess(t *testing.T) {
 	svc, db := testSetup(t, false)
 	userID := createTestUser(t, db, "alice")

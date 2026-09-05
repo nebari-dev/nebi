@@ -2,6 +2,7 @@ package oci
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/registry"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // startTestRegistryRejectingEmptyBlob spins up an in-memory registry
@@ -49,6 +51,98 @@ func startTestRegistry(t *testing.T) string {
 		t.Fatalf("parse server URL: %v", err)
 	}
 	return u.Host
+}
+
+// startBodyRewritingRegistry proxies an inner registry and lets tests
+// replace selected GET bodies while keeping the rest of the registry behavior.
+func startBodyRewritingRegistry(
+	t *testing.T,
+	innerHost string,
+	shouldRewrite func(*http.Request) bool,
+	rewrite func([]byte) ([]byte, error),
+) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		req, err := http.NewRequestWithContext(r.Context(), r.Method, "http://"+innerHost+r.URL.RequestURI(), nil)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		for k, vs := range r.Header {
+			for _, v := range vs {
+				req.Header.Add(k, v)
+			}
+		}
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+
+		if r.Method == http.MethodGet && resp.StatusCode == http.StatusOK && shouldRewrite(r) {
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+				return
+			}
+			body, err = rewrite(body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			for k, vs := range resp.Header {
+				if strings.EqualFold(k, "Content-Length") || strings.EqualFold(k, "Docker-Content-Digest") {
+					continue
+				}
+				for _, v := range vs {
+					w.Header().Add(k, v)
+				}
+			}
+			w.WriteHeader(resp.StatusCode)
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+			_, _ = w.Write(body)
+			return
+		}
+
+		for k, vs := range resp.Header {
+			for _, v := range vs {
+				w.Header().Add(k, v)
+			}
+		}
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+	t.Cleanup(srv.Close)
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("parse server URL: %v", err)
+	}
+	return u.Host
+}
+
+// startManifestRewritingRegistry proxies an inner registry and lets tests
+// replace manifest GET bodies while keeping the rest of the registry behavior.
+func startManifestRewritingRegistry(t *testing.T, innerHost string, rewrite func([]byte) ([]byte, error)) string {
+	t.Helper()
+	return startBodyRewritingRegistry(t, innerHost, func(r *http.Request) bool {
+		return strings.Contains(r.URL.Path, "/manifests/")
+	}, rewrite)
+}
+
+func oversizedNebiManifest(body []byte) ([]byte, error) {
+	var manifest ocispec.Manifest
+	if err := json.Unmarshal(body, &manifest); err != nil {
+		return nil, err
+	}
+	if manifest.Annotations == nil {
+		manifest.Annotations = map[string]string{}
+	}
+	manifest.Annotations["dev.nebi.test.padding"] = strings.Repeat("X", int(maxManifestBytes)+1)
+	return json.Marshal(manifest)
 }
 
 // writeFile writes content under root/rel, creating parents.
@@ -183,6 +277,184 @@ func TestPullBundle_ListsAssetsWithoutFetchingBytes(t *testing.T) {
 	}
 }
 
+func TestPullBundle_RejectsOversizedManifestBody(t *testing.T) {
+	host := startTestRegistry(t)
+	src := t.TempDir()
+	writeFile(t, src, "pixi.toml", "[workspace]\nname = \"x\"\n")
+	writeFile(t, src, "pixi.lock", "version: 6\n")
+
+	res, err := Publish(context.Background(), src, testRegistry(host, "demo"), "bigmanifest", "v1")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	shimHost := startManifestRewritingRegistry(t, host, oversizedNebiManifest)
+	repoRef := strings.Replace(res.Repository, host, shimHost, 1)
+
+	_, err = PullBundle(context.Background(), repoRef, "v1", PullOptions{PlainHTTP: true})
+	if err == nil {
+		t.Fatalf("expected oversized-manifest rejection, got nil")
+	}
+	if want := fmt.Sprintf("manifest exceeds %d bytes", maxManifestBytes); !strings.Contains(err.Error(), want) {
+		t.Fatalf("expected manifest cap error, got: %v", err)
+	}
+}
+
+func TestIsNebiRepository_RejectsOversizedManifestBody(t *testing.T) {
+	host := startTestRegistry(t)
+	src := t.TempDir()
+	writeFile(t, src, "pixi.toml", "[workspace]\nname = \"x\"\n")
+	writeFile(t, src, "pixi.lock", "version: 6\n")
+
+	res, err := Publish(context.Background(), src, testRegistry(host, "demo"), "filter", "v1")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	shimHost := startManifestRewritingRegistry(t, host, oversizedNebiManifest)
+	repoRef := strings.Replace(res.Repository, host, shimHost, 1)
+
+	if IsNebiRepository(context.Background(), repoRef, BrowseOptions{PlainHTTP: true}) {
+		t.Fatal("expected oversized manifest to be rejected by repository filter")
+	}
+}
+
+func TestBundleReads_RejectCoreLayerDeclaredAboveCap(t *testing.T) {
+	host := startTestRegistry(t)
+	src := t.TempDir()
+	writeFile(t, src, "pixi.toml", "[workspace]\nname = \"x\"\n")
+	writeFile(t, src, "pixi.lock", "version: 6\n")
+
+	res, err := Publish(context.Background(), src, testRegistry(host, "demo"), "hugecore", "v1")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	shimHost := startManifestRewritingRegistry(t, host, func(body []byte) ([]byte, error) {
+		var manifest ocispec.Manifest
+		if err := json.Unmarshal(body, &manifest); err != nil {
+			return nil, err
+		}
+		for i := range manifest.Layers {
+			if manifest.Layers[i].MediaType == MediaTypePixiLock {
+				manifest.Layers[i].Size = defaultMaxCoreBytes + 1
+			}
+		}
+		return json.Marshal(manifest)
+	})
+	repoRef := strings.Replace(res.Repository, host, shimHost, 1)
+	wantErr := fmt.Sprintf("pixi.lock layer size %d bytes exceeds cap %d bytes", defaultMaxCoreBytes+1, defaultMaxCoreBytes)
+
+	_, err = PullBundle(context.Background(), repoRef, "v1", PullOptions{PlainHTTP: true})
+	if err == nil {
+		t.Fatalf("expected oversized core layer rejection, got nil")
+	}
+	if !strings.Contains(err.Error(), wantErr) {
+		t.Fatalf("expected pixi.lock cap error, got: %v", err)
+	}
+
+	_, err = ExtractBundle(context.Background(), repoRef, "v1", t.TempDir(), PullOptions{PlainHTTP: true})
+	if err == nil {
+		t.Fatalf("expected extract to reject oversized core layer, got nil")
+	}
+	if !strings.Contains(err.Error(), wantErr) {
+		t.Fatalf("expected pixi.lock cap error from extract, got: %v", err)
+	}
+}
+
+func TestBundleReads_UsesConfiguredCoreLayerCap(t *testing.T) {
+	host := startTestRegistry(t)
+	src := t.TempDir()
+	writeFile(t, src, "pixi.toml", "[workspace]\nname = \"x\"\n")
+	writeFile(t, src, "pixi.lock", strings.Repeat("L", 33))
+
+	res, err := Publish(context.Background(), src, testRegistry(host, "demo"), "configuredcore", "v1")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	_, err = PullBundle(context.Background(), res.Repository, "v1", PullOptions{
+		PlainHTTP:         true,
+		MaxCoreLayerBytes: 32,
+	})
+	if err == nil {
+		t.Fatalf("expected configured core cap rejection, got nil")
+	}
+	if !strings.Contains(err.Error(), "pixi.lock layer size 33 bytes exceeds cap 32 bytes") {
+		t.Fatalf("expected pixi.lock cap error, got: %v", err)
+	}
+
+	if _, err := PullBundle(context.Background(), res.Repository, "v1", PullOptions{
+		PlainHTTP:         true,
+		MaxCoreLayerBytes: 33,
+	}); err != nil {
+		t.Fatalf("pull with configured cap: %v", err)
+	}
+}
+
+func TestBundleReads_AllowsCoreLayerAboveDefaultWithConfiguredCap(t *testing.T) {
+	host := startTestRegistry(t)
+	src := t.TempDir()
+	writeFile(t, src, "pixi.toml", "[workspace]\nname = \"x\"\n")
+	writeFile(t, src, "pixi.lock", strings.Repeat("L", int(defaultMaxCoreBytes)+1))
+
+	res, err := Publish(context.Background(), src, testRegistry(host, "demo"), "raisedcore", "v1",
+		WithMaxCoreLayerBytes(defaultMaxCoreBytes+1),
+	)
+	if err != nil {
+		t.Fatalf("publish with raised cap: %v", err)
+	}
+
+	_, err = PullBundle(context.Background(), res.Repository, "v1", PullOptions{PlainHTTP: true})
+	if err == nil {
+		t.Fatal("expected default cap to reject oversized core layer")
+	}
+	if !strings.Contains(err.Error(), fmt.Sprintf("pixi.lock layer size %d bytes exceeds cap %d bytes", defaultMaxCoreBytes+1, defaultMaxCoreBytes)) {
+		t.Fatalf("expected default pixi.lock cap error, got: %v", err)
+	}
+
+	if _, err := PullBundle(context.Background(), res.Repository, "v1", PullOptions{
+		PlainHTTP:         true,
+		MaxCoreLayerBytes: defaultMaxCoreBytes + 1,
+	}); err != nil {
+		t.Fatalf("pull with raised cap: %v", err)
+	}
+}
+
+func TestBundleReads_RejectNegativeCoreLayerSize(t *testing.T) {
+	host := startTestRegistry(t)
+	src := t.TempDir()
+	writeFile(t, src, "pixi.toml", "[workspace]\nname = \"x\"\n")
+	writeFile(t, src, "pixi.lock", "version: 6\n")
+
+	res, err := Publish(context.Background(), src, testRegistry(host, "demo"), "negativecore", "v1")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	shimHost := startManifestRewritingRegistry(t, host, func(body []byte) ([]byte, error) {
+		var manifest ocispec.Manifest
+		if err := json.Unmarshal(body, &manifest); err != nil {
+			return nil, err
+		}
+		for i := range manifest.Layers {
+			if manifest.Layers[i].MediaType == MediaTypePixiLock {
+				manifest.Layers[i].Size = -1
+			}
+		}
+		return json.Marshal(manifest)
+	})
+	repoRef := strings.Replace(res.Repository, host, shimHost, 1)
+
+	_, err = ExtractBundle(context.Background(), repoRef, "v1", t.TempDir(), PullOptions{PlainHTTP: true})
+	if err == nil {
+		t.Fatalf("expected negative core layer size rejection, got nil")
+	}
+	if !strings.Contains(err.Error(), "pixi.lock layer has invalid negative size -1 bytes") {
+		t.Fatalf("expected negative size error, got: %v", err)
+	}
+}
+
 // TestFetchLayerBytes_RejectsOversizedBody proves fetchLayerBytes rejects
 // a registry that declares a small layer Size but streams more bytes
 // (chunked, no Content-Length). Without the LimitReader bound the server
@@ -198,64 +470,13 @@ func TestFetchLayerBytes_RejectsOversizedBody(t *testing.T) {
 		t.Fatalf("publish: %v", err)
 	}
 
-	// Wrap the inner registry with a shim that, on any blob fetch,
-	// strips Content-Length and appends extra bytes — simulating a
-	// hostile registry that lies about layer size.
-	innerHost := host
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if (r.Method == http.MethodGet) && strings.Contains(r.URL.Path, "/blobs/sha256:") {
-			// Proxy to inner registry, then append bogus bytes.
-			req, _ := http.NewRequestWithContext(r.Context(), r.Method, "http://"+innerHost+r.URL.RequestURI(), nil)
-			for k, vs := range r.Header {
-				for _, v := range vs {
-					req.Header.Add(k, v)
-				}
-			}
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadGateway)
-				return
-			}
-			defer resp.Body.Close()
-			// Drop Content-Length so client cannot pre-flight-reject;
-			// rely on chunked transfer.
-			for k, vs := range resp.Header {
-				if strings.EqualFold(k, "Content-Length") {
-					continue
-				}
-				for _, v := range vs {
-					w.Header().Add(k, v)
-				}
-			}
-			w.WriteHeader(resp.StatusCode)
-			body, _ := io.ReadAll(resp.Body)
-			w.Write(body)
-			// Append extra bytes — body now exceeds declared layer Size.
-			w.Write([]byte(strings.Repeat("X", 4096)))
-			return
-		}
-		req, _ := http.NewRequestWithContext(r.Context(), r.Method, "http://"+innerHost+r.URL.RequestURI(), nil)
-		for k, vs := range r.Header {
-			for _, v := range vs {
-				req.Header.Add(k, v)
-			}
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
-			return
-		}
-		defer resp.Body.Close()
-		for k, vs := range resp.Header {
-			for _, v := range vs {
-				w.Header().Add(k, v)
-			}
-		}
-		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body)
-	}))
-	t.Cleanup(srv.Close)
-	shimHost := strings.TrimPrefix(srv.URL, "http://")
+	// Wrap the inner registry with a shim that appends extra bytes to
+	// blob fetches, simulating a hostile registry that lies about layer size.
+	shimHost := startBodyRewritingRegistry(t, host, func(r *http.Request) bool {
+		return strings.Contains(r.URL.Path, "/blobs/sha256:")
+	}, func(body []byte) ([]byte, error) {
+		return append(body, []byte(strings.Repeat("X", 4096))...), nil
+	})
 
 	// Rewrite repoRef from the original host to the shim host.
 	repoRef := strings.Replace(res.Repository, host, shimHost, 1)
@@ -369,6 +590,51 @@ func TestPublish_RejectsSymlinkedCoreFile(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "regular file") {
 		t.Fatalf("expected 'regular file' error, got %v", err)
+	}
+}
+
+func TestPublish_RejectsCoreFileAboveConfiguredCap(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, src, "pixi.toml", "[workspace]\nname = \"x\"\n")
+	writeFile(t, src, "pixi.lock", strings.Repeat("L", 65))
+
+	_, err := Publish(context.Background(), src, Registry{Host: "registry.invalid"}, "corecap", "v1",
+		WithMaxCoreLayerBytes(64),
+	)
+	if err == nil {
+		t.Fatal("expected publish to reject oversized core file")
+	}
+	if !strings.Contains(err.Error(), "pixi.lock layer size 65 bytes exceeds cap 64 bytes") {
+		t.Fatalf("expected pixi.lock cap error, got %v", err)
+	}
+}
+
+func TestPublish_RejectsManifestAboveCap(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, src, "pixi.toml", "[workspace]\nname = \"x\"\n")
+	writeFile(t, src, "pixi.lock", "version: 6\n")
+	writeFile(t, src, "seed.bin", "x")
+
+	const assetCount = 6000
+	longName := strings.Repeat("a", 180)
+	assets := make([]Asset, 0, assetCount)
+	for i := 0; i < assetCount; i++ {
+		assets = append(assets, Asset{
+			RelPath: fmt.Sprintf("assets/%04d-%s.txt", i, longName),
+			AbsPath: filepath.Join(src, "seed.bin"),
+			Size:    1,
+		})
+	}
+
+	_, err := Publish(context.Background(), src, Registry{Host: "registry.invalid"}, "bigmanifest", "v1",
+		withAssets(assets),
+	)
+	if err == nil {
+		t.Fatal("expected publish to reject oversized manifest")
+	}
+	want := "manifest size"
+	if !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), fmt.Sprintf("cap %d", maxManifestBytes)) {
+		t.Fatalf("expected manifest cap error, got %v", err)
 	}
 }
 

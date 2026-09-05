@@ -1,21 +1,7 @@
-FROM ubuntu:24.04
+FROM ghcr.io/prefix-dev/pixi:0.76.2-noble@sha256:8b206ef57005a902cb53f50dbaa47893a4038ca269f0b00038b51f18b1313cd4
 
-# Install dependencies
-RUN apt-get update && \
-    apt-get install -y curl ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install pixi
-RUN curl -fsSL https://pixi.sh/install.sh | bash
-
-# Add pixi to PATH
-ENV PATH="/root/.pixi/bin:${PATH}"
-
-# Verify installation
-RUN pixi --version
-
-# Set working directory
 WORKDIR /workspace
 
-# Default command
+RUN pixi --version
+
 CMD ["/bin/bash"]

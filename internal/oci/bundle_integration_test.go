@@ -501,4 +501,15 @@ func TestPullBundle_ReturnsManifestDigest(t *testing.T) {
 	if pull.Digest != res.Digest {
 		t.Fatalf("digest mismatch: pull=%q publish=%q", pull.Digest, res.Digest)
 	}
+
+	pinned, err := PullBundle(context.Background(), res.Repository, res.Digest, PullOptions{PlainHTTP: true})
+	if err != nil {
+		t.Fatalf("pull by digest: %v", err)
+	}
+	if pinned.Digest != res.Digest {
+		t.Fatalf("digest-pinned pull resolved %q, want %q", pinned.Digest, res.Digest)
+	}
+	if pinned.PixiToml != pull.PixiToml || pinned.PixiLock != pull.PixiLock {
+		t.Fatal("digest-pinned pull returned different core files than the published tag")
+	}
 }

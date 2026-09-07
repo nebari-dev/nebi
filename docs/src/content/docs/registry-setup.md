@@ -85,6 +85,14 @@ You do not need a Nebi server, an account, or registry credentials to consume a 
 nebi import <registry>/<namespace>/<repo>:<tag>
 ```
 
+For reproducible imports, select the immutable manifest digest instead. The
+tag form remains supported, and Nebi records the tag's resolved digest on the
+imported workspace.
+
+```bash
+nebi import <registry>/<namespace>/<repo>@sha256:<64-hex-digest>
+```
+
 For example:
 
 ```bash

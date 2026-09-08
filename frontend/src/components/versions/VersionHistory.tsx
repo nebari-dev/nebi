@@ -9,17 +9,17 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { workspacesApi } from '@/api/workspaces';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   useDownloadLockFile,
   useDownloadManifest,
   useRollback,
   useVersions,
 } from '@/hooks/useVersions';
-import { getWorkspaceVersionLabel } from '@/lib/utils';
+import { getWorkspaceVersionLabel } from '@/lib/versions';
 import type { WorkspaceVersion } from '@/types';
 
 interface VersionHistoryProps {

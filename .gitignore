@@ -68,11 +68,15 @@ dist/
 go.work
 go.work.sum
 
-# Claude
+# AI agents (any directory level)
 CLAUDE.md
-.claude/*
-# Keep registry-installed Claude skills (e.g. frontend/.claude/skills/nebari-ui)
-!.claude/skills/
+**/.claude/*
+**/.agents/*
+# Keep registry-installed agent skills (e.g. frontend/.agents/skills/nebari-ui).
+# Claude Code reads .claude/skills, so frontend/.claude/skills is a symlink to
+# ../.agents/skills; the symlink itself is tracked.
+!**/.agents/skills/
+!**/.claude/skills
 
 # Git worktrees
 .worktrees/

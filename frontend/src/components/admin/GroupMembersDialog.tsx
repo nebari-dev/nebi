@@ -9,12 +9,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  Select,
   SelectContent,
   SelectItem,
-  SelectRoot,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select-v2';
+} from '@/components/ui/select';
 import { useUsers } from '@/hooks/useAdmin';
 import {
   useAddGroupMember,
@@ -137,9 +137,11 @@ export const GroupMembersDialog = ({ group, open, onOpenChange }: Props) => {
             <div className="space-y-2">
               <h3 className="text-sm font-medium">Add member</h3>
               <div className="flex gap-2">
-                <SelectRoot
-                  value={selectedUser}
-                  onValueChange={setSelectedUser}
+                <Select
+                  value={selectedUser || null}
+                  onValueChange={(value: string | null) =>
+                    setSelectedUser(value ?? '')
+                  }
                 >
                   <SelectTrigger className="flex-1">
                     <SelectValue placeholder="Select a user" />
@@ -151,7 +153,7 @@ export const GroupMembersDialog = ({ group, open, onOpenChange }: Props) => {
                       </SelectItem>
                     ))}
                   </SelectContent>
-                </SelectRoot>
+                </Select>
                 <Button
                   onClick={handleAdd}
                   disabled={!selectedUser || addMutation.isPending}

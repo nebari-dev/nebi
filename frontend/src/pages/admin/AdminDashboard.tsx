@@ -12,6 +12,7 @@ import {
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   useDashboardStats,
@@ -40,10 +41,10 @@ const StatCard = ({
 }) => {
   return (
     <Card>
-      <CardContent className="p-6">
+      <CardContent>
         <div className="flex items-center gap-4">
-          <div className="rounded-lg bg-[#F5EFFE] p-3">
-            <Icon className="h-5 w-5 text-[#9B3DCC]" />
+          <div className="rounded-lg bg-primary/10 p-3">
+            <Icon className="h-5 w-5 text-primary" />
           </div>
           <div>
             <p className="text-sm text-muted-foreground">{title}</p>
@@ -207,19 +208,11 @@ export const AdminDashboard = () => {
 
       {/* Alert Banner */}
       {alerts.length > 0 && (
-        <Card className="border-amber-300 bg-amber-50">
-          <CardContent className="flex items-center gap-3 p-4">
-            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
-            <div>
-              <p className="text-sm font-medium text-amber-800">
-                System Alerts
-              </p>
-              <p className="text-sm text-amber-700">
-                {alerts.join(' \u00B7 ')}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <Alert variant="warning">
+          <AlertTriangle className="h-5 w-5 shrink-0" />
+          <AlertTitle>System Alerts</AlertTitle>
+          <AlertDescription>{alerts.join(' \u00B7 ')}</AlertDescription>
+        </Alert>
       )}
 
       {/* Quick Actions */}
@@ -228,10 +221,10 @@ export const AdminDashboard = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {quickActions.map(({ title, description, icon: Icon, to }) => (
             <Link key={title} to={to}>
-              <Card className="h-full transition-colors hover:border-[#9B3DCC]/30 hover:bg-[#F5EFFE]/50">
-                <CardContent className="p-5">
-                  <div className="rounded-lg bg-[#F5EFFE] p-2 w-fit mb-3">
-                    <Icon className="h-4 w-4 text-[#9B3DCC]" />
+              <Card className="h-full transition-colors hover:border-primary/30 hover:bg-primary/5">
+                <CardContent>
+                  <div className="rounded-lg bg-primary/10 p-2 w-fit mb-3">
+                    <Icon className="h-4 w-4 text-primary" />
                   </div>
                   <p className="text-sm font-medium">{title}</p>
                   <p className="text-xs text-muted-foreground mt-1">

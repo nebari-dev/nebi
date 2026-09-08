@@ -10,8 +10,16 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useCreateRegistry } from '@/hooks/useRegistries';
+import { useCreateRemoteRegistry } from '@/hooks/useRemote';
 
-export const CreateRegistryDialog = () => {
+interface CreateRegistryDialogProps {
+  /** Create the registry on the connected remote server instead of locally. */
+  isRemote?: boolean;
+}
+
+export const CreateRegistryDialog = ({
+  isRemote = false,
+}: CreateRegistryDialogProps) => {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
@@ -32,7 +40,9 @@ export const CreateRegistryDialog = () => {
   const apiTokenId = useId();
   const nameInputRef = useRef<HTMLInputElement>(null);
 
-  const createMutation = useCreateRegistry();
+  const createLocalMutation = useCreateRegistry();
+  const createRemoteMutation = useCreateRemoteRegistry();
+  const createMutation = isRemote ? createRemoteMutation : createLocalMutation;
 
   useEffect(() => {
     if (open) {
@@ -81,12 +91,14 @@ export const CreateRegistryDialog = () => {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger>
-        <Button onClick={() => handleOpenChange(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Registry
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          <Button onClick={() => handleOpenChange(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Registry
+          </Button>
+        }
+      />
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add OCI Registry</DialogTitle>
@@ -254,7 +266,10 @@ export const CreateRegistryDialog = () => {
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
+            <Button
+              render={<button type="submit" />}
+              disabled={createMutation.isPending}
+            >
               {createMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

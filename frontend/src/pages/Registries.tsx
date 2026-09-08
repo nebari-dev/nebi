@@ -17,8 +17,22 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import {
   useImportEnvironment,
@@ -92,51 +106,42 @@ export const Registries = () => {
 
       {remoteUnreachable && <RemoteUnreachableBanner />}
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="border-b bg-muted/50">
-                <tr>
-                  <th className="text-left p-4 font-medium">Name</th>
-                  <th className="text-left p-4 font-medium">URL</th>
-                  <th className="text-left p-4 font-medium">Default</th>
-                  <th className="text-right p-4 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedRegistries.map((registry) => (
-                  <tr
-                    key={registry.id}
-                    className="border-b last:border-0 hover:bg-muted/50"
-                  >
-                    <td className="p-4 font-medium">{registry.name}</td>
-                    <td className="p-4 font-mono text-sm text-muted-foreground">
-                      {registry.url}
-                    </td>
-                    <td className="p-4">
-                      {registry.is_default && (
-                        <Badge className="bg-blue-100 text-blue-800 border-blue-300">
-                          Default
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="p-4 text-right">
-                      <Button
-                        size="sm"
-                        onClick={() => navigate(`/registries/${registry.id}`)}
-                      >
-                        <Package className="mr-2 h-4 w-4" />
-                        Browse
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+      <Table aria-label="Registries">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>URL</TableHead>
+            <TableHead>Default</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {displayedRegistries.map((registry) => (
+            <TableRow key={registry.id}>
+              <TableCell className="font-medium">{registry.name}</TableCell>
+              <TableCell className="font-mono text-muted-foreground">
+                {registry.url}
+              </TableCell>
+              <TableCell>
+                {registry.is_default && (
+                  <Badge className="bg-blue-100 text-blue-800 border-blue-300">
+                    Default
+                  </Badge>
+                )}
+              </TableCell>
+              <TableCell className="text-right">
+                <Button
+                  size="sm"
+                  onClick={() => navigate(`/registries/${registry.id}`)}
+                >
+                  <Package className="mr-2 h-4 w-4" />
+                  Browse
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
 
       {displayedRegistries.length === 0 && !remoteUnreachable && (
         <div className="text-center py-12">
@@ -235,15 +240,10 @@ const RepositoryRow = ({
 
   return (
     <>
-      <tr
-        className={cn(
-          'hover:bg-muted/50',
-          !showImport && 'border-b last:border-0',
-        )}
-      >
-        <td className="p-4 font-mono text-sm">{repoName}</td>
+      <TableRow className={cn(showImport && 'border-0')}>
+        <TableCell className="font-mono">{repoName}</TableCell>
         {showVisibility && (
-          <td className="p-4">
+          <TableCell>
             {isPublic === undefined ? (
               <Badge variant="outline" className="text-muted-foreground">
                 Unknown
@@ -259,29 +259,37 @@ const RepositoryRow = ({
                 Private
               </Badge>
             )}
-          </td>
+          </TableCell>
         )}
-        <td className="p-4 w-40">
+        <TableCell className="w-40">
           {tagsLoading ? (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           ) : tags.length > 0 ? (
-            <select
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            <Select
               value={effectiveTag}
-              onChange={(e) => setSelectedTag(e.target.value)}
-              aria-label={`Select tag for ${repoName}`}
+              onValueChange={(tag: string | null) => setSelectedTag(tag ?? '')}
             >
-              {tags.map((tag) => (
-                <option key={tag.name} value={tag.name}>
-                  {tag.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger
+                className="w-full"
+                aria-label={`Select tag for ${repoName}`}
+              >
+                <SelectValue>
+                  {(value: string | null) => value || 'Select tag'}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {tags.map((tag) => (
+                  <SelectItem key={tag.name} value={tag.name}>
+                    {tag.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : (
             <span className="text-sm text-muted-foreground">No tags</span>
           )}
-        </td>
-        <td className="p-4">
+        </TableCell>
+        <TableCell>
           {registry && effectiveTag && !tagsLoading ? (
             <div className="flex items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 max-w-sm">
               <code className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs text-foreground">
@@ -302,8 +310,8 @@ const RepositoryRow = ({
               </Button>
             </div>
           ) : null}
-        </td>
-        <td className="p-4 text-right">
+        </TableCell>
+        <TableCell className="text-right">
           <div className="flex items-center justify-end gap-2">
             <Button
               size="sm"
@@ -330,11 +338,11 @@ const RepositoryRow = ({
               )}
             </Button>
           </div>
-        </td>
-      </tr>
+        </TableCell>
+      </TableRow>
       {showImport && registry && (
-        <tr className="border-b last:border-0">
-          <td colSpan={colSpan} className="p-4 bg-muted/30">
+        <TableRow>
+          <TableCell colSpan={colSpan} className="bg-muted/30">
             <div className="space-y-4">
               {error && (
                 <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded text-sm">
@@ -392,8 +400,8 @@ const RepositoryRow = ({
                 </Button>
               </div>
             </div>
-          </td>
-        </tr>
+          </TableCell>
+        </TableRow>
       )}
     </>
   );
@@ -482,39 +490,29 @@ export const RegistryRepositories = () => {
           )}
 
           {hasRepos ? (
-            <Card>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="border-b bg-muted/50">
-                      <tr>
-                        <th className="text-left p-4 font-medium">
-                          Repository
-                        </th>
-                        <th className="text-left p-4 font-medium">
-                          Visibility
-                        </th>
-                        <th className="text-left p-4 font-medium">Tag</th>
-                        <th className="text-left p-4 font-medium">Command</th>
-                        <th className="text-right p-4 font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {repoData?.repositories?.map((repo) => (
-                        <RepositoryRow
-                          key={repo.name}
-                          registryId={registryId || ''}
-                          repoName={repo.name}
-                          registry={selectedRegistry}
-                          isPublic={repo.is_public}
-                          showVisibility={true}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
+            <Table aria-label="Repositories">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Repository</TableHead>
+                  <TableHead>Visibility</TableHead>
+                  <TableHead>Tag</TableHead>
+                  <TableHead>Command</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {repoData?.repositories?.map((repo) => (
+                  <RepositoryRow
+                    key={repo.name}
+                    registryId={registryId || ''}
+                    repoName={repo.name}
+                    registry={selectedRegistry}
+                    isPublic={repo.is_public}
+                    showVisibility={true}
+                  />
+                ))}
+              </TableBody>
+            </Table>
           ) : (
             <div className="text-center py-8">
               <p className="text-muted-foreground">

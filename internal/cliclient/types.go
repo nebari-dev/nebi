@@ -100,14 +100,17 @@ type WorkspaceVersion struct {
 
 // Registry represents an OCI registry.
 type Registry struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	URL        string `json:"url"`
-	Username   string `json:"username,omitempty"`
-	IsDefault  bool   `json:"is_default"`
-	Restricted bool   `json:"restricted"`
-	CreatedAt  string `json:"created_at"`
-	UpdatedAt  string `json:"updated_at"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	URL           string `json:"url"`
+	Username      string `json:"username,omitempty"`
+	IsDefault     bool   `json:"is_default"`
+	Namespace     string `json:"namespace,omitempty"`
+	HasAPIToken   bool   `json:"has_api_token"`
+	ConfigManaged bool   `json:"config_managed"`
+	Restricted    bool   `json:"restricted"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 // CreateRegistryRequest represents a request to create a registry.
@@ -116,6 +119,7 @@ type CreateRegistryRequest struct {
 	URL        string  `json:"url"`
 	Username   *string `json:"username,omitempty"`
 	Password   *string `json:"password,omitempty"`
+	APIToken   *string `json:"api_token,omitempty"`
 	IsDefault  *bool   `json:"is_default,omitempty"`
 	Namespace  *string `json:"namespace,omitempty"`
 	Restricted *bool   `json:"restricted,omitempty"`
@@ -127,6 +131,7 @@ type UpdateRegistryRequest struct {
 	URL        *string `json:"url,omitempty"`
 	Username   *string `json:"username,omitempty"`
 	Password   *string `json:"password,omitempty"`
+	APIToken   *string `json:"api_token,omitempty"`
 	IsDefault  *bool   `json:"is_default,omitempty"`
 	Namespace  *string `json:"namespace,omitempty"`
 	Restricted *bool   `json:"restricted,omitempty"`

@@ -100,7 +100,7 @@ export const UseLocallyButton = ({ workspaceName }: UseLocallyButtonProps) => {
               <Button
                 variant="outline"
                 size="icon"
-                className="h-8 w-8 shrink-0 bg-background"
+                className="h-8 w-8 shrink-0 bg-card"
                 onClick={handleCopy}
                 aria-label={
                   copied ? 'Copied nebi pull command' : 'Copy nebi pull command'

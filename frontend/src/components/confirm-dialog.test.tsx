@@ -1,10 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ConfirmDialog } from './confirm-dialog';
+import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/utils';
+import { ConfirmDialog } from './confirm-dialog';
 
-function renderDialog(overrides?: Partial<Parameters<typeof ConfirmDialog>[0]>) {
+function renderDialog(
+  overrides?: Partial<Parameters<typeof ConfirmDialog>[0]>,
+) {
   const props = {
     open: true,
     onOpenChange: vi.fn(),
@@ -26,7 +28,9 @@ describe('ConfirmDialog', () => {
 
   it('shows default button labels', () => {
     renderDialog();
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Continue' }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
   });
 
@@ -59,6 +63,6 @@ describe('ConfirmDialog', () => {
   it('applies destructive styling class for destructive variant', () => {
     renderDialog({ variant: 'destructive', confirmText: 'Remove' });
     const btn = screen.getByRole('button', { name: 'Remove' });
-    expect(btn.className).toContain('bg-red-600');
+    expect(btn.className).toContain('bg-destructive');
   });
 });

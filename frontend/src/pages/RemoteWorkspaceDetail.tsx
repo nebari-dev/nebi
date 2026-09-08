@@ -19,9 +19,19 @@ import { remoteApi } from '@/api/remote';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { UserBadge } from '@/components/ui/user-badge';
-import { capitalize, getWorkspaceStatusColor } from '@/lib/utils';
+import { CodeBlock, CodeBlockBody } from '@/components/ui/code-block';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs';
+import { UserBadge } from '@/components/user-badge';
+import { getWorkspaceStatusColor } from '@/lib/status';
+import { capitalize } from '@/lib/strings';
 import type { RemoteWorkspaceTag, RemoteWorkspaceVersion } from '@/types';
 
 export const RemoteWorkspaceDetail = () => {
@@ -30,7 +40,6 @@ export const RemoteWorkspaceDetail = () => {
   const wsId = id || '';
 
   const [activeTab, setActiveTab] = useState('overview');
-  const [copiedToml, setCopiedToml] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
 
   const { data: workspace, isLoading: wsLoading } = useQuery({
@@ -56,14 +65,6 @@ export const RemoteWorkspaceDetail = () => {
     queryFn: () => remoteApi.getPixiToml(wsId),
     enabled: !!wsId && activeTab === 'toml',
   });
-
-  const handleCopyToml = async () => {
-    if (pixiTomlData?.content) {
-      await navigator.clipboard.writeText(pixiTomlData.content);
-      setCopiedToml(true);
-      setTimeout(() => setCopiedToml(false), 2000);
-    }
-  };
 
   if (wsLoading) {
     return (
@@ -110,13 +111,13 @@ export const RemoteWorkspaceDetail = () => {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="toml">Configuration</TabsTrigger>
-          <TabsTrigger value="versions">Version History</TabsTrigger>
-          <TabsTrigger value="tags">Tags</TabsTrigger>
+          <TabsTab value="overview">Overview</TabsTab>
+          <TabsTab value="toml">Configuration</TabsTab>
+          <TabsTab value="versions">Version History</TabsTab>
+          <TabsTab value="tags">Tags</TabsTab>
         </TabsList>
 
-        <TabsContent value="overview" className="px-1">
+        <TabsPanel value="overview" className="px-1">
           <div className="space-y-4 my-4">
             <h2 className="text-2xl font-bold mb-0">Overview</h2>
             <p className="text-muted-foreground text-sm mt-2">
@@ -209,14 +210,17 @@ export const RemoteWorkspaceDetail = () => {
                   <code className="text-xs font-mono text-muted-foreground">
                     {workspace.id}
                   </code>
-                  <button
+                  <Button
                     type="button"
-                    className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground hover:text-muted-foreground-strong"
                     onClick={async () => {
                       await navigator.clipboard.writeText(workspace.id);
                       setCopiedId(true);
                       setTimeout(() => setCopiedId(false), 2000);
                     }}
+                    aria-label="Copy workspace ID"
                     title="Copy ID"
                   >
                     {copiedId ? (
@@ -224,39 +228,17 @@ export const RemoteWorkspaceDetail = () => {
                     ) : (
                       <Copy className="h-3 w-3" />
                     )}
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
           </div>
-        </TabsContent>
+        </TabsPanel>
 
-        <TabsContent value="toml">
+        <TabsPanel value="toml">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>pixi.toml Configuration</CardTitle>
-                {pixiTomlData?.content && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCopyToml}
-                    className="gap-2"
-                  >
-                    {copiedToml ? (
-                      <>
-                        <Check className="h-4 w-4" />
-                        Copied
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="h-4 w-4" />
-                        Copy
-                      </>
-                    )}
-                  </Button>
-                )}
-              </div>
+              <CardTitle>pixi.toml Configuration</CardTitle>
             </CardHeader>
             <CardContent>
               {tomlLoading ? (
@@ -264,9 +246,9 @@ export const RemoteWorkspaceDetail = () => {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : pixiTomlData?.content ? (
-                <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto font-mono text-sm whitespace-pre">
-                  {pixiTomlData.content}
-                </pre>
+                <CodeBlock code={pixiTomlData.content} className="w-full">
+                  <CodeBlockBody aria-label="pixi.toml contents" />
+                </CodeBlock>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   Failed to load pixi.toml
@@ -274,9 +256,9 @@ export const RemoteWorkspaceDetail = () => {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+        </TabsPanel>
 
-        <TabsContent value="versions">
+        <TabsPanel value="versions">
           <Card>
             <CardHeader>
               <CardTitle>Version History</CardTitle>
@@ -287,39 +269,32 @@ export const RemoteWorkspaceDetail = () => {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : versions && versions.length > 0 ? (
-                <div className="rounded-md border">
-                  <table className="w-full">
-                    <thead className="border-b bg-muted/50">
-                      <tr>
-                        <th className="text-left p-4 font-medium">Version</th>
-                        <th className="text-left p-4 font-medium">
-                          Description
-                        </th>
-                        <th className="text-left p-4 font-medium">Created</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {versions.map((v: RemoteWorkspaceVersion) => (
-                        <tr
-                          key={v.id || v.version_number}
-                          className="hover:bg-muted/50"
-                        >
-                          <td className="p-4">
-                            <Badge variant="outline">v{v.version_number}</Badge>
-                          </td>
-                          <td className="p-4 text-sm text-muted-foreground">
-                            {v.description || '-'}
-                          </td>
-                          <td className="p-4 text-sm text-muted-foreground">
-                            {v.created_at
-                              ? new Date(v.created_at).toLocaleString()
-                              : '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <Table aria-label="Version history">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Version</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Created</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {versions.map((v: RemoteWorkspaceVersion) => (
+                      <TableRow key={v.id || v.version_number}>
+                        <TableCell>
+                          <Badge variant="outline">v{v.version_number}</Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {v.description || '-'}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {v.created_at
+                            ? new Date(v.created_at).toLocaleString()
+                            : '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-8">
                   No versions available
@@ -327,9 +302,9 @@ export const RemoteWorkspaceDetail = () => {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+        </TabsPanel>
 
-        <TabsContent value="tags">
+        <TabsPanel value="tags">
           <Card>
             <CardHeader>
               <CardTitle>Tags</CardTitle>
@@ -340,34 +315,32 @@ export const RemoteWorkspaceDetail = () => {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : tags && tags.length > 0 ? (
-                <div className="rounded-md border">
-                  <table className="w-full">
-                    <thead className="border-b bg-muted/50">
-                      <tr>
-                        <th className="text-left p-4 font-medium">Tag</th>
-                        <th className="text-left p-4 font-medium">Version</th>
-                        <th className="text-left p-4 font-medium">Created</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {tags.map((t: RemoteWorkspaceTag) => (
-                        <tr key={t.tag} className="hover:bg-muted/50">
-                          <td className="p-4">
-                            <Badge variant="outline">{t.tag}</Badge>
-                          </td>
-                          <td className="p-4 text-sm text-muted-foreground">
-                            v{t.version_number}
-                          </td>
-                          <td className="p-4 text-sm text-muted-foreground">
-                            {t.created_at
-                              ? new Date(t.created_at).toLocaleString()
-                              : '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <Table aria-label="Tags">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tag</TableHead>
+                      <TableHead>Version</TableHead>
+                      <TableHead>Created</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {tags.map((t: RemoteWorkspaceTag) => (
+                      <TableRow key={t.tag}>
+                        <TableCell>
+                          <Badge variant="outline">{t.tag}</Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          v{t.version_number}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {t.created_at
+                            ? new Date(t.created_at).toLocaleString()
+                            : '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-8">
                   No tags available
@@ -375,7 +348,7 @@ export const RemoteWorkspaceDetail = () => {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+        </TabsPanel>
       </Tabs>
     </div>
   );

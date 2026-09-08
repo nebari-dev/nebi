@@ -359,6 +359,9 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 				{
 					remoteAdmin.GET("/users", remoteHandler.ListAdminUsers)
 					remoteAdmin.GET("/registries", remoteHandler.ListAdminRegistries)
+					remoteAdmin.POST("/registries", remoteHandler.CreateAdminRegistry)
+					remoteAdmin.PUT("/registries/:id", remoteHandler.UpdateAdminRegistry)
+					remoteAdmin.DELETE("/registries/:id", remoteHandler.DeleteAdminRegistry)
 					remoteAdmin.GET("/audit-logs", remoteHandler.ListAdminAuditLogs)
 					remoteAdmin.GET("/dashboard/stats", remoteHandler.GetAdminDashboardStats)
 					remoteAdmin.GET("/federated-identity-reviews", remoteHandler.ListAdminFederatedIdentityReviews)

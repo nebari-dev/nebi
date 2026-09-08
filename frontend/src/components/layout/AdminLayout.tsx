@@ -29,16 +29,16 @@ export const AdminLayout = () => {
 
   return (
     <div
-      className={`flex ${hasVersion ? 'h-[calc(100vh-130px)]' : 'h-[calc(100vh-73px)]'}`}
+      className={`flex ${hasVersion ? 'h-[calc(100vh-110px)]' : 'h-[calc(100vh-57px)]'}`}
     >
-      <aside className="w-[253px] shrink-0 border-r bg-card py-6">
+      <aside className="w-[253px] shrink-0 border-r bg-sidebar py-6 text-sidebar-foreground">
         <div className="mb-6 px-4">
           <h2 className="text-lg font-semibold">Admin Dashboard</h2>
           <p className="text-sm text-muted-foreground">
             System overview and management
           </p>
         </div>
-        <nav className="flex flex-col gap-1 px-2">
+        <nav className="flex flex-col gap-1 px-2" aria-label="Admin">
           {navItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end} className="block w-full">
               {({ isActive }) => (
@@ -46,7 +46,7 @@ export const AdminLayout = () => {
                   className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                     isActive
                       ? 'bg-primary/10 text-foreground'
-                      : 'text-muted-foreground hover:bg-[var(--color-nav-hover)] hover:text-foreground'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                   }`}
                 >
                   <Icon className="h-4 w-4" />
@@ -57,9 +57,12 @@ export const AdminLayout = () => {
           ))}
         </nav>
       </aside>
-      <main className="flex-1 overflow-auto p-8">
+      <section
+        className="flex-1 overflow-auto bg-canvas px-12 py-6"
+        aria-label="Admin page"
+      >
         <Outlet />
-      </main>
+      </section>
     </div>
   );
 };

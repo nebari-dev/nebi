@@ -50,8 +50,8 @@ describe('brandingConfig', () => {
     expect(favicon?.getAttribute('href')).toBe('/assets/acme-favicon.ico');
 
     const style = document.getElementById('nebi-runtime-branding');
-    expect(style?.textContent).toContain('--color-primary: #123456;');
-    expect(style?.textContent).toContain('--color-nav-hover: #eef3ff;');
+    expect(style?.textContent).toContain('--primary: #123456;');
+    expect(style?.textContent).toContain('--header-action-hover: #eef3ff;');
     expect(style?.textContent).not.toContain('--color-: #ffffff;');
     expect(style?.textContent).toContain('.dark');
   });

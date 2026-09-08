@@ -1,6 +1,7 @@
 import type {
   AuditLog,
   ConnectServerRequest,
+  CreateRegistryRequest,
   CreateRemoteWorkspaceRequest,
   DashboardStats,
   FederatedIdentity,
@@ -12,6 +13,7 @@ import type {
   RemoteWorkspace,
   RemoteWorkspaceTag,
   RemoteWorkspaceVersion,
+  UpdateRegistryRequest,
   User,
 } from '@/types';
 import { apiClient } from './client';
@@ -110,6 +112,25 @@ export const remoteApi = {
   listAdminRegistries: async (): Promise<OCIRegistry[]> => {
     const { data } = await apiClient.get('/remote/admin/registries');
     return data;
+  },
+
+  createAdminRegistry: async (
+    req: CreateRegistryRequest,
+  ): Promise<OCIRegistry> => {
+    const { data } = await apiClient.post('/remote/admin/registries', req);
+    return data;
+  },
+
+  updateAdminRegistry: async (
+    id: string,
+    req: UpdateRegistryRequest,
+  ): Promise<OCIRegistry> => {
+    const { data } = await apiClient.put(`/remote/admin/registries/${id}`, req);
+    return data;
+  },
+
+  deleteAdminRegistry: async (id: string): Promise<void> => {
+    await apiClient.delete(`/remote/admin/registries/${id}`);
   },
 
   listAuditLogs: async (params?: {

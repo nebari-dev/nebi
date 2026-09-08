@@ -36,12 +36,14 @@ export const CreateGroupDialog = () => {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button onClick={() => setOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Create Group
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          <Button onClick={() => setOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create Group
+          </Button>
+        }
+      />
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create New Group</DialogTitle>
@@ -81,7 +83,10 @@ export const CreateGroupDialog = () => {
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
+            <Button
+              render={<button type="submit" />}
+              disabled={createMutation.isPending}
+            >
               Create
             </Button>
           </div>

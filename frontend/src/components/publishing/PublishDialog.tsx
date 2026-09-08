@@ -10,6 +10,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   usePublications,
   usePublicRegistries,
   usePublishDefaults,
@@ -55,7 +62,7 @@ export const PublishDialog = ({
   const registryId = useId();
   const repositoryId = useId();
   const tagId = useId();
-  const registrySelectRef = useRef<HTMLSelectElement>(null);
+  const registrySelectRef = useRef<HTMLButtonElement>(null);
   const selectedRegistryNamespace =
     registries?.find((registry) => registry.id === selectedRegistry)
       ?.namespace || '';
@@ -185,22 +192,29 @@ export const PublishDialog = ({
                   <label htmlFor={registryId} className="text-sm font-medium">
                     Registry
                   </label>
-                  <select
-                    ref={registrySelectRef}
-                    id={registryId}
-                    value={selectedRegistry}
-                    onChange={(e) => setSelectedRegistry(e.target.value)}
-                    className="w-full h-10 px-3 rounded-md border border-input bg-background text-foreground"
+                  <Select
+                    value={selectedRegistry || null}
+                    onValueChange={(registry: string | null) =>
+                      setSelectedRegistry(registry ?? '')
+                    }
                     required
                   >
-                    <option value="">Select a registry</option>
-                    {registries?.map((registry) => (
-                      <option key={registry.id} value={registry.id}>
-                        {registry.name} ({registry.url})
-                        {registry.is_default ? ' (Default)' : ''}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger
+                      ref={registrySelectRef}
+                      id={registryId}
+                      className="w-full"
+                    >
+                      <SelectValue placeholder="Select a registry" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {registries?.map((registry) => (
+                        <SelectItem key={registry.id} value={registry.id}>
+                          {registry.name} ({registry.url})
+                          {registry.is_default ? ' (Default)' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">
@@ -271,7 +285,7 @@ export const PublishDialog = ({
                     Cancel
                   </Button>
                   <Button
-                    type="submit"
+                    render={<button type="submit" />}
                     disabled={
                       publishMutation.isPending ||
                       !registries ||

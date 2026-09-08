@@ -149,7 +149,7 @@ describe('FederatedIdentityReviews', () => {
 
     renderWithProviders(<FederatedIdentityReviews />);
 
-    await user.click(await screen.findByRole('button', { name: 'Rejected' }));
+    await user.click(await screen.findByRole('tab', { name: 'Rejected' }));
 
     expect(await screen.findAllByText('Rejected')).toHaveLength(2);
     expect(
@@ -197,7 +197,7 @@ describe('FederatedIdentityReviews', () => {
 
     renderWithProviders(<FederatedIdentityReviews />);
 
-    await user.click(await screen.findByRole('button', { name: 'Rejected' }));
+    await user.click(await screen.findByRole('tab', { name: 'Rejected' }));
     await screen.findByText(mockFederatedIdentityReview.issuer);
     await user.click(
       screen.getByRole('button', {

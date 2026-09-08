@@ -33,9 +33,17 @@ import { CollaboratorsList } from '@/components/sharing/CollaboratorsList';
 import { ShareButton } from '@/components/sharing/ShareButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { UserBadge } from '@/components/ui/user-badge';
+import { CodeBlock, CodeBlockBody } from '@/components/ui/code-block';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs';
+import { UserBadge } from '@/components/user-badge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
 import { InstallControls } from '@/components/workspace/InstallControls';
 import { PixiTomlEditor } from '@/components/workspace/PixiTomlEditor';
@@ -45,11 +53,8 @@ import { usePackages } from '@/hooks/usePackages';
 import { usePublications, useUpdatePublication } from '@/hooks/useRegistries';
 import { useWorkspace } from '@/hooks/useWorkspaces';
 import { buildImportCommand } from '@/lib/registry';
-import {
-  capitalize,
-  getInstallStatusColor,
-  getWorkspaceStatusColor,
-} from '@/lib/utils';
+import { getInstallStatusColor, getWorkspaceStatusColor } from '@/lib/status';
+import { capitalize } from '@/lib/strings';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
@@ -85,7 +90,6 @@ export const WorkspaceDetail = () => {
   const [isEditingToml, setIsEditingToml] = useState(false);
   const [savingToml, setSavingToml] = useState(false);
   const [loadingToml, setLoadingToml] = useState(false);
-  const [copiedToml, setCopiedToml] = useState(false);
   const [copiedImportId, setCopiedImportId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
   const [saveInstallJobId, setSaveInstallJobId] = useState<string | null>(null);
@@ -119,12 +123,6 @@ export const WorkspaceDetail = () => {
       void loadPixiToml();
     }
   }, [activeTab, pixiToml, loadPixiToml]);
-
-  const handleCopyToml = async () => {
-    await navigator.clipboard.writeText(pixiToml);
-    setCopiedToml(true);
-    setTimeout(() => setCopiedToml(false), 2000);
-  };
 
   const handleCopyImport = async (pub: {
     registry_url: string;
@@ -271,22 +269,22 @@ export const WorkspaceDetail = () => {
         }}
       >
         <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="toml">Configuration</TabsTrigger>
-          <TabsTrigger value="versions">Versions</TabsTrigger>
-          <TabsTrigger value="packages">Packages</TabsTrigger>
-          <TabsTrigger value="jobs">Jobs</TabsTrigger>
-          <TabsTrigger value="publications">
+          <TabsTab value="overview">Overview</TabsTab>
+          <TabsTab value="toml">Configuration</TabsTab>
+          <TabsTab value="versions">Versions</TabsTab>
+          <TabsTab value="packages">Packages</TabsTab>
+          <TabsTab value="jobs">Jobs</TabsTab>
+          <TabsTab value="publications">
             Publications ({publications?.length || 0})
-          </TabsTrigger>
+          </TabsTab>
           {!isLocalWs && !isLocalMode && (
-            <TabsTrigger value="collaborators">
+            <TabsTab value="collaborators">
               Collaborators ({collaborators?.length || 0})
-            </TabsTrigger>
+            </TabsTab>
           )}
         </TabsList>
 
-        <TabsContent value="overview" className="px-1">
+        <TabsPanel value="overview" className="px-1">
           <div className="space-y-4 my-4">
             <h2 className="text-2xl font-bold mb-0">Overview</h2>
             <p className="text-muted-foreground text-sm mt-2">
@@ -524,9 +522,9 @@ export const WorkspaceDetail = () => {
               </div>
             </div>
           </div>
-        </TabsContent>
+        </TabsPanel>
 
-        <TabsContent value="packages" className="px-1">
+        <TabsPanel value="packages" className="px-1">
           <div className="space-y-4 my-3">
             <div className="flex justify-between items-center  mb-0">
               <h2 className="text-2xl font-bold">Packages</h2>
@@ -549,55 +547,45 @@ export const WorkspaceDetail = () => {
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              <Card>
-                <CardContent className="p-0">
-                  <div>
-                    <table className="w-full">
-                      <thead className="border-b bg-muted/70">
-                        <tr>
-                          <th className="text-left p-4 font-medium">Package</th>
-                          <th className="text-left p-4 font-medium">
-                            Installed Version
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {packages?.length === 0 ? (
-                          <tr>
-                            <td
-                              colSpan={2}
-                              className="p-8 text-center text-muted-foreground"
-                            >
-                              No packages installed
-                            </td>
-                          </tr>
-                        ) : (
-                          packages?.map((pkg) => (
-                            <tr key={pkg.id} className="hover:bg-muted/50">
-                              <td className="p-4">
-                                <div className="flex items-center gap-2">
-                                  <Package className="h-4 w-4 text-muted-foreground" />
-                                  <span className="font-medium">
-                                    {pkg.name}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="p-4 text-muted-foreground font-mono text-sm">
-                                {pkg.version || '-'}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
+              <Table aria-label="Packages">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Package</TableHead>
+                    <TableHead>Installed Version</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {packages?.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={2}
+                        className="p-8 text-center text-muted-foreground"
+                      >
+                        No packages installed
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    packages?.map((pkg) => (
+                      <TableRow key={pkg.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Package className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-medium">{pkg.name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground font-mono">
+                          {pkg.version || '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
             )}
           </div>
-        </TabsContent>
+        </TabsPanel>
 
-        <TabsContent value="toml" className="px-1">
+        <TabsPanel value="toml" className="px-1">
           <div className="space-y-4 my-4">
             <h2 className="text-2xl font-bold mb-0">Configuration</h2>
             <p className="text-muted-foreground text-sm mt-2">
@@ -698,26 +686,6 @@ export const WorkspaceDetail = () => {
                   </Button>
                 </>
               )}
-              {pixiToml && !isEditingToml && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCopyToml}
-                  className="gap-2"
-                >
-                  {copiedToml ? (
-                    <>
-                      <Check className="h-4 w-4" />
-                      Copied
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-4 w-4" />
-                      Copy
-                    </>
-                  )}
-                </Button>
-              )}
             </div>
           </div>
           {loadingToml ? (
@@ -735,28 +703,28 @@ export const WorkspaceDetail = () => {
               }}
             />
           ) : pixiToml ? (
-            <pre className="bg-slate-900 text-slate-100 p-4 rounded-md overflow-x-auto font-mono text-sm whitespace-pre">
-              {pixiToml}
-            </pre>
+            <CodeBlock code={pixiToml} className="w-full">
+              <CodeBlockBody aria-label="pixi.toml contents" />
+            </CodeBlock>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
               Failed to load pixi.toml
             </div>
           )}
-        </TabsContent>
+        </TabsPanel>
 
-        <TabsContent value="versions" className="px-1">
+        <TabsPanel value="versions" className="px-1">
           <VersionHistory
             environmentId={wsId}
             environmentStatus={workspace.status}
           />
-        </TabsContent>
+        </TabsPanel>
 
-        <TabsContent value="jobs" className="px-1">
+        <TabsPanel value="jobs" className="px-1">
           <Jobs workspaceId={wsId} />
-        </TabsContent>
+        </TabsPanel>
 
-        <TabsContent value="publications" className="px-1">
+        <TabsPanel value="publications" className="px-1">
           <div className="space-y-4 my-4">
             <h2 className="text-2xl font-bold mb-0">Publications</h2>
             <p className="text-muted-foreground text-sm mt-2">
@@ -891,10 +859,10 @@ export const WorkspaceDetail = () => {
               workspace to an OCI registry.
             </p>
           )}
-        </TabsContent>
+        </TabsPanel>
 
         {!isLocalWs && !isLocalMode && (
-          <TabsContent value="collaborators" className="px-1">
+          <TabsPanel value="collaborators" className="px-1">
             <div className="space-y-4 my-4">
               <h2 className="text-2xl font-bold mb-0">Collaborators</h2>
               <p className="text-muted-foreground text-sm mt-2">
@@ -902,7 +870,7 @@ export const WorkspaceDetail = () => {
               </p>
             </div>
             <CollaboratorsList collaborators={collaborators || []} />
-          </TabsContent>
+          </TabsPanel>
         )}
       </Tabs>
     </div>

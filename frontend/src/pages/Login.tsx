@@ -138,7 +138,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
   const errorTone = authErrorTone(authError);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="min-h-screen flex items-center justify-center bg-canvas">
       <div className="w-full max-w-lg">
         <div className="space-y-6 pb-8">
           <div className="flex justify-center">
@@ -185,7 +185,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
             />
 
             <Button
-              type="submit"
+              render={<button type="submit" />}
               disabled={loading}
               className="w-full h-12 text-base font-medium"
             >
@@ -198,7 +198,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
               <div className="w-full border-t border-border"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-background text-muted-foreground">
+              <span className="px-2 bg-canvas text-muted-foreground">
                 Or continue with
               </span>
             </div>

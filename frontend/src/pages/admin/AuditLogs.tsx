@@ -2,9 +2,23 @@ import { Loader2, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { CodeBlock, CodeBlockBody } from '@/components/ui/code-block';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { useAuditLogs } from '@/hooks/useAdmin';
 import { useRemoteAuditLogs, useRemoteView } from '@/hooks/useRemote';
 
@@ -22,6 +36,25 @@ const ACTION_COLORS: Record<string, string> = {
   share_workspace: 'bg-cyan-100 text-cyan-800 border-cyan-300',
   unshare_workspace: 'bg-yellow-100 text-yellow-800 border-yellow-300',
 };
+
+const ACTION_FILTER_OPTIONS = [
+  { value: '', label: 'All Actions' },
+  { value: 'create_user', label: 'Create User' },
+  { value: 'delete_user', label: 'Delete User' },
+  { value: 'grant_permission', label: 'Grant Permission' },
+  { value: 'revoke_permission', label: 'Revoke Permission' },
+  { value: 'make_admin', label: 'Make Admin' },
+  { value: 'revoke_admin', label: 'Revoke Admin' },
+  { value: 'approve_federated_identity', label: 'Approve Federated Identity' },
+  { value: 'reject_federated_identity', label: 'Reject Federated Identity' },
+  { value: 'discard_federated_identity', label: 'Discard Federated Identity' },
+  { value: 'share_workspace', label: 'Share Workspace' },
+  { value: 'unshare_workspace', label: 'Unshare Workspace' },
+];
+
+const ACTION_FILTER_LABELS = Object.fromEntries(
+  ACTION_FILTER_OPTIONS.map((option) => [option.value, option.label]),
+);
 
 export const AuditLogs = () => {
   const [filters, setFilters] = useState({
@@ -97,86 +130,84 @@ export const AuditLogs = () => {
         </div>
         <Select
           value={filters.action}
-          onChange={(e) => setFilters({ ...filters, action: e.target.value })}
-          className="w-64"
-          aria-label="Filter audit logs by action"
+          onValueChange={(action: string | null) =>
+            setFilters({ ...filters, action: action ?? '' })
+          }
         >
-          <option value="">All Actions</option>
-          <option value="create_user">Create User</option>
-          <option value="delete_user">Delete User</option>
-          <option value="grant_permission">Grant Permission</option>
-          <option value="revoke_permission">Revoke Permission</option>
-          <option value="make_admin">Make Admin</option>
-          <option value="revoke_admin">Revoke Admin</option>
-          <option value="approve_federated_identity">
-            Approve Federated Identity
-          </option>
-          <option value="reject_federated_identity">
-            Reject Federated Identity
-          </option>
-          <option value="discard_federated_identity">
-            Discard Federated Identity
-          </option>
-          <option value="share_workspace">Share Workspace</option>
-          <option value="unshare_workspace">Unshare Workspace</option>
+          <SelectTrigger
+            className="w-64"
+            aria-label="Filter audit logs by action"
+          >
+            <SelectValue>
+              {(value: string | null) =>
+                ACTION_FILTER_LABELS[value ?? ''] ?? 'All Actions'
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {ACTION_FILTER_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
         </Select>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="border-b bg-muted/50">
-                <tr>
-                  <th className="text-left p-4 font-medium">Timestamp</th>
-                  <th className="text-left p-4 font-medium">User</th>
-                  <th className="text-left p-4 font-medium">Action</th>
-                  <th className="text-left p-4 font-medium">Resource</th>
-                  <th className="text-left p-4 font-medium">Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedLogs.map((log) => (
-                  <tr
-                    key={log.id}
-                    className="border-b last:border-0 hover:bg-muted/50"
-                  >
-                    <td className="p-4 text-sm text-muted-foreground whitespace-nowrap">
-                      {new Date(log.timestamp).toLocaleString()}
-                    </td>
-                    <td className="p-4 font-medium">
-                      {log.user?.username || log.user_id}
-                    </td>
-                    <td className="p-4">
-                      <Badge
-                        className={
-                          ACTION_COLORS[log.action] ||
-                          'bg-zinc-100 text-zinc-800 border-zinc-300'
-                        }
-                      >
-                        {log.action.replace(/_/g, ' ')}
-                      </Badge>
-                    </td>
-                    <td className="p-4 font-mono text-sm">{log.resource}</td>
-                    <td className="p-4 text-sm text-muted-foreground">
-                      {log.details_json && (
-                        <details className="cursor-pointer">
-                          <summary className="hover:text-foreground">
-                            View Details
-                          </summary>
-                          <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto max-w-md">
-                            {JSON.stringify(log.details_json, null, 2)}
-                          </pre>
-                        </details>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+      <Table aria-label="Audit logs">
+        <TableHeader>
+          <TableRow
+            className={displayedLogs.length > 0 ? undefined : 'border-0'}
+          >
+            <TableHead>Timestamp</TableHead>
+            <TableHead>User</TableHead>
+            <TableHead>Action</TableHead>
+            <TableHead>Resource</TableHead>
+            <TableHead>Details</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {displayedLogs.map((log) => (
+            <TableRow key={log.id}>
+              <TableCell className="text-muted-foreground whitespace-nowrap">
+                {new Date(log.timestamp).toLocaleString()}
+              </TableCell>
+              <TableCell className="font-medium">
+                {log.user?.username || log.user_id}
+              </TableCell>
+              <TableCell>
+                <Badge
+                  className={
+                    ACTION_COLORS[log.action] ||
+                    'bg-zinc-100 text-zinc-800 border-zinc-300'
+                  }
+                >
+                  {log.action.replace(/_/g, ' ')}
+                </Badge>
+              </TableCell>
+              <TableCell className="font-mono">{log.resource}</TableCell>
+              <TableCell className="text-muted-foreground">
+                {log.details_json && (
+                  <details className="cursor-pointer">
+                    <summary className="hover:text-foreground">
+                      View Details
+                    </summary>
+                    <CodeBlock
+                      code={JSON.stringify(log.details_json, null, 2)}
+                      className="mt-2 w-full max-w-md text-xs"
+                    >
+                      <CodeBlockBody
+                        maxLines={12}
+                        aria-label="Audit log details"
+                      />
+                    </CodeBlock>
+                  </details>
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
 
       {displayedLogs.length === 0 && !remoteUnreachable && (
         <div className="text-center py-12">

@@ -2,30 +2,26 @@
 title: "Nebi"
 description: "Environment management for teams. Push, pull, diff, and roll back reproducible Pixi environments, with access control built in."
 template: splash
+editUrl: false
+lastUpdated: false
 hero:
+  title: "Manage team envs with Nebi"
   tagline: "Environment management for teams. Push, pull, diff, and roll back reproducible Pixi environments — like git for environments, with access control built in."
-  image:
-    alt: "Nebi"
-    html: |
-      <img src="/nebi-icon.svg" alt="Nebi" class="nebi-hero-logo" />
   actions:
-    - text: "Get Started"
+    - text: "Get started"
       link: /installation/
       icon: right-arrow
       variant: primary
     - text: "Read the docs"
       link: /introduction/
-      icon: open-book
-      variant: minimal
-    - text: "View on GitHub"
-      link: https://github.com/nebari-dev/nebi
-      icon: external
-      variant: minimal
+      variant: secondary
 sidebar:
   hidden: true
 ---
 
-import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
+
+<section class="nebi-section nebi-intro">
 
 Nebi is a multi-user environment management tool built on
 [Pixi](https://pixi.sh). Pixi gives you reproducible environments that mix
@@ -33,68 +29,75 @@ PyPI packages with compiled system libraries like GDAL and CUDA; Nebi adds the
 team layer on top — version history, publishing to OCI registries, and
 role-based access control — through a CLI, a web UI, and a desktop app.
 
-<section class="nebi-demo-section">
-  <h2>See Nebi in Action</h2>
-  <div class="nebi-demo-grid">
-    <figure>
-      <figcaption>CLI</figcaption>
-      <img src="/nebi-demo.gif" alt="Nebi CLI demo" loading="lazy" />
-    </figure>
-    <figure>
-      <figcaption>Web UI</figcaption>
-      <img src="https://raw.githubusercontent.com/nebari-dev/nebi-video-demo-automation/25e0139cf70cc0e9f8a2cf938fddd85ecd83adee/assets/demo.gif" alt="Nebi web UI demo" loading="lazy" />
-    </figure>
-  </div>
 </section>
 
-<section class="nebi-feature-grid" aria-label="Nebi capabilities">
-  <article>
-    <h2>Built on Pixi</h2>
-    <p>Install Python packages and compiled system libraries like GDAL and CUDA in one step, from PyPI and conda-forge, with lockfiles that pin every dependency to an exact version.</p>
-  </article>
-  <article>
-    <h2>Local-First Workspaces</h2>
-    <p>Track and manage Pixi workspaces locally. Initialize projects, add dependencies, and work offline with full control over your environments.</p>
-  </article>
-  <article>
-    <h2>Sync and Share</h2>
-    <p>Push workspace specs to a Nebi server and pull them on another machine. Share reproducible environments with your team using simple version tags.</p>
-  </article>
-  <article>
-    <h2>Diff and Roll Back</h2>
-    <p>Compare workspace specs across versions or directories to see exactly what changed. When an update breaks your workflow, roll back to a known-good version.</p>
-  </article>
-  <article>
-    <h2>Publish to OCI Registries</h2>
-    <p>Publish environments to any OCI registry — the same standard behind Docker Hub — so anyone can pull and reproduce your setup from anywhere.</p>
-  </article>
-  <article>
-    <h2>Governance Built In</h2>
-    <p>Role-based access control and OIDC authentication govern who can push, pull, or modify shared environments, and every change is tracked.</p>
-  </article>
+<section class="nebi-section nebi-demo" aria-labelledby="see-nebi-in-action">
+  <h2 id="see-nebi-in-action">See Nebi in Action</h2>
+  <p class="nebi-section__subtitle">The same workspace, from the command line and from the web UI.</p>
+
+  <Tabs>
+    <TabItem label="CLI">
+      <figure>
+        <img src="/nebi-demo.gif" alt="Nebi CLI demo" loading="lazy" />
+        <figcaption>Importing an environment from a public OCI registry and inspecting it locally.</figcaption>
+      </figure>
+    </TabItem>
+    <TabItem label="Web UI">
+      <figure>
+        <img src="https://raw.githubusercontent.com/nebari-dev/nebi-video-demo-automation/25e0139cf70cc0e9f8a2cf938fddd85ecd83adee/assets/demo.gif" alt="Nebi web UI demo" loading="lazy" />
+        <figcaption>Browsing workspaces, versions, and access controls from the Nebi web UI.</figcaption>
+      </figure>
+    </TabItem>
+  </Tabs>
 </section>
 
-## Start here
+<section class="nebi-section nebi-features nbr-grid-3" aria-labelledby="features">
+  <h2 id="features">Features</h2>
+  <p class="nebi-section__subtitle">What Nebi adds on top of Pixi — from local workspaces through to governed, shareable environments.</p>
 
-<CardGrid>
-  <LinkCard
-    title="What is Nebi?"
-    href="/introduction/"
-    description="The problem Nebi solves and how it compares to uv, conda, and pixi."
-  />
-  <LinkCard
-    title="Installation"
-    href="/installation/"
-    description="Install the Nebi CLI and set up your first workspace."
-  />
-  <LinkCard
-    title="Quick Start"
-    href="/quick-start/"
-    description="Track, push, and share your first environment, step by step."
-  />
-  <LinkCard
-    title="Nebi Components"
-    href="/nebi-components/"
-    description="How the CLI, server, desktop app, and OCI registries fit together."
-  />
-</CardGrid>
+  <CardGrid>
+    <Card title="Built on Pixi">
+      Install Python packages and compiled system libraries like GDAL and CUDA, from PyPI and conda-forge, with lockfiles that pin every dependency to an exact version.
+
+      [Pixi essentials](/pixi-essentials/)
+    </Card>
+    <Card title="Local-First Workspaces">
+      Track and manage Pixi workspaces locally. Initialize projects, add dependencies, and work offline with full control over your environments.
+
+      [Work locally](/cli-local/)
+    </Card>
+    <Card title="Sync and Share">
+      Push workspace specs to a Nebi server and pull them on another machine. Share reproducible environments with your team using simple version tags.
+
+      [Share with your team](/cli-team/)
+    </Card>
+    <Card title="Diff and Roll Back">
+      Compare workspace specs across versions or directories to see exactly what changed. When an update breaks your workflow, roll back to a known-good version.
+
+      [Roll back a version](/examples/version-rollback/)
+    </Card>
+    <Card title="Publish to OCI Registries">
+      Publish environments to any OCI registry — the same standard behind Docker Hub — so anyone can pull and reproduce your setup from anywhere.
+
+      [Set up a registry](/registry-setup/)
+    </Card>
+    <Card title="Governance Built In">
+      Role-based access control and OIDC authentication govern who can push, pull, or modify shared environments, and every change is tracked.
+
+      [Run a Nebi server](/server-setup/)
+    </Card>
+  </CardGrid>
+</section>
+
+<section class="nebi-section nebi-popular nbr-cols-2" aria-labelledby="popular-pages">
+  <h2 id="popular-pages">Popular pages</h2>
+
+  - [What is Nebi?](/introduction/)
+  - [Installation](/installation/)
+  - [Quick start](/quick-start/)
+  - [Nebi components](/nebi-components/)
+  - [CLI reference](/cli-reference/)
+  - [Web UI guide](/ui/)
+  - [Share an environment](/examples/sharing-environments/)
+  - [Publish to conda-forge](/maintainers-conda-forge/)
+</section>

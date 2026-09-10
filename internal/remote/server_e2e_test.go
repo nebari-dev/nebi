@@ -20,8 +20,9 @@ import (
 // authentication — local mode bypasses auth entirely, which would make
 // the bad-credentials conformance step meaningless) with a fake pixi
 // binary, mirroring cmd/nebi's e2e TestMain. Admin credentials are
-// admin/adminpass.
-func startSpikeServer(t *testing.T) string {
+// admin/adminpass. extraEnv entries (may be nil) are applied on top,
+// e.g. to configure OIDC for the device flow test.
+func startSpikeServer(t *testing.T, extraEnv map[string]string) string {
 	t.Helper()
 
 	env := map[string]string{
@@ -35,6 +36,9 @@ func startSpikeServer(t *testing.T) string {
 		"NEBI_DATABASE_LOG_LEVEL":     "silent",
 		"ADMIN_USERNAME":              "admin",
 		"ADMIN_PASSWORD":              "adminpass",
+	}
+	for k, v := range extraEnv {
+		env[k] = v
 	}
 
 	pixiPath := filepath.Join(t.TempDir(), "pixi")
@@ -106,7 +110,7 @@ func findFreePort() (int, error) {
 // TestServerRemote_Conformance runs the exact same lifecycle script the
 // OCI remote passes, against a real in-process nebi server.
 func TestServerRemote_Conformance(t *testing.T) {
-	baseURL := startSpikeServer(t)
+	baseURL := startSpikeServer(t, nil)
 	r := &ServerRemote{BaseURL: baseURL}
 
 	good := AuthenticationCredential{
@@ -125,7 +129,7 @@ func TestServerRemote_Conformance(t *testing.T) {
 // TestServerRemote_TokenAuth covers the second credential type: reuse a
 // JWT minted by a basic login as a token credential on a fresh remote.
 func TestServerRemote_TokenAuth(t *testing.T) {
-	baseURL := startSpikeServer(t)
+	baseURL := startSpikeServer(t, nil)
 	ctx := context.Background()
 
 	login, err := cliclient.NewWithoutAuth(baseURL).Login(ctx, "admin", "adminpass")

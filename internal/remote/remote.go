@@ -17,6 +17,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 )
 
 // AuthenticationCredentialType names an authentication scheme a remote
@@ -26,6 +27,12 @@ type AuthenticationCredentialType string
 const (
 	BasicAuthenticationCredentialType AuthenticationCredentialType = "basic"
 	TokenAuthenticationCredentialType AuthenticationCredentialType = "token"
+	// DeviceAuthenticationCredentialType marks a *dynamic* scheme: an
+	// interactive flow (RFC 8628 device authorization grant) that
+	// cannot be expressed as a static AuthenticationCredential. A
+	// remote advertising it must also implement DeviceAuthenticator;
+	// see the static/dynamic split documented on that interface.
+	DeviceAuthenticationCredentialType AuthenticationCredentialType = "device"
 )
 
 // AuthenticationCredential carries the user-supplied secret for one of
@@ -130,6 +137,64 @@ type Remote interface {
 	// one. ws.Ref names the version being pushed; pushing a ref that
 	// already exists fails with ErrConflict.
 	Push(ctx context.Context, ws Workspace) error
+}
+
+// Authentication is split between static and dynamic schemes:
+//
+//   - Static schemes (basic, token) are a credential the user can type
+//     up front; they go through Remote.Authenticate.
+//   - Dynamic schemes require an interaction in the middle of the
+//     flow — the client must show the user a code and a URL, then wait
+//     for the user to approve in a browser. That can never fit in an
+//     AuthenticationCredential struct, so it is expressed as the
+//     optional DeviceAuthenticator extension below.
+//
+// A client authenticates a remote like this:
+//
+//	switch scheme chosen from r.SupportedAuthentication() {
+//	case basic, token:
+//	    r.Authenticate(ctx, cred)
+//	case device:
+//	    da := r.(remote.DeviceAuthenticator)   // advertised ⇒ implemented
+//	    auth, _ := da.BeginDeviceAuthentication(ctx)
+//	    // show auth.UserCode and auth.VerificationURI to the user
+//	    da.CompleteDeviceAuthentication(ctx, auth) // blocks until approved
+//	}
+//
+// DeviceAuthenticator is implemented by remotes that support the RFC
+// 8628 device authorization grant. A remote only advertises
+// DeviceAuthenticationCredentialType in SupportedAuthentication when it
+// implements this interface.
+type DeviceAuthenticator interface {
+	// BeginDeviceAuthentication starts the flow and returns the prompt
+	// the client must show the user.
+	BeginDeviceAuthentication(ctx context.Context) (DeviceAuthorization, error)
+	// CompleteDeviceAuthentication blocks, polling the identity
+	// provider, until the user approves the prompt (then the remote is
+	// authenticated, as after a successful Authenticate), the
+	// authorization expires, or ctx is cancelled.
+	CompleteDeviceAuthentication(ctx context.Context, da DeviceAuthorization) error
+}
+
+// DeviceAuthorization is the user-facing half of a pending device
+// flow: everything the client needs to render the "go here, enter this
+// code" prompt. The unexported fields are opaque continuation state a
+// client just hands back to CompleteDeviceAuthentication.
+type DeviceAuthorization struct {
+	// UserCode is the short code the user enters at VerificationURI.
+	UserCode string
+	// VerificationURI is the page where the user approves the login.
+	VerificationURI string
+	// VerificationURIComplete, when non-empty, embeds the code in the
+	// URL so the user only has to confirm (optional per RFC 8628).
+	VerificationURIComplete string
+	// ExpiresAt is when the pending authorization stops being valid.
+	ExpiresAt time.Time
+
+	deviceCode string        // RFC 8628 device_code being polled
+	tokenURL   string        // issuer token endpoint to poll
+	clientID   string        // OAuth client id the flow was started for
+	interval   time.Duration // issuer-requested polling interval
 }
 
 // splitIDRef splits "id@ref" into its parts; ref is empty when absent.

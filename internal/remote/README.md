@@ -14,7 +14,8 @@ unmodified against both:
 - a basic-auth OCI registry (`go test ./internal/remote/`, in-memory
   Distribution server), plus an anonymous public-registry variant, and
 - a real team-mode nebi server (`go test -tags e2e ./internal/remote/`,
-  in-process `server.Run`).
+  in-process `server.Run`), which additionally demonstrates token auth
+  and the OIDC device flow against a fake issuer.
 
 The script exercises the whole client lifecycle: discover auth schemes,
 reject bad credentials, authenticate, push a new workspace, list it,
@@ -41,7 +42,22 @@ and get typed not-found errors.
    plus `ID` for an existing workspace or `Name` for a new one. That is
    enough, but "push to new" vs "push to existing" being implicit in
    which fields are set is easy to misuse.
-5. **Typed errors.** Five sentinels cover everything the client needs
+5. **Authentication is split into static and dynamic schemes.** Basic
+   and token credentials can be typed up front and go through
+   `Authenticate`. The server's OIDC device flow (RFC 8628) cannot: the
+   client must show the user a code and a URL mid-flow, then wait for
+   browser approval. It is modeled as an optional extension interface,
+   `DeviceAuthenticator` (`BeginDeviceAuthentication` returns the
+   prompt, `CompleteDeviceAuthentication` polls until approval and
+   leaves the remote authenticated), advertised through a third
+   credential type, `device`, in `SupportedAuthentication`. Clients
+   detect support with a type assertion. `ServerRemote` implements it
+   end to end (config probe, OIDC discovery, device grant, poll,
+   id_token exchange); `OCIRemote` deliberately does not, which is
+   exactly what an optional interface expresses. Demonstrated against a
+   fake OIDC issuer in `TestServerRemote_DeviceFlow`
+   (`device_e2e_test.go`).
+6. **Typed errors.** Five sentinels cover everything the client needs
    to react to: `ErrNotAuthenticated`, `ErrUnauthorized`,
    `ErrForbidden`, `ErrNotFound`, `ErrConflict`, matched with
    `errors.Is`. The server side maps cleanly off HTTP status codes
@@ -76,15 +92,31 @@ and get typed not-found errors.
   OCI.** A registry can't be asked up front which schemes it wants
   (anonymous vs basic only reveals itself as a 401 challenge). The
   spike makes it a constructor flag (`AllowAnonymous`). The server
-  *does* have a discovery endpoint (`GET /auth/device-config`), which
-  suggests the method is fine but its OCI implementation will be
-  config- or probe-based.
-- **OIDC device flow doesn't fit `AuthenticationCredential`.** The
-  server's third auth path (RFC 8628 device flow) is interactive and
-  produces a token out-of-band. It can compose — run the flow outside
-  the interface, then `Authenticate` with the resulting token — but the
-  credential struct alone can't express it. Token auth against the
-  server is demonstrated in `TestServerRemote_TokenAuth`.
+  *does* have a discovery endpoint (`GET /auth/device-config`), and
+  `ServerRemote` uses it to decide whether to advertise the `device`
+  scheme.
+- **`SupportedAuthentication`'s signature is too small for real
+  discovery.** Probing `/auth/device-config` is a network call, but the
+  method takes no `context.Context` and returns no `error`, so
+  `ServerRemote` probes with a background-context timeout and caches
+  the result — including a cached "no" when the server was merely
+  unreachable. A real design wants
+  `SupportedAuthentication(ctx) ([]AuthenticationCredentialType, error)`.
+- **Dynamic auth needs two phases, not a credential.** The device flow
+  hands the client a prompt in the middle (user code + verification
+  URL) and then blocks on the user. No single-call
+  `Authenticate(credential)` shape can express that; the Begin/Complete
+  pair on `DeviceAuthenticator` can, and it stays optional so backends
+  without an interactive flow (OCI) are not forced to stub it. The
+  resulting token also composes with the static path: a JWT minted by
+  any flow works as a `token` credential
+  (`TestServerRemote_TokenAuth`).
+- **The RFC 8628 client code is duplicated.** `cmd/nebi/login.go`
+  already contains discovery/authorize/poll helpers, but they are
+  interleaved with terminal I/O and live in `package main`, so
+  `server_device.go` carries copies with the I/O stripped. Productizing
+  should extract them into a shared package and rewire the CLI's
+  interactive login on top of `DeviceAuthenticator`.
 - **`Authenticate` means different things.** Server: exchange
   credentials for a session (JWT). OCI: no session exists — validate
   once, then re-send credentials on every call. The interface absorbs
@@ -118,5 +150,5 @@ and get typed not-found errors.
 - No wiring into `cmd/nebi` or the `/remote/*` handlers — the issue
   only asks whether the interface is viable.
 - No nebi-repository filtering in `OCIRemote.List`.
-- No Quay token auth, no OIDC device flow inside the interface.
+- No Quay token auth.
 - No asset content transfer.

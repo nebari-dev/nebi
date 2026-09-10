@@ -19,20 +19,43 @@ type ServerRemote struct {
 	// (workspace creation is asynchronous on the server — a spike
 	// finding). Zero means 60s.
 	CreateReadyTimeout time.Duration
+	// DevicePollInterval overrides the issuer-requested polling
+	// interval during CompleteDeviceAuthentication. Tests only; zero
+	// means honor the issuer.
+	DevicePollInterval time.Duration
 
-	client *cliclient.Client // set by a successful Authenticate
+	client        *cliclient.Client // set by a successful Authenticate
+	deviceEnabled *bool             // cached /auth/device-config probe
 }
 
 var _ Remote = (*ServerRemote)(nil)
 
 func (r *ServerRemote) SupportedAuthentication() []AuthenticationCredentialType {
-	// The server additionally supports an OIDC device flow (probed via
-	// GET /auth/device-config); that cannot be expressed as a static
-	// credential and is out of scope for the spike (see README).
-	return []AuthenticationCredentialType{
+	schemes := []AuthenticationCredentialType{
 		BasicAuthenticationCredentialType,
 		TokenAuthenticationCredentialType,
 	}
+	// Whether the dynamic device scheme is available is genuinely
+	// *discovered* (GET /auth/device-config), but the interface
+	// signature allows neither a context nor an error — a spike
+	// finding: a real design wants
+	// SupportedAuthentication(ctx) ([]AuthenticationCredentialType, error).
+	// Probe once with a short timeout and cache; an unreachable server
+	// caches "no device flow", which is the kind of wart the missing
+	// error return forces.
+	if r.deviceEnabled == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		enabled := false
+		if cfg, err := cliclient.NewWithoutAuth(r.BaseURL).GetDeviceConfig(ctx); err == nil && cfg.Enabled {
+			enabled = true
+		}
+		r.deviceEnabled = &enabled
+	}
+	if *r.deviceEnabled {
+		schemes = append(schemes, DeviceAuthenticationCredentialType)
+	}
+	return schemes
 }
 
 func (r *ServerRemote) Authenticate(ctx context.Context, ac AuthenticationCredential) error {

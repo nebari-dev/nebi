@@ -129,6 +129,9 @@ $ nebi diff ./project-a ./project-b
 # Compare a local directory against a server version
 $ nebi diff ./my-project my-project:v1.0
 
+# Compare the local workspace against an immutable OCI artifact
+$ nebi diff quay.io/nebari/my-project@sha256:<64-hex-digest>
+
 # Include lock file changes
 $ nebi diff --lock
 ```

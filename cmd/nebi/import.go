@@ -23,8 +23,13 @@ var importCmd = &cobra.Command{
 	Short: "Import a workspace from a public OCI registry",
 	Long: `Import a Nebi workspace bundle from an OCI registry.
 
-The OCI reference should be in the format: registry/repository:tag
-(e.g., quay.io/nebari/my-env:v1)
+The OCI reference may select a tag, a sha256 manifest digest, or both:
+  registry/repository:tag
+  registry/repository@sha256:<64-hex-digest>
+  registry/repository:tag@sha256:<64-hex-digest>
+
+When both are present, the digest selects the artifact and the tag is retained
+as descriptive import metadata.
 
 Restores pixi.toml, pixi.lock, and any bundled asset files to the output
 directory. Works entirely locally — no server connection needed.
@@ -34,6 +39,7 @@ in the imported pixi.toml.
 
 Examples:
   nebi import quay.io/nebari/my-env:v1
+  nebi import quay.io/nebari/my-env@sha256:<64-hex-digest>
   nebi import ghcr.io/myorg/data-science:latest -o ./my-project`,
 	Args: cobra.ExactArgs(1),
 	RunE: runImport,
@@ -46,24 +52,25 @@ func init() {
 }
 
 func runImport(cmd *cobra.Command, args []string) error {
-	repoRef, tag := parseWsRef(args[0])
-	if tag == "" {
-		return fmt.Errorf("tag is required; use format registry/repository:tag (e.g., quay.io/nebari/my-env:v1)")
+	artifact, err := oci.ParseArtifactReference(args[0])
+	if err != nil {
+		return err
 	}
-
-	repoRef, plainHTTP := oci.StripScheme(repoRef)
 
 	ctx := context.Background()
 
 	// Peek at manifest first so we can enforce the empty-destination
 	// policy before any bytes land on disk. This is cheap (one small
 	// GET) and avoids partial-extract state on a rejected destination.
-	peek, err := oci.PullBundle(ctx, repoRef, tag, oci.PullOptions{
+	peek, err := oci.PullBundle(ctx, artifact.Repository, artifact.Selector(), oci.PullOptions{
 		Concurrency: importConcurrency,
-		PlainHTTP:   plainHTTP,
+		PlainHTTP:   artifact.PlainHTTP,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to pull from registry: %w", err)
+	}
+	if err := oci.VerifyManifestDigest(peek.Digest, artifact.Digest); err != nil {
+		return err
 	}
 
 	outputDir := importOutput
@@ -92,9 +99,9 @@ func runImport(cmd *cobra.Command, args []string) error {
 
 	// Stream every layer straight to disk via oras.Copy + file.Store.
 	// Asset blobs never land fully in RAM regardless of size.
-	result, err := oci.ExtractBundle(ctx, repoRef, tag, outputDir, oci.PullOptions{
+	result, err := oci.ExtractBundle(ctx, artifact.Repository, peek.Digest, outputDir, oci.PullOptions{
 		Concurrency: importConcurrency,
-		PlainHTTP:   plainHTTP,
+		PlainHTTP:   artifact.PlainHTTP,
 	})
 	if err != nil {
 		return fmt.Errorf("import failed: %w; partial files at %s", err, absDir)
@@ -105,10 +112,11 @@ func runImport(cmd *cobra.Command, args []string) error {
 	// Auto-track the workspace (name will be read from imported pixi.toml)
 	if err := ensureInit(outputDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to auto-track workspace: %v\n", err)
+	} else if err := saveImportMetadata(outputDir, artifact.Repository, artifact.Tag, result.Digest); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to record import metadata: %v\n", err)
 	}
 
-	ref := repoRef + ":" + tag
-	fmt.Fprintf(os.Stderr, "Imported %s -> %s (%d asset file(s))\n", ref, absOutput, len(result.Assets))
+	fmt.Fprintf(os.Stderr, "Imported %s -> %s (%d asset file(s))\n", args[0], absOutput, len(result.Assets))
 
 	return nil
 }

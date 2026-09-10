@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/registry"
+	"github.com/nebari-dev/nebi/internal/oci"
+	"github.com/nebari-dev/nebi/internal/store"
 )
 
 // startE2ERegistry spins up an in-memory OCI Distribution server. The
@@ -27,9 +29,9 @@ func startE2ERegistry(t *testing.T) string {
 	return u.Host
 }
 
-// publishedRefRE extracts the "<host>/<ns>/<repo>:<tag>" fragment from
+// publishedRefRE extracts the tag reference and resolved manifest digest from
 // publish stderr lines that look like `Published <ref> (digest: sha256:...)`.
-var publishedRefRE = regexp.MustCompile(`Published (\S+) \(digest:`)
+var publishedRefRE = regexp.MustCompile(`Published (\S+) \(digest: (sha256:[a-f0-9]{64})\)`)
 
 // TestE2E_LocalBundlePublishImport runs a full publish --local → import
 // round trip against an in-memory OCI registry. Verifies that pixi.toml,
@@ -145,6 +147,84 @@ func TestE2E_LocalBundlePublishImport(t *testing.T) {
 	}
 	if !strings.Contains(string(gotLock), "version: 6") {
 		t.Fatalf("imported pixi.lock missing expected content:\n%s", gotLock)
+	}
+
+	artifact, err := oci.ParseArtifactReference(ref)
+	if err != nil {
+		t.Fatalf("parse published reference: %v", err)
+	}
+	s, err := store.Open(dataDir)
+	if err != nil {
+		t.Fatalf("open local store: %v", err)
+	}
+	defer s.Close()
+	ws, err := s.FindWorkspaceByPath(outDir)
+	if err != nil {
+		t.Fatalf("find imported workspace: %v", err)
+	}
+	if ws == nil {
+		t.Fatal("imported workspace was not tracked")
+	}
+	if ws.ImportRepository != artifact.Repository || ws.ImportTag != artifact.Tag || ws.ImportDigest != m[2] {
+		t.Fatalf("unexpected tag import metadata: repository=%q tag=%q digest=%q", ws.ImportRepository, ws.ImportTag, ws.ImportDigest)
+	}
+}
+
+func TestE2E_LocalBundleImportAndDiffByDigest(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("NEBI_DATA_DIR", dataDir)
+
+	regHost := startE2ERegistry(t)
+	srcDir := t.TempDir()
+	writePixiFiles(t, srcDir,
+		"[project]\nname = \"digest-e2e\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+		"version: 6\n",
+	)
+	published, err := oci.Publish(
+		t.Context(),
+		srcDir,
+		oci.Registry{Host: regHost, Namespace: "demo", PlainHTTP: true},
+		"digest-e2e",
+		"reviewed",
+	)
+	if err != nil {
+		t.Fatalf("publish bundle: %v", err)
+	}
+
+	digestRef := "http://" + published.Repository + "@" + published.Digest
+	outParent := t.TempDir()
+	outDir := filepath.Join(outParent, "restored")
+	res := runCLI(t, outParent, "import", digestRef, "--output", outDir)
+	if res.ExitCode != 0 {
+		t.Fatalf("digest import failed:\nstdout: %s\nstderr: %s", res.Stdout, res.Stderr)
+	}
+
+	s, err := store.Open(dataDir)
+	if err != nil {
+		t.Fatalf("open local store: %v", err)
+	}
+	defer s.Close()
+	ws, err := s.FindWorkspaceByPath(outDir)
+	if err != nil {
+		t.Fatalf("find imported workspace: %v", err)
+	}
+	if ws == nil {
+		t.Fatal("imported workspace was not tracked")
+	}
+	if ws.ImportRepository != published.Repository || ws.ImportTag != "" || ws.ImportDigest != published.Digest {
+		t.Fatalf("unexpected import metadata: repository=%q tag=%q digest=%q", ws.ImportRepository, ws.ImportTag, ws.ImportDigest)
+	}
+
+	modifiedToml := "[project]\nname = \"digest-e2e\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n\n[dependencies]\nrequests = \"*\"\n"
+	if err := os.WriteFile(filepath.Join(outDir, "pixi.toml"), []byte(modifiedToml), 0o644); err != nil {
+		t.Fatalf("modify imported pixi.toml: %v", err)
+	}
+	res = runCLI(t, outDir, "diff", digestRef)
+	if res.ExitCode != 0 {
+		t.Fatalf("digest diff failed:\nstdout: %s\nstderr: %s", res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stdout, digestRef) || !strings.Contains(res.Stdout, "requests") {
+		t.Fatalf("digest diff did not compare against the OCI artifact: stdout=%q stderr=%q", res.Stdout, res.Stderr)
 	}
 }
 

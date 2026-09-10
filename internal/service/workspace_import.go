@@ -23,6 +23,7 @@ type ImportFromRegistryRequest struct {
 	// for example "namespace/repository" in "host/namespace/repository:tag".
 	RepositoryPath string
 	Tag            string
+	Digest         string
 	Name           string
 }
 
@@ -53,6 +54,12 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 		return nil, &ValidationError{Message: "Invalid registry ID"}
 	}
 	if err := ensureRegistryAccess(s.db, s.rbac, s.isLocal, userID, regID, "read"); err != nil {
+		return nil, err
+	}
+
+	tag := strings.TrimSpace(req.Tag)
+	selector, requestedDigest, err := importSelector(tag, req.Digest)
+	if err != nil {
 		return nil, err
 	}
 
@@ -99,16 +106,15 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 		return nil, fmt.Errorf("create staging dir: %w", err)
 	}
 
-	var digest string
+	var result *oci.PullResult
 	if s.isLocal {
-		result, err := oci.ExtractBundle(pullCtx, repoRef, req.Tag, stagingDir, pullOpts)
+		result, err = oci.ExtractBundle(pullCtx, repoRef, selector, stagingDir, pullOpts)
 		if err != nil {
 			_ = os.RemoveAll(stagingDir)
 			return nil, fmt.Errorf("extract bundle: %w", err)
 		}
-		digest = result.Digest
 	} else {
-		result, err := oci.PullBundle(pullCtx, repoRef, req.Tag, pullOpts)
+		result, err = oci.PullBundle(pullCtx, repoRef, selector, pullOpts)
 		if err != nil {
 			_ = os.RemoveAll(stagingDir)
 			return nil, fmt.Errorf("pull bundle: %w", err)
@@ -123,12 +129,19 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 			_ = os.RemoveAll(stagingDir)
 			return nil, fmt.Errorf("stage pixi.lock: %w", err)
 		}
-		digest = result.Digest
+	}
+
+	if err := oci.VerifyManifestDigest(result.Digest, requestedDigest); err != nil {
+		_ = os.RemoveAll(stagingDir)
+		return nil, err
 	}
 
 	ws, err := s.Create(ctx, CreateRequest{
 		Name:             req.Name,
 		ImportStagingDir: stagingDir,
+		ImportRepository: repoRef,
+		ImportTag:        tag,
+		ImportDigest:     result.Digest,
 	}, userID)
 	if err != nil {
 		_ = os.RemoveAll(stagingDir)
@@ -139,9 +152,32 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 		"name":       req.Name,
 		"registry":   ep.Registry.Name,
 		"repository": auditRepository,
-		"tag":        req.Tag,
-		"digest":     digest,
+		"tag":        tag,
+		"digest":     result.Digest,
 	})
 
 	return ws, nil
+}
+
+func importSelector(tag, digestValue string) (selector, requestedDigest string, err error) {
+	if tag != "" {
+		tag, err = oci.ValidateArtifactTag(tag)
+		if err != nil {
+			return "", "", &ValidationError{Message: err.Error()}
+		}
+	}
+
+	requestedDigest = strings.TrimSpace(digestValue)
+	if tag == "" && requestedDigest == "" {
+		return "", "", &ValidationError{Message: "tag or digest is required"}
+	}
+	if requestedDigest == "" {
+		return tag, "", nil
+	}
+
+	requestedDigest, err = oci.ValidateManifestDigest(requestedDigest)
+	if err != nil {
+		return "", "", &ValidationError{Message: err.Error()}
+	}
+	return requestedDigest, requestedDigest, nil
 }

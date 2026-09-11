@@ -22,6 +22,10 @@ pixi global install nebi
 
 ## Installation script
 
+The installer verifies release checksums and Sigstore signatures before
+extracting artifacts. Install `cosign` first from the
+[Sigstore installation docs](https://docs.sigstore.dev/cosign/system_config/installation/).
+
 ### Linux & MacOS
 
 This installs the latest release of `nebi` to `~/.local/bin` (CLI and desktop app):
@@ -67,8 +71,10 @@ conda install conda-forge::nebi
 
 For certain cases like development or testing, you can install Nebi from source.
 
-Prerequisite: Go version 1.24+
+Prerequisite: Go version 1.25+
 
 ```bash
-go install github.com/nebari-dev/nebi/cmd/nebi@latest
+go install github.com/nebari-dev/nebi/cmd/nebi@v0.14
 ```
+
+Prefer a released tag or audited commit instead of a mutable version selector.

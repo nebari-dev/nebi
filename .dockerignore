@@ -37,7 +37,9 @@ docs/
 test*.sh
 
 # CI/CD
-.github/
+.github/*
+!.github/
+!.github/tool-versions.env
 
 # Docker
 Dockerfile

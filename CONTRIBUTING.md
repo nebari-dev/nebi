@@ -43,7 +43,7 @@ make swagger        # Generate API docs
 Nebi includes a desktop application built with [Wails](https://wails.io/).
 
 **Prerequisites:**
-- Go 1.24+
+- Go 1.25+
 - Node.js 20+
 - [Wails CLI](https://wails.io/docs/gettingstarted/installation)
 

@@ -15,6 +15,8 @@ type WorkspaceVersion struct {
 
 	// Version tracking
 	VersionNumber int `gorm:"not null;index:idx_ws_version" json:"version_number"` // Auto-incrementing per workspace
+	// ManifestVersion is derived from the stored pixi.toml [workspace]/[project] version.
+	ManifestVersion string `gorm:"-" json:"manifest_version,omitempty"`
 
 	// File contents (stored as TEXT in database)
 	LockFileContent string `gorm:"type:text;not null" json:"lock_file_content"` // pixi.lock content

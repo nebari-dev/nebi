@@ -9,10 +9,10 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { workspacesApi } from '@/api/workspaces';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   useDownloadLockFile,
   useDownloadManifest,

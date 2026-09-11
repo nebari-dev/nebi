@@ -156,7 +156,7 @@ jobs:
           cosign sign-blob --bundle=nebi-cli-release.json.sigstore.json nebi-cli-release.json --yes
 
       - name: Upload CLI release gate assets
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           draft: true
           fail_on_unmatched_files: true

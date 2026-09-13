@@ -69,6 +69,7 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 		extraTags = append(extraTags, t)
 	}
 
+	maxCoreLayerBytes := ociCoreLayerLimit(s.limits.LockBytes)
 	var digest string
 	if s.isLocal {
 		regEndpoint := oci.Registry{
@@ -80,22 +81,24 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 		}
 		res, err := oci.Publish(ctx, wsPath, regEndpoint, req.Repository, req.Tag,
 			oci.WithExtraTags(extraTags...),
+			oci.WithMaxCoreLayerBytes(maxCoreLayerBytes),
 		)
 		if err != nil {
-			return nil, fmt.Errorf("publish failed: %w", err)
+			return nil, mapOCILimitError(fmt.Errorf("publish failed: %w", err))
 		}
 		digest = res.Digest
 	} else {
 		d, err := oci.PublishWorkspace(ctx, wsPath, oci.PublishOptions{
-			Repository:   fullRepo,
-			Tag:          req.Tag,
-			ExtraTags:    extraTags,
-			Username:     ep.Username,
-			Password:     ep.Password,
-			RegistryHost: ep.Host,
+			Repository:        fullRepo,
+			Tag:               req.Tag,
+			ExtraTags:         extraTags,
+			Username:          ep.Username,
+			Password:          ep.Password,
+			RegistryHost:      ep.Host,
+			MaxCoreLayerBytes: maxCoreLayerBytes,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("publish failed: %w", err)
+			return nil, mapOCILimitError(fmt.Errorf("publish failed: %w", err))
 		}
 		digest = d
 	}

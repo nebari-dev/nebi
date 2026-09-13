@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,11 +28,66 @@ import (
 // tells oras.Copy to skip the fetch (see the PreCopy hook).
 var emptyBlobDigest = digest.FromBytes(nil)
 
+const (
+	maxManifestBytes      int64 = 1 * 1024 * 1024
+	maxQuayErrorBodyBytes int64 = 64 * 1024
+	defaultMaxCoreBytes   int64 = 16 * 1024 * 1024
+)
+
+type readLimitError struct {
+	bodyName string
+	maxBytes int64
+}
+
+func (e *readLimitError) Error() string {
+	return fmt.Sprintf("%s exceeds %d bytes", e.bodyName, e.maxBytes)
+}
+
+type sizeLimitError struct {
+	bodyName string
+	size     int64
+	maxBytes int64
+}
+
+func (e *sizeLimitError) Error() string {
+	return fmt.Sprintf("%s size %d bytes exceeds cap %d bytes", e.bodyName, e.size, e.maxBytes)
+}
+
+// IsLimitError reports whether err came from one of the OCI byte caps.
+func IsLimitError(err error) bool {
+	var readErr *readLimitError
+	if errors.As(err, &readErr) {
+		return true
+	}
+	var sizeErr *sizeLimitError
+	return errors.As(err, &sizeErr)
+}
+
+// readAllBounded returns at most maxBytes bytes. When the input exceeds
+// maxBytes it returns that truncated prefix together with readLimitError;
+// callers that need an error snippet can include the returned bytes.
+func readAllBounded(r io.Reader, maxBytes int64, bodyName string) ([]byte, error) {
+	if maxBytes < 0 {
+		return nil, fmt.Errorf("%s has invalid negative limit %d bytes", bodyName, maxBytes)
+	}
+	data, err := io.ReadAll(io.LimitReader(r, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return data[:maxBytes], &readLimitError{bodyName: bodyName, maxBytes: maxBytes}
+	}
+	return data, nil
+}
+
 // BrowseOptions contains options for browsing an OCI registry
 type BrowseOptions struct {
 	RegistryHost string
 	Username     string
 	Password     string
+	// PlainHTTP talks to the registry over HTTP. Test/local registries
+	// only.
+	PlainHTTP bool
 }
 
 // RepositoryInfo contains information about a repository
@@ -59,6 +115,10 @@ type PullOptions struct {
 	// registry cannot exhaust disk by streaming a multi-GB asset blob.
 	// Zero or negative = no cap.
 	MaxBundleBytes int64
+	// MaxCoreLayerBytes caps each buffered core layer (pixi.toml and
+	// pixi.lock) before fetch. Zero uses the default 16 MiB cap so CLI
+	// callers keep the default protection; negative disables this cap.
+	MaxCoreLayerBytes int64
 }
 
 // AssetBlob names a single asset layer in a bundle. It is a listing
@@ -146,6 +206,7 @@ func ListRepositories(ctx context.Context, opts BrowseOptions) ([]RepositoryInfo
 	if c := newAuthClient(opts.Username, opts.Password); c != nil {
 		reg.Client = c
 	}
+	reg.PlainHTTP = opts.PlainHTTP
 
 	var repos []RepositoryInfo
 	err = reg.Repositories(ctx, "", func(repoNames []string) error {
@@ -254,6 +315,7 @@ func ListTags(ctx context.Context, repoRef string, opts BrowseOptions) ([]TagInf
 	if c := newAuthClient(opts.Username, opts.Password); c != nil {
 		repo.Client = c
 	}
+	repo.PlainHTTP = opts.PlainHTTP
 
 	var tags []TagInfo
 	err = repo.Tags(ctx, "", func(tagNames []string) error {
@@ -330,6 +392,51 @@ func classifyBundleManifest(m ocispec.Manifest) (classifiedManifest, error) {
 	return out, nil
 }
 
+func validateCoreLayerSize(desc ocispec.Descriptor, maxBytes int64) error {
+	title := desc.Annotations[ocispec.AnnotationTitle]
+	if title == "" {
+		title = "layer"
+	}
+	if desc.Size < 0 {
+		return fmt.Errorf("%s layer has invalid negative size %d bytes", title, desc.Size)
+	}
+	limit := maxBytes
+	if limit == 0 {
+		limit = defaultMaxCoreBytes
+	}
+	if limit < 0 || desc.Size <= limit {
+		return nil
+	}
+	return &sizeLimitError{bodyName: title + " layer", size: desc.Size, maxBytes: limit}
+}
+
+func validateManifestSize(desc ocispec.Descriptor) error {
+	if desc.Size < 0 {
+		return fmt.Errorf("manifest has invalid negative size %d bytes", desc.Size)
+	}
+	if desc.Size <= maxManifestBytes {
+		return nil
+	}
+	return &sizeLimitError{bodyName: "manifest", size: desc.Size, maxBytes: maxManifestBytes}
+}
+
+func fetchManifestBytes(ctx context.Context, repo *remote.Repository, desc ocispec.Descriptor) ([]byte, error) {
+	if err := validateManifestSize(desc); err != nil {
+		return nil, err
+	}
+	manifestReader, err := repo.Fetch(ctx, desc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch manifest: %w", err)
+	}
+	defer manifestReader.Close()
+
+	manifestData, err := readAllBounded(manifestReader, maxManifestBytes, "manifest")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read manifest: %w", err)
+	}
+	return manifestData, nil
+}
+
 // resolveBundleManifest opens a remote repo, resolves the tag, fetches
 // the manifest, verifies it's a Nebi artifact, and classifies its
 // layers. Shared between PullBundle (metadata-only) and ExtractBundle
@@ -354,14 +461,9 @@ func resolveBundleManifest(
 	if err != nil {
 		return nil, cm, fmt.Errorf("failed to resolve tag %s: %w", tag, err)
 	}
-	manifestReader, err := repo.Fetch(ctx, desc)
+	manifestData, err := fetchManifestBytes(ctx, repo, desc)
 	if err != nil {
-		return nil, cm, fmt.Errorf("failed to fetch manifest: %w", err)
-	}
-	manifestData, err := io.ReadAll(manifestReader)
-	manifestReader.Close()
-	if err != nil {
-		return nil, cm, fmt.Errorf("failed to read manifest: %w", err)
+		return nil, cm, err
 	}
 	var manifest ocispec.Manifest
 	if err := json.Unmarshal(manifestData, &manifest); err != nil {
@@ -374,6 +476,12 @@ func resolveBundleManifest(
 	if err != nil {
 		return nil, cm, err
 	}
+	if err := validateCoreLayerSize(cm.pixiToml, opts.MaxCoreLayerBytes); err != nil {
+		return nil, cm, err
+	}
+	if err := validateCoreLayerSize(cm.pixiLock, opts.MaxCoreLayerBytes); err != nil {
+		return nil, cm, err
+	}
 	cm.manifestDesc = desc
 	if opts.MaxBundleBytes > 0 {
 		var total int64
@@ -382,7 +490,7 @@ func resolveBundleManifest(
 			total += a.Size
 		}
 		if total > opts.MaxBundleBytes {
-			return nil, cm, fmt.Errorf("bundle size %d bytes exceeds cap %d bytes", total, opts.MaxBundleBytes)
+			return nil, cm, &sizeLimitError{bodyName: "bundle", size: total, maxBytes: opts.MaxBundleBytes}
 		}
 	}
 	return repo, cm, nil
@@ -507,8 +615,9 @@ func ExtractBundle(ctx context.Context, repoRef, tag, destDir string, opts PullO
 // listed in the returned result's Assets slice but never fetched.
 func PullEnvironment(ctx context.Context, repoRef, tag string, opts BrowseOptions) (*PullResult, error) {
 	return PullBundle(ctx, repoRef, tag, PullOptions{
-		Username: opts.Username,
-		Password: opts.Password,
+		Username:  opts.Username,
+		Password:  opts.Password,
+		PlainHTTP: opts.PlainHTTP,
 	})
 }
 
@@ -523,6 +632,7 @@ func IsNebiRepository(ctx context.Context, repoRef string, opts BrowseOptions) b
 	if c := newAuthClient(opts.Username, opts.Password); c != nil {
 		repo.Client = c
 	}
+	repo.PlainHTTP = opts.PlainHTTP
 
 	// Get the first tag only — errStopIteration is expected, so we ignore the error.
 	var firstTag string
@@ -541,14 +651,7 @@ func IsNebiRepository(ctx context.Context, repoRef string, opts BrowseOptions) b
 	if err != nil {
 		return false
 	}
-
-	manifestReader, err := repo.Fetch(ctx, desc)
-	if err != nil {
-		return false
-	}
-	defer manifestReader.Close()
-
-	manifestData, err := io.ReadAll(manifestReader)
+	manifestData, err := fetchManifestBytes(ctx, repo, desc)
 	if err != nil {
 		return false
 	}
@@ -607,6 +710,15 @@ func FilterNebiRepositories(ctx context.Context, repos []RepositoryInfo, host st
 // ChangeRepositoryVisibility changes the visibility of a repository on Quay.io.
 // It calls the Quay.io API: POST /api/v1/repository/{repo}/changevisibility
 func ChangeRepositoryVisibility(ctx context.Context, host, repoPath, apiToken string, isPublic bool) error {
+	return ChangeRepositoryVisibilityWithClient(ctx, host, repoPath, apiToken, isPublic, http.DefaultClient)
+}
+
+// ChangeRepositoryVisibilityWithClient is the injectable-client form of
+// ChangeRepositoryVisibility. Tests pass an httptest client directly.
+func ChangeRepositoryVisibilityWithClient(ctx context.Context, host, repoPath, apiToken string, isPublic bool, client *http.Client) error {
+	if client == nil {
+		client = http.DefaultClient
+	}
 	visibility := "private"
 	if isPublic {
 		visibility = "public"
@@ -625,38 +737,42 @@ func ChangeRepositoryVisibility(ctx context.Context, host, repoPath, apiToken st
 		req.Header.Set("Authorization", "Bearer "+apiToken)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to call visibility API: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, err := readAllBounded(resp.Body, maxQuayErrorBodyBytes, "visibility API error body")
+		if err != nil {
+			if len(respBody) > 0 {
+				return fmt.Errorf("visibility API returned status %d: %s: %w", resp.StatusCode, string(respBody), err)
+			}
+			return fmt.Errorf("visibility API returned status %d: failed to read response body: %w", resp.StatusCode, err)
+		}
 		return fmt.Errorf("visibility API returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	return nil
 }
 
-// fetchLayerBytes returns the full raw bytes for a layer descriptor.
-// The body is bounded to desc.Size+1 so a registry that omits
-// Content-Length and serves an oversized stream cannot exhaust RAM —
-// the size cap in resolveBundleManifest only sees the manifest's
-// declared sizes, not the actual transport bytes.
+// fetchLayerBytes returns the full raw bytes for a core pixi file layer.
+// resolveBundleManifest already rejects invalid declared sizes; this caps
+// the transport body at desc.Size+1 so oversized responses are caught too.
 func fetchLayerBytes(ctx context.Context, repo *remote.Repository, desc ocispec.Descriptor) ([]byte, error) {
 	reader, err := repo.Fetch(ctx, desc)
 	if err != nil {
 		return nil, err
 	}
 	defer reader.Close()
-	limited := io.LimitReader(reader, desc.Size+1)
-	buf, err := io.ReadAll(limited)
+	buf, err := readAllBounded(reader, desc.Size, "layer body")
 	if err != nil {
+		var limitErr *readLimitError
+		if errors.As(err, &limitErr) {
+			return nil, fmt.Errorf("layer body exceeds declared size %d: %w", desc.Size, err)
+		}
 		return nil, err
-	}
-	if int64(len(buf)) > desc.Size {
-		return nil, fmt.Errorf("layer body exceeds declared size %d", desc.Size)
 	}
 	return buf, nil
 }

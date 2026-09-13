@@ -218,6 +218,42 @@ func TestListRepositoriesViaQuayAPI_FollowsPagination(t *testing.T) {
 	}
 }
 
+func TestChangeRepositoryVisibility_CapsErrorBody(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method: got %s want POST", r.Method)
+		}
+		if r.URL.Path != "/api/v1/repository/ns/repo/changevisibility" {
+			t.Errorf("path: got %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = io.WriteString(w, "quay says no: "+strings.Repeat("X", int(maxQuayErrorBodyBytes)+1024))
+	}))
+	defer srv.Close()
+
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	err = ChangeRepositoryVisibilityWithClient(context.Background(), u.Host, "ns/repo", "token", true, srv.Client())
+	if err == nil {
+		t.Fatal("expected visibility API error, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "visibility API returned status 502") {
+		t.Fatalf("expected status in error, got: %v", err)
+	}
+	if !strings.Contains(msg, "quay says no: ") {
+		t.Fatalf("expected body snippet in error, got: %v", err)
+	}
+	if !strings.Contains(msg, "visibility API error body exceeds 65536 bytes") {
+		t.Fatalf("expected body cap error, got: %v", err)
+	}
+	if len(msg) > int(maxQuayErrorBodyBytes)+256 {
+		t.Fatalf("error body was not capped; message length %d", len(msg))
+	}
+}
+
 func containsAll(haystack []string, needles ...string) bool {
 	for _, n := range needles {
 		found := false

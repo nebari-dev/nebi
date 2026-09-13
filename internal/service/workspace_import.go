@@ -77,9 +77,10 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 		return nil, &ValidationError{Message: "repository or repository_path is required"}
 	}
 	pullOpts := oci.PullOptions{
-		Username:  ep.Username,
-		Password:  ep.Password,
-		PlainHTTP: ep.PlainHTTP,
+		Username:          ep.Username,
+		Password:          ep.Password,
+		PlainHTTP:         ep.PlainHTTP,
+		MaxCoreLayerBytes: ociCoreLayerLimit(s.limits.LockBytes),
 		// Cap total bundle size to defend against a malicious or
 		// misconfigured registry serving a runaway asset layer. 5 GiB
 		// is well above any reasonable Pixi environment but small
@@ -104,14 +105,14 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 		result, err := oci.ExtractBundle(pullCtx, repoRef, req.Tag, stagingDir, pullOpts)
 		if err != nil {
 			_ = os.RemoveAll(stagingDir)
-			return nil, fmt.Errorf("extract bundle: %w", err)
+			return nil, mapOCILimitError(fmt.Errorf("extract bundle: %w", err))
 		}
 		digest = result.Digest
 	} else {
 		result, err := oci.PullBundle(pullCtx, repoRef, req.Tag, pullOpts)
 		if err != nil {
 			_ = os.RemoveAll(stagingDir)
-			return nil, fmt.Errorf("pull bundle: %w", err)
+			return nil, mapOCILimitError(fmt.Errorf("pull bundle: %w", err))
 		}
 		// Stage just the two core files; asset layers stay in the
 		// registry until team mode opts in to bundle support.

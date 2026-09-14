@@ -23,6 +23,7 @@ Export the variables in your terminal session before starting the server:
 ```bash
 export ADMIN_USERNAME=admin
 export ADMIN_PASSWORD=your-password
+export NEBI_AUTH_JWT_SECRET=replace-with-at-least-32-random-characters
 ```
 
 ## Running the Server
@@ -30,24 +31,26 @@ export ADMIN_PASSWORD=your-password
 Start the server:
 
 ```bash
-nebi serve
+nebi-server
 ```
 
-By default (`--host` unset), Nebi binds all interfaces on port `8460` in team mode. Local mode (`NEBI_MODE=local`) is a single-user, on-device setup, so the server binds only the loopback interface (`127.0.0.1`) and only accepts requests addressed to a local host/origin. To bind a local-mode server to another interface, set `--host` (or `NEBI_SERVER_HOST`) explicitly.
+By default (`--host` unset), `nebi-server` binds all interfaces on port `8460` for team deployments.
 
 To use a different port:
 
 ```bash
-nebi serve --port 9000
+nebi-server --port 9000
 ```
 
 To explicitly bind a host/interface, use `--host` (or `NEBI_SERVER_HOST`):
 
 ```bash
-nebi serve --host 127.0.0.1 --port 8460
+nebi-server --host 127.0.0.1 --port 8460
 ```
 
 Once the server is running, authenticate from any client machine with [`nebi login`](/cli-team/#connect-to-a-server).
+
+For a single-user browser UI on your own machine, use `nebi-web` instead. It runs the same embedded React frontend in local mode and binds to `127.0.0.1` by default.
 
 ## API Documentation
 

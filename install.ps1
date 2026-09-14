@@ -59,7 +59,7 @@ try {
     # Create temp directory
     New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
 
-    # Download CLI
+    # Download command-line binaries
     $ArchiveName = "nebi_${VersionNum}_windows_${ArchName}.zip"
     $DownloadUrl = "https://github.com/$Repo/releases/download/$Version/$ArchiveName"
 
@@ -78,14 +78,26 @@ try {
     $ExtractDir = Join-Path $TempDir "extracted"
     Expand-Archive -Path $ArchivePath -DestinationPath $ExtractDir -Force
 
-    # Install binary
     if (-not (Test-Path $InstallDir)) {
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
     }
 
-    Copy-Item -Path (Join-Path $ExtractDir "nebi.exe") -Destination (Join-Path $InstallDir "nebi.exe") -Force
+    $CliSource = Join-Path $ExtractDir "nebi.exe"
+    if (-not (Test-Path $CliSource)) {
+        Write-Err "nebi.exe not found in $ArchiveName."
+    }
 
+    Copy-Item -Path $CliSource -Destination (Join-Path $InstallDir "nebi.exe") -Force
     Write-Info "nebi installed to $(Join-Path $InstallDir 'nebi.exe')"
+
+    foreach ($Name in @("nebi-server.exe", "nebi-web.exe")) {
+        $Source = Join-Path $ExtractDir $Name
+        if (-not (Test-Path $Source)) {
+            Write-Err "$Name not found in $ArchiveName."
+        }
+        Copy-Item -Path $Source -Destination (Join-Path $InstallDir $Name) -Force
+        Write-Info "$Name installed to $(Join-Path $InstallDir $Name)"
+    }
 
     # Add to PATH if not already present
     $UserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
@@ -113,7 +125,7 @@ try {
             New-Item -ItemType Directory -Path $DesktopDir -Force | Out-Null
         }
 
-        $DesktopPath = Join-Path $DesktopDir "Nebi.exe"
+        $DesktopPath = Join-Path $DesktopDir "nebi-desktop.exe"
         Write-Info "Downloading $DesktopExe..."
         Invoke-WebRequest -Uri $DesktopUrl -OutFile $DesktopPath -UseBasicParsing
 

@@ -4,8 +4,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-
-	_ "github.com/nebari-dev/nebi/internal/swagger" // Load swagger docs
 )
 
 // Version is set via ldflags at build time
@@ -38,7 +36,6 @@ func init() {
 		&cobra.Group{ID: "workspace", Title: "Workspace Commands:"},
 		&cobra.Group{ID: "sync", Title: "Sync Commands:"},
 		&cobra.Group{ID: "connection", Title: "Connection Commands:"},
-		&cobra.Group{ID: "admin", Title: "Admin Commands:"},
 	)
 
 	initCmd.GroupID = "workspace"
@@ -57,8 +54,6 @@ func init() {
 	logoutCmd.GroupID = "connection"
 	registryCmd.GroupID = "connection"
 
-	serveCmd.GroupID = "admin"
-
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(workspaceCmd)
@@ -72,7 +67,6 @@ func init() {
 	rootCmd.AddCommand(publishCmd)
 	rootCmd.AddCommand(importCmd)
 	rootCmd.AddCommand(registryCmd)
-	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(completionCmd)
 	rootCmd.AddCommand(infoCmd)

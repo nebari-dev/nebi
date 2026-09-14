@@ -122,11 +122,8 @@ func (a *App) startup(ctx context.Context) {
 	os.Setenv("NEBI_STORAGE_WORKSPACES_DIR", storageDir)
 	logToFile(fmt.Sprintf("Using storage: %s", storageDir))
 
-	// Ensure desktop app runs in local mode
-	os.Setenv("NEBI_MODE", "local")
-
 	// Load config
-	cfg, err := config.Load()
+	cfg, err := config.Load(config.WithMode(config.ModeLocal))
 	if err != nil {
 		logToFile(fmt.Sprintf("Error loading config: %v", err))
 		return

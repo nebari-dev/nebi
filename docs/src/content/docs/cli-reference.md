@@ -2,7 +2,7 @@
 title: "CLI Reference"
 ---
 
-Nebi's CLI is organized into command groups: **Workspace**, **Sync**, **Connection**, and **Admin**.
+Nebi's CLI is `nebi`. It is organized into command groups: **Workspace**, **Sync**, and **Connection**.
 
 ## Specs vs. Bundles
 
@@ -43,12 +43,6 @@ Two terms appear throughout these commands:
 | `nebi registry list` | List available OCI registries |
 | `nebi registry add` | Add an OCI registry |
 | `nebi registry remove <name>` | Remove an OCI registry |
-
-## Admin Commands
-
-| Command | Description |
-|---------|-------------|
-| `nebi serve` | Run a Nebi server instance |
 
 ## Flags
 

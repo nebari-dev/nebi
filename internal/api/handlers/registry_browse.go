@@ -28,7 +28,8 @@ func NewRegistryBrowseHandler(registrySvc *service.RegistryService, wsSvc *servi
 type ImportRequest struct {
 	Repository     string `json:"repository"`
 	RepositoryPath string `json:"repository_path"`
-	Tag            string `json:"tag" binding:"required"`
+	Tag            string `json:"tag"`
+	Digest         string `json:"digest"`
 	Name           string `json:"name" binding:"required"`
 }
 
@@ -180,6 +181,7 @@ func (h *RegistryBrowseHandler) ImportEnvironment(c *gin.Context) {
 		Repository:     repository,
 		RepositoryPath: repositoryPath,
 		Tag:            req.Tag,
+		Digest:         req.Digest,
 		Name:           req.Name,
 	}, userID)
 	if err != nil {

@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/nebari-dev/nebi/internal/pixi"
 	"github.com/nebari-dev/nebi/internal/store"
@@ -83,20 +83,33 @@ func isLocalMode(cmd *cobra.Command) bool {
 	return false
 }
 
-// findWsByName searches for a workspace by name on the server.
+// findWsByName accepts id::<uuid> or an unambiguous display name.
 func findWsByName(client *cliclient.Client, ctx context.Context, name string) (*cliclient.Workspace, error) {
+	if id, explicit, err := workspaceID(name); explicit {
+		if err != nil {
+			return nil, err
+		}
+		return client.GetWorkspace(ctx, id.String())
+	}
 	workspaces, err := client.ListWorkspaces(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("listing workspaces: %w", err)
 	}
-
+	var match *cliclient.Workspace
+	var ids []string
 	for i := range workspaces {
 		if workspaces[i].Name == name {
-			return &workspaces[i], nil
+			match = &workspaces[i]
+			ids = append(ids, "id::"+match.ID)
 		}
 	}
-
-	return nil, fmt.Errorf("%w: %q", ErrWsNotFound, name)
+	if len(ids) > 1 {
+		return nil, fmt.Errorf("multiple workspaces named %q; use an id::<uuid> selector: %s", name, strings.Join(ids, ", "))
+	}
+	if match == nil {
+		return nil, fmt.Errorf("%w: %q", ErrWsNotFound, name)
+	}
+	return match, nil
 }
 
 // validateWorkspaceName checks that a workspace name doesn't contain path separators or colons,
@@ -127,65 +140,7 @@ func lookupOrigin() (*store.LocalWorkspace, error) {
 		return nil, nil
 	}
 
-	// Sync workspace name if pixi.toml has changed
-	if err := syncWorkspaceName(s, ws); err != nil {
-		// Non-fatal: log warning but continue
-		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
-	}
-
 	return ws, nil
-}
-
-// syncWorkspaceName updates the stored workspace name if it differs from pixi.toml.
-// This ensures workspace list shows correct names after pixi.toml edits.
-func syncWorkspaceName(s *store.Store, ws *store.LocalWorkspace) error {
-	pixiTomlPath := filepath.Join(ws.Path, "pixi.toml")
-	content, err := os.ReadFile(pixiTomlPath)
-	if err != nil {
-		return nil // pixi.toml not readable, skip sync
-	}
-
-	tomlName, err := pixi.ExtractWorkspaceName(string(content))
-	if err != nil {
-		return err
-	}
-
-	if ws.Name != tomlName {
-		oldName := ws.Name
-		ws.Name = tomlName
-		if err := s.SaveWorkspace(ws); err != nil {
-			return fmt.Errorf("updating workspace name: %w", err)
-		}
-		fmt.Fprintf(os.Stderr, "Workspace name updated: %q -> %q (from pixi.toml)\n", oldName, tomlName)
-	}
-
-	return nil
-}
-
-// findWorkspacesByNameWithSync looks up workspaces by name. If no matches are found,
-// it syncs all workspace names from pixi.toml (in case a rename occurred) and retries.
-func findWorkspacesByNameWithSync(s *store.Store, name string) ([]store.LocalWorkspace, error) {
-	workspaces, err := s.FindWorkspacesByName(name)
-	if err != nil {
-		return nil, err
-	}
-	if len(workspaces) > 0 {
-		return workspaces, nil
-	}
-
-	// No match — sync all workspace names and retry
-	all, err := s.ListWorkspaces()
-	if err != nil {
-		return nil, err
-	}
-	for i := range all {
-		if syncErr := syncWorkspaceName(s, &all[i]); syncErr != nil {
-			// Non-fatal: continue syncing other workspaces
-			fmt.Fprintf(os.Stderr, "Warning: %s: %v\n", all[i].Path, syncErr)
-		}
-	}
-
-	return s.FindWorkspacesByName(name)
 }
 
 // saveOrigin records a push/pull origin for the current working directory.
@@ -214,20 +169,21 @@ func saveOrigin(remoteID, name, tag, action, tomlContent, lockContent string) er
 		return fmt.Errorf("hashing pixi.toml: %w", err)
 	}
 
-	ws.OriginID = remoteID
-	ws.OriginName = name
-	ws.OriginTag = tag
-	ws.OriginAction = action
-	ws.OriginTomlHash = tomlHash
-	ws.OriginLockHash = store.ContentHash(lockContent)
-
-	return s.SaveWorkspace(ws)
+	// Update only origin fields; a concurrently chosen display name is unrelated.
+	return s.DB().Model(&store.LocalWorkspace{}).Where("id = ?", ws.ID).Updates(map[string]interface{}{
+		"origin_id":        remoteID,
+		"origin_name":      name,
+		"origin_tag":       tag,
+		"origin_action":    action,
+		"origin_toml_hash": tomlHash,
+		"origin_lock_hash": store.ContentHash(lockContent),
+	}).Error
 }
 
 // parseWsRef parses a reference in the format workspace:tag.
 // Returns (workspace, tag) where tag may be empty if not specified.
 func parseWsRef(ref string) (string, string) {
-	if idx := strings.LastIndex(ref, ":"); idx != -1 {
+	if idx := strings.LastIndex(ref, ":"); idx != -1 && !(strings.HasPrefix(ref, "id::") && idx == 3) {
 		return ref[:idx], ref[idx+1:]
 	}
 	return ref, ""
@@ -266,4 +222,33 @@ func waitForWsReady(client *cliclient.Client, ctx context.Context, wsID string, 
 		time.Sleep(500 * time.Millisecond)
 	}
 	return nil, fmt.Errorf("timeout waiting for workspace to be ready")
+}
+
+// workspaceID reserves the colon-containing id:: prefix, which cannot be a
+// workspace name. Bare UUID-shaped names retain their original meaning.
+func workspaceID(ref string) (uuid.UUID, bool, error) {
+	if !strings.HasPrefix(ref, "id::") {
+		return uuid.Nil, false, nil
+	}
+	id, err := uuid.Parse(strings.TrimPrefix(ref, "id::"))
+	if err != nil {
+		return uuid.Nil, true, fmt.Errorf("invalid workspace ID selector %q: %w", ref, err)
+	}
+	return id, true, nil
+}
+
+// findLocalWorkspaces resolves an explicit ID or returns all name matches so
+// interactive callers can keep their existing duplicate-name picker.
+func findLocalWorkspaces(s *store.Store, ref string) ([]store.LocalWorkspace, error) {
+	if id, explicit, err := workspaceID(ref); explicit {
+		if err != nil {
+			return nil, err
+		}
+		ws, err := s.GetWorkspace(id)
+		if err != nil {
+			return nil, err
+		}
+		return []store.LocalWorkspace{*ws}, nil
+	}
+	return s.FindWorkspacesByName(ref)
 }

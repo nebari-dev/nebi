@@ -116,7 +116,7 @@ func resolveWorkspaceArgs(args []string) (dir string, pixiArgs []string, useMani
 	}
 	defer s.Close()
 
-	workspaces, err := findWorkspacesByNameWithSync(s, first)
+	workspaces, err := findLocalWorkspaces(s, first)
 	if err != nil {
 		return "", nil, false, err
 	}

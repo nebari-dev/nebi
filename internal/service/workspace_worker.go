@@ -117,7 +117,10 @@ func (s *WorkspaceService) UpdateWorkspaceSize(ws *models.Workspace) {
 	}
 
 	ws.SizeBytes = sizeBytes
-	s.db.Save(ws)
+	if err := s.db.Model(&models.Workspace{}).Where("id = ?", ws.ID).Update("size_bytes", sizeBytes).Error; err != nil {
+		slog.Warn("Failed to update workspace size", "ws_id", ws.ID, "error", err)
+		return
+	}
 	slog.Info("Updated workspace size", "ws_id", ws.ID, "size", utils.FormatBytes(sizeBytes))
 }
 

@@ -137,7 +137,7 @@ func runPublishLocal(args []string) error {
 	// Resolve workspace from args or current directory
 	var ws *store.LocalWorkspace
 	if len(args) == 1 {
-		ws, err = s.FindWorkspaceByName(args[0])
+		ws, err = resolveLocalWorkspace(s, args[0])
 		if err != nil {
 			return err
 		}

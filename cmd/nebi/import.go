@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/nebari-dev/nebi/internal/oci"
@@ -29,8 +30,8 @@ The OCI reference should be in the format: registry/repository:tag
 Restores pixi.toml, pixi.lock, and any bundled asset files to the output
 directory. Works entirely locally — no server connection needed.
 
-The local workspace name is derived from the [workspace] name field
-in the imported pixi.toml.
+New local workspaces use the last repository path component, or --name.
+Existing tracked directories keep their Nebi name. The manifest is unchanged.
 
 Examples:
   nebi import quay.io/nebari/my-env:v1
@@ -40,18 +41,31 @@ Examples:
 }
 
 func init() {
+	importCmd.Flags().String("name", "", "Nebi name for a newly tracked workspace")
 	importCmd.Flags().StringVarP(&importOutput, "output", "o", ".", "Output directory")
 	importCmd.Flags().BoolVar(&importForce, "force", false, "Overwrite existing files without prompting (only when the bundle contains no asset layers)")
 	importCmd.Flags().IntVar(&importConcurrency, "concurrency", 8, "Parallel blob fetch workers")
 }
 
 func runImport(cmd *cobra.Command, args []string) error {
+	if err := validateRequestedWorkspaceName(cmd); err != nil {
+		return err
+	}
 	repoRef, tag := parseWsRef(args[0])
 	if tag == "" {
 		return fmt.Errorf("tag is required; use format registry/repository:tag (e.g., quay.io/nebari/my-env:v1)")
 	}
 
 	repoRef, plainHTTP := oci.StripScheme(repoRef)
+
+	// Choose a local label separately from the downloaded manifest.
+	localName, _ := cmd.Flags().GetString("name")
+	if localName == "" {
+		localName = path.Base(repoRef)
+	}
+	if err := validateWorkspaceName(localName); err != nil {
+		return err
+	}
 
 	ctx := context.Background()
 
@@ -102,8 +116,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 
 	absOutput, _ := filepath.Abs(outputDir)
 
-	// Auto-track the workspace (name will be read from imported pixi.toml)
-	if err := ensureInit(outputDir); err != nil {
+	if err := ensureInitWithName(outputDir, localName); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to auto-track workspace: %v\n", err)
 	}
 

@@ -25,8 +25,8 @@ origin are used.
 
 If no tag is specified, the latest version is pulled.
 
-The local workspace name is derived from the [workspace] name field
-in the pulled pixi.toml, not from the server workspace name.
+New local workspaces use the server workspace name, or --name when supplied.
+Existing tracked directories keep their Nebi name. The manifest is unchanged.
 
 Use --force to skip the overwrite confirmation prompt.
 
@@ -40,11 +40,15 @@ Examples:
 }
 
 func init() {
+	pullCmd.Flags().String("name", "", "Nebi name for a newly tracked workspace")
 	pullCmd.Flags().StringVarP(&pullOutput, "output", "o", ".", "Output directory")
 	pullCmd.Flags().BoolVar(&pullForce, "force", false, "Overwrite existing files without prompting")
 }
 
 func runPull(cmd *cobra.Command, args []string) error {
+	if err := validateRequestedWorkspaceName(cmd); err != nil {
+		return err
+	}
 	var wsName, tag string
 	if len(args) == 1 {
 		wsName, tag = parseWsRef(args[0])
@@ -70,6 +74,15 @@ func runPull(cmd *cobra.Command, args []string) error {
 
 	ws, err := findWsByName(client, ctx, wsName)
 	if err != nil {
+		return err
+	}
+
+	// Choose a local label separately from the downloaded manifest.
+	localName, _ := cmd.Flags().GetString("name")
+	if localName == "" {
+		localName = ws.Name
+	}
+	if err := validateWorkspaceName(localName); err != nil {
 		return err
 	}
 
@@ -172,8 +185,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 
 	absOutput, _ := filepath.Abs(outputDir)
 
-	// Auto-track the workspace (name will be read from pulled pixi.toml)
-	if err := ensureInit(outputDir); err != nil {
+	if err := ensureInitWithName(outputDir, localName); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to auto-track workspace: %v\n", err)
 	}
 
@@ -184,7 +196,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(os.Stderr, "Pulled %s (version %d, id=%s) -> %s\n", refStr, versionNumber, ws.ID, absOutput)
 
-	if saveErr := saveOrigin(ws.ID, wsName, tag, "pull", pixiToml, pixiLock); saveErr != nil {
+	if saveErr := saveOrigin(ws.ID, ws.Name, tag, "pull", pixiToml, pixiLock); saveErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save origin: %v\n", saveErr)
 	}
 

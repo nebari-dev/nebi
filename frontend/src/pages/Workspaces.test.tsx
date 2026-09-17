@@ -97,13 +97,41 @@ describe('Workspaces create button', () => {
     renderWithProviders(<Workspaces />);
     const user = await openCreateForm();
 
+    await user.type(
+      screen.getByLabelText('Nebi workspace name'),
+      'personal-label',
+    );
     fireEvent.change(screen.getByLabelText('pixi.toml'), {
       target: { value: '[workspace]\nname = "my-ws"\n' },
     });
     await user.click(screen.getByRole('button', { name: /create & save/i }));
 
-    expect(createMutateAsync).toHaveBeenCalled();
+    expect(createMutateAsync).toHaveBeenLastCalledWith({
+      name: 'personal-label',
+      pixi_toml: '[workspace]\nname = "my-ws"\n',
+    });
     expect(screen.queryByText('Create New Workspace')).not.toBeInTheDocument();
     expect(newWorkspaceButton()).toBeInTheDocument();
+  });
+  it('creates a workspace with a separate name and a nameless manifest', async () => {
+    renderWithProviders(<Workspaces />);
+    const user = await openCreateForm();
+    const manifest = '[workspace]\nchannels = []\nplatforms = ["linux-64"]\n';
+    fireEvent.change(screen.getByLabelText('pixi.toml'), {
+      target: { value: manifest },
+    });
+    expect(
+      screen.getByRole('button', { name: /create & save/i }),
+    ).toBeDisabled();
+    await user.type(
+      screen.getByLabelText('Nebi workspace name'),
+      'personal-label',
+    );
+    expect(screen.getByLabelText('pixi.toml')).toHaveValue(manifest);
+    await user.click(screen.getByRole('button', { name: /create & save/i }));
+    expect(createMutateAsync).toHaveBeenLastCalledWith({
+      name: 'personal-label',
+      pixi_toml: manifest,
+    });
   });
 });

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -66,7 +67,11 @@ func runPush(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Using workspace %q from origin\n", wsName)
 	}
 
-	if err := validateWorkspaceName(wsName); err != nil {
+	if _, explicit, err := workspaceID(wsName); explicit {
+		if err != nil {
+			return err
+		}
+	} else if err := validateWorkspaceName(wsName); err != nil {
 		return fmt.Errorf("invalid workspace name: %w", err)
 	}
 
@@ -91,6 +96,9 @@ func runPush(cmd *cobra.Command, args []string) error {
 	// Find or create workspace
 	ws, err := findWsByName(client, ctx, wsName)
 	if err != nil {
+		if !errors.Is(err, ErrWsNotFound) {
+			return err
+		}
 		// Workspace doesn't exist — create it
 		fmt.Fprintf(os.Stderr, "Creating workspace %q...\n", wsName)
 		pixiTomlStr := string(pixiToml)
@@ -149,7 +157,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 	if originTag == "" {
 		originTag = resp.ContentHash
 	}
-	if saveErr := saveOrigin(ws.ID, wsName, originTag, "push", string(pixiToml), string(pixiLock)); saveErr != nil {
+	if saveErr := saveOrigin(ws.ID, ws.Name, originTag, "push", string(pixiToml), string(pixiLock)); saveErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save origin: %v\n", saveErr)
 	}
 

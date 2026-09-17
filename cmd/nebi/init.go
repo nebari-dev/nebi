@@ -19,7 +19,14 @@ var initCmd = &cobra.Command{
 	RunE:  runInit,
 }
 
+func init() {
+	initCmd.Flags().String("name", "", "Nebi workspace name (defaults to manifest name, then directory name; does not edit pixi.toml)")
+}
+
 func runInit(cmd *cobra.Command, args []string) error {
+	if err := validateRequestedWorkspaceName(cmd); err != nil {
+		return err
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting working directory: %w", err)
@@ -56,13 +63,14 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("workspace already tracked: %s", cwd)
 	}
 
-	// Read workspace name from pixi.toml
+	// Read the manifest for the initial snapshot; the Nebi name is independent.
 	pixiTomlPath := filepath.Join(cwd, "pixi.toml")
 	content, err := os.ReadFile(pixiTomlPath)
 	if err != nil {
 		return fmt.Errorf("reading pixi.toml: %w", err)
 	}
-	name, err := pixi.ExtractWorkspaceName(string(content))
+	requestedName, _ := cmd.Flags().GetString("name")
+	name, err := pixi.InitialWorkspaceName(requestedName, cwd, string(content))
 	if err != nil {
 		return err
 	}
@@ -89,6 +97,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 // ensureInit registers dir as a tracked workspace if not already tracked.
 func ensureInit(dir string) error {
+	return ensureInitWithName(dir, "")
+}
+
+// ensureInitWithName chooses a label only when first tracking a directory.
+// Pulling/importing again preserves an existing Nebi label.
+func ensureInitWithName(dir, requestedName string) error {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return fmt.Errorf("resolving path: %w", err)
@@ -113,12 +127,12 @@ func ensureInit(dir string) error {
 		return nil
 	}
 
-	// Read workspace name from pixi.toml
+	// Read the manifest for the initial snapshot; the Nebi name is independent.
 	content, err := os.ReadFile(pixiTomlPath)
 	if err != nil {
 		return fmt.Errorf("reading pixi.toml: %w", err)
 	}
-	name, err := pixi.ExtractWorkspaceName(string(content))
+	name, err := pixi.InitialWorkspaceName(requestedName, absDir, string(content))
 	if err != nil {
 		return err
 	}
@@ -150,4 +164,16 @@ func createInitialVersion(s *store.Store, ws *store.LocalWorkspace, wsPath strin
 		return nil, err
 	}
 	return v, nil
+}
+
+// Validate explicit names before commands perform any filesystem or network work.
+func validateRequestedWorkspaceName(cmd *cobra.Command) error {
+	name, err := cmd.Flags().GetString("name")
+	if err != nil {
+		return err
+	}
+	if name != "" {
+		return pixi.ValidateWorkspaceName(name)
+	}
+	return nil
 }

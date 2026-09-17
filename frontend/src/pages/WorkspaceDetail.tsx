@@ -192,7 +192,7 @@ export const WorkspaceDetail = () => {
             installStatus={workspace.install_status}
             onStarted={(job) => setEnvJobNotice({ id: job.id, type: job.type })}
           />
-          {!isLocalWs && <UseLocallyButton workspaceName={workspace.name} />}
+          {!isLocalWs && <UseLocallyButton workspaceId={workspace.id} />}
           <Button
             variant="outline"
             size="sm"
@@ -696,7 +696,6 @@ export const WorkspaceDetail = () => {
             <PixiTomlEditor
               tomlValue={editedToml}
               onTomlChange={setEditedToml}
-              workspaceName={workspace.name}
               onReloadToml={async () => {
                 const { content } = await workspacesApi.getPixiToml(wsId);
                 return content;

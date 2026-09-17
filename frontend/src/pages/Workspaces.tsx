@@ -50,7 +50,6 @@ type UnifiedWorkspace = {
 };
 
 const DEFAULT_PIXI_TOML = `[workspace]
-name = ""
 channels = ["conda-forge"]
 platforms = ["osx-arm64", "linux-64"]
 
@@ -58,12 +57,6 @@ platforms = ["osx-arm64", "linux-64"]
 python = ">=3.11"
 ipykernel = "*"
 `;
-
-// TODO: Robustify. Maybe use a proper TOML parser?
-const getTomlName = (toml: string): string | null => {
-  const match = toml.match(/^name\s*=\s*"([^"]*)"/m);
-  return match ? match[1] : null;
-};
 
 export const Workspaces = () => {
   const navigate = useNavigate();
@@ -84,6 +77,8 @@ export const Workspaces = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [createTarget, setCreateTarget] = useState<'local' | 'server'>('local');
   const [localPath, setLocalPath] = useState('');
+  const [workspaceName, setWorkspaceName] = useState('');
+  const workspaceNameId = useId();
   const [pixiToml, setPixiToml] = useState(DEFAULT_PIXI_TOML);
 
   const [confirmDelete, setConfirmDelete] = useState<{
@@ -152,11 +147,9 @@ export const Workspaces = () => {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const wsName = getTomlName(pixiToml);
+    const wsName = workspaceName.trim();
     if (!wsName?.trim()) {
-      setError(
-        'Workspace name is required in the pixi.toml [workspace] section.',
-      );
+      setError('A Nebi workspace name is required.');
       return;
     }
 
@@ -179,6 +172,7 @@ export const Workspaces = () => {
         });
 
         // Reset form
+        setWorkspaceName('');
         setLocalPath('');
         setPixiToml(DEFAULT_PIXI_TOML);
         setShowCreate(false);
@@ -189,6 +183,7 @@ export const Workspaces = () => {
       }
 
       // Reset form
+      setWorkspaceName('');
       setLocalPath('');
       setPixiToml(DEFAULT_PIXI_TOML);
       setShowCreate(false);
@@ -222,14 +217,10 @@ export const Workspaces = () => {
     }
   };
 
-  const handleCopyPull = async (
-    e: React.MouseEvent,
-    wsName: string,
-    wsId: string,
-  ) => {
+  const handleCopyPull = async (e: React.MouseEvent, wsId: string) => {
     e.stopPropagation();
     const serverUrl = window.location.origin;
-    const cmd = `nebi login ${serverUrl} && nebi pull ${wsName}`;
+    const cmd = `nebi login ${serverUrl} && nebi pull id::${wsId}`;
     await navigator.clipboard.writeText(cmd);
     setCopiedPullId(wsId);
     setTimeout(() => setCopiedPullId(null), 2000);
@@ -344,11 +335,25 @@ export const Workspaces = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreate} className="space-y-4">
-              <PixiTomlEditor
-                tomlValue={pixiToml}
-                onTomlChange={setPixiToml}
-                workspaceName={getTomlName(pixiToml) || ''}
-              />
+              <div className="space-y-2 mb-4">
+                <label
+                  htmlFor={workspaceNameId}
+                  className="text-sm font-medium"
+                >
+                  Nebi workspace name
+                </label>
+                <Input
+                  id={workspaceNameId}
+                  value={workspaceName}
+                  onChange={(event) => setWorkspaceName(event.target.value)}
+                  placeholder="e.g., my-analysis"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  A name for this workspace in Nebi. It does not edit pixi.toml.
+                </p>
+              </div>
+              <PixiTomlEditor tomlValue={pixiToml} onTomlChange={setPixiToml} />
 
               {/* Path field — only for local target in local mode */}
               {createTarget === 'local' && isLocalMode && (
@@ -378,7 +383,7 @@ export const Workspaces = () => {
                 </Button>
                 <Button
                   render={<button type="submit" />}
-                  disabled={isCreatePending || !getTomlName(pixiToml)?.trim()}
+                  disabled={isCreatePending || !workspaceName.trim()}
                 >
                   {isCreatePending ? (
                     <>
@@ -468,7 +473,7 @@ export const Workspaces = () => {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={(e) => handleCopyPull(e, ws.name, ws.id)}
+                      onClick={(e) => handleCopyPull(e, ws.id)}
                       aria-label={`Copy pull command for ${ws.name}`}
                       title="Copy nebi pull command"
                     >

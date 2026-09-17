@@ -22,11 +22,10 @@ interface Package {
 interface PixiTomlEditorProps {
   tomlValue: string;
   onTomlChange: (toml: string) => void;
-  workspaceName?: string;
   onReloadToml?: () => Promise<string>;
 }
 
-const buildPixiToml = (packages: Package[], wsName: string): string => {
+const buildPixiToml = (packages: Package[]): string => {
   const dependenciesLines = packages
     .filter((pkg) => pkg.name.trim())
     .map((pkg) => {
@@ -38,7 +37,6 @@ const buildPixiToml = (packages: Package[], wsName: string): string => {
     .join('\n');
 
   return `[workspace]
-name = "${wsName}"
 channels = ["conda-forge"]
 platforms = ["osx-arm64", "linux-64", "win-64"]
 
@@ -170,28 +168,6 @@ const patchPixiTomlDependencies = (
   ].join('\n');
 };
 
-const patchPixiTomlWorkspaceName = (toml: string, workspaceName: string) => {
-  const lines = toml.split(/\r?\n/);
-  const sectionRange = findSectionRange(lines, ['workspace', 'project']);
-  const nameLine = `name = "${workspaceName}"`;
-
-  if (!sectionRange) {
-    return toml;
-  }
-
-  const nextLines = [...lines];
-  for (let index = sectionRange.start + 1; index < sectionRange.end; index++) {
-    const nameMatch = nextLines[index].match(/^(\s*)name\s*=.*?(\s+#.*)?$/);
-    if (nameMatch) {
-      nextLines[index] = `${nameMatch[1]}${nameLine}${nameMatch[2] ?? ''}`;
-      return nextLines.join('\n');
-    }
-  }
-
-  nextLines.splice(sectionRange.start + 1, 0, nameLine);
-  return nextLines.join('\n');
-};
-
 const parsePixiTomlDependencies = (toml: string): Package[] => {
   const lines = toml.split(/\r?\n/);
   const packages: Package[] = [];
@@ -216,7 +192,6 @@ const parsePixiTomlDependencies = (toml: string): Package[] => {
 export const PixiTomlEditor = ({
   tomlValue,
   onTomlChange,
-  workspaceName,
   onReloadToml,
 }: PixiTomlEditorProps) => {
   const [mode, setMode] = useState<'ui' | 'toml'>('toml');
@@ -232,7 +207,6 @@ export const PixiTomlEditor = ({
   const [showDiscardPrompt, setShowDiscardPrompt] = useState(false);
   const pendingModeRef = useRef<'ui' | 'toml'>('ui');
   const initialTomlRef = useRef<string>('');
-  const workspaceNameId = useId();
   const packagesHeadingId = useId();
   const tomlEditorId = useId();
 
@@ -298,11 +272,7 @@ export const PixiTomlEditor = ({
   };
 
   const getCurrentToml = () => {
-    return (
-      tomlValue ||
-      initialTomlRef.current ||
-      buildPixiToml(packages, workspaceName || 'my-project')
-    );
+    return tomlValue || initialTomlRef.current || buildPixiToml(packages);
   };
 
   const handleAddPackage = () => {
@@ -375,27 +345,6 @@ export const PixiTomlEditor = ({
 
       {mode === 'ui' ? (
         <div className="space-y-4">
-          <div className="space-y-2">
-            <label
-              htmlFor={workspaceNameId}
-              className="text-sm font-medium block pt-2 pb-0"
-            >
-              Workspace Name
-            </label>
-            <Input
-              id={workspaceNameId}
-              value={workspaceName || ''}
-              onChange={(e) => {
-                const newName = e.target.value;
-                setDirty(true);
-                onTomlChange(
-                  patchPixiTomlWorkspaceName(getCurrentToml(), newName),
-                );
-              }}
-              placeholder="Workspace name"
-              className="font-mono"
-            />
-          </div>
           <div className="space-y-2">
             <h3
               id={packagesHeadingId}
@@ -504,16 +453,8 @@ export const PixiTomlEditor = ({
             Define your project dependencies and configuration in TOML format
           </p>
           <p className="text-sm text-muted-foreground">
-            Workspace will be created as:{' '}
-            {workspaceName ? (
-              <span className="font-medium text-foreground">
-                {workspaceName}
-              </span>
-            ) : (
-              <span className="text-yellow-600">
-                (add a name under [workspace] to continue)
-              </span>
-            )}
+            The optional Pixi name can be edited in this TOML. It does not
+            change the workspace name shown in Nebi.
           </p>
         </div>
       )}

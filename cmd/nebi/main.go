@@ -19,6 +19,11 @@ var rootCmd = &cobra.Command{
 	Short: "Nebi - Local-first workspace management for Pixi",
 	Long: `Nebi manages Pixi workspaces locally and syncs them to remote servers.
 
+Workspace selection:
+  Bare values are names, including UUID-shaped names. Use id::<uuid> to select
+  by ID, or a path for a local workspace. Remote tags use id::<uuid>:<tag>.
+  Diff uses an untagged ID locally and a tagged ID on the server.
+
 Environment variables:
   NEBI_AUTH_TOKEN    API token for authentication (bypasses "nebi login")
   NEBI_REMOTE_URL    Remote server URL (paired with NEBI_AUTH_TOKEN)

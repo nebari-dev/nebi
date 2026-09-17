@@ -12,9 +12,9 @@ describe('UseLocallyButton', () => {
       value: { writeText },
       configurable: true,
     });
-    const command = `nebi login ${window.location.origin} && nebi pull ml-workspace`;
+    const command = `nebi login ${window.location.origin} && nebi pull id::ws-123`;
 
-    renderWithProviders(<UseLocallyButton workspaceName="ml-workspace" />);
+    renderWithProviders(<UseLocallyButton workspaceId="ws-123" />);
 
     await user.click(screen.getByRole('button', { name: /use locally/i }));
 

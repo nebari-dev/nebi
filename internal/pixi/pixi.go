@@ -751,3 +751,25 @@ func ResolveWorkspaceName(name string, pixiToml string) (string, error) {
 
 	return "", fmt.Errorf("workspace name is required")
 }
+
+// InitialWorkspaceName parses the manifest independently of choosing a Nebi
+// label. The manifest name is only an initial suggestion, never a sync rule.
+func InitialWorkspaceName(name, dir, content string) (string, error) {
+	var manifest pixiManifestWithWorkspace
+	if err := toml.Unmarshal([]byte(content), &manifest); err != nil {
+		return "", fmt.Errorf("failed to parse pixi.toml: %w", err)
+	}
+	if name == "" {
+		name = manifest.Workspace.Name
+	}
+	if name == "" {
+		name = manifest.Project.Name
+	}
+	if name == "" {
+		name = filepath.Base(dir)
+	}
+	if err := ValidateWorkspaceName(name); err != nil {
+		return "", err
+	}
+	return name, nil
+}

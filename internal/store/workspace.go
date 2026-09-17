@@ -62,17 +62,19 @@ func (s *Store) findWorkspaceByNormalizedPath(path string) (*LocalWorkspace, err
 	return nil, nil
 }
 
-// FindWorkspaceByName returns the first workspace with the given name, or nil if not found.
+// FindWorkspaceByName returns a workspace only when its name is unambiguous.
 func (s *Store) FindWorkspaceByName(name string) (*LocalWorkspace, error) {
-	var ws LocalWorkspace
-	result := s.db.Where("name = ?", name).First(&ws)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("finding workspace by name: %w", result.Error)
+	workspaces, err := s.FindWorkspacesByName(name)
+	if err != nil {
+		return nil, err
 	}
-	return &ws, nil
+	if len(workspaces) > 1 {
+		return nil, fmt.Errorf("multiple workspaces named %q; use a path or id::<uuid>", name)
+	}
+	if len(workspaces) == 0 {
+		return nil, nil
+	}
+	return &workspaces[0], nil
 }
 
 // FindWorkspacesByName returns all workspaces with the given name.
@@ -149,4 +151,40 @@ func uniquePaths(paths ...string) []string {
 		unique = append(unique, path)
 	}
 	return unique
+}
+
+// RenameWorkspace changes only the label of a settled workspace with a stable
+// path. The store is SQLite: acquire its writer lock before reading state so
+// another connection cannot admit a job between the checks and the rename.
+func (s *Store) RenameWorkspace(id uuid.UUID, name string) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&LocalWorkspace{}).Where("id = ?", id).UpdateColumn("name", gorm.Expr("name"))
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		var ws LocalWorkspace
+		if err := tx.First(&ws, "id = ?", id).Error; err != nil {
+			return err
+		}
+		if !filepath.IsAbs(ws.Path) {
+			return fmt.Errorf("workspace has no stable absolute path; resolve its path before renaming")
+		}
+		if ws.Status != "ready" && ws.Status != "failed" {
+			return fmt.Errorf("cannot rename workspace while status is %q", ws.Status)
+		}
+		// CLI-only stores have no jobs table; desktop/server stores do.
+		if tx.Migrator().HasTable("jobs") {
+			var count int64
+			if err := tx.Table("jobs").Where("workspace_id = ? AND status IN ?", id, []string{"pending", "running"}).Count(&count).Error; err != nil {
+				return err
+			}
+			if count > 0 {
+				return fmt.Errorf("cannot rename workspace while jobs are pending or running")
+			}
+		}
+		return tx.Model(&LocalWorkspace{}).Where("id = ?", id).Update("name", name).Error
+	})
 }

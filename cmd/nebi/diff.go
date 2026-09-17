@@ -145,12 +145,27 @@ func resolveSource(ref, defaultLabel string) (*diffSource, error) {
 		return resolveLocalSource(ref, defaultLabel)
 	}
 
+	// An untagged explicit ID selects a local workspace; id::<uuid>:<tag>
+	// selects a server version, matching the existing name/tag distinction.
+	if selector, tag := parseWsRef(ref); strings.HasPrefix(selector, "id::") && tag == "" {
+		s, err := store.New()
+		if err != nil {
+			return nil, err
+		}
+		defer s.Close()
+		ws, err := resolveLocalWorkspace(s, selector)
+		if err != nil {
+			return nil, err
+		}
+		return resolveLocalSource(ws.Path, ref)
+	}
+
 	// 2. Local workspace name (check store before assuming server ref)
 	if !strings.Contains(ref, ":") {
 		s, err := store.New()
 		if err == nil {
 			defer s.Close()
-			workspaces, err := findWorkspacesByNameWithSync(s, ref)
+			workspaces, err := findLocalWorkspaces(s, ref)
 			if err == nil && len(workspaces) > 0 {
 				var ws *store.LocalWorkspace
 				if len(workspaces) == 1 {

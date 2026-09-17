@@ -7,16 +7,16 @@ const PULL_DOCS_URL = 'https://nebi.nebari.dev/docs/cli-team#pull';
 const INSTALL_DOCS_URL = 'https://nebi.nebari.dev/docs/installation';
 
 interface UseLocallyButtonProps {
-  workspaceName: string;
+  workspaceId: string;
 }
 
-export const UseLocallyButton = ({ workspaceName }: UseLocallyButtonProps) => {
+export const UseLocallyButton = ({ workspaceId }: UseLocallyButtonProps) => {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
   const titleId = useId();
-  const command = `nebi login ${window.location.origin} && nebi pull ${workspaceName}`;
+  const command = `nebi login ${window.location.origin} && nebi pull id::${workspaceId}`;
 
   useEffect(() => {
     if (!open) return;

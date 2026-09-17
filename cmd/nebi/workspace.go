@@ -226,13 +226,6 @@ func runWorkspaceListLocal() error {
 		return nil
 	}
 
-	// Sync workspace names from pixi.toml before displaying
-	for i := range wss {
-		if err := syncWorkspaceName(s, &wss[i]); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: %s: %v\n", wss[i].Path, err)
-		}
-	}
-
 	if wsListJSON {
 		type item struct {
 			store.LocalWorkspace
@@ -445,7 +438,7 @@ func runWorkspaceRemoveLocal(arg string) error {
 			return fmt.Errorf("no tracked workspace at path %q", absPath)
 		}
 	} else {
-		workspaces, err := findWorkspacesByNameWithSync(s, arg)
+		workspaces, err := findLocalWorkspaces(s, arg)
 		if err != nil {
 			return err
 		}
@@ -485,13 +478,6 @@ func runWorkspacePrune(cmd *cobra.Command, args []string) error {
 	wss, err := s.ListWorkspaces()
 	if err != nil {
 		return err
-	}
-
-	// Sync workspace names from pixi.toml before pruning
-	for i := range wss {
-		if err := syncWorkspaceName(s, &wss[i]); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: %s: %v\n", wss[i].Path, err)
-		}
 	}
 
 	var pruned []string

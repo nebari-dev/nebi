@@ -35,22 +35,11 @@ platforms = ["linux-64"]
 python = ">=3.11"
 `;
 
-const getTomlName = (toml: string): string | null => {
-  const match = toml.match(/^name\s*=\s*"([^"]*)"/m);
-  return match ? match[1] : null;
-};
-
 function renderEditor() {
   const EditorHarness = () => {
     const [toml, setToml] = useState(DEFAULT_PIXI_TOML);
 
-    return (
-      <PixiTomlEditor
-        tomlValue={toml}
-        onTomlChange={setToml}
-        workspaceName={getTomlName(toml) || ''}
-      />
-    );
+    return <PixiTomlEditor tomlValue={toml} onTomlChange={setToml} />;
   };
 
   renderWithProviders(<EditorHarness />);
@@ -73,7 +62,9 @@ describe('PixiTomlEditor', () => {
     await user.click(screen.getByRole('button', { name: /ui mode/i }));
     await user.click(screen.getByRole('button', { name: /discard changes/i }));
 
-    expect(screen.getByPlaceholderText('Workspace name')).toHaveValue('');
+    expect(
+      screen.queryByPlaceholderText('Workspace name'),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /toml mode/i }));
 
@@ -92,7 +83,6 @@ describe('PixiTomlEditor', () => {
         onTomlChange={(value) => {
           latestToml = value;
         }}
-        workspaceName="demo"
       />,
     );
 
@@ -108,27 +98,21 @@ describe('PixiTomlEditor', () => {
     expect(latestToml).toContain('numpy = "*"');
   });
 
-  it('adds a missing workspace name below the section header', async () => {
+  it('keeps the optional Pixi name absent when editing dependencies', async () => {
     const user = userEvent.setup();
     let latestToml = pixiTomlWithoutName;
-
     renderWithProviders(
       <PixiTomlEditor
         tomlValue={pixiTomlWithoutName}
         onTomlChange={(value) => {
           latestToml = value;
         }}
-        workspaceName=""
       />,
     );
-
     await user.click(screen.getByRole('button', { name: /ui mode/i }));
-    fireEvent.change(screen.getByPlaceholderText('Workspace name'), {
-      target: { value: 'demo' },
-    });
-
-    expect(latestToml).toContain(
-      '[workspace]\nname = "demo"\nchannels = ["conda-forge"]',
-    );
+    await user.type(screen.getByPlaceholderText(/package name/i), 'numpy');
+    await user.click(screen.getByRole('button', { name: /add package/i }));
+    expect(latestToml).not.toMatch(/^name\s*=/m);
+    expect(latestToml).toContain('numpy = "*"');
   });
 });

@@ -113,11 +113,23 @@ func init() {
 	workspaceCmd.AddCommand(workspaceVersionCmd)
 }
 
-// resolveLocalWorkspace finds a tracked local workspace by name (if given)
+// resolveLocalWorkspace finds a tracked local workspace by id::<uuid>, path, or name
 // or by the current working directory.
 func resolveLocalWorkspace(s *store.Store, name string) (*store.LocalWorkspace, error) {
+	if id, explicit, err := workspaceID(name); explicit {
+		if err != nil {
+			return nil, err
+		}
+		return s.GetWorkspace(id)
+	}
 	if name != "" {
-		ws, err := s.FindWorkspaceByName(name)
+		var ws *store.LocalWorkspace
+		var err error
+		if isPath(name) {
+			ws, err = s.FindWorkspaceByPath(name)
+		} else {
+			ws, err = s.FindWorkspaceByName(name)
+		}
 		if err != nil {
 			return nil, err
 		}

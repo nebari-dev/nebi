@@ -71,11 +71,6 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Sync workspace name if pixi.toml has changed
-	if err := syncWorkspaceName(s, ws); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
-	}
-
 	serverURL, _ := s.LoadServerURL()
 
 	if statusJSON {

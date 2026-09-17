@@ -168,6 +168,7 @@ $ nebi publish my-workspace --registry ghcr --tag v1.0
 **Publish** takes the workspace files already on the Nebi server and pushes them to an external OCI registry (e.g., Quay.io, GHCR) for distribution. You must **push** before you **publish**, as publish reads from the server, not your local files.
 
 By default, the content hash tag is used as the primary OCI tag, and a `latest` tag is always created. All workspace tags are propagated to the OCI registry.
+The OCI manifest document is capped at 1 MiB, so extremely large bundle file lists fail before upload.
 
 ```bash
 # Typical workflow: push local changes, then publish to OCI

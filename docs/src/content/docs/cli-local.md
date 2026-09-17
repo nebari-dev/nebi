@@ -127,6 +127,8 @@ exclude = ["*.log", "secrets/**", "notes.md"]
 
 `.gitignore` rules also apply: files git ignores are kept out of
 bundles. Symlinks, device files, and named pipes are skipped silently.
+The OCI manifest document is capped at 1 MiB, so extremely large include
+sets with thousands of small files should be narrowed or packaged separately.
 
 ### Parallelism
 

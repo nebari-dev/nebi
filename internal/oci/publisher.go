@@ -65,10 +65,12 @@ type PublishResult struct {
 type PublishOption func(*publishConfig)
 
 type publishConfig struct {
-	extraTags      []string
-	concurrency    int
-	progress       func(label string, pushed, total int)
-	assetsOverride *[]Asset // non-nil when WithAssets was used
+	extraTags            []string
+	concurrency          int
+	progress             func(label string, pushed, total int)
+	maxCoreLayerBytes    int64
+	maxCoreLayerBytesSet bool
+	assetsOverride       *[]Asset // non-nil when WithAssets was used
 }
 
 // WithExtraTags applies additional tags to the manifest after the primary
@@ -88,6 +90,16 @@ func WithConcurrency(n int) PublishOption {
 // concurrently.
 func WithProgress(fn func(label string, pushed, total int)) PublishOption {
 	return func(c *publishConfig) { c.progress = fn }
+}
+
+// WithMaxCoreLayerBytes caps each core layer (pixi.toml and pixi.lock)
+// before any bytes are pushed. Zero or negative disables this cap. Omit
+// this option to use DefaultMaxCoreLayerBytes.
+func WithMaxCoreLayerBytes(maxBytes int64) PublishOption {
+	return func(c *publishConfig) {
+		c.maxCoreLayerBytes = maxBytes
+		c.maxCoreLayerBytesSet = true
+	}
 }
 
 // withAssets bypasses the workspace walker and publishes the supplied
@@ -122,7 +134,7 @@ func Publish(
 	// Reject a symlinked pixi.toml up front — before we parse it — so
 	// a hostile link to a non-TOML target surfaces as a clear
 	// "regular file" error rather than a confusing parse error.
-	if err := assertCoreFile(filepath.Join(workspaceDir, "pixi.toml")); err != nil {
+	if err := validateCoreFileSize(filepath.Join(workspaceDir, "pixi.toml"), "pixi.toml", cfg.maxCoreLayerBytes); err != nil {
 		return PublishResult{}, err
 	}
 
@@ -185,14 +197,15 @@ func resolveConfig(opts []PublishOption) *publishConfig {
 	if cfg.concurrency <= 0 {
 		cfg.concurrency = defaultConcurrency
 	}
+	if !cfg.maxCoreLayerBytesSet {
+		cfg.maxCoreLayerBytes = DefaultMaxCoreLayerBytes
+	}
 	return cfg
 }
 
-// assertCoreFile verifies that path exists and is a regular file
-// (not a symlink, device, or directory). Called for pixi.toml / pixi.lock
-// before the publisher hands them to file.Store, whose Add follows
-// symlinks when reading.
-func assertCoreFile(path string) error {
+// validateCoreFileSize verifies that a core pixi file exists, is regular,
+// and fits within the configured core-layer cap before file.Store.Add reads it.
+func validateCoreFileSize(path, title string, maxBytes int64) error {
 	info, err := os.Lstat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -203,7 +216,12 @@ func assertCoreFile(path string) error {
 	if !info.Mode().IsRegular() {
 		return fmt.Errorf("%s must be a regular file, got mode %s", path, info.Mode())
 	}
-	return nil
+	return validateCoreLayerSize(ocispec.Descriptor{
+		Size: info.Size(),
+		Annotations: map[string]string{
+			ocispec.AnnotationTitle: title,
+		},
+	}, maxBytes)
 }
 
 // stripCoreFiles removes pixi.toml / pixi.lock from an asset slice so
@@ -235,10 +253,10 @@ func publishBundle(
 	// file.Store.Add follows symlinks when it reads the file, so this
 	// check is the only thing between a hostile symlink and an artifact
 	// that leaks the target file's contents.
-	if err := assertCoreFile(pixiTomlPath); err != nil {
+	if err := validateCoreFileSize(pixiTomlPath, "pixi.toml", cfg.maxCoreLayerBytes); err != nil {
 		return PublishResult{}, err
 	}
-	if err := assertCoreFile(pixiLockPath); err != nil {
+	if err := validateCoreFileSize(pixiLockPath, "pixi.lock", cfg.maxCoreLayerBytes); err != nil {
 		return PublishResult{}, err
 	}
 
@@ -304,6 +322,9 @@ func publishBundle(
 	if err != nil {
 		return PublishResult{}, fmt.Errorf("failed to pack manifest: %w", err)
 	}
+	if err := validateManifestSize(manifestDesc); err != nil {
+		return PublishResult{}, err
+	}
 
 	remoteRepo, err := remote.NewRepository(fullRepo)
 	if err != nil {
@@ -360,6 +381,10 @@ type PublishOptions struct {
 	Username     string
 	Password     string
 	RegistryHost string
+	// MaxCoreLayerBytes caps each core layer. Zero or negative disables
+	// this cap; callers that want the standard cap pass
+	// DefaultMaxCoreLayerBytes.
+	MaxCoreLayerBytes int64
 }
 
 // PublishWorkspace is a thin shim retained for the server caller. It
@@ -377,6 +402,7 @@ func PublishWorkspace(ctx context.Context, envPath string, opts PublishOptions) 
 	}
 	res, err := PublishPixiOnly(ctx, envPath, reg, repoName, opts.Tag,
 		WithExtraTags(opts.ExtraTags...),
+		WithMaxCoreLayerBytes(opts.MaxCoreLayerBytes),
 	)
 	if err != nil {
 		return "", err

@@ -27,7 +27,7 @@ database:
 
 auth:
   type: basic
-  jwt_secret: change-me-in-production
+  jwt_secret: replace-with-at-least-32-random-characters
 
   # Optional: Enable OIDC/OAuth authentication
   # Uncomment and configure to enable OAuth login button

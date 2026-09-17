@@ -18,7 +18,7 @@ import (
 
 // LocalExecutor runs operations on the local machine
 type LocalExecutor struct {
-	baseDir string // Base directory for workspaces (e.g., /var/lib/nebi/environments)
+	baseDir string // Base directory for workspaces (e.g., /var/lib/nebi/workspaces)
 	config  *config.Config
 	limits  limits.Limits
 }

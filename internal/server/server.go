@@ -36,11 +36,12 @@ import (
 
 // Config holds the server configuration options.
 type Config struct {
-	Host    string // Bind host/IP (empty = config/default behavior)
-	Port    int    // Port to run the server on (0 = use config default)
-	Mode    string // Run mode: server, worker, or both
-	Version string // Version string to report
-	Commit  string // Git commit hash
+	Host        string      // Bind host/IP (empty = config/default behavior)
+	Port        int         // Port to run the server on (0 = use config default)
+	Mode        string      // Run mode: server, worker, or both
+	RuntimeMode config.Mode // Runtime mode: team or local
+	Version     string      // Version string to report
+	Commit      string      // Git commit hash
 }
 
 // Run starts the server with the given configuration and blocks until the context is canceled.
@@ -54,7 +55,11 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	// Load configuration
-	appCfg, err := config.Load()
+	runtimeMode := cfg.RuntimeMode
+	if runtimeMode == "" {
+		runtimeMode = config.ModeTeam
+	}
+	appCfg, err := config.Load(config.WithMode(runtimeMode))
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}

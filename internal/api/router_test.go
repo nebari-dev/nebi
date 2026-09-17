@@ -29,7 +29,7 @@ import (
 func buildTestRouter(t *testing.T, basePath string, mutate ...func(*config.Config)) http.Handler {
 	t.Helper()
 
-	cfg := &config.Config{Mode: "local"}
+	cfg := &config.Config{Mode: config.ModeLocal}
 	cfg.Server.BasePath = basePath
 	cfg.Auth.JWTSecret = "test-secret-for-router-test"
 	cfg.Database.Driver = "sqlite"
@@ -65,7 +65,7 @@ func buildTeamTestRouter(t *testing.T, logger *slog.Logger) (http.Handler, strin
 		jwtSecret = "test-secret-for-team-router-test"
 	)
 
-	cfg := &config.Config{Mode: "team"}
+	cfg := &config.Config{Mode: config.ModeTeam}
 	cfg.Auth.Type = "basic"
 	cfg.Auth.JWTSecret = jwtSecret
 	cfg.Database.Driver = "sqlite"
@@ -116,7 +116,7 @@ func buildTeamTestRouter(t *testing.T, logger *slog.Logger) (http.Handler, strin
 func buildLimitedLocalRouter(t *testing.T, limitCfg limits.Limits) http.Handler {
 	t.Helper()
 
-	cfg := &config.Config{Mode: "local", Limits: limitCfg}
+	cfg := &config.Config{Mode: config.ModeLocal, Limits: limitCfg}
 	cfg.Auth.JWTSecret = "test-secret-for-router-test"
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = filepath.Join(t.TempDir(), "limited-router-test.db")
@@ -260,7 +260,7 @@ func TestLegacyCLILoginRoutesRemoved(t *testing.T) {
 // registry guards (see registry.go UpdateRegistry / DeleteRegistry) through
 // the real HTTP admin routes, not just the service layer.
 func TestAdminRegistryMutations_RejectConfigManaged(t *testing.T) {
-	cfg := &config.Config{Mode: "local"}
+	cfg := &config.Config{Mode: config.ModeLocal}
 	cfg.Auth.JWTSecret = "test-secret-for-config-managed-registry-test"
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = filepath.Join(t.TempDir(), "config-managed-registry-test.db")

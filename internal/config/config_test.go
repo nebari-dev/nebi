@@ -15,10 +15,9 @@ func isolate(t *testing.T) {
 
 func TestLoad_TeamMode_RejectsDefaultJWTSecret(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "team")
 	t.Setenv("NEBI_AUTH_JWT_SECRET", "change-me-in-production")
 
-	_, err := Load()
+	_, err := Load(WithMode(ModeTeam))
 	if err == nil {
 		t.Fatal("expected error when team mode uses the default JWT secret")
 	}
@@ -26,10 +25,9 @@ func TestLoad_TeamMode_RejectsDefaultJWTSecret(t *testing.T) {
 
 func TestLoad_TeamMode_RejectsEmptyJWTSecret(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "team")
 	t.Setenv("NEBI_AUTH_JWT_SECRET", "")
 
-	_, err := Load()
+	_, err := Load(WithMode(ModeTeam))
 	if err == nil {
 		t.Fatal("expected error when team mode uses an empty JWT secret")
 	}
@@ -37,10 +35,9 @@ func TestLoad_TeamMode_RejectsEmptyJWTSecret(t *testing.T) {
 
 func TestLoad_TeamMode_RejectsShortJWTSecret(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "team")
 	t.Setenv("NEBI_AUTH_JWT_SECRET", "too-short")
 
-	_, err := Load()
+	_, err := Load(WithMode(ModeTeam))
 	if err == nil {
 		t.Fatal("expected error when team mode uses a JWT secret under the minimum length")
 	}
@@ -48,11 +45,10 @@ func TestLoad_TeamMode_RejectsShortJWTSecret(t *testing.T) {
 
 func TestLoad_TeamMode_AcceptsStrongJWTSecret(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "team")
 	t.Setenv("NEBI_AUTH_JWT_SECRET", strings.Repeat("s", 32))
 	t.Setenv("NEBI_AUTH_AUTHORIZATION_STALE_AFTER_MINS", "30")
 
-	cfg, err := Load()
+	cfg, err := Load(WithMode(ModeTeam))
 	if err != nil {
 		t.Fatalf("unexpected error with a strong secret: %v", err)
 	}
@@ -66,14 +62,27 @@ func TestLoad_TeamMode_AcceptsStrongJWTSecret(t *testing.T) {
 
 func TestLoad_LocalMode_AllowsDefaultJWTSecret(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "local")
 	t.Setenv("NEBI_AUTH_JWT_SECRET", "change-me-in-production")
 
 	// Local mode never exposes the network-facing JWT auth path (see
 	// router.go: local mode uses LocalAuthenticator, bypassing JWT
 	// validation entirely), so the default secret is not a security issue.
-	if _, err := Load(); err != nil {
+	if _, err := Load(WithMode(ModeLocal)); err != nil {
 		t.Fatalf("unexpected error in local mode: %v", err)
+	}
+}
+
+func TestLoad_ModeIsExplicit(t *testing.T) {
+	isolate(t)
+	t.Setenv("NEBI_AUTH_JWT_SECRET", "change-me-in-production")
+
+	if _, err := Load(WithMode(ModeTeam)); err == nil {
+		t.Fatal("expected team mode validation")
+	}
+	if cfg, err := Load(WithMode(ModeLocal)); err != nil {
+		t.Fatalf("unexpected local mode error: %v", err)
+	} else if !cfg.IsLocalMode() {
+		t.Fatal("expected explicit local mode")
 	}
 }
 
@@ -86,11 +95,10 @@ func writeConfigYAML(t *testing.T, content string) {
 
 func TestLoad_LimitsFromEnv(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "local")
 	t.Setenv("NEBI_LIMITS_JOB_TIMEOUT_SECONDS", "9")
 	t.Setenv("NEBI_LIMITS_JOB_LOG_BYTES", "1234")
 
-	cfg, err := Load()
+	cfg, err := Load(WithMode(ModeLocal))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -104,11 +112,10 @@ func TestLoad_LimitsFromEnv(t *testing.T) {
 
 func TestLoad_LimitsExplicitZeroIsPreserved(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "local")
 	t.Setenv("NEBI_LIMITS_REQUEST_BODY_BYTES", "0")
 	t.Setenv("NEBI_LIMITS_JOB_TIMEOUT_SECONDS", "0")
 
-	cfg, err := Load()
+	cfg, err := Load(WithMode(ModeLocal))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -122,10 +129,9 @@ func TestLoad_LimitsExplicitZeroIsPreserved(t *testing.T) {
 
 func TestLoad_ServerReadTimeoutFromEnv(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "local")
 	t.Setenv("NEBI_SERVER_READ_TIMEOUT_SECONDS", "90")
 
-	cfg, err := Load()
+	cfg, err := Load(WithMode(ModeLocal))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -145,10 +151,9 @@ func TestDefaultReadTimeoutSecondsScalesWithBodyCap(t *testing.T) {
 
 func TestLoad_DefaultReadTimeoutUsesEffectiveBodyCap(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "local")
 	t.Setenv("NEBI_LIMITS_REQUEST_BODY_BYTES", "104857600")
 
-	cfg, err := Load()
+	cfg, err := Load(WithMode(ModeLocal))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -160,9 +165,8 @@ func TestLoad_DefaultReadTimeoutUsesEffectiveBodyCap(t *testing.T) {
 
 func TestLoad_Registries_Defaults(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "local")
 
-	cfg, err := Load()
+	cfg, err := Load(WithMode(ModeLocal))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -176,7 +180,6 @@ func TestLoad_Registries_Defaults(t *testing.T) {
 
 func TestLoad_Registries_ParsesEntries(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "local")
 	writeConfigYAML(t, `
 registries:
   seed_default: false
@@ -188,7 +191,7 @@ registries:
       restricted: true
 `)
 
-	cfg, err := Load()
+	cfg, err := Load(WithMode(ModeLocal))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -206,7 +209,6 @@ registries:
 
 func TestLoad_Registries_DuplicateNamesFail(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "local")
 	writeConfigYAML(t, `
 registries:
   entries:
@@ -216,42 +218,39 @@ registries:
       url: b.io
 `)
 
-	if _, err := Load(); err == nil {
+	if _, err := Load(WithMode(ModeLocal)); err == nil {
 		t.Fatal("expected error for duplicate entry names")
 	}
 }
 
 func TestLoad_Registries_MissingURLFails(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "local")
 	writeConfigYAML(t, `
 registries:
   entries:
     - name: acme
 `)
 
-	if _, err := Load(); err == nil {
+	if _, err := Load(WithMode(ModeLocal)); err == nil {
 		t.Fatal("expected error for entry without url")
 	}
 }
 
 func TestLoad_Registries_MissingNameFails(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "local")
 	writeConfigYAML(t, `
 registries:
   entries:
     - url: registry.acme.com
 `)
 
-	if _, err := Load(); err == nil {
+	if _, err := Load(WithMode(ModeLocal)); err == nil {
 		t.Fatal("expected error for entry without name")
 	}
 }
 
 func TestLoad_Registries_MultipleDefaultsFail(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "local")
 	writeConfigYAML(t, `
 registries:
   entries:
@@ -263,14 +262,13 @@ registries:
       default: true
 `)
 
-	if _, err := Load(); err == nil {
+	if _, err := Load(WithMode(ModeLocal)); err == nil {
 		t.Fatal("expected error when two entries set default: true")
 	}
 }
 
 func TestLoad_Registries_TrimsNameAndURL(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "local")
 	writeConfigYAML(t, `
 registries:
   entries:
@@ -278,7 +276,7 @@ registries:
       url: "  registry.acme.com  "
 `)
 
-	cfg, err := Load()
+	cfg, err := Load(WithMode(ModeLocal))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -292,10 +290,9 @@ registries:
 
 func TestLoad_Server_AllowedOrigins(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_MODE", "local")
 	t.Setenv("NEBI_SERVER_ALLOWED_ORIGINS", "https://hub.example.com, https://other.example.com ,")
 
-	cfg, err := Load()
+	cfg, err := Load(WithMode(ModeLocal))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -185,7 +185,7 @@ jobs:
           govulncheck ./cmd/... ./internal/...
 
   build-binaries:
-    name: Build CLI Binaries
+    name: Build Split Binaries
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -228,35 +228,54 @@ jobs:
       - name: govulncheck (compiled binary)
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
-          go build -trimpath -o /tmp/nebi-scan ./cmd/nebi
-          govulncheck -mode=binary /tmp/nebi-scan
+          go build -trimpath -o /tmp/nebi-cli-scan ./cmd/nebi-cli
+          govulncheck -mode=binary /tmp/nebi-cli-scan
+          go build -trimpath -o /tmp/nebi-server-scan ./cmd/nebi-server
+          govulncheck -mode=binary /tmp/nebi-server-scan
+          go build -trimpath -o /tmp/nebi-web-scan ./cmd/nebi-web
+          govulncheck -mode=binary /tmp/nebi-web-scan
 
       - name: Upload Linux amd64
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nebi-cli-linux-amd64
-          path: dist/nebi_linux_amd64_v1/nebi
+          name: nebi-linux-amd64
+          path: |
+            dist/nebi-cli_linux_amd64_v1/nebi
+            dist/nebi-server_linux_amd64_v1/nebi-server
+            dist/nebi-web_linux_amd64_v1/nebi-web
 
       - name: Upload Linux arm64
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nebi-cli-linux-arm64
-          path: dist/nebi_linux_arm64_v8.0/nebi
+          name: nebi-linux-arm64
+          path: |
+            dist/nebi-cli_linux_arm64_v8.0/nebi
+            dist/nebi-server_linux_arm64_v8.0/nebi-server
+            dist/nebi-web_linux_arm64_v8.0/nebi-web
 
       - name: Upload macOS Intel
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nebi-cli-darwin-amd64
-          path: dist/nebi_darwin_amd64_v1/nebi
+          name: nebi-darwin-amd64
+          path: |
+            dist/nebi-cli_darwin_amd64_v1/nebi
+            dist/nebi-server_darwin_amd64_v1/nebi-server
+            dist/nebi-web_darwin_amd64_v1/nebi-web
 
       - name: Upload macOS ARM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nebi-cli-darwin-arm64
-          path: dist/nebi_darwin_arm64_v8.0/nebi
+          name: nebi-darwin-arm64
+          path: |
+            dist/nebi-cli_darwin_arm64_v8.0/nebi
+            dist/nebi-server_darwin_arm64_v8.0/nebi-server
+            dist/nebi-web_darwin_arm64_v8.0/nebi-web
 
       - name: Upload Windows amd64
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nebi-cli-windows-amd64
-          path: dist/nebi_windows_amd64_v1/nebi.exe
+          name: nebi-windows-amd64
+          path: |
+            dist/nebi-cli_windows_amd64_v1/nebi.exe
+            dist/nebi-server_windows_amd64_v1/nebi-server.exe
+            dist/nebi-web_windows_amd64_v1/nebi-web.exe

@@ -23,7 +23,7 @@ import (
 func buildRegistryRBACTestRouter(t *testing.T) (http.Handler, *gorm.DB) {
 	t.Helper()
 
-	cfg := &config.Config{Mode: "team"}
+	cfg := &config.Config{Mode: config.ModeTeam}
 	cfg.Auth.Type = "basic"
 	cfg.Auth.JWTSecret = "test-secret-for-registry-rbac"
 	cfg.Database.Driver = "sqlite"

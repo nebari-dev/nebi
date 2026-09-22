@@ -45,12 +45,13 @@ func (h *RegistryBrowseHandler) ListRepositories(c *gin.Context) {
 	}
 
 	registry := regCreds.Registry
-	host, namespace := oci.ParseRegistryURL(registry.URL)
+	host, namespace, plainHTTP := oci.ParseRegistryURLFull(registry.URL)
 
 	opts := oci.BrowseOptions{
 		RegistryHost: host,
 		Username:     registry.Username,
 		Password:     regCreds.Password,
+		PlainHTTP:    plainHTTP,
 	}
 
 	catalogFailed := false
@@ -133,12 +134,13 @@ func (h *RegistryBrowseHandler) ListTags(c *gin.Context) {
 		return
 	}
 
-	host, _ := oci.ParseRegistryURL(regCreds.Registry.URL)
+	host, _, plainHTTP := oci.ParseRegistryURLFull(regCreds.Registry.URL)
 	repoRef := fmt.Sprintf("%s/%s", host, repoName)
 	opts := oci.BrowseOptions{
 		RegistryHost: host,
 		Username:     regCreds.Registry.Username,
 		Password:     regCreds.Password,
+		PlainHTTP:    plainHTTP,
 	}
 
 	tags, err := oci.ListTags(c.Request.Context(), repoRef, opts)

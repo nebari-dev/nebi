@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/registry"
@@ -451,6 +452,44 @@ func TestPublishWorkspace_LocalMode_UploadsAssets(t *testing.T) {
 	}
 	if len(result.Assets) != 1 || result.Assets[0].Path != "notebook.ipynb" {
 		t.Errorf("expected one asset notebook.ipynb, got %+v", result.Assets)
+	}
+}
+
+func TestPublishWorkspace_UsesConfiguredLockLimit(t *testing.T) {
+	svc, db := testSetup(t, true)
+	svc.limits.LockBytes = 32
+	userID := createTestUser(t, db, "alice")
+	ws := createReadyWorkspace(t, svc, db, "publish-limited", userID)
+
+	wsPath := svc.executor.GetWorkspacePath(ws)
+	if err := os.MkdirAll(wsPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte("[workspace]\nname = \"x\"\n"), 0o644)
+	os.WriteFile(filepath.Join(wsPath, "pixi.lock"), []byte(strings.Repeat("L", 33)), 0o644)
+
+	db.Create(&models.WorkspaceVersion{
+		WorkspaceID:   ws.ID,
+		VersionNumber: 1,
+		ContentHash:   "sha-limited",
+	})
+	reg := models.OCIRegistry{Name: "reg", URL: "https://registry.invalid", IsDefault: true}
+	db.Create(&reg)
+
+	_, err := svc.PublishWorkspace(context.Background(), ws.ID.String(), PublishWorkspaceRequest{
+		RegistryID: reg.ID,
+		Repository: "publish-limited",
+		Tag:        "v1",
+	}, userID)
+	if err == nil {
+		t.Fatal("expected publish to reject pixi.lock above configured limit")
+	}
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if !strings.Contains(ve.Message, "pixi.lock layer size 33 bytes exceeds cap 32 bytes") {
+		t.Fatalf("expected configured lock cap error, got %v", err)
 	}
 }
 

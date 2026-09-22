@@ -69,6 +69,7 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 		extraTags = append(extraTags, t)
 	}
 
+	maxCoreLayerBytes := int64(s.limits.LockBytes)
 	var digest string
 	if s.isLocal {
 		regEndpoint := oci.Registry{
@@ -80,22 +81,24 @@ func (s *WorkspaceService) PublishWorkspace(ctx context.Context, wsID string, re
 		}
 		res, err := oci.Publish(ctx, wsPath, regEndpoint, req.Repository, req.Tag,
 			oci.WithExtraTags(extraTags...),
+			oci.WithMaxCoreLayerBytes(maxCoreLayerBytes),
 		)
 		if err != nil {
-			return nil, fmt.Errorf("publish failed: %w", err)
+			return nil, mapOCILimitError(fmt.Errorf("publish failed: %w", err))
 		}
 		digest = res.Digest
 	} else {
 		d, err := oci.PublishWorkspace(ctx, wsPath, oci.PublishOptions{
-			Repository:   fullRepo,
-			Tag:          req.Tag,
-			ExtraTags:    extraTags,
-			Username:     ep.Username,
-			Password:     ep.Password,
-			RegistryHost: ep.Host,
+			Repository:        fullRepo,
+			Tag:               req.Tag,
+			ExtraTags:         extraTags,
+			Username:          ep.Username,
+			Password:          ep.Password,
+			RegistryHost:      ep.Host,
+			MaxCoreLayerBytes: maxCoreLayerBytes,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("publish failed: %w", err)
+			return nil, mapOCILimitError(fmt.Errorf("publish failed: %w", err))
 		}
 		digest = d
 	}
@@ -190,7 +193,8 @@ func (s *WorkspaceService) UpdatePublication(ctx context.Context, wsID string, p
 	if err := s.db.Where("id = ?", publication.RegistryID).First(&registry).Error; err == nil && registry.APIToken != "" {
 		apiToken, err := nebicrypto.DecryptField(registry.APIToken, s.encKey)
 		if err == nil {
-			host, _ := oci.ParseRegistryURL(registry.URL)
+			// Quay's visibility API always uses HTTPS.
+			host, _, _ := oci.ParseRegistryURLFull(registry.URL)
 			repoPath := publication.Repository
 			if registry.Namespace != "" {
 				repoPath = registry.Namespace + "/" + publication.Repository

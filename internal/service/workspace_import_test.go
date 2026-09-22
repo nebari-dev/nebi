@@ -158,6 +158,49 @@ platforms = ["linux-64"]
 	}
 }
 
+func TestImportFromRegistry_UsesConfiguredLockLimit(t *testing.T) {
+	svc, db := testSetup(t, true)
+	svc.limits.LockBytes = 32
+	userID := createTestUser(t, db, "alice")
+
+	srv := httptest.NewServer(registry.New())
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+
+	srcDir := t.TempDir()
+	os.WriteFile(filepath.Join(srcDir, "pixi.toml"),
+		[]byte("[workspace]\nname = \"limited\"\n"), 0o644)
+	os.WriteFile(filepath.Join(srcDir, "pixi.lock"), []byte(strings.Repeat("L", 33)), 0o644)
+
+	reg := oci.Registry{Host: u.Host, Namespace: "demo", PlainHTTP: true}
+	if _, err := oci.Publish(context.Background(), srcDir, reg, "limited", "v1"); err != nil {
+		t.Fatalf("seed publish: %v", err)
+	}
+	dbReg := models.OCIRegistry{
+		Name:      "limited-src",
+		URL:       "http://" + u.Host,
+		Namespace: "demo",
+		IsDefault: true,
+	}
+	db.Create(&dbReg)
+
+	_, err := svc.ImportFromRegistry(context.Background(), dbReg.ID.String(), ImportFromRegistryRequest{
+		Repository: "limited",
+		Tag:        "v1",
+		Name:       "limited-import",
+	}, userID)
+	if err == nil {
+		t.Fatal("expected import to reject pixi.lock above configured limit")
+	}
+	var ve *ValidationError
+	if !isValidationError(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if !strings.Contains(ve.Message, "pixi.lock layer size 33 bytes exceeds cap 32 bytes") {
+		t.Fatalf("expected configured lock cap error, got %v", err)
+	}
+}
+
 func TestImportFromRegistry_RequiresRegistryReadAccess(t *testing.T) {
 	svc, db := testSetup(t, false)
 	userID := createTestUser(t, db, "alice")
@@ -180,5 +223,77 @@ func TestImportFromRegistry_RequiresRegistryReadAccess(t *testing.T) {
 	db.Model(&models.Workspace{}).Where("name = ?", "imported-env").Count(&count)
 	if count != 0 {
 		t.Fatalf("expected no workspace to be created without registry read grant, got %d", count)
+	}
+}
+
+func TestImportFromRegistry_RejectsOversizedManifestBeforeCreate(t *testing.T) {
+	for _, isLocal := range []bool{true, false} {
+		mode := "team"
+		if isLocal {
+			mode = "local"
+		}
+		for _, lockLimit := range []int{256, 0} {
+			capName := "bounded"
+			if lockLimit == 0 {
+				capName = "disabled"
+			}
+			t.Run(mode+"/lock-cap-"+capName, func(t *testing.T) {
+				svc, db := testSetup(t, isLocal)
+				svc.limits.ManifestBytes = 64
+				svc.limits.LockBytes = lockLimit
+				userID := createTestUser(t, db, "alice")
+
+				srv := httptest.NewServer(registry.New())
+				defer srv.Close()
+				u, _ := url.Parse(srv.URL)
+				srcDir := t.TempDir()
+				for name, content := range map[string]string{
+					"pixi.toml": "[workspace]\nname = \"limited\"\n#" + strings.Repeat("x", 64),
+					"pixi.lock": "version: 6\n",
+				} {
+					if err := os.WriteFile(filepath.Join(srcDir, name), []byte(content), 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
+				reg := oci.Registry{Host: u.Host, Namespace: "demo", PlainHTTP: true}
+				if _, err := oci.Publish(context.Background(), srcDir, reg, "limited", "v1"); err != nil {
+					t.Fatalf("seed publish: %v", err)
+				}
+				dbReg := models.OCIRegistry{Name: "limited-src", URL: srv.URL, Namespace: "demo"}
+				if err := db.Create(&dbReg).Error; err != nil {
+					t.Fatal(err)
+				}
+				if !isLocal {
+					grantRegistryAccessForTest(t, db, userID, dbReg.ID, "read")
+				}
+
+				ws, err := svc.ImportFromRegistry(context.Background(), dbReg.ID.String(), ImportFromRegistryRequest{
+					Repository: "limited", Tag: "v1", Name: "limited-import",
+				}, userID)
+				var ve *ValidationError
+				if !isValidationError(err, &ve) || ve.Message != "pixi.toml exceeds 64 bytes" {
+					t.Fatalf("expected manifest ValidationError before create, got %v", err)
+				}
+				if ws != nil {
+					t.Fatal("expected no workspace returned")
+				}
+				for _, table := range []string{"workspaces", "jobs"} {
+					var count int64
+					if err := db.Table(table).Count(&count).Error; err != nil {
+						t.Fatal(err)
+					}
+					if count != 0 {
+						t.Errorf("expected no %s created, got %d", table, count)
+					}
+				}
+				entries, err := os.ReadDir(svc.executor.StagingRoot())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(entries) != 0 {
+					t.Errorf("expected staging cleanup, got %v", entries)
+				}
+			})
+		}
 	}
 }

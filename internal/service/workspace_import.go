@@ -80,6 +80,10 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 		Username:  ep.Username,
 		Password:  ep.Password,
 		PlainHTTP: ep.PlainHTTP,
+		// The OCI reader has one core-layer cap today, so use the
+		// lockfile limit while staging imports. Both branches below
+		// check pixi.toml against ManifestBytes before creating a job.
+		MaxCoreLayerBytes: int64(s.limits.LockBytes),
 		// Cap total bundle size to defend against a malicious or
 		// misconfigured registry serving a runaway asset layer. 5 GiB
 		// is well above any reasonable Pixi environment but small
@@ -104,14 +108,26 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 		result, err := oci.ExtractBundle(pullCtx, repoRef, req.Tag, stagingDir, pullOpts)
 		if err != nil {
 			_ = os.RemoveAll(stagingDir)
-			return nil, fmt.Errorf("extract bundle: %w", err)
+			return nil, mapOCILimitError(fmt.Errorf("extract bundle: %w", err))
+		}
+		if _, err := s.readLimitedTextFile(filepath.Join(stagingDir, "pixi.toml"), "pixi.toml", s.limits.ManifestBytes); err != nil {
+			_ = os.RemoveAll(stagingDir)
+			return nil, err
+		}
+		if _, err := s.readLimitedTextFile(filepath.Join(stagingDir, "pixi.lock"), "pixi.lock", s.limits.LockBytes); err != nil {
+			_ = os.RemoveAll(stagingDir)
+			return nil, err
 		}
 		digest = result.Digest
 	} else {
 		result, err := oci.PullBundle(pullCtx, repoRef, req.Tag, pullOpts)
 		if err != nil {
 			_ = os.RemoveAll(stagingDir)
-			return nil, fmt.Errorf("pull bundle: %w", err)
+			return nil, mapOCILimitError(fmt.Errorf("pull bundle: %w", err))
+		}
+		if err := s.ValidateVersionContent(result.PixiToml, result.PixiLock); err != nil {
+			_ = os.RemoveAll(stagingDir)
+			return nil, err
 		}
 		// Stage just the two core files; asset layers stay in the
 		// registry until team mode opts in to bundle support.

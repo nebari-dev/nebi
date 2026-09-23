@@ -79,7 +79,7 @@ var workspaceVersionRollbackCmd = &cobra.Command{
 	Use:   "rollback <version> [workspace]",
 	Short: "Roll a workspace back to a previous version",
 	Long: `Restore a workspace's pixi.toml and pixi.lock to a previous version
-and create a new "Rolled back to version N" snapshot.
+and create a new "Rolled back to snapshot N" snapshot.
 
 In local mode this writes the files to disk but does NOT run pixi install —
 run it yourself afterwards to apply the change. In remote mode the rollback

@@ -4323,6 +4323,10 @@ const docTemplate = `{
                     "description": "pixi.toml content",
                     "type": "string"
                 },
+                "manifest_version": {
+                    "description": "ManifestVersion is derived from the stored pixi.toml [workspace]/[project] version.",
+                    "type": "string"
+                },
                 "package_metadata": {
                     "description": "JSON of package list",
                     "type": "string"

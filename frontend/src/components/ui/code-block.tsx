@@ -25,6 +25,14 @@ interface CodeBlockContextValue {
 
 const CodeBlockContext = createContext<CodeBlockContextValue | null>(null);
 
+/**
+ * Reads the snippet and layout flags shared by the nearest {@link CodeBlock}.
+ * Use it to author a custom part — a line counter, a download button, a
+ * language badge — without re-threading `code` through props. Pass the calling
+ * component's name so a missing root reports which part failed; the context has
+ * no default value, so a call outside {@link CodeBlock} throws rather than
+ * rendering against an empty snippet.
+ */
 function useCodeBlockContext(component: string): CodeBlockContextValue {
   const context = useContext(CodeBlockContext);
   if (!context) {
@@ -321,11 +329,17 @@ function CodeBlockCopyButton({
   );
 }
 
-export type { CodeBlockBodyProps, CodeBlockCopyButtonProps, CodeBlockProps };
+export type {
+  CodeBlockBodyProps,
+  CodeBlockContextValue,
+  CodeBlockCopyButtonProps,
+  CodeBlockProps,
+};
 export {
   CodeBlock,
   CodeBlockBody,
   CodeBlockCopyButton,
   CodeBlockHeader,
   codeBlockCopyButtonVariants,
+  useCodeBlockContext,
 };

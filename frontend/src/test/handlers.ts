@@ -6,10 +6,10 @@ import type {
   FederatedIdentityReview,
   Job,
   OCIRegistry,
+  Project,
   Publication,
   PublishDefaults,
   User,
-  Workspace,
 } from '@/types';
 
 export const mockUser: User = {
@@ -29,9 +29,9 @@ export const mockAdminUser: User = {
   is_admin: true,
 };
 
-export const mockWorkspace: Workspace = {
+export const mockProject: Project = {
   id: 'ws-1',
-  name: 'test-workspace',
+  name: 'test-project',
   owner_id: 'user-1',
   status: 'ready',
   created_at: '2024-01-01T00:00:00Z',
@@ -42,7 +42,7 @@ export const mockWorkspace: Workspace = {
 
 export const mockJob: Job = {
   id: 'job-1',
-  workspace_id: 'ws-1',
+  project_id: 'ws-1',
   type: 'create',
   status: 'completed',
   logs: 'Job completed successfully',
@@ -93,7 +93,7 @@ export const mockPublishDefaults: PublishDefaults = {
   registry_id: 'reg-1',
   registry_name: 'My Registry',
   namespace: 'myorg',
-  repository: 'test-workspace',
+  repository: 'test-project',
   tag: 'latest',
 };
 
@@ -102,7 +102,7 @@ export const mockPublication: Publication = {
   registry_name: 'My Registry',
   registry_url: 'https://registry.example.com',
   registry_namespace: 'myorg',
-  repository: 'test-workspace',
+  repository: 'test-project',
   tag: 'v1.0.0',
   digest: 'sha256:abc123',
   is_public: true,
@@ -159,53 +159,53 @@ export const handlers = [
     HttpResponse.json({ token: 'test-token', user: mockUser }),
   ),
 
-  // Workspaces
-  http.get(`${BASE}/workspaces`, () => HttpResponse.json([mockWorkspace])),
+  // Projects
+  http.get(`${BASE}/projects`, () => HttpResponse.json([mockProject])),
 
-  http.get(`${BASE}/workspaces/:id`, ({ params }) =>
-    HttpResponse.json({ ...mockWorkspace, id: params.id as string }),
+  http.get(`${BASE}/projects/:id`, ({ params }) =>
+    HttpResponse.json({ ...mockProject, id: params.id as string }),
   ),
 
-  http.post(`${BASE}/workspaces`, async ({ request }) => {
+  http.post(`${BASE}/projects`, async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>;
     return HttpResponse.json(
-      { ...mockWorkspace, name: body.name as string },
+      { ...mockProject, name: body.name as string },
       { status: 201 },
     );
   }),
 
   http.delete(
-    `${BASE}/workspaces/:id`,
+    `${BASE}/projects/:id`,
     () => new HttpResponse(null, { status: 204 }),
   ),
 
-  http.get(`${BASE}/workspaces/:id/tags`, () => HttpResponse.json([])),
+  http.get(`${BASE}/projects/:id/tags`, () => HttpResponse.json([])),
 
   // Collaborators
-  http.get(`${BASE}/workspaces/:id/collaborators`, () =>
+  http.get(`${BASE}/projects/:id/collaborators`, () =>
     HttpResponse.json([mockOwnerCollaborator, mockCollaborator]),
   ),
 
   http.post(
-    `${BASE}/workspaces/:id/share`,
+    `${BASE}/projects/:id/share`,
     () => new HttpResponse(null, { status: 204 }),
   ),
 
   http.delete(
-    `${BASE}/workspaces/:id/share/:userId`,
+    `${BASE}/projects/:id/share/:userId`,
     () => new HttpResponse(null, { status: 204 }),
   ),
 
   // Publishing
-  http.get(`${BASE}/workspaces/:id/publish-defaults`, () =>
+  http.get(`${BASE}/projects/:id/publish-defaults`, () =>
     HttpResponse.json(mockPublishDefaults),
   ),
 
-  http.get(`${BASE}/workspaces/:id/publications`, () =>
+  http.get(`${BASE}/projects/:id/publications`, () =>
     HttpResponse.json([mockPublication]),
   ),
 
-  http.post(`${BASE}/workspaces/:id/publish`, () =>
+  http.post(`${BASE}/projects/:id/publish`, () =>
     HttpResponse.json(mockJob, { status: 201 }),
   ),
 

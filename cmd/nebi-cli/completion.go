@@ -63,8 +63,8 @@ PowerShell:
 	},
 }
 
-// completeWorkspaceNames returns completion for tracked workspace names.
-func completeWorkspaceNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+// completeProjectNames returns completion for tracked project names.
+func completeProjectNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
@@ -75,23 +75,23 @@ func completeWorkspaceNames(cmd *cobra.Command, args []string, toComplete string
 	}
 	defer s.Close()
 
-	workspaces, err := s.ListWorkspaces()
+	projects, err := s.ListProjects()
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError
 	}
 
 	var names []string
-	for _, ws := range workspaces {
-		if strings.HasPrefix(ws.Name, toComplete) {
-			names = append(names, ws.Name)
+	for _, project := range projects {
+		if strings.HasPrefix(project.Name, toComplete) {
+			names = append(names, project.Name)
 		}
 	}
 	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
-// completeWorkspaceNamesOrPaths returns completion for workspace names with file fallback.
-// This allows both workspace names and directory paths.
-func completeWorkspaceNamesOrPaths(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+// completeProjectNamesOrPaths returns completion for project names with file fallback.
+// This allows both project names and directory paths.
+func completeProjectNamesOrPaths(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveDefault
 	}
@@ -107,15 +107,15 @@ func completeWorkspaceNamesOrPaths(cmd *cobra.Command, args []string, toComplete
 	}
 	defer s.Close()
 
-	workspaces, err := s.ListWorkspaces()
+	projects, err := s.ListProjects()
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveDefault
 	}
 
 	var names []string
-	for _, ws := range workspaces {
-		if strings.HasPrefix(ws.Name, toComplete) {
-			names = append(names, ws.Name)
+	for _, project := range projects {
+		if strings.HasPrefix(project.Name, toComplete) {
+			names = append(names, project.Name)
 		}
 	}
 
@@ -123,9 +123,9 @@ func completeWorkspaceNamesOrPaths(cmd *cobra.Command, args []string, toComplete
 	return names, cobra.ShellCompDirectiveDefault
 }
 
-// completeServerWorkspaceNames returns completion for server workspace names.
+// completeServerProjectNames returns completion for server project names.
 // This makes a network call to the configured server.
-func completeServerWorkspaceNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+func completeServerProjectNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
@@ -137,23 +137,23 @@ func completeServerWorkspaceNames(cmd *cobra.Command, args []string, toComplete 
 	}
 
 	ctx := context.Background()
-	workspaces, err := client.ListWorkspaces(ctx)
+	projects, err := client.ListProjects(ctx)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 
 	var names []string
-	for _, ws := range workspaces {
-		if strings.HasPrefix(ws.Name, toComplete) {
-			names = append(names, ws.Name)
+	for _, project := range projects {
+		if strings.HasPrefix(project.Name, toComplete) {
+			names = append(names, project.Name)
 		}
 	}
 	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
-// completeWorkspaceRemove returns completion based on --remote flag.
-// Uses server workspaces if --remote is set, otherwise local workspaces.
-func completeWorkspaceRemove(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+// completeProjectRemove returns completion based on --remote flag.
+// Uses server projects if --remote is set, otherwise local projects.
+func completeProjectRemove(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
@@ -161,14 +161,14 @@ func completeWorkspaceRemove(cmd *cobra.Command, args []string, toComplete strin
 	// Check if --remote flag is set
 	remote, _ := cmd.Flags().GetBool("remote")
 	if remote {
-		return completeServerWorkspaceNames(cmd, args, toComplete)
+		return completeServerProjectNames(cmd, args, toComplete)
 	}
-	return completeWorkspaceNamesOrPaths(cmd, args, toComplete)
+	return completeProjectNamesOrPaths(cmd, args, toComplete)
 }
 
-// completeServerWorkspaceRef returns completion for server workspace:tag refs.
-// Completes workspace names from the server with NoSpace for tag addition.
-func completeServerWorkspaceRef(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+// completeServerProjectRef returns completion for server project:tag refs.
+// Completes project names from the server with NoSpace for tag addition.
+func completeServerProjectRef(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
@@ -184,15 +184,15 @@ func completeServerWorkspaceRef(cmd *cobra.Command, args []string, toComplete st
 	}
 
 	ctx := context.Background()
-	workspaces, err := client.ListWorkspaces(ctx)
+	projects, err := client.ListProjects(ctx)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 
 	var names []string
-	for _, ws := range workspaces {
-		if strings.HasPrefix(ws.Name, toComplete) {
-			names = append(names, ws.Name)
+	for _, project := range projects {
+		if strings.HasPrefix(project.Name, toComplete) {
+			names = append(names, project.Name)
 		}
 	}
 	return names, cobra.ShellCompDirectiveNoSpace

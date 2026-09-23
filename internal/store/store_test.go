@@ -24,7 +24,7 @@ func TestOpenDropsLegacyPackageManagerColumn(t *testing.T) {
 		t.Fatalf("open legacy db: %v", err)
 	}
 	if err := legacy.Exec(
-		"CREATE TABLE `workspaces` (`id` text PRIMARY KEY, `name` text NOT NULL, `package_manager` text NOT NULL)",
+		"CREATE TABLE `projects` (`id` text PRIMARY KEY, `name` text NOT NULL, `package_manager` text NOT NULL)",
 	).Error; err != nil {
 		t.Fatalf("create legacy table: %v", err)
 	}
@@ -38,13 +38,13 @@ func TestOpenDropsLegacyPackageManagerColumn(t *testing.T) {
 	}
 	t.Cleanup(func() { s.Close() })
 
-	if s.db.Migrator().HasColumn(&LocalWorkspace{}, "package_manager") {
+	if s.db.Migrator().HasColumn(&LocalProject{}, "package_manager") {
 		t.Fatal("expected package_manager column to be dropped")
 	}
 
-	ws := &LocalWorkspace{Name: "post-migration", Path: "/tmp/post-migration"}
-	if err := s.CreateWorkspace(ws); err != nil {
-		t.Fatalf("create workspace after migration: %v", err)
+	project := &LocalProject{Name: "post-migration", Path: "/tmp/post-migration"}
+	if err := s.CreateProject(project); err != nil {
+		t.Fatalf("create project after migration: %v", err)
 	}
 }
 
@@ -58,77 +58,77 @@ func testStore(t *testing.T) *Store {
 	return s
 }
 
-func TestWorkspaceRoundTrip(t *testing.T) {
+func TestProjectRoundTrip(t *testing.T) {
 	s := testStore(t)
 
 	// Empty initially
-	wss, err := s.ListWorkspaces()
+	projects, err := s.ListProjects()
 	if err != nil {
-		t.Fatalf("ListWorkspaces: %v", err)
+		t.Fatalf("ListProjects: %v", err)
 	}
-	if len(wss) != 0 {
-		t.Fatalf("expected 0 workspaces, got %d", len(wss))
+	if len(projects) != 0 {
+		t.Fatalf("expected 0 projects, got %d", len(projects))
 	}
 
 	// Create
-	ws := &LocalWorkspace{
+	project := &LocalProject{
 		Name: "project",
 		Path: "/home/user/project",
 	}
-	if err := s.CreateWorkspace(ws); err != nil {
-		t.Fatalf("CreateWorkspace: %v", err)
+	if err := s.CreateProject(project); err != nil {
+		t.Fatalf("CreateProject: %v", err)
 	}
-	if ws.ID == uuid.Nil {
+	if project.ID == uuid.Nil {
 		t.Fatal("expected non-nil ID after create")
 	}
 
 	// List
-	wss, _ = s.ListWorkspaces()
-	if len(wss) != 1 {
-		t.Fatalf("expected 1 workspace, got %d", len(wss))
+	projects, _ = s.ListProjects()
+	if len(projects) != 1 {
+		t.Fatalf("expected 1 project, got %d", len(projects))
 	}
-	if wss[0].Name != "project" {
-		t.Fatalf("expected name 'project', got %q", wss[0].Name)
+	if projects[0].Name != "project" {
+		t.Fatalf("expected name 'project', got %q", projects[0].Name)
 	}
 
 	// Get by ID
-	got, err := s.GetWorkspace(ws.ID)
+	got, err := s.GetProject(project.ID)
 	if err != nil {
-		t.Fatalf("GetWorkspace: %v", err)
+		t.Fatalf("GetProject: %v", err)
 	}
 	if got.Path != "/home/user/project" {
 		t.Fatalf("unexpected path: %q", got.Path)
 	}
 
 	// Find by path
-	found, err := s.FindWorkspaceByPath("/home/user/project")
+	found, err := s.FindProjectByPath("/home/user/project")
 	if err != nil {
-		t.Fatalf("FindWorkspaceByPath: %v", err)
+		t.Fatalf("FindProjectByPath: %v", err)
 	}
 	if found == nil || found.Name != "project" {
-		t.Fatal("expected to find workspace by path")
+		t.Fatal("expected to find project by path")
 	}
 
 	// Find by path - not found
-	notFound, err := s.FindWorkspaceByPath("/nonexistent")
+	notFound, err := s.FindProjectByPath("/nonexistent")
 	if err != nil {
-		t.Fatalf("FindWorkspaceByPath: %v", err)
+		t.Fatalf("FindProjectByPath: %v", err)
 	}
 	if notFound != nil {
 		t.Fatal("expected nil for nonexistent path")
 	}
 
 	// Delete
-	if err := s.DeleteWorkspace(ws.ID); err != nil {
-		t.Fatalf("DeleteWorkspace: %v", err)
+	if err := s.DeleteProject(project.ID); err != nil {
+		t.Fatalf("DeleteProject: %v", err)
 	}
-	wss, _ = s.ListWorkspaces()
-	if len(wss) != 0 {
-		t.Fatalf("expected 0 after delete, got %d", len(wss))
+	projects, _ = s.ListProjects()
+	if len(projects) != 0 {
+		t.Fatalf("expected 0 after delete, got %d", len(projects))
 	}
 }
 
-func TestFindWorkspaceByPathCanonicalizesSymlinks(t *testing.T) {
+func TestFindProjectByPathCanonicalizesSymlinks(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlink behavior differs on Windows")
 	}
@@ -136,49 +136,49 @@ func TestFindWorkspaceByPathCanonicalizesSymlinks(t *testing.T) {
 	s := testStore(t)
 	realDir := t.TempDir()
 	linkParent := t.TempDir()
-	linkDir := filepath.Join(linkParent, "workspace-link")
+	linkDir := filepath.Join(linkParent, "project-link")
 	if err := os.Symlink(realDir, linkDir); err != nil {
 		t.Fatalf("create symlink: %v", err)
 	}
 
-	ws := &LocalWorkspace{Name: "linked", Path: realDir}
-	if err := s.CreateWorkspace(ws); err != nil {
-		t.Fatalf("CreateWorkspace: %v", err)
+	project := &LocalProject{Name: "linked", Path: realDir}
+	if err := s.CreateProject(project); err != nil {
+		t.Fatalf("CreateProject: %v", err)
 	}
 
-	found, err := s.FindWorkspaceByPath(linkDir)
+	found, err := s.FindProjectByPath(linkDir)
 	if err != nil {
-		t.Fatalf("FindWorkspaceByPath: %v", err)
+		t.Fatalf("FindProjectByPath: %v", err)
 	}
-	if found == nil || found.ID != ws.ID {
-		t.Fatalf("expected symlink path to find workspace %s, got %+v", ws.ID, found)
+	if found == nil || found.ID != project.ID {
+		t.Fatalf("expected symlink path to find project %s, got %+v", project.ID, found)
 	}
 }
 
-func TestFindWorkspaceByName(t *testing.T) {
+func TestFindProjectByName(t *testing.T) {
 	s := testStore(t)
 
-	ws := &LocalWorkspace{
+	project := &LocalProject{
 		Name: "data-science",
 		Path: "/home/user/data-science",
 	}
-	if err := s.CreateWorkspace(ws); err != nil {
+	if err := s.CreateProject(project); err != nil {
 		t.Fatal(err)
 	}
 
-	found, err := s.FindWorkspaceByName("data-science")
+	found, err := s.FindProjectByName("data-science")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if found == nil {
-		t.Fatal("expected to find workspace by name")
+		t.Fatal("expected to find project by name")
 	}
 	if found.Name != "data-science" {
 		t.Errorf("expected name 'data-science', got %q", found.Name)
 	}
 
 	// Not found
-	notFound, err := s.FindWorkspaceByName("nonexistent")
+	notFound, err := s.FindProjectByName("nonexistent")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,51 +187,51 @@ func TestFindWorkspaceByName(t *testing.T) {
 	}
 }
 
-func TestFindWorkspacesByName(t *testing.T) {
+func TestFindProjectsByName(t *testing.T) {
 	s := testStore(t)
 
-	// Create two workspaces with the same name but different paths
-	ws1 := &LocalWorkspace{Name: "data-science", Path: "/home/user/project-a"}
-	ws2 := &LocalWorkspace{Name: "data-science", Path: "/home/user/project-b"}
-	ws3 := &LocalWorkspace{Name: "other", Path: "/home/user/other"}
-	for _, ws := range []*LocalWorkspace{ws1, ws2, ws3} {
-		if err := s.CreateWorkspace(ws); err != nil {
+	// Create two projects with the same name but different paths
+	project1 := &LocalProject{Name: "data-science", Path: "/home/user/project-a"}
+	project2 := &LocalProject{Name: "data-science", Path: "/home/user/project-b"}
+	project3 := &LocalProject{Name: "other", Path: "/home/user/other"}
+	for _, project := range []*LocalProject{project1, project2, project3} {
+		if err := s.CreateProject(project); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	// Should return both data-science workspaces
-	found, err := s.FindWorkspacesByName("data-science")
+	// Should return both data-science projects
+	found, err := s.FindProjectsByName("data-science")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(found) != 2 {
-		t.Fatalf("expected 2 workspaces, got %d", len(found))
+		t.Fatalf("expected 2 projects, got %d", len(found))
 	}
 
 	// Should return one for "other"
-	found, err = s.FindWorkspacesByName("other")
+	found, err = s.FindProjectsByName("other")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(found) != 1 {
-		t.Fatalf("expected 1 workspace, got %d", len(found))
+		t.Fatalf("expected 1 project, got %d", len(found))
 	}
 
 	// Should return empty for nonexistent
-	found, err = s.FindWorkspacesByName("nonexistent")
+	found, err = s.FindProjectsByName("nonexistent")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(found) != 0 {
-		t.Fatalf("expected 0 workspaces, got %d", len(found))
+		t.Fatalf("expected 0 projects, got %d", len(found))
 	}
 }
 
 func TestOriginFields(t *testing.T) {
 	s := testStore(t)
 
-	ws := &LocalWorkspace{
+	project := &LocalProject{
 		Name:           "project",
 		Path:           "/home/user/project",
 		OriginName:     "my-env",
@@ -240,11 +240,11 @@ func TestOriginFields(t *testing.T) {
 		OriginTomlHash: "abc123",
 		OriginLockHash: "def456",
 	}
-	if err := s.CreateWorkspace(ws); err != nil {
+	if err := s.CreateProject(project); err != nil {
 		t.Fatal(err)
 	}
 
-	got, _ := s.GetWorkspace(ws.ID)
+	got, _ := s.GetProject(project.ID)
 	if got.OriginName != "my-env" || got.OriginTag != "v1.0" || got.OriginAction != "push" {
 		t.Fatalf("unexpected origin: name=%q tag=%q action=%q", got.OriginName, got.OriginTag, got.OriginAction)
 	}
@@ -519,9 +519,9 @@ func TestRegistryUniqueName(t *testing.T) {
 func TestPublicationCRUD(t *testing.T) {
 	s := testStore(t)
 
-	// Create a workspace and registry first (foreign keys)
-	ws := &LocalWorkspace{Name: "test-ws", Path: "/tmp/test"}
-	s.CreateWorkspace(ws)
+	// Create a project and registry first (foreign keys)
+	project := &LocalProject{Name: "test-ws", Path: "/tmp/test"}
+	s.CreateProject(project)
 
 	reg := &LocalRegistry{Name: "ghcr", URL: "ghcr.io", IsDefault: true}
 	s.CreateRegistry(reg)
@@ -537,11 +537,11 @@ func TestPublicationCRUD(t *testing.T) {
 
 	// Create
 	pub := &LocalPublication{
-		WorkspaceID: ws.ID,
-		RegistryID:  reg.ID,
-		Repository:  "ghcr.io/myorg/test-ws-12345678",
-		Tag:         "sha-abcdef123456",
-		Digest:      "sha256:deadbeef",
+		ProjectID:  project.ID,
+		RegistryID: reg.ID,
+		Repository: "ghcr.io/myorg/test-ws-12345678",
+		Tag:        "sha-abcdef123456",
+		Digest:     "sha256:deadbeef",
 	}
 	if err := s.CreatePublication(pub); err != nil {
 		t.Fatalf("CreatePublication: %v", err)
@@ -559,32 +559,32 @@ func TestPublicationCRUD(t *testing.T) {
 		t.Fatalf("unexpected repository: %q", pubs[0].Repository)
 	}
 
-	// List by workspace
-	pubs, err = s.ListPublicationsByWorkspace(ws.ID)
+	// List by project
+	pubs, err = s.ListPublicationsByProject(project.ID)
 	if err != nil {
-		t.Fatalf("ListPublicationsByWorkspace: %v", err)
+		t.Fatalf("ListPublicationsByProject: %v", err)
 	}
 	if len(pubs) != 1 {
-		t.Fatalf("expected 1 publication for workspace, got %d", len(pubs))
+		t.Fatalf("expected 1 publication for project, got %d", len(pubs))
 	}
 
-	// List by workspace - different ID returns empty
-	pubs, _ = s.ListPublicationsByWorkspace(uuid.New())
+	// List by project - different ID returns empty
+	pubs, _ = s.ListPublicationsByProject(uuid.New())
 	if len(pubs) != 0 {
-		t.Fatalf("expected 0 publications for other workspace, got %d", len(pubs))
+		t.Fatalf("expected 0 publications for other project, got %d", len(pubs))
 	}
 }
 
 func TestDefaults(t *testing.T) {
 	s := testStore(t)
 
-	ws := &LocalWorkspace{
+	project := &LocalProject{
 		Name: "test",
 		Path: "/tmp/test",
 	}
-	s.CreateWorkspace(ws)
+	s.CreateProject(project)
 
-	got, _ := s.GetWorkspace(ws.ID)
+	got, _ := s.GetProject(project.ID)
 	if got.Status != "ready" {
 		t.Errorf("expected status 'ready', got %q", got.Status)
 	}

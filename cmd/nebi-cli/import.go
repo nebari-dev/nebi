@@ -20,8 +20,8 @@ var (
 
 var importCmd = &cobra.Command{
 	Use:   "import <oci-reference>",
-	Short: "Import a workspace from a public OCI registry",
-	Long: `Import a Nebi workspace bundle from an OCI registry.
+	Short: "Import a project from a public OCI registry",
+	Long: `Import a Nebi project bundle from an OCI registry.
 
 The OCI reference should be in the format: registry/repository:tag
 (e.g., quay.io/nebari/my-env:v1)
@@ -29,7 +29,7 @@ The OCI reference should be in the format: registry/repository:tag
 Restores pixi.toml, pixi.lock, and any bundled asset files to the output
 directory. Works entirely locally — no server connection needed.
 
-The local workspace name is derived from the [workspace] name field
+The local project name is derived from the [workspace] name field
 in the imported pixi.toml.
 
 Examples:
@@ -46,7 +46,7 @@ func init() {
 }
 
 func runImport(cmd *cobra.Command, args []string) error {
-	repoRef, tag := parseWsRef(args[0])
+	repoRef, tag := parseProjectRef(args[0])
 	if tag == "" {
 		return fmt.Errorf("tag is required; use format registry/repository:tag (e.g., quay.io/nebari/my-env:v1)")
 	}
@@ -102,9 +102,9 @@ func runImport(cmd *cobra.Command, args []string) error {
 
 	absOutput, _ := filepath.Abs(outputDir)
 
-	// Auto-track the workspace (name will be read from imported pixi.toml)
+	// Auto-track the project (name will be read from imported pixi.toml)
 	if err := ensureInit(outputDir); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to auto-track workspace: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Warning: failed to auto-track project: %v\n", err)
 	}
 
 	ref := repoRef + ":" + tag

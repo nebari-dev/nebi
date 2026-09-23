@@ -8,7 +8,7 @@ export interface User {
   updated_at: string;
 }
 
-export type WorkspaceStatus =
+export type ProjectStatus =
   | 'pending'
   | 'creating'
   | 'ready'
@@ -23,12 +23,12 @@ export type InstallStatus =
   | 'uninstalling'
   | 'install_failed';
 
-export interface Workspace {
+export interface Project {
   id: string; // UUID
   name: string;
   owner_id: string; // UUID
   owner?: User; // Optional owner details
-  status: WorkspaceStatus;
+  status: ProjectStatus;
   install_status?: InstallStatus;
   created_at: string;
   updated_at: string;
@@ -41,7 +41,7 @@ export interface Workspace {
   origin_action?: string;
 }
 
-export interface CreateWorkspaceRequest {
+export interface CreateProjectRequest {
   name?: string;
   pixi_toml?: string;
   path?: string;
@@ -68,7 +68,7 @@ export type JsonValue =
 
 export interface Job {
   id: string; // UUID
-  workspace_id: string; // UUID
+  project_id: string; // UUID
   type: JobType;
   status: JobStatus;
   logs: string;
@@ -81,7 +81,7 @@ export interface Job {
 
 export interface Package {
   id: string; // UUID
-  workspace_id: string; // UUID
+  project_id: string; // UUID
   name: string;
   version?: string;
   installed_at: string;
@@ -130,14 +130,14 @@ export type Collaborator =
     }
   | GroupCollaborator;
 
-export interface ShareWorkspaceRequest {
+export interface ShareProjectRequest {
   user_id: string;
   role: 'editor' | 'viewer';
 }
 
-export interface WorkspaceVersion {
+export interface ProjectVersion {
   id: string; // UUID
-  workspace_id: string; // UUID
+  project_id: string; // UUID
   version_number: number;
   lock_file_content?: string; // Not included in list view
   manifest_content?: string; // Not included in list view
@@ -239,8 +239,8 @@ export interface UpdateRegistryRequest {
   restricted?: boolean;
 }
 
-// Workspace Tag types
-export interface WorkspaceTag {
+// Project Tag types
+export interface ProjectTag {
   tag: string;
   version_number: number;
   created_at: string;
@@ -289,7 +289,7 @@ export interface ConnectServerRequest {
   password: string;
 }
 
-export interface RemoteWorkspace {
+export interface RemoteProject {
   id: string;
   name: string;
   status: string;
@@ -303,22 +303,22 @@ export interface RemoteWorkspace {
   updated_at: string;
 }
 
-export interface RemoteWorkspaceVersion {
+export interface RemoteProjectVersion {
   id: string;
-  workspace_id: string;
+  project_id: string;
   version_number: number;
   created_at: string;
   description?: string;
 }
 
-export interface RemoteWorkspaceTag {
+export interface RemoteProjectTag {
   tag: string;
   version_number: number;
   created_at: string;
   updated_at: string;
 }
 
-export interface CreateRemoteWorkspaceRequest {
+export interface CreateRemoteProjectRequest {
   name: string;
   pixi_toml?: string;
 }
@@ -382,7 +382,7 @@ export interface UpdateGroupRequest {
   description?: string;
 }
 
-export interface ShareWorkspaceWithGroupRequest {
+export interface ShareProjectWithGroupRequest {
   group_id: string;
   role: 'editor' | 'viewer';
 }

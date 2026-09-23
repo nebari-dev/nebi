@@ -8,7 +8,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { useState } from 'react';
-import { workspacesApi } from '@/api/workspaces';
+import { projectsApi } from '@/api/projects';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,7 +19,7 @@ import {
   useRollback,
   useVersions,
 } from '@/hooks/useVersions';
-import type { WorkspaceVersion } from '@/types';
+import type { ProjectVersion } from '@/types';
 
 interface VersionHistoryProps {
   environmentId: string;
@@ -35,8 +35,9 @@ export const VersionHistory = ({
   const downloadLock = useDownloadLockFile();
   const downloadManifest = useDownloadManifest();
 
-  const [confirmRollback, setConfirmRollback] =
-    useState<WorkspaceVersion | null>(null);
+  const [confirmRollback, setConfirmRollback] = useState<ProjectVersion | null>(
+    null,
+  );
   const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
 
   const handleRollback = async () => {
@@ -48,23 +49,23 @@ export const VersionHistory = ({
     }
   };
 
-  const handleDownloadLock = (version: WorkspaceVersion) => {
+  const handleDownloadLock = (version: ProjectVersion) => {
     downloadLock.mutate({
       environmentId,
       versionNumber: version.version_number,
     });
   };
 
-  const handleDownloadManifest = (version: WorkspaceVersion) => {
+  const handleDownloadManifest = (version: ProjectVersion) => {
     downloadManifest.mutate({
       environmentId,
       versionNumber: version.version_number,
     });
   };
 
-  const handleViewLock = async (version: WorkspaceVersion) => {
+  const handleViewLock = async (version: ProjectVersion) => {
     try {
-      const content = await workspacesApi.downloadLockFile(
+      const content = await projectsApi.downloadLockFile(
         environmentId,
         version.version_number,
       );
@@ -77,9 +78,9 @@ export const VersionHistory = ({
     }
   };
 
-  const handleViewManifest = async (version: WorkspaceVersion) => {
+  const handleViewManifest = async (version: ProjectVersion) => {
     try {
-      const content = await workspacesApi.downloadManifest(
+      const content = await projectsApi.downloadManifest(
         environmentId,
         version.version_number,
       );
@@ -267,7 +268,7 @@ export const VersionHistory = ({
 
                             {!isLatest && environmentStatus !== 'ready' && (
                               <p className="text-xs text-muted-foreground">
-                                Workspace must be ready to perform rollback
+                                Project must be ready to perform rollback
                               </p>
                             )}
                           </div>
@@ -286,10 +287,10 @@ export const VersionHistory = ({
         open={!!confirmRollback}
         onOpenChange={(open) => !open && setConfirmRollback(null)}
         onConfirm={handleRollback}
-        title="Rollback Workspace"
+        title="Rollback Project"
         description={
           confirmRollback
-            ? `Are you sure you want to rollback to version ${confirmRollback.version_number}? This will restore the workspace to its state at that version and create a new version snapshot.`
+            ? `Are you sure you want to rollback to version ${confirmRollback.version_number}? This will restore the project to its state at that version and create a new version snapshot.`
             : ''
         }
         confirmText="Rollback"

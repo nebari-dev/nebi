@@ -1,0 +1,520 @@
+import { FileCode, Loader2, Plus, Trash2 } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { CodeBlock } from '@/components/ui/code-block';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
+
+interface Package {
+  name: string;
+  version: string;
+}
+
+interface PixiTomlEditorProps {
+  tomlValue: string;
+  onTomlChange: (toml: string) => void;
+  projectName?: string;
+  onReloadToml?: () => Promise<string>;
+}
+
+const buildPixiToml = (packages: Package[], workspaceName: string): string => {
+  const dependenciesLines = packages
+    .filter((pkg) => pkg.name.trim())
+    .map((pkg) => {
+      if (pkg.version.trim()) {
+        return `${pkg.name} = "${pkg.version}"`;
+      }
+      return `${pkg.name} = "*"`;
+    })
+    .join('\n');
+
+  return `[workspace]
+name = "${workspaceName}"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64", "win-64"]
+
+[dependencies]
+${dependenciesLines || 'python = ">=3.11"\nipykernel = "*"'}
+`;
+};
+
+const findSectionRange = (
+  lines: string[],
+  sectionNames: string[],
+): { start: number; end: number } | null => {
+  for (let index = 0; index < lines.length; index++) {
+    const tableMatch = lines[index].match(/^\s*\[([^[\]]+)\]\s*(?:#.*)?$/);
+    if (!tableMatch || !sectionNames.includes(tableMatch[1].trim())) {
+      continue;
+    }
+
+    let end = lines.length;
+    for (let next = index + 1; next < lines.length; next++) {
+      if (/^\s*\[+.+\]\s*(?:#.*)?$/.test(lines[next])) {
+        end = next;
+        break;
+      }
+    }
+
+    return { start: index, end };
+  }
+
+  return null;
+};
+
+const parseDependencyLine = (
+  line: string,
+): {
+  indent: string;
+  name: string;
+  version: string;
+  comment: string;
+} | null => {
+  const match = line.match(/^(\s*)([^\s=#]+)\s*=\s*"([^"]*)"\s*(#.*)?$/);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    indent: match[1],
+    name: match[2],
+    version: match[3],
+    comment: match[4] ? ` ${match[4].trimStart()}` : '',
+  };
+};
+
+const formatDependencyLine = (
+  pkg: Package,
+  indent = '',
+  comment = '',
+): string => {
+  const name = pkg.name.trim();
+  const version = pkg.version.trim() || '*';
+  return `${indent}${name} = "${version}"${comment}`;
+};
+
+const patchPixiTomlDependencies = (
+  toml: string,
+  packages: Package[],
+): string => {
+  const lines = toml.split(/\r?\n/);
+  const desiredByName = new Map(packages.map((pkg) => [pkg.name, pkg]));
+  const sectionRange = findSectionRange(lines, ['dependencies']);
+
+  if (!sectionRange) {
+    if (packages.length === 0) {
+      return toml;
+    }
+
+    const nextLines = toml ? [...lines] : [];
+    if (nextLines.length > 0 && nextLines[nextLines.length - 1] !== '') {
+      nextLines.push('');
+    }
+    nextLines.push(
+      '[dependencies]',
+      ...packages.map((pkg) => formatDependencyLine(pkg)),
+    );
+    return nextLines.join('\n');
+  }
+
+  const emittedNames = new Set<string>();
+  const patchedSectionLines: string[] = [];
+
+  for (const line of lines.slice(sectionRange.start + 1, sectionRange.end)) {
+    const dependency = parseDependencyLine(line);
+    if (!dependency) {
+      patchedSectionLines.push(line);
+      continue;
+    }
+
+    const desiredPackage = desiredByName.get(dependency.name);
+    if (!desiredPackage) {
+      continue;
+    }
+
+    patchedSectionLines.push(
+      formatDependencyLine(
+        desiredPackage,
+        dependency.indent,
+        dependency.comment,
+      ),
+    );
+    emittedNames.add(dependency.name);
+  }
+
+  const newDependencyLines = packages
+    .filter((pkg) => !emittedNames.has(pkg.name))
+    .map((pkg) => formatDependencyLine(pkg));
+
+  if (newDependencyLines.length > 0) {
+    let insertAt = patchedSectionLines.length;
+    while (insertAt > 0 && patchedSectionLines[insertAt - 1].trim() === '') {
+      insertAt--;
+    }
+    patchedSectionLines.splice(insertAt, 0, ...newDependencyLines);
+  }
+
+  return [
+    ...lines.slice(0, sectionRange.start + 1),
+    ...patchedSectionLines,
+    ...lines.slice(sectionRange.end),
+  ].join('\n');
+};
+
+const patchPixiTomlWorkspaceName = (toml: string, workspaceName: string) => {
+  const lines = toml.split(/\r?\n/);
+  const sectionRange = findSectionRange(lines, ['workspace', 'project']);
+  const nameLine = `name = "${workspaceName}"`;
+
+  if (!sectionRange) {
+    return toml;
+  }
+
+  const nextLines = [...lines];
+  for (let index = sectionRange.start + 1; index < sectionRange.end; index++) {
+    const nameMatch = nextLines[index].match(/^(\s*)name\s*=.*?(\s+#.*)?$/);
+    if (nameMatch) {
+      nextLines[index] = `${nameMatch[1]}${nameLine}${nameMatch[2] ?? ''}`;
+      return nextLines.join('\n');
+    }
+  }
+
+  nextLines.splice(sectionRange.start + 1, 0, nameLine);
+  return nextLines.join('\n');
+};
+
+const parsePixiTomlDependencies = (toml: string): Package[] => {
+  const lines = toml.split(/\r?\n/);
+  const packages: Package[] = [];
+  const sectionRange = findSectionRange(lines, ['dependencies']);
+  if (!sectionRange) {
+    return packages;
+  }
+
+  for (const line of lines.slice(sectionRange.start + 1, sectionRange.end)) {
+    const dependency = parseDependencyLine(line);
+    if (dependency) {
+      packages.push({
+        name: dependency.name,
+        version: dependency.version === '*' ? '' : dependency.version,
+      });
+    }
+  }
+
+  return packages;
+};
+
+export const PixiTomlEditor = ({
+  tomlValue,
+  onTomlChange,
+  projectName,
+  onReloadToml,
+}: PixiTomlEditorProps) => {
+  const [mode, setMode] = useState<'ui' | 'toml'>('toml');
+  const [packages, setPackages] = useState<Package[]>([
+    { name: 'python', version: '>=3.11' },
+    { name: 'ipykernel', version: '' },
+  ]);
+  const [newPackageName, setNewPackageName] = useState('');
+  const [newPackageVersion, setNewPackageVersion] = useState('');
+  const [initialized, setInitialized] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [showDiscardPrompt, setShowDiscardPrompt] = useState(false);
+  const pendingModeRef = useRef<'ui' | 'toml'>('ui');
+  const initialTomlRef = useRef<string>('');
+  const projectNameId = useId();
+  const packagesHeadingId = useId();
+  const tomlEditorId = useId();
+
+  useEffect(() => {
+    if (!initialized && tomlValue) {
+      const parsed = parsePixiTomlDependencies(tomlValue);
+      if (parsed.length > 0) {
+        setPackages(parsed);
+      }
+      initialTomlRef.current = tomlValue;
+      setInitialized(true);
+    }
+  }, [tomlValue, initialized]);
+
+  const performSwitch = async (
+    newMode: 'ui' | 'toml',
+    discardChanges = false,
+  ) => {
+    let source = onReloadToml ? tomlValue : initialTomlRef.current;
+
+    if (newMode === 'toml' || discardChanges) {
+      if (onReloadToml) {
+        setSwitching(true);
+        try {
+          const freshToml = await onReloadToml();
+          onTomlChange(freshToml);
+          initialTomlRef.current = freshToml;
+          source = freshToml;
+        } finally {
+          setSwitching(false);
+        }
+      } else {
+        source = initialTomlRef.current;
+        onTomlChange(source);
+      }
+    }
+
+    if (newMode === 'ui') {
+      const parsed = parsePixiTomlDependencies(source);
+      if (parsed.length > 0) {
+        setPackages(parsed);
+      }
+    }
+    setDirty(false);
+    setMode(newMode);
+  };
+
+  const handleModeSwitch = async (newMode: 'ui' | 'toml') => {
+    if (newMode === mode) return;
+
+    if (dirty) {
+      pendingModeRef.current = newMode;
+      setShowDiscardPrompt(true);
+      return;
+    }
+
+    await performSwitch(newMode);
+  };
+
+  const handleConfirmDiscard = async () => {
+    setShowDiscardPrompt(false);
+    await performSwitch(pendingModeRef.current, true);
+  };
+
+  const getCurrentToml = () => {
+    return (
+      tomlValue ||
+      initialTomlRef.current ||
+      buildPixiToml(packages, projectName || 'my-project')
+    );
+  };
+
+  const handleAddPackage = () => {
+    const name = newPackageName.trim();
+    if (!name) return;
+
+    const version = newPackageVersion.trim();
+    const existingPackage = packages.some((pkg) => pkg.name === name);
+    const updated = existingPackage
+      ? packages.map((pkg) => (pkg.name === name ? { name, version } : pkg))
+      : [...packages, { name, version }];
+    setPackages(updated);
+    setDirty(true);
+    setNewPackageName('');
+    setNewPackageVersion('');
+    onTomlChange(patchPixiTomlDependencies(getCurrentToml(), updated));
+  };
+
+  const handleRemovePackage = (name: string) => {
+    const updated = packages.filter((pkg) => pkg.name !== name);
+    setPackages(updated);
+    setDirty(true);
+    onTomlChange(patchPixiTomlDependencies(getCurrentToml(), updated));
+  };
+
+  const handleTomlEdit = (value: string) => {
+    onTomlChange(value);
+    setDirty(value !== initialTomlRef.current);
+  };
+
+  return (
+    <>
+      <ConfirmDialog
+        open={showDiscardPrompt}
+        onOpenChange={setShowDiscardPrompt}
+        title="Unsaved changes"
+        description="You have unsaved changes that will be lost if you switch modes. Do you want to continue?"
+        confirmText="Discard changes"
+        onConfirm={handleConfirmDiscard}
+      />
+
+      <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
+        <Button
+          type="button"
+          variant={mode === 'toml' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => handleModeSwitch('toml')}
+          disabled={switching}
+          className="gap-2"
+        >
+          {switching ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <FileCode className="h-4 w-4" />
+          )}
+          TOML Mode
+        </Button>
+        <Button
+          type="button"
+          variant={mode === 'ui' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => handleModeSwitch('ui')}
+          disabled={switching}
+          className="gap-2"
+        >
+          <Plus className="h-4 w-4" />
+          UI Mode
+        </Button>
+      </div>
+
+      {mode === 'ui' ? (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label
+              htmlFor={projectNameId}
+              className="text-sm font-medium block pt-2 pb-0"
+            >
+              Project Name
+            </label>
+            <Input
+              id={projectNameId}
+              value={projectName || ''}
+              onChange={(e) => {
+                const newName = e.target.value;
+                setDirty(true);
+                onTomlChange(
+                  patchPixiTomlWorkspaceName(getCurrentToml(), newName),
+                );
+              }}
+              placeholder="Project name"
+              className="font-mono"
+            />
+          </div>
+          <div className="space-y-2">
+            <h3
+              id={packagesHeadingId}
+              className="text-sm font-medium block pt-2 pb-0"
+            >
+              Packages
+            </h3>
+            <Table aria-labelledby={packagesHeadingId}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Version Constraint</TableHead>
+                  <TableHead className="w-16" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {packages.map((pkg) => (
+                  <TableRow key={pkg.name}>
+                    <TableCell>
+                      <span className="font-mono">{pkg.name}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-mono text-muted-foreground">
+                        {pkg.version || '-'}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemovePackage(pkg.name)}
+                        aria-label={`Remove ${pkg.name}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex gap-2">
+            <Input
+              placeholder="Package name (e.g., numpy)"
+              value={newPackageName}
+              onChange={(e) => setNewPackageName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddPackage();
+                }
+              }}
+            />
+            <Input
+              placeholder="Version (e.g., >=1.24.0)"
+              value={newPackageVersion}
+              onChange={(e) => setNewPackageVersion(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddPackage();
+                }
+              }}
+              className="w-64"
+            />
+            <Button
+              type="button"
+              onClick={handleAddPackage}
+              disabled={!newPackageName.trim()}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Package
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Add packages with optional version constraints (e.g., {'>'}=1.24.0,
+            ~=2.0.0, 3.11.*)
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <label
+            htmlFor={tomlEditorId}
+            className="text-sm font-medium block pt-2 pb-0"
+          >
+            pixi.toml Configuration
+          </label>
+          {/* Reuse the Nebari CodeBlock frame around the editable textarea so
+              TOML mode matches the read-only pixi.toml view on the project
+              detail page. `pr-12` mirrors CodeBlockBody's clearance for the
+              floating copy button. */}
+          <CodeBlock code={tomlValue} className="w-full">
+            <Textarea
+              id={tomlEditorId}
+              placeholder="Enter your pixi.toml content"
+              value={tomlValue}
+              onChange={(e) => handleTomlEdit(e.target.value)}
+              rows={12}
+              required
+              className="rounded-none border-0 bg-transparent px-4 py-4 pr-12 font-mono text-sm leading-relaxed focus-visible:ring-inset"
+            />
+          </CodeBlock>
+          <p className="text-xs text-muted-foreground">
+            Define your project dependencies and configuration in TOML format
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Project will be created as:{' '}
+            {projectName ? (
+              <span className="font-medium text-foreground">{projectName}</span>
+            ) : (
+              <span className="text-yellow-600">
+                (add a name under [workspace] to continue)
+              </span>
+            )}
+          </p>
+        </div>
+      )}
+    </>
+  );
+};

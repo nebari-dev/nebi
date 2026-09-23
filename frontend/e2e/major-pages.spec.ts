@@ -12,19 +12,19 @@ const majorPages: Array<{
   assertReady: (page: Page) => Promise<void>;
 }> = [
   {
-    path: '/workspaces',
+    path: '/projects',
     assertReady: async (page) => {
       await expect(
-        page.getByRole('heading', { name: 'Workspaces' }),
+        page.getByRole('heading', { name: 'Projects' }),
       ).toBeVisible();
-      await expect(page.getByText('analytics-workspace')).toBeVisible();
+      await expect(page.getByText('analytics-project')).toBeVisible();
     },
   },
   {
-    path: '/workspaces/ws-seed',
+    path: '/projects/ws-seed',
     assertReady: async (page) => {
       await expect(
-        page.getByRole('heading', { name: 'analytics-workspace' }),
+        page.getByRole('heading', { name: 'analytics-project' }),
       ).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
     },
@@ -98,12 +98,12 @@ const majorPages: Array<{
     },
   },
   {
-    path: '/remote/workspaces/remote-1',
+    path: '/remote/projects/remote-1',
     assertReady: async (page) => {
       await expect(
         page.getByRole('heading', { name: 'remote-python' }),
       ).toBeVisible();
-      await expect(page.getByText('Remote workspace details')).toBeVisible();
+      await expect(page.getByText('Remote project details')).toBeVisible();
     },
   },
 ];

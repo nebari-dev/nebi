@@ -39,7 +39,7 @@ func TestMiddlewareAllowsLoopbackHosts(t *testing.T) {
 func TestMiddlewareRejectsNonLoopbackHost(t *testing.T) {
 	guard := netguard.Middleware(okHandler(), false, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "http://evil.example.com:8460/api/v1/workspaces", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://evil.example.com:8460/api/v1/projects", nil)
 	rec := httptest.NewRecorder()
 	guard.ServeHTTP(rec, req)
 
@@ -56,7 +56,7 @@ func TestMiddlewareRejectsNonLocalOrigins(t *testing.T) {
 		"http://evil.example.com:8460",
 		"file://",
 	} {
-		req := httptest.NewRequest(http.MethodPost, "http://localhost:8460/api/v1/workspaces", nil)
+		req := httptest.NewRequest(http.MethodPost, "http://localhost:8460/api/v1/projects", nil)
 		req.Header.Set("Origin", origin)
 		rec := httptest.NewRecorder()
 		guard.ServeHTTP(rec, req)
@@ -79,7 +79,7 @@ func TestMiddlewareAllowsWebviewOrigins(t *testing.T) {
 		"wails://wails.localhost:34115",
 		"null",
 	} {
-		req := httptest.NewRequest(http.MethodPost, "http://localhost:8460/api/v1/workspaces", nil)
+		req := httptest.NewRequest(http.MethodPost, "http://localhost:8460/api/v1/projects", nil)
 		req.Header.Set("Origin", origin)
 		rec := httptest.NewRecorder()
 		guard.ServeHTTP(rec, req)
@@ -100,7 +100,7 @@ func TestMiddlewareAllowAnyHostStillRejectsNonLocalOrigins(t *testing.T) {
 		t.Fatalf("allowAnyHost: expected 200 for non-loopback Host, got %d", rec.Code)
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "http://192.0.2.10:8460/api/v1/workspaces", nil)
+	req = httptest.NewRequest(http.MethodPost, "http://192.0.2.10:8460/api/v1/projects", nil)
 	req.Header.Set("Origin", "https://evil.example.com")
 	rec = httptest.NewRecorder()
 	guard.ServeHTTP(rec, req)
@@ -172,7 +172,7 @@ func TestMiddlewareAllowsLoopbackAndAbsentOrigins(t *testing.T) {
 		"https://localhost:8460",
 		"http://wails.localhost",
 	} {
-		req := httptest.NewRequest(http.MethodPost, "http://localhost:8460/api/v1/workspaces", nil)
+		req := httptest.NewRequest(http.MethodPost, "http://localhost:8460/api/v1/projects", nil)
 		if origin != "" {
 			req.Header.Set("Origin", origin)
 		}

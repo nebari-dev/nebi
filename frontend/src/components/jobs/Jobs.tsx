@@ -82,8 +82,8 @@ const JobCard = ({
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="text-muted-foreground">Workspace ID:</span>
-              <span className="ml-2 font-medium">{job.workspace_id}</span>
+              <span className="text-muted-foreground">Project ID:</span>
+              <span className="ml-2 font-medium">{job.project_id}</span>
             </div>
             <div>
               <span className="text-muted-foreground">Created:</span>
@@ -170,7 +170,7 @@ const JobCard = ({
   );
 };
 
-export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
+export const Jobs = ({ projectId }: { projectId?: string } = {}) => {
   const { data: jobs, isLoading: jobsLoading } = useJobs();
 
   // View mode support for local desktop app
@@ -196,12 +196,12 @@ export const Jobs = ({ workspaceId }: { workspaceId?: string } = {}) => {
       remote = true;
     }
     return {
-      displayedJobs: workspaceId
-        ? (base || []).filter((j) => j.workspace_id === workspaceId)
+      displayedJobs: projectId
+        ? (base || []).filter((j) => j.project_id === projectId)
         : base || [],
       isRemote: remote,
     };
-  }, [jobs, remoteJobs, isRemoteConnected, viewMode, workspaceId]);
+  }, [jobs, remoteJobs, isRemoteConnected, viewMode, projectId]);
 
   const remoteUnreachable = isRemoteView && remoteIsUnreachable;
   // Full-page spinner only until the remote list first resolves or errors

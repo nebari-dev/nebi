@@ -828,7 +828,7 @@ const docTemplate = `{
                 "tags": [
                     "admin"
                 ],
-                "summary": "Grant workspace access to a user",
+                "summary": "Grant project access to a user",
                 "parameters": [
                     {
                         "description": "Permission details",
@@ -1740,7 +1740,7 @@ const docTemplate = `{
                 "tags": [
                     "jobs"
                 ],
-                "summary": "List all jobs for user's workspaces",
+                "summary": "List all jobs for user's projects",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -1862,58 +1862,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/registries": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Get list of registries for users to select from (no credentials exposed)",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "registries"
-                ],
-                "summary": "List available registries (public info only)",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/service.RegistryResult"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/version": {
-            "get": {
-                "description": "Returns version information about the Nebi server",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "system"
-                ],
-                "summary": "Get version information",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/workspaces": {
+        "/projects": {
             "get": {
                 "security": [
                     {
@@ -1924,16 +1873,16 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "List all workspaces for the current user",
+                "summary": "List all projects for the current user",
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/models.Workspace"
+                                "$ref": "#/definitions/models.Project"
                             }
                         }
                     },
@@ -1964,17 +1913,17 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "Create a new workspace",
+                "summary": "Create a new project",
                 "parameters": [
                     {
-                        "description": "Workspace details",
-                        "name": "workspace",
+                        "description": "Project details",
+                        "name": "project",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handlers.CreateWorkspaceRequest"
+                            "$ref": "#/definitions/handlers.CreateProjectRequest"
                         }
                     }
                 ],
@@ -1982,7 +1931,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/models.Workspace"
+                            "$ref": "#/definitions/models.Project"
                         }
                     },
                     "400": {
@@ -2006,7 +1955,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}": {
+        "/projects/{id}": {
             "get": {
                 "security": [
                     {
@@ -2017,13 +1966,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "Get a workspace by ID",
+                "summary": "Get a project by ID",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2033,7 +1982,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Workspace"
+                            "$ref": "#/definitions/models.Project"
                         }
                     },
                     "401": {
@@ -2063,13 +2012,13 @@ const docTemplate = `{
                     }
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "Delete an workspace",
+                "summary": "Delete a project",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2100,7 +2049,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/collaborators": {
+        "/projects/{id}/collaborators": {
             "get": {
                 "security": [
                     {
@@ -2111,13 +2060,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "List all users with access to workspace",
+                "summary": "List all users with access to project",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2136,7 +2085,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/install": {
+        "/projects/{id}/install": {
             "post": {
                 "security": [
                     {
@@ -2147,13 +2096,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "Install the workspace environment from its lockfile (local mode)",
+                "summary": "Install the project environment from its lockfile (local mode)",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2199,7 +2148,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/packages": {
+        "/projects/{id}/packages": {
             "get": {
                 "security": [
                     {
@@ -2210,13 +2159,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "List packages in an workspace",
+                "summary": "List packages in a project",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2265,13 +2214,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "Install packages in an workspace",
+                "summary": "Install packages in a project",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2320,7 +2269,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/packages/{package}": {
+        "/projects/{id}/packages/{package}": {
             "delete": {
                 "security": [
                     {
@@ -2334,13 +2283,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "Remove packages from an workspace",
+                "summary": "Remove packages from a project",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2387,7 +2336,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/pixi-toml": {
+        "/projects/{id}/pixi-toml": {
             "get": {
                 "security": [
                     {
@@ -2398,13 +2347,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "Get pixi.toml content for an workspace",
+                "summary": "Get pixi.toml content for a project",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2450,13 +2399,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "Save pixi.toml content for a workspace",
+                "summary": "Save pixi.toml content for a project",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2499,25 +2448,25 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/publications": {
+        "/projects/{id}/publications": {
             "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get all publications (registry pushes) for an workspace",
+                "description": "Get all publications (registry pushes) for a project",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "List publications for an workspace",
+                "summary": "List publications for a project",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2542,7 +2491,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/publications/{pubId}": {
+        "/projects/{id}/publications/{pubId}": {
             "patch": {
                 "security": [
                     {
@@ -2557,13 +2506,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
                 "summary": "Update a publication's visibility",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2613,7 +2562,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/publish": {
+        "/projects/{id}/publish": {
             "post": {
                 "security": [
                     {
@@ -2628,13 +2577,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "Publish workspace to OCI registry",
+                "summary": "Publish project to OCI registry",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2677,7 +2626,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/publish-defaults": {
+        "/projects/{id}/publish-defaults": {
             "get": {
                 "security": [
                     {
@@ -2689,13 +2638,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "Get default values for publishing a workspace",
+                "summary": "Get default values for publishing a project",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2735,14 +2684,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/push": {
+        "/projects/{id}/push": {
             "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new workspace version and assign a tag",
+                "description": "Create a new project version and assign a tag",
                 "consumes": [
                     "application/json"
                 ],
@@ -2750,13 +2699,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
                 "summary": "Push a new version to the server",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2805,7 +2754,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/rollback": {
+        "/projects/{id}/rollback": {
             "post": {
                 "security": [
                     {
@@ -2819,13 +2768,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "Rollback workspace to a previous version",
+                "summary": "Rollback project to a previous version",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2850,7 +2799,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/share": {
+        "/projects/{id}/share": {
             "post": {
                 "security": [
                     {
@@ -2864,13 +2813,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "Share workspace with another user (owner only)",
+                "summary": "Share project with another user (owner only)",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2881,7 +2830,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handlers.ShareWorkspaceRequest"
+                            "$ref": "#/definitions/handlers.ShareProjectRequest"
                         }
                     }
                 ],
@@ -2895,7 +2844,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/share-group": {
+        "/projects/{id}/share-group": {
             "post": {
                 "security": [
                     {
@@ -2909,13 +2858,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "Share workspace with a group (owner only)",
+                "summary": "Share project with a group (owner only)",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -2926,7 +2875,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handlers.ShareWorkspaceWithGroupRequest"
+                            "$ref": "#/definitions/handlers.ShareProjectWithGroupRequest"
                         }
                     }
                 ],
@@ -2964,7 +2913,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/share-group/{group_id}": {
+        "/projects/{id}/share-group/{group_id}": {
             "delete": {
                 "security": [
                     {
@@ -2972,13 +2921,13 @@ const docTemplate = `{
                     }
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "Revoke a group's access to a workspace (owner only)",
+                "summary": "Revoke a group's access to a project (owner only)",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -3022,7 +2971,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/share/{user_id}": {
+        "/projects/{id}/share/{user_id}": {
             "delete": {
                 "security": [
                     {
@@ -3030,13 +2979,13 @@ const docTemplate = `{
                     }
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "Revoke user access to workspace (owner only)",
+                "summary": "Revoke user access to project (owner only)",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -3056,7 +3005,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/solve": {
+        "/projects/{id}/solve": {
             "post": {
                 "security": [
                     {
@@ -3067,13 +3016,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
                 "summary": "Solve the environment (refresh pixi.lock) from current pixi.toml",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -3113,7 +3062,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/tags": {
+        "/projects/{id}/tags": {
             "get": {
                 "security": [
                     {
@@ -3124,13 +3073,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "List tags for an workspace",
+                "summary": "List tags for a project",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -3142,14 +3091,14 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handlers.WorkspaceTagResponse"
+                                "$ref": "#/definitions/handlers.ProjectTagResponse"
                             }
                         }
                     }
                 }
             }
         },
-        "/workspaces/{id}/uninstall": {
+        "/projects/{id}/uninstall": {
             "post": {
                 "security": [
                     {
@@ -3160,13 +3109,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "Remove the workspace's installed environment (local mode)",
+                "summary": "Remove the project's installed environment (local mode)",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -3212,7 +3161,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/versions": {
+        "/projects/{id}/versions": {
             "get": {
                 "security": [
                     {
@@ -3223,13 +3172,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
-                "summary": "List all versions for an workspace",
+                "summary": "List all versions for a project",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -3241,14 +3190,14 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/models.WorkspaceVersion"
+                                "$ref": "#/definitions/models.ProjectVersion"
                             }
                         }
                     }
                 }
             }
         },
-        "/workspaces/{id}/versions/{version}": {
+        "/projects/{id}/versions/{version}": {
             "get": {
                 "security": [
                     {
@@ -3259,13 +3208,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
                 "summary": "Get a specific version with full details",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -3282,13 +3231,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.WorkspaceVersion"
+                            "$ref": "#/definitions/models.ProjectVersion"
                         }
                     }
                 }
             }
         },
-        "/workspaces/{id}/versions/{version}/pixi-lock": {
+        "/projects/{id}/versions/{version}/pixi-lock": {
             "get": {
                 "security": [
                     {
@@ -3299,13 +3248,13 @@ const docTemplate = `{
                     "text/plain"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
                 "summary": "Download pixi.lock for a specific version",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -3328,7 +3277,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/workspaces/{id}/versions/{version}/pixi-toml": {
+        "/projects/{id}/versions/{version}/pixi-toml": {
             "get": {
                 "security": [
                     {
@@ -3339,13 +3288,13 @@ const docTemplate = `{
                     "text/plain"
                 ],
                 "tags": [
-                    "workspaces"
+                    "projects"
                 ],
                 "summary": "Download pixi.toml for a specific version",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Workspace ID",
+                        "description": "Project ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -3363,6 +3312,57 @@ const docTemplate = `{
                         "description": "pixi.toml content",
                         "schema": {
                             "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/registries": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get list of registries for users to select from (no credentials exposed)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "registries"
+                ],
+                "summary": "List available registries (public info only)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/service.RegistryResult"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/version": {
+            "get": {
+                "description": "Returns version information about the Nebi server",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Get version information",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -3417,6 +3417,23 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.CreateProjectRequest": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "pixi_toml": {
+                    "type": "string"
+                },
+                "source": {
                     "type": "string"
                 }
             }
@@ -3476,23 +3493,6 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.CreateWorkspaceRequest": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string"
-                },
-                "path": {
-                    "type": "string"
-                },
-                "pixi_toml": {
-                    "type": "string"
-                },
-                "source": {
-                    "type": "string"
-                }
-            }
-        },
         "handlers.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -3504,18 +3504,18 @@ const docTemplate = `{
         "handlers.GrantPermissionRequest": {
             "type": "object",
             "required": [
+                "project_id",
                 "role_id",
-                "user_id",
-                "workspace_id"
+                "user_id"
             ],
             "properties": {
+                "project_id": {
+                    "type": "string"
+                },
                 "role_id": {
                     "type": "integer"
                 },
                 "user_id": {
-                    "type": "string"
-                },
-                "workspace_id": {
                     "type": "string"
                 }
             }
@@ -3569,6 +3569,23 @@ const docTemplate = `{
             "properties": {
                 "content": {
                     "type": "string"
+                }
+            }
+        },
+        "handlers.ProjectTagResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "tag": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "version_number": {
+                    "type": "integer"
                 }
             }
         },
@@ -3658,7 +3675,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.ShareWorkspaceRequest": {
+        "handlers.ShareProjectRequest": {
             "type": "object",
             "required": [
                 "role",
@@ -3674,7 +3691,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.ShareWorkspaceWithGroupRequest": {
+        "handlers.ShareProjectWithGroupRequest": {
             "type": "object",
             "required": [
                 "group_id",
@@ -3741,33 +3758,16 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.WorkspaceTagResponse": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "type": "string"
-                },
-                "tag": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                },
-                "version_number": {
-                    "type": "integer"
-                }
-            }
-        },
         "limits.Limits": {
             "type": "object",
             "properties": {
                 "active_jobs_global": {
                     "type": "integer"
                 },
-                "active_jobs_per_user": {
+                "active_jobs_per_project": {
                     "type": "integer"
                 },
-                "active_jobs_per_workspace": {
+                "active_jobs_per_user": {
                     "type": "integer"
                 },
                 "job_cpu_seconds": {
@@ -3805,13 +3805,13 @@ const docTemplate = `{
                 "global": {
                     "type": "integer"
                 },
+                "project": {
+                    "type": "integer"
+                },
                 "total": {
                     "type": "integer"
                 },
                 "user": {
-                    "type": "integer"
-                },
-                "workspace": {
                     "type": "integer"
                 }
             }
@@ -3820,7 +3820,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "action": {
-                    "description": "e.g., \"create_workspace\", \"grant_permission\"",
+                    "description": "e.g., \"create_project\", \"grant_permission\"",
                     "type": "string"
                 },
                 "details_json": {
@@ -3831,7 +3831,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "resource": {
-                    "description": "e.g., \"workspace:123\", \"user:456\"",
+                    "description": "e.g., \"project:123\", \"user:456\"",
                     "type": "string"
                 },
                 "timestamp": {
@@ -4008,6 +4008,12 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
+                "project": {
+                    "$ref": "#/definitions/models.Project"
+                },
+                "project_id": {
+                    "type": "string"
+                },
                 "role": {
                     "$ref": "#/definitions/models.Role"
                 },
@@ -4015,12 +4021,6 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "updated_at": {
-                    "type": "string"
-                },
-                "workspace": {
-                    "$ref": "#/definitions/models.Workspace"
-                },
-                "workspace_id": {
                     "type": "string"
                 }
             }
@@ -4058,6 +4058,12 @@ const docTemplate = `{
                     "type": "object",
                     "additionalProperties": true
                 },
+                "project": {
+                    "$ref": "#/definitions/models.Project"
+                },
+                "project_id": {
+                    "type": "string"
+                },
                 "started_at": {
                     "type": "string"
                 },
@@ -4068,12 +4074,6 @@ const docTemplate = `{
                     "$ref": "#/definitions/models.JobType"
                 },
                 "user_id": {
-                    "type": "string"
-                },
-                "workspace": {
-                    "$ref": "#/definitions/models.Workspace"
-                },
-                "workspace_id": {
                     "type": "string"
                 }
             }
@@ -4143,13 +4143,13 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
-                "version": {
+                "project": {
+                    "$ref": "#/definitions/models.Project"
+                },
+                "project_id": {
                     "type": "string"
                 },
-                "workspace": {
-                    "$ref": "#/definitions/models.Workspace"
-                },
-                "workspace_id": {
+                "version": {
                     "type": "string"
                 }
             }
@@ -4162,6 +4162,12 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "integer"
+                },
+                "project": {
+                    "$ref": "#/definitions/models.Project"
+                },
+                "project_id": {
+                    "type": "string"
                 },
                 "role": {
                     "$ref": "#/definitions/models.Role"
@@ -4177,59 +4183,10 @@ const docTemplate = `{
                 },
                 "user_id": {
                     "type": "string"
-                },
-                "workspace": {
-                    "$ref": "#/definitions/models.Workspace"
-                },
-                "workspace_id": {
-                    "type": "string"
                 }
             }
         },
-        "models.Role": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.User": {
-            "type": "object",
-            "properties": {
-                "avatar_url": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "email": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.Workspace": {
+        "models.Project": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -4259,14 +4216,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "status": {
-                    "$ref": "#/definitions/models.WorkspaceStatus"
+                    "$ref": "#/definitions/models.ProjectStatus"
                 },
                 "updated_at": {
                     "type": "string"
                 }
             }
         },
-        "models.WorkspaceStatus": {
+        "models.ProjectStatus": {
             "type": "string",
             "enum": [
                 "pending",
@@ -4276,14 +4233,14 @@ const docTemplate = `{
                 "deleting"
             ],
             "x-enum-varnames": [
-                "WsStatusPending",
-                "WsStatusCreating",
-                "WsStatusReady",
-                "WsStatusFailed",
-                "WsStatusDeleting"
+                "ProjectStatusPending",
+                "ProjectStatusCreating",
+                "ProjectStatusReady",
+                "ProjectStatusFailed",
+                "ProjectStatusDeleting"
             ]
         },
-        "models.WorkspaceVersion": {
+        "models.ProjectVersion": {
             "type": "object",
             "properties": {
                 "content_hash": {
@@ -4327,14 +4284,57 @@ const docTemplate = `{
                     "description": "JSON of package list",
                     "type": "string"
                 },
+                "project": {
+                    "$ref": "#/definitions/models.Project"
+                },
+                "project_id": {
+                    "type": "string"
+                },
                 "version_number": {
                     "description": "Version tracking",
                     "type": "integer"
+                }
+            }
+        },
+        "models.Role": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
                 },
-                "workspace": {
-                    "$ref": "#/definitions/models.Workspace"
+                "description": {
+                    "type": "string"
                 },
-                "workspace_id": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.User": {
+            "type": "object",
+            "properties": {
+                "avatar_url": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "username": {
                     "type": "string"
                 }
             }
@@ -4416,6 +4416,17 @@ const docTemplate = `{
                     "$ref": "#/definitions/models.GroupSource"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.ProjectActiveJobUsage": {
+            "type": "object",
+            "properties": {
+                "active_jobs": {
+                    "type": "integer"
+                },
+                "project_id": {
                     "type": "string"
                 }
             }
@@ -4516,16 +4527,16 @@ const docTemplate = `{
         "service.ResourceMetrics": {
             "type": "object",
             "properties": {
+                "active_jobs_by_project": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.ProjectActiveJobUsage"
+                    }
+                },
                 "active_jobs_by_user": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/service.UserActiveJobUsage"
-                    }
-                },
-                "active_jobs_by_workspace": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/service.WorkspaceActiveJobUsage"
                     }
                 },
                 "active_jobs_global": {
@@ -4578,17 +4589,6 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
-        },
-        "service.WorkspaceActiveJobUsage": {
-            "type": "object",
-            "properties": {
-                "active_jobs": {
-                    "type": "integer"
-                },
-                "workspace_id": {
-                    "type": "string"
-                }
-            }
         }
     },
     "securityDefinitions": {
@@ -4607,7 +4607,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
 	Title:            "Nebi API",
-	Description:      "Multi-User Workspace Management System API",
+	Description:      "Multi-User Project Management System API",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

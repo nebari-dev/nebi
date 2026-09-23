@@ -25,7 +25,7 @@ var (
 
 // @title Nebi API
 // @version 1.0
-// @description Multi-User Workspace Management System API
+// @description Multi-User Project Management System API
 // @host localhost:8460
 // @BasePath /api/v1
 // @securityDefinitions.apikey BearerAuth

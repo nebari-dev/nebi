@@ -14,10 +14,10 @@ import (
 	"gorm.io/gorm"
 )
 
-func adminTestSetup(t *testing.T) (*AdminService, *WorkspaceService, *gorm.DB) {
+func adminTestSetup(t *testing.T) (*AdminService, *ProjectService, *gorm.DB) {
 	t.Helper()
-	wsSvc, db := testSetup(t, false)
-	return NewAdminService(db, rbac.NewDefaultProvider(), limits.Defaults()), wsSvc, db
+	projectSvc, db := testSetup(t, false)
+	return NewAdminService(db, rbac.NewDefaultProvider(), limits.Defaults()), projectSvc, db
 }
 
 // --- ListUsers ---
@@ -232,16 +232,16 @@ func TestAdminListRoles(t *testing.T) {
 // --- GrantPermission ---
 
 func TestAdminGrantPermission(t *testing.T) {
-	svc, wsSvc, db := adminTestSetup(t)
+	svc, projectSvc, db := adminTestSetup(t)
 	adminID := createTestUser(t, db, "admin")
 	userID := createTestUser(t, db, "user")
-	ws := createReadyWorkspace(t, wsSvc, db, "test-ws", adminID)
+	project := createReadyProject(t, projectSvc, db, "test-ws", adminID)
 	db.Create(&models.Role{Name: "editor"})
 
 	var role models.Role
 	db.Where("name = ?", "editor").First(&role)
 
-	perm, err := svc.GrantPermission(userID, ws.ID, role.ID, adminID)
+	perm, err := svc.GrantPermission(userID, project.ID, role.ID, adminID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -251,11 +251,11 @@ func TestAdminGrantPermission(t *testing.T) {
 }
 
 func TestAdminGrantPermission_UserNotFound(t *testing.T) {
-	svc, wsSvc, db := adminTestSetup(t)
+	svc, projectSvc, db := adminTestSetup(t)
 	adminID := createTestUser(t, db, "admin")
-	ws := createReadyWorkspace(t, wsSvc, db, "test-ws", adminID)
+	project := createReadyProject(t, projectSvc, db, "test-ws", adminID)
 
-	_, err := svc.GrantPermission(uuid.New(), ws.ID, 1, adminID)
+	_, err := svc.GrantPermission(uuid.New(), project.ID, 1, adminID)
 	if err == nil {
 		t.Fatal("expected error for non-existent user")
 	}
@@ -264,16 +264,16 @@ func TestAdminGrantPermission_UserNotFound(t *testing.T) {
 // --- RevokePermission ---
 
 func TestAdminRevokePermission(t *testing.T) {
-	svc, wsSvc, db := adminTestSetup(t)
+	svc, projectSvc, db := adminTestSetup(t)
 	adminID := createTestUser(t, db, "admin")
 	userID := createTestUser(t, db, "user")
-	ws := createReadyWorkspace(t, wsSvc, db, "test-ws", adminID)
+	project := createReadyProject(t, projectSvc, db, "test-ws", adminID)
 	db.Create(&models.Role{Name: "viewer"})
 
 	var role models.Role
 	db.Where("name = ?", "viewer").First(&role)
 
-	perm, _ := svc.GrantPermission(userID, ws.ID, role.ID, adminID)
+	perm, _ := svc.GrantPermission(userID, project.ID, role.ID, adminID)
 
 	err := svc.RevokePermission(fmt.Sprintf("%d", perm.ID), adminID)
 	if err != nil {
@@ -777,16 +777,16 @@ func TestAdminGetDashboardStats(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if stats.TotalDiskUsageBytes != 0 {
-		t.Errorf("expected 0 bytes with no workspaces, got %d", stats.TotalDiskUsageBytes)
+		t.Errorf("expected 0 bytes with no projects, got %d", stats.TotalDiskUsageBytes)
 	}
 }
 
 func TestAdminGetResourceMetrics(t *testing.T) {
-	svc, wsSvc, db := adminTestSetup(t)
+	svc, projectSvc, db := adminTestSetup(t)
 	userID := createTestUser(t, db, "alice")
 
-	if _, err := wsSvc.Create(context.Background(), CreateRequest{Name: "metrics-ws"}, userID); err != nil {
-		t.Fatalf("create workspace: %v", err)
+	if _, err := projectSvc.Create(context.Background(), CreateRequest{Name: "metrics-ws"}, userID); err != nil {
+		t.Fatalf("create project: %v", err)
 	}
 
 	metrics, err := svc.GetResourceMetrics()
@@ -801,32 +801,32 @@ func TestAdminGetResourceMetrics(t *testing.T) {
 	}
 }
 
-func TestAdminGetResourceMetrics_AttributesLegacyJobsToWorkspaceOwner(t *testing.T) {
+func TestAdminGetResourceMetrics_AttributesLegacyJobsToProjectOwner(t *testing.T) {
 	svc, _, db := adminTestSetup(t)
 	userID := createTestUser(t, db, "alice")
-	ws := models.Workspace{
+	project := models.Project{
 		ID:      uuid.New(),
 		Name:    "legacy-metrics-ws",
 		OwnerID: userID,
-		Status:  models.WsStatusReady,
+		Status:  models.ProjectStatusReady,
 	}
-	if err := db.Create(&ws).Error; err != nil {
-		t.Fatalf("create workspace: %v", err)
+	if err := db.Create(&project).Error; err != nil {
+		t.Fatalf("create project: %v", err)
 	}
 
 	zeroUserJob := models.Job{
-		ID:          uuid.New(),
-		WorkspaceID: ws.ID,
-		UserID:      uuid.Nil,
-		Type:        models.JobTypeInstall,
-		Status:      models.JobStatusPending,
+		ID:        uuid.New(),
+		ProjectID: project.ID,
+		UserID:    uuid.Nil,
+		Type:      models.JobTypeInstall,
+		Status:    models.JobStatusPending,
 	}
 	emptyUserJob := models.Job{
-		ID:          uuid.New(),
-		WorkspaceID: ws.ID,
-		UserID:      uuid.Nil,
-		Type:        models.JobTypeRemove,
-		Status:      models.JobStatusRunning,
+		ID:        uuid.New(),
+		ProjectID: project.ID,
+		UserID:    uuid.Nil,
+		Type:      models.JobTypeRemove,
+		Status:    models.JobStatusRunning,
 	}
 	if err := db.Create(&zeroUserJob).Error; err != nil {
 		t.Fatalf("create zero user job: %v", err)

@@ -156,12 +156,12 @@ func resetFlags() {
 	// push.go
 	pushForce = false
 	pushJSON = false
-	// workspace.go
-	wsListRemote = false
-	wsListJSON = false
-	wsListInstalled = false
-	wsTagsJSON = false
-	wsRemoveRemote = false
+	// project.go
+	projectListRemote = false
+	projectListJSON = false
+	projectListInstalled = false
+	projectTagsJSON = false
+	projectRemoveRemote = false
 	// login.go
 	loginToken = ""
 	// publish.go
@@ -313,7 +313,7 @@ func setupLocalStore(t *testing.T) {
 
 // --- E2E Tests ---
 
-func TestE2E_InitAndWorkspaceList(t *testing.T) {
+func TestE2E_InitAndProjectList(t *testing.T) {
 	setupLocalStore(t)
 
 	dir := t.TempDir()
@@ -328,13 +328,13 @@ func TestE2E_InitAndWorkspaceList(t *testing.T) {
 		t.Fatalf("init failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
 
-	// Workspace list should show it
-	res = runCLI(t, dir, "workspace", "list")
+	// Project list should show it
+	res = runCLI(t, dir, "project", "list")
 	if res.ExitCode != 0 {
-		t.Fatalf("workspace list failed: %s %s", res.Stdout, res.Stderr)
+		t.Fatalf("project list failed: %s %s", res.Stdout, res.Stderr)
 	}
 	if !strings.Contains(res.Stdout, filepath.Base(dir)) {
-		t.Errorf("expected workspace name in list, got: %s", res.Stdout)
+		t.Errorf("expected project name in list, got: %s", res.Stdout)
 	}
 }
 
@@ -389,7 +389,7 @@ func TestE2E_DiffLocalDir(t *testing.T) {
 func TestE2E_DiffAgainstServer(t *testing.T) {
 	setupLocalStore(t)
 
-	wsName := "e2e-diff-server"
+	projectName := "e2e-diff-server"
 	tag := "v1.0"
 
 	// Create and push a version
@@ -398,7 +398,7 @@ func TestE2E_DiffAgainstServer(t *testing.T) {
 	serverLock := "version: 6\npackages: []\n"
 	writePixiFiles(t, srcDir, serverToml, serverLock)
 
-	res := runCLI(t, srcDir, "push", wsName+":"+tag)
+	res := runCLI(t, srcDir, "push", projectName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -408,7 +408,7 @@ func TestE2E_DiffAgainstServer(t *testing.T) {
 	os.WriteFile(filepath.Join(srcDir, "pixi.toml"), []byte(localToml), 0644)
 
 	// Diff against server version
-	res = runCLI(t, srcDir, "diff", wsName+":"+tag)
+	res = runCLI(t, srcDir, "diff", projectName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("diff failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -420,7 +420,7 @@ func TestE2E_DiffAgainstServer(t *testing.T) {
 func TestE2E_PushAndPull(t *testing.T) {
 	setupLocalStore(t)
 
-	wsName := "e2e-pushpull"
+	projectName := "e2e-pushpull"
 	tag := "v1.0"
 
 	// Create source with pixi files
@@ -430,7 +430,7 @@ func TestE2E_PushAndPull(t *testing.T) {
 	writePixiFiles(t, srcDir, toml, lock)
 
 	// Push
-	res := runCLI(t, srcDir, "push", wsName+":"+tag)
+	res := runCLI(t, srcDir, "push", projectName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -440,7 +440,7 @@ func TestE2E_PushAndPull(t *testing.T) {
 
 	// Pull to new directory
 	dstDir := t.TempDir()
-	res = runCLI(t, dstDir, "pull", wsName+":"+tag)
+	res = runCLI(t, dstDir, "pull", projectName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("pull failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -463,10 +463,10 @@ func TestE2E_PushAndPull(t *testing.T) {
 	}
 }
 
-func TestE2E_PushAutoCreatesWorkspace(t *testing.T) {
+func TestE2E_PushAutoCreatesProject(t *testing.T) {
 	setupLocalStore(t)
 
-	wsName := "e2e-autocreate"
+	projectName := "e2e-autocreate"
 	tag := "v1.0"
 
 	dir := t.TempDir()
@@ -475,7 +475,7 @@ func TestE2E_PushAutoCreatesWorkspace(t *testing.T) {
 		"version: 6\n",
 	)
 
-	res := runCLI(t, dir, "push", wsName+":"+tag)
+	res := runCLI(t, dir, "push", projectName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -534,8 +534,8 @@ func TestE2E_PushRejectsInvalidName(t *testing.T) {
 		if res.ExitCode == 0 {
 			t.Errorf("expected push to reject invalid name %q, but it succeeded", name)
 		}
-		if !strings.Contains(res.Stderr, "invalid workspace name") {
-			t.Errorf("expected 'invalid workspace name' error for %q, got: %s", name, res.Stderr)
+		if !strings.Contains(res.Stderr, "invalid project name") {
+			t.Errorf("expected 'invalid project name' error for %q, got: %s", name, res.Stderr)
 		}
 	}
 }
@@ -546,14 +546,14 @@ func TestE2E_PullNotFound(t *testing.T) {
 	dir := t.TempDir()
 	res := runCLI(t, dir, "pull", "nonexistent-ws:v1")
 	if res.ExitCode == 0 {
-		t.Fatal("expected non-zero exit for nonexistent workspace")
+		t.Fatal("expected non-zero exit for nonexistent project")
 	}
 }
 
 func TestE2E_PullBadTag(t *testing.T) {
 	setupLocalStore(t)
 
-	wsName := "e2e-badtag"
+	projectName := "e2e-badtag"
 
 	// Push first
 	srcDir := t.TempDir()
@@ -561,14 +561,14 @@ func TestE2E_PullBadTag(t *testing.T) {
 		"[project]\nname = \"badtag\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
 		"version: 6\n",
 	)
-	res := runCLI(t, srcDir, "push", wsName+":v1")
+	res := runCLI(t, srcDir, "push", projectName+":v1")
 	if res.ExitCode != 0 {
 		t.Fatalf("setup push failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Pull nonexistent tag
 	dstDir := t.TempDir()
-	res = runCLI(t, dstDir, "pull", wsName+":nonexistent")
+	res = runCLI(t, dstDir, "pull", projectName+":nonexistent")
 	if res.ExitCode == 0 {
 		t.Fatal("expected non-zero exit for nonexistent tag")
 	}
@@ -577,7 +577,7 @@ func TestE2E_PullBadTag(t *testing.T) {
 func TestE2E_PushMultipleVersions(t *testing.T) {
 	setupLocalStore(t)
 
-	wsName := "e2e-multi"
+	projectName := "e2e-multi"
 
 	srcDir := t.TempDir()
 
@@ -586,7 +586,7 @@ func TestE2E_PushMultipleVersions(t *testing.T) {
 	lock1 := "version: 6\npackages:\n  - name: numpy\n    version: \"1.0\"\n"
 	writePixiFiles(t, srcDir, toml1, lock1)
 
-	res := runCLI(t, srcDir, "push", wsName+":v1")
+	res := runCLI(t, srcDir, "push", projectName+":v1")
 	if res.ExitCode != 0 {
 		t.Fatalf("push v1 failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -596,14 +596,14 @@ func TestE2E_PushMultipleVersions(t *testing.T) {
 	lock2 := "version: 6\npackages:\n  - name: scipy\n    version: \"1.12\"\n"
 	writePixiFiles(t, srcDir, toml2, lock2)
 
-	res = runCLI(t, srcDir, "push", wsName+":v2")
+	res = runCLI(t, srcDir, "push", projectName+":v2")
 	if res.ExitCode != 0 {
 		t.Fatalf("push v2 failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Pull v1 and verify
 	dir1 := t.TempDir()
-	res = runCLI(t, dir1, "pull", wsName+":v1")
+	res = runCLI(t, dir1, "pull", projectName+":v1")
 	if res.ExitCode != 0 {
 		t.Fatalf("pull v1 failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -614,7 +614,7 @@ func TestE2E_PushMultipleVersions(t *testing.T) {
 
 	// Pull v2 and verify
 	dir2 := t.TempDir()
-	res = runCLI(t, dir2, "pull", wsName+":v2")
+	res = runCLI(t, dir2, "pull", projectName+":v2")
 	if res.ExitCode != 0 {
 		t.Fatalf("pull v2 failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -638,10 +638,10 @@ func TestE2E_LoginWithToken(t *testing.T) {
 	}
 }
 
-func TestE2E_WorkspaceRemove(t *testing.T) {
+func TestE2E_ProjectRemove(t *testing.T) {
 	setupLocalStore(t)
 
-	// Create and init a workspace
+	// Create and init a project
 	dir := t.TempDir()
 	writePixiFiles(t, dir,
 		"[project]\nname = \"remove-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
@@ -653,10 +653,10 @@ func TestE2E_WorkspaceRemove(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	wsName := "remove-test" // matches [project] name in pixi.toml
+	projectName := "remove-test" // matches [project] name in pixi.toml
 
-	// Remove workspace by name
-	res = runCLI(t, dir, "workspace", "remove", wsName)
+	// Remove project by name
+	res = runCLI(t, dir, "project", "remove", projectName)
 	if res.ExitCode != 0 {
 		t.Fatalf("remove failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -665,14 +665,14 @@ func TestE2E_WorkspaceRemove(t *testing.T) {
 	}
 
 	// Should no longer appear in list
-	res = runCLI(t, dir, "workspace", "list")
-	if strings.Contains(res.Stdout, wsName) {
-		t.Errorf("removed workspace still in list: %s", res.Stdout)
+	res = runCLI(t, dir, "project", "list")
+	if strings.Contains(res.Stdout, projectName) {
+		t.Errorf("removed project still in list: %s", res.Stdout)
 	}
 
 	// pixi.toml should still exist (remove only untracks, doesn't delete files)
 	if _, err := os.Stat(filepath.Join(dir, "pixi.toml")); err != nil {
-		t.Error("pixi.toml was deleted during workspace remove")
+		t.Error("pixi.toml was deleted during project remove")
 	}
 
 	// Re-init, then remove by path
@@ -681,7 +681,7 @@ func TestE2E_WorkspaceRemove(t *testing.T) {
 		t.Fatalf("re-init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, dir, "workspace", "remove", dir)
+	res = runCLI(t, dir, "project", "remove", dir)
 	if res.ExitCode != 0 {
 		t.Fatalf("remove by path failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -690,37 +690,37 @@ func TestE2E_WorkspaceRemove(t *testing.T) {
 	}
 }
 
-func TestE2E_WorkspaceRemoveServer(t *testing.T) {
+func TestE2E_ProjectRemoveServer(t *testing.T) {
 	setupLocalStore(t)
 
-	wsName := "e2e-remove-server"
+	projectName := "e2e-remove-server"
 	tag := "v1.0"
 
-	// Push a workspace to the server
+	// Push a project to the server
 	srcDir := t.TempDir()
 	writePixiFiles(t, srcDir,
 		"[project]\nname = \"remove-server-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
 		"version: 6\n",
 	)
 
-	res := runCLI(t, srcDir, "push", wsName+":"+tag)
+	res := runCLI(t, srcDir, "push", projectName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Verify it exists on the server
-	res = runCLI(t, srcDir, "workspace", "list", "--remote")
+	res = runCLI(t, srcDir, "project", "list", "--remote")
 	if res.ExitCode != 0 {
-		t.Fatalf("workspace list failed: %s %s", res.Stdout, res.Stderr)
+		t.Fatalf("project list failed: %s %s", res.Stdout, res.Stderr)
 	}
-	if !strings.Contains(res.Stdout, wsName) {
-		t.Fatalf("expected %s in server workspace list, got: %s", wsName, res.Stdout)
+	if !strings.Contains(res.Stdout, projectName) {
+		t.Fatalf("expected %s in server project list, got: %s", projectName, res.Stdout)
 	}
 
 	// Remove from server
-	res = runCLI(t, srcDir, "workspace", "remove", wsName, "--remote")
+	res = runCLI(t, srcDir, "project", "remove", projectName, "--remote")
 	if res.ExitCode != 0 {
-		t.Fatalf("workspace remove --remote failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+		t.Fatalf("project remove --remote failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
 	if !strings.Contains(res.Stderr, "Deleted") {
 		t.Errorf("expected 'Deleted' message, got stderr: %s", res.Stderr)
@@ -729,24 +729,24 @@ func TestE2E_WorkspaceRemoveServer(t *testing.T) {
 	// Wait for async deletion to complete, then verify it's gone
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		res = runCLI(t, srcDir, "workspace", "list", "--remote")
+		res = runCLI(t, srcDir, "project", "list", "--remote")
 		if res.ExitCode != 0 {
-			t.Fatalf("workspace list failed: %s %s", res.Stdout, res.Stderr)
+			t.Fatalf("project list failed: %s %s", res.Stdout, res.Stderr)
 		}
-		if !strings.Contains(res.Stdout, wsName) {
+		if !strings.Contains(res.Stdout, projectName) {
 			break
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	if strings.Contains(res.Stdout, wsName) {
-		t.Errorf("workspace still on server after remove: %s", res.Stdout)
+	if strings.Contains(res.Stdout, projectName) {
+		t.Errorf("project still on server after remove: %s", res.Stdout)
 	}
 }
 
-func TestE2E_WorkspaceRemoveAlias(t *testing.T) {
+func TestE2E_ProjectRemoveAlias(t *testing.T) {
 	setupLocalStore(t)
 
-	// Create and init a workspace
+	// Create and init a project
 	dir := t.TempDir()
 	writePixiFiles(t, dir,
 		"[project]\nname = \"alias-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
@@ -758,25 +758,25 @@ func TestE2E_WorkspaceRemoveAlias(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	wsName := "alias-test" // matches [project] name in pixi.toml
+	projectName := "alias-test" // matches [project] name in pixi.toml
 
 	// Use 'rm' alias to remove by name
-	res = runCLI(t, dir, "workspace", "rm", wsName)
+	res = runCLI(t, dir, "project", "rm", projectName)
 	if res.ExitCode != 0 {
-		t.Fatalf("workspace rm (alias) failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+		t.Fatalf("project rm (alias) failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
 
 	// Verify it's gone
-	res = runCLI(t, dir, "workspace", "list")
-	if strings.Contains(res.Stdout, wsName) {
-		t.Errorf("workspace still in list after rm: %s", res.Stdout)
+	res = runCLI(t, dir, "project", "list")
+	if strings.Contains(res.Stdout, projectName) {
+		t.Errorf("project still in list after rm: %s", res.Stdout)
 	}
 }
 
-func TestE2E_WorkspacePrune(t *testing.T) {
+func TestE2E_ProjectPrune(t *testing.T) {
 	setupLocalStore(t)
 
-	// Create and init a workspace
+	// Create and init a project
 	dir := t.TempDir()
 	writePixiFiles(t, dir,
 		"[project]\nname = \"prune-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
@@ -788,7 +788,7 @@ func TestE2E_WorkspacePrune(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	// Create a second workspace
+	// Create a second project
 	dir2 := t.TempDir()
 	writePixiFiles(t, dir2,
 		"[project]\nname = \"prune-test-2\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
@@ -800,13 +800,13 @@ func TestE2E_WorkspacePrune(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	// Delete one directory to simulate a missing workspace
+	// Delete one directory to simulate a missing project
 	os.RemoveAll(dir2)
 
-	// Workspace list should show (missing)
-	res = runCLI(t, dir, "workspace", "list")
+	// Project list should show (missing)
+	res = runCLI(t, dir, "project", "list")
 	if res.ExitCode != 0 {
-		t.Fatalf("workspace list failed: %s %s", res.Stdout, res.Stderr)
+		t.Fatalf("project list failed: %s %s", res.Stdout, res.Stderr)
 	}
 	if !strings.Contains(res.Stdout, "(missing)") {
 		t.Errorf("expected (missing) indicator in list, got: %s", res.Stdout)
@@ -815,34 +815,34 @@ func TestE2E_WorkspacePrune(t *testing.T) {
 		t.Errorf("expected prune hint in stderr, got: %s", res.Stderr)
 	}
 
-	// Prune should remove the missing workspace
-	res = runCLI(t, dir, "workspace", "prune")
+	// Prune should remove the missing project
+	res = runCLI(t, dir, "project", "prune")
 	if res.ExitCode != 0 {
-		t.Fatalf("workspace prune failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+		t.Fatalf("project prune failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
 	if !strings.Contains(res.Stderr, "Pruned") {
 		t.Errorf("expected 'Pruned' message, got stderr: %s", res.Stderr)
 	}
 
-	// List should no longer show the missing workspace
-	res = runCLI(t, dir, "workspace", "list")
+	// List should no longer show the missing project
+	res = runCLI(t, dir, "project", "list")
 	if res.ExitCode != 0 {
-		t.Fatalf("workspace list failed: %s %s", res.Stdout, res.Stderr)
+		t.Fatalf("project list failed: %s %s", res.Stdout, res.Stderr)
 	}
 	if strings.Contains(res.Stdout, "(missing)") {
-		t.Errorf("missing workspace still in list after prune: %s", res.Stdout)
+		t.Errorf("missing project still in list after prune: %s", res.Stdout)
 	}
 }
 
-func TestE2E_WorkspacePruneNoop(t *testing.T) {
+func TestE2E_ProjectPruneNoop(t *testing.T) {
 	setupLocalStore(t)
 
 	dir := t.TempDir()
 
 	// Prune with nothing to prune
-	res := runCLI(t, dir, "workspace", "prune")
+	res := runCLI(t, dir, "project", "prune")
 	if res.ExitCode != 0 {
-		t.Fatalf("workspace prune failed: %s %s", res.Stdout, res.Stderr)
+		t.Fatalf("project prune failed: %s %s", res.Stdout, res.Stderr)
 	}
 	if !strings.Contains(res.Stderr, "Nothing to prune") {
 		t.Errorf("expected 'Nothing to prune' message, got stderr: %s", res.Stderr)
@@ -1086,44 +1086,44 @@ func TestE2E_RegistryRemoveConfirmYes(t *testing.T) {
 	}
 }
 
-func TestE2E_WorkspacePublishNotFound(t *testing.T) {
+func TestE2E_ProjectPublishNotFound(t *testing.T) {
 	setupLocalStore(t)
 
 	dir := t.TempDir()
 
 	res := runCLI(t, dir, "publish", "nonexistent")
 	if res.ExitCode == 0 {
-		t.Fatal("expected non-zero exit for nonexistent workspace")
+		t.Fatal("expected non-zero exit for nonexistent project")
 	}
 }
 
-func TestE2E_WorkspacePublishNoRegistry(t *testing.T) {
+func TestE2E_ProjectPublishNoRegistry(t *testing.T) {
 	setupLocalStore(t)
 
-	// Push a workspace first
-	wsName := "e2e-publish-noreg"
+	// Push a project first
+	projectName := "e2e-publish-noreg"
 	srcDir := t.TempDir()
 	writePixiFiles(t, srcDir,
 		"[project]\nname = \"publish-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
 		"version: 6\n",
 	)
 
-	res := runCLI(t, srcDir, "push", wsName+":v1")
+	res := runCLI(t, srcDir, "push", projectName+":v1")
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Publish should fail because no registry is configured
-	res = runCLI(t, srcDir, "publish", wsName+":v1")
+	res = runCLI(t, srcDir, "publish", projectName+":v1")
 	if res.ExitCode == 0 {
 		t.Fatal("expected non-zero exit when no registry configured")
 	}
 }
 
-func TestE2E_DiffByWorkspaceName(t *testing.T) {
+func TestE2E_DiffByProjectName(t *testing.T) {
 	setupLocalStore(t)
 
-	// Create and init a workspace (name comes from directory basename)
+	// Create and init a project (name comes from directory basename)
 	dir := t.TempDir()
 	toml := "[project]\nname = \"diff-name-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
 	writePixiFiles(t, dir, toml, "version: 6\n")
@@ -1133,15 +1133,15 @@ func TestE2E_DiffByWorkspaceName(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	wsName := "diff-name-test" // matches [project] name in pixi.toml
+	projectName := "diff-name-test" // matches [project] name in pixi.toml
 
 	// Create a second directory with different content
 	dir2 := t.TempDir()
 	toml2 := "[project]\nname = \"diff-name-other\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
 	writePixiFiles(t, dir2, toml2, "version: 6\n")
 
-	// Diff using tracked workspace name vs current directory
-	res = runCLI(t, dir2, "diff", wsName)
+	// Diff using tracked project name vs current directory
+	res = runCLI(t, dir2, "diff", projectName)
 	if res.ExitCode != 0 {
 		t.Fatalf("diff by name failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -1155,7 +1155,7 @@ func TestE2E_DiffByWorkspaceName(t *testing.T) {
 func TestE2E_PushSavesOrigin(t *testing.T) {
 	setupLocalStore(t)
 
-	wsName := "e2e-origin-push"
+	projectName := "e2e-origin-push"
 	tag := "v1.0"
 
 	dir := t.TempDir()
@@ -1163,14 +1163,14 @@ func TestE2E_PushSavesOrigin(t *testing.T) {
 	lock := "version: 6\n"
 	writePixiFiles(t, dir, toml, lock)
 
-	// Init so the workspace is tracked
+	// Init so the project is tracked
 	res := runCLI(t, dir, "init")
 	if res.ExitCode != 0 {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Push
-	res = runCLI(t, dir, "push", wsName+":"+tag)
+	res = runCLI(t, dir, "push", projectName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -1180,8 +1180,8 @@ func TestE2E_PushSavesOrigin(t *testing.T) {
 	if res.ExitCode != 0 {
 		t.Fatalf("status failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
-	if !strings.Contains(res.Stdout, wsName+":"+tag) {
-		t.Errorf("expected origin %s:%s in status output, got: %s", wsName, tag, res.Stdout)
+	if !strings.Contains(res.Stdout, projectName+":"+tag) {
+		t.Errorf("expected origin %s:%s in status output, got: %s", projectName, tag, res.Stdout)
 	}
 	if !strings.Contains(res.Stdout, "push") {
 		t.Errorf("expected 'push' action in status output, got: %s", res.Stdout)
@@ -1191,7 +1191,7 @@ func TestE2E_PushSavesOrigin(t *testing.T) {
 func TestE2E_PushColonTagShorthand(t *testing.T) {
 	setupLocalStore(t)
 
-	wsName := "e2e-colon-tag"
+	projectName := "e2e-colon-tag"
 
 	dir := t.TempDir()
 	toml := "[project]\nname = \"colon-tag\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
@@ -1204,23 +1204,23 @@ func TestE2E_PushColonTagShorthand(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, dir, "push", wsName+":v1")
+	res = runCLI(t, dir, "push", projectName+":v1")
 	if res.ExitCode != 0 {
 		t.Fatalf("push v1 failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
 
-	// Push with :tag shorthand (should reuse workspace name from origin)
+	// Push with :tag shorthand (should reuse project name from origin)
 	res = runCLI(t, dir, "push", ":v2")
 	if res.ExitCode != 0 {
 		t.Fatalf("push :v2 failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
-	if !strings.Contains(res.Stderr, "Using workspace") {
-		t.Errorf("expected 'Using workspace' message, got stderr: %s", res.Stderr)
+	if !strings.Contains(res.Stderr, "Using project") {
+		t.Errorf("expected 'Using project' message, got stderr: %s", res.Stderr)
 	}
 	// Content is same as v1, so it's deduplicated — check for either "Pushed" or "Content unchanged"
-	hasOutput := strings.Contains(res.Stderr, wsName) && strings.Contains(res.Stderr, "v2")
+	hasOutput := strings.Contains(res.Stderr, projectName) && strings.Contains(res.Stderr, "v2")
 	if !hasOutput {
-		t.Errorf("expected push output with workspace name and tag v2, got stderr: %s", res.Stderr)
+		t.Errorf("expected push output with project name and tag v2, got stderr: %s", res.Stderr)
 	}
 }
 
@@ -1249,7 +1249,7 @@ func TestE2E_PushColonTagNoOrigin(t *testing.T) {
 func TestE2E_PullNoArgs(t *testing.T) {
 	setupLocalStore(t)
 
-	wsName := "e2e-pull-noarg"
+	projectName := "e2e-pull-noarg"
 	tag := "v1.0"
 
 	dir := t.TempDir()
@@ -1263,7 +1263,7 @@ func TestE2E_PullNoArgs(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, dir, "push", wsName+":"+tag)
+	res = runCLI(t, dir, "push", projectName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -1276,7 +1276,7 @@ func TestE2E_PullNoArgs(t *testing.T) {
 	if !strings.Contains(res.Stderr, "Using origin") {
 		t.Errorf("expected 'Using origin' message, got stderr: %s", res.Stderr)
 	}
-	if !strings.Contains(res.Stderr, wsName+":"+tag) {
+	if !strings.Contains(res.Stderr, projectName+":"+tag) {
 		t.Errorf("expected origin ref in output, got stderr: %s", res.Stderr)
 	}
 }
@@ -1305,7 +1305,7 @@ func TestE2E_PullNoArgsNoOrigin(t *testing.T) {
 func TestE2E_PullOverwritePromptDefaultsNo(t *testing.T) {
 	setupLocalStore(t)
 
-	wsName := "e2e-pull-prompt"
+	projectName := "e2e-pull-prompt"
 	tag := "v1.0"
 
 	dir := t.TempDir()
@@ -1319,13 +1319,13 @@ func TestE2E_PullOverwritePromptDefaultsNo(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, dir, "push", wsName+":"+tag)
+	res = runCLI(t, dir, "push", projectName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Pull into same dir WITHOUT --force (stdin is closed/empty, so prompt defaults to N → abort)
-	res = runCLI(t, dir, "pull", wsName+":"+tag)
+	res = runCLI(t, dir, "pull", projectName+":"+tag)
 	// Should exit 0 because abort is not an error — it prints "Aborted." and returns nil
 	if !strings.Contains(res.Stderr, "Aborted") {
 		t.Errorf("expected 'Aborted' when overwrite prompt defaults to no, got stderr: %s", res.Stderr)
@@ -1335,7 +1335,7 @@ func TestE2E_PullOverwritePromptDefaultsNo(t *testing.T) {
 func TestE2E_PullForceSkipsPrompt(t *testing.T) {
 	setupLocalStore(t)
 
-	wsName := "e2e-pull-force"
+	projectName := "e2e-pull-force"
 	tag := "v1.0"
 
 	dir := t.TempDir()
@@ -1349,13 +1349,13 @@ func TestE2E_PullForceSkipsPrompt(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, dir, "push", wsName+":"+tag)
+	res = runCLI(t, dir, "push", projectName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Pull with --force should succeed without prompt
-	res = runCLI(t, dir, "pull", wsName+":"+tag, "--force")
+	res = runCLI(t, dir, "pull", projectName+":"+tag, "--force")
 	if res.ExitCode != 0 {
 		t.Fatalf("pull --force failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -1367,7 +1367,7 @@ func TestE2E_PullForceSkipsPrompt(t *testing.T) {
 func TestE2E_DiffNoArgs(t *testing.T) {
 	setupLocalStore(t)
 
-	wsName := "e2e-diff-noarg"
+	projectName := "e2e-diff-noarg"
 	tag := "v1.0"
 
 	dir := t.TempDir()
@@ -1381,7 +1381,7 @@ func TestE2E_DiffNoArgs(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, dir, "push", wsName+":"+tag)
+	res = runCLI(t, dir, "push", projectName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -1442,8 +1442,8 @@ func TestE2E_Status(t *testing.T) {
 	if res.ExitCode != 0 {
 		t.Fatalf("status failed: %s %s", res.Stdout, res.Stderr)
 	}
-	if !strings.Contains(res.Stderr, "Not a tracked workspace") {
-		t.Errorf("expected 'Not a tracked workspace', got stderr: %s stdout: %s", res.Stderr, res.Stdout)
+	if !strings.Contains(res.Stderr, "Not a tracked project") {
+		t.Errorf("expected 'Not a tracked project', got stderr: %s stdout: %s", res.Stderr, res.Stdout)
 	}
 
 	// Init
@@ -1457,16 +1457,16 @@ func TestE2E_Status(t *testing.T) {
 	if res.ExitCode != 0 {
 		t.Fatalf("status failed: %s %s", res.Stdout, res.Stderr)
 	}
-	if !strings.Contains(res.Stdout, "Workspace:") {
-		t.Errorf("expected 'Workspace:' in status, got: %s", res.Stdout)
+	if !strings.Contains(res.Stdout, "Project:") {
+		t.Errorf("expected 'Project:' in status, got: %s", res.Stdout)
 	}
 	if !strings.Contains(res.Stdout, "No origin") {
 		t.Errorf("expected 'No origin' in status, got: %s", res.Stdout)
 	}
 
 	// Push to establish origin
-	wsName := "e2e-status-ws"
-	res = runCLI(t, dir, "push", wsName+":v1")
+	projectName := "e2e-status-ws"
+	res = runCLI(t, dir, "push", projectName+":v1")
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -1479,7 +1479,7 @@ func TestE2E_Status(t *testing.T) {
 	if !strings.Contains(res.Stdout, "Origin:") {
 		t.Errorf("expected 'Origin:' section, got: %s", res.Stdout)
 	}
-	if !strings.Contains(res.Stdout, wsName+":v1") {
+	if !strings.Contains(res.Stdout, projectName+":v1") {
 		t.Errorf("expected origin ref in status, got: %s", res.Stdout)
 	}
 	if !strings.Contains(res.Stdout, "In sync") {
@@ -1501,8 +1501,8 @@ func TestE2E_StatusLocalModification(t *testing.T) {
 	}
 
 	// Push
-	wsName := "e2e-status-mod"
-	res = runCLI(t, dir, "push", wsName+":v1")
+	projectName := "e2e-status-mod"
+	res = runCLI(t, dir, "push", projectName+":v1")
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -1523,7 +1523,7 @@ func TestE2E_StatusLocalModification(t *testing.T) {
 func TestE2E_PullSavesOrigin(t *testing.T) {
 	setupLocalStore(t)
 
-	wsName := "e2e-origin-pull"
+	projectName := "e2e-origin-pull"
 	tag := "v1.0"
 
 	// Push from one directory
@@ -1537,14 +1537,14 @@ func TestE2E_PullSavesOrigin(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, srcDir, "push", wsName+":"+tag)
+	res = runCLI(t, srcDir, "push", projectName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Pull to a new tracked directory
 	dstDir := t.TempDir()
-	// Init the destination first so it's a tracked workspace
+	// Init the destination first so it's a tracked project
 	writePixiFiles(t, dstDir,
 		"[project]\nname = \"origin-pull-dst\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
 		"version: 6\n",
@@ -1554,7 +1554,7 @@ func TestE2E_PullSavesOrigin(t *testing.T) {
 		t.Fatalf("init dst failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, dstDir, "pull", wsName+":"+tag, "--force")
+	res = runCLI(t, dstDir, "pull", projectName+":"+tag, "--force")
 	if res.ExitCode != 0 {
 		t.Fatalf("pull failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -1564,7 +1564,7 @@ func TestE2E_PullSavesOrigin(t *testing.T) {
 	if res.ExitCode != 0 {
 		t.Fatalf("status failed: %s %s", res.Stdout, res.Stderr)
 	}
-	if !strings.Contains(res.Stdout, wsName+":"+tag) {
+	if !strings.Contains(res.Stdout, projectName+":"+tag) {
 		t.Errorf("expected origin ref after pull, got: %s", res.Stdout)
 	}
 	if !strings.Contains(res.Stdout, "pull") {
@@ -1582,15 +1582,15 @@ func TestE2E_ShellAutoInit(t *testing.T) {
 	// shell will fail because pixi isn't available in test, but ensureInit should run first
 	res := runCLI(t, dir, "shell")
 
-	// The workspace should be tracked even if pixi exec fails
-	res2 := runCLI(t, dir, "workspace", "list")
+	// The project should be tracked even if pixi exec fails
+	res2 := runCLI(t, dir, "project", "list")
 	if res2.ExitCode != 0 {
-		t.Fatalf("workspace list failed: %s", res2.Stderr)
+		t.Fatalf("project list failed: %s", res2.Stderr)
 	}
 	// Check either stdout or stderr for tracking message
 	combined := res.Stdout + res.Stderr + res2.Stdout
 	if !strings.Contains(combined, "auto-init-test") {
-		t.Errorf("expected workspace to be tracked after shell auto-init, got stdout: %s, stderr: %s", res2.Stdout, res.Stderr)
+		t.Errorf("expected project to be tracked after shell auto-init, got stdout: %s, stderr: %s", res2.Stdout, res.Stderr)
 	}
 }
 
@@ -1604,13 +1604,13 @@ func TestE2E_RunAutoInit(t *testing.T) {
 	// run will fail because pixi isn't available, but ensureInit should run
 	_ = runCLI(t, dir, "run", "some-task")
 
-	res := runCLI(t, dir, "workspace", "list")
+	res := runCLI(t, dir, "project", "list")
 	if res.ExitCode != 0 {
-		t.Fatalf("workspace list failed: %s", res.Stderr)
+		t.Fatalf("project list failed: %s", res.Stderr)
 	}
-	wsName := filepath.Base(dir)
-	if !strings.Contains(res.Stdout, wsName) {
-		t.Errorf("expected workspace %q tracked after run auto-init, got: %s", wsName, res.Stdout)
+	projectName := filepath.Base(dir)
+	if !strings.Contains(res.Stdout, projectName) {
+		t.Errorf("expected project %q tracked after run auto-init, got: %s", projectName, res.Stdout)
 	}
 }
 
@@ -1680,13 +1680,13 @@ func TestE2E_RunNoPixiToml(t *testing.T) {
 	}
 }
 
-func TestE2E_PullAutoTracksWorkspace(t *testing.T) {
+func TestE2E_PullAutoTracksProject(t *testing.T) {
 	setupLocalStore(t)
 
-	wsName := "e2e-pull-autotrack"
+	projectName := "e2e-pull-autotrack"
 	tag := "v1.0"
 
-	// Push a workspace from a source directory
+	// Push a project from a source directory
 	srcDir := t.TempDir()
 	toml := "[project]\nname = \"autotrack-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
 	lock := "version: 6\npackages: []\n"
@@ -1697,72 +1697,72 @@ func TestE2E_PullAutoTracksWorkspace(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, srcDir, "push", wsName+":"+tag)
+	res = runCLI(t, srcDir, "push", projectName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Pull into a fresh, untracked directory (no nebi init)
 	dstDir := t.TempDir()
-	res = runCLI(t, dstDir, "pull", wsName+":"+tag)
+	res = runCLI(t, dstDir, "pull", projectName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("pull failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
 
-	// Status should recognize the workspace (not say "Not a tracked workspace")
+	// Status should recognize the project (not say "Not a tracked project")
 	res = runCLI(t, dstDir, "status")
 	if res.ExitCode != 0 {
 		t.Fatalf("status failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
-	if strings.Contains(res.Stderr, "Not a tracked workspace") {
-		t.Error("pull into untracked directory should auto-track the workspace, but status says 'Not a tracked workspace'")
+	if strings.Contains(res.Stderr, "Not a tracked project") {
+		t.Error("pull into untracked directory should auto-track the project, but status says 'Not a tracked project'")
 	}
-	if !strings.Contains(res.Stdout, "Workspace:") {
-		t.Errorf("expected 'Workspace:' in status output, got stdout: %s stderr: %s", res.Stdout, res.Stderr)
+	if !strings.Contains(res.Stdout, "Project:") {
+		t.Errorf("expected 'Project:' in status output, got stdout: %s stderr: %s", res.Stdout, res.Stderr)
 	}
 
 	// Origin should also be saved
-	if !strings.Contains(res.Stdout, wsName+":"+tag) {
-		t.Errorf("expected origin %s:%s in status output, got: %s", wsName, tag, res.Stdout)
+	if !strings.Contains(res.Stdout, projectName+":"+tag) {
+		t.Errorf("expected origin %s:%s in status output, got: %s", projectName, tag, res.Stdout)
 	}
 	if !strings.Contains(res.Stdout, "pull") {
 		t.Errorf("expected 'pull' action in status output, got: %s", res.Stdout)
 	}
 }
 
-func TestE2E_PushAutoTracksWorkspace(t *testing.T) {
+func TestE2E_PushAutoTracksProject(t *testing.T) {
 	setupLocalStore(t)
 
-	wsName := "e2e-push-autotrack"
+	projectName := "e2e-push-autotrack"
 	tag := "v1.0"
 
-	// Create a workspace directory with pixi files but do NOT run nebi init
+	// Create a project directory with pixi files but do NOT run nebi init
 	dir := t.TempDir()
 	toml := "[project]\nname = \"autotrack-push\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
 	lock := "version: 6\npackages: []\n"
 	writePixiFiles(t, dir, toml, lock)
 
 	// Push from the untracked directory — should auto-track
-	res := runCLI(t, dir, "push", wsName+":"+tag)
+	res := runCLI(t, dir, "push", projectName+":"+tag)
 	if res.ExitCode != 0 {
 		t.Fatalf("push failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
 
-	// Status should recognize the workspace (not say "Not a tracked workspace")
+	// Status should recognize the project (not say "Not a tracked project")
 	res = runCLI(t, dir, "status")
 	if res.ExitCode != 0 {
 		t.Fatalf("status failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
-	if strings.Contains(res.Stderr, "Not a tracked workspace") {
-		t.Error("push from untracked directory should auto-track the workspace, but status says 'Not a tracked workspace'")
+	if strings.Contains(res.Stderr, "Not a tracked project") {
+		t.Error("push from untracked directory should auto-track the project, but status says 'Not a tracked project'")
 	}
-	if !strings.Contains(res.Stdout, "Workspace:") {
-		t.Errorf("expected 'Workspace:' in status output, got stdout: %s stderr: %s", res.Stdout, res.Stderr)
+	if !strings.Contains(res.Stdout, "Project:") {
+		t.Errorf("expected 'Project:' in status output, got stdout: %s stderr: %s", res.Stdout, res.Stderr)
 	}
 
 	// Origin should also be saved
-	if !strings.Contains(res.Stdout, wsName+":"+tag) {
-		t.Errorf("expected origin %s:%s in status output, got: %s", wsName, tag, res.Stdout)
+	if !strings.Contains(res.Stdout, projectName+":"+tag) {
+		t.Errorf("expected origin %s:%s in status output, got: %s", projectName, tag, res.Stdout)
 	}
 	if !strings.Contains(res.Stdout, "push") {
 		t.Errorf("expected 'push' action in status output, got: %s", res.Stdout)
@@ -1772,7 +1772,7 @@ func TestE2E_PushAutoTracksWorkspace(t *testing.T) {
 func TestE2E_PullWithoutTagResolvesTag(t *testing.T) {
 	setupLocalStore(t)
 
-	wsName := "e2e-pull-resolve-tag"
+	projectName := "e2e-pull-resolve-tag"
 
 	// Push two tagged versions
 	srcDir := t.TempDir()
@@ -1785,7 +1785,7 @@ func TestE2E_PullWithoutTagResolvesTag(t *testing.T) {
 		t.Fatalf("init failed: %s %s", res.Stdout, res.Stderr)
 	}
 
-	res = runCLI(t, srcDir, "push", wsName+":v1.0")
+	res = runCLI(t, srcDir, "push", projectName+":v1.0")
 	if res.ExitCode != 0 {
 		t.Fatalf("push v1.0 failed: %s %s", res.Stdout, res.Stderr)
 	}
@@ -1793,14 +1793,14 @@ func TestE2E_PullWithoutTagResolvesTag(t *testing.T) {
 	toml2 := toml1 + "\n[dependencies]\nnumpy = \"*\"\n"
 	os.WriteFile(filepath.Join(srcDir, "pixi.toml"), []byte(toml2), 0644)
 
-	res = runCLI(t, srcDir, "push", wsName+":v2.0")
+	res = runCLI(t, srcDir, "push", projectName+":v2.0")
 	if res.ExitCode != 0 {
 		t.Fatalf("push v2.0 failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	// Pull WITHOUT a tag — should resolve to latest version and find its tag
 	dstDir := t.TempDir()
-	res = runCLI(t, dstDir, "pull", wsName)
+	res = runCLI(t, dstDir, "pull", projectName)
 	if res.ExitCode != 0 {
 		t.Fatalf("pull failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
@@ -1810,12 +1810,12 @@ func TestE2E_PullWithoutTagResolvesTag(t *testing.T) {
 	if res.ExitCode != 0 {
 		t.Fatalf("status failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
-	if !strings.Contains(res.Stdout, wsName+":v2.0") {
+	if !strings.Contains(res.Stdout, projectName+":v2.0") {
 		t.Errorf("expected resolved tag v2.0 in status output, got: %s", res.Stdout)
 	}
 }
 
-func TestE2E_WorkspaceListJSON(t *testing.T) {
+func TestE2E_ProjectListJSON(t *testing.T) {
 	setupLocalStore(t)
 
 	dir := t.TempDir()
@@ -1825,9 +1825,9 @@ func TestE2E_WorkspaceListJSON(t *testing.T) {
 	)
 	runCLI(t, dir, "init")
 
-	res := runCLI(t, dir, "workspace", "list", "--json")
+	res := runCLI(t, dir, "project", "list", "--json")
 	if res.ExitCode != 0 {
-		t.Fatalf("workspace list --json failed: %s %s", res.Stdout, res.Stderr)
+		t.Fatalf("project list --json failed: %s %s", res.Stdout, res.Stderr)
 	}
 
 	var items []json.RawMessage
@@ -1835,18 +1835,18 @@ func TestE2E_WorkspaceListJSON(t *testing.T) {
 		t.Fatalf("invalid JSON output: %v\nraw: %s", err, res.Stdout)
 	}
 	if len(items) == 0 {
-		t.Error("expected at least one workspace in JSON output")
+		t.Error("expected at least one project in JSON output")
 	}
 }
 
-func TestE2E_WorkspaceListJSONEmpty(t *testing.T) {
+func TestE2E_ProjectListJSONEmpty(t *testing.T) {
 	setupLocalStore(t)
 
 	dir := t.TempDir()
 
-	res := runCLI(t, dir, "workspace", "list", "--json")
+	res := runCLI(t, dir, "project", "list", "--json")
 	if res.ExitCode != 0 {
-		t.Fatalf("workspace list --json failed: %s %s", res.Stdout, res.Stderr)
+		t.Fatalf("project list --json failed: %s %s", res.Stdout, res.Stderr)
 	}
 	if strings.TrimSpace(res.Stdout) != "[]" {
 		t.Errorf("expected empty JSON array, got: %s", res.Stdout)
@@ -1870,8 +1870,8 @@ func TestE2E_StatusJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(res.Stdout), &result); err != nil {
 		t.Fatalf("invalid JSON: %v\nraw: %s", err, res.Stdout)
 	}
-	if result["workspace"] != "status-json" {
-		t.Errorf("expected workspace 'status-json', got: %v", result["workspace"])
+	if result["project"] != "status-json" {
+		t.Errorf("expected project 'status-json', got: %v", result["project"])
 	}
 	expectedPath := canonicalTestPath(t, dir)
 	if result["path"] != expectedPath {
@@ -1886,7 +1886,7 @@ func TestE2E_StatusJSONNotTracked(t *testing.T) {
 
 	res := runCLI(t, dir, "status", "--json")
 	if res.ExitCode == 0 {
-		t.Error("expected non-zero exit code for untracked workspace with --json")
+		t.Error("expected non-zero exit code for untracked project with --json")
 	}
 }
 
@@ -1969,7 +1969,7 @@ func TestE2E_Info(t *testing.T) {
 	}
 }
 
-func TestE2E_InfoWorkspace(t *testing.T) {
+func TestE2E_InfoProject(t *testing.T) {
 	dir := t.TempDir()
 
 	os.Setenv("NEBI_AUTH_TOKEN", e2eEnv.token)
@@ -1977,7 +1977,7 @@ func TestE2E_InfoWorkspace(t *testing.T) {
 	defer os.Unsetenv("NEBI_AUTH_TOKEN")
 	defer os.Unsetenv("NEBI_REMOTE_URL")
 
-	// Create a pixi.toml and init workspace
+	// Create a pixi.toml and init project
 	toml := "[project]\nname = \"info-ws-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
 	os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte(toml), 0644)
 
@@ -1986,16 +1986,16 @@ func TestE2E_InfoWorkspace(t *testing.T) {
 		t.Fatalf("init failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
 
-	// Info should now show workspace section
+	// Info should now show project section
 	res = runCLI(t, dir, "info")
 	if res.ExitCode != 0 {
 		t.Fatalf("info failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
-	if !strings.Contains(res.Stdout, "Workspace") {
-		t.Errorf("expected Workspace section in output, got: %s", res.Stdout)
+	if !strings.Contains(res.Stdout, "Project") {
+		t.Errorf("expected Project section in output, got: %s", res.Stdout)
 	}
 	if !strings.Contains(res.Stdout, "info-ws-test") {
-		t.Errorf("expected workspace name 'info-ws-test', got: %s", res.Stdout)
+		t.Errorf("expected project name 'info-ws-test', got: %s", res.Stdout)
 	}
 }
 
@@ -2019,22 +2019,22 @@ func TestE2E_InfoNoServer(t *testing.T) {
 	}
 }
 
-func TestE2E_InfoWorkspacesDir(t *testing.T) {
+func TestE2E_InfoProjectsDir(t *testing.T) {
 	dir := t.TempDir()
 
-	wsDir := filepath.Join(dir, "ws-storage")
-	os.Setenv("NEBI_STORAGE_WORKSPACES_DIR", wsDir)
-	defer os.Unsetenv("NEBI_STORAGE_WORKSPACES_DIR")
+	projectDir := filepath.Join(dir, "ws-storage")
+	os.Setenv("NEBI_STORAGE_PROJECTS_DIR", projectDir)
+	defer os.Unsetenv("NEBI_STORAGE_PROJECTS_DIR")
 
 	res := runCLI(t, dir, "info")
 	if res.ExitCode != 0 {
 		t.Fatalf("info failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
-	if !strings.Contains(res.Stdout, "Workspaces dir") {
-		t.Errorf("expected 'Workspaces dir' field in output, got: %s", res.Stdout)
+	if !strings.Contains(res.Stdout, "Projects dir") {
+		t.Errorf("expected 'Projects dir' field in output, got: %s", res.Stdout)
 	}
-	if !strings.Contains(res.Stdout, wsDir) {
-		t.Errorf("expected workspaces dir %q in output, got: %s", wsDir, res.Stdout)
+	if !strings.Contains(res.Stdout, projectDir) {
+		t.Errorf("expected projects dir %q in output, got: %s", projectDir, res.Stdout)
 	}
 
 	res = runCLI(t, dir, "info", "--json")
@@ -2045,7 +2045,7 @@ func TestE2E_InfoWorkspacesDir(t *testing.T) {
 	if err := json.Unmarshal([]byte(res.Stdout), &result); err != nil {
 		t.Fatalf("failed to parse JSON output: %v\nstdout: %s", err, res.Stdout)
 	}
-	if result["workspaces_dir"] != wsDir {
-		t.Errorf("expected workspaces_dir=%q, got: %v", wsDir, result["workspaces_dir"])
+	if result["projects_dir"] != projectDir {
+		t.Errorf("expected projects_dir=%q, got: %v", projectDir, result["projects_dir"])
 	}
 }

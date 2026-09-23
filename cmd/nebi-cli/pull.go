@@ -16,27 +16,27 @@ var pullOutput string
 var pullForce bool
 
 var pullCmd = &cobra.Command{
-	Use:   "pull [<workspace>[:<tag>]]",
-	Short: "Pull workspace spec files from a nebi server",
+	Use:   "pull [<project>[:<tag>]]",
+	Short: "Pull project spec files from a nebi server",
 	Long: `Pull pixi.toml and pixi.lock from a nebi server.
 
-If no argument is given, the workspace and tag from the last push/pull
+If no argument is given, the project and tag from the last push/pull
 origin are used.
 
 If no tag is specified, the latest version is pulled.
 
-The local workspace name is derived from the [workspace] name field
-in the pulled pixi.toml, not from the server workspace name.
+The local project name is derived from the [workspace] name field
+in the pulled pixi.toml, not from the server project name.
 
 Use --force to skip the overwrite confirmation prompt.
 
 Examples:
-  nebi pull myworkspace:v1.0
+  nebi pull myproject:v1.0
   nebi pull                                # re-pull from origin
-  nebi pull myworkspace -o ./my-project`,
+  nebi pull myproject -o ./my-project`,
 	Args:              cobra.RangeArgs(0, 1),
 	RunE:              runPull,
-	ValidArgsFunction: completeServerWorkspaceRef,
+	ValidArgsFunction: completeServerProjectRef,
 }
 
 func init() {
@@ -45,20 +45,20 @@ func init() {
 }
 
 func runPull(cmd *cobra.Command, args []string) error {
-	var wsName, tag string
+	var projectName, tag string
 	if len(args) == 1 {
-		wsName, tag = parseWsRef(args[0])
+		projectName, tag = parseProjectRef(args[0])
 	} else {
 		origin, err := lookupOrigin()
 		if err != nil {
 			return err
 		}
 		if origin == nil {
-			return fmt.Errorf("no origin set; specify a workspace: nebi pull <workspace>[:<tag>]")
+			return fmt.Errorf("no origin set; specify a project: nebi pull <project>[:<tag>]")
 		}
-		wsName = origin.OriginName
+		projectName = origin.OriginName
 		tag = origin.OriginTag
-		fmt.Fprintf(os.Stderr, "Using origin %s:%s\n", wsName, tag)
+		fmt.Fprintf(os.Stderr, "Using origin %s:%s\n", projectName, tag)
 	}
 
 	client, err := getAuthenticatedClient()
@@ -68,7 +68,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	ws, err := findWsByName(client, ctx, wsName)
+	project, err := findProjectByName(client, ctx, projectName)
 	if err != nil {
 		return err
 	}
@@ -76,7 +76,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 	var versionNumber int32
 
 	if tag != "" {
-		tags, err := client.GetWorkspaceTags(ctx, ws.ID)
+		tags, err := client.GetProjectTags(ctx, project.ID)
 		if err != nil {
 			return fmt.Errorf("failed to get tags: %w", err)
 		}
@@ -89,15 +89,15 @@ func runPull(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if !found {
-			return fmt.Errorf("tag %q not found for workspace %q", tag, wsName)
+			return fmt.Errorf("tag %q not found for project %q", tag, projectName)
 		}
 	} else {
-		versions, err := client.GetWorkspaceVersions(ctx, ws.ID)
+		versions, err := client.GetProjectVersions(ctx, project.ID)
 		if err != nil {
 			return fmt.Errorf("failed to get versions: %w", err)
 		}
 		if len(versions) == 0 {
-			return fmt.Errorf("workspace %q has no versions", wsName)
+			return fmt.Errorf("project %q has no versions", projectName)
 		}
 		latest := versions[0]
 		for _, v := range versions {
@@ -107,7 +107,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 		}
 		versionNumber = latest.VersionNumber
 
-		tags, err := client.GetWorkspaceTags(ctx, ws.ID)
+		tags, err := client.GetProjectTags(ctx, project.ID)
 		if err == nil {
 			var bestTag string
 			var bestTime string
@@ -123,12 +123,12 @@ func runPull(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	pixiToml, err := client.GetVersionPixiToml(ctx, ws.ID, versionNumber)
+	pixiToml, err := client.GetVersionPixiToml(ctx, project.ID, versionNumber)
 	if err != nil {
 		return fmt.Errorf("failed to get pixi.toml: %w", err)
 	}
 
-	pixiLock, err := client.GetVersionPixiLock(ctx, ws.ID, versionNumber)
+	pixiLock, err := client.GetVersionPixiLock(ctx, project.ID, versionNumber)
 	if err != nil {
 		return fmt.Errorf("failed to get pixi.lock: %w", err)
 	}
@@ -139,7 +139,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 		if origin != nil {
 			serverTomlHash, _ := store.TomlContentHash(pixiToml)
 			if origin.OriginTomlHash != "" && origin.OriginTomlHash != serverTomlHash {
-				fmt.Fprintf(os.Stderr, "Note: %s:%s has changed on server since last sync\n", wsName, tag)
+				fmt.Fprintf(os.Stderr, "Note: %s:%s has changed on server since last sync\n", projectName, tag)
 			}
 		}
 	}
@@ -172,19 +172,19 @@ func runPull(cmd *cobra.Command, args []string) error {
 
 	absOutput, _ := filepath.Abs(outputDir)
 
-	// Auto-track the workspace (name will be read from pulled pixi.toml)
+	// Auto-track the project (name will be read from pulled pixi.toml)
 	if err := ensureInit(outputDir); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to auto-track workspace: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Warning: failed to auto-track project: %v\n", err)
 	}
 
-	refStr := wsName
+	refStr := projectName
 	if tag != "" {
-		refStr = wsName + ":" + tag
+		refStr = projectName + ":" + tag
 	}
 
-	fmt.Fprintf(os.Stderr, "Pulled %s (version %d, id=%s) -> %s\n", refStr, versionNumber, ws.ID, absOutput)
+	fmt.Fprintf(os.Stderr, "Pulled %s (version %d, id=%s) -> %s\n", refStr, versionNumber, project.ID, absOutput)
 
-	if saveErr := saveOrigin(ws.ID, wsName, tag, "pull", pixiToml, pixiLock); saveErr != nil {
+	if saveErr := saveOrigin(project.ID, projectName, tag, "pull", pixiToml, pixiLock); saveErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save origin: %v\n", saveErr)
 	}
 

@@ -129,7 +129,7 @@ type LogConfig struct {
 
 // StorageConfig holds storage configuration
 type StorageConfig struct {
-	WorkspacesDir string `mapstructure:"workspaces_dir"` // Directory where workspaces are stored
+	ProjectsDir string `mapstructure:"projects_dir"` // Directory where projects are stored
 }
 
 // RegistriesConfig holds admin-provisioned OCI registry configuration.
@@ -202,7 +202,7 @@ func Load(options ...LoadOption) (*Config, error) {
 	v.SetDefault("queue.valkey_addr", "localhost:6379")
 	v.SetDefault("log.format", "text")
 	v.SetDefault("log.level", "info")
-	v.SetDefault("storage.workspaces_dir", "./data/workspaces")
+	v.SetDefault("storage.projects_dir", "./data/projects")
 	defaultLimits := limits.Defaults()
 	v.SetDefault("limits.request_body_bytes", defaultLimits.RequestBodyBytes)
 	v.SetDefault("limits.manifest_bytes", defaultLimits.ManifestBytes)
@@ -210,7 +210,7 @@ func Load(options ...LoadOption) (*Config, error) {
 	v.SetDefault("limits.metadata_bytes", defaultLimits.MetadataBytes)
 	v.SetDefault("limits.package_string_bytes", defaultLimits.PackageStringBytes)
 	v.SetDefault("limits.active_jobs_per_user", defaultLimits.ActiveJobsPerUser)
-	v.SetDefault("limits.active_jobs_per_workspace", defaultLimits.ActiveJobsPerWorkspace)
+	v.SetDefault("limits.active_jobs_per_project", defaultLimits.ActiveJobsPerProject)
 	v.SetDefault("limits.active_jobs_global", defaultLimits.ActiveJobsGlobal)
 	v.SetDefault("limits.job_timeout_seconds", defaultLimits.JobTimeoutSeconds)
 	v.SetDefault("limits.job_cpu_seconds", defaultLimits.JobCPUSeconds)
@@ -242,8 +242,8 @@ func Load(options ...LoadOption) (*Config, error) {
 
 	// viper's AutomaticEnv + Unmarshal does not propagate env vars into
 	// nested structs without explicit BindEnv. Bind each nested key so that
-	// e.g. NEBI_STORAGE_WORKSPACES_DIR overrides the workspaces_dir field.
-	_ = v.BindEnv("storage.workspaces_dir", "NEBI_STORAGE_WORKSPACES_DIR")
+	// e.g. NEBI_STORAGE_PROJECTS_DIR overrides the projects_dir field.
+	_ = v.BindEnv("storage.projects_dir", "NEBI_STORAGE_PROJECTS_DIR")
 	_ = v.BindEnv("server.host", "NEBI_SERVER_HOST")
 	_ = v.BindEnv("server.port", "NEBI_SERVER_PORT")
 	_ = v.BindEnv("server.mode", "NEBI_SERVER_MODE")
@@ -270,7 +270,7 @@ func Load(options ...LoadOption) (*Config, error) {
 	_ = v.BindEnv("limits.metadata_bytes", "NEBI_LIMITS_METADATA_BYTES")
 	_ = v.BindEnv("limits.package_string_bytes", "NEBI_LIMITS_PACKAGE_STRING_BYTES")
 	_ = v.BindEnv("limits.active_jobs_per_user", "NEBI_LIMITS_ACTIVE_JOBS_PER_USER")
-	_ = v.BindEnv("limits.active_jobs_per_workspace", "NEBI_LIMITS_ACTIVE_JOBS_PER_WORKSPACE")
+	_ = v.BindEnv("limits.active_jobs_per_project", "NEBI_LIMITS_ACTIVE_JOBS_PER_PROJECT")
 	_ = v.BindEnv("limits.active_jobs_global", "NEBI_LIMITS_ACTIVE_JOBS_GLOBAL")
 	_ = v.BindEnv("limits.job_timeout_seconds", "NEBI_LIMITS_JOB_TIMEOUT_SECONDS")
 	_ = v.BindEnv("limits.job_cpu_seconds", "NEBI_LIMITS_JOB_CPU_SECONDS")

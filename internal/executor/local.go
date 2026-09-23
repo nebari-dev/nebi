@@ -18,14 +18,14 @@ import (
 
 // LocalExecutor runs operations on the local machine
 type LocalExecutor struct {
-	baseDir string // Base directory for workspaces (e.g., /var/lib/nebi/workspaces)
+	baseDir string // Base directory for projects (e.g., /var/lib/nebi/projects)
 	config  *config.Config
 	limits  limits.Limits
 }
 
 // NewLocalExecutor creates a new local executor
 func NewLocalExecutor(cfg *config.Config) (*LocalExecutor, error) {
-	baseDir := cfg.Storage.WorkspacesDir
+	baseDir := cfg.Storage.ProjectsDir
 
 	// Resolve to absolute path so stored paths work from any working directory
 	if !filepath.IsAbs(baseDir) {
@@ -71,22 +71,22 @@ func (e *LocalExecutor) StagingRoot() string {
 	return root
 }
 
-// GetWorkspacePath returns the filesystem path for a workspace.
-// If ws.Path is set to an absolute path, prefer it regardless of source so
+// GetProjectPath returns the filesystem path for a project.
+// If project.Path is set to an absolute path, prefer it regardless of source so
 // reads/writes remain stable across process restarts or base-dir changes.
 // Otherwise: {baseDir}/{normalized-name}-{uuid}
-func (e *LocalExecutor) GetWorkspacePath(ws *models.Workspace) string {
-	if ws.Path != "" && filepath.IsAbs(ws.Path) {
-		return ws.Path
+func (e *LocalExecutor) GetProjectPath(project *models.Project) string {
+	if project.Path != "" && filepath.IsAbs(project.Path) {
+		return project.Path
 	}
-	normalizedName := normalizeEnvName(ws.Name)
-	dirName := fmt.Sprintf("%s-%s", normalizedName, ws.ID.String())
+	normalizedName := normalizeEnvName(project.Name)
+	dirName := fmt.Sprintf("%s-%s", normalizedName, project.ID.String())
 	return filepath.Join(e.baseDir, dirName)
 }
 
-// CreateWorkspace creates a new workspace on the local filesystem
-func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer, opts CreateWorkspaceOptions) error {
-	envPath := e.GetWorkspacePath(ws)
+// CreateProject creates a new project on the local filesystem
+func (e *LocalExecutor) CreateProject(ctx context.Context, project *models.Project, logWriter io.Writer, opts CreateProjectOptions) error {
+	envPath := e.GetProjectPath(project)
 	return e.withStorageLimit(ctx, envPath, logWriter, func(ctx context.Context) error {
 		fmt.Fprintf(logWriter, "Creating environment at: %s\n", envPath)
 
@@ -98,7 +98,7 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 		switch {
 		case opts.SeedDir != "":
 			// Always clean up the staging dir, even on partial failure (e.g. a
-			// mid-walk error in seedWorkspaceFromDir leaves files behind).
+			// mid-walk error in seedProjectFromDir leaves files behind).
 			// Owned by this branch end-to-end.
 			defer func() {
 				if rmErr := os.RemoveAll(opts.SeedDir); rmErr != nil {
@@ -108,9 +108,9 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 			if err := os.MkdirAll(envPath, 0o755); err != nil {
 				return fmt.Errorf("create env dir: %w", err)
 			}
-			fmt.Fprintf(logWriter, "Seeding workspace from %s\n", opts.SeedDir)
-			if err := seedWorkspaceFromDir(opts.SeedDir, envPath); err != nil {
-				return fmt.Errorf("seed workspace: %w", err)
+			fmt.Fprintf(logWriter, "Seeding project from %s\n", opts.SeedDir)
+			if err := seedProjectFromDir(opts.SeedDir, envPath); err != nil {
+				return fmt.Errorf("seed project: %w", err)
 			}
 			if err := runPixiLock(ctx, pm, envPath, logWriter, e.limits.ProcessLimits()); err != nil {
 				return err
@@ -132,7 +132,7 @@ func (e *LocalExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspac
 		default:
 			initOpts := pixi.InitOptions{
 				EnvPath:        envPath,
-				Name:           ws.Name,
+				Name:           project.Name,
 				Channels:       []string{"conda-forge"},
 				LogWriter:      logWriter,
 				ResourceLimits: e.limits.ProcessLimits(),
@@ -174,11 +174,11 @@ func runPixiLock(ctx context.Context, pm *pixi.PixiManager, envPath string, logW
 	return nil
 }
 
-// seedWorkspaceFromDir recursively moves every entry under srcDir into
+// seedProjectFromDir recursively moves every entry under srcDir into
 // dstDir, preserving relative paths. Rejects any cleaned relative path
 // that escapes dstDir as defense-in-depth. Uses os.Rename when possible;
 // falls back to copy when the rename fails (cross-filesystem, etc.).
-func seedWorkspaceFromDir(srcDir, dstDir string) error {
+func seedProjectFromDir(srcDir, dstDir string) error {
 	return filepath.WalkDir(srcDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -223,9 +223,9 @@ func seedWorkspaceFromDir(srcDir, dstDir string) error {
 	})
 }
 
-// InstallPackages installs packages in a workspace
-func (e *LocalExecutor) InstallPackages(ctx context.Context, ws *models.Workspace, packages []string, logWriter io.Writer) error {
-	envPath := e.GetWorkspacePath(ws)
+// InstallPackages installs packages in a project
+func (e *LocalExecutor) InstallPackages(ctx context.Context, project *models.Project, packages []string, logWriter io.Writer) error {
+	envPath := e.GetProjectPath(project)
 	return e.withStorageLimit(ctx, envPath, logWriter, func(ctx context.Context) error {
 
 		fmt.Fprintf(logWriter, "Installing packages: %v\n", packages)
@@ -252,9 +252,9 @@ func (e *LocalExecutor) InstallPackages(ctx context.Context, ws *models.Workspac
 	})
 }
 
-// RemovePackages removes packages from a workspace
-func (e *LocalExecutor) RemovePackages(ctx context.Context, ws *models.Workspace, packages []string, logWriter io.Writer) error {
-	envPath := e.GetWorkspacePath(ws)
+// RemovePackages removes packages from a project
+func (e *LocalExecutor) RemovePackages(ctx context.Context, project *models.Project, packages []string, logWriter io.Writer) error {
+	envPath := e.GetProjectPath(project)
 	return e.withStorageLimit(ctx, envPath, logWriter, func(ctx context.Context) error {
 
 		fmt.Fprintf(logWriter, "Removing packages: %v\n", packages)
@@ -283,8 +283,8 @@ func (e *LocalExecutor) RemovePackages(ctx context.Context, ws *models.Workspace
 
 // SolveEnvironment runs pixi lock to resolve the current pixi.toml into
 // pixi.lock. It never installs packages.
-func (e *LocalExecutor) SolveEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error {
-	envPath := e.GetWorkspacePath(ws)
+func (e *LocalExecutor) SolveEnvironment(ctx context.Context, project *models.Project, logWriter io.Writer) error {
+	envPath := e.GetProjectPath(project)
 	return e.withStorageLimit(ctx, envPath, logWriter, func(ctx context.Context) error {
 
 		fmt.Fprintf(logWriter, "Running pixi lock to solve environment...\n")
@@ -303,10 +303,10 @@ func (e *LocalExecutor) SolveEnvironment(ctx context.Context, ws *models.Workspa
 	})
 }
 
-// InstallEnvironment runs `pixi install -v` in the workspace directory,
+// InstallEnvironment runs `pixi install -v` in the project directory,
 // materializing .pixi/envs/ from the already-resolved pixi.lock.
-func (e *LocalExecutor) InstallEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error {
-	envPath := e.GetWorkspacePath(ws)
+func (e *LocalExecutor) InstallEnvironment(ctx context.Context, project *models.Project, logWriter io.Writer) error {
+	envPath := e.GetProjectPath(project)
 	return e.withStorageLimit(ctx, envPath, logWriter, func(ctx context.Context) error {
 
 		pm, err := e.pixiFor(ctx)
@@ -340,9 +340,9 @@ func (e *LocalExecutor) InstallEnvironment(ctx context.Context, ws *models.Works
 }
 
 // UninstallEnvironment removes the installed environment (.pixi/envs)
-// from the workspace directory. Manifest and lockfile are untouched.
-func (e *LocalExecutor) UninstallEnvironment(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error {
-	envsDir := filepath.Join(e.GetWorkspacePath(ws), ".pixi", "envs")
+// from the project directory. Manifest and lockfile are untouched.
+func (e *LocalExecutor) UninstallEnvironment(ctx context.Context, project *models.Project, logWriter io.Writer) error {
+	envsDir := filepath.Join(e.GetProjectPath(project), ".pixi", "envs")
 	fmt.Fprintf(logWriter, "Removing installed environment at: %s\n", envsDir)
 	if err := os.RemoveAll(envsDir); err != nil {
 		return fmt.Errorf("failed to remove installed environment: %w", err)
@@ -351,24 +351,24 @@ func (e *LocalExecutor) UninstallEnvironment(ctx context.Context, ws *models.Wor
 	return nil
 }
 
-// IsEnvInstalled reports whether the workspace has an installed
+// IsEnvInstalled reports whether the project has an installed
 // environment on disk (.pixi/envs exists).
-func (e *LocalExecutor) IsEnvInstalled(ws *models.Workspace) bool {
-	info, err := os.Stat(filepath.Join(e.GetWorkspacePath(ws), ".pixi", "envs"))
+func (e *LocalExecutor) IsEnvInstalled(project *models.Project) bool {
+	info, err := os.Stat(filepath.Join(e.GetProjectPath(project), ".pixi", "envs"))
 	return err == nil && info.IsDir()
 }
 
 // CleanupJobArtifacts removes transient files left by interrupted or
-// resource-limited jobs without deleting user-owned local workspace content.
-func (e *LocalExecutor) CleanupJobArtifacts(ctx context.Context, ws *models.Workspace, jobType models.JobType, logWriter io.Writer) error {
-	envPath := e.GetWorkspacePath(ws)
-	if jobType == models.JobTypeCreate && ws.Source != "local" {
-		fmt.Fprintf(logWriter, "Cleaning up partial workspace at: %s\n", envPath)
+// resource-limited jobs without deleting user-owned local project content.
+func (e *LocalExecutor) CleanupJobArtifacts(ctx context.Context, project *models.Project, jobType models.JobType, logWriter io.Writer) error {
+	envPath := e.GetProjectPath(project)
+	if jobType == models.JobTypeCreate && project.Source != "local" {
+		fmt.Fprintf(logWriter, "Cleaning up partial project at: %s\n", envPath)
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if err := os.RemoveAll(envPath); err != nil {
-			return fmt.Errorf("cleanup partial workspace: %w", err)
+			return fmt.Errorf("cleanup partial project: %w", err)
 		}
 		return nil
 	}
@@ -390,23 +390,23 @@ func (e *LocalExecutor) CleanupJobArtifacts(ctx context.Context, ws *models.Work
 	return nil
 }
 
-// DeleteWorkspace removes a workspace from the filesystem.
-// For source=="local" workspaces the directory belongs to the user, so we
+// DeleteProject removes a project from the filesystem.
+// For source=="local" projects the directory belongs to the user, so we
 // only deregister (the caller handles DB cleanup) and never touch the filesystem.
-func (e *LocalExecutor) DeleteWorkspace(ctx context.Context, ws *models.Workspace, logWriter io.Writer) error {
-	if ws.Source == "local" {
-		fmt.Fprintf(logWriter, "Local workspace %q — skipping filesystem deletion\n", ws.Name)
+func (e *LocalExecutor) DeleteProject(ctx context.Context, project *models.Project, logWriter io.Writer) error {
+	if project.Source == "local" {
+		fmt.Fprintf(logWriter, "Local project %q — skipping filesystem deletion\n", project.Name)
 		return nil
 	}
 
-	envPath := e.GetWorkspacePath(ws)
+	envPath := e.GetProjectPath(project)
 
-	fmt.Fprintf(logWriter, "Deleting workspace at: %s\n", envPath)
+	fmt.Fprintf(logWriter, "Deleting project at: %s\n", envPath)
 
 	if err := os.RemoveAll(envPath); err != nil {
-		return fmt.Errorf("failed to delete workspace: %w", err)
+		return fmt.Errorf("failed to delete project: %w", err)
 	}
 
-	fmt.Fprintf(logWriter, "Workspace deleted successfully\n")
+	fmt.Fprintf(logWriter, "Project deleted successfully\n")
 	return nil
 }

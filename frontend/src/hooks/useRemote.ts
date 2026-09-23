@@ -11,7 +11,7 @@ import { useViewModeStore } from '@/store/viewModeStore';
 import type {
   ConnectServerRequest,
   CreateRegistryRequest,
-  CreateRemoteWorkspaceRequest,
+  CreateRemoteProjectRequest,
   FederatedIdentityReviewStatusFilter,
   UpdateRegistryRequest,
 } from '@/types';
@@ -140,11 +140,11 @@ export const useDisconnectServer = () => {
   });
 };
 
-export const useRemoteWorkspaces = (enabled: boolean) => {
+export const useRemoteProjects = (enabled: boolean) => {
   return withRemoteFlags(
     useQuery({
-      queryKey: ['remote', 'workspaces'],
-      queryFn: remoteApi.listWorkspaces,
+      queryKey: ['remote', 'projects'],
+      queryFn: remoteApi.listProjects,
       enabled,
       notifyOnChangeProps: remoteFlagNotifyProps,
       refetchInterval: pollWithErrorBackoff(5000),
@@ -152,49 +152,49 @@ export const useRemoteWorkspaces = (enabled: boolean) => {
   );
 };
 
-export const useRemoteWorkspace = (id: string) => {
+export const useRemoteProject = (id: string) => {
   return useQuery({
-    queryKey: ['remote', 'workspaces', id],
-    queryFn: () => remoteApi.getWorkspace(id),
+    queryKey: ['remote', 'projects', id],
+    queryFn: () => remoteApi.getProject(id),
     enabled: !!id,
   });
 };
 
-export const useRemoteVersions = (wsId: string) => {
+export const useRemoteVersions = (projectId: string) => {
   return useQuery({
-    queryKey: ['remote', 'workspaces', wsId, 'versions'],
-    queryFn: () => remoteApi.listVersions(wsId),
-    enabled: !!wsId,
+    queryKey: ['remote', 'projects', projectId, 'versions'],
+    queryFn: () => remoteApi.listVersions(projectId),
+    enabled: !!projectId,
   });
 };
 
-export const useRemoteTags = (wsId: string) => {
+export const useRemoteTags = (projectId: string) => {
   return useQuery({
-    queryKey: ['remote', 'workspaces', wsId, 'tags'],
-    queryFn: () => remoteApi.listTags(wsId),
-    enabled: !!wsId,
+    queryKey: ['remote', 'projects', projectId, 'tags'],
+    queryFn: () => remoteApi.listTags(projectId),
+    enabled: !!projectId,
   });
 };
 
-export const useCreateRemoteWorkspace = () => {
+export const useCreateRemoteProject = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (req: CreateRemoteWorkspaceRequest) =>
-      remoteApi.createWorkspace(req),
+    mutationFn: (req: CreateRemoteProjectRequest) =>
+      remoteApi.createProject(req),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['remote', 'workspaces'] });
+      queryClient.invalidateQueries({ queryKey: ['remote', 'projects'] });
     },
   });
 };
 
-export const useDeleteRemoteWorkspace = () => {
+export const useDeleteRemoteProject = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => remoteApi.deleteWorkspace(id),
+    mutationFn: (id: string) => remoteApi.deleteProject(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['remote', 'workspaces'] });
+      queryClient.invalidateQueries({ queryKey: ['remote', 'projects'] });
     },
   });
 };

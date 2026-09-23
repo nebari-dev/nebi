@@ -41,16 +41,16 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 		remote.POST("/connect", h.ConnectServer)
 		remote.GET("/server", h.GetServer)
 		remote.DELETE("/server", h.DisconnectServer)
-		remote.GET("/workspaces", h.ListWorkspaces)
-		remote.GET("/workspaces/:id", h.GetWorkspace)
-		remote.POST("/workspaces", h.CreateWorkspace)
-		remote.DELETE("/workspaces/:id", h.DeleteWorkspace)
-		remote.GET("/workspaces/:id/versions", h.ListVersions)
-		remote.GET("/workspaces/:id/tags", h.ListTags)
-		remote.GET("/workspaces/:id/pixi-toml", h.GetPixiToml)
-		remote.GET("/workspaces/:id/versions/:version/pixi-toml", h.GetVersionPixiToml)
-		remote.GET("/workspaces/:id/versions/:version/pixi-lock", h.GetVersionPixiLock)
-		remote.POST("/workspaces/:id/push", h.PushVersion)
+		remote.GET("/projects", h.ListProjects)
+		remote.GET("/projects/:id", h.GetProject)
+		remote.POST("/projects", h.CreateProject)
+		remote.DELETE("/projects/:id", h.DeleteProject)
+		remote.GET("/projects/:id/versions", h.ListVersions)
+		remote.GET("/projects/:id/tags", h.ListTags)
+		remote.GET("/projects/:id/pixi-toml", h.GetPixiToml)
+		remote.GET("/projects/:id/versions/:version/pixi-toml", h.GetVersionPixiToml)
+		remote.GET("/projects/:id/versions/:version/pixi-lock", h.GetVersionPixiLock)
+		remote.POST("/projects/:id/push", h.PushVersion)
 		remote.GET("/registries", h.ListRegistries)
 		remote.GET("/jobs", h.ListJobs)
 		remote.POST("/admin/registries", h.CreateAdminRegistry)
@@ -170,12 +170,12 @@ func TestGetServer_AfterStoreSetup(t *testing.T) {
 	}
 }
 
-func TestListWorkspaces_NotConnected(t *testing.T) {
+func TestListProjects_NotConnected(t *testing.T) {
 	db := setupTestDB(t)
 	router := setupRouter(db)
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/api/v1/remote/workspaces", nil)
+	req, _ := http.NewRequest("GET", "/api/v1/remote/projects", nil)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusServiceUnavailable {
@@ -557,18 +557,18 @@ func TestListJobs_WithMockRemote(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode([]map[string]any{
 				{
-					"id":           "job-1",
-					"workspace_id": "ws-1",
-					"type":         "create",
-					"status":       "completed",
-					"created_at":   "2024-01-01T00:00:00Z",
+					"id":         "job-1",
+					"project_id": "ws-1",
+					"type":       "create",
+					"status":     "completed",
+					"created_at": "2024-01-01T00:00:00Z",
 				},
 				{
-					"id":           "job-2",
-					"workspace_id": "ws-2",
-					"type":         "install",
-					"status":       "running",
-					"created_at":   "2024-01-02T00:00:00Z",
+					"id":         "job-2",
+					"project_id": "ws-2",
+					"type":       "install",
+					"status":     "running",
+					"created_at": "2024-01-02T00:00:00Z",
 				},
 			})
 			return

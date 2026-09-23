@@ -139,6 +139,7 @@ export interface ProjectVersion {
   id: string; // UUID
   project_id: string; // UUID
   version_number: number;
+  manifest_version?: string;
   lock_file_content?: string; // Not included in list view
   manifest_content?: string; // Not included in list view
   package_metadata?: string; // Not included in list view
@@ -307,6 +308,7 @@ export interface RemoteProjectVersion {
   id: string;
   project_id: string;
   version_number: number;
+  manifest_version?: string;
   created_at: string;
   description?: string;
 }

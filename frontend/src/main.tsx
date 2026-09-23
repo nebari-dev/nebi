@@ -8,7 +8,9 @@ import '@fontsource/fira-code/400.css';
 import '@fontsource/fira-code/500.css';
 import './index.css';
 import App from './App.tsx';
+import { ThemeProvider } from './hooks/theme-provider';
 import { loadBrandingConfig } from './lib/brandingConfig';
+import { THEME_STORAGE_KEY } from './lib/theme';
 
 const rootElement = document.getElementById('root');
 
@@ -21,7 +23,9 @@ async function bootstrap(root: HTMLElement): Promise<void> {
 
   createRoot(root).render(
     <StrictMode>
-      <App />
+      <ThemeProvider storageKey={THEME_STORAGE_KEY}>
+        <App />
+      </ThemeProvider>
     </StrictMode>,
   );
 }

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -408,16 +409,31 @@ func (s *ProjectService) PushVersion(ctx context.Context, projectID string, req 
 	}, nil
 }
 
-// ListVersions returns versions for a project (excluding large file contents).
+// ListVersions returns versions for a project, excluding large file contents
+// from the response while deriving the display version from pixi.toml.
 func (s *ProjectService) ListVersions(projectID string) ([]models.ProjectVersion, error) {
 	var versions []models.ProjectVersion
 	err := s.db.
-		Select("id", "project_id", "version_number", "job_id", "created_by", "description", "created_at").
+		Select("id", "project_id", "version_number", "manifest_content", "job_id", "created_by", "description", "created_at").
 		Where("project_id = ?", projectID).
 		Order("version_number DESC").
 		Find(&versions).Error
 	if err != nil {
 		return nil, err
+	}
+	for i := range versions {
+		manifestVersion, err := pixi.ExtractWorkspaceVersion(versions[i].ManifestContent)
+		if err == nil {
+			versions[i].ManifestVersion = manifestVersion
+		} else {
+			slog.Warn(
+				"Failed to parse project version manifest",
+				"project_id", versions[i].ProjectID,
+				"version_number", versions[i].VersionNumber,
+				"error", err,
+			)
+		}
+		versions[i].ManifestContent = ""
 	}
 	return versions, nil
 }
@@ -433,6 +449,17 @@ func (s *ProjectService) GetVersion(projectID string, versionNum string) (*model
 			return nil, ErrNotFound
 		}
 		return nil, err
+	}
+	manifestVersion, err := pixi.ExtractWorkspaceVersion(version.ManifestContent)
+	if err == nil {
+		version.ManifestVersion = manifestVersion
+	} else {
+		slog.Warn(
+			"Failed to parse project version manifest",
+			"project_id", version.ProjectID,
+			"version_number", version.VersionNumber,
+			"error", err,
+		)
 	}
 	return &version, nil
 }

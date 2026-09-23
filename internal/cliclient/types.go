@@ -92,10 +92,12 @@ type PublishResponse struct {
 
 // ProjectVersion represents a version of a project.
 type ProjectVersion struct {
-	ID            string `json:"id"`
-	ProjectID     string `json:"project_id"`
-	VersionNumber int32  `json:"version_number"`
-	CreatedAt     string `json:"created_at"`
+	ID              string `json:"id"`
+	ProjectID       string `json:"project_id"`
+	VersionNumber   int32  `json:"version_number"`
+	ManifestVersion string `json:"manifest_version,omitempty"`
+	Description     string `json:"description,omitempty"`
+	CreatedAt       string `json:"created_at"`
 }
 
 // Registry represents an OCI registry.

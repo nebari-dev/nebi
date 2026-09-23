@@ -2,10 +2,10 @@ import { Loader2, Pencil, Star, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { CreateRegistryDialog } from '@/components/admin/CreateRegistryDialog';
 import { EditRegistryDialog } from '@/components/admin/EditRegistryDialog';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Table,
   TableBody,

@@ -46,18 +46,15 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs';
-import { UserBadge } from '@/components/ui/user-badge';
+import { UserBadge } from '@/components/user-badge';
 import { VersionHistory } from '@/components/versions/VersionHistory';
 import { useCollaborators } from '@/hooks/useAdmin';
 import { usePackages } from '@/hooks/usePackages';
 import { useProject } from '@/hooks/useProjects';
 import { usePublications, useUpdatePublication } from '@/hooks/useRegistries';
 import { buildImportCommand } from '@/lib/registry';
-import {
-  capitalize,
-  getInstallStatusColor,
-  getProjectStatusColor,
-} from '@/lib/utils';
+import { getInstallStatusColor, getProjectStatusColor } from '@/lib/status';
+import { capitalize } from '@/lib/strings';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
 import { useProjectNavStore } from '@/store/projectNavStore';

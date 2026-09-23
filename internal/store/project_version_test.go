@@ -166,7 +166,7 @@ func TestRollbackToVersion(t *testing.T) {
 	if v3.VersionNumber != 3 {
 		t.Fatalf("expected new snapshot to be version 3, got %d", v3.VersionNumber)
 	}
-	if v3.Description != "Rolled back to version 1" {
+	if v3.Description != "Rolled back to snapshot 1" {
 		t.Fatalf("unexpected description: %q", v3.Description)
 	}
 

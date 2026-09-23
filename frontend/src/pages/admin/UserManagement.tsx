@@ -1,10 +1,10 @@
 import { Loader2, Shield, ShieldOff, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { CreateUserDialog } from '@/components/admin/CreateUserDialog';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Table,
   TableBody,

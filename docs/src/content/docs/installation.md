@@ -29,6 +29,10 @@ pixi global install nebi-desktop
 
 ## Installation script
 
+The installer verifies release checksums and Sigstore signatures before
+extracting artifacts. Install `cosign` first from the
+[Sigstore installation docs](https://docs.sigstore.dev/cosign/system_config/installation/).
+
 ### Linux & MacOS
 
 This installs the latest `nebi`, `nebi-server`, and `nebi-web` release binaries to `~/.local/bin`, plus the desktop app:
@@ -76,7 +80,7 @@ For certain cases like development or testing, you can install Nebi from source.
 
 Prerequisites: Go 1.25+ and Node.js 20+
 
-From a source checkout:
+From a source checkout (prefer a released tag or audited commit):
 
 ```bash
 make build

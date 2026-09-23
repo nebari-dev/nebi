@@ -1,80 +1,90 @@
-.nebi-hero-logo {
-  width: min(150px, 42vw);
-  height: auto;
+/* Landing page (src/content/docs/index.mdx).
+ *
+ * The hero, link buttons, card grid link footers (.nbr-grid-3) and two-column
+ * link list (.nbr-cols-2) come from @nebari/starlight. This file only adds the
+ * landing-specific bands: section rhythm, the pill-style demo tabs, the demo
+ * figure frame, and the colored (wash) feature cards from the Figma design. */
+
+.sl-markdown-content .nebi-section {
+  margin-top: 0;
+  padding-block: clamp(2.5rem, 6vw, 4rem);
+}
+.sl-markdown-content .nebi-intro {
+  padding-block: clamp(1.5rem, 4vw, 2.5rem) 0;
+}
+.sl-markdown-content .nebi-popular {
+  padding-block: 0 clamp(2.5rem, 6vw, 3.5rem);
 }
 
-.nebi-demo-section {
-  margin-block: clamp(3rem, 8vw, 5rem);
-}
-
-.nebi-demo-section h2 {
-  margin-block-end: 1.5rem;
-  text-align: center;
-}
-
-.nebi-demo-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.25rem;
-}
-
-.nebi-demo-grid figure {
+/* Section header: h2 + muted subtitle, then a fixed gap before the content. */
+.sl-markdown-content .nebi-section > h2 {
   margin: 0;
+  font-size: var(--sl-text-h2);
+  color: var(--nbr-foreground);
+}
+.sl-markdown-content .nebi-section__subtitle {
+  margin: 0.375rem 0 0;
+  font-size: 1rem;
+  line-height: 1.75rem;
+  color: var(--nbr-muted-foreground-strong);
+}
+.sl-markdown-content .nebi-section__subtitle + * {
+  margin-top: 1.75rem;
+}
+.sl-markdown-content .nebi-popular > h2 + * {
+  margin-top: 1.25rem;
 }
 
-.nebi-demo-grid figcaption {
-  margin-block-end: 0.6rem;
-  color: var(--sl-color-gray-2);
-  font-weight: 700;
-  text-align: center;
+/* ── Demo: pill tabs over a bordered figure ── */
+.nebi-demo starlight-tabs .tablist-wrapper {
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.nebi-demo starlight-tabs [role="tablist"] {
+  gap: 0.25rem;
+}
+.nebi-demo starlight-tabs .tab > [role="tab"] {
+  padding: 0.375rem 0.625rem;
+  border-radius: var(--nbr-radius-md);
+  font-weight: 500;
+  color: var(--nbr-muted-foreground);
+}
+.nebi-demo starlight-tabs .tab > [role="tab"]:hover {
+  color: var(--nbr-foreground);
+}
+.nebi-demo starlight-tabs .tab > [role="tab"][aria-selected="true"] {
+  background-color: var(--nbr-muted);
+  color: var(--nbr-foreground);
+  box-shadow: none;
+}
+.nebi-demo starlight-tabs .tablist-wrapper ~ [role="tabpanel"] {
+  margin-top: 1rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+/* @nebari/starlight already frames figure images and styles the caption; the
+ * design only differs in a left-aligned caption with a slightly larger gap. */
+.sl-markdown-content section.nebi-demo figure:not(.frame) > figcaption {
+  margin-top: 0.75rem;
+  text-align: start;
 }
 
-.nebi-demo-grid img {
-  display: block;
-  width: 100%;
-  aspect-ratio: 16 / 10;
-  object-fit: contain;
-  border: 1px solid var(--sl-color-gray-5);
-  border-radius: 8px;
-  background: var(--sl-color-bg);
-  box-shadow: var(--sl-shadow-md);
+/* ── Features: colored wash cards, cycling magenta / teal / yellow ── */
+.nebi-features .card {
+  border-color: var(--nbr-border);
+  border-radius: 0.75rem;
 }
-
-.nebi-feature-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: stretch;
-  gap: 1rem;
-  margin-block: 3rem;
+.nebi-features .card:nth-child(3n + 1) {
+  background-color: var(--nbr-wash-1);
 }
-
-.nebi-feature-grid article {
-  margin: 0;
-  height: 100%;
-  min-height: 12rem;
-  padding: 1.25rem;
-  border: 1px solid var(--sl-color-gray-5);
-  border-radius: 8px;
-  background: var(--sl-color-bg-nav);
+.nebi-features .card:nth-child(3n + 2) {
+  background-color: var(--nbr-wash-2);
 }
-
-.nebi-feature-grid h2 {
-  margin-block: 0 0.75rem;
-  font-size: var(--sl-text-h4);
+.nebi-features .card:nth-child(3n) {
+  background-color: var(--nbr-wash-3);
 }
-
-.nebi-feature-grid p {
-  margin: 0;
-  color: var(--sl-color-gray-2);
-}
-
-@media (max-width: 52rem) {
-  .nebi-demo-grid,
-  .nebi-feature-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .nebi-feature-grid article {
-    min-height: auto;
-  }
+.nebi-features .card .body > p:last-child {
+  padding-top: 0.75rem;
 }

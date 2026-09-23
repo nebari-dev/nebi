@@ -29,8 +29,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs';
-import { UserBadge } from '@/components/ui/user-badge';
-import { capitalize, getProjectStatusColor } from '@/lib/utils';
+import { UserBadge } from '@/components/user-badge';
+import { getProjectStatusColor } from '@/lib/status';
+import { capitalize } from '@/lib/strings';
+import { getProjectVersionLabel } from '@/lib/versions';
 import type { RemoteProjectTag, RemoteProjectVersion } from '@/types';
 
 export const RemoteProjectDetail = () => {
@@ -271,7 +273,8 @@ export const RemoteProjectDetail = () => {
                 <Table aria-label="Version history">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Version</TableHead>
+                      <TableHead>Project Version</TableHead>
+                      <TableHead>Snapshot</TableHead>
                       <TableHead>Description</TableHead>
                       <TableHead>Created</TableHead>
                     </TableRow>
@@ -280,7 +283,12 @@ export const RemoteProjectDetail = () => {
                     {versions.map((v: RemoteProjectVersion) => (
                       <TableRow key={v.id || v.version_number}>
                         <TableCell>
-                          <Badge variant="outline">v{v.version_number}</Badge>
+                          <Badge variant="outline">
+                            {getProjectVersionLabel(v)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          #{v.version_number}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {v.description || '-'}
@@ -318,7 +326,7 @@ export const RemoteProjectDetail = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Tag</TableHead>
-                      <TableHead>Version</TableHead>
+                      <TableHead>Snapshot</TableHead>
                       <TableHead>Created</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -329,7 +337,7 @@ export const RemoteProjectDetail = () => {
                           <Badge variant="outline">{t.tag}</Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          v{t.version_number}
+                          #{t.version_number}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {t.created_at

@@ -985,7 +985,7 @@ func TestExecuteJob_UpdateReinstallFailureDoesNotFailJob(t *testing.T) {
 		t.Fatalf("executeJob: expected reinstall failure not to fail the job, got %v", err)
 	}
 
-	resp, err := svc.Get(ws.ID.String())
+	resp, err := svc.Get(ws.ID.String(), ws.OwnerID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -1026,7 +1026,7 @@ func TestProcessJob_UpdateReinstallResourceFailureFailsAndCleansUp(t *testing.T)
 		t.Fatalf("expected failed reinstall cleanup to remove .pixi/envs, stat err=%v", err)
 	}
 
-	resp, err := svc.Get(ws.ID.String())
+	resp, err := svc.Get(ws.ID.String(), ws.OwnerID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}

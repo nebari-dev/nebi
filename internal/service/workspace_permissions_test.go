@@ -387,3 +387,97 @@ func TestListWorkspaces_IncludesGroupShared(t *testing.T) {
 		t.Fatalf("bob should see workspace %s shared via group, got %+v", ws.ID, results)
 	}
 }
+
+func TestGet_EffectiveWriteAccess(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		directRole string
+		groupRole  string
+		local      bool
+		admin      bool
+		wantWrite  bool
+	}{
+		{name: "owner", directRole: "owner", wantWrite: true},
+		{name: "editor", directRole: "editor", wantWrite: true},
+		{name: "viewer", directRole: "viewer"},
+		{name: "group editor", groupRole: "editor", wantWrite: true},
+		{name: "group viewer", groupRole: "viewer"},
+		{name: "viewer with group editor access", directRole: "viewer", groupRole: "editor", wantWrite: true},
+		{name: "editor with group viewer access", directRole: "editor", groupRole: "viewer", wantWrite: true},
+		{name: "admin without workspace write access", directRole: "viewer", admin: true},
+		{name: "local mode", local: true, wantWrite: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, db := testSetup(t, tt.local)
+			owner := createTestUser(t, db, "owner")
+			user := createTestUser(t, db, "reader")
+			ws := createReadyWorkspace(t, svc, db, "permissions", owner)
+			if tt.directRole == "owner" {
+				user = owner
+			} else if tt.directRole != "" {
+				if err := svc.rbac.GrantWorkspaceAccess(user, ws.ID, tt.directRole); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.groupRole != "" {
+				group := uuid.New()
+				if err := svc.rbac.AddUserToGroup(user, group); err != nil {
+					t.Fatal(err)
+				}
+				if err := svc.rbac.GrantGroupWorkspaceAccess(group, ws.ID, tt.groupRole); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.admin {
+				if err := svc.rbac.MakeAdmin(user); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.local {
+				// Local mode must bypass RBAC even without a provider.
+				svc.rbac = nil
+			}
+
+			resp, err := svc.Get(ws.ID.String(), user)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resp.CanWrite != tt.wantWrite {
+				t.Fatalf("can_write = %v, want %v", resp.CanWrite, tt.wantWrite)
+			}
+			data, err := json.Marshal(resp)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var decoded struct {
+				CanWrite *bool `json:"can_write"`
+			}
+			if err := json.Unmarshal(data, &decoded); err != nil {
+				t.Fatal(err)
+			}
+			if decoded.CanWrite == nil || *decoded.CanWrite != tt.wantWrite {
+				t.Fatalf("response must include can_write even when false: %s", data)
+			}
+		})
+	}
+}
+
+type failingWriteAccessProvider struct {
+	rbac.Provider
+}
+
+func (failingWriteAccessProvider) CanWriteWorkspace(uuid.UUID, uuid.UUID) (bool, error) {
+	return true, errors.New("permission lookup failed")
+}
+
+func TestGet_WriteAccessError(t *testing.T) {
+	svc, db := testSetup(t, false)
+	owner := createTestUser(t, db, "owner")
+	ws := createReadyWorkspace(t, svc, db, "permissions", owner)
+	svc.rbac = failingWriteAccessProvider{}
+
+	resp, err := svc.Get(ws.ID.String(), owner)
+	if err == nil || resp != nil {
+		t.Fatalf("expected permission lookup failure, got response %v, error %v", resp, err)
+	}
+}

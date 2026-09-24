@@ -2033,7 +2033,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Workspace"
+                            "$ref": "#/definitions/service.WorkspaceDetailResponse"
                         }
                     },
                     "401": {
@@ -4036,6 +4036,23 @@ const docTemplate = `{
                 "GroupSourceOIDC"
             ]
         },
+        "models.InstallStatus": {
+            "type": "string",
+            "enum": [
+                "not_installed",
+                "installing",
+                "installed",
+                "uninstalling",
+                "install_failed"
+            ],
+            "x-enum-varnames": [
+                "InstallStatusNotInstalled",
+                "InstallStatusInstalling",
+                "InstallStatusInstalled",
+                "InstallStatusUninstalling",
+                "InstallStatusFailed"
+            ]
+        },
         "models.Job": {
             "type": "object",
             "properties": {
@@ -4590,6 +4607,52 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "workspace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.WorkspaceDetailResponse": {
+            "type": "object",
+            "properties": {
+                "can_write": {
+                    "type": "boolean"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "install_status": {
+                    "$ref": "#/definitions/models.InstallStatus"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner": {
+                    "$ref": "#/definitions/models.User"
+                },
+                "owner_id": {
+                    "type": "string"
+                },
+                "path": {
+                    "description": "filesystem path (local-mode)",
+                    "type": "string"
+                },
+                "size_bytes": {
+                    "type": "integer"
+                },
+                "size_formatted": {
+                    "type": "string"
+                },
+                "source": {
+                    "description": "\"managed\", \"local\"",
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/models.WorkspaceStatus"
+                },
+                "updated_at": {
                     "type": "string"
                 }
             }

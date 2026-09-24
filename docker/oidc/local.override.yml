@@ -1,0 +1,18 @@
+# Laptop override: serve *.localhost with a self-signed wildcard cert instead
+# of Let's Encrypt. Generate the cert first with docker/oidc/gen-local-certs.sh.
+services:
+  traefik:
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.file.filename=/etc/traefik/dynamic/tls.yml
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls=true
+      - --accesslog=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/oidc/traefik/tls.yml:/etc/traefik/dynamic/tls.yml:ro
+      - ./docker/oidc/certs:/certs:ro

@@ -1,0 +1,66 @@
+{
+  "realm": "nebi",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "groups": [
+    {
+      "name": "nebi-admin"
+    },
+    {
+      "name": "data-science"
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "nebi",
+      "name": "Nebi web",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${NEBI_OIDC_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "https://${NEBI_DOMAIN}/api/v1/auth/oidc/callback"
+      ],
+      "webOrigins": [
+        "https://${NEBI_DOMAIN}"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "https://${NEBI_DOMAIN}/*",
+        "pkce.code.challenge.method": ""
+      }
+    },
+    {
+      "clientId": "nebi-cli",
+      "name": "Nebi CLI (device flow)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "attributes": {
+        "oauth2.device.authorization.grant.enabled": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "nebi-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "nebi",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ]
+}

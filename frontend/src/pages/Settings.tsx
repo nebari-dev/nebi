@@ -135,7 +135,7 @@ export const Settings = () => {
           ) : (
             <form onSubmit={handleConnect} className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Connect to a remote Nebi server to sync workspaces and access
+                Connect to a remote Nebi server to sync projects and access
                 shared resources.
               </p>
               <div className="space-y-2">

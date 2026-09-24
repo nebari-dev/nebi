@@ -21,8 +21,8 @@ import {
   useFederatedIdentityReviews,
   useIsAdmin,
   useRejectFederatedIdentityReview,
-  useShareWorkspace,
-  useUnshareWorkspace,
+  useShareProject,
+  useUnshareProject,
   useUsers,
 } from './useAdmin';
 
@@ -112,7 +112,7 @@ describe('useDeleteUser', () => {
 });
 
 describe('useCollaborators', () => {
-  it('fetches collaborators for a workspace', async () => {
+  it('fetches collaborators for a project', async () => {
     const { result } = renderHook(() => useCollaborators('ws-1'), {
       wrapper: createWrapper(),
     });
@@ -131,9 +131,9 @@ describe('useCollaborators', () => {
   });
 });
 
-describe('useShareWorkspace', () => {
+describe('useShareProject', () => {
   it('calls the share endpoint successfully', async () => {
-    const { result } = renderHook(() => useShareWorkspace('ws-1'), {
+    const { result } = renderHook(() => useShareProject('ws-1'), {
       wrapper: createWrapper(),
     });
     result.current.mutate({ user_id: 'user-3', role: 'viewer' });
@@ -141,9 +141,9 @@ describe('useShareWorkspace', () => {
   });
 });
 
-describe('useUnshareWorkspace', () => {
+describe('useUnshareProject', () => {
   it('calls the unshare endpoint successfully', async () => {
-    const { result } = renderHook(() => useUnshareWorkspace('ws-1'), {
+    const { result } = renderHook(() => useUnshareProject('ws-1'), {
       wrapper: createWrapper(),
     });
     result.current.mutate('user-2');

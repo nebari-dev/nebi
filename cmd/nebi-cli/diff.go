@@ -17,12 +17,12 @@ var diffLock bool
 
 var diffCmd = &cobra.Command{
 	Use:   "diff <ref-a> [ref-b] [--lock]",
-	Short: "Compare workspace specifications between two sources",
+	Short: "Compare project specifications between two sources",
 	Long: `Compare pixi.toml (and pixi.lock with --lock) between two references.
 Each reference can be:
   - A path (contains a slash): ./dir, /tmp/project, foo/bar
-  - A tracked workspace name (bare word): data-science
-  - A server ref (contains a colon): myworkspace:v1
+  - A tracked project name (bare word): data-science
+  - A server ref (contains a colon): myproject:v1
 
 If no refs are given, compares the current directory against the last
 pushed/pulled origin.
@@ -33,15 +33,15 @@ Examples:
   nebi diff                                    # local vs origin
   nebi diff ./other-project                    # other dir vs cwd
   nebi diff ./project-a ./project-b            # two local dirs
-  nebi diff data-science                       # tracked workspace vs cwd
-  nebi diff myworkspace:v1                     # server version vs cwd
-  nebi diff myworkspace:v1 myworkspace:v2      # two server versions
-  nebi diff myworkspace:v1 ./local-dir         # server vs local dir
+  nebi diff data-science                       # tracked project vs cwd
+  nebi diff myproject:v1                     # server version vs cwd
+  nebi diff myproject:v1 myproject:v2      # two server versions
+  nebi diff myproject:v1 ./local-dir         # server vs local dir
 
 Use --lock to also compare pixi.lock files.`,
 	Args:              cobra.RangeArgs(0, 2),
 	RunE:              runDiff,
-	ValidArgsFunction: completeWorkspaceNamesOrPaths,
+	ValidArgsFunction: completeProjectNamesOrPaths,
 }
 
 func init() {
@@ -138,35 +138,35 @@ func runDiff(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// resolveSource resolves a ref (directory, workspace name, or workspace:tag) into a diffSource.
+// resolveSource resolves a ref (directory, project name, or project:tag) into a diffSource.
 func resolveSource(ref, defaultLabel string) (*diffSource, error) {
 	// 1. Local directory path (must contain a slash, e.g. ./foo, /tmp/foo, foo/bar)
 	if isPath(ref) {
 		return resolveLocalSource(ref, defaultLabel)
 	}
 
-	// 2. Local workspace name (check store before assuming server ref)
+	// 2. Local project name (check store before assuming server ref)
 	if !strings.Contains(ref, ":") {
 		s, err := store.New()
 		if err == nil {
 			defer s.Close()
-			workspaces, err := findWorkspacesByNameWithSync(s, ref)
-			if err == nil && len(workspaces) > 0 {
-				var ws *store.LocalWorkspace
-				if len(workspaces) == 1 {
-					ws = &workspaces[0]
+			projects, err := findProjectsByNameWithSync(s, ref)
+			if err == nil && len(projects) > 0 {
+				var project *store.LocalProject
+				if len(projects) == 1 {
+					project = &projects[0]
 				} else {
-					ws, err = pickWorkspace(workspaces, ref)
+					project, err = pickProject(projects, ref)
 					if err != nil {
 						return nil, err
 					}
 				}
-				return resolveLocalSource(ws.Path, ref)
+				return resolveLocalSource(project.Path, ref)
 			}
 		}
 	}
 
-	// 3. Server ref (workspace:tag)
+	// 3. Server ref (project:tag)
 	return resolveServerSource(ref)
 }
 
@@ -202,7 +202,7 @@ func resolveLocalSource(dir, defaultLabel string) (*diffSource, error) {
 }
 
 func resolveServerSource(ref string) (*diffSource, error) {
-	wsName, tag := parseWsRef(ref)
+	projectName, tag := parseProjectRef(ref)
 
 	client, err := getAuthenticatedClient()
 	if err != nil {
@@ -211,26 +211,26 @@ func resolveServerSource(ref string) (*diffSource, error) {
 
 	ctx := context.Background()
 
-	ws, err := findWsByName(client, ctx, wsName)
+	project, err := findProjectByName(client, ctx, projectName)
 	if err != nil {
 		return nil, err
 	}
 
-	versionNumber, err := resolveVersionNumber(client, ctx, ws.ID, wsName, tag)
+	versionNumber, err := resolveVersionNumber(client, ctx, project.ID, projectName, tag)
 	if err != nil {
 		return nil, err
 	}
 
-	toml, err := client.GetVersionPixiToml(ctx, ws.ID, versionNumber)
+	toml, err := client.GetVersionPixiToml(ctx, project.ID, versionNumber)
 	if err != nil {
 		return nil, fmt.Errorf("fetching pixi.toml: %w", err)
 	}
 
-	lock, _ := client.GetVersionPixiLock(ctx, ws.ID, versionNumber)
+	lock, _ := client.GetVersionPixiLock(ctx, project.ID, versionNumber)
 
-	label := wsName
+	label := projectName
 	if tag != "" {
-		label = wsName + ":" + tag
+		label = projectName + ":" + tag
 	}
 
 	return &diffSource{
@@ -241,9 +241,9 @@ func resolveServerSource(ref string) (*diffSource, error) {
 }
 
 // resolveVersionNumber resolves a tag or latest version to a version number.
-func resolveVersionNumber(client *cliclient.Client, ctx context.Context, wsID, wsName, tag string) (int32, error) {
+func resolveVersionNumber(client *cliclient.Client, ctx context.Context, projectID, projectName, tag string) (int32, error) {
 	if tag != "" {
-		tags, err := client.GetWorkspaceTags(ctx, wsID)
+		tags, err := client.GetProjectTags(ctx, projectID)
 		if err != nil {
 			return 0, fmt.Errorf("getting tags: %w", err)
 		}
@@ -252,15 +252,15 @@ func resolveVersionNumber(client *cliclient.Client, ctx context.Context, wsID, w
 				return int32(t.VersionNumber), nil
 			}
 		}
-		return 0, fmt.Errorf("tag %q not found for workspace %q", tag, wsName)
+		return 0, fmt.Errorf("tag %q not found for project %q", tag, projectName)
 	}
 
-	versions, err := client.GetWorkspaceVersions(ctx, wsID)
+	versions, err := client.GetProjectVersions(ctx, projectID)
 	if err != nil {
 		return 0, fmt.Errorf("getting versions: %w", err)
 	}
 	if len(versions) == 0 {
-		return 0, fmt.Errorf("workspace %q has no versions", wsName)
+		return 0, fmt.Errorf("project %q has no versions", projectName)
 	}
 	latest := versions[0]
 	for _, v := range versions {

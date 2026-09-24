@@ -18,9 +18,9 @@ type JobService struct {
 }
 
 // NewJobService creates a new JobService. In local mode job visibility is
-// not restricted by workspace ownership: the whole machine belongs to one
+// not restricted by project ownership: the whole machine belongs to one
 // person and every request runs as the synthetic local-user, so ownership
-// filtering would hide jobs for workspaces created under a different mode.
+// filtering would hide jobs for projects created under a different mode.
 func NewJobService(db *gorm.DB, isLocal bool) *JobService {
 	return &JobService{db: db, isLocal: isLocal}
 }
@@ -39,27 +39,27 @@ func (s *JobService) RecoverInterruptedJobs(ctx context.Context) error {
 			}).Error; err != nil {
 			return fmt.Errorf("recover interrupted jobs: %w", err)
 		}
-		// A crash may occur between updating a workspace and its job row, so
-		// also settle transitional workspaces whose job is already terminal.
-		if err := tx.Model(&models.Workspace{}).
-			Where("status IN ?", []models.WorkspaceStatus{
-				models.WsStatusPending, models.WsStatusCreating, models.WsStatusDeleting,
-			}).Update("status", models.WsStatusFailed).Error; err != nil {
-			return fmt.Errorf("recover interrupted workspaces: %w", err)
+		// A crash may occur between updating a project and its job row, so
+		// also settle transitional projects whose job is already terminal.
+		if err := tx.Model(&models.Project{}).
+			Where("status IN ?", []models.ProjectStatus{
+				models.ProjectStatusPending, models.ProjectStatusCreating, models.ProjectStatusDeleting,
+			}).Update("status", models.ProjectStatusFailed).Error; err != nil {
+			return fmt.Errorf("recover interrupted projects: %w", err)
 		}
 		return nil
 	})
 }
 
-// ListJobs returns jobs for workspaces owned by the given user, or all
+// ListJobs returns jobs for projects owned by the given user, or all
 // jobs in local mode.
 func (s *JobService) ListJobs(userID uuid.UUID) ([]models.Job, error) {
 	var jobs []models.Job
 	query := s.db.
 		Select("jobs.*").
-		Joins("JOIN workspaces ON workspaces.id = jobs.workspace_id")
+		Joins("JOIN projects ON projects.id = jobs.project_id")
 	if !s.isLocal {
-		query = query.Where("workspaces.owner_id = ?", userID)
+		query = query.Where("projects.owner_id = ?", userID)
 	}
 	err := query.Order("jobs.created_at DESC").Find(&jobs).Error
 
@@ -70,15 +70,15 @@ func (s *JobService) ListJobs(userID uuid.UUID) ([]models.Job, error) {
 }
 
 // GetJob returns a single job by ID. Outside local mode it verifies the
-// user owns the workspace.
+// user owns the project.
 func (s *JobService) GetJob(jobID string, userID uuid.UUID) (*models.Job, error) {
 	var job models.Job
 	query := s.db.
 		Select("jobs.*").
-		Joins("JOIN workspaces ON workspaces.id = jobs.workspace_id").
+		Joins("JOIN projects ON projects.id = jobs.project_id").
 		Where("jobs.id = ?", jobID)
 	if !s.isLocal {
-		query = query.Where("workspaces.owner_id = ?", userID)
+		query = query.Where("projects.owner_id = ?", userID)
 	}
 	err := query.First(&job).Error
 
@@ -92,16 +92,16 @@ func (s *JobService) GetJob(jobID string, userID uuid.UUID) (*models.Job, error)
 }
 
 // GetJobForStreaming returns a job by ID for SSE streaming. Outside local
-// mode it verifies the user owns the workspace. Returns the job regardless
+// mode it verifies the user owns the project. Returns the job regardless
 // of status (caller decides what to do with completed jobs).
 func (s *JobService) GetJobForStreaming(jobID uuid.UUID, userID uuid.UUID) (*models.Job, error) {
 	var job models.Job
 	query := s.db.
 		Select("jobs.*").
-		Joins("JOIN workspaces ON workspaces.id = jobs.workspace_id").
+		Joins("JOIN projects ON projects.id = jobs.project_id").
 		Where("jobs.id = ?", jobID)
 	if !s.isLocal {
-		query = query.Where("workspaces.owner_id = ?", userID)
+		query = query.Where("projects.owner_id = ?", userID)
 	}
 	err := query.First(&job).Error
 
@@ -153,15 +153,15 @@ func (s *JobService) MarkPanicked(job *models.Job, panicMsg string) {
 }
 
 // RecordFailedEnvInstall writes an already-failed env-install job for a
-// workspace whose environment was reinstalled outside the explicit
+// project whose environment was reinstalled outside the explicit
 // install flow (e.g. the worker's auto-reinstall after an update or
 // rollback). It exists so that failure surfaces through the same
-// install_status derivation an explicit `nebi workspace install` failure
+// install_status derivation an explicit `nebi project install` failure
 // would, without ever failing the job that triggered the reinstall.
-func (s *JobService) RecordFailedEnvInstall(workspaceID uuid.UUID, errMsg string) error {
+func (s *JobService) RecordFailedEnvInstall(projectID uuid.UUID, errMsg string) error {
 	now := time.Now()
 	job := &models.Job{
-		WorkspaceID: workspaceID,
+		ProjectID:   projectID,
 		Type:        models.JobTypeEnvInstall,
 		Status:      models.JobStatusFailed,
 		Error:       errMsg,
@@ -179,18 +179,18 @@ func (s *JobService) FlushLogs(jobID uuid.UUID, logs string) error {
 	return s.db.Model(&models.Job{}).Where("id = ?", jobID).Update("logs", logs).Error
 }
 
-// LoadWorkspace loads a workspace by ID.
-func (s *JobService) LoadWorkspace(workspaceID uuid.UUID) (*models.Workspace, error) {
-	var ws models.Workspace
-	if err := s.db.First(&ws, workspaceID).Error; err != nil {
-		return nil, fmt.Errorf("load workspace: %w", err)
+// LoadProject loads a project by ID.
+func (s *JobService) LoadProject(projectID uuid.UUID) (*models.Project, error) {
+	var project models.Project
+	if err := s.db.First(&project, projectID).Error; err != nil {
+		return nil, fmt.Errorf("load project: %w", err)
 	}
-	return &ws, nil
+	return &project, nil
 }
 
-// LoadVersion loads a workspace version by ID.
-func (s *JobService) LoadVersion(versionID uuid.UUID) (*models.WorkspaceVersion, error) {
-	var version models.WorkspaceVersion
+// LoadVersion loads a project version by ID.
+func (s *JobService) LoadVersion(versionID uuid.UUID) (*models.ProjectVersion, error) {
+	var version models.ProjectVersion
 	if err := s.db.First(&version, versionID).Error; err != nil {
 		return nil, fmt.Errorf("load version: %w", err)
 	}

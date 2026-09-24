@@ -23,21 +23,21 @@ func TestLocalPublishDefaults(t *testing.T) {
 	}
 	defer s.Close()
 
-	// Create workspace directory with pixi files
-	wsDir := t.TempDir()
-	pixiToml := `[project]\nname = "test-workspace"\nversion = "0.1.0"`
+	// Create project directory with pixi files
+	projectDir := t.TempDir()
+	pixiToml := `[project]\nname = "test-project"\nversion = "0.1.0"`
 	pixiLock := `version: 6\npackages: []`
 
-	os.WriteFile(filepath.Join(wsDir, "pixi.toml"), []byte(pixiToml), 0644)
-	os.WriteFile(filepath.Join(wsDir, "pixi.lock"), []byte(pixiLock), 0644)
+	os.WriteFile(filepath.Join(projectDir, "pixi.toml"), []byte(pixiToml), 0644)
+	os.WriteFile(filepath.Join(projectDir, "pixi.lock"), []byte(pixiLock), 0644)
 
-	// Create workspace in store
-	ws := &store.LocalWorkspace{
-		Name: "test-workspace",
-		Path: wsDir,
+	// Create project in store
+	project := &store.LocalProject{
+		Name: "test-project",
+		Path: projectDir,
 	}
-	if err := s.CreateWorkspace(ws); err != nil {
-		t.Fatalf("CreateWorkspace: %v", err)
+	if err := s.CreateProject(project); err != nil {
+		t.Fatalf("CreateProject: %v", err)
 	}
 
 	// Verify default tag is content hash
@@ -47,8 +47,8 @@ func TestLocalPublishDefaults(t *testing.T) {
 	}
 
 	// Verify default repo name format
-	expectedRepo := "test-workspace-" + ws.ID.String()[:8]
-	if len(expectedRepo) < len("test-workspace-12345678") {
+	expectedRepo := "test-project-" + project.ID.String()[:8]
+	if len(expectedRepo) < len("test-project-12345678") {
 		t.Fatalf("unexpected repo format: %q", expectedRepo)
 	}
 
@@ -89,19 +89,19 @@ func TestLocalPublishDefaults(t *testing.T) {
 
 	// Verify publication can be recorded
 	pub := &store.LocalPublication{
-		WorkspaceID: ws.ID,
-		RegistryID:  reg.ID,
-		Repository:  "ghcr.io/testorg/" + expectedRepo,
-		Tag:         expectedTag,
-		Digest:      "sha256:fake",
+		ProjectID:  project.ID,
+		RegistryID: reg.ID,
+		Repository: "ghcr.io/testorg/" + expectedRepo,
+		Tag:        expectedTag,
+		Digest:     "sha256:fake",
 	}
 	if err := s.CreatePublication(pub); err != nil {
 		t.Fatalf("CreatePublication: %v", err)
 	}
 
-	pubs, err := s.ListPublicationsByWorkspace(ws.ID)
+	pubs, err := s.ListPublicationsByProject(project.ID)
 	if err != nil {
-		t.Fatalf("ListPublicationsByWorkspace: %v", err)
+		t.Fatalf("ListPublicationsByProject: %v", err)
 	}
 	if len(pubs) != 1 {
 		t.Fatalf("expected 1 publication, got %d", len(pubs))

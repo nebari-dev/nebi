@@ -11,10 +11,10 @@ import (
 
 func newTestJob() *models.Job {
 	return &models.Job{
-		ID:          uuid.New(),
-		WorkspaceID: uuid.New(),
-		Type:        models.JobTypeCreate,
-		Status:      models.JobStatusPending,
+		ID:        uuid.New(),
+		ProjectID: uuid.New(),
+		Type:      models.JobTypeCreate,
+		Status:    models.JobStatusPending,
 	}
 }
 

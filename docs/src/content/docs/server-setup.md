@@ -2,7 +2,7 @@
 title: "Nebi Server"
 ---
 
-The Nebi server is a hosted web interface to manage Nebi workspaces in a team. It has a similar interface as the local desktop, but with more features for teams and organizations.
+The Nebi server is a hosted web interface to manage Nebi projects in a team. It has a similar interface as the local desktop, but with more features for teams and organizations.
 
 This page covers how to run and configure it.
 
@@ -68,20 +68,20 @@ The Swagger API docs are available at `http://localhost:8460/docs`.
 
 Nebi applies request, admission, and job-runtime limits from the `limits:` config section. Each value can also be overridden with the matching `NEBI_LIMITS_*` environment variable, for example `NEBI_LIMITS_REQUEST_BODY_BYTES`, `NEBI_LIMITS_ACTIVE_JOBS_PER_USER`, or `NEBI_LIMITS_JOB_TIMEOUT_SECONDS`.
 
-Set a numeric limit to `0` to disable that specific guard. Delete jobs are exempt from active-job quotas so users can still remove a workspace even when pending or running jobs have saturated its quota.
+Set a numeric limit to `0` to disable that specific guard. Delete jobs are exempt from active-job quotas so users can still remove a project even when pending or running jobs have saturated its quota.
 
 The main job limits are:
 
 - `request_body_bytes`: maximum HTTP request body size.
 - `manifest_bytes`, `lock_bytes`, `metadata_bytes`: maximum stored manifest, lockfile, and metadata sizes.
 - `package_string_bytes`: package-name size cap.
-- `active_jobs_per_user`, `active_jobs_per_workspace`, `active_jobs_global`: admission quotas for pending/running jobs.
+- `active_jobs_per_user`, `active_jobs_per_project`, `active_jobs_global`: admission quotas for pending/running jobs.
 - `job_timeout_seconds`: wall-clock deadline for each job.
 - `job_cpu_seconds`: CPU-time budget enforced with `ulimit -t` on Unix.
-- `job_storage_bytes`: workspace storage budget checked during and after jobs.
+- `job_storage_bytes`: project storage budget checked during and after jobs.
 - `job_log_bytes`: persisted log cap per job.
 
-CPU/file-size setup is fail-closed: if a configured `ulimit` budget cannot be applied, the child command exits with code `125` and Nebi fails the job rather than running unbounded. Storage checks are also fail-closed if the workspace cannot be walked.
+CPU/file-size setup is fail-closed: if a configured `ulimit` budget cannot be applied, the child command exits with code `125` and Nebi fails the job rather than running unbounded. Storage checks are also fail-closed if the project cannot be walked.
 
 Per-job memory and process-count limits are intentionally left to deployment isolation for now. In Kubernetes or Docker deployments, set Nebi pod/container memory and process limits until Nebi jobs run in isolated execution units.
 
@@ -97,7 +97,7 @@ When OIDC authentication is configured, nebi requests the `groups` scope alongsi
 - Memberships in OIDC-source groups that aren't in this login's claim are removed.
 - Native groups (created via the admin UI) are **never** modified by OIDC sync — even if a claim name happens to collide with a native group name.
 
-OIDC groups with zero members are kept so existing workspace shares survive temporary churn. Reconciled bearer sessions carry an authorization-sync timestamp and are accepted for `NEBI_AUTH_AUTHORIZATION_STALE_AFTER_MINS` minutes, which defaults to the 24-hour JWT lifetime; legacy unstamped tokens keep the pre-schema JWT-expiration behavior. Nebi records the last trusted authorization state, continuously retries unresolved local database/Casbin reconciliation failures, and logs alerts when reconciliation is unhealthy.
+OIDC groups with zero members are kept so existing project shares survive temporary churn. Reconciled bearer sessions carry an authorization-sync timestamp and are accepted for `NEBI_AUTH_AUTHORIZATION_STALE_AFTER_MINS` minutes, which defaults to the 24-hour JWT lifetime; legacy unstamped tokens keep the pre-schema JWT-expiration behavior. Nebi records the last trusted authorization state, continuously retries unresolved local database/Casbin reconciliation failures, and logs alerts when reconciliation is unhealthy.
 
 ### Legacy federated identity migration
 

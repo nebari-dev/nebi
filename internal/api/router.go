@@ -34,8 +34,8 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec execu
 	auth.ConfigureAuthReconciliationStaleAfter(time.Duration(cfg.Auth.AuthorizationStaleAfterMins) * time.Minute)
 
 	// Initialize RBAC enforcer and provider.
-	// In local mode the admin and workspace RBAC checks are unconditionally
-	// skipped (see RequireAdmin / RequireWorkspaceAccess middleware), so
+	// In local mode the admin and project RBAC checks are unconditionally
+	// skipped (see RequireAdmin / RequireProjectAccess middleware), so
 	// there is no need to re-initialise the global casbin enforcer — and
 	// doing so would clobber the enforcer that was already set up by a
 	// concurrently-running team-mode server (relevant in tests).
@@ -196,7 +196,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec execu
 	registrySvc := service.NewRegistryService(db, encKey, localMode, rbacProvider)
 	jobSvc := service.NewJobService(db, localMode)
 
-	wsHandler := handlers.NewWorkspaceHandler(svc)
+	projectHandler := handlers.NewProjectHandler(svc)
 	groupHandler := handlers.NewGroupHandler(groupSvc)
 	jobHandler := handlers.NewJobHandler(jobSvc, logBroker)
 
@@ -208,50 +208,50 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec execu
 		protected.GET("/auth/me", handlers.GetCurrentUser(authenticator))
 		protected.GET("/groups/me", groupHandler.MyGroups)
 
-		// Workspace endpoints
-		protected.GET("/workspaces", wsHandler.ListWorkspaces)
-		protected.POST("/workspaces", wsHandler.CreateWorkspace)
+		// Project endpoints
+		protected.GET("/projects", projectHandler.ListProjects)
+		protected.POST("/projects", projectHandler.CreateProject)
 
-		// Per-workspace operations with RBAC permission checks
-		ws := protected.Group("/workspaces/:id")
+		// Per-project operations with RBAC permission checks
+		project := protected.Group("/projects/:id")
 		{
 			// Read operations (require read permission)
-			ws.GET("", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.GetWorkspace)
-			ws.GET("/packages", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.ListPackages)
-			ws.GET("/pixi-toml", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.GetPixiToml)
-			ws.GET("/collaborators", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.ListCollaborators)
+			project.GET("", middleware.RequireProjectAccess("read", localMode, rbacProvider), projectHandler.GetProject)
+			project.GET("/packages", middleware.RequireProjectAccess("read", localMode, rbacProvider), projectHandler.ListPackages)
+			project.GET("/pixi-toml", middleware.RequireProjectAccess("read", localMode, rbacProvider), projectHandler.GetPixiToml)
+			project.GET("/collaborators", middleware.RequireProjectAccess("read", localMode, rbacProvider), projectHandler.ListCollaborators)
 
 			// Version operations (read permission)
-			ws.GET("/versions", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.ListVersions)
-			ws.GET("/versions/:version", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.GetVersion)
-			ws.GET("/versions/:version/pixi-lock", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.DownloadLockFile)
-			ws.GET("/versions/:version/pixi-toml", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.DownloadManifestFile)
+			project.GET("/versions", middleware.RequireProjectAccess("read", localMode, rbacProvider), projectHandler.ListVersions)
+			project.GET("/versions/:version", middleware.RequireProjectAccess("read", localMode, rbacProvider), projectHandler.GetVersion)
+			project.GET("/versions/:version/pixi-lock", middleware.RequireProjectAccess("read", localMode, rbacProvider), projectHandler.DownloadLockFile)
+			project.GET("/versions/:version/pixi-toml", middleware.RequireProjectAccess("read", localMode, rbacProvider), projectHandler.DownloadManifestFile)
 
 			// Write operations (require write permission)
-			ws.PUT("/pixi-toml", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.SavePixiToml)
-			ws.DELETE("", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.DeleteWorkspace)
-			ws.POST("/packages", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.InstallPackages)
-			ws.POST("/solve", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.SolveWorkspace)
-			ws.POST("/install", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.InstallWorkspace)
-			ws.POST("/uninstall", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.UninstallWorkspace)
-			ws.DELETE("/packages/:package", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.RemovePackages)
-			ws.POST("/rollback", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.RollbackToVersion)
+			project.PUT("/pixi-toml", middleware.RequireProjectAccess("write", localMode, rbacProvider), projectHandler.SavePixiToml)
+			project.DELETE("", middleware.RequireProjectAccess("write", localMode, rbacProvider), projectHandler.DeleteProject)
+			project.POST("/packages", middleware.RequireProjectAccess("write", localMode, rbacProvider), projectHandler.InstallPackages)
+			project.POST("/solve", middleware.RequireProjectAccess("write", localMode, rbacProvider), projectHandler.SolveProject)
+			project.POST("/install", middleware.RequireProjectAccess("write", localMode, rbacProvider), projectHandler.InstallProject)
+			project.POST("/uninstall", middleware.RequireProjectAccess("write", localMode, rbacProvider), projectHandler.UninstallProject)
+			project.DELETE("/packages/:package", middleware.RequireProjectAccess("write", localMode, rbacProvider), projectHandler.RemovePackages)
+			project.POST("/rollback", middleware.RequireProjectAccess("write", localMode, rbacProvider), projectHandler.RollbackToVersion)
 
 			// Sharing operations (owner only - checked in handler)
-			ws.POST("/share", wsHandler.ShareWorkspace)
-			ws.DELETE("/share/:user_id", wsHandler.UnshareWorkspace)
-			ws.POST("/share-group", wsHandler.ShareWorkspaceWithGroup)
-			ws.DELETE("/share-group/:group_id", wsHandler.UnshareWorkspaceWithGroup)
+			project.POST("/share", projectHandler.ShareProject)
+			project.DELETE("/share/:user_id", projectHandler.UnshareProject)
+			project.POST("/share-group", projectHandler.ShareProjectWithGroup)
+			project.DELETE("/share-group/:group_id", projectHandler.UnshareProjectWithGroup)
 
 			// Tags (read permission)
-			ws.GET("/tags", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.ListTags)
+			project.GET("/tags", middleware.RequireProjectAccess("read", localMode, rbacProvider), projectHandler.ListTags)
 
 			// Push and publish operations (require write permission)
-			ws.POST("/push", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.PushVersion)
-			ws.POST("/publish", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.PublishWorkspace)
-			ws.GET("/publications", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.ListPublications)
-			ws.PATCH("/publications/:pubId", middleware.RequireWorkspaceAccess("write", localMode, rbacProvider), wsHandler.UpdatePublication)
-			ws.GET("/publish-defaults", middleware.RequireWorkspaceAccess("read", localMode, rbacProvider), wsHandler.GetPublishDefaults)
+			project.POST("/push", middleware.RequireProjectAccess("write", localMode, rbacProvider), projectHandler.PushVersion)
+			project.POST("/publish", middleware.RequireProjectAccess("write", localMode, rbacProvider), projectHandler.PublishProject)
+			project.GET("/publications", middleware.RequireProjectAccess("read", localMode, rbacProvider), projectHandler.ListPublications)
+			project.PATCH("/publications/:pubId", middleware.RequireProjectAccess("write", localMode, rbacProvider), projectHandler.UpdatePublication)
+			project.GET("/publish-defaults", middleware.RequireProjectAccess("read", localMode, rbacProvider), projectHandler.GetPublishDefaults)
 		}
 
 		// Job endpoints
@@ -337,16 +337,16 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec execu
 				remote.POST("/connect", remoteHandler.ConnectServer)
 				remote.GET("/server", remoteHandler.GetServer)
 				remote.DELETE("/server", remoteHandler.DisconnectServer)
-				remote.GET("/workspaces", remoteHandler.ListWorkspaces)
-				remote.GET("/workspaces/:id", remoteHandler.GetWorkspace)
-				remote.POST("/workspaces", remoteHandler.CreateWorkspace)
-				remote.DELETE("/workspaces/:id", remoteHandler.DeleteWorkspace)
-				remote.GET("/workspaces/:id/versions", remoteHandler.ListVersions)
-				remote.GET("/workspaces/:id/tags", remoteHandler.ListTags)
-				remote.GET("/workspaces/:id/pixi-toml", remoteHandler.GetPixiToml)
-				remote.GET("/workspaces/:id/versions/:version/pixi-toml", remoteHandler.GetVersionPixiToml)
-				remote.GET("/workspaces/:id/versions/:version/pixi-lock", remoteHandler.GetVersionPixiLock)
-				remote.POST("/workspaces/:id/push", remoteHandler.PushVersion)
+				remote.GET("/projects", remoteHandler.ListProjects)
+				remote.GET("/projects/:id", remoteHandler.GetProject)
+				remote.POST("/projects", remoteHandler.CreateProject)
+				remote.DELETE("/projects/:id", remoteHandler.DeleteProject)
+				remote.GET("/projects/:id/versions", remoteHandler.ListVersions)
+				remote.GET("/projects/:id/tags", remoteHandler.ListTags)
+				remote.GET("/projects/:id/pixi-toml", remoteHandler.GetPixiToml)
+				remote.GET("/projects/:id/versions/:version/pixi-toml", remoteHandler.GetVersionPixiToml)
+				remote.GET("/projects/:id/versions/:version/pixi-lock", remoteHandler.GetVersionPixiLock)
+				remote.POST("/projects/:id/push", remoteHandler.PushVersion)
 				remote.GET("/registries", remoteHandler.ListRegistries)
 				remote.GET("/jobs", remoteHandler.ListJobs)
 

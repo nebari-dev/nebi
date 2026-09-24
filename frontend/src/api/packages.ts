@@ -3,9 +3,7 @@ import { apiClient } from './client';
 
 export const packagesApi = {
   list: async (environmentId: string): Promise<Package[]> => {
-    const { data } = await apiClient.get(
-      `/workspaces/${environmentId}/packages`,
-    );
+    const { data } = await apiClient.get(`/projects/${environmentId}/packages`);
     return data;
   },
 
@@ -13,12 +11,12 @@ export const packagesApi = {
     environmentId: string,
     req: InstallPackagesRequest,
   ): Promise<void> => {
-    await apiClient.post(`/workspaces/${environmentId}/packages`, req);
+    await apiClient.post(`/projects/${environmentId}/packages`, req);
   },
 
   remove: async (environmentId: string, packageName: string): Promise<void> => {
     await apiClient.delete(
-      `/workspaces/${environmentId}/packages/${packageName}`,
+      `/projects/${environmentId}/packages/${packageName}`,
     );
   },
 };

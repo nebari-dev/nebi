@@ -26,7 +26,7 @@ var infoCmd = &cobra.Command{
 	Use:   "info",
 	Short: "Show Nebi system information",
 	Long: `Display comprehensive information about the Nebi CLI, server connection,
-authentication status, and current workspace.
+authentication status, and current project.
 
 Examples:
   nebi info
@@ -37,10 +37,10 @@ Examples:
 
 type infoResult struct {
 	// Nebi section
-	Version       string `json:"version"`
-	Platform      string `json:"platform"`
-	DataDir       string `json:"data_dir"`
-	WorkspacesDir string `json:"workspaces_dir,omitempty"`
+	Version     string `json:"version"`
+	Platform    string `json:"platform"`
+	DataDir     string `json:"data_dir"`
+	ProjectsDir string `json:"projects_dir,omitempty"`
 
 	// Server section
 	ServerURL      string `json:"server_url"`
@@ -54,11 +54,11 @@ type infoResult struct {
 	Username   string `json:"username,omitempty"`
 	AuthSource string `json:"auth_source"`
 
-	// Workspace section (empty when not in a tracked workspace)
-	Workspace     string `json:"workspace,omitempty"`
-	WorkspacePath string `json:"workspace_path,omitempty"`
-	Origin        string `json:"origin,omitempty"`
-	LocalEdits    string `json:"local_edits,omitempty"`
+	// Project section (empty when not in a tracked project)
+	Project     string `json:"project,omitempty"`
+	ProjectPath string `json:"project_path,omitempty"`
+	Origin      string `json:"origin,omitempty"`
+	LocalEdits  string `json:"local_edits,omitempty"`
 }
 
 func runInfo(cmd *cobra.Command, args []string) error {
@@ -74,11 +74,11 @@ func runInfo(cmd *cobra.Command, args []string) error {
 		result.DataDir = shortenPath(dataDir, home)
 	}
 
-	// Workspaces dir — same resolution `nebi-web` uses (config file,
-	// NEBI_STORAGE_WORKSPACES_DIR, or the built-in default)
-	if cfg, err := config.Load(config.WithMode(config.ModeLocal)); err == nil && cfg.Storage.WorkspacesDir != "" {
+	// Projects dir — same resolution `nebi-web` uses (config file,
+	// NEBI_STORAGE_PROJECTS_DIR, or the built-in default)
+	if cfg, err := config.Load(config.WithMode(config.ModeLocal)); err == nil && cfg.Storage.ProjectsDir != "" {
 		home, _ := os.UserHomeDir()
-		result.WorkspacesDir = shortenPath(cfg.Storage.WorkspacesDir, home)
+		result.ProjectsDir = shortenPath(cfg.Storage.ProjectsDir, home)
 	}
 
 	// Resolve server URL, token, username from local sources (no API calls)
@@ -115,8 +115,8 @@ func runInfo(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Workspace section
-	fillWorkspaceInfo(&result)
+	// Project section
+	fillProjectInfo(&result)
 
 	if infoJSON {
 		return writeJSON(result)
@@ -151,7 +151,7 @@ func resolveInfoAuth() (serverURL, token, username, source string) {
 	return url, "", "", "none"
 }
 
-func fillWorkspaceInfo(result *infoResult) {
+func fillProjectInfo(result *infoResult) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return
@@ -169,33 +169,33 @@ func fillWorkspaceInfo(result *infoResult) {
 	}
 	defer s.Close()
 
-	ws, err := s.FindWorkspaceByPath(cwd)
-	if err != nil || ws == nil {
+	project, err := s.FindProjectByPath(cwd)
+	if err != nil || project == nil {
 		return
 	}
 
-	result.Workspace = ws.Name
-	result.WorkspacePath = ws.Path
+	result.Project = project.Name
+	result.ProjectPath = project.Path
 
-	if ws.OriginName != "" {
-		action := ws.OriginAction
+	if project.OriginName != "" {
+		action := project.OriginAction
 		if action == "push" {
 			action = "pushed"
 		} else if action == "pull" {
 			action = "pulled"
 		}
-		result.Origin = fmt.Sprintf("%s:%s (%s)", ws.OriginName, ws.OriginTag, action)
+		result.Origin = fmt.Sprintf("%s:%s (%s)", project.OriginName, project.OriginTag, action)
 
 		// Check local edits
 		var edits []string
 		localToml, _ := os.ReadFile(filepath.Join(cwd, "pixi.toml"))
 		localLock, _ := os.ReadFile(filepath.Join(cwd, "pixi.lock"))
 		tomlHash, hashErr := store.TomlContentHash(string(localToml))
-		if hashErr == nil && ws.OriginTomlHash != "" && ws.OriginTomlHash != tomlHash {
+		if hashErr == nil && project.OriginTomlHash != "" && project.OriginTomlHash != tomlHash {
 			edits = append(edits, "pixi.toml modified")
 		}
 		lockHash := store.ContentHash(string(localLock))
-		if ws.OriginLockHash != "" && ws.OriginLockHash != lockHash {
+		if project.OriginLockHash != "" && project.OriginLockHash != lockHash {
 			edits = append(edits, "pixi.lock modified")
 		}
 		if len(edits) > 0 {
@@ -235,8 +235,8 @@ func printInfo(r infoResult) {
 	printField("Version", r.Version)
 	printField("Platform", r.Platform)
 	printField("Data dir", r.DataDir)
-	if r.WorkspacesDir != "" {
-		printField("Workspaces dir", r.WorkspacesDir)
+	if r.ProjectsDir != "" {
+		printField("Projects dir", r.ProjectsDir)
 	}
 
 	fmt.Println()
@@ -267,12 +267,12 @@ func printInfo(r infoResult) {
 	}
 	printField("Auth source", r.AuthSource)
 
-	if r.Workspace != "" {
+	if r.Project != "" {
 		fmt.Println()
-		fmt.Println("Workspace")
+		fmt.Println("Project")
 		fmt.Println("──────────────")
-		printField("Name", r.Workspace)
-		printField("Path", r.WorkspacePath)
+		printField("Name", r.Project)
+		printField("Path", r.ProjectPath)
 		printField("Origin", r.Origin)
 		if r.LocalEdits != "" {
 			printField("Local edits", r.LocalEdits)

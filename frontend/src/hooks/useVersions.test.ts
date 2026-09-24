@@ -7,7 +7,7 @@ import { useRollback, useVersion, useVersions } from './useVersions';
 
 const mockVersion = {
   id: 'v-1',
-  workspace_id: 'ws-1',
+  project_id: 'ws-1',
   version_number: 1,
   created_at: '2024-01-01T00:00:00Z',
   created_by: 'user-1',
@@ -18,13 +18,13 @@ const mockVersion = {
 describe('useVersions', () => {
   beforeEach(() => {
     server.use(
-      http.get('/api/v1/workspaces/:id/versions', () =>
+      http.get('/api/v1/projects/:id/versions', () =>
         HttpResponse.json([mockVersion]),
       ),
     );
   });
 
-  it('fetches versions for a workspace', async () => {
+  it('fetches versions for a project', async () => {
     const { result } = renderHook(() => useVersions('ws-1'), {
       wrapper: createWrapper(),
     });
@@ -43,7 +43,7 @@ describe('useVersions', () => {
 describe('useVersion (single)', () => {
   beforeEach(() => {
     server.use(
-      http.get('/api/v1/workspaces/:id/versions/:num', () =>
+      http.get('/api/v1/projects/:id/versions/:num', () =>
         HttpResponse.json(mockVersion),
       ),
     );
@@ -75,7 +75,7 @@ describe('useVersion (single)', () => {
 describe('useRollback', () => {
   it('calls the rollback endpoint and succeeds', async () => {
     server.use(
-      http.post('/api/v1/workspaces/:id/rollback', () =>
+      http.post('/api/v1/projects/:id/rollback', () =>
         HttpResponse.json({ id: 'job-2', status: 'pending' }, { status: 201 }),
       ),
     );
@@ -88,7 +88,7 @@ describe('useRollback', () => {
 
   it('enters error state when rollback fails', async () => {
     server.use(
-      http.post('/api/v1/workspaces/:id/rollback', () =>
+      http.post('/api/v1/projects/:id/rollback', () =>
         HttpResponse.json({ error: 'not found' }, { status: 404 }),
       ),
     );

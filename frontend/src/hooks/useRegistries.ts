@@ -69,22 +69,22 @@ export const useDeleteRegistry = () => {
   });
 };
 
-// Mutation hook for publishing workspace
-export const usePublishWorkspace = () => {
+// Mutation hook for publishing project
+export const usePublishProject = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: ({
-      workspaceId,
+      projectId,
       data,
     }: {
-      workspaceId: string;
+      projectId: string;
       data: PublishRequest;
-    }) => registriesApi.publish(workspaceId, data),
+    }) => registriesApi.publish(projectId, data),
     onSuccess: (_, variables) => {
-      // Invalidate publications for this workspace and jobs list
+      // Invalidate publications for this project and jobs list
       queryClient.invalidateQueries({
-        queryKey: ['publications', variables.workspaceId],
+        queryKey: ['publications', variables.projectId],
       });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
@@ -92,23 +92,20 @@ export const usePublishWorkspace = () => {
 };
 
 // Query hook for publish defaults (server-computed)
-export const usePublishDefaults = (
-  workspaceId: string,
-  registryId?: string,
-) => {
+export const usePublishDefaults = (projectId: string, registryId?: string) => {
   return useQuery({
-    queryKey: ['publish-defaults', workspaceId, registryId],
-    queryFn: () => registriesApi.getPublishDefaults(workspaceId, registryId),
-    enabled: !!workspaceId,
+    queryKey: ['publish-defaults', projectId, registryId],
+    queryFn: () => registriesApi.getPublishDefaults(projectId, registryId),
+    enabled: !!projectId,
   });
 };
 
-// Query hook for workspace publications
-export const usePublications = (workspaceId: string) => {
+// Query hook for project publications
+export const usePublications = (projectId: string) => {
   return useQuery({
-    queryKey: ['publications', workspaceId],
-    queryFn: () => registriesApi.listPublications(workspaceId),
-    enabled: !!workspaceId,
+    queryKey: ['publications', projectId],
+    queryFn: () => registriesApi.listPublications(projectId),
+    enabled: !!projectId,
   });
 };
 
@@ -118,17 +115,17 @@ export const useUpdatePublication = () => {
 
   return useMutation({
     mutationFn: ({
-      workspaceId,
+      projectId,
       pubId,
       isPublic,
     }: {
-      workspaceId: string;
+      projectId: string;
       pubId: string;
       isPublic: boolean;
-    }) => registriesApi.updatePublication(workspaceId, pubId, isPublic),
+    }) => registriesApi.updatePublication(projectId, pubId, isPublic),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
-        queryKey: ['publications', variables.workspaceId],
+        queryKey: ['publications', variables.projectId],
       });
     },
   });
@@ -168,7 +165,7 @@ export const useImportEnvironment = () => {
       data: ImportEnvironmentRequest;
     }) => registriesApi.importEnvironment(registryId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
   });

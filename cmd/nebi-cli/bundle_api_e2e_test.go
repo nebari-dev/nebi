@@ -25,11 +25,11 @@ import (
 
 // localModeEnv holds everything a local-mode HTTP test needs.
 type localModeEnv struct {
-	serverURL string
-	token     string
-	ctx       context.Context
-	wsDir     string
-	ociHost   string
+	serverURL  string
+	token      string
+	ctx        context.Context
+	projectDir string
+	ociHost    string
 }
 
 // startLocalModeServer spins up a private local-mode Nebi server
@@ -40,7 +40,7 @@ func startLocalModeServer(t *testing.T) *localModeEnv {
 	t.Helper()
 	envVars := []string{
 		"NEBI_DATABASE_DSN",
-		"NEBI_STORAGE_WORKSPACES_DIR",
+		"NEBI_STORAGE_PROJECTS_DIR",
 		"NEBI_SERVER_PORT",
 		"NEBI_PIXI_PATH",
 	}
@@ -60,7 +60,7 @@ func startLocalModeServer(t *testing.T) *localModeEnv {
 
 	dbDir := t.TempDir()
 	dbPath := filepath.Join(dbDir, "bundle-api-e2e.db")
-	wsDir := t.TempDir()
+	projectDir := t.TempDir()
 
 	port, err := findFreePort()
 	if err != nil {
@@ -68,7 +68,7 @@ func startLocalModeServer(t *testing.T) *localModeEnv {
 	}
 
 	os.Setenv("NEBI_DATABASE_DSN", dbPath)
-	os.Setenv("NEBI_STORAGE_WORKSPACES_DIR", wsDir)
+	os.Setenv("NEBI_STORAGE_PROJECTS_DIR", projectDir)
 	os.Setenv("NEBI_SERVER_PORT", fmt.Sprintf("%d", port))
 	pixiPath := filepath.Join(t.TempDir(), "pixi")
 	pixiScript := `#!/bin/sh
@@ -120,23 +120,23 @@ exit 0
 	ociURL, _ := url.Parse(ociSrv.URL)
 
 	return &localModeEnv{
-		serverURL: serverURL,
-		token:     loginResp.Token,
-		ctx:       ctx,
-		wsDir:     wsDir,
-		ociHost:   ociURL.Host,
+		serverURL:  serverURL,
+		token:      loginResp.Token,
+		ctx:        ctx,
+		projectDir: projectDir,
+		ociHost:    ociURL.Host,
 	}
 }
 
 // TestE2E_BundlePublishImportViaAPI_LocalMode verifies that importing a bundle
 // via the Nebi HTTP API in local mode correctly extracts all asset layers to
-// the workspace directory on disk.
+// the project directory on disk.
 func TestE2E_BundlePublishImportViaAPI_LocalMode(t *testing.T) {
 	env := startLocalModeServer(t)
 	serverURL := env.serverURL
 	token := env.token
 	ctx := env.ctx
-	wsDir := env.wsDir
+	projectDir := env.projectDir
 	ociHost := env.ociHost
 
 	// ---- Seed the OCI registry via oci.Publish ----
@@ -177,49 +177,49 @@ func TestE2E_BundlePublishImportViaAPI_LocalMode(t *testing.T) {
 	})
 
 	// ---- Import via POST /registries/:id/import ----
-	wsID := importViaAPI(t, serverURL, token, registryID, map[string]interface{}{
+	projectID := importViaAPI(t, serverURL, token, registryID, map[string]interface{}{
 		"repository_path": ociNS + "/" + repoName,
 		"tag":             bundleTag,
 		"name":            "notebook-imported",
 	})
 
-	// ---- Poll workspace until ready (or fail after 30s) ----
-	pollWorkspaceReady(t, serverURL, token, wsID, 30*time.Second)
+	// ---- Poll project until ready (or fail after 30s) ----
+	pollProjectReady(t, serverURL, token, projectID, 30*time.Second)
 
-	// ---- Derive workspace directory path ----
-	// LocalExecutor.GetWorkspacePath: {wsDir}/{normalized-name}-{uuid}
+	// ---- Derive project directory path ----
+	// LocalExecutor.GetProjectPath: {projectDir}/{normalized-name}-{uuid}
 	// normalized("notebook-imported") → "notebook-imported"
-	wsPath := filepath.Join(wsDir, fmt.Sprintf("notebook-imported-%s", wsID))
+	projectPath := filepath.Join(projectDir, fmt.Sprintf("notebook-imported-%s", projectID))
 
 	// ---- Assertions ----
-	assertFileContent(t, wsPath, "notebook.ipynb", notebookBody)
-	assertFileContent(t, wsPath, "pixi.lock", pixiLockBody)
-	assertFileContains(t, wsPath, "pixi.toml", "notebook-env")
+	assertFileContent(t, projectPath, "notebook.ipynb", notebookBody)
+	assertFileContent(t, projectPath, "pixi.lock", pixiLockBody)
+	assertFileContains(t, projectPath, "pixi.toml", "notebook-env")
 }
 
-// TestE2E_BundlePublishViaAPI_LocalMode verifies that publishing a workspace
-// via POST /workspaces/:id/publish in local mode uploads the full bundle —
+// TestE2E_BundlePublishViaAPI_LocalMode verifies that publishing a project
+// via POST /projects/:id/publish in local mode uploads the full bundle —
 // pixi.toml, pixi.lock, AND every asset file — to the registry.
 func TestE2E_BundlePublishViaAPI_LocalMode(t *testing.T) {
 	env := startLocalModeServer(t)
 
-	// ---- Create + populate a workspace ----
+	// ---- Create + populate a project ----
 	const (
 		notebookBody = `{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}`
 		pixiTomlBody = "[project]\nname = \"publish-test\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
 		pixiLockBody = "version: 6\n# server-published\n"
 	)
-	wsID := createWorkspaceViaAPI(t, env.serverURL, env.token, "publish-test", pixiTomlBody)
-	pollWorkspaceReady(t, env.serverURL, env.token, wsID, 30*time.Second)
+	projectID := createProjectViaAPI(t, env.serverURL, env.token, "publish-test", pixiTomlBody)
+	pollProjectReady(t, env.serverURL, env.token, projectID, 30*time.Second)
 
 	// Drop a real lockfile + asset on disk where the server expects them
 	// (the worker only wrote pixi.toml; we add the rest by hand to
 	// simulate what the user would have done via push or the editor).
-	wsPath := filepath.Join(env.wsDir, fmt.Sprintf("publish-test-%s", wsID))
-	if err := os.WriteFile(filepath.Join(wsPath, "pixi.lock"), []byte(pixiLockBody), 0o644); err != nil {
+	projectPath := filepath.Join(env.projectDir, fmt.Sprintf("publish-test-%s", projectID))
+	if err := os.WriteFile(filepath.Join(projectPath, "pixi.lock"), []byte(pixiLockBody), 0o644); err != nil {
 		t.Fatalf("seed pixi.lock: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(wsPath, "notebook.ipynb"), []byte(notebookBody), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(projectPath, "notebook.ipynb"), []byte(notebookBody), 0o644); err != nil {
 		t.Fatalf("seed notebook: %v", err)
 	}
 
@@ -231,8 +231,8 @@ func TestE2E_BundlePublishViaAPI_LocalMode(t *testing.T) {
 		"is_default": true,
 	})
 
-	// ---- Publish via POST /workspaces/:id/publish ----
-	publishViaAPI(t, env.serverURL, env.token, wsID, map[string]interface{}{
+	// ---- Publish via POST /projects/:id/publish ----
+	publishViaAPI(t, env.serverURL, env.token, projectID, map[string]interface{}{
 		"registry_id": registryID,
 		"repository":  "publish-test-repo",
 		"tag":         "v1",
@@ -257,54 +257,54 @@ func TestE2E_BundlePublishViaAPI_LocalMode(t *testing.T) {
 
 func contains(s, sub string) bool { return bytes.Contains([]byte(s), []byte(sub)) }
 
-// createWorkspaceViaAPI POSTs to /workspaces and returns the created workspace ID.
-func createWorkspaceViaAPI(t *testing.T, serverURL, token, name, pixiToml string) string {
+// createProjectViaAPI POSTs to /projects and returns the created project ID.
+func createProjectViaAPI(t *testing.T, serverURL, token, name, pixiToml string) string {
 	t.Helper()
 	body := map[string]interface{}{
 		"name":      name,
 		"pixi_toml": pixiToml,
 	}
 	b, _ := json.Marshal(body)
-	req, _ := http.NewRequest(http.MethodPost, serverURL+"/api/v1/workspaces", bytes.NewReader(b))
+	req, _ := http.NewRequest(http.MethodPost, serverURL+"/api/v1/projects", bytes.NewReader(b))
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatalf("POST /workspaces: %v", err)
+		t.Fatalf("POST /projects: %v", err)
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		t.Fatalf("POST /workspaces: status %d, body: %s", resp.StatusCode, raw)
+		t.Fatalf("POST /projects: status %d, body: %s", resp.StatusCode, raw)
 	}
 	var result struct {
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
-		t.Fatalf("decode workspace response: %v (body: %s)", err, raw)
+		t.Fatalf("decode project response: %v (body: %s)", err, raw)
 	}
 	if result.ID == "" {
-		t.Fatalf("workspace response missing id: %s", raw)
+		t.Fatalf("project response missing id: %s", raw)
 	}
 	return result.ID
 }
 
-// publishViaAPI POSTs to /workspaces/:id/publish and asserts a 2xx response.
-func publishViaAPI(t *testing.T, serverURL, token, wsID string, body map[string]interface{}) {
+// publishViaAPI POSTs to /projects/:id/publish and asserts a 2xx response.
+func publishViaAPI(t *testing.T, serverURL, token, projectID string, body map[string]interface{}) {
 	t.Helper()
 	b, _ := json.Marshal(body)
-	url := fmt.Sprintf("%s/api/v1/workspaces/%s/publish", serverURL, wsID)
+	url := fmt.Sprintf("%s/api/v1/projects/%s/publish", serverURL, projectID)
 	req, _ := http.NewRequest(http.MethodPost, url, bytes.NewReader(b))
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatalf("POST /workspaces/%s/publish: %v", wsID, err)
+		t.Fatalf("POST /projects/%s/publish: %v", projectID, err)
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		t.Fatalf("POST /workspaces/%s/publish: status %d, body: %s", wsID, resp.StatusCode, raw)
+		t.Fatalf("POST /projects/%s/publish: status %d, body: %s", projectID, resp.StatusCode, raw)
 	}
 }
 
@@ -336,7 +336,7 @@ func createRegistryViaAPI(t *testing.T, serverURL, token string, body map[string
 	return result.ID
 }
 
-// importViaAPI POSTs to /registries/:id/import and returns the created workspace ID.
+// importViaAPI POSTs to /registries/:id/import and returns the created project ID.
 func importViaAPI(t *testing.T, serverURL, token, registryID string, body map[string]interface{}) string {
 	t.Helper()
 	b, _ := json.Marshal(body)
@@ -365,11 +365,11 @@ func importViaAPI(t *testing.T, serverURL, token, registryID string, body map[st
 	return result.ID
 }
 
-// pollWorkspaceReady polls GET /workspaces/:id until status == "ready" or times out.
-func pollWorkspaceReady(t *testing.T, serverURL, token, wsID string, timeout time.Duration) {
+// pollProjectReady polls GET /projects/:id until status == "ready" or times out.
+func pollProjectReady(t *testing.T, serverURL, token, projectID string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
-	url := fmt.Sprintf("%s/api/v1/workspaces/%s", serverURL, wsID)
+	url := fmt.Sprintf("%s/api/v1/projects/%s", serverURL, projectID)
 	for time.Now().Before(deadline) {
 		req, _ := http.NewRequest(http.MethodGet, url, nil)
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -380,27 +380,27 @@ func pollWorkspaceReady(t *testing.T, serverURL, token, wsID string, timeout tim
 		}
 		raw, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		var ws struct {
+		var project struct {
 			Status string `json:"status"`
 		}
-		if err := json.Unmarshal(raw, &ws); err != nil {
-			t.Fatalf("decode workspace response: %v (body: %s)", err, raw)
+		if err := json.Unmarshal(raw, &project); err != nil {
+			t.Fatalf("decode project response: %v (body: %s)", err, raw)
 		}
-		switch ws.Status {
+		switch project.Status {
 		case "ready":
 			return
 		case "failed":
-			t.Fatalf("workspace %s entered 'failed' state", wsID)
+			t.Fatalf("project %s entered 'failed' state", projectID)
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
-	t.Fatalf("workspace %s did not become ready within %s", wsID, timeout)
+	t.Fatalf("project %s did not become ready within %s", projectID, timeout)
 }
 
-// assertFileContent reads rel inside wsDir and checks it equals want exactly.
-func assertFileContent(t *testing.T, wsDir, rel, want string) {
+// assertFileContent reads rel inside projectDir and checks it equals want exactly.
+func assertFileContent(t *testing.T, projectDir, rel, want string) {
 	t.Helper()
-	got, err := os.ReadFile(filepath.Join(wsDir, rel))
+	got, err := os.ReadFile(filepath.Join(projectDir, rel))
 	if err != nil {
 		t.Fatalf("read %s: %v", rel, err)
 	}
@@ -409,10 +409,10 @@ func assertFileContent(t *testing.T, wsDir, rel, want string) {
 	}
 }
 
-// assertFileContains reads rel inside wsDir and checks it contains substr.
-func assertFileContains(t *testing.T, wsDir, rel, substr string) {
+// assertFileContains reads rel inside projectDir and checks it contains substr.
+func assertFileContains(t *testing.T, projectDir, rel, substr string) {
 	t.Helper()
-	got, err := os.ReadFile(filepath.Join(wsDir, rel))
+	got, err := os.ReadFile(filepath.Join(projectDir, rel))
 	if err != nil {
 		t.Fatalf("read %s: %v", rel, err)
 	}

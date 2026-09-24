@@ -56,8 +56,8 @@ services:
 
   # Nebi API with an in-process worker
   # NOTE: Before first deployment, set permissions:
-  #   mkdir -p ./data/workspaces
-  #   chown -R 65532:65532 ./data/workspaces
+  #   mkdir -p ./data/projects
+  #   chown -R 65532:65532 ./data/projects
   # Override NEBI_IMAGE with an immutable digest reference for newer releases.
   nebi-api:
     image: ${NEBI_IMAGE:-quay.io/nebari/nebi@sha256:56f384dfca063c37feb2fd0310afad8b9cd16baed7c6e63b541caf62db60678b}
@@ -78,7 +78,7 @@ services:
       # Logging
       NEBI_LOG_LEVEL: info
       NEBI_LOG_FORMAT: json
-      NEBI_STORAGE_WORKSPACES_DIR: /app/data/workspaces
+      NEBI_STORAGE_PROJECTS_DIR: /app/data/projects
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.nebi.rule=Host(`${NEBI_DOMAIN}`)"
@@ -89,7 +89,7 @@ services:
     expose:
       - "8460"
     volumes:
-      - ./data/workspaces:/app/data/workspaces
+      - ./data/projects:/app/data/projects
     networks:
       - nebi-network
     depends_on:

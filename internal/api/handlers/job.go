@@ -42,7 +42,7 @@ func writeSSEData(w io.Writer, data string) {
 }
 
 // ListJobs godoc
-// @Summary List all jobs for user's workspaces
+// @Summary List all jobs for user's projects
 // @Tags jobs
 // @Security BearerAuth
 // @Produce json

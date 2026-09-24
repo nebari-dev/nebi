@@ -10,28 +10,28 @@ import (
 )
 
 var runCmd = &cobra.Command{
-	Use:   "run [workspace-name] [pixi-args...]",
+	Use:   "run [project-name] [pixi-args...]",
 	Short: "Run a command or task via pixi",
 	Long: `Run a command or task in a pixi workspace.
 
-With no workspace name, runs in the current directory (auto-initializes if needed).
-If the first argument matches a tracked workspace name, runs in that workspace.
-If multiple workspaces share the same name, an interactive picker is shown.
+With no project name, runs in the current directory (auto-initializes if needed).
+If the first argument matches a tracked project name, runs in that project.
+If multiple projects share the same name, an interactive picker is shown.
 A path (with a slash) uses that local directory.
 All arguments are passed through to pixi run.
 
 The --manifest-path flag is managed by nebi; use pixi run directly if you need custom manifest paths.
 
-Named workspaces run via --manifest-path so you stay in your current directory.
+Named projects run via --manifest-path so you stay in your current directory.
 
 Examples:
   nebi run my-task                    # run a pixi task in the current directory
-  nebi run data-science my-task       # run a task in a workspace by name (stays in cwd)
+  nebi run data-science my-task       # run a task in a project by name (stays in cwd)
   nebi run ./my-project my-task       # run a task in a local directory
   nebi run -e dev my-task             # run with a specific pixi environment`,
 	DisableFlagParsing: true,
 	RunE:               runRun,
-	ValidArgsFunction:  completeWorkspaceNames,
+	ValidArgsFunction:  completeProjectNames,
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
@@ -39,7 +39,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	dir, pixiArgs, useManifestPath, err := resolveWorkspaceArgs(args)
+	dir, pixiArgs, useManifestPath, err := resolveProjectArgs(args)
 	if err != nil {
 		return err
 	}

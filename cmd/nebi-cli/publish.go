@@ -22,34 +22,34 @@ var (
 )
 
 var publishCmd = &cobra.Command{
-	Use:   "publish [workspace]",
-	Short: "Publish a workspace to an OCI registry",
-	Long: `Publish a workspace to an OCI registry.
+	Use:   "publish [project]",
+	Short: "Publish a project to an OCI registry",
+	Long: `Publish a project to an OCI registry.
 
-If no workspace name is given, the current directory's tracked workspace is used.
-The repository name defaults to the workspace name.
+If no project name is given, the current directory's tracked project is used.
+The repository name defaults to the project name.
 The tag auto-increments (v1, v2, v3, ...) based on existing publications.
 If --registry is not specified, the server's default registry is used.
 
 Examples:
-  nebi publish                                       # publish current directory workspace
-  nebi publish myworkspace
-  nebi publish myworkspace --tag v1.0.0
-  nebi publish myworkspace --repo custom-name --registry ghcr`,
+  nebi publish                                       # publish current directory project
+  nebi publish myproject
+  nebi publish myproject --tag v1.0.0
+  nebi publish myproject --repo custom-name --registry ghcr`,
 	Args:              cobra.MaximumNArgs(1),
-	RunE:              runWorkspacePublish,
-	ValidArgsFunction: completeServerWorkspaceNames,
+	RunE:              runProjectPublish,
+	ValidArgsFunction: completeServerProjectNames,
 }
 
 func init() {
 	publishCmd.Flags().StringVar(&publishRegistry, "registry", "", "Registry name or ID (uses server default if not set)")
 	publishCmd.Flags().StringVar(&publishTag, "tag", "", "OCI tag (auto-increments v1, v2, ... if not set)")
-	publishCmd.Flags().StringVar(&publishRepo, "repo", "", "OCI repository name (defaults to workspace name)")
+	publishCmd.Flags().StringVar(&publishRepo, "repo", "", "OCI repository name (defaults to project name)")
 	publishCmd.Flags().BoolVar(&publishLocal, "local", false, "Publish directly to registry without a server")
 	publishCmd.Flags().IntVar(&publishConcurrency, "concurrency", 8, "Parallel blob push workers (only with --local)")
 }
 
-func runWorkspacePublish(cmd *cobra.Command, args []string) error {
+func runProjectPublish(cmd *cobra.Command, args []string) error {
 	if isLocalMode(cmd) {
 		return runPublishLocal(args)
 	}
@@ -57,19 +57,19 @@ func runWorkspacePublish(cmd *cobra.Command, args []string) error {
 }
 
 func runPublishServer(args []string) error {
-	var wsName string
+	var projectName string
 	if len(args) == 1 {
-		wsName = args[0]
+		projectName = args[0]
 	} else {
 		origin, err := lookupOrigin()
 		if err != nil {
 			return err
 		}
 		if origin == nil {
-			return fmt.Errorf("no workspace specified and no origin set in current directory;\nusage: nebi publish [workspace]")
+			return fmt.Errorf("no project specified and no origin set in current directory;\nusage: nebi publish [project]")
 		}
-		wsName = origin.OriginName
-		fmt.Fprintf(os.Stderr, "Using workspace %q from origin\n", wsName)
+		projectName = origin.OriginName
+		fmt.Fprintf(os.Stderr, "Using project %q from origin\n", projectName)
 	}
 
 	client, err := getAuthenticatedClient()
@@ -79,7 +79,7 @@ func runPublishServer(args []string) error {
 
 	ctx := context.Background()
 
-	ws, err := findWsByName(client, ctx, wsName)
+	project, err := findProjectByName(client, ctx, projectName)
 	if err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func runPublishServer(args []string) error {
 		}
 	}
 
-	defaults, err := client.GetPublishDefaults(ctx, ws.ID, registryID)
+	defaults, err := client.GetPublishDefaults(ctx, project.ID, registryID)
 	if err != nil {
 		return fmt.Errorf("getting publish defaults: %w", err)
 	}
@@ -117,8 +117,8 @@ func runPublishServer(args []string) error {
 		Tag:        tag,
 	}
 
-	fmt.Fprintf(os.Stderr, "Publishing %s to %s:%s...\n", wsName, repo, tag)
-	resp, err := client.PublishWorkspace(ctx, ws.ID, req)
+	fmt.Fprintf(os.Stderr, "Publishing %s to %s:%s...\n", projectName, repo, tag)
+	resp, err := client.PublishProject(ctx, project.ID, req)
 	if err != nil {
 		return fmt.Errorf("failed to publish: %w", err)
 	}
@@ -134,34 +134,34 @@ func runPublishLocal(args []string) error {
 	}
 	defer s.Close()
 
-	// Resolve workspace from args or current directory
-	var ws *store.LocalWorkspace
+	// Resolve project from args or current directory
+	var project *store.LocalProject
 	if len(args) == 1 {
-		ws, err = s.FindWorkspaceByName(args[0])
+		project, err = s.FindProjectByName(args[0])
 		if err != nil {
 			return err
 		}
-		if ws == nil {
-			return fmt.Errorf("workspace %q not found in local store; run 'nebi init' in the workspace directory first", args[0])
+		if project == nil {
+			return fmt.Errorf("project %q not found in local store; run 'nebi init' in the project directory first", args[0])
 		}
 	} else {
 		cwd, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("getting working directory: %w", err)
 		}
-		ws, err = s.FindWorkspaceByPath(cwd)
+		project, err = s.FindProjectByPath(cwd)
 		if err != nil {
 			return err
 		}
-		if ws == nil {
-			return fmt.Errorf("current directory is not a tracked workspace; run 'nebi init' first")
+		if project == nil {
+			return fmt.Errorf("current directory is not a tracked project; run 'nebi init' first")
 		}
-		fmt.Fprintf(os.Stderr, "Using workspace %q\n", ws.Name)
+		fmt.Fprintf(os.Stderr, "Using project %q\n", project.Name)
 	}
 
 	// Read pixi files from disk
-	pixiTomlPath := filepath.Join(ws.Path, "pixi.toml")
-	pixiLockPath := filepath.Join(ws.Path, "pixi.lock")
+	pixiTomlPath := filepath.Join(project.Path, "pixi.toml")
+	pixiLockPath := filepath.Join(project.Path, "pixi.lock")
 
 	pixiToml, err := os.ReadFile(pixiTomlPath)
 	if err != nil {
@@ -196,10 +196,10 @@ func runPublishLocal(args []string) error {
 	// Compute defaults. The tag is content-addressed across the full
 	// bundle — pixi files + every asset's path and content SHA — so
 	// changing a bundled asset shifts the tag even when pixi.toml and
-	// pixi.lock are untouched. Preview walks the workspace with the
+	// pixi.lock are untouched. Preview walks the project with the
 	// same rules Publish will use, so both always agree on the asset
 	// set.
-	assetRefs, err := oci.PreviewAssetRefs(ws.Path)
+	assetRefs, err := oci.PreviewAssetRefs(project.Path)
 	if err != nil {
 		return fmt.Errorf("preview bundle for tag hash: %w", err)
 	}
@@ -208,7 +208,7 @@ func runPublishLocal(args []string) error {
 		tag = publishTag
 	}
 
-	repo := fmt.Sprintf("%s-%s", ws.Name, ws.ID.String()[:8])
+	repo := fmt.Sprintf("%s-%s", project.Name, project.ID.String()[:8])
 	if publishRepo != "" {
 		repo = publishRepo
 	}
@@ -226,8 +226,8 @@ func runPublishLocal(args []string) error {
 	}
 
 	ctx := context.Background()
-	fmt.Fprintf(os.Stderr, "Publishing %s to %s/%s/%s:%s...\n", ws.Name, host, ns, repo, tag)
-	res, err := oci.Publish(ctx, ws.Path, regEndpoint, repo, tag,
+	fmt.Fprintf(os.Stderr, "Publishing %s to %s/%s/%s:%s...\n", project.Name, host, ns, repo, tag)
+	res, err := oci.Publish(ctx, project.Path, regEndpoint, repo, tag,
 		oci.WithExtraTags("latest"),
 		oci.WithConcurrency(publishConcurrency),
 	)
@@ -239,11 +239,11 @@ func runPublishLocal(args []string) error {
 
 	// Record publication
 	pub := &store.LocalPublication{
-		WorkspaceID: ws.ID,
-		RegistryID:  reg.ID,
-		Repository:  fullRepo,
-		Tag:         tag,
-		Digest:      digest,
+		ProjectID:  project.ID,
+		RegistryID: reg.ID,
+		Repository: fullRepo,
+		Tag:        tag,
+		Digest:     digest,
 	}
 	if err := s.CreatePublication(pub); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to record publication: %v\n", err)

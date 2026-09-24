@@ -6,7 +6,7 @@ interface CollaboratorsListProps {
 }
 
 /**
- * Read-only list of everyone with access to a workspace: both individual users
+ * Read-only list of everyone with access to a project: both individual users
  * and shared groups. The Share dialog renders the same data with extra controls
  * (remove buttons); this view is display-only for the Collaborators tab.
  */

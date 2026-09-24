@@ -28,7 +28,7 @@ func buildRegistryRBACTestRouter(t *testing.T) (http.Handler, *gorm.DB) {
 	cfg.Auth.JWTSecret = "test-secret-for-registry-rbac"
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = filepath.Join(t.TempDir(), "registry-rbac.db")
-	cfg.Storage.WorkspacesDir = t.TempDir()
+	cfg.Storage.ProjectsDir = t.TempDir()
 
 	database, err := db.New(cfg.Database)
 	if err != nil {
@@ -106,27 +106,27 @@ func TestRegistryRoutesRequireRegistryRBAC(t *testing.T) {
 	if err := database.Create(&registry).Error; err != nil {
 		t.Fatalf("create registry: %v", err)
 	}
-	workspace := models.Workspace{
+	project := models.Project{
 		Name:    "private-pub",
 		OwnerID: user.ID,
-		Status:  models.WsStatusReady,
+		Status:  models.ProjectStatusReady,
 	}
-	if err := database.Create(&workspace).Error; err != nil {
-		t.Fatalf("create workspace: %v", err)
+	if err := database.Create(&project).Error; err != nil {
+		t.Fatalf("create project: %v", err)
 	}
-	if err := database.Create(&models.WorkspaceVersion{
-		WorkspaceID:   workspace.ID,
+	if err := database.Create(&models.ProjectVersion{
+		ProjectID:     project.ID,
 		VersionNumber: 1,
 		ContentHash:   "sha-private",
 		CreatedBy:     user.ID,
 	}).Error; err != nil {
-		t.Fatalf("create workspace version: %v", err)
+		t.Fatalf("create project version: %v", err)
 	}
-	if err := rbac.NewDefaultProvider().GrantWorkspaceAccess(user.ID, workspace.ID, "owner"); err != nil {
-		t.Fatalf("grant workspace access: %v", err)
+	if err := rbac.NewDefaultProvider().GrantProjectAccess(user.ID, project.ID, "owner"); err != nil {
+		t.Fatalf("grant project access: %v", err)
 	}
 	publication := models.Publication{
-		WorkspaceID:   workspace.ID,
+		ProjectID:     project.ID,
 		VersionNumber: 1,
 		RegistryID:    registry.ID,
 		Repository:    "private-pub",
@@ -151,7 +151,7 @@ func TestRegistryRoutesRequireRegistryRBAC(t *testing.T) {
 		t.Fatalf("expected unreadable registries to be hidden, got %+v", registries)
 	}
 
-	publicationsResp := authedRequest(router, http.MethodGet, "/api/v1/workspaces/"+workspace.ID.String()+"/publications", token, "")
+	publicationsResp := authedRequest(router, http.MethodGet, "/api/v1/projects/"+project.ID.String()+"/publications", token, "")
 	if publicationsResp.Code != http.StatusOK {
 		t.Fatalf("GET /publications status: got %d body %s", publicationsResp.Code, publicationsResp.Body.String())
 	}
@@ -192,20 +192,20 @@ func TestRegistryRoutesRequireRegistryRBAC(t *testing.T) {
 		{
 			name:       "publish defaults",
 			method:     http.MethodGet,
-			path:       "/api/v1/workspaces/" + workspace.ID.String() + "/publish-defaults",
+			path:       "/api/v1/projects/" + project.ID.String() + "/publish-defaults",
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name:       "publish",
 			method:     http.MethodPost,
-			path:       "/api/v1/workspaces/" + workspace.ID.String() + "/publish",
+			path:       "/api/v1/projects/" + project.ID.String() + "/publish",
 			body:       `{"registry_id":"` + registry.ID.String() + `","repository":"private-pub","tag":"v1"}`,
 			wantStatus: http.StatusForbidden,
 		},
 		{
 			name:       "visibility",
 			method:     http.MethodPatch,
-			path:       "/api/v1/workspaces/" + workspace.ID.String() + "/publications/" + publication.ID.String(),
+			path:       "/api/v1/projects/" + project.ID.String() + "/publications/" + publication.ID.String(),
 			body:       `{"is_public":true}`,
 			wantStatus: http.StatusForbidden,
 		},

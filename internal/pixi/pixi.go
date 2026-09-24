@@ -676,18 +676,18 @@ type pixiManifestWithWorkspace struct {
 	} `toml:"project"`
 }
 
-// ValidateWorkspaceName checks that a workspace name is valid for use with nebi.
+// ValidateProjectName checks that a project name is valid for use with nebi.
 // Names must not be empty, contain path separators or colons (which are ambiguous
 // with filesystem paths and server refs), or be reserved names like "." or "..".
-func ValidateWorkspaceName(name string) error {
+func ValidateProjectName(name string) error {
 	if name == "" {
-		return fmt.Errorf("workspace name must not be empty")
+		return fmt.Errorf("project name must not be empty")
 	}
 	if strings.ContainsAny(name, `/\:`) {
-		return fmt.Errorf("workspace name %q must not contain '/', '\\', or ':'", name)
+		return fmt.Errorf("project name %q must not contain '/', '\\', or ':'", name)
 	}
 	if name == "." || name == ".." {
-		return fmt.Errorf("workspace name %q is reserved and cannot be used", name)
+		return fmt.Errorf("project name %q is reserved and cannot be used", name)
 	}
 	return nil
 }
@@ -714,7 +714,7 @@ func ExtractWorkspaceName(content string) (string, error) {
 		return "", fmt.Errorf("pixi.toml must have [workspace] name field")
 	}
 
-	if err := ValidateWorkspaceName(name); err != nil {
+	if err := ValidateProjectName(name); err != nil {
 		return "", fmt.Errorf("pixi.toml workspace name is invalid: %w", err)
 	}
 
@@ -737,10 +737,10 @@ func ExtractWorkspaceVersion(content string) (string, error) {
 	return manifest.Project.Version, nil
 }
 
-// ResolveWorkspaceName returns the workspace name to use, preferring an explicit
+// ResolveProjectName returns the project name to use, preferring an explicit
 // name argument over extracting one from pixi.toml content. If both are empty,
 // it returns an error.
-func ResolveWorkspaceName(name string, pixiToml string) (string, error) {
+func ResolveProjectName(name string, pixiToml string) (string, error) {
 	if name != "" {
 		return name, nil
 	}
@@ -749,5 +749,5 @@ func ResolveWorkspaceName(name string, pixiToml string) (string, error) {
 		return ExtractWorkspaceName(pixiToml)
 	}
 
-	return "", fmt.Errorf("workspace name is required")
+	return "", fmt.Errorf("project name is required")
 }

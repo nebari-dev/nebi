@@ -23,11 +23,11 @@ func TestIsPath(t *testing.T) {
 
 		// Names (no slash)
 		{"data-science", false},
-		{"myworkspace", false},
+		{"myproject", false},
 		{"my_env", false},
 
 		// Server refs (colon but no slash)
-		{"myworkspace:v1", false},
+		{"myproject:v1", false},
 		{"env:latest", false},
 
 		// Windows-style paths (backslash = filepath.Separator on Windows)
@@ -44,7 +44,7 @@ func TestIsPath(t *testing.T) {
 	}
 }
 
-func TestValidateWorkspaceName(t *testing.T) {
+func TestValidateProjectName(t *testing.T) {
 	tests := []struct {
 		name    string
 		wantErr bool
@@ -73,15 +73,15 @@ func TestValidateWorkspaceName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateWorkspaceName(tt.name)
+			err := validateProjectName(tt.name)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("validateWorkspaceName(%q) error = %v, wantErr %v", tt.name, err, tt.wantErr)
+				t.Errorf("validateProjectName(%q) error = %v, wantErr %v", tt.name, err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func TestSyncWorkspaceNameRejectsInvalidName(t *testing.T) {
+func TestSyncProjectNameRejectsInvalidName(t *testing.T) {
 	// Create a temp dir with a pixi.toml that has an invalid name (contains slash)
 	tmpDir := t.TempDir()
 	pixiToml := `[workspace]
@@ -99,22 +99,22 @@ platforms = ["linux-64"]
 	}
 	defer s.Close()
 
-	ws := &store.LocalWorkspace{
+	project := &store.LocalProject{
 		Name: "data-science",
 		Path: tmpDir,
 	}
-	if err := s.CreateWorkspace(ws); err != nil {
+	if err := s.CreateProject(project); err != nil {
 		t.Fatal(err)
 	}
 
-	// syncWorkspaceName should return an error for the invalid name
-	err = syncWorkspaceName(s, ws)
+	// syncProjectName should return an error for the invalid name
+	err = syncProjectName(s, project)
 	if err == nil {
-		t.Fatal("expected error for invalid workspace name with slash, got nil")
+		t.Fatal("expected error for invalid project name with slash, got nil")
 	}
 
 	// Verify the stored name was NOT updated
-	got, err := s.GetWorkspace(ws.ID)
+	got, err := s.GetProject(project.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ platforms = ["linux-64"]
 	}
 }
 
-func TestSyncWorkspaceNameUpdatesValidName(t *testing.T) {
+func TestSyncProjectNameUpdatesValidName(t *testing.T) {
 	// Create a temp dir with a pixi.toml that has a different but valid name
 	tmpDir := t.TempDir()
 	pixiToml := `[workspace]
@@ -141,21 +141,21 @@ platforms = ["linux-64"]
 	}
 	defer s.Close()
 
-	ws := &store.LocalWorkspace{
+	project := &store.LocalProject{
 		Name: "old-name",
 		Path: tmpDir,
 	}
-	if err := s.CreateWorkspace(ws); err != nil {
+	if err := s.CreateProject(project); err != nil {
 		t.Fatal(err)
 	}
 
-	// syncWorkspaceName should succeed and update the name
-	err = syncWorkspaceName(s, ws)
+	// syncProjectName should succeed and update the name
+	err = syncProjectName(s, project)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	got, err := s.GetWorkspace(ws.ID)
+	got, err := s.GetProject(project.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

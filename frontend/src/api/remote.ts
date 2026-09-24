@@ -2,17 +2,17 @@ import type {
   AuditLog,
   ConnectServerRequest,
   CreateRegistryRequest,
-  CreateRemoteWorkspaceRequest,
+  CreateRemoteProjectRequest,
   DashboardStats,
   FederatedIdentity,
   FederatedIdentityReview,
   FederatedIdentityReviewStatusFilter,
   Job,
   OCIRegistry,
+  RemoteProject,
+  RemoteProjectTag,
+  RemoteProjectVersion,
   RemoteServer,
-  RemoteWorkspace,
-  RemoteWorkspaceTag,
-  RemoteWorkspaceVersion,
   UpdateRegistryRequest,
   User,
 } from '@/types';
@@ -34,35 +34,35 @@ export const remoteApi = {
     await apiClient.delete('/remote/server');
   },
 
-  // Remote workspace proxies
-  listWorkspaces: async (): Promise<RemoteWorkspace[]> => {
-    const { data } = await apiClient.get('/remote/workspaces');
+  // Remote project proxies
+  listProjects: async (): Promise<RemoteProject[]> => {
+    const { data } = await apiClient.get('/remote/projects');
     return data;
   },
 
-  getWorkspace: async (id: string): Promise<RemoteWorkspace> => {
-    const { data } = await apiClient.get(`/remote/workspaces/${id}`);
+  getProject: async (id: string): Promise<RemoteProject> => {
+    const { data } = await apiClient.get(`/remote/projects/${id}`);
     return data;
   },
 
-  listVersions: async (id: string): Promise<RemoteWorkspaceVersion[]> => {
-    const { data } = await apiClient.get(`/remote/workspaces/${id}/versions`);
+  listVersions: async (id: string): Promise<RemoteProjectVersion[]> => {
+    const { data } = await apiClient.get(`/remote/projects/${id}/versions`);
     return data;
   },
 
-  listTags: async (id: string): Promise<RemoteWorkspaceTag[]> => {
-    const { data } = await apiClient.get(`/remote/workspaces/${id}/tags`);
+  listTags: async (id: string): Promise<RemoteProjectTag[]> => {
+    const { data } = await apiClient.get(`/remote/projects/${id}/tags`);
     return data;
   },
 
   getPixiToml: async (id: string): Promise<{ content: string }> => {
-    const { data } = await apiClient.get(`/remote/workspaces/${id}/pixi-toml`);
+    const { data } = await apiClient.get(`/remote/projects/${id}/pixi-toml`);
     return data;
   },
 
   getVersionPixiToml: async (id: string, version: number): Promise<string> => {
     const { data } = await apiClient.get(
-      `/remote/workspaces/${id}/versions/${version}/pixi-toml`,
+      `/remote/projects/${id}/versions/${version}/pixi-toml`,
       {
         responseType: 'text',
       },
@@ -72,7 +72,7 @@ export const remoteApi = {
 
   getVersionPixiLock: async (id: string, version: number): Promise<string> => {
     const { data } = await apiClient.get(
-      `/remote/workspaces/${id}/versions/${version}/pixi-lock`,
+      `/remote/projects/${id}/versions/${version}/pixi-lock`,
       {
         responseType: 'text',
       },
@@ -80,15 +80,15 @@ export const remoteApi = {
     return data;
   },
 
-  createWorkspace: async (
-    req: CreateRemoteWorkspaceRequest,
-  ): Promise<RemoteWorkspace> => {
-    const { data } = await apiClient.post('/remote/workspaces', req);
+  createProject: async (
+    req: CreateRemoteProjectRequest,
+  ): Promise<RemoteProject> => {
+    const { data } = await apiClient.post('/remote/projects', req);
     return data;
   },
 
-  deleteWorkspace: async (id: string): Promise<void> => {
-    await apiClient.delete(`/remote/workspaces/${id}`);
+  deleteProject: async (id: string): Promise<void> => {
+    await apiClient.delete(`/remote/projects/${id}`);
   },
 
   // Remote registries proxy

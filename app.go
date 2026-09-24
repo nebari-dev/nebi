@@ -118,8 +118,8 @@ func (a *App) startup(ctx context.Context) {
 	logToFile(fmt.Sprintf("Using database: %s", dbPath))
 
 	// Set storage directory to app data dir (fixes read-only file system error)
-	storageDir := filepath.Join(dataDir, "workspaces")
-	os.Setenv("NEBI_STORAGE_WORKSPACES_DIR", storageDir)
+	storageDir := filepath.Join(dataDir, "projects")
+	os.Setenv("NEBI_STORAGE_PROJECTS_DIR", storageDir)
 	logToFile(fmt.Sprintf("Using storage: %s", storageDir))
 
 	// Load config
@@ -230,89 +230,89 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	logToFile("startEmbeddedServer: server stopped")
 }
 
-// WailsWorkspace represents a simplified workspace for the Wails frontend
-type WailsWorkspace struct {
+// WailsProject represents a simplified project for the Wails frontend
+type WailsProject struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Status    string `json:"status"`
 	CreatedAt string `json:"createdAt"`
 }
 
-// ListWorkspaces returns all workspaces
-func (a *App) ListWorkspaces() ([]WailsWorkspace, error) {
+// ListProjects returns all projects
+func (a *App) ListProjects() ([]WailsProject, error) {
 	if a.db == nil {
 		return nil, fmt.Errorf("database not connected")
 	}
 
-	var workspaces []models.Workspace
-	if err := a.db.Order("created_at DESC").Find(&workspaces).Error; err != nil {
+	var projects []models.Project
+	if err := a.db.Order("created_at DESC").Find(&projects).Error; err != nil {
 		return nil, err
 	}
 
-	result := make([]WailsWorkspace, len(workspaces))
-	for i, ws := range workspaces {
-		result[i] = WailsWorkspace{
-			ID:        ws.ID.String(),
-			Name:      ws.Name,
-			Status:    string(ws.Status),
-			CreatedAt: ws.CreatedAt.Format("2006-01-02 15:04:05"),
+	result := make([]WailsProject, len(projects))
+	for i, project := range projects {
+		result[i] = WailsProject{
+			ID:        project.ID.String(),
+			Name:      project.Name,
+			Status:    string(project.Status),
+			CreatedAt: project.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
 	}
 	return result, nil
 }
 
-// CreateWorkspace creates a new workspace
-func (a *App) CreateWorkspace(name string, pixiToml string) (*WailsWorkspace, error) {
+// CreateProject creates a new project
+func (a *App) CreateProject(name string, pixiToml string) (*WailsProject, error) {
 	if a.db == nil {
 		return nil, fmt.Errorf("database not connected")
 	}
 
-	name, err := pixi.ResolveWorkspaceName(name, pixiToml)
+	name, err := pixi.ResolveProjectName(name, pixiToml)
 	if err != nil {
 		return nil, err
 	}
 
-	ws := models.Workspace{
+	project := models.Project{
 		Name:   name,
-		Status: models.WsStatusPending,
+		Status: models.ProjectStatusPending,
 	}
 
-	if err := a.db.Create(&ws).Error; err != nil {
+	if err := a.db.Create(&project).Error; err != nil {
 		return nil, err
 	}
 
-	return &WailsWorkspace{
-		ID:        ws.ID.String(),
-		Name:      ws.Name,
-		Status:    string(ws.Status),
-		CreatedAt: ws.CreatedAt.Format("2006-01-02 15:04:05"),
+	return &WailsProject{
+		ID:        project.ID.String(),
+		Name:      project.Name,
+		Status:    string(project.Status),
+		CreatedAt: project.CreatedAt.Format("2006-01-02 15:04:05"),
 	}, nil
 }
 
-// DeleteWorkspace deletes a workspace by ID
-func (a *App) DeleteWorkspace(id string) error {
+// DeleteProject deletes a project by ID
+func (a *App) DeleteProject(id string) error {
 	if a.db == nil {
 		return fmt.Errorf("database not connected")
 	}
 
-	return a.db.Where("id = ?", id).Delete(&models.Workspace{}).Error
+	return a.db.Where("id = ?", id).Delete(&models.Project{}).Error
 }
 
-// GetWorkspace gets a single workspace by ID
-func (a *App) GetWorkspace(id string) (*WailsWorkspace, error) {
+// GetProject gets a single project by ID
+func (a *App) GetProject(id string) (*WailsProject, error) {
 	if a.db == nil {
 		return nil, fmt.Errorf("database not connected")
 	}
 
-	var ws models.Workspace
-	if err := a.db.Where("id = ?", id).First(&ws).Error; err != nil {
+	var project models.Project
+	if err := a.db.Where("id = ?", id).First(&project).Error; err != nil {
 		return nil, err
 	}
 
-	return &WailsWorkspace{
-		ID:        ws.ID.String(),
-		Name:      ws.Name,
-		Status:    string(ws.Status),
-		CreatedAt: ws.CreatedAt.Format("2006-01-02 15:04:05"),
+	return &WailsProject{
+		ID:        project.ID.String(),
+		Name:      project.Name,
+		Status:    string(project.Status),
+		CreatedAt: project.CreatedAt.Format("2006-01-02 15:04:05"),
 	}, nil
 }

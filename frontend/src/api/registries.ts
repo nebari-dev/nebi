@@ -3,13 +3,13 @@ import type {
   ImportEnvironmentRequest,
   Job,
   OCIRegistry,
+  Project,
   Publication,
   PublishDefaults,
   PublishRequest,
   RegistryRepository,
   RegistryTag,
   UpdateRegistryRequest,
-  Workspace,
 } from '@/types';
 import { apiClient } from './client';
 
@@ -48,13 +48,13 @@ export const registriesApi = {
     await apiClient.delete(`/admin/registries/${id}`);
   },
 
-  // Publishing endpoints (require write permission on workspace)
+  // Publishing endpoints (require write permission on project)
   getPublishDefaults: async (
-    workspaceId: string,
+    projectId: string,
     registryId?: string,
   ): Promise<PublishDefaults> => {
     const { data } = await apiClient.get(
-      `/workspaces/${workspaceId}/publish-defaults`,
+      `/projects/${projectId}/publish-defaults`,
       {
         params: registryId ? { registry_id: registryId } : undefined,
       },
@@ -62,28 +62,26 @@ export const registriesApi = {
     return data;
   },
 
-  publish: async (workspaceId: string, req: PublishRequest): Promise<Job> => {
+  publish: async (projectId: string, req: PublishRequest): Promise<Job> => {
     const { data } = await apiClient.post(
-      `/workspaces/${workspaceId}/publish`,
+      `/projects/${projectId}/publish`,
       req,
     );
     return data;
   },
 
-  listPublications: async (workspaceId: string): Promise<Publication[]> => {
-    const { data } = await apiClient.get(
-      `/workspaces/${workspaceId}/publications`,
-    );
+  listPublications: async (projectId: string): Promise<Publication[]> => {
+    const { data } = await apiClient.get(`/projects/${projectId}/publications`);
     return data;
   },
 
   updatePublication: async (
-    workspaceId: string,
+    projectId: string,
     pubId: string,
     isPublic: boolean,
   ): Promise<Publication> => {
     const { data } = await apiClient.patch(
-      `/workspaces/${workspaceId}/publications/${pubId}`,
+      `/projects/${projectId}/publications/${pubId}`,
       { is_public: isPublic },
     );
     return data;
@@ -115,7 +113,7 @@ export const registriesApi = {
   importEnvironment: async (
     registryId: string,
     req: ImportEnvironmentRequest,
-  ): Promise<Workspace> => {
+  ): Promise<Project> => {
     const { data } = await apiClient.post(
       `/registries/${registryId}/import`,
       req,

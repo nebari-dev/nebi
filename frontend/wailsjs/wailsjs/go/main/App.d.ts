@@ -3,12 +3,12 @@
 import {main} from '../models';
 import {http} from '../models';
 
-export function CreateWorkspace(arg1:string,arg2:string):Promise<main.WailsWorkspace>;
+export function CreateProject(arg1:string,arg2:string):Promise<main.WailsProject>;
 
-export function DeleteWorkspace(arg1:string):Promise<void>;
+export function DeleteProject(arg1:string):Promise<void>;
 
-export function GetWorkspace(arg1:string):Promise<main.WailsWorkspace>;
+export function GetProject(arg1:string):Promise<main.WailsProject>;
 
 export function Handler():Promise<http.Handler>;
 
-export function ListWorkspaces():Promise<Array<main.WailsWorkspace>>;
+export function ListProjects():Promise<Array<main.WailsProject>>;

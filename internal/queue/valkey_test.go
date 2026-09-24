@@ -40,7 +40,7 @@ func newValkeyTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	if err := db.AutoMigrate(&models.User{}, &models.Workspace{}, &models.Job{}); err != nil {
+	if err := db.AutoMigrate(&models.User{}, &models.Project{}, &models.Job{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db
@@ -48,11 +48,11 @@ func newValkeyTestDB(t *testing.T) *gorm.DB {
 
 func newValkeyTestJob(userID uuid.UUID) *models.Job {
 	return &models.Job{
-		ID:          uuid.New(),
-		WorkspaceID: uuid.New(),
-		UserID:      userID,
-		Type:        models.JobTypeCreate,
-		Status:      models.JobStatusPending,
+		ID:        uuid.New(),
+		ProjectID: uuid.New(),
+		UserID:    userID,
+		Type:      models.JobTypeCreate,
+		Status:    models.JobStatusPending,
 	}
 }
 

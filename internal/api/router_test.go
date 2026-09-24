@@ -120,7 +120,7 @@ func buildLimitedLocalRouter(t *testing.T, limitCfg limits.Limits) http.Handler 
 	cfg.Auth.JWTSecret = "test-secret-for-router-test"
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = filepath.Join(t.TempDir(), "limited-router-test.db")
-	cfg.Storage.WorkspacesDir = t.TempDir()
+	cfg.Storage.ProjectsDir = t.TempDir()
 	cfg.Registries.SeedDefault = true
 
 	database, err := db.New(cfg.Database)
@@ -168,11 +168,11 @@ func TestCORSMiddlewareNoInvalidCredentialedWildcard(t *testing.T) {
 	}
 }
 
-func TestWorkspaceCreateRejectsOversizedRequestBody(t *testing.T) {
+func TestProjectCreateRejectsOversizedRequestBody(t *testing.T) {
 	r := buildLimitedLocalRouter(t, limits.Limits{RequestBodyBytes: 32})
 
 	body := `{"name":"big","pixi_toml":"` + strings.Repeat("x", 64) + `"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/projects", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 

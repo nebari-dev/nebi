@@ -27,7 +27,7 @@ describe('ShareDialog', () => {
   it('shows a loading spinner while fetching collaborators', () => {
     // Slow the response so spinner is visible on initial render
     server.use(
-      http.get('/api/v1/workspaces/:id/collaborators', async () => {
+      http.get('/api/v1/projects/:id/collaborators', async () => {
         await new Promise((r) => setTimeout(r, 500));
         return HttpResponse.json([]);
       }),
@@ -128,7 +128,7 @@ describe('ShareDialog', () => {
     const user = userEvent.setup();
     let unshareCalledWith: string | null = null;
     server.use(
-      http.delete('/api/v1/workspaces/:id/share/:userId', ({ params }) => {
+      http.delete('/api/v1/projects/:id/share/:userId', ({ params }) => {
         unshareCalledWith = params.userId as string;
         return new HttpResponse(null, { status: 204 });
       }),
@@ -157,7 +157,7 @@ describe('ShareDialog', () => {
 
   it('shows an error message when unshare request fails', async () => {
     server.use(
-      http.delete('/api/v1/workspaces/:id/share/:userId', () =>
+      http.delete('/api/v1/projects/:id/share/:userId', () =>
         HttpResponse.json({ error: 'Permission denied' }, { status: 403 }),
       ),
     );
@@ -223,7 +223,7 @@ describe('ShareDialog', () => {
 
   it('renders a group collaborator with its source badge', async () => {
     server.use(
-      http.get('/api/v1/workspaces/:id/collaborators', () =>
+      http.get('/api/v1/projects/:id/collaborators', () =>
         HttpResponse.json([mockOwnerCollaborator, mockGroupCollaborator]),
       ),
     );

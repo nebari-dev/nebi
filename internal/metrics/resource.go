@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	MetricQuotaRejectedGlobal    = "quota_rejected_global"
-	MetricQuotaRejectedUser      = "quota_rejected_user"
-	MetricQuotaRejectedWorkspace = "quota_rejected_workspace"
-	MetricJobTimeouts            = "job_timeouts"
+	MetricQuotaRejectedGlobal  = "quota_rejected_global"
+	MetricQuotaRejectedUser    = "quota_rejected_user"
+	MetricQuotaRejectedProject = "quota_rejected_project"
+	MetricJobTimeouts          = "job_timeouts"
 )
 
 type ResourceSnapshot struct {
@@ -22,10 +22,10 @@ type ResourceSnapshot struct {
 }
 
 type QuotaRejectionSnapshot struct {
-	Global    int64 `json:"global"`
-	User      int64 `json:"user"`
-	Workspace int64 `json:"workspace"`
-	Total     int64 `json:"total"`
+	Global  int64 `json:"global"`
+	User    int64 `json:"user"`
+	Project int64 `json:"project"`
+	Total   int64 `json:"total"`
 }
 
 func IncQuotaRejected(db *gorm.DB, scope string) error {
@@ -34,8 +34,8 @@ func IncQuotaRejected(db *gorm.DB, scope string) error {
 		return increment(db, MetricQuotaRejectedGlobal, 1)
 	case "user":
 		return increment(db, MetricQuotaRejectedUser, 1)
-	case "workspace":
-		return increment(db, MetricQuotaRejectedWorkspace, 1)
+	case "project":
+		return increment(db, MetricQuotaRejectedProject, 1)
 	default:
 		return nil
 	}
@@ -49,7 +49,7 @@ func Snapshot(db *gorm.DB) (ResourceSnapshot, error) {
 	names := []string{
 		MetricQuotaRejectedGlobal,
 		MetricQuotaRejectedUser,
-		MetricQuotaRejectedWorkspace,
+		MetricQuotaRejectedProject,
 		MetricJobTimeouts,
 	}
 	var rows []models.ResourceMetric
@@ -64,13 +64,13 @@ func Snapshot(db *gorm.DB) (ResourceSnapshot, error) {
 
 	global := values[MetricQuotaRejectedGlobal]
 	user := values[MetricQuotaRejectedUser]
-	workspace := values[MetricQuotaRejectedWorkspace]
+	project := values[MetricQuotaRejectedProject]
 	return ResourceSnapshot{
 		QuotaRejections: QuotaRejectionSnapshot{
-			Global:    global,
-			User:      user,
-			Workspace: workspace,
-			Total:     global + user + workspace,
+			Global:  global,
+			User:    user,
+			Project: project,
+			Total:   global + user + project,
 		},
 		JobTimeouts: values[MetricJobTimeouts],
 	}, nil

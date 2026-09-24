@@ -6,7 +6,7 @@ export type NebiJobCompletedMessage = {
   type: typeof NEBI_JOB_COMPLETED_MESSAGE;
   jobType: JobType;
   status: Extract<JobStatus, 'completed'>;
-  workspaceId: string;
+  projectId: string;
 };
 
 export const isEmbedded = () =>

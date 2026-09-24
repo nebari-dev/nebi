@@ -1,19 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { workspacesApi } from '@/api/workspaces';
+import { projectsApi } from '@/api/projects';
 import type { RollbackRequest } from '@/types';
 
 export const useVersions = (environmentId: string) => {
   return useQuery({
-    queryKey: ['workspaces', environmentId, 'versions'],
-    queryFn: () => workspacesApi.listVersions(environmentId),
+    queryKey: ['projects', environmentId, 'versions'],
+    queryFn: () => projectsApi.listVersions(environmentId),
     enabled: !!environmentId,
   });
 };
 
 export const useVersion = (environmentId: string, versionNumber: number) => {
   return useQuery({
-    queryKey: ['workspaces', environmentId, 'versions', versionNumber],
-    queryFn: () => workspacesApi.getVersion(environmentId, versionNumber),
+    queryKey: ['projects', environmentId, 'versions', versionNumber],
+    queryFn: () => projectsApi.getVersion(environmentId, versionNumber),
     enabled: !!environmentId && versionNumber > 0,
   });
 };
@@ -23,17 +23,17 @@ export const useRollback = (environmentId: string) => {
 
   return useMutation({
     mutationFn: (data: RollbackRequest) =>
-      workspacesApi.rollback(environmentId, data),
+      projectsApi.rollback(environmentId, data),
     onSuccess: () => {
       // Invalidate relevant queries
       queryClient.invalidateQueries({
-        queryKey: ['workspaces', environmentId],
+        queryKey: ['projects', environmentId],
       });
       queryClient.invalidateQueries({
-        queryKey: ['workspaces', environmentId, 'versions'],
+        queryKey: ['projects', environmentId, 'versions'],
       });
       queryClient.invalidateQueries({
-        queryKey: ['workspaces', environmentId, 'packages'],
+        queryKey: ['projects', environmentId, 'packages'],
       });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
@@ -48,7 +48,7 @@ export const useDownloadLockFile = () => {
     }: {
       environmentId: string;
       versionNumber: number;
-    }) => workspacesApi.downloadLockFile(environmentId, versionNumber),
+    }) => projectsApi.downloadLockFile(environmentId, versionNumber),
     onSuccess: (data, variables) => {
       // Create a blob and trigger download
       const blob = new Blob([data], { type: 'text/plain' });
@@ -72,7 +72,7 @@ export const useDownloadManifest = () => {
     }: {
       environmentId: string;
       versionNumber: number;
-    }) => workspacesApi.downloadManifest(environmentId, versionNumber),
+    }) => projectsApi.downloadManifest(environmentId, versionNumber),
     onSuccess: (data, variables) => {
       // Create a blob and trigger download
       const blob = new Blob([data], { type: 'text/plain' });
@@ -95,13 +95,13 @@ export const useViewLockFile = (
 ) => {
   return useQuery({
     queryKey: [
-      'workspaces',
+      'projects',
       environmentId,
       'versions',
       versionNumber,
       'lock-file',
     ],
-    queryFn: () => workspacesApi.downloadLockFile(environmentId, versionNumber),
+    queryFn: () => projectsApi.downloadLockFile(environmentId, versionNumber),
     enabled: enabled && !!environmentId && versionNumber > 0,
   });
 };
@@ -113,13 +113,13 @@ export const useViewManifest = (
 ) => {
   return useQuery({
     queryKey: [
-      'workspaces',
+      'projects',
       environmentId,
       'versions',
       versionNumber,
       'manifest',
     ],
-    queryFn: () => workspacesApi.downloadManifest(environmentId, versionNumber),
+    queryFn: () => projectsApi.downloadManifest(environmentId, versionNumber),
     enabled: enabled && !!environmentId && versionNumber > 0,
   });
 };

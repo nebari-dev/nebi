@@ -54,7 +54,7 @@ func TestE2E_LocalBundlePublishImport(t *testing.T) {
 		t.Fatalf("registry add failed:\nstdout: %s\nstderr: %s", res.Stdout, res.Stderr)
 	}
 
-	// Build a workspace with pixi + extra asset files.
+	// Build a project with pixi + extra asset files.
 	srcDir := t.TempDir()
 	writePixiFiles(t, srcDir,
 		"[project]\nname = \"bundle-e2e-ws\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
@@ -79,13 +79,13 @@ func TestE2E_LocalBundlePublishImport(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Init tracks the workspace locally so publish --local can find it.
+	// Init tracks the project locally so publish --local can find it.
 	res = runCLI(t, srcDir, "init")
 	if res.ExitCode != 0 {
 		t.Fatalf("init failed:\nstdout: %s\nstderr: %s", res.Stdout, res.Stderr)
 	}
 
-	// Publish: bundle the workspace.
+	// Publish: bundle the project.
 	res = runCLI(t, srcDir,
 		"publish", "--local", "--tag", "v1", "--concurrency", "4",
 	)

@@ -27,5 +27,5 @@ log:
 # pixi_path: /custom/path/to/pixi  # Optional: Custom pixi binary path
 
 storage:
-  workspaces_dir: ./data/workspaces  # Directory where workspaces are stored
-  # For production, consider: /var/lib/nebi/workspaces
+  projects_dir: ./data/projects  # Directory where projects are stored
+  # For production, consider: /var/lib/nebi/projects

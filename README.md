@@ -47,7 +47,7 @@ Nebi builds on Pixi to add what teams need: version history, rollback, sharing e
 - Share environments through OCI registries (Quay.io, GHCR, etc.)
 - Roll back when a dependency update breaks your workflow
 - Control who can modify shared environments with role-based access
-- Activate any workspace by name from any directory
+- Activate any project by name from any directory
 
 ## Quick Start
 
@@ -106,25 +106,25 @@ nebi init
 Push your environment to the server:
 
 ```bash
-nebi push myworkspace
+nebi push myproject
 ```
 
 Or tag a specific version:
 
 ```bash
-nebi push myworkspace:v1.0
+nebi push myproject:v1.0
 ```
 
-Once pushed, your workspace appears on the server dashboard:
+Once pushed, your project appears on the server dashboard:
 
-![Workspace](assets/workspaces.png)
+![Project](assets/projects.png)
 
 #### Pull on another machine
 
 Pull an environment on another machine:
 
 ```bash
-nebi pull myworkspace:v1.0
+nebi pull myproject:v1.0
 ```
 
 Verify what version you're running with `nebi status`:
@@ -134,10 +134,10 @@ nebi status
 ```
 
 ```text
-Workspace: myworkspace
+Project: myproject
 Path:      /Users/you/my-project
 Server:    http://localhost:8460
-Origin:    myworkspace:v1.0 (pull)
+Origin:    myproject:v1.0 (pull)
 ```
 
 ## Documentation

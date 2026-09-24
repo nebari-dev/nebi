@@ -33,6 +33,17 @@ definitions:
     required:
     - name
     type: object
+  handlers.CreateProjectRequest:
+    properties:
+      name:
+        type: string
+      path:
+        type: string
+      pixi_toml:
+        type: string
+      source:
+        type: string
+    type: object
   handlers.CreateRegistryRequest:
     properties:
       api_token:
@@ -70,17 +81,6 @@ definitions:
     - password
     - username
     type: object
-  handlers.CreateWorkspaceRequest:
-    properties:
-      name:
-        type: string
-      path:
-        type: string
-      pixi_toml:
-        type: string
-      source:
-        type: string
-    type: object
   handlers.ErrorResponse:
     properties:
       error:
@@ -88,16 +88,16 @@ definitions:
     type: object
   handlers.GrantPermissionRequest:
     properties:
+      project_id:
+        type: string
       role_id:
         type: integer
       user_id:
         type: string
-      workspace_id:
-        type: string
     required:
+    - project_id
     - role_id
     - user_id
-    - workspace_id
     type: object
   handlers.GrantRegistryToGroupRequest:
     properties:
@@ -132,6 +132,17 @@ definitions:
     properties:
       content:
         type: string
+    type: object
+  handlers.ProjectTagResponse:
+    properties:
+      created_at:
+        type: string
+      tag:
+        type: string
+      updated_at:
+        type: string
+      version_number:
+        type: integer
     type: object
   handlers.PublishRequest:
     properties:
@@ -190,7 +201,7 @@ definitions:
     required:
     - content
     type: object
-  handlers.ShareWorkspaceRequest:
+  handlers.ShareProjectRequest:
     properties:
       role:
         description: '"viewer" or "editor"'
@@ -201,7 +212,7 @@ definitions:
     - role
     - user_id
     type: object
-  handlers.ShareWorkspaceWithGroupRequest:
+  handlers.ShareProjectWithGroupRequest:
     properties:
       group_id:
         type: string
@@ -245,24 +256,13 @@ definitions:
       username:
         type: string
     type: object
-  handlers.WorkspaceTagResponse:
-    properties:
-      created_at:
-        type: string
-      tag:
-        type: string
-      updated_at:
-        type: string
-      version_number:
-        type: integer
-    type: object
   limits.Limits:
     properties:
       active_jobs_global:
         type: integer
-      active_jobs_per_user:
+      active_jobs_per_project:
         type: integer
-      active_jobs_per_workspace:
+      active_jobs_per_user:
         type: integer
       job_cpu_seconds:
         type: integer
@@ -287,17 +287,17 @@ definitions:
     properties:
       global:
         type: integer
+      project:
+        type: integer
       total:
         type: integer
       user:
-        type: integer
-      workspace:
         type: integer
     type: object
   models.AuditLog:
     properties:
       action:
-        description: e.g., "create_workspace", "grant_permission"
+        description: e.g., "create_project", "grant_permission"
         type: string
       details_json:
         description: Additional context in JSON
@@ -305,7 +305,7 @@ definitions:
       id:
         type: integer
       resource:
-        description: e.g., "workspace:123", "user:456"
+        description: e.g., "project:123", "user:456"
         type: string
       timestamp:
         type: string
@@ -422,15 +422,15 @@ definitions:
         type: string
       id:
         type: integer
+      project:
+        $ref: '#/definitions/models.Project'
+      project_id:
+        type: string
       role:
         $ref: '#/definitions/models.Role'
       role_id:
         type: integer
       updated_at:
-        type: string
-      workspace:
-        $ref: '#/definitions/models.Workspace'
-      workspace_id:
         type: string
     type: object
   models.GroupSource:
@@ -470,6 +470,10 @@ definitions:
       metadata:
         additionalProperties: true
         type: object
+      project:
+        $ref: '#/definitions/models.Project'
+      project_id:
+        type: string
       started_at:
         type: string
       status:
@@ -477,10 +481,6 @@ definitions:
       type:
         $ref: '#/definitions/models.JobType'
       user_id:
-        type: string
-      workspace:
-        $ref: '#/definitions/models.Workspace'
-      workspace_id:
         type: string
     type: object
   models.JobStatus:
@@ -536,11 +536,11 @@ definitions:
         type: string
       name:
         type: string
-      version:
+      project:
+        $ref: '#/definitions/models.Project'
+      project_id:
         type: string
-      workspace:
-        $ref: '#/definitions/models.Workspace'
-      workspace_id:
+      version:
         type: string
     type: object
   models.Permission:
@@ -549,6 +549,10 @@ definitions:
         type: string
       id:
         type: integer
+      project:
+        $ref: '#/definitions/models.Project'
+      project_id:
+        type: string
       role:
         $ref: '#/definitions/models.Role'
       role_id:
@@ -559,40 +563,8 @@ definitions:
         $ref: '#/definitions/models.User'
       user_id:
         type: string
-      workspace:
-        $ref: '#/definitions/models.Workspace'
-      workspace_id:
-        type: string
     type: object
-  models.Role:
-    properties:
-      created_at:
-        type: string
-      description:
-        type: string
-      id:
-        type: integer
-      name:
-        type: string
-      updated_at:
-        type: string
-    type: object
-  models.User:
-    properties:
-      avatar_url:
-        type: string
-      created_at:
-        type: string
-      email:
-        type: string
-      id:
-        type: string
-      updated_at:
-        type: string
-      username:
-        type: string
-    type: object
-  models.Workspace:
+  models.Project:
     properties:
       created_at:
         type: string
@@ -613,11 +585,11 @@ definitions:
         description: '"managed", "local"'
         type: string
       status:
-        $ref: '#/definitions/models.WorkspaceStatus'
+        $ref: '#/definitions/models.ProjectStatus'
       updated_at:
         type: string
     type: object
-  models.WorkspaceStatus:
+  models.ProjectStatus:
     enum:
     - pending
     - creating
@@ -626,12 +598,12 @@ definitions:
     - deleting
     type: string
     x-enum-varnames:
-    - WsStatusPending
-    - WsStatusCreating
-    - WsStatusReady
-    - WsStatusFailed
-    - WsStatusDeleting
-  models.WorkspaceVersion:
+    - ProjectStatusPending
+    - ProjectStatusCreating
+    - ProjectStatusReady
+    - ProjectStatusFailed
+    - ProjectStatusDeleting
+  models.ProjectVersion:
     properties:
       content_hash:
         description: Content hash for deduplication
@@ -667,12 +639,40 @@ definitions:
       package_metadata:
         description: JSON of package list
         type: string
+      project:
+        $ref: '#/definitions/models.Project'
+      project_id:
+        type: string
       version_number:
         description: Version tracking
         type: integer
-      workspace:
-        $ref: '#/definitions/models.Workspace'
-      workspace_id:
+    type: object
+  models.Role:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.User:
+    properties:
+      avatar_url:
+        type: string
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      updated_at:
+        type: string
+      username:
         type: string
     type: object
   service.CollaboratorKind:
@@ -726,6 +726,44 @@ definitions:
         type: string
       source:
         $ref: '#/definitions/models.GroupSource'
+      updated_at:
+        type: string
+    type: object
+  service.ProjectActiveJobUsage:
+    properties:
+      active_jobs:
+        type: integer
+      project_id:
+        type: string
+    type: object
+  service.ProjectDetailResponse:
+    properties:
+      can_write:
+        type: boolean
+      created_at:
+        type: string
+      id:
+        type: string
+      install_status:
+        $ref: '#/definitions/models.InstallStatus'
+      name:
+        type: string
+      owner:
+        $ref: '#/definitions/models.User'
+      owner_id:
+        type: string
+      path:
+        description: filesystem path (local-mode)
+        type: string
+      size_bytes:
+        type: integer
+      size_formatted:
+        type: string
+      source:
+        description: '"managed", "local"'
+        type: string
+      status:
+        $ref: '#/definitions/models.ProjectStatus'
       updated_at:
         type: string
     type: object
@@ -792,13 +830,13 @@ definitions:
     type: object
   service.ResourceMetrics:
     properties:
+      active_jobs_by_project:
+        items:
+          $ref: '#/definitions/service.ProjectActiveJobUsage'
+        type: array
       active_jobs_by_user:
         items:
           $ref: '#/definitions/service.UserActiveJobUsage'
-        type: array
-      active_jobs_by_workspace:
-        items:
-          $ref: '#/definitions/service.WorkspaceActiveJobUsage'
         type: array
       active_jobs_global:
         type: integer
@@ -833,48 +871,10 @@ definitions:
       username:
         type: string
     type: object
-  service.WorkspaceActiveJobUsage:
-    properties:
-      active_jobs:
-        type: integer
-      workspace_id:
-        type: string
-    type: object
-  service.WorkspaceDetailResponse:
-    properties:
-      can_write:
-        type: boolean
-      created_at:
-        type: string
-      id:
-        type: string
-      install_status:
-        $ref: '#/definitions/models.InstallStatus'
-      name:
-        type: string
-      owner:
-        $ref: '#/definitions/models.User'
-      owner_id:
-        type: string
-      path:
-        description: filesystem path (local-mode)
-        type: string
-      size_bytes:
-        type: integer
-      size_formatted:
-        type: string
-      source:
-        description: '"managed", "local"'
-        type: string
-      status:
-        $ref: '#/definitions/models.WorkspaceStatus'
-      updated_at:
-        type: string
-    type: object
 host: localhost:8460
 info:
   contact: {}
-  description: Multi-User Workspace Management System API
+  description: Multi-User Project Management System API
   title: Nebi API
   version: "1.0"
 paths:
@@ -1401,7 +1401,7 @@ paths:
             $ref: '#/definitions/models.Permission'
       security:
       - BearerAuth: []
-      summary: Grant workspace access to a user
+      summary: Grant project access to a user
       tags:
       - admin
   /admin/permissions/{id}:
@@ -1979,7 +1979,7 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: List all jobs for user's workspaces
+      summary: List all jobs for user's projects
       tags:
       - jobs
   /jobs/{id}:
@@ -2042,40 +2042,7 @@ paths:
       summary: Stream job logs in real-time via Server-Sent Events
       tags:
       - jobs
-  /registries:
-    get:
-      description: Get list of registries for users to select from (no credentials
-        exposed)
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/service.RegistryResult'
-            type: array
-      security:
-      - BearerAuth: []
-      summary: List available registries (public info only)
-      tags:
-      - registries
-  /version:
-    get:
-      description: Returns version information about the Nebi server
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Get version information
-      tags:
-      - system
-  /workspaces:
+  /projects:
     get:
       produces:
       - application/json
@@ -2084,7 +2051,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/models.Workspace'
+              $ref: '#/definitions/models.Project'
             type: array
         "401":
           description: Unauthorized
@@ -2096,26 +2063,26 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: List all workspaces for the current user
+      summary: List all projects for the current user
       tags:
-      - workspaces
+      - projects
     post:
       consumes:
       - application/json
       parameters:
-      - description: Workspace details
+      - description: Project details
         in: body
-        name: workspace
+        name: project
         required: true
         schema:
-          $ref: '#/definitions/handlers.CreateWorkspaceRequest'
+          $ref: '#/definitions/handlers.CreateProjectRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/models.Workspace'
+            $ref: '#/definitions/models.Project'
         "400":
           description: Bad Request
           schema:
@@ -2130,13 +2097,13 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Create a new workspace
+      summary: Create a new project
       tags:
-      - workspaces
-  /workspaces/{id}:
+      - projects
+  /projects/{id}:
     delete:
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2158,12 +2125,12 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Delete an workspace
+      summary: Delete a project
       tags:
-      - workspaces
+      - projects
     get:
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2174,7 +2141,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/service.WorkspaceDetailResponse'
+            $ref: '#/definitions/service.ProjectDetailResponse'
         "401":
           description: Unauthorized
           schema:
@@ -2189,13 +2156,13 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Get a workspace by ID
+      summary: Get a project by ID
       tags:
-      - workspaces
-  /workspaces/{id}/collaborators:
+      - projects
+  /projects/{id}/collaborators:
     get:
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2211,13 +2178,13 @@ paths:
             type: array
       security:
       - BearerAuth: []
-      summary: List all users with access to workspace
+      summary: List all users with access to project
       tags:
-      - workspaces
-  /workspaces/{id}/install:
+      - projects
+  /projects/{id}/install:
     post:
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2251,13 +2218,13 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Install the workspace environment from its lockfile (local mode)
+      summary: Install the project environment from its lockfile (local mode)
       tags:
-      - workspaces
-  /workspaces/{id}/packages:
+      - projects
+  /projects/{id}/packages:
     get:
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2285,14 +2252,14 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: List packages in an workspace
+      summary: List packages in a project
       tags:
-      - workspaces
+      - projects
     post:
       consumes:
       - application/json
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2328,15 +2295,15 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Install packages in an workspace
+      summary: Install packages in a project
       tags:
-      - workspaces
-  /workspaces/{id}/packages/{package}:
+      - projects
+  /projects/{id}/packages/{package}:
     delete:
       consumes:
       - application/json
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2371,13 +2338,13 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Remove packages from an workspace
+      summary: Remove packages from a project
       tags:
-      - workspaces
-  /workspaces/{id}/pixi-toml:
+      - projects
+  /projects/{id}/pixi-toml:
     get:
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2403,14 +2370,14 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Get pixi.toml content for an workspace
+      summary: Get pixi.toml content for a project
       tags:
-      - workspaces
+      - projects
     put:
       consumes:
       - application/json
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2442,14 +2409,14 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Save pixi.toml content for a workspace
+      summary: Save pixi.toml content for a project
       tags:
-      - workspaces
-  /workspaces/{id}/publications:
+      - projects
+  /projects/{id}/publications:
     get:
-      description: Get all publications (registry pushes) for an workspace
+      description: Get all publications (registry pushes) for a project
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2469,16 +2436,16 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: List publications for an workspace
+      summary: List publications for a project
       tags:
-      - workspaces
-  /workspaces/{id}/publications/{pubId}:
+      - projects
+  /projects/{id}/publications/{pubId}:
     patch:
       consumes:
       - application/json
       description: Toggle the public/private visibility of a publication
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2517,14 +2484,14 @@ paths:
       - BearerAuth: []
       summary: Update a publication's visibility
       tags:
-      - workspaces
-  /workspaces/{id}/publish:
+      - projects
+  /projects/{id}/publish:
     post:
       consumes:
       - application/json
       description: Publish pixi.toml and pixi.lock to an OCI registry
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2556,14 +2523,14 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Publish workspace to OCI registry
+      summary: Publish project to OCI registry
       tags:
-      - workspaces
-  /workspaces/{id}/publish-defaults:
+      - projects
+  /projects/{id}/publish-defaults:
     get:
       description: Returns suggested registry, repository name, and next tag for publishing
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2593,16 +2560,16 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Get default values for publishing a workspace
+      summary: Get default values for publishing a project
       tags:
-      - workspaces
-  /workspaces/{id}/push:
+      - projects
+  /projects/{id}/push:
     post:
       consumes:
       - application/json
-      description: Create a new workspace version and assign a tag
+      description: Create a new project version and assign a tag
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2640,13 +2607,13 @@ paths:
       - BearerAuth: []
       summary: Push a new version to the server
       tags:
-      - workspaces
-  /workspaces/{id}/rollback:
+      - projects
+  /projects/{id}/rollback:
     post:
       consumes:
       - application/json
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2666,15 +2633,15 @@ paths:
             $ref: '#/definitions/models.Job'
       security:
       - BearerAuth: []
-      summary: Rollback workspace to a previous version
+      summary: Rollback project to a previous version
       tags:
-      - workspaces
-  /workspaces/{id}/share:
+      - projects
+  /projects/{id}/share:
     post:
       consumes:
       - application/json
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2684,7 +2651,7 @@ paths:
         name: share
         required: true
         schema:
-          $ref: '#/definitions/handlers.ShareWorkspaceRequest'
+          $ref: '#/definitions/handlers.ShareProjectRequest'
       produces:
       - application/json
       responses:
@@ -2694,15 +2661,15 @@ paths:
             $ref: '#/definitions/models.Permission'
       security:
       - BearerAuth: []
-      summary: Share workspace with another user (owner only)
+      summary: Share project with another user (owner only)
       tags:
-      - workspaces
-  /workspaces/{id}/share-group:
+      - projects
+  /projects/{id}/share-group:
     post:
       consumes:
       - application/json
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2712,7 +2679,7 @@ paths:
         name: share
         required: true
         schema:
-          $ref: '#/definitions/handlers.ShareWorkspaceWithGroupRequest'
+          $ref: '#/definitions/handlers.ShareProjectWithGroupRequest'
       produces:
       - application/json
       responses:
@@ -2738,13 +2705,13 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Share workspace with a group (owner only)
+      summary: Share project with a group (owner only)
       tags:
-      - workspaces
-  /workspaces/{id}/share-group/{group_id}:
+      - projects
+  /projects/{id}/share-group/{group_id}:
     delete:
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2775,13 +2742,13 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Revoke a group's access to a workspace (owner only)
+      summary: Revoke a group's access to a project (owner only)
       tags:
-      - workspaces
-  /workspaces/{id}/share/{user_id}:
+      - projects
+  /projects/{id}/share/{user_id}:
     delete:
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2796,13 +2763,13 @@ paths:
           description: No Content
       security:
       - BearerAuth: []
-      summary: Revoke user access to workspace (owner only)
+      summary: Revoke user access to project (owner only)
       tags:
-      - workspaces
-  /workspaces/{id}/solve:
+      - projects
+  /projects/{id}/solve:
     post:
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2834,11 +2801,11 @@ paths:
       - BearerAuth: []
       summary: Solve the environment (refresh pixi.lock) from current pixi.toml
       tags:
-      - workspaces
-  /workspaces/{id}/tags:
+      - projects
+  /projects/{id}/tags:
     get:
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2850,17 +2817,17 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/handlers.WorkspaceTagResponse'
+              $ref: '#/definitions/handlers.ProjectTagResponse'
             type: array
       security:
       - BearerAuth: []
-      summary: List tags for an workspace
+      summary: List tags for a project
       tags:
-      - workspaces
-  /workspaces/{id}/uninstall:
+      - projects
+  /projects/{id}/uninstall:
     post:
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2894,13 +2861,13 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Remove the workspace's installed environment (local mode)
+      summary: Remove the project's installed environment (local mode)
       tags:
-      - workspaces
-  /workspaces/{id}/versions:
+      - projects
+  /projects/{id}/versions:
     get:
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2912,17 +2879,17 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/models.WorkspaceVersion'
+              $ref: '#/definitions/models.ProjectVersion'
             type: array
       security:
       - BearerAuth: []
-      summary: List all versions for an workspace
+      summary: List all versions for a project
       tags:
-      - workspaces
-  /workspaces/{id}/versions/{version}:
+      - projects
+  /projects/{id}/versions/{version}:
     get:
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2938,16 +2905,16 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.WorkspaceVersion'
+            $ref: '#/definitions/models.ProjectVersion'
       security:
       - BearerAuth: []
       summary: Get a specific version with full details
       tags:
-      - workspaces
-  /workspaces/{id}/versions/{version}/pixi-lock:
+      - projects
+  /projects/{id}/versions/{version}/pixi-lock:
     get:
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2968,11 +2935,11 @@ paths:
       - BearerAuth: []
       summary: Download pixi.lock for a specific version
       tags:
-      - workspaces
-  /workspaces/{id}/versions/{version}/pixi-toml:
+      - projects
+  /projects/{id}/versions/{version}/pixi-toml:
     get:
       parameters:
-      - description: Workspace ID
+      - description: Project ID
         in: path
         name: id
         required: true
@@ -2993,7 +2960,40 @@ paths:
       - BearerAuth: []
       summary: Download pixi.toml for a specific version
       tags:
-      - workspaces
+      - projects
+  /registries:
+    get:
+      description: Get list of registries for users to select from (no credentials
+        exposed)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/service.RegistryResult'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List available registries (public info only)
+      tags:
+      - registries
+  /version:
+    get:
+      description: Returns version information about the Nebi server
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get version information
+      tags:
+      - system
 securityDefinitions:
   BearerAuth:
     in: header

@@ -3,7 +3,7 @@ import type {
   Group,
   GroupMember,
   GroupWithMemberCount,
-  ShareWorkspaceWithGroupRequest,
+  ShareProjectWithGroupRequest,
   UpdateGroupRequest,
 } from '@/types/models';
 import { apiClient } from './client';
@@ -52,16 +52,13 @@ export const groupsApi = {
     return r.data;
   },
 
-  shareWorkspace: async (
-    workspaceId: string,
-    body: ShareWorkspaceWithGroupRequest,
+  shareProject: async (
+    projectId: string,
+    body: ShareProjectWithGroupRequest,
   ): Promise<void> => {
-    await apiClient.post(`/workspaces/${workspaceId}/share-group`, body);
+    await apiClient.post(`/projects/${projectId}/share-group`, body);
   },
-  unshareWorkspace: async (
-    workspaceId: string,
-    groupId: string,
-  ): Promise<void> => {
-    await apiClient.delete(`/workspaces/${workspaceId}/share-group/${groupId}`);
+  unshareProject: async (projectId: string, groupId: string): Promise<void> => {
+    await apiClient.delete(`/projects/${projectId}/share-group/${groupId}`);
   },
 };

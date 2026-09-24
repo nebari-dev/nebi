@@ -6,7 +6,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/utils"
 )
 
-// CreateRequest holds parameters for creating a workspace.
+// CreateRequest holds parameters for creating a project.
 type CreateRequest struct {
 	Name             string
 	PixiToml         string
@@ -32,26 +32,26 @@ type PushResult struct {
 	Tag           string // kept for backwards compatibility
 }
 
-// WorkspaceResponse wraps a workspace with computed fields.
+// ProjectResponse wraps a project with computed fields.
 // InstallStatus and size fields are populated in local mode only; the
 // server no longer installs environments, so team-mode responses omit them.
-type WorkspaceResponse struct {
-	models.Workspace
+type ProjectResponse struct {
+	models.Project
 	SizeFormatted string               `json:"size_formatted,omitempty"`
 	InstallStatus models.InstallStatus `json:"install_status,omitempty"`
 }
 
-// WorkspaceDetailResponse includes the current user's effective write access.
-type WorkspaceDetailResponse struct {
-	WorkspaceResponse
+// ProjectDetailResponse includes the current user's effective write access.
+type ProjectDetailResponse struct {
+	ProjectResponse
 	CanWrite bool `json:"can_write"`
 }
 
-// NewWorkspaceResponse creates a WorkspaceResponse with formatted size.
-func NewWorkspaceResponse(ws models.Workspace) WorkspaceResponse {
-	resp := WorkspaceResponse{Workspace: ws}
-	if ws.SizeBytes > 0 {
-		resp.SizeFormatted = utils.FormatBytes(ws.SizeBytes)
+// NewProjectResponse creates a ProjectResponse with formatted size.
+func NewProjectResponse(project models.Project) ProjectResponse {
+	resp := ProjectResponse{Project: project}
+	if project.SizeBytes > 0 {
+		resp.SizeFormatted = utils.FormatBytes(project.SizeBytes)
 	}
 	return resp
 }
@@ -77,8 +77,8 @@ type CollaboratorResult struct {
 	IsOwner  bool             `json:"is_owner"`
 }
 
-// PublishWorkspaceRequest holds parameters for publishing to an OCI registry.
-type PublishWorkspaceRequest struct {
+// PublishProjectRequest holds parameters for publishing to an OCI registry.
+type PublishProjectRequest struct {
 	RegistryID uuid.UUID
 	Repository string
 	Tag        string

@@ -12,13 +12,13 @@ const mockPackages = [
 describe('usePackages', () => {
   beforeEach(() => {
     server.use(
-      http.get('/api/v1/workspaces/:id/packages', () =>
+      http.get('/api/v1/projects/:id/packages', () =>
         HttpResponse.json(mockPackages),
       ),
     );
   });
 
-  it('fetches packages for a workspace', async () => {
+  it('fetches packages for a project', async () => {
     const { result } = renderHook(() => usePackages('ws-1'), {
       wrapper: createWrapper(),
     });
@@ -35,7 +35,7 @@ describe('usePackages', () => {
 
   it('reflects an error state when the request fails', async () => {
     server.use(
-      http.get('/api/v1/workspaces/:id/packages', () => HttpResponse.error()),
+      http.get('/api/v1/projects/:id/packages', () => HttpResponse.error()),
     );
     const { result } = renderHook(() => usePackages('ws-1'), {
       wrapper: createWrapper(),

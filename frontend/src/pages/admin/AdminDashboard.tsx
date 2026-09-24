@@ -20,14 +20,14 @@ import {
   useUsers,
 } from '@/hooks/useAdmin';
 import { useJobs } from '@/hooks/useJobs';
+import { useProjects } from '@/hooks/useProjects';
 import {
   useRemoteDashboardStats,
   useRemoteFederatedIdentityReviews,
   useRemoteJobs,
+  useRemoteProjects,
   useRemoteView,
-  useRemoteWorkspaces,
 } from '@/hooks/useRemote';
-import { useWorkspaces } from '@/hooks/useWorkspaces';
 import { isPendingFederatedIdentityReview } from '@/types';
 
 const StatCard = ({
@@ -85,7 +85,7 @@ const quickActions = [
 
 export const AdminDashboard = () => {
   const { data: users, isLoading: usersLoading } = useUsers();
-  const { data: workspaces, isLoading: wsLoading } = useWorkspaces();
+  const { data: projects, isLoading: projectLoading } = useProjects();
   const { data: jobs, isLoading: jobsLoading } = useJobs();
   const { data: dashboardStats, isLoading: statsLoading } = useDashboardStats();
   const { data: identityReviews, isLoading: reviewsLoading } =
@@ -95,22 +95,22 @@ export const AdminDashboard = () => {
   const { viewMode, isRemoteConnected, isRemoteView } = useRemoteView();
 
   // Remote data
-  const remoteWorkspacesQuery = useRemoteWorkspaces(isRemoteView);
+  const remoteProjectsQuery = useRemoteProjects(isRemoteView);
   const remoteJobsQuery = useRemoteJobs(isRemoteView);
   const remoteStatsQuery = useRemoteDashboardStats(isRemoteView);
   const remoteReviewsQuery = useRemoteFederatedIdentityReviews(isRemoteView);
-  const remoteWorkspaces = remoteWorkspacesQuery.data;
+  const remoteProjects = remoteProjectsQuery.data;
   const remoteJobs = remoteJobsQuery.data;
   const remoteDashboardStats = remoteStatsQuery.data;
   const remoteIdentityReviews = remoteReviewsQuery.data;
 
   // Select data based on view mode
-  const displayedWorkspaces = useMemo(() => {
+  const displayedProjects = useMemo(() => {
     if (!isRemoteConnected || viewMode === 'local') {
-      return workspaces || [];
+      return projects || [];
     }
-    return remoteWorkspaces || [];
-  }, [workspaces, remoteWorkspaces, isRemoteConnected, viewMode]);
+    return remoteProjects || [];
+  }, [projects, remoteProjects, isRemoteConnected, viewMode]);
 
   const displayedJobs = useMemo(() => {
     if (!isRemoteConnected || viewMode === 'local') {
@@ -145,7 +145,7 @@ export const AdminDashboard = () => {
   ).length;
 
   const remoteRequiredQueries = [
-    remoteWorkspacesQuery,
+    remoteProjectsQuery,
     remoteJobsQuery,
     remoteStatsQuery,
   ];
@@ -155,7 +155,7 @@ export const AdminDashboard = () => {
   // (see isFirstLoad in useRemote.ts).
   const isLoading =
     usersLoading ||
-    wsLoading ||
+    projectLoading ||
     jobsLoading ||
     statsLoading ||
     reviewsLoading ||
@@ -190,7 +190,7 @@ export const AdminDashboard = () => {
         <StatCard title="Total Users" value={users?.length || 0} icon={Users} />
         <StatCard
           title="Environments"
-          value={displayedWorkspaces.length}
+          value={displayedProjects.length}
           icon={Boxes}
         />
         <StatCard title="Active Jobs" value={activeJobs} icon={Activity} />

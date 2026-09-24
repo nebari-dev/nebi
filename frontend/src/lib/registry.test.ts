@@ -38,7 +38,7 @@ describe('buildImportCommand', () => {
   });
 
   it('works with pre-combined namespace/repo (publication record style)', () => {
-    // Simulates WorkspaceDetail where namespace and repo are combined before calling
+    // Simulates ProjectDetail where namespace and repo are combined before calling
     const namespace = 'nebari_environments';
     const repository = 'data-science-demo';
     const repo = namespace ? `${namespace}/${repository}` : repository;

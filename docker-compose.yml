@@ -106,7 +106,7 @@ services:
       NEBI_LOG_LEVEL: debug
       NEBI_LOG_FORMAT: text
       NEBI_AUTH_JWT_SECRET: ${NEBI_AUTH_JWT_SECRET:?NEBI_AUTH_JWT_SECRET is required}
-      NEBI_STORAGE_WORKSPACES_DIR: /app/data/workspaces
+      NEBI_STORAGE_PROJECTS_DIR: /app/data/projects
 
       # Server configuration
       NEBI_SERVER_PORT: 8460
@@ -125,7 +125,7 @@ services:
         condition: service_started
     command: ["--mode=both"]
     volumes:
-      - ./data/workspaces:/app/data/workspaces
+      - ./data/projects:/app/data/projects
     networks:
       - nebi-network
 
@@ -151,7 +151,7 @@ services:
       NEBI_LOG_LEVEL: debug
       NEBI_LOG_FORMAT: text
       NEBI_AUTH_JWT_SECRET: ${NEBI_AUTH_JWT_SECRET:?NEBI_AUTH_JWT_SECRET is required}
-      NEBI_STORAGE_WORKSPACES_DIR: /app/data/workspaces
+      NEBI_STORAGE_PROJECTS_DIR: /app/data/projects
     depends_on:
       postgres:
         condition: service_healthy
@@ -161,7 +161,7 @@ services:
         condition: service_started
     command: ["--mode=worker"]
     volumes:
-      - ./data/workspaces:/app/data/workspaces
+      - ./data/projects:/app/data/projects
     networks:
       - nebi-network
 
@@ -186,7 +186,7 @@ services:
       NEBI_LOG_LEVEL: debug
       NEBI_LOG_FORMAT: text
       NEBI_AUTH_JWT_SECRET: ${NEBI_AUTH_JWT_SECRET:?NEBI_AUTH_JWT_SECRET is required}
-      NEBI_STORAGE_WORKSPACES_DIR: /app/data/workspaces
+      NEBI_STORAGE_PROJECTS_DIR: /app/data/projects
     depends_on:
       postgres:
         condition: service_healthy
@@ -196,7 +196,7 @@ services:
         condition: service_started
     command: ["--mode=worker"]
     volumes:
-      - ./data/workspaces:/app/data/workspaces
+      - ./data/projects:/app/data/projects
     networks:
       - nebi-network
 

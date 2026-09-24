@@ -30,6 +30,7 @@ export interface Project {
   owner?: User; // Optional owner details
   status: ProjectStatus;
   install_status?: InstallStatus;
+  can_write?: boolean; // Effective write access, included in project details.
   created_at: string;
   updated_at: string;
   size_bytes?: number;

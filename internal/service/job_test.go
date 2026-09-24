@@ -203,7 +203,7 @@ func TestJobRecordFailedEnvInstall_SurfacesAsInstallFailed(t *testing.T) {
 		t.Fatalf("RecordFailedEnvInstall: %v", err)
 	}
 
-	resp, err := projectSvc.Get(project.ID.String())
+	resp, err := projectSvc.Get(project.ID.String(), alice)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}

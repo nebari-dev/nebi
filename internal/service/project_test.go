@@ -305,7 +305,7 @@ func TestGet_Found(t *testing.T) {
 
 	created, _ := svc.Create(context.Background(), CreateRequest{Name: "test"}, userID)
 
-	project, err := svc.Get(created.ID.String())
+	project, err := svc.Get(created.ID.String(), userID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -317,7 +317,7 @@ func TestGet_Found(t *testing.T) {
 func TestGet_NotFound(t *testing.T) {
 	svc, _ := testSetup(t, true)
 
-	_, err := svc.Get(uuid.New().String())
+	_, err := svc.Get(uuid.New().String(), uuid.New())
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}

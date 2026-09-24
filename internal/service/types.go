@@ -41,6 +41,12 @@ type ProjectResponse struct {
 	InstallStatus models.InstallStatus `json:"install_status,omitempty"`
 }
 
+// ProjectDetailResponse includes the current user's effective write access.
+type ProjectDetailResponse struct {
+	ProjectResponse
+	CanWrite bool `json:"can_write"`
+}
+
 // NewProjectResponse creates a ProjectResponse with formatted size.
 func NewProjectResponse(project models.Project) ProjectResponse {
 	resp := ProjectResponse{Project: project}

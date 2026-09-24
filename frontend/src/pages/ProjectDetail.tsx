@@ -104,6 +104,8 @@ export const ProjectDetail = () => {
   const isLocalMode = useModeStore((s) => s.isLocalMode());
   // User can only share if it's not a local project and they are the owner
   const isOwner = project?.owner_id === currentUser?.id;
+  const canWrite = project?.can_write === true;
+  const editingToml = isEditingToml && canWrite;
 
   const loadPixiToml = useCallback(async () => {
     setLoadingToml(true);
@@ -195,6 +197,8 @@ export const ProjectDetail = () => {
             variant="outline"
             size="sm"
             className="gap-2"
+            disabled={!canWrite}
+            aria-describedby={!canWrite ? 'configuration-read-only' : undefined}
             onClick={async () => {
               if (!pixiToml) {
                 setLoadingToml(true);
@@ -228,6 +232,16 @@ export const ProjectDetail = () => {
           )}
         </div>
       </div>
+
+      {!canWrite && (
+        <p
+          id="configuration-read-only"
+          className="text-sm text-muted-foreground"
+        >
+          You have read-only access. Editing the configuration requires write
+          access.
+        </p>
+      )}
 
       {envJobNotice && (
         <div className="rounded-md border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-700">
@@ -619,10 +633,14 @@ export const ProjectDetail = () => {
           )}
           <div className="flex items-center justify-between pb-2">
             <div className="flex items-center gap-2">
-              {pixiToml && !isEditingToml && (
+              {pixiToml && !editingToml && (
                 <Button
                   variant="outline"
                   size="sm"
+                  disabled={!canWrite}
+                  aria-describedby={
+                    !canWrite ? 'configuration-read-only' : undefined
+                  }
                   onClick={() => {
                     setEditedToml(pixiToml);
                     setSaveInstallJobId(null);
@@ -634,7 +652,7 @@ export const ProjectDetail = () => {
                   Edit
                 </Button>
               )}
-              {isEditingToml && (
+              {editingToml && (
                 <>
                   <Button
                     variant="outline"
@@ -690,7 +708,7 @@ export const ProjectDetail = () => {
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : isEditingToml ? (
+          ) : editingToml ? (
             <PixiTomlEditor
               tomlValue={editedToml}
               onTomlChange={setEditedToml}

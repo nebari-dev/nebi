@@ -89,8 +89,8 @@ func (s *ProjectService) List(userID uuid.UUID) ([]ProjectResponse, error) {
 	return result, nil
 }
 
-// Get returns a single project by ID.
-func (s *ProjectService) Get(id string) (*ProjectResponse, error) {
+// Get returns a single project by ID with the current user's write access.
+func (s *ProjectService) Get(id string, userID uuid.UUID) (*ProjectDetailResponse, error) {
 	var project models.Project
 	if err := s.db.Preload("Owner").Where("id = ?", id).First(&project).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -98,9 +98,15 @@ func (s *ProjectService) Get(id string) (*ProjectResponse, error) {
 		}
 		return nil, err
 	}
-	resp := NewProjectResponse(project)
+	resp := ProjectDetailResponse{ProjectResponse: NewProjectResponse(project), CanWrite: s.isLocal}
 	if s.isLocal {
 		resp.InstallStatus = s.installStatusFor(&project)
+	} else {
+		canWrite, err := s.rbac.CanWriteProject(userID, project.ID)
+		if err != nil {
+			return nil, err
+		}
+		resp.CanWrite = canWrite
 	}
 	return &resp, nil
 }

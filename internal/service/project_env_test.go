@@ -98,7 +98,7 @@ func TestGet_InstallStatus_NotInstalled(t *testing.T) {
 	userID := createTestUser(t, db, "alice")
 	project := createReadyProject(t, svc, db, "st-notinstalled", userID)
 
-	resp, err := svc.Get(project.ID.String())
+	resp, err := svc.Get(project.ID.String(), project.OwnerID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestGet_InstallStatus_InstalledFromDisk(t *testing.T) {
 	project := createReadyProject(t, svc, db, "st-installed", userID)
 	makeEnvInstalled(t, svc, project)
 
-	resp, err := svc.Get(project.ID.String())
+	resp, err := svc.Get(project.ID.String(), project.OwnerID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestGet_InstallStatus_InstallingWhileJobActive(t *testing.T) {
 		t.Fatalf("install: %v", err)
 	}
 
-	resp, err := svc.Get(project.ID.String())
+	resp, err := svc.Get(project.ID.String(), project.OwnerID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestGet_InstallStatus_UninstallingWhileJobActive(t *testing.T) {
 		t.Fatalf("uninstall: %v", err)
 	}
 
-	resp, err := svc.Get(project.ID.String())
+	resp, err := svc.Get(project.ID.String(), project.OwnerID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestGet_InstallStatus_FailedWhenLastInstallJobFailed(t *testing.T) {
 		t.Fatalf("fail job: %v", err)
 	}
 
-	resp, err := svc.Get(project.ID.String())
+	resp, err := svc.Get(project.ID.String(), project.OwnerID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestGet_InstallStatus_FailedWinsOverStaleDir(t *testing.T) {
 		t.Fatalf("fail job: %v", err)
 	}
 
-	resp, err := svc.Get(project.ID.String())
+	resp, err := svc.Get(project.ID.String(), project.OwnerID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -213,7 +213,7 @@ func TestGet_InstallStatus_OmittedInTeamMode(t *testing.T) {
 	userID := createTestUser(t, db, "alice")
 	project := createReadyProject(t, svc, db, "st-team", userID)
 
-	resp, err := svc.Get(project.ID.String())
+	resp, err := svc.Get(project.ID.String(), project.OwnerID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}

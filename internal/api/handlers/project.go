@@ -74,13 +74,13 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 // @Security BearerAuth
 // @Produce json
 // @Param id path string true "Project ID"
-// @Success 200 {object} models.Project
+// @Success 200 {object} service.ProjectDetailResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /projects/{id} [get]
 func (h *ProjectHandler) GetProject(c *gin.Context) {
-	project, err := h.svc.Get(c.Param("id"))
+	project, err := h.svc.Get(c.Param("id"), getUserID(c))
 	if err != nil {
 		handleServiceError(c, err)
 		return

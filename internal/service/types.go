@@ -41,6 +41,12 @@ type WorkspaceResponse struct {
 	InstallStatus models.InstallStatus `json:"install_status,omitempty"`
 }
 
+// WorkspaceDetailResponse includes the current user's effective write access.
+type WorkspaceDetailResponse struct {
+	WorkspaceResponse
+	CanWrite bool `json:"can_write"`
+}
+
 // NewWorkspaceResponse creates a WorkspaceResponse with formatted size.
 func NewWorkspaceResponse(ws models.Workspace) WorkspaceResponse {
 	resp := WorkspaceResponse{Workspace: ws}

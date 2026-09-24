@@ -30,6 +30,7 @@ export interface Workspace {
   owner?: User; // Optional owner details
   status: WorkspaceStatus;
   install_status?: InstallStatus;
+  can_write?: boolean; // Effective write access, included in workspace details.
   created_at: string;
   updated_at: string;
   size_bytes?: number;

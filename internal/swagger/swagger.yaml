@@ -441,6 +441,20 @@ definitions:
     x-enum-varnames:
     - GroupSourceNative
     - GroupSourceOIDC
+  models.InstallStatus:
+    enum:
+    - not_installed
+    - installing
+    - installed
+    - uninstalling
+    - install_failed
+    type: string
+    x-enum-varnames:
+    - InstallStatusNotInstalled
+    - InstallStatusInstalling
+    - InstallStatusInstalled
+    - InstallStatusUninstalling
+    - InstallStatusFailed
   models.Job:
     properties:
       completed_at:
@@ -824,6 +838,37 @@ definitions:
       active_jobs:
         type: integer
       workspace_id:
+        type: string
+    type: object
+  service.WorkspaceDetailResponse:
+    properties:
+      can_write:
+        type: boolean
+      created_at:
+        type: string
+      id:
+        type: string
+      install_status:
+        $ref: '#/definitions/models.InstallStatus'
+      name:
+        type: string
+      owner:
+        $ref: '#/definitions/models.User'
+      owner_id:
+        type: string
+      path:
+        description: filesystem path (local-mode)
+        type: string
+      size_bytes:
+        type: integer
+      size_formatted:
+        type: string
+      source:
+        description: '"managed", "local"'
+        type: string
+      status:
+        $ref: '#/definitions/models.WorkspaceStatus'
+      updated_at:
         type: string
     type: object
 host: localhost:8460
@@ -2129,7 +2174,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Workspace'
+            $ref: '#/definitions/service.WorkspaceDetailResponse'
         "401":
           description: Unauthorized
           schema:

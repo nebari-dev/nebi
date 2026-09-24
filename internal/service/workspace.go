@@ -89,8 +89,8 @@ func (s *WorkspaceService) List(userID uuid.UUID) ([]WorkspaceResponse, error) {
 	return result, nil
 }
 
-// Get returns a single workspace by ID.
-func (s *WorkspaceService) Get(id string) (*WorkspaceResponse, error) {
+// Get returns a single workspace by ID with the current user's write access.
+func (s *WorkspaceService) Get(id string, userID uuid.UUID) (*WorkspaceDetailResponse, error) {
 	var ws models.Workspace
 	if err := s.db.Preload("Owner").Where("id = ?", id).First(&ws).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -98,9 +98,15 @@ func (s *WorkspaceService) Get(id string) (*WorkspaceResponse, error) {
 		}
 		return nil, err
 	}
-	resp := NewWorkspaceResponse(ws)
+	resp := WorkspaceDetailResponse{WorkspaceResponse: NewWorkspaceResponse(ws), CanWrite: s.isLocal}
 	if s.isLocal {
 		resp.InstallStatus = s.installStatusFor(&ws)
+	} else {
+		canWrite, err := s.rbac.CanWriteWorkspace(userID, ws.ID)
+		if err != nil {
+			return nil, err
+		}
+		resp.CanWrite = canWrite
 	}
 	return &resp, nil
 }

@@ -15,6 +15,11 @@ server:
   # Comma-separated. Env: NEBI_SERVER_ALLOWED_ORIGINS
   # allowed_origins: "https://hub.example.com"
 
+# Background job concurrency defaults to half the CPU cores, with a minimum of 1.
+# Override with a positive integer or NEBI_WORKER_MAX_WORKERS.
+# worker:
+#   max_workers: 4
+
 database:
   driver: sqlite  # or "postgres"
   dsn: ./nebi.db

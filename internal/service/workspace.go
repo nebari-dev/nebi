@@ -22,7 +22,7 @@ import (
 // WorkspaceService contains the business logic for workspace operations.
 type WorkspaceService struct {
 	db       *gorm.DB
-	queue    queue.Queue
+	queue    *queue.MemoryQueue
 	executor executor.Executor
 	rbac     rbac.Provider
 	isLocal  bool
@@ -31,7 +31,7 @@ type WorkspaceService struct {
 }
 
 // New creates a new WorkspaceService.
-func New(db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool, encKey []byte, rbacProvider rbac.Provider, limitCfg limits.Limits) *WorkspaceService {
+func New(db *gorm.DB, q *queue.MemoryQueue, exec executor.Executor, isLocal bool, encKey []byte, rbacProvider rbac.Provider, limitCfg limits.Limits) *WorkspaceService {
 	return &WorkspaceService{db: db, queue: q, executor: exec, isLocal: isLocal, encKey: encKey, rbac: rbacProvider, limits: limitCfg}
 }
 

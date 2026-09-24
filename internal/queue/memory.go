@@ -11,7 +11,8 @@ import (
 	"github.com/nebari-dev/nebi/internal/models"
 )
 
-// MemoryQueue implements an in-memory job queue
+// MemoryQueue schedules pending jobs in memory. JobService persists job status
+// and logs in the database; the queue does not keep a second copy of that state.
 type MemoryQueue struct {
 	pending     map[string][]*models.Job
 	tenantOrder []string

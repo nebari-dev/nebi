@@ -153,7 +153,7 @@ func TestServerURL(t *testing.T) {
 func TestShutdownEndsPendingJobStream(t *testing.T) {
 	q := queue.NewMemoryQueue(1)
 	defer q.Close()
-	w := worker.New(q, nil, nil, nil, slog.Default(), limits.Defaults())
+	w := worker.New(q, nil, nil, nil, slog.Default(), limits.Defaults(), 1)
 	workerCtx, cancelWorker := context.WithCancel(context.Background())
 	defer cancelWorker()
 	workerDone := make(chan struct{})

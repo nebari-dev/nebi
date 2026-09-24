@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -307,5 +308,42 @@ func TestAllowedOriginsList_Empty(t *testing.T) {
 	c := ServerConfig{AllowedOrigins: "  "}
 	if got := c.AllowedOriginsList(); got != nil {
 		t.Errorf("expected nil for blank value, got %v", got)
+	}
+}
+
+func TestLoad_WorkerConcurrency(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		yaml    string
+		env     string
+		want    int
+		wantErr bool
+	}{
+		{name: "default", want: max(1, runtime.NumCPU()/2)},
+		{name: "config file", yaml: "worker:\n  max_workers: 3\n", want: 3},
+		{name: "environment overrides file", yaml: "worker:\n  max_workers: 3\n", env: "2", want: 2},
+		{name: "zero rejected", env: "0", wantErr: true},
+		{name: "negative rejected", env: "-1", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			isolate(t)
+			if tc.yaml != "" {
+				writeConfigYAML(t, tc.yaml)
+			}
+			t.Setenv("NEBI_WORKER_MAX_WORKERS", tc.env)
+			cfg, err := Load(WithMode(ModeLocal))
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "worker.max_workers") {
+					t.Fatalf("expected worker.max_workers validation error, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Worker.MaxWorkers != tc.want {
+				t.Fatalf("max_workers = %d, want %d", cfg.Worker.MaxWorkers, tc.want)
+			}
+		})
 	}
 }

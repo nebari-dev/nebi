@@ -147,7 +147,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	// Run jobs in the background while the HTTP API remains responsive.
-	w := worker.New(jobQueue, exec, workerSvc, workerJobSvc, slog.Default(), limitCfg)
+	w := worker.New(jobQueue, exec, workerSvc, workerJobSvc, slog.Default(), limitCfg, appCfg.Worker.MaxWorkers)
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	defer workerCancel()
 	workerDone := make(chan struct{})

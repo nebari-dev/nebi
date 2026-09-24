@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ const (
 // Config holds all application configuration
 type Config struct {
 	Mode       Mode             `mapstructure:"-"`
+	Worker     WorkerConfig     `mapstructure:"worker"`
 	Server     ServerConfig     `mapstructure:"server"`
 	Database   DatabaseConfig   `mapstructure:"database"`
 	Auth       AuthConfig       `mapstructure:"auth"`
@@ -88,6 +90,11 @@ func DefaultReadTimeoutSeconds(requestBodyBytes int64) int {
 		return minReadTimeoutSeconds
 	}
 	return seconds
+}
+
+// WorkerConfig holds background job concurrency configuration.
+type WorkerConfig struct {
+	MaxWorkers int `mapstructure:"max_workers"`
 }
 
 // DatabaseConfig holds database configuration
@@ -170,6 +177,7 @@ func Load(options ...LoadOption) (*Config, error) {
 	v := viper.New()
 
 	// Set defaults for local development
+	v.SetDefault("worker.max_workers", max(1, runtime.NumCPU()/2))
 	v.SetDefault("server.host", "")
 	v.SetDefault("server.port", 8460)
 	v.SetDefault("server.mode", "development")
@@ -234,6 +242,7 @@ func Load(options ...LoadOption) (*Config, error) {
 	// viper's AutomaticEnv + Unmarshal does not propagate env vars into
 	// nested structs without explicit BindEnv. Bind each nested key so that
 	// e.g. NEBI_STORAGE_WORKSPACES_DIR overrides the workspaces_dir field.
+	_ = v.BindEnv("worker.max_workers", "NEBI_WORKER_MAX_WORKERS")
 	_ = v.BindEnv("storage.workspaces_dir", "NEBI_STORAGE_WORKSPACES_DIR")
 	_ = v.BindEnv("server.host", "NEBI_SERVER_HOST")
 	_ = v.BindEnv("server.port", "NEBI_SERVER_PORT")
@@ -272,6 +281,9 @@ func Load(options ...LoadOption) (*Config, error) {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
 	cfg.Mode = opts.mode
+	if cfg.Worker.MaxWorkers < 1 {
+		return nil, fmt.Errorf("worker.max_workers must be at least 1")
+	}
 	if err := cfg.Limits.Validate(); err != nil {
 		return nil, err
 	}

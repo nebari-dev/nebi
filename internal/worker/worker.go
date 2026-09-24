@@ -24,12 +24,13 @@ import (
 
 // Worker processes jobs from the queue
 type Worker struct {
-	queue       queue.Queue
+	queue       *queue.MemoryQueue
 	executor    executor.Executor
 	svc         *service.WorkspaceService
 	jobSvc      *service.JobService
 	logger      *slog.Logger
 	broker      *logstream.LogBroker
+	maxWorkers  int
 	jobTimeout  time.Duration
 	maxLogBytes int
 }
@@ -43,7 +44,7 @@ func (e *autoReinstallFailureError) Error() string {
 }
 
 // New creates a new worker instance
-func New(q queue.Queue, exec executor.Executor, svc *service.WorkspaceService, jobSvc *service.JobService, logger *slog.Logger, limitCfg limits.Limits) *Worker {
+func New(q *queue.MemoryQueue, exec executor.Executor, svc *service.WorkspaceService, jobSvc *service.JobService, logger *slog.Logger, limitCfg limits.Limits, maxWorkers int) *Worker {
 	return &Worker{
 		queue:       q,
 		executor:    exec,
@@ -51,6 +52,7 @@ func New(q queue.Queue, exec executor.Executor, svc *service.WorkspaceService, j
 		jobSvc:      jobSvc,
 		logger:      logger,
 		broker:      logstream.NewBroker(),
+		maxWorkers:  max(1, maxWorkers),
 		jobTimeout:  limitCfg.JobTimeout(),
 		maxLogBytes: limitCfg.JobLogBytes,
 	}
@@ -64,39 +66,26 @@ func (w *Worker) GetBroker() *logstream.LogBroker {
 // Start begins processing jobs from the queue
 func (w *Worker) Start(ctx context.Context) error {
 	defer w.broker.Shutdown()
-	w.logger.Info("Worker started")
+	w.logger.Info("Worker started", "max_concurrent_jobs", w.maxWorkers)
 
-	for {
-		select {
-		case <-ctx.Done():
-			w.logger.Info("All jobs completed, worker stopped")
-			return ctx.Err()
-		default:
-			job, err := w.queue.Dequeue(ctx)
-			if err != nil {
-				if ctx.Err() != nil {
-					return ctx.Err()
+	var wg sync.WaitGroup
+	for range w.maxWorkers {
+		wg.Go(func() {
+			for ctx.Err() == nil {
+				// The in-memory queue blocks until work arrives, it closes, or
+				// the context is cancelled. There is no remote queue to poll.
+				job, err := w.queue.Dequeue(ctx)
+				if err != nil || ctx.Err() != nil {
+					return
 				}
-				// DeadlineExceeded means no jobs available (normal timeout), not an error
-				if err == context.DeadlineExceeded {
-					// No jobs available, just continue polling
-					continue
-				}
-				// Actual errors (connection issues, etc.)
-				w.logger.Error("Failed to dequeue job", "error", err)
-				time.Sleep(time.Second) // Backoff on real errors
-				continue
+				w.processJob(ctx, job)
 			}
-
-			if job == nil {
-				time.Sleep(100 * time.Millisecond)
-				continue
-			}
-
-			// Jobs run serially; Start itself runs in a background goroutine.
-			w.processJob(ctx, job)
-		}
+		})
 	}
+	// Keep the broker alive until every job has saved its final status/logs.
+	wg.Wait()
+	w.logger.Info("All jobs completed, worker stopped")
+	return ctx.Err()
 }
 
 func (w *Worker) processJob(ctx context.Context, job *models.Job) {

@@ -30,7 +30,7 @@ import (
 )
 
 // NewRouter creates and configures the Gin router
-func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Executor, logBroker *logstream.LogBroker, logger *slog.Logger) *gin.Engine {
+func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec executor.Executor, logBroker *logstream.LogBroker, logger *slog.Logger) *gin.Engine {
 	auth.ConfigureAuthReconciliationStaleAfter(time.Duration(cfg.Auth.AuthorizationStaleAfterMins) * time.Minute)
 
 	// Initialize RBAC enforcer and provider.

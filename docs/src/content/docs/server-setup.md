@@ -54,16 +54,11 @@ For a single-user browser UI on your own machine, use `nebi-web` instead. It run
 
 ## Background Jobs
 
-Nebi processes background jobs one at a time using an in-memory queue and a worker in the same process. Live logs stream directly from that process; no external queue service or worker deployment is needed. On startup, abandoned pending/running jobs and unfinished workspace transitions are marked failed so operations can be retried. Jobs are not replayed automatically; saved logs remain in the database. Run only one Nebi instance per database.
+Nebi processes background jobs concurrently using an in-memory queue and a worker in the same process. Live logs stream directly from that process; no external queue service or worker deployment is needed. On startup, abandoned pending/running jobs and unfinished workspace transitions are marked failed so operations can be retried. Jobs are not replayed automatically; saved logs remain in the database. Run only one Nebi instance per database.
+
+Job concurrency defaults to half the available CPU cores (at least one worker). Set `worker.max_workers` in the configuration or `NEBI_WORKER_MAX_WORKERS` to override it with a positive integer.
 
 The server and desktop app allow up to 40 seconds for HTTP shutdown and worker cleanup, including final job status and log writes. The supplied Compose deployments allow 45 seconds before forcibly stopping the container.
-
-When upgrading from a deployment that uses Valkey:
-
-- Remove the `queue:` configuration section and the `NEBI_QUEUE_TYPE` and `NEBI_QUEUE_VALKEY_ADDR` environment variables.
-- Remove `--mode` / `-m` from `nebi-server` and `nebi-web` commands. Standalone worker mode is no longer supported.
-- Let active and queued jobs finish before upgrading, then stop and remove the separate Nebi worker and Valkey services from your deployment.
-- Keep job submission and log streaming on the same Nebi instance; separate instances do not share the in-memory queue or live-log broker.
 
 ## API Documentation
 

@@ -74,7 +74,7 @@ type App struct {
 	stopping     bool
 	workerCancel context.CancelFunc
 	workerDone   <-chan struct{}
-	jobQueue     queue.Queue
+	jobQueue     *queue.MemoryQueue
 }
 
 // NewApp creates a new App instance
@@ -195,7 +195,7 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 		logToFile(fmt.Sprintf("startEmbeddedServer: job recovery error: %v", err))
 		return
 	}
-	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), limitCfg)
+	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), limitCfg, cfg.Worker.MaxWorkers)
 	workerCtx, workerCancel := context.WithCancel(a.ctx)
 	workerDone := make(chan struct{})
 	logToFile("startEmbeddedServer: worker created")
@@ -224,8 +224,11 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 		MaxHeaderBytes:    config.HTTPMaxHeaderBytes,
 	}
 
-	// Publish lifecycle handles atomically with starting the worker. If the
-	// window closed during initialization, do not start background work.
+	// The desktop process owns the queue and worker, so shutdown must cancel
+	// jobs and wait for cleanup and final database writes before Wails exits.
+	// Initialization runs in a goroutine: publish its shutdown handles under
+	// the same lock used by stop so closing the window cannot miss the worker
+	// or allow it to start after shutdown.
 	a.lifecycleMu.Lock()
 	if a.stopping {
 		a.lifecycleMu.Unlock()

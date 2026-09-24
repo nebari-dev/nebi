@@ -47,7 +47,7 @@ func buildRegistryRBACTestRouter(t *testing.T) (http.Handler, *gorm.DB) {
 	t.Cleanup(func() { q.Close() })
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewRouter(cfg, database, q, exec, nil, nil, logger), database
+	return NewRouter(cfg, database, q, exec, nil, logger), database
 }
 
 func loginTestUser(t *testing.T, router http.Handler, username, password string) string {

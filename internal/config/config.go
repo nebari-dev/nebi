@@ -32,7 +32,6 @@ type Config struct {
 	Server     ServerConfig     `mapstructure:"server"`
 	Database   DatabaseConfig   `mapstructure:"database"`
 	Auth       AuthConfig       `mapstructure:"auth"`
-	Queue      QueueConfig      `mapstructure:"queue"`
 	Log        LogConfig        `mapstructure:"log"`
 	PixiPath   string           `mapstructure:"pixi_path"` // Custom pixi binary path (optional)
 	Storage    StorageConfig    `mapstructure:"storage"`
@@ -115,12 +114,6 @@ type AuthConfig struct {
 	AuthorizationStaleAfterMins int    `mapstructure:"authorization_stale_after_mins"` // Reconciled bearer authorization freshness window in minutes (default: 1440)
 }
 
-// QueueConfig holds job queue configuration
-type QueueConfig struct {
-	Type       string `mapstructure:"type"`        // "memory" or "valkey"
-	ValkeyAddr string `mapstructure:"valkey_addr"` // Valkey address (if type=valkey), e.g., "localhost:6379"
-}
-
 // LogConfig holds logging configuration
 type LogConfig struct {
 	Format string `mapstructure:"format"` // "json" or "text"
@@ -198,8 +191,6 @@ func Load(options ...LoadOption) (*Config, error) {
 	v.SetDefault("auth.proxy_default_role", "editor")
 	v.SetDefault("auth.device_flow_client_id", "")
 	v.SetDefault("auth.authorization_stale_after_mins", 1440)
-	v.SetDefault("queue.type", "memory")
-	v.SetDefault("queue.valkey_addr", "localhost:6379")
 	v.SetDefault("log.format", "text")
 	v.SetDefault("log.level", "info")
 	v.SetDefault("storage.workspaces_dir", "./data/workspaces")
@@ -260,8 +251,6 @@ func Load(options ...LoadOption) (*Config, error) {
 	_ = v.BindEnv("auth.oidc_client_secret", "NEBI_AUTH_OIDC_CLIENT_SECRET")
 	_ = v.BindEnv("auth.oidc_redirect_url", "NEBI_AUTH_OIDC_REDIRECT_URL")
 	_ = v.BindEnv("auth.authorization_stale_after_mins", "NEBI_AUTH_AUTHORIZATION_STALE_AFTER_MINS")
-	_ = v.BindEnv("queue.type", "NEBI_QUEUE_TYPE")
-	_ = v.BindEnv("queue.valkey_addr", "NEBI_QUEUE_VALKEY_ADDR")
 	_ = v.BindEnv("log.format", "NEBI_LOG_FORMAT")
 	_ = v.BindEnv("log.level", "NEBI_LOG_LEVEL")
 	_ = v.BindEnv("limits.request_body_bytes", "NEBI_LIMITS_REQUEST_BODY_BYTES")

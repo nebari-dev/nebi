@@ -54,22 +54,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # Valkey 9.0 - Queue backend (Redis replacement)
-  valkey:
-    image: docker.io/valkey/valkey@sha256:00e026f877bbbed33d13241e5e701142e8842f94e1124ce1d5ddbbf6d0cee4fb
-    container_name: nebi-valkey
-    volumes:
-      - valkey_data:/data
-    networks:
-      - nebi-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "valkey-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Nebi API + Worker (both mode)
+  # Nebi API with an in-process worker
   # NOTE: Before first deployment, set permissions:
   #   mkdir -p ./data/workspaces
   #   chown -R 65532:65532 ./data/workspaces
@@ -77,7 +62,7 @@ services:
   nebi-api:
     image: ${NEBI_IMAGE:-quay.io/nebari/nebi@sha256:56f384dfca063c37feb2fd0310afad8b9cd16baed7c6e63b541caf62db60678b}
     container_name: nebi-api
-    command: ["--mode=both"]
+    stop_grace_period: 45s
     env_file:
       - .env.prod
     environment:
@@ -87,9 +72,6 @@ services:
       NEBI_DATABASE_MAX_IDLE_CONNS: 10
       NEBI_DATABASE_MAX_OPEN_CONNS: 100
       NEBI_DATABASE_CONN_MAX_LIFETIME: 60
-      # Queue configuration
-      NEBI_QUEUE_TYPE: valkey
-      NEBI_QUEUE_VALKEY_ADDR: valkey:6379
       # Server configuration
       NEBI_SERVER_PORT: 8460
       NEBI_SERVER_MODE: production
@@ -113,88 +95,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      valkey:
-        condition: service_healthy
       traefik:
         condition: service_started
     restart: unless-stopped
     # Health check removed - distroless image has no wget/curl
     # Traefik monitors service health directly
 
-  # Nebi Worker 1 - Additional worker for job processing
-  nebi-worker-1:
-    image: ${NEBI_IMAGE:-quay.io/nebari/nebi@sha256:56f384dfca063c37feb2fd0310afad8b9cd16baed7c6e63b541caf62db60678b}
-    container_name: nebi-worker-1
-    command: ["--mode=worker"]
-    env_file:
-      - .env.prod
-    environment:
-      # Database configuration
-      NEBI_DATABASE_DRIVER: postgres
-      NEBI_DATABASE_DSN: postgres://${POSTGRES_USER:-nebi}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nebi}?sslmode=disable
-      NEBI_DATABASE_MAX_IDLE_CONNS: 10
-      NEBI_DATABASE_MAX_OPEN_CONNS: 100
-      NEBI_DATABASE_CONN_MAX_LIFETIME: 60
-      # Queue configuration
-      NEBI_QUEUE_TYPE: valkey
-      NEBI_QUEUE_VALKEY_ADDR: valkey:6379
-      # Logging
-      NEBI_LOG_LEVEL: info
-      NEBI_LOG_FORMAT: json
-      NEBI_STORAGE_WORKSPACES_DIR: /app/data/workspaces
-    volumes:
-      - ./data/workspaces:/app/data/workspaces
-    networks:
-      - nebi-network
-    depends_on:
-      postgres:
-        condition: service_healthy
-      valkey:
-        condition: service_healthy
-      nebi-api:
-        condition: service_started
-    restart: unless-stopped
-
-  # Nebi Worker 2 - Additional worker for job processing
-  nebi-worker-2:
-    image: ${NEBI_IMAGE:-quay.io/nebari/nebi@sha256:56f384dfca063c37feb2fd0310afad8b9cd16baed7c6e63b541caf62db60678b}
-    container_name: nebi-worker-2
-    command: ["--mode=worker"]
-    env_file:
-      - .env.prod
-    environment:
-      # Database configuration
-      NEBI_DATABASE_DRIVER: postgres
-      NEBI_DATABASE_DSN: postgres://${POSTGRES_USER:-nebi}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nebi}?sslmode=disable
-      NEBI_DATABASE_MAX_IDLE_CONNS: 10
-      NEBI_DATABASE_MAX_OPEN_CONNS: 100
-      NEBI_DATABASE_CONN_MAX_LIFETIME: 60
-      # Queue configuration
-      NEBI_QUEUE_TYPE: valkey
-      NEBI_QUEUE_VALKEY_ADDR: valkey:6379
-      # Logging
-      NEBI_LOG_LEVEL: info
-      NEBI_LOG_FORMAT: json
-      NEBI_STORAGE_WORKSPACES_DIR: /app/data/workspaces
-    volumes:
-      - ./data/workspaces:/app/data/workspaces
-    networks:
-      - nebi-network
-    depends_on:
-      postgres:
-        condition: service_healthy
-      valkey:
-        condition: service_healthy
-      nebi-api:
-        condition: service_started
-    restart: unless-stopped
-
 volumes:
   letsencrypt-data:
     driver: local
   postgres_data:
-    driver: local
-  valkey_data:
     driver: local
 
 networks:

@@ -53,7 +53,7 @@ func buildTestRouter(t *testing.T, basePath string, mutate ...func(*config.Confi
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, nil, logger)
+	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, logger)
 }
 
 func buildTeamTestRouter(t *testing.T, logger *slog.Logger) (http.Handler, string) {
@@ -110,7 +110,7 @@ func buildTeamTestRouter(t *testing.T, logger *slog.Logger) (http.Handler, strin
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 
-	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, nil, logger), login.Token
+	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, logger), login.Token
 }
 
 func buildLimitedLocalRouter(t *testing.T, limitCfg limits.Limits) http.Handler {
@@ -136,7 +136,7 @@ func buildLimitedLocalRouter(t *testing.T, limitCfg limits.Limits) http.Handler 
 		t.Fatalf("NewLocalExecutor: %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, nil, logger)
+	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, logger)
 }
 
 func TestCORSMiddlewareNoInvalidCredentialedWildcard(t *testing.T) {
@@ -280,7 +280,7 @@ func TestAdminRegistryMutations_RejectConfigManaged(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	r := NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, nil, logger)
+	r := NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, logger)
 
 	managed := models.OCIRegistry{ID: uuid.New(), Name: "managed", URL: "a.io", ConfigManaged: true}
 	if err := database.Create(&managed).Error; err != nil {

@@ -45,10 +45,6 @@ auth:
   # Example (in-cluster Keycloak Service):
   # oidc_discovery_url: http://keycloak-http.keycloak.svc.cluster.local/realms/nebari
 
-queue:
-  type: memory  # or "valkey"
-  # valkey_addr: localhost:6379
-
 log:
   format: text  # or "json"
   level: info   # debug, info, warn, error
@@ -85,7 +81,7 @@ storage:
 #   job_log_bytes: 4194304             # NEBI_LIMITS_JOB_LOG_BYTES
 #
 # Per-job memory and process-count limits are intentionally not configured
-# here. Enforce those with worker pod/container limits until Nebi runs jobs in
+# here. Enforce those with Nebi pod/container limits until Nebi runs jobs in
 # isolated execution units.
 
 # Admin-provisioned OCI registries (optional). Entries carry no credentials.

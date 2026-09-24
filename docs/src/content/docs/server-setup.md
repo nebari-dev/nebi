@@ -52,6 +52,19 @@ Once the server is running, authenticate from any client machine with [`nebi log
 
 For a single-user browser UI on your own machine, use `nebi-web` instead. It runs the same embedded React frontend in local mode and binds to `127.0.0.1` by default.
 
+## Background Jobs
+
+Nebi processes background jobs one at a time using an in-memory queue and a worker in the same process. Live logs stream directly from that process; no external queue service or worker deployment is needed. On startup, abandoned pending/running jobs and unfinished workspace transitions are marked failed so operations can be retried. Jobs are not replayed automatically; saved logs remain in the database. Run only one Nebi instance per database.
+
+The server and desktop app allow up to 40 seconds for HTTP shutdown and worker cleanup, including final job status and log writes. The supplied Compose deployments allow 45 seconds before forcibly stopping the container.
+
+When upgrading from a deployment that uses Valkey:
+
+- Remove the `queue:` configuration section and the `NEBI_QUEUE_TYPE` and `NEBI_QUEUE_VALKEY_ADDR` environment variables.
+- Remove `--mode` / `-m` from `nebi-server` and `nebi-web` commands. Standalone worker mode is no longer supported.
+- Let active and queued jobs finish before upgrading, then stop and remove the separate Nebi worker and Valkey services from your deployment.
+- Keep job submission and log streaming on the same Nebi instance; separate instances do not share the in-memory queue or live-log broker.
+
 ## API Documentation
 
 The Swagger API docs are available at `http://localhost:8460/docs`.
@@ -75,7 +88,7 @@ The main job limits are:
 
 CPU/file-size setup is fail-closed: if a configured `ulimit` budget cannot be applied, the child command exits with code `125` and Nebi fails the job rather than running unbounded. Storage checks are also fail-closed if the workspace cannot be walked.
 
-Per-job memory and process-count limits are intentionally left to deployment isolation for now. In Kubernetes or Docker deployments, set worker pod/container memory and process limits until Nebi jobs run in isolated execution units.
+Per-job memory and process-count limits are intentionally left to deployment isolation for now. In Kubernetes or Docker deployments, set Nebi pod/container memory and process limits until Nebi jobs run in isolated execution units.
 
 The HTTP server read timeout is configured separately as `server.read_timeout_seconds` or `NEBI_SERVER_READ_TIMEOUT_SECONDS`. If omitted, Nebi derives it from `limits.request_body_bytes`; set it to `0` to disable.
 

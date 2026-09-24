@@ -13,7 +13,6 @@ import (
 
 // MemoryQueue implements an in-memory job queue
 type MemoryQueue struct {
-	jobs        map[uuid.UUID]*models.Job
 	pending     map[string][]*models.Job
 	tenantOrder []string
 	pendingSize int
@@ -30,7 +29,6 @@ func NewMemoryQueue(bufferSize int) *MemoryQueue {
 	}
 
 	q := &MemoryQueue{
-		jobs:       make(map[uuid.UUID]*models.Job),
 		pending:    make(map[string][]*models.Job),
 		bufferSize: bufferSize,
 		notify:     make(chan struct{}, 1),
@@ -61,9 +59,6 @@ func (q *MemoryQueue) Enqueue(ctx context.Context, job *models.Job) error {
 			return fmt.Errorf("queue is closed")
 		}
 		if q.pendingSize < q.bufferSize {
-			// Store a copy in the jobs map (independent of the pointer sent to workers)
-			jobCopy := *job
-			q.jobs[job.ID] = &jobCopy
 			if len(q.pending[tenant]) == 0 {
 				q.tenantOrder = append(q.tenantOrder, tenant)
 			}
@@ -120,6 +115,7 @@ func (q *MemoryQueue) nextJobLocked() *models.Job {
 		}
 
 		job := jobs[0]
+		jobs[0] = nil // Release the reference held by the pending slice backing array.
 		jobs = jobs[1:]
 		q.pendingSize--
 		if len(jobs) == 0 {
@@ -144,93 +140,6 @@ func (q *MemoryQueue) signalLocked() {
 	case q.notify <- struct{}{}:
 	default:
 	}
-}
-
-// GetStatus retrieves the current status of a job
-func (q *MemoryQueue) GetStatus(ctx context.Context, jobID uuid.UUID) (*models.Job, error) {
-	q.mu.RLock()
-	defer q.mu.RUnlock()
-
-	job, exists := q.jobs[jobID]
-	if !exists {
-		return nil, ErrJobNotFound
-	}
-
-	return job, nil
-}
-
-// UpdateStatus updates the status of a job
-func (q *MemoryQueue) UpdateStatus(ctx context.Context, jobID uuid.UUID, status models.JobStatus, logs string) error {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	job, exists := q.jobs[jobID]
-	if !exists {
-		return ErrJobNotFound
-	}
-
-	job.Status = status
-	if logs != "" {
-		if job.Logs != "" {
-			job.Logs += "\n" + logs
-		} else {
-			job.Logs = logs
-		}
-	}
-
-	slog.Debug("Job status updated", "job_id", jobID, "status", status)
-	return nil
-}
-
-// Complete marks a job as completed
-func (q *MemoryQueue) Complete(ctx context.Context, jobID uuid.UUID, logs string) error {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	job, exists := q.jobs[jobID]
-	if !exists {
-		return ErrJobNotFound
-	}
-
-	job.Status = models.JobStatusCompleted
-	now := time.Now()
-	job.CompletedAt = &now
-	if logs != "" {
-		if job.Logs != "" {
-			job.Logs += "\n" + logs
-		} else {
-			job.Logs = logs
-		}
-	}
-
-	slog.Info("Job completed", "job_id", jobID, "type", job.Type)
-	return nil
-}
-
-// Fail marks a job as failed
-func (q *MemoryQueue) Fail(ctx context.Context, jobID uuid.UUID, errorMsg string, logs string) error {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	job, exists := q.jobs[jobID]
-	if !exists {
-		return ErrJobNotFound
-	}
-
-	job.Status = models.JobStatusFailed
-	job.Error = errorMsg
-	now := time.Now()
-	job.CompletedAt = &now
-	if logs != "" {
-		if job.Logs != "" {
-			job.Logs += "\n" + logs
-		} else {
-			job.Logs = logs
-		}
-	}
-
-	slog.Error("Job failed", "job_id", jobID, "type", job.Type, "error", errorMsg)
-	return nil
 }
 
 // Close closes the queue and releases resources

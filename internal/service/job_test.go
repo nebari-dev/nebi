@@ -2,12 +2,132 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/queue"
 	"gorm.io/gorm"
 )
+
+func TestRecoverInterruptedJobs(t *testing.T) {
+	for _, local := range []bool{false, true} {
+		name := "team"
+		if local {
+			name = "local"
+		}
+		t.Run(name, func(t *testing.T) {
+			_, db := testSetup(t, local)
+			svc := NewJobService(db, local)
+			statuses := []models.JobStatus{models.JobStatusPending, models.JobStatusRunning,
+				models.JobStatusCompleted, models.JobStatusFailed, models.JobStatusCancelled}
+			var jobs []models.Job
+			for _, status := range statuses {
+				job := models.Job{Type: models.JobTypeUpdate, Status: status, Logs: "saved output", Error: "original error"}
+				if err := db.Create(&job).Error; err != nil {
+					t.Fatal(err)
+				}
+				jobs = append(jobs, job)
+			}
+			var workspaces []models.Workspace
+			for _, status := range []models.WorkspaceStatus{models.WsStatusPending, models.WsStatusCreating,
+				models.WsStatusDeleting, models.WsStatusReady, models.WsStatusFailed} {
+				ws := models.Workspace{Name: string(status), Status: status}
+				if err := db.Create(&ws).Error; err != nil {
+					t.Fatal(err)
+				}
+				workspaces = append(workspaces, ws)
+			}
+			if err := svc.RecoverInterruptedJobs(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			for _, original := range jobs {
+				var stored models.Job
+				if err := db.First(&stored, "id = ?", original.ID).Error; err != nil {
+					t.Fatal(err)
+				}
+				want := original.Status
+				if want == models.JobStatusPending || want == models.JobStatusRunning {
+					want = models.JobStatusFailed
+					if stored.CompletedAt == nil || !strings.Contains(stored.Error, "interrupted") {
+						t.Fatalf("missing interruption details: %+v", stored)
+					}
+				} else if stored.Error != original.Error || stored.CompletedAt != nil {
+					t.Fatalf("terminal job was modified: %+v", stored)
+				}
+				if stored.Status != want || stored.Logs != original.Logs {
+					t.Fatalf("unexpected recovered job: %+v", stored)
+				}
+			}
+			for _, original := range workspaces {
+				var stored models.Workspace
+				if err := db.First(&stored, "id = ?", original.ID).Error; err != nil {
+					t.Fatal(err)
+				}
+				want := original.Status
+				if want.IsTransitional() {
+					want = models.WsStatusFailed
+				}
+				if stored.Status != want {
+					t.Fatalf("workspace %s: got %s, want %s", original.ID, stored.Status, want)
+				}
+			}
+		})
+	}
+}
+
+func TestRecoverInterruptedJobsAllowsRetry(t *testing.T) {
+	wsSvc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "restart")
+	ws := createReadyWorkspace(t, wsSvc, db, "restart", userID)
+	if err := db.Model(&models.Job{}).Where("workspace_id = ?", ws.ID).
+		Update("status", models.JobStatusCompleted).Error; err != nil {
+		t.Fatal(err)
+	}
+	job, err := wsSvc.InstallWorkspaceEnv(context.Background(), ws.ID.String(), userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Restart discards the queue, but keeps the database and workspace files.
+	wsSvc.queue.Close()
+	wsSvc.queue = queue.NewMemoryQueue(100)
+	defer wsSvc.queue.Close()
+	svc := NewJobService(db, true)
+	if err := svc.RecoverInterruptedJobs(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var recovered models.Job
+	if err := db.First(&recovered, "id = ?", job.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got := wsSvc.installStatusFor(ws); got != models.InstallStatusFailed {
+		t.Fatalf("install status after restart: %s", got)
+	}
+	if count, err := activeJobCount(db); err != nil || count != 0 {
+		t.Fatalf("abandoned jobs still consume quota: count=%d err=%v", count, err)
+	}
+	// Repeated recovery leaves the failure timestamp and logs untouched.
+	if err := svc.RecoverInterruptedJobs(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var again models.Job
+	if err := db.First(&again, "id = ?", job.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if recovered.CompletedAt == nil || again.CompletedAt == nil || !recovered.CompletedAt.Equal(*again.CompletedAt) {
+		t.Fatal("recovery changed an already recovered job")
+	}
+	if _, err := wsSvc.InstallWorkspaceEnv(context.Background(), ws.ID.String(), userID); err != nil {
+		t.Fatalf("retry after restart: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err := wsSvc.queue.Dequeue(ctx); err != nil {
+		t.Fatalf("retry was not queued: %v", err)
+	}
+}
 
 func jobTestSetup(t *testing.T) (*JobService, *WorkspaceService, *gorm.DB) {
 	t.Helper()

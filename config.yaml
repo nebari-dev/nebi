@@ -16,10 +16,6 @@ auth:
   # All auth settings can be overridden via environment variables
   # See .env file for OIDC/OAuth configuration
 
-queue:
-  type: memory  # "memory" or "redis" (redis not yet implemented)
-  # redis_addr: localhost:6379  # Uncomment for Redis
-
 log:
   format: text  # "text" or "json"
   level: info   # "debug", "info", "warn", "error"

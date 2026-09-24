@@ -74,13 +74,13 @@ func (h *WorkspaceHandler) CreateWorkspace(c *gin.Context) {
 // @Security BearerAuth
 // @Produce json
 // @Param id path string true "Workspace ID"
-// @Success 200 {object} models.Workspace
+// @Success 200 {object} service.WorkspaceDetailResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /workspaces/{id} [get]
 func (h *WorkspaceHandler) GetWorkspace(c *gin.Context) {
-	ws, err := h.svc.Get(c.Param("id"))
+	ws, err := h.svc.Get(c.Param("id"), getUserID(c))
 	if err != nil {
 		handleServiceError(c, err)
 		return

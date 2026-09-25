@@ -67,7 +67,6 @@ services:
       dockerfile: Dockerfile
       target: nebi-server
     container_name: nebi-api
-    stop_grace_period: 45s
     labels:
       - "traefik.enable=true"
       # HTTP router

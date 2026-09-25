@@ -4,7 +4,6 @@ services:
       context: .
       target: nebi-server
     container_name: nebi-team-dev
-    stop_grace_period: 45s
     ports:
       - "8470:8460"
     environment:

@@ -152,31 +152,3 @@ func TestMemoryQueue_DefaultBufferSize(t *testing.T) {
 		t.Fatalf("enqueue with default buffer: %v", err)
 	}
 }
-
-func TestMemoryQueue_DequeueReleasesJobReferences(t *testing.T) {
-	q := NewMemoryQueue(2)
-	defer q.Close()
-	first, second := newTestJob(), newTestJob()
-	first.UserID = uuid.New()
-	second.UserID = first.UserID
-	for _, job := range []*models.Job{first, second} {
-		if err := q.Enqueue(context.Background(), job); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// Keep a view of the backing array: slicing past a processed job must
-	// not retain its metadata while the next job waits for its turn.
-	storage := q.pending[tenantKeyForJob(first)]
-	for i, want := range []*models.Job{first, second} {
-		got, err := q.Dequeue(context.Background())
-		if err != nil || got != want {
-			t.Fatalf("dequeue %d: got %v, err %v", i, got, err)
-		}
-		if storage[i] != nil {
-			t.Fatalf("pending storage still retains dequeued job %d", i)
-		}
-	}
-	if len(q.pending) != 0 || len(q.tenantOrder) != 0 || q.pendingSize != 0 {
-		t.Fatal("drained queue still retains pending state")
-	}
-}

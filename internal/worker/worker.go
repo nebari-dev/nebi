@@ -65,7 +65,6 @@ func (w *Worker) GetBroker() *logstream.LogBroker {
 
 // Start begins processing jobs from the queue
 func (w *Worker) Start(ctx context.Context) error {
-	defer w.broker.Shutdown()
 	w.logger.Info("Worker started", "max_parallel_jobs", w.maxParallelJobs)
 
 	var wg sync.WaitGroup
@@ -82,7 +81,6 @@ func (w *Worker) Start(ctx context.Context) error {
 			}
 		})
 	}
-	// Keep the broker alive until every job has saved its final status/logs.
 	wg.Wait()
 	w.logger.Info("All jobs completed, worker stopped")
 	return ctx.Err()

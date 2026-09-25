@@ -58,8 +58,6 @@ Nebi processes background jobs concurrently using an in-memory queue and a worke
 
 Job concurrency defaults to half the available CPU cores (at least one parallel job). Set `worker.max_parallel_jobs` in the configuration or `NEBI_WORKER_MAX_PARALLEL_JOBS` to override it with a positive integer.
 
-The server allows up to 40 seconds for HTTP shutdown and worker cleanup, including final job status and log writes. The supplied Compose deployments allow 45 seconds before forcibly stopping the container.
-
 ## API Documentation
 
 The Swagger API docs are available at `http://localhost:8460/docs`.

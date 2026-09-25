@@ -62,7 +62,6 @@ services:
   nebi-api:
     image: ${NEBI_IMAGE:-quay.io/nebari/nebi@sha256:56f384dfca063c37feb2fd0310afad8b9cd16baed7c6e63b541caf62db60678b}
     container_name: nebi-api
-    stop_grace_period: 45s
     env_file:
       - .env.prod
     environment:

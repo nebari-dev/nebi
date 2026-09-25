@@ -3,7 +3,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -147,9 +146,7 @@ func Run(ctx context.Context, cfg Config) error {
 	w := worker.New(jobQueue, exec, workerSvc, workerJobSvc, slog.Default(), limitCfg, appCfg.Worker.MaxParallelJobs)
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	defer workerCancel()
-	workerDone := make(chan struct{})
 	go func() {
-		defer close(workerDone)
 		if err := w.Start(workerCtx); err != nil && err != context.Canceled {
 			slog.Error("Worker failed", "error", err)
 		}
@@ -197,29 +194,18 @@ func Run(ctx context.Context, cfg Config) error {
 	<-ctx.Done()
 	slog.Info("Shutting down...")
 
-	// Job cleanup has its own 30-second budget; allow time for final DB writes.
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	workerCancel()
+	slog.Info("Worker stopped")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := shutdown(shutdownCtx, srv, workerCancel, workerDone); err != nil {
-		return err
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("server forced to shutdown: %w", err)
 	}
 	slog.Info("Server stopped")
 
 	slog.Info("Nebi exited")
 	return nil
-}
-
-// shutdown waits for both HTTP requests and worker cleanup. Cancellation alone
-// does not ensure the worker has saved its final status and logs.
-func shutdown(ctx context.Context, srv *http.Server, cancelWorker context.CancelFunc, workerDone <-chan struct{}) error {
-	cancelWorker()
-	serverErr := srv.Shutdown(ctx)
-	select {
-	case <-workerDone:
-		return serverErr
-	case <-ctx.Done():
-		return errors.Join(serverErr, fmt.Errorf("waiting for worker shutdown: %w", ctx.Err()))
-	}
 }
 
 // resolveBindHost returns the effective bind host. Local mode is a

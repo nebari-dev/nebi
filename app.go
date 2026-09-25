@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/nebari-dev/nebi/internal/api"
@@ -69,12 +68,6 @@ type App struct {
 	server *http.Server
 	router http.Handler  // Gin router for API requests
 	ready  chan struct{} // closed when router is initialized
-
-	lifecycleMu  sync.Mutex
-	stopping     bool
-	workerCancel context.CancelFunc
-	workerDone   <-chan struct{}
-	jobQueue     *queue.MemoryQueue
 }
 
 // NewApp creates a new App instance
@@ -196,9 +189,16 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 		return
 	}
 	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), limitCfg, cfg.Worker.MaxWorkers)
-	workerCtx, workerCancel := context.WithCancel(a.ctx)
-	workerDone := make(chan struct{})
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	_ = workerCancel // Keep reference to avoid unused warning
 	logToFile("startEmbeddedServer: worker created")
+
+	go func() {
+		logToFile("startEmbeddedServer: worker starting...")
+		if err := w.Start(workerCtx); err != nil && err != context.Canceled {
+			logToFile(fmt.Sprintf("startEmbeddedServer: worker error: %v", err))
+		}
+	}()
 
 	// Pass version info to the API handler (parsed by resolveVersion on first request)
 	handlers.Version = Version
@@ -207,6 +207,9 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	// Initialize API router
 	logToFile("startEmbeddedServer: initializing router...")
 	router := api.NewRouter(cfg, database, jobQueue, exec, w.GetBroker(), slog.Default())
+	a.router = router
+	close(a.ready) // signal that router is ready for Wails handler
+	logToFile("startEmbeddedServer: router initialized")
 
 	// Create HTTP server on port 8460 (fallback for CLI access).
 	// The desktop app is a single-user, on-device setup, so bind loopback
@@ -214,7 +217,7 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	// does not use this listener; it reaches the router in-process via
 	// Handler().
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Server.Port))
-	srv := &http.Server{
+	a.server = &http.Server{
 		Addr:              addr,
 		Handler:           netguard.Middleware(router, false, nil),
 		ReadHeaderTimeout: config.HTTPReadHeaderTimeout,
@@ -224,66 +227,11 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 		MaxHeaderBytes:    config.HTTPMaxHeaderBytes,
 	}
 
-	// The desktop process owns the queue and worker, so shutdown must cancel
-	// jobs and wait for cleanup and final database writes before Wails exits.
-	// Initialization runs in a goroutine: publish its shutdown handles under
-	// the same lock used by stop so closing the window cannot miss the worker
-	// or allow it to start after shutdown.
-	a.lifecycleMu.Lock()
-	if a.stopping {
-		a.lifecycleMu.Unlock()
-		workerCancel()
-		jobQueue.Close()
-		return
-	}
-	a.server = srv
-	a.workerCancel = workerCancel
-	a.workerDone = workerDone
-	a.jobQueue = jobQueue
-	a.router = router
-	go func() {
-		defer close(workerDone)
-		if err := w.Start(workerCtx); err != nil && err != context.Canceled {
-			logToFile(fmt.Sprintf("startEmbeddedServer: worker error: %v", err))
-		}
-	}()
-	close(a.ready)
-	a.lifecycleMu.Unlock()
-
 	logToFile(fmt.Sprintf("startEmbeddedServer: starting server on %s", addr))
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := a.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logToFile(fmt.Sprintf("startEmbeddedServer: server error: %v", err))
 	}
 	logToFile("startEmbeddedServer: server stopped")
-}
-
-// shutdown is called by Wails before exiting. The Wails context may already
-// be cancelled, so cleanup gets its own bounded context.
-func (a *App) shutdown(_ context.Context) {
-	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
-	defer cancel()
-	if err := a.stop(ctx); err != nil {
-		logToFile(fmt.Sprintf("Desktop shutdown: %v", err))
-	}
-}
-
-func (a *App) stop(ctx context.Context) error {
-	a.lifecycleMu.Lock()
-	a.stopping = true
-	cancelWorker, workerDone, srv, q := a.workerCancel, a.workerDone, a.server, a.jobQueue
-	a.lifecycleMu.Unlock()
-	if cancelWorker == nil {
-		return nil // Initialization failed or has not started a worker yet.
-	}
-	cancelWorker()
-	q.Close() // Reject new jobs from in-process Wails requests as well as HTTP.
-	serverErr := srv.Shutdown(ctx)
-	select {
-	case <-workerDone:
-		return serverErr
-	case <-ctx.Done():
-		return fmt.Errorf("waiting for desktop worker shutdown: %w", ctx.Err())
-	}
 }
 
 // WailsProject represents a simplified project for the Wails frontend

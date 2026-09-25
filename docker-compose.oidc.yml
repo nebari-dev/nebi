@@ -119,15 +119,19 @@ services:
     restart: "no"
 
   nebi:
-    image: ${NEBI_IMAGE:-quay.io/nebari/nebi@sha256:56f384dfca063c37feb2fd0310afad8b9cd16baed7c6e63b541caf62db60678b}
-    command: ["--mode=both"]
+    # Built from this checkout by default (there is no released nebi-server
+    # image yet); set NEBI_IMAGE to run a published one instead.
+    image: ${NEBI_IMAGE:-nebi-server:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: nebi-server
     environment:
       NEBI_DATABASE_DRIVER: postgres
       NEBI_DATABASE_DSN: postgres://nebi:${NEBI_DB_PASSWORD}@postgres:5432/nebi?sslmode=disable
-      NEBI_QUEUE_TYPE: memory
       NEBI_SERVER_PORT: 8460
       NEBI_SERVER_MODE: production
-      NEBI_STORAGE_WORKSPACES_DIR: /app/data/workspaces
+      NEBI_STORAGE_PROJECTS_DIR: /app/data/projects
       NEBI_LOG_LEVEL: ${NEBI_LOG_LEVEL:-info}
       NEBI_LOG_FORMAT: text
 

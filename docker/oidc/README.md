@@ -9,6 +9,10 @@ reverse-proxy shims and a Keycloak bootstrap step that work around gaps in
 nebi. Those gaps are small, well-contained code changes (listed under
 [Recommended changes](#recommended-changes)); once made, the shims can go.
 
+The follow-up question, whether nebi's whole auth implementation could be
+replaced by a standard OIDC relying party, is answered in
+[RP-REPLACEMENT.md](RP-REPLACEMENT.md).
+
 ## What's here
 
 | File | Purpose |
@@ -64,8 +68,11 @@ once** (finding 4).
 
 ## What was verified
 
-Run on 2026-09-24 against `main` at `07d4fc3`, with the image built from this
-tree, Keycloak 26.4, and Postgres 18:
+First run on 2026-09-24 against `main` at `07d4fc3`. Re-run on 2026-09-25
+against `ux-rework-dev` at `d02176e` (separate `nebi-server` binary, workspaces
+renamed to projects, in-process jobs) with the same results. Both runs used the
+`nebi-server` image built from the tree under test, Keycloak 26.4, Postgres 18,
+laptop mode (`local.override.yml`), and headless Chromium via Playwright:
 
 | Check | Result |
 | --- | --- |
@@ -76,8 +83,8 @@ tree, Keycloak 26.4, and Postgres 18:
 | `nebi login` (real CLI binary) via RFC 8628 device flow | ✅ (needs audience mapper, finding 6) |
 | Admin via `nebi-admin` group | ⚠️ only after a CLI login, never from a web login (finding 4) |
 | Logout ends the Keycloak session; next login prompts again | ✅ with shim 2 |
-| Password login refused | ✅ with shim 3 (403 at Traefik); ❌ without it |
-| Workspace create + pixi install job completes | ✅ |
+| Password login refused | ✅ at the edge with shim 3 (403 at Traefik); ❌ without it, and still accepted from inside the compose network |
+| Project create + pixi install job completes | ✅ |
 | Data survives `docker compose down && up` | ✅ |
 
 ## Findings
@@ -147,9 +154,12 @@ tree, Keycloak 26.4, and Postgres 18:
    - Nebi JWTs live 24h and are not tied to the Keycloak session. Disabling a
      user in Keycloak does not end their current nebi session. Group and admin
      changes land on the next login.
-   - The stack runs nebi as a single `--mode=both` container with the memory
-     queue. For 5 to 25 users that is enough. Valkey and extra workers from
-     `docker-compose.prod.yml` can be added unchanged.
+   - The stack runs a single `nebi-server` container, which runs jobs in
+     process. For 5 to 25 users that is enough.
+   - The desktop app's "connect to server" (`POST /api/v1/remote/connect`)
+     only accepts a username and password and calls the remote's password
+     login, so it cannot connect to this deployment. Keycloak users have no
+     nebi password even without shim 3.
    - Unrelated, spotted while testing: the theme pre-paint `<script>` in
      `frontend/index.html` gets no CSP nonce in team mode, so the browser
      blocks it on every page load.

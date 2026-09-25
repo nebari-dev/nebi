@@ -1,0 +1,205 @@
+# Nebi + Keycloak (OIDC) behind Traefik, for small teams without an existing
+# identity provider or Kubernetes cluster.
+#
+# Research spike for https://github.com/nebari-dev/nebi/issues/585.
+#
+#   https://${NEBI_DOMAIN}      -> nebi
+#   https://${KEYCLOAK_DOMAIN}  -> keycloak (realm "nebi")
+#
+# One Postgres server holds two databases: "keycloak" and "nebi".
+#
+# Usage (public host with DNS for both subdomains, Let's Encrypt certs):
+#   cp docker/oidc/.env.example .env.oidc   # then edit
+#   docker compose -f docker-compose.oidc.yml --env-file .env.oidc up -d
+#
+# Usage (laptop, *.localhost + self-signed certs):
+#   docker/oidc/gen-local-certs.sh
+#   docker compose -f docker-compose.oidc.yml -f docker/oidc/local.override.yml \
+#     --env-file .env.oidc up -d
+
+services:
+  traefik:
+    image: docker.io/library/traefik@sha256:c5bd185c41ba3dbb42cf8a1b9fbdc368bdc96f90c8e598134879935f64e7a7f1
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls=true
+      - --entrypoints.websecure.http.tls.certresolver=letsencrypt
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?ACME_EMAIL is required}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --accesslog=true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt-data:/letsencrypt
+    restart: unless-stopped
+
+  postgres:
+    image: docker.io/library/postgres@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      PGDATA: /var/lib/postgresql/data/pgdata
+      # Consumed by docker/oidc/postgres-init.sh on first boot only.
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?KEYCLOAK_DB_PASSWORD is required}
+      NEBI_DB_PASSWORD: ${NEBI_DB_PASSWORD:?NEBI_DB_PASSWORD is required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/oidc/postgres-init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak@sha256:9409c59bdfb65dbffa20b11e6f18b8abb9281d480c7ca402f51ed3d5977e6007 # 26.4
+    command: ["start", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      # Browsers see the public URL; containers talking to http://keycloak:8080
+      # get back-channel URLs (token, jwks) for that internal host instead.
+      KC_HOSTNAME: https://${KEYCLOAK_DOMAIN:?KEYCLOAK_DOMAIN is required}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}
+      # Substituted into nebi-realm.json at import time.
+      NEBI_DOMAIN: ${NEBI_DOMAIN:?NEBI_DOMAIN is required}
+      NEBI_OIDC_CLIENT_SECRET: ${NEBI_OIDC_CLIENT_SECRET:?NEBI_OIDC_CLIENT_SECRET is required}
+    volumes:
+      - ./docker/oidc/keycloak/nebi-realm.json:/opt/keycloak/data/import/nebi-realm.json:ro
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.keycloak.rule=Host(`${KEYCLOAK_DOMAIN}`)
+      - traefik.http.routers.keycloak.entrypoints=websecure
+      - traefik.http.services.keycloak.loadbalancer.server.port=8080
+    healthcheck:
+      # The image has no curl/wget; probe the management port with bash.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"status": "UP"' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # One-shot: config the realm import can't express (see bootstrap.sh).
+  keycloak-bootstrap:
+    image: quay.io/keycloak/keycloak@sha256:9409c59bdfb65dbffa20b11e6f18b8abb9281d480c7ca402f51ed3d5977e6007 # 26.4
+    entrypoint: ["/bin/bash", "/bootstrap.sh"]
+    environment:
+      KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    volumes:
+      - ./docker/oidc/keycloak/bootstrap.sh:/bootstrap.sh:ro
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    restart: "no"
+
+  nebi:
+    # Built from this checkout by default (there is no released nebi-server
+    # image yet); set NEBI_IMAGE to run a published one instead.
+    image: ${NEBI_IMAGE:-nebi-server:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: nebi-server
+    environment:
+      NEBI_DATABASE_DRIVER: postgres
+      NEBI_DATABASE_DSN: postgres://nebi:${NEBI_DB_PASSWORD}@postgres:5432/nebi?sslmode=disable
+      NEBI_SERVER_PORT: 8460
+      NEBI_SERVER_MODE: production
+      NEBI_STORAGE_PROJECTS_DIR: /app/data/projects
+      NEBI_LOG_LEVEL: ${NEBI_LOG_LEVEL:-info}
+      NEBI_LOG_FORMAT: text
+
+      # "oidc" is not a working value today (the router only builds an
+      # authenticator for "basic"). OIDC is layered on top of basic: see
+      # docker/oidc/README.md for what that means for password login.
+      NEBI_AUTH_TYPE: basic
+      NEBI_AUTH_JWT_SECRET: ${NEBI_JWT_SECRET:?NEBI_JWT_SECRET is required (32+ chars)}
+
+      # Issuer is the public URL (must match the token's "iss"); discovery and
+      # back-channel calls go straight to the keycloak container so nebi never
+      # hairpins through the public hostname or needs to trust its cert.
+      NEBI_AUTH_OIDC_ISSUER_URL: https://${KEYCLOAK_DOMAIN}/realms/nebi
+      NEBI_AUTH_OIDC_DISCOVERY_URL: http://keycloak:8080/realms/nebi
+      NEBI_AUTH_OIDC_CLIENT_ID: nebi
+      NEBI_AUTH_OIDC_CLIENT_SECRET: ${NEBI_OIDC_CLIENT_SECRET}
+      NEBI_AUTH_OIDC_REDIRECT_URL: https://${NEBI_DOMAIN}/api/v1/auth/oidc/callback
+
+      # CLI login (`nebi login https://${NEBI_DOMAIN}`) via RFC 8628 device flow.
+      NEBI_AUTH_DEVICE_FLOW_CLIENT_ID: nebi-cli
+      # Keycloak group whose members are nebi admins.
+      NEBI_AUTH_PROXY_ADMIN_GROUPS: nebi-admin
+
+      # Intentionally no ADMIN_USERNAME / ADMIN_PASSWORD: no local users.
+    volumes:
+      - nebi-data:/app/data
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.nebi.rule=Host(`${NEBI_DOMAIN}`)
+      - traefik.http.routers.nebi.entrypoints=websecure
+      - traefik.http.services.nebi.loadbalancer.server.port=8460
+
+      # Edge shims that make nebi's current frontend behave as OIDC-only
+      # without code changes (see docker/oidc/README.md, "Findings").
+      #
+      # 1. With OIDC configured, the login page always bounces to
+      #    /auth/session, which expects an Envoy-style "IdToken" cookie and
+      #    otherwise 302s back to /login: an infinite loop. Send it to nebi's
+      #    own OIDC authorization-code flow instead.
+      - traefik.http.routers.nebi-session.rule=Host(`${NEBI_DOMAIN}`) && Path(`/auth/session`)
+      - traefik.http.routers.nebi-session.entrypoints=websecure
+      - traefik.http.routers.nebi-session.service=nebi
+      - traefik.http.routers.nebi-session.middlewares=nebi-oidc-login
+      - traefik.http.middlewares.nebi-oidc-login.redirectregex.regex=.*
+      - traefik.http.middlewares.nebi-oidc-login.redirectregex.replacement=https://${NEBI_DOMAIN}/api/v1/auth/oidc/login
+      # 2. The logout button navigates to /logout (a gateway path). End the
+      #    Keycloak session there so the next login actually prompts.
+      - traefik.http.routers.nebi-logout.rule=Host(`${NEBI_DOMAIN}`) && Path(`/logout`)
+      - traefik.http.routers.nebi-logout.entrypoints=websecure
+      - traefik.http.routers.nebi-logout.service=nebi
+      - traefik.http.routers.nebi-logout.middlewares=nebi-oidc-logout
+      - traefik.http.middlewares.nebi-oidc-logout.redirectregex.regex=.*
+      - traefik.http.middlewares.nebi-oidc-logout.redirectregex.replacement=https://${KEYCLOAK_DOMAIN}/realms/nebi/protocol/openid-connect/logout?client_id=nebi&post_logout_redirect_uri=https%3A%2F%2F${NEBI_DOMAIN}%2Flogin
+      # 3. Password login stays enabled in nebi (auth.type must be "basic").
+      #    Refuse it at the edge so admin-created local users can't sign in.
+      - traefik.http.routers.nebi-password-login.rule=Host(`${NEBI_DOMAIN}`) && Path(`/api/v1/auth/login`)
+      - traefik.http.routers.nebi-password-login.entrypoints=websecure
+      - traefik.http.routers.nebi-password-login.service=nebi
+      - traefik.http.routers.nebi-password-login.middlewares=nebi-deny
+      - traefik.http.middlewares.nebi-deny.ipallowlist.sourcerange=127.0.0.1/32
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  letsencrypt-data:
+  postgres-data:
+  nebi-data:

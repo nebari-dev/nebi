@@ -63,6 +63,7 @@ frontend/node_modules/
 .env
 dist/
 .env.prod
+.env.oidc
 
 # Go workspace (machine-specific)
 go.work

@@ -103,7 +103,6 @@ exit 0
 	go func() {
 		serverErr <- server.Run(ctx, server.Config{
 			Port:        port,
-			Mode:        "both",
 			RuntimeMode: config.ModeLocal,
 			Version:     "e2e-bundle-api-test",
 		})

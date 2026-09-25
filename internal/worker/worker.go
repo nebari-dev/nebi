@@ -20,23 +20,19 @@ import (
 	"github.com/nebari-dev/nebi/internal/process"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/service"
-	"github.com/valkey-io/valkey-go"
 )
 
 // Worker processes jobs from the queue
 type Worker struct {
-	queue        queue.Queue
-	executor     executor.Executor
-	svc          *service.ProjectService
-	jobSvc       *service.JobService
-	logger       *slog.Logger
-	broker       *logstream.LogBroker
-	valkeyClient valkey.Client // For distributed log streaming (optional, can be nil for local mode)
-	maxWorkers   int
-	semaphore    chan struct{}
-	wg           sync.WaitGroup
-	jobTimeout   time.Duration
-	maxLogBytes  int
+	queue           *queue.MemoryQueue
+	executor        executor.Executor
+	svc             *service.ProjectService
+	jobSvc          *service.JobService
+	logger          *slog.Logger
+	broker          *logstream.LogBroker
+	maxParallelJobs int
+	jobTimeout      time.Duration
+	maxLogBytes     int
 }
 
 type autoReinstallFailureError struct {
@@ -48,20 +44,17 @@ func (e *autoReinstallFailureError) Error() string {
 }
 
 // New creates a new worker instance
-func New(q queue.Queue, exec executor.Executor, svc *service.ProjectService, jobSvc *service.JobService, logger *slog.Logger, valkeyClient valkey.Client, limitCfg limits.Limits) *Worker {
-	maxWorkers := 10 // Allow up to 10 concurrent jobs
+func New(q *queue.MemoryQueue, exec executor.Executor, svc *service.ProjectService, jobSvc *service.JobService, logger *slog.Logger, limitCfg limits.Limits, maxParallelJobs int) *Worker {
 	return &Worker{
-		queue:        q,
-		executor:     exec,
-		svc:          svc,
-		jobSvc:       jobSvc,
-		logger:       logger,
-		broker:       logstream.NewBroker(),
-		valkeyClient: valkeyClient,
-		maxWorkers:   maxWorkers,
-		semaphore:    make(chan struct{}, maxWorkers),
-		jobTimeout:   limitCfg.JobTimeout(),
-		maxLogBytes:  limitCfg.JobLogBytes,
+		queue:           q,
+		executor:        exec,
+		svc:             svc,
+		jobSvc:          jobSvc,
+		logger:          logger,
+		broker:          logstream.NewBroker(),
+		maxParallelJobs: max(1, maxParallelJobs),
+		jobTimeout:      limitCfg.JobTimeout(),
+		maxLogBytes:     limitCfg.JobLogBytes,
 	}
 }
 
@@ -72,51 +65,25 @@ func (w *Worker) GetBroker() *logstream.LogBroker {
 
 // Start begins processing jobs from the queue
 func (w *Worker) Start(ctx context.Context) error {
-	w.logger.Info("Worker started", "max_concurrent_jobs", w.maxWorkers)
+	w.logger.Info("Worker started", "max_parallel_jobs", w.maxParallelJobs)
 
-	for {
-		select {
-		case <-ctx.Done():
-			w.logger.Info("Worker shutting down, waiting for jobs to complete")
-			w.wg.Wait() // Wait for all jobs to complete
-			w.logger.Info("All jobs completed, worker stopped")
-			return ctx.Err()
-		default:
-			job, err := w.queue.Dequeue(ctx)
-			if err != nil {
-				// DeadlineExceeded means no jobs available (normal timeout), not an error
-				if err == context.DeadlineExceeded {
-					// No jobs available, just continue polling
-					continue
+	var wg sync.WaitGroup
+	for range w.maxParallelJobs {
+		wg.Go(func() {
+			for ctx.Err() == nil {
+				// The in-memory queue blocks until work arrives, it closes, or
+				// the context is cancelled. There is no remote queue to poll.
+				job, err := w.queue.Dequeue(ctx)
+				if err != nil || ctx.Err() != nil {
+					return
 				}
-				// Actual errors (connection issues, etc.)
-				w.logger.Error("Failed to dequeue job", "error", err)
-				time.Sleep(time.Second) // Backoff on real errors
-				continue
+				w.processJob(ctx, job)
 			}
-
-			if job == nil {
-				time.Sleep(100 * time.Millisecond)
-				continue
-			}
-
-			// Acquire semaphore slot (blocks if max workers reached)
-			select {
-			case w.semaphore <- struct{}{}:
-				// Got a slot, process job asynchronously
-				w.wg.Add(1)
-				go func(j *models.Job) {
-					defer w.wg.Done()
-					defer func() { <-w.semaphore }() // Release slot when done
-
-					w.processJob(ctx, j)
-				}(job)
-			case <-ctx.Done():
-				w.logger.Info("Context cancelled while waiting for worker slot")
-				return ctx.Err()
-			}
-		}
+		})
 	}
+	wg.Wait()
+	w.logger.Info("All jobs completed, worker stopped")
+	return ctx.Err()
 }
 
 func (w *Worker) processJob(ctx context.Context, job *models.Job) {
@@ -160,17 +127,7 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 	// Create broker writer for in-memory streaming
 	brokerWriter := logstream.NewStreamWriter(job.ID, w.broker, safeWriter)
 
-	// Create multi-writer: buffer + broker (in-memory) + Valkey (distributed, if available)
-	var baseLogWriter io.Writer
-	if w.valkeyClient != nil {
-		// Create Valkey log writer for distributed streaming
-		valkeyWriter := logstream.NewValkeyLogWriter(w.valkeyClient, job.ID.String())
-		baseLogWriter = io.MultiWriter(brokerWriter, valkeyWriter)
-	} else {
-		// Use only in-memory broker for local mode
-		baseLogWriter = brokerWriter
-	}
-	logWriter := newCappedLogWriter(baseLogWriter, w.maxLogBytes)
+	logWriter := newCappedLogWriter(brokerWriter, w.maxLogBytes)
 
 	// Execute the job with streaming logs
 	jobCtx := ctx
@@ -211,21 +168,12 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 		// Publish error to subscribers
 		errorMsg := fmt.Sprintf("\n[ERROR] Job failed: %v\n", err)
 		w.broker.Publish(job.ID, errorMsg)
-		if w.valkeyClient != nil {
-			valkeyWriter := logstream.NewValkeyLogWriter(w.valkeyClient, job.ID.String())
-			valkeyWriter.Publish(errorMsg)
-		}
 	} else {
 		w.logger.Info("Job completed", "job_id", job.ID)
 		w.jobSvc.MarkCompleted(job, finalLogs)
 		// Publish completion to subscribers
 		completionMsg := "\n[COMPLETED] Job finished successfully\n"
 		w.broker.Publish(job.ID, completionMsg)
-		if w.valkeyClient != nil {
-			valkeyWriter := logstream.NewValkeyLogWriter(w.valkeyClient, job.ID.String())
-			valkeyWriter.Publish(completionMsg)
-			valkeyWriter.SetTTL(3600)
-		}
 	}
 }
 

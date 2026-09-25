@@ -18,9 +18,8 @@ var Version = "dev"
 var Commit = ""
 
 var (
-	host          string
-	port          int
-	componentMode string
+	host string
+	port int
 )
 
 // @title Nebi API
@@ -34,12 +33,10 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "nebi-server",
 	Short: "Run the Nebi team server",
-	Long: `Start the Nebi team-mode HTTP API server and/or worker.
+	Long: `Start the Nebi team-mode HTTP API server with an in-process worker.
 
 Examples:
-  nebi-server                    # Run both API server and worker
-  nebi-server --mode server      # Run API server only
-  nebi-server --mode worker      # Run worker only
+  nebi-server                    # Run API server with an in-process worker
   nebi-server --port 8080        # Override port
   nebi-server --host 127.0.0.1   # Bind only to loopback`,
 	Run: run,
@@ -58,7 +55,6 @@ var versionCmd = &cobra.Command{
 func init() {
 	rootCmd.Flags().StringVar(&host, "host", "", "Bind host/IP (overrides config), e.g. 127.0.0.1")
 	rootCmd.Flags().IntVarP(&port, "port", "p", 0, "Port to run server on (overrides config)")
-	rootCmd.Flags().StringVarP(&componentMode, "mode", "m", "both", "Run mode: server, worker, or both")
 
 	rootCmd.AddCommand(versionCmd)
 }
@@ -67,7 +63,6 @@ func run(cmd *cobra.Command, args []string) {
 	cfg := server.Config{
 		Host:        host,
 		Port:        port,
-		Mode:        componentMode,
 		RuntimeMode: config.ModeTeam,
 		Version:     Version,
 		Commit:      Commit,

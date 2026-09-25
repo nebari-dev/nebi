@@ -184,7 +184,7 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	limitCfg := cfg.Limits
 	svc := service.New(database, jobQueue, exec, true, nil, rbac.NewDefaultProvider(), limitCfg)
 	jobSvc := service.NewJobService(database, true)
-	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), nil, limitCfg)
+	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), limitCfg, cfg.Worker.MaxParallelJobs)
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	_ = workerCancel // Keep reference to avoid unused warning
 	logToFile("startEmbeddedServer: worker created")
@@ -202,7 +202,7 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 
 	// Initialize API router
 	logToFile("startEmbeddedServer: initializing router...")
-	router := api.NewRouter(cfg, database, jobQueue, exec, w.GetBroker(), nil, slog.Default())
+	router := api.NewRouter(cfg, database, jobQueue, exec, w.GetBroker(), slog.Default())
 	a.router = router
 	close(a.ready) // signal that router is ready for Wails handler
 	logToFile("startEmbeddedServer: router initialized")

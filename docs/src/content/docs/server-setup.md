@@ -52,6 +52,12 @@ Once the server is running, authenticate from any client machine with [`nebi log
 
 For a single-user browser UI on your own machine, use `nebi-web` instead. It runs the same embedded React frontend in local mode and binds to `127.0.0.1` by default.
 
+## Background Jobs
+
+Nebi processes background jobs concurrently using an in-memory queue and a worker in the same process. Live logs stream directly from that process; no external queue service or worker deployment is needed. Jobs are not replayed automatically; saved logs remain in the database. Run only one Nebi instance per database.
+
+Job concurrency defaults to half the available CPU cores (at least one parallel job). Set `worker.max_parallel_jobs` in the configuration or `NEBI_WORKER_MAX_PARALLEL_JOBS` to override it with a positive integer.
+
 ## API Documentation
 
 The Swagger API docs are available at `http://localhost:8460/docs`.
@@ -75,7 +81,7 @@ The main job limits are:
 
 CPU/file-size setup is fail-closed: if a configured `ulimit` budget cannot be applied, the child command exits with code `125` and Nebi fails the job rather than running unbounded. Storage checks are also fail-closed if the project cannot be walked.
 
-Per-job memory and process-count limits are intentionally left to deployment isolation for now. In Kubernetes or Docker deployments, set worker pod/container memory and process limits until Nebi jobs run in isolated execution units.
+Per-job memory and process-count limits are intentionally left to deployment isolation for now. In Kubernetes or Docker deployments, set Nebi pod/container memory and process limits until Nebi jobs run in isolated execution units.
 
 The HTTP server read timeout is configured separately as `server.read_timeout_seconds` or `NEBI_SERVER_READ_TIMEOUT_SECONDS`. If omitted, Nebi derives it from `limits.request_body_bytes`; set it to `0` to disable.
 

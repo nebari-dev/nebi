@@ -60,27 +60,12 @@ services:
     networks:
       - nebi-network
 
-  # Valkey 9.0 - Redis replacement
-  valkey:
-    image: docker.io/valkey/valkey@sha256:00e026f877bbbed33d13241e5e701142e8842f94e1124ce1d5ddbbf6d0cee4fb
-    container_name: nebi-valkey
-    ports:
-      - "6379:6379"
-    volumes:
-      - valkey_data:/data
-    healthcheck:
-      test: ["CMD", "valkey-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - nebi-network
-
-  # Nebi API + Worker (both mode)
+  # Nebi API with an in-process worker
   nebi-api:
     build:
       context: .
       dockerfile: Dockerfile
+      target: nebi-server
     container_name: nebi-api
     labels:
       - "traefik.enable=true"
@@ -97,10 +82,6 @@ services:
       NEBI_DATABASE_MAX_IDLE_CONNS: 10
       NEBI_DATABASE_MAX_OPEN_CONNS: 100
       NEBI_DATABASE_CONN_MAX_LIFETIME: 60
-
-      # Queue configuration
-      NEBI_QUEUE_TYPE: valkey
-      NEBI_QUEUE_VALKEY_ADDR: "valkey:6379"
 
       # Logging
       NEBI_LOG_LEVEL: debug
@@ -119,82 +100,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      valkey:
-        condition: service_healthy
       traefik:
         condition: service_started
-    command: ["--mode=both"]
-    volumes:
-      - ./data/projects:/app/data/projects
-    networks:
-      - nebi-network
-
-  # Nebi Worker (worker-only mode) - Additional workers
-  nebi-worker-1:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: nebi-worker-1
-    environment:
-      # Database configuration
-      NEBI_DATABASE_DRIVER: postgres
-      NEBI_DATABASE_DSN: "postgres://nebi:${POSTGRES_PASSWORD}@postgres:5432/nebi?sslmode=disable"
-      NEBI_DATABASE_MAX_IDLE_CONNS: 10
-      NEBI_DATABASE_MAX_OPEN_CONNS: 100
-      NEBI_DATABASE_CONN_MAX_LIFETIME: 60
-
-      # Queue configuration
-      NEBI_QUEUE_TYPE: valkey
-      NEBI_QUEUE_VALKEY_ADDR: "valkey:6379"
-
-      # Logging
-      NEBI_LOG_LEVEL: debug
-      NEBI_LOG_FORMAT: text
-      NEBI_AUTH_JWT_SECRET: ${NEBI_AUTH_JWT_SECRET:?NEBI_AUTH_JWT_SECRET is required}
-      NEBI_STORAGE_PROJECTS_DIR: /app/data/projects
-    depends_on:
-      postgres:
-        condition: service_healthy
-      valkey:
-        condition: service_healthy
-      nebi-api:
-        condition: service_started
-    command: ["--mode=worker"]
-    volumes:
-      - ./data/projects:/app/data/projects
-    networks:
-      - nebi-network
-
-  nebi-worker-2:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: nebi-worker-2
-    environment:
-      # Database configuration
-      NEBI_DATABASE_DRIVER: postgres
-      NEBI_DATABASE_DSN: "postgres://nebi:${POSTGRES_PASSWORD}@postgres:5432/nebi?sslmode=disable"
-      NEBI_DATABASE_MAX_IDLE_CONNS: 10
-      NEBI_DATABASE_MAX_OPEN_CONNS: 100
-      NEBI_DATABASE_CONN_MAX_LIFETIME: 60
-
-      # Queue configuration
-      NEBI_QUEUE_TYPE: valkey
-      NEBI_QUEUE_VALKEY_ADDR: "valkey:6379"
-
-      # Logging
-      NEBI_LOG_LEVEL: debug
-      NEBI_LOG_FORMAT: text
-      NEBI_AUTH_JWT_SECRET: ${NEBI_AUTH_JWT_SECRET:?NEBI_AUTH_JWT_SECRET is required}
-      NEBI_STORAGE_PROJECTS_DIR: /app/data/projects
-    depends_on:
-      postgres:
-        condition: service_healthy
-      valkey:
-        condition: service_healthy
-      nebi-api:
-        condition: service_started
-    command: ["--mode=worker"]
     volumes:
       - ./data/projects:/app/data/projects
     networks:
@@ -202,8 +109,6 @@ services:
 
 volumes:
   postgres_data:
-    driver: local
-  valkey_data:
     driver: local
   traefik_certs:
     driver: local

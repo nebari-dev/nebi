@@ -1,6 +1,8 @@
 services:
-  nebi-team:
-    build: .
+  nebi-server:
+    build:
+      context: .
+      target: nebi-server
     container_name: nebi-team-dev
     ports:
       - "8470:8460"

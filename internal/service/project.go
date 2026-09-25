@@ -22,7 +22,7 @@ import (
 // ProjectService contains the business logic for project operations.
 type ProjectService struct {
 	db       *gorm.DB
-	queue    queue.Queue
+	queue    *queue.MemoryQueue
 	executor executor.Executor
 	rbac     rbac.Provider
 	isLocal  bool
@@ -31,7 +31,7 @@ type ProjectService struct {
 }
 
 // New creates a new ProjectService.
-func New(db *gorm.DB, q queue.Queue, exec executor.Executor, isLocal bool, encKey []byte, rbacProvider rbac.Provider, limitCfg limits.Limits) *ProjectService {
+func New(db *gorm.DB, q *queue.MemoryQueue, exec executor.Executor, isLocal bool, encKey []byte, rbacProvider rbac.Provider, limitCfg limits.Limits) *ProjectService {
 	return &ProjectService{db: db, queue: q, executor: exec, isLocal: isLocal, encKey: encKey, rbac: rbacProvider, limits: limitCfg}
 }
 

@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -48,6 +50,7 @@ type fakeExecutor struct {
 	createManifest                    string
 	createLock                        string
 	installLog                        string
+	installHook                       func(context.Context) error
 	installLock                       string
 	installCalls                      int
 	uninstallCalls                    int
@@ -84,6 +87,9 @@ func (e *fakeExecutor) InstallPackages(ctx context.Context, project *models.Proj
 		if _, err := io.WriteString(w, e.installLog); err != nil {
 			return err
 		}
+	}
+	if e.installHook != nil {
+		return e.installHook(ctx)
 	}
 	return nil
 }
@@ -175,7 +181,7 @@ func TestExecuteJob_CreatePersistsProjectPath(t *testing.T) {
 		t.Fatalf("create job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
@@ -218,7 +224,7 @@ func TestExecuteJob_UpdateSetsProjectReady(t *testing.T) {
 		t.Fatalf("create job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
@@ -261,7 +267,7 @@ func TestExecuteJob_UpdateSetsProjectFailedOnSolveError(t *testing.T) {
 		t.Fatalf("create job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err == nil {
 		t.Fatal("expected executeJob to fail, got nil")
@@ -276,6 +282,94 @@ func TestExecuteJob_UpdateSetsProjectFailedOnSolveError(t *testing.T) {
 	}
 }
 
+func TestStartHonorsConcurrencyWithLiveLogs(t *testing.T) {
+	for _, maxParallelJobs := range []int{1, 2, 3} {
+		t.Run(fmt.Sprintf("parallel_jobs=%d", maxParallelJobs), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				db, svc, jobSvc, exec := setupWorkerTest(t)
+				sqlDB, err := db.DB()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer sqlDB.Close()
+				// Serialize SQLite writes so its busy-handler sleeps do not make
+				// synctest.Wait return before a worker reaches the executor.
+				sqlDB.SetMaxOpenConns(1)
+				exec.installLog = "Installing packages\n"
+				started := make(chan struct{}, maxParallelJobs+1)
+				release := make(chan struct{})
+				exec.installHook = func(ctx context.Context) error {
+					started <- struct{}{}
+					select {
+					case <-release:
+						return nil
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				}
+				q := queue.NewMemoryQueue(10)
+				defer q.Close()
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				var jobs []*models.Job
+				for i := 0; i <= maxParallelJobs; i++ {
+					_, job := newTestProject(t, db, exec, fmt.Sprintf("install-%d", i), models.JobTypeInstall,
+						map[string]interface{}{"packages": []string{"numpy"}})
+					jobs = append(jobs, job)
+					if err := q.Enqueue(ctx, job); err != nil {
+						t.Fatal(err)
+					}
+				}
+				w := New(q, exec, svc, jobSvc, slog.Default(), limits.Defaults(), maxParallelJobs)
+				logs := w.GetBroker().Subscribe(jobs[0].ID)
+				done := make(chan error, 1)
+				go func() { done <- w.Start(ctx) }()
+
+				// One extra job must remain queued while all workers are busy.
+				synctest.Wait()
+				if got := len(started); got != maxParallelJobs {
+					t.Fatalf("started %d blocked jobs, want %d", got, maxParallelJobs)
+				}
+				var liveLogs strings.Builder
+				for len(logs) > 0 {
+					liveLogs.WriteString(<-logs)
+				}
+				if !strings.Contains(liveLogs.String(), exec.installLog) {
+					t.Fatalf("missing live output while job is running: %q", liveLogs.String())
+				}
+
+				release <- struct{}{}
+				synctest.Wait()
+				if got := len(started); got != maxParallelJobs+1 {
+					t.Fatalf("started %d jobs after releasing a worker, want %d", got, maxParallelJobs+1)
+				}
+				close(release)
+				synctest.Wait()
+				var finalLogs strings.Builder
+				for line := range logs {
+					finalLogs.WriteString(line)
+				}
+				if !strings.Contains(finalLogs.String(), "[COMPLETED]") {
+					t.Fatalf("missing completion message: %q", finalLogs.String())
+				}
+				cancel()
+				if err := <-done; !errors.Is(err, context.Canceled) {
+					t.Fatalf("worker shutdown: %v", err)
+				}
+				for _, job := range jobs {
+					var stored models.Job
+					if err := db.First(&stored, "id = ?", job.ID).Error; err != nil {
+						t.Fatal(err)
+					}
+					if stored.Status != models.JobStatusCompleted || !strings.Contains(stored.Logs, exec.installLog) {
+						t.Fatalf("job %s: status=%s logs=%q", stored.ID, stored.Status, stored.Logs)
+					}
+				}
+			})
+		})
+	}
+}
+
 func TestProcessJob_FailsJobAfterDeadline(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
 	exec.blockInstall = true
@@ -283,7 +377,7 @@ func TestProcessJob_FailsJobAfterDeadline(t *testing.T) {
 	_, job := newTestProject(t, db, exec, "timeout-install", models.JobTypeInstall,
 		map[string]interface{}{"packages": []string{"numpy"}})
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	w.jobTimeout = 10 * time.Millisecond
 	w.processJob(context.Background(), job)
 
@@ -317,7 +411,7 @@ func TestProcessJob_CompletesWhenExecutionSucceedsAtDeadlineBoundary(t *testing.
 
 	_, job := newTestProject(t, db, exec, "deadline-success", models.JobTypeEnvInstall, nil)
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	w.jobTimeout = 10 * time.Millisecond
 	w.processJob(context.Background(), job)
 
@@ -350,7 +444,7 @@ func TestProcessJob_FailsCreateWhenSnapshotExceedsResourceLimit(t *testing.T) {
 
 	_, job := newTestProject(t, db, exec, "snapshot-lock-limit", models.JobTypeCreate, nil)
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limitCfg)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limitCfg, 1)
 	w.processJob(context.Background(), job)
 
 	var stored models.Job
@@ -385,7 +479,7 @@ func TestProcessJob_DoesNotSavePackagesWhenInstallSnapshotExceedsLimit(t *testin
 	project, job := newTestProject(t, db, exec, "install-snapshot-limit", models.JobTypeInstall,
 		map[string]interface{}{"packages": []string{"numpy"}})
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limitCfg)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limitCfg, 1)
 	w.processJob(context.Background(), job)
 
 	var stored models.Job
@@ -413,7 +507,7 @@ func TestProcessJob_FailsCreateAndCleansUpWhenPackageListHitsResourceLimit(t *te
 	})
 	t.Cleanup(restore)
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	w.processJob(context.Background(), job)
 
 	var stored models.Job
@@ -448,7 +542,7 @@ func TestProcessJob_CapsPersistedLogs(t *testing.T) {
 	_, job := newTestProject(t, db, exec, "log-limit", models.JobTypeInstall,
 		map[string]interface{}{"packages": []string{"numpy"}})
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limitCfg)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limitCfg, 1)
 	w.processJob(context.Background(), job)
 
 	var stored models.Job
@@ -496,7 +590,7 @@ func TestCappedLogWriterReservesTailForNebiErrors(t *testing.T) {
 func newTestProject(t *testing.T, db *gorm.DB, exec *fakeExecutor, name string, jobType models.JobType, metadata map[string]interface{}) (*models.Project, *models.Job) {
 	t.Helper()
 
-	user := models.User{Username: "alice", Email: "alice@example.com"}
+	user := models.User{Username: name, Email: name + "@example.com"}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create user: %v", err)
 	}
@@ -543,7 +637,7 @@ func TestExecuteJob_EnvInstallRunsInstall(t *testing.T) {
 
 	project, job := newTestProject(t, db, exec, "env-install", models.JobTypeEnvInstall, nil)
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -574,7 +668,7 @@ func TestExecuteJob_EnvUninstallRemovesEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -606,7 +700,7 @@ func TestExecuteJob_UpdateAutoInstallsWhenPreviouslyInstalled(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -623,7 +717,7 @@ func TestExecuteJob_UpdateSkipsAutoInstallWhenNotInstalled(t *testing.T) {
 
 	_, job := newTestProject(t, db, exec, "update-noinstall", models.JobTypeUpdate, nil)
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -644,7 +738,7 @@ func TestExecuteJob_UpdateNoAutoInstallInTeamMode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -667,7 +761,7 @@ func TestExecuteJob_PackageOpsAutoInstallWhenPreviouslyInstalled(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+			w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 			if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 				t.Fatalf("executeJob: %v", err)
 			}
@@ -712,7 +806,7 @@ func TestExecuteJob_RollbackLocksAndAutoInstalls(t *testing.T) {
 		t.Fatalf("create job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -770,7 +864,7 @@ func TestProcessJob_RollbackRejectsOversizedLegacyVersionBeforeWrite(t *testing.
 		t.Fatalf("create rollback job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limitCfg)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limitCfg, 1)
 	w.processJob(context.Background(), job)
 
 	var stored models.Job
@@ -814,7 +908,7 @@ func TestExecuteJob_UpdateReinstallFailureDoesNotFailJob(t *testing.T) {
 	}
 	exec.installErr = errors.New("pixi install failed: exit status 1")
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: expected reinstall failure not to fail the job, got %v", err)
 	}
@@ -837,7 +931,7 @@ func TestProcessJob_UpdateReinstallResourceFailureFailsAndCleansUp(t *testing.T)
 	}
 	exec.installErr = process.NewResourceLimitError(errors.New("CPU budget exceeded"))
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	w.processJob(context.Background(), job)
 
 	var stored models.Job

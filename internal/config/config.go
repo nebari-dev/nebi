@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -29,10 +30,10 @@ const (
 // Config holds all application configuration
 type Config struct {
 	Mode       Mode             `mapstructure:"-"`
+	Worker     WorkerConfig     `mapstructure:"worker"`
 	Server     ServerConfig     `mapstructure:"server"`
 	Database   DatabaseConfig   `mapstructure:"database"`
 	Auth       AuthConfig       `mapstructure:"auth"`
-	Queue      QueueConfig      `mapstructure:"queue"`
 	Log        LogConfig        `mapstructure:"log"`
 	PixiPath   string           `mapstructure:"pixi_path"` // Custom pixi binary path (optional)
 	Storage    StorageConfig    `mapstructure:"storage"`
@@ -91,6 +92,11 @@ func DefaultReadTimeoutSeconds(requestBodyBytes int64) int {
 	return seconds
 }
 
+// WorkerConfig holds background job concurrency configuration.
+type WorkerConfig struct {
+	MaxParallelJobs int `mapstructure:"max_parallel_jobs"`
+}
+
 // DatabaseConfig holds database configuration
 type DatabaseConfig struct {
 	Driver          string `mapstructure:"driver"`            // "sqlite" or "postgres"
@@ -113,12 +119,6 @@ type AuthConfig struct {
 	ProxyDefaultRole            string `mapstructure:"proxy_default_role"`             // Default role for proxy-authenticated users (default: "editor")
 	DeviceFlowClientID          string `mapstructure:"device_flow_client_id"`          // OIDC device flow public client ID (for RFC 8628 CLI login)
 	AuthorizationStaleAfterMins int    `mapstructure:"authorization_stale_after_mins"` // Reconciled bearer authorization freshness window in minutes (default: 1440)
-}
-
-// QueueConfig holds job queue configuration
-type QueueConfig struct {
-	Type       string `mapstructure:"type"`        // "memory" or "valkey"
-	ValkeyAddr string `mapstructure:"valkey_addr"` // Valkey address (if type=valkey), e.g., "localhost:6379"
 }
 
 // LogConfig holds logging configuration
@@ -177,6 +177,7 @@ func Load(options ...LoadOption) (*Config, error) {
 	v := viper.New()
 
 	// Set defaults for local development
+	v.SetDefault("worker.max_parallel_jobs", max(1, runtime.NumCPU()/2))
 	v.SetDefault("server.host", "")
 	v.SetDefault("server.port", 8460)
 	v.SetDefault("server.mode", "development")
@@ -198,8 +199,6 @@ func Load(options ...LoadOption) (*Config, error) {
 	v.SetDefault("auth.proxy_default_role", "editor")
 	v.SetDefault("auth.device_flow_client_id", "")
 	v.SetDefault("auth.authorization_stale_after_mins", 1440)
-	v.SetDefault("queue.type", "memory")
-	v.SetDefault("queue.valkey_addr", "localhost:6379")
 	v.SetDefault("log.format", "text")
 	v.SetDefault("log.level", "info")
 	v.SetDefault("storage.projects_dir", "./data/projects")
@@ -243,6 +242,7 @@ func Load(options ...LoadOption) (*Config, error) {
 	// viper's AutomaticEnv + Unmarshal does not propagate env vars into
 	// nested structs without explicit BindEnv. Bind each nested key so that
 	// e.g. NEBI_STORAGE_PROJECTS_DIR overrides the projects_dir field.
+	_ = v.BindEnv("worker.max_parallel_jobs", "NEBI_WORKER_MAX_PARALLEL_JOBS")
 	_ = v.BindEnv("storage.projects_dir", "NEBI_STORAGE_PROJECTS_DIR")
 	_ = v.BindEnv("server.host", "NEBI_SERVER_HOST")
 	_ = v.BindEnv("server.port", "NEBI_SERVER_PORT")
@@ -260,8 +260,6 @@ func Load(options ...LoadOption) (*Config, error) {
 	_ = v.BindEnv("auth.oidc_client_secret", "NEBI_AUTH_OIDC_CLIENT_SECRET")
 	_ = v.BindEnv("auth.oidc_redirect_url", "NEBI_AUTH_OIDC_REDIRECT_URL")
 	_ = v.BindEnv("auth.authorization_stale_after_mins", "NEBI_AUTH_AUTHORIZATION_STALE_AFTER_MINS")
-	_ = v.BindEnv("queue.type", "NEBI_QUEUE_TYPE")
-	_ = v.BindEnv("queue.valkey_addr", "NEBI_QUEUE_VALKEY_ADDR")
 	_ = v.BindEnv("log.format", "NEBI_LOG_FORMAT")
 	_ = v.BindEnv("log.level", "NEBI_LOG_LEVEL")
 	_ = v.BindEnv("limits.request_body_bytes", "NEBI_LIMITS_REQUEST_BODY_BYTES")
@@ -283,6 +281,9 @@ func Load(options ...LoadOption) (*Config, error) {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
 	cfg.Mode = opts.mode
+	if cfg.Worker.MaxParallelJobs < 1 {
+		return nil, fmt.Errorf("worker.max_parallel_jobs must be at least 1")
+	}
 	if err := cfg.Limits.Validate(); err != nil {
 		return nil, err
 	}

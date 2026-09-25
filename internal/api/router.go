@@ -30,7 +30,7 @@ import (
 )
 
 // NewRouter creates and configures the Gin router
-func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Executor, logBroker *logstream.LogBroker, valkeyClient interface{}, logger *slog.Logger) *gin.Engine {
+func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec executor.Executor, logBroker *logstream.LogBroker, logger *slog.Logger) *gin.Engine {
 	auth.ConfigureAuthReconciliationStaleAfter(time.Duration(cfg.Auth.AuthorizationStaleAfterMins) * time.Minute)
 
 	// Initialize RBAC enforcer and provider.
@@ -198,7 +198,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q queue.Queue, exec executor.Exe
 
 	projectHandler := handlers.NewProjectHandler(svc)
 	groupHandler := handlers.NewGroupHandler(groupSvc)
-	jobHandler := handlers.NewJobHandler(jobSvc, logBroker, valkeyClient)
+	jobHandler := handlers.NewJobHandler(jobSvc, logBroker)
 
 	// Protected routes (require authentication)
 	protected := base.Group("/api/v1")

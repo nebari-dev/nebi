@@ -40,7 +40,7 @@ Bundles are packed into an OCI Image Manifest with custom media types for the sp
 - **API**: Git-based HTTP server serving the REST API and the bundled React frontend
 - **Central database**: SQLite (default) or PostgreSQL for project and user tracking
 - **Background worker**: Background processor for async operations like project creation and package installation
-- **Job queue**: In-memory queue (single instance) or Valkey (distributed deployments) to process project creation and updating requests.
+- **Job queue**: In-memory queue with an in-process worker that handles project creation and updates concurrently, keeping the API responsive.
 
 Learn more: [Nebi server setup](/server-setup/).
 

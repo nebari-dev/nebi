@@ -18,9 +18,8 @@ var Version = "dev"
 var Commit = ""
 
 var (
-	host          string
-	port          int
-	componentMode string
+	host string
+	port int
 )
 
 var rootCmd = &cobra.Command{
@@ -48,7 +47,6 @@ var versionCmd = &cobra.Command{
 func init() {
 	rootCmd.Flags().StringVar(&host, "host", "", "Bind host/IP (overrides config), e.g. 127.0.0.1")
 	rootCmd.Flags().IntVarP(&port, "port", "p", 0, "Port to run server on (overrides config)")
-	rootCmd.Flags().StringVarP(&componentMode, "mode", "m", "both", "Run mode: server, worker, or both")
 
 	rootCmd.AddCommand(versionCmd)
 }
@@ -57,7 +55,6 @@ func run(cmd *cobra.Command, args []string) {
 	cfg := server.Config{
 		Host:        host,
 		Port:        port,
-		Mode:        componentMode,
 		RuntimeMode: config.ModeLocal,
 		Version:     Version,
 		Commit:      Commit,

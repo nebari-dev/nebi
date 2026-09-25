@@ -89,7 +89,7 @@ nebi/
 │   ├── store/            # Local index, config, and credentials
 │   ├── db/               # Database models and migrations
 │   ├── executor/         # Job execution (local/docker)
-│   ├── queue/            # Job queue (memory/valkey)
+│   ├── queue/            # Job queue (in-memory)
 │   ├── server/           # Server initialization logic
 │   ├── worker/           # Background job processor
 │   └── pixi/             # Pixi CLI integration

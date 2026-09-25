@@ -15,6 +15,11 @@ server:
   # Comma-separated. Env: NEBI_SERVER_ALLOWED_ORIGINS
   # allowed_origins: "https://hub.example.com"
 
+# Background job concurrency defaults to half the CPU cores, with a minimum of 1.
+# Override with a positive integer or NEBI_WORKER_MAX_PARALLEL_JOBS.
+# worker:
+#   max_parallel_jobs: 4
+
 database:
   driver: sqlite  # or "postgres"
   dsn: ./nebi.db
@@ -44,10 +49,6 @@ auth:
   # validating "iss" against oidc_issuer_url. Defaults to oidc_issuer_url.
   # Example (in-cluster Keycloak Service):
   # oidc_discovery_url: http://keycloak-http.keycloak.svc.cluster.local/realms/nebari
-
-queue:
-  type: memory  # or "valkey"
-  # valkey_addr: localhost:6379
 
 log:
   format: text  # or "json"
@@ -85,7 +86,7 @@ storage:
 #   job_log_bytes: 4194304             # NEBI_LIMITS_JOB_LOG_BYTES
 #
 # Per-job memory and process-count limits are intentionally not configured
-# here. Enforce those with worker pod/container limits until Nebi runs jobs in
+# here. Enforce those with Nebi pod/container limits until Nebi runs jobs in
 # isolated execution units.
 
 # Admin-provisioned OCI registries (optional). Entries carry no credentials.

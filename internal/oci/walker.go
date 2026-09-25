@@ -173,7 +173,7 @@ func matchAnyGlob(patterns []string, p string) bool {
 // applying (in order): hardcoded drops, include filter, .gitignore,
 // exclude filter, force-includes.
 //
-// root must be the workspace directory. cfg controls include/exclude.
+// root must be the project directory. cfg controls include/exclude.
 // Errors surface for unreadable directory entries but not for missing
 // .gitignore (absent file is fine). Malformed include/exclude globs
 // are rejected up front so typos do not silently elide files.
@@ -269,7 +269,7 @@ func walkBundle(root string, cfg bundleConfig) ([]Asset, error) {
 
 	// Ensure force-included files are present even if filters elided them.
 	// Use Lstat so a hostile symlink at pixi.toml (e.g. pointing outside
-	// the workspace) does not sneak into the bundle. Non-regular files
+	// the project) does not sneak into the bundle. Non-regular files
 	// (including symlinks) are silently skipped.
 	for name := range forceIncludeFiles {
 		if _, ok := seen[name]; ok {

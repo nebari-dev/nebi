@@ -8,27 +8,27 @@ import { VersionHistory } from './VersionHistory';
 describe('VersionHistory', () => {
   it('uses the pixi.toml version as the primary version label', async () => {
     server.use(
-      http.get('/api/v1/workspaces/:id/versions', () =>
+      http.get('/api/v1/projects/:id/versions', () =>
         HttpResponse.json([
           {
             id: 'version-1',
-            workspace_id: 'workspace-1',
+            project_id: 'project-1',
             version_number: 1,
             manifest_version: '0.0.3',
             created_at: '2026-08-14T07:35:38Z',
             created_by: 'user-1',
-            description: 'Initial workspace creation',
+            description: 'Initial project creation',
           },
         ]),
       ),
     );
 
     renderWithProviders(
-      <VersionHistory environmentId="workspace-1" environmentStatus="ready" />,
+      <VersionHistory environmentId="project-1" environmentStatus="ready" />,
     );
 
     expect(
-      await screen.findByText('Workspace version 0.0.3'),
+      await screen.findByText('Project version 0.0.3'),
     ).toBeInTheDocument();
     expect(screen.getByText('Snapshot 1')).toBeInTheDocument();
     expect(

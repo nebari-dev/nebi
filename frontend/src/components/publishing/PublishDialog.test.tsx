@@ -10,7 +10,7 @@ const defaultProps = {
   open: true,
   onOpenChange: vi.fn(),
   environmentId: 'ws-1',
-  environmentName: 'test-workspace',
+  environmentName: 'test-project',
 };
 
 beforeEach(() => {
@@ -83,7 +83,7 @@ describe('PublishDialog', () => {
       http.get('/api/v1/registries', () =>
         HttpResponse.json([mockRegistry, secondRegistry]),
       ),
-      http.get('/api/v1/workspaces/:id/publish-defaults', ({ request }) => {
+      http.get('/api/v1/projects/:id/publish-defaults', ({ request }) => {
         const registryId = new URL(request.url).searchParams.get('registry_id');
         requestedRegistryIds.push(registryId);
 
@@ -93,7 +93,7 @@ describe('PublishDialog', () => {
             registry_id: 'reg-2',
             registry_name: 'Second Registry',
             namespace: 'secondorg',
-            repository: 'second-workspace',
+            repository: 'second-project',
             tag: 'next',
           });
         }
@@ -119,7 +119,7 @@ describe('PublishDialog', () => {
       expect(
         (screen.getByPlaceholderText(/e\.g\., myenv/) as HTMLInputElement)
           .value,
-      ).toBe('second-workspace'),
+      ).toBe('second-project'),
     );
     expect(
       (screen.getByPlaceholderText(/e\.g\., v1/) as HTMLInputElement).value,
@@ -160,7 +160,7 @@ describe('PublishDialog', () => {
 
   it('disables the Publish button when required fields are empty', async () => {
     server.use(
-      http.get('/api/v1/workspaces/:id/publish-defaults', () =>
+      http.get('/api/v1/projects/:id/publish-defaults', () =>
         HttpResponse.json({
           registry_id: '',
           namespace: '',
@@ -207,7 +207,7 @@ describe('PublishDialog', () => {
   it('does not render when open is false', () => {
     renderWithProviders(<PublishDialog {...defaultProps} open={false} />);
     expect(
-      screen.queryByText('Publish Workspace to OCI Registry'),
+      screen.queryByText('Publish Project to OCI Registry'),
     ).not.toBeInTheDocument();
   });
 });

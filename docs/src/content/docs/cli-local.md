@@ -6,7 +6,7 @@ Nebi manages Pixi workspace specs locally, and syncs them to remote servers. Thi
 
 > **Note:** Nebi currently only supports `pixi.toml` manifests. Pixi projects using `pyproject.toml` (with `[tool.pixi.*]` tables) are not yet supported.
 
-## Track a New Workspace
+## Track a New Project
 
 Create a new Pixi workspace and start tracking it with Nebi:
 
@@ -17,15 +17,15 @@ nebi init
 
 If no `pixi.toml` exists, Nebi automatically runs `pixi init` for you.
 
-The workspace name comes from the `[workspace] name` field in `pixi.toml`:
+A Nebi project tracks a Pixi workspace. The project name comes from the `[workspace] name` field in `pixi.toml`:
 
 ```bash title="Output"
 No pixi.toml found; running pixi init...
 ✔ Created /home/user/my-data-project/pixi.toml
-Workspace 'my-data-project' initialized (/home/user/my-data-project)
+Project 'my-data-project' initialized (/home/user/my-data-project)
 ```
 
-## Track an Existing Pixi Workspace
+## Track an Existing Pixi Project
 
 Already have a Pixi project? Just run `nebi init` in the directory:
 
@@ -35,19 +35,19 @@ nebi init
 ```
 
 ```bash title="Output"
-Workspace 'existing-pixi-project' initialized (/home/user/existing-pixi-project)
+Project 'existing-pixi-project' initialized (/home/user/existing-pixi-project)
 ```
 
 :::tip
-If you rename a workspace in `pixi.toml` (by changing the `[workspace] name` field), Nebi automatically detects the change the next time you list or use workspaces.
+If you rename a project in `pixi.toml` (by changing the `[workspace] name` field), Nebi automatically detects the change the next time you list or use projects.
 :::
 
-## List Your Workspaces
+## List Your Projects
 
-See all workspaces tracked by Nebi:
+See all projects tracked by Nebi:
 
 ```bash
-nebi workspace list
+nebi project list
 ```
 
 ```bash title="Output"
@@ -57,26 +57,26 @@ ml-pipeline      /home/user/ml-pipeline
 data-science     /home/user/data-science
 ```
 
-## Use (activate) Workspaces
+## Use (activate) Projects
 
 ### Activate by Name
 
-Tracked workspaces can be activated from any directory by name or by path
+Tracked projects can be activated from any directory by name or by path
 
 ```bash
-# Activate a Pixi shell with the workspace's name
+# Activate a Pixi shell with the project's name
 nebi shell data-science
 
-# Run a (Pixi) task from a workspace (stays in current directory)
+# Run a (Pixi) task from a project (stays in current directory)
 nebi run data-science jupyter-lab
 ```
 
-If multiple workspaces share the same name, an interactive picker is shown.
+If multiple projects share the same name, an interactive picker is shown.
 
 ### Activate by Path
 
 ```bash
-# Activate a workspace by relative path
+# Activate a project by relative path
 nebi shell ./my-project
 
 # Or, by absolute path
@@ -85,7 +85,7 @@ nebi shell /home/user/data-science
 
 ### Pass Arguments to Pixi
 
-Anything after the workspace name is forwarded to Pixi:
+Anything after the project name is forwarded to Pixi:
 
 ```bash
 # Activate a specific pixi environment
@@ -95,11 +95,11 @@ nebi shell data-science -e cuda
 nebi run ml-pipeline train -- --epochs 100
 ```
 
-## Publish a Workspace Bundle
+## Publish a Project Bundle
 
-`nebi publish` packages your workspace and pushes it to an OCI registry.
+`nebi publish` packages your project and pushes it to an OCI registry.
 Every bundle includes `pixi.toml` and `pixi.lock`, plus any other
-workspace files (READMEs, source code, data) as additional layers.
+project files (READMEs, source code, data) as additional layers.
 
 ```bash
 nebi publish --registry my-registry --tag v1
@@ -107,7 +107,7 @@ nebi publish --registry my-registry --tag v1
 
 ### Selecting what goes into the bundle
 
-By default, the bundle includes everything in your workspace except
+By default, the bundle includes everything in your project except
 `.git/` and `.pixi/`. `pixi.toml` and `pixi.lock` are always included
 no matter what.
 
@@ -136,7 +136,7 @@ to respond. Lower it (e.g., 2 or 4) on slow or rate-limited networks.
 
 ## Import from an OCI Registry
 
-Pull a workspace bundle from an OCI registry. The core files (`pixi.toml`,
+Pull a project bundle from an OCI registry. The core files (`pixi.toml`,
 `pixi.lock`) are always restored; any asset layers in the bundle are
 extracted to the output directory at their original relative paths.
 
@@ -145,7 +145,7 @@ nebi import quay.io/nebari/data-science:v1.0 -o ./my-project
 ```
 
 ```bash title="Output"
-Tracking workspace 'data-science' at /home/user/my-project
+Tracking project 'data-science' at /home/user/my-project
 Imported quay.io/nebari/data-science:v1.0 -> /home/user/my-project (3 asset file(s))
 ```
 
@@ -162,28 +162,28 @@ accept `--force` to overwrite.
 
 ## Remove Tracking
 
-To stop tracking a workspace (without deleting any files):
+To stop tracking a project (without deleting any files):
 
 ```bash
-# Remove the workspace in the current directory
-nebi workspace remove .
+# Remove the project in the current directory
+nebi project remove .
 
 # Remove by name
-nebi workspace remove data-science
+nebi project remove data-science
 
 # Remove by path
-nebi workspace remove /home/user/data-science
+nebi project remove /home/user/data-science
 ```
 
 :::note
-This only removes the local tracking entry. Your project files are untouched. To delete a workspace from the server, use `--remote`:
+This only removes the local tracking entry. Your project files are untouched. To delete a project from the server, use `--remote`:
 ```bash
-nebi workspace remove my-workspace --remote
+nebi project remove my-project --remote
 ```
 :::
 
-To clean up all workspaces whose directories no longer exist:
+To clean up all projects whose directories no longer exist:
 
 ```bash
-nebi workspace prune
+nebi project prune
 ```

@@ -1,4 +1,4 @@
-export function getWorkspaceVersionLabel(version: {
+export function getProjectVersionLabel(version: {
   manifest_version?: string;
   version_number: number;
 }): string {

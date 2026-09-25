@@ -47,20 +47,20 @@ Nebi builds on Pixi to add what teams need: version history, rollback, sharing e
 - Share environments through OCI registries (Quay.io, GHCR, etc.)
 - Roll back when a dependency update breaks your workflow
 - Control who can modify shared environments with role-based access
-- Activate any workspace by name from any directory
+- Activate any project by name from any directory
 
 ## Quick Start
 
 ### Install
 
-Pixi is a required Nebi dependency. If not already installed, install pixi as described in the [pixi docs](https://pixi.prefix.dev/latest/installation/). Then use pixi to install Nebi:
+Pixi is a required Nebi dependency. If not already installed, install pixi as described in the [pixi docs](https://pixi.prefix.dev/latest/installation/). Then install the recommended `nebi` package with pixi. The package installs the `nebi` CLI command and the desktop app:
 
 ```sh
-# Installs CLI + Desktop App (recommended)
+# Installs the `nebi` CLI command and the desktop app
 pixi global install nebi
 ```
 
-If you only need the CLI or the desktop app individually:
+If you only need one part, install the underlying package directly. The CLI-only package is named `nebi-cli`, but the command it installs is still `nebi`:
 
 ```sh
 # CLI only
@@ -70,21 +70,23 @@ pixi global install nebi-cli
 pixi global install nebi-desktop
 ```
 
+> TODO for the split-binary release: publish/verify Pixi packages for `nebi-server` and `nebi-web` before documenting them as installable with Pixi.
+
 [Alternative installation methods](#alternative-installation-methods) are also available.
 
 ### CLI Quick Start
 
 #### Set up
 
-Start a local Nebi server (set your own admin credentials):
+Start a local Nebi web app:
 
 ```bash
-export ADMIN_USERNAME=admin
-export ADMIN_PASSWORD=your-password
-nebi serve
+nebi-web
 ```
 
-This starts the Nebi server at [http://localhost:8460](http://localhost:8460).
+This starts the local web UI and API at [http://localhost:8460](http://localhost:8460).
+
+Until `nebi-web` has its own Pixi package, install it with the shell script below or build it from source.
 
 In a new terminal, connect the CLI to the server:
 
@@ -104,25 +106,25 @@ nebi init
 Push your environment to the server:
 
 ```bash
-nebi push myworkspace
+nebi push myproject
 ```
 
 Or tag a specific version:
 
 ```bash
-nebi push myworkspace:v1.0
+nebi push myproject:v1.0
 ```
 
-Once pushed, your workspace appears on the server dashboard:
+Once pushed, your project appears on the server dashboard:
 
-![Workspace](assets/workspaces.png)
+![Project](assets/projects.png)
 
 #### Pull on another machine
 
 Pull an environment on another machine:
 
 ```bash
-nebi pull myworkspace:v1.0
+nebi pull myproject:v1.0
 ```
 
 Verify what version you're running with `nebi status`:
@@ -132,10 +134,10 @@ nebi status
 ```
 
 ```text
-Workspace: myworkspace
+Project: myproject
 Path:      /Users/you/my-project
 Server:    http://localhost:8460
-Origin:    myworkspace:v1.0 (pull)
+Origin:    myproject:v1.0 (pull)
 ```
 
 ## Documentation
@@ -173,12 +175,36 @@ Download pre-built binaries from the [releases page](https://github.com/nebari-d
 
 ### Build from Source
 
+From a source checkout (prefer a released tag or audited commit):
+
 ```sh
-go install github.com/nebari-dev/nebi/cmd/nebi@v0.14
+make build
 ```
 
-Requires Go 1.25+. Prefer a released tag or audited commit instead of a
-mutable version selector.
+This builds `bin/nebi`, `bin/nebi-server`, and `bin/nebi-web`. Requires Go 1.25+ and Node.js 20+.
+
+### Build Docker Images Locally
+
+The Dockerfile uses explicit targets for each image. Pass `--target` to choose which binary goes into the final image:
+
+```sh
+# Team server image
+docker build --target nebi-server -t nebi:local .
+
+# Local web image
+docker build --target nebi-web -t nebi-web:local .
+```
+
+The image tag (`-t`) only names the image. It does not choose the Dockerfile target.
+
+From a source checkout, build the desktop app with Wails because it packages the native app wrapper:
+
+```sh
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+make build-desktop
+```
+
+Desktop source builds also require Node.js 20+. On Linux, install GTK/WebKit dependencies first as described in [CONTRIBUTING.md](CONTRIBUTING.md#desktop-app).
 
 ## Contributing
 

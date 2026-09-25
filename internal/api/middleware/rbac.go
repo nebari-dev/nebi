@@ -37,9 +37,9 @@ func RequireAdmin(localMode bool, provider rbac.Provider) gin.HandlerFunc {
 	}
 }
 
-// RequireWorkspaceAccess checks if user can access a workspace.
+// RequireProjectAccess checks if user can access a project.
 // When localMode is true the check is unconditionally skipped.
-func RequireWorkspaceAccess(action string, localMode bool, provider rbac.Provider) gin.HandlerFunc {
+func RequireProjectAccess(action string, localMode bool, provider rbac.Provider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if localMode {
 			c.Next()
@@ -53,10 +53,10 @@ func RequireWorkspaceAccess(action string, localMode bool, provider rbac.Provide
 			return
 		}
 
-		wsIDStr := c.Param("id")
-		wsID, err := uuid.Parse(wsIDStr)
+		projectIDStr := c.Param("id")
+		projectID, err := uuid.Parse(projectIDStr)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid workspace ID"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
 			c.Abort()
 			return
 		}
@@ -65,9 +65,9 @@ func RequireWorkspaceAccess(action string, localMode bool, provider rbac.Provide
 
 		var hasAccess bool
 		if action == "read" {
-			hasAccess, err = provider.CanReadWorkspace(userID, wsID)
+			hasAccess, err = provider.CanReadProject(userID, projectID)
 		} else if action == "write" {
-			hasAccess, err = provider.CanWriteWorkspace(userID, wsID)
+			hasAccess, err = provider.CanWriteProject(userID, projectID)
 		}
 
 		if err != nil || !hasAccess {

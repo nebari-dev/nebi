@@ -1,0 +1,79 @@
+package main
+
+import (
+	"os"
+
+	"github.com/spf13/cobra"
+)
+
+// Version is set via ldflags at build time
+var Version = "dev"
+
+// Commit is the git commit hash, set via ldflags at build time
+var Commit = ""
+
+var rootCmd = &cobra.Command{
+	Use:   "nebi",
+	Short: "Nebi - Local-first project management for Pixi",
+	Long: `Nebi manages projects backed by Pixi workspaces and syncs them to remote servers.
+
+Environment variables:
+  NEBI_AUTH_TOKEN    API token for authentication (bypasses "nebi login")
+  NEBI_REMOTE_URL    Remote server URL (paired with NEBI_AUTH_TOKEN)
+  NEBI_DATA_DIR      Override the local data directory (default: ~/.local/share/nebi)`,
+	Example: `  # Track a project and push it to a server
+  nebi init
+  nebi login https://nebi.company.com
+  nebi push myproject:v1.0
+
+  # Compare specs between directories or server versions
+  nebi diff ./project-a ./project-b
+  nebi diff myproject:v1 myproject:v2`,
+}
+
+func init() {
+	rootCmd.AddGroup(
+		&cobra.Group{ID: "project", Title: "Project Commands:"},
+		&cobra.Group{ID: "sync", Title: "Sync Commands:"},
+		&cobra.Group{ID: "connection", Title: "Connection Commands:"},
+	)
+
+	initCmd.GroupID = "project"
+	projectCmd.GroupID = "project"
+	shellCmd.GroupID = "project"
+	runCmd.GroupID = "project"
+	statusCmd.GroupID = "project"
+
+	pushCmd.GroupID = "sync"
+	pullCmd.GroupID = "sync"
+	diffCmd.GroupID = "sync"
+	publishCmd.GroupID = "sync"
+	importCmd.GroupID = "sync"
+
+	loginCmd.GroupID = "connection"
+	logoutCmd.GroupID = "connection"
+	registryCmd.GroupID = "connection"
+
+	rootCmd.AddCommand(initCmd)
+	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(projectCmd)
+	rootCmd.AddCommand(diffCmd)
+	rootCmd.AddCommand(loginCmd)
+	rootCmd.AddCommand(logoutCmd)
+	rootCmd.AddCommand(pushCmd)
+	rootCmd.AddCommand(pullCmd)
+	rootCmd.AddCommand(shellCmd)
+	rootCmd.AddCommand(runCmd)
+	rootCmd.AddCommand(publishCmd)
+	rootCmd.AddCommand(importCmd)
+	rootCmd.AddCommand(registryCmd)
+	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(completionCmd)
+	rootCmd.AddCommand(infoCmd)
+}
+
+func main() {
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
+	}
+}

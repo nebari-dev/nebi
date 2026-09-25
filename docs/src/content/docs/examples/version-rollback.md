@@ -145,7 +145,7 @@ The task fails because v3.0 changed it to read from a CSV file that doesn't exis
 To figure out which version introduced the broken task, Alice looks at the version history:
 
 ```bash
-nebi workspace tags ml-pipeline
+nebi project tags ml-pipeline
 ```
 
 ```bash title="Output"
@@ -235,7 +235,7 @@ Here's the full flow at a glance:
 |----------------------|----------------------------------------|
 | Push initial version | `nebi push :v1.0`                      |
 | Push updates         | `nebi push :v2.0`, `:v3.0`, `:v4.0`   |
-| View version history | `nebi workspace tags`                  |
+| View version history | `nebi project tags`                  |
 | Compare versions     | `nebi diff :v2.0 :v4.0`               |
 | Roll back on server  | Nebi UI rollback button                |
 | Pull working version | `nebi pull`                            |

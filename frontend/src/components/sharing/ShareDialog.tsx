@@ -21,8 +21,8 @@ import {
 import {
   useCollaborators,
   useIsAdmin,
-  useShareWorkspace,
-  useUnshareWorkspace,
+  useShareProject,
+  useUnshareProject,
   useUsers,
 } from '@/hooks/useAdmin';
 import { useGroups, useMyGroups } from '@/hooks/useGroups';
@@ -74,19 +74,19 @@ export const ShareDialog = ({
     source: 'native' | 'oidc';
   }[] = isAdmin ? (allGroups ?? []) : (myGroups ?? []);
   const qc = useQueryClient();
-  const shareMutation = useShareWorkspace(environmentId);
-  const unshareMutation = useUnshareWorkspace(environmentId);
+  const shareMutation = useShareProject(environmentId);
+  const unshareMutation = useUnshareProject(environmentId);
 
   const shareGroupMutation = useMutation({
     mutationFn: (data: { group_id: string; role: 'editor' | 'viewer' }) =>
-      groupsApi.shareWorkspace(environmentId, data),
+      groupsApi.shareProject(environmentId, data),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ['collaborators', environmentId] }),
   });
 
   const unshareGroupMutation = useMutation({
     mutationFn: (groupId: string) =>
-      groupsApi.unshareWorkspace(environmentId, groupId),
+      groupsApi.unshareProject(environmentId, groupId),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ['collaborators', environmentId] }),
   });
@@ -125,7 +125,7 @@ export const ShareDialog = ({
       const error = err as { response?: { data?: { error?: string } } };
       const errorMessage =
         error?.response?.data?.error ||
-        'Failed to share workspace. Please try again.';
+        'Failed to share project. Please try again.';
       setError(errorMessage);
     }
   };
@@ -144,7 +144,7 @@ export const ShareDialog = ({
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
       setError(
-        error?.response?.data?.error || 'Failed to share workspace with group.',
+        error?.response?.data?.error || 'Failed to share project with group.',
       );
     }
   };
@@ -174,9 +174,9 @@ export const ShareDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Share Workspace</DialogTitle>
+          <DialogTitle>Share Project</DialogTitle>
           <DialogDescription>
-            Manage who has access to this workspace
+            Manage who has access to this project
           </DialogDescription>
         </DialogHeader>
 
@@ -470,7 +470,7 @@ export const ShareDialog = ({
         onOpenChange={(open) => !open && setConfirmRemove(null)}
         onConfirm={handleUnshare}
         title="Remove Collaborator"
-        description={`Are you sure you want to remove ${confirmRemove?.label} from this workspace? They will lose access immediately.`}
+        description={`Are you sure you want to remove ${confirmRemove?.label} from this project? They will lose access immediately.`}
         confirmText="Remove"
         cancelText="Cancel"
         variant="destructive"

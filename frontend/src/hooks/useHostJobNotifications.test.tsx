@@ -80,7 +80,7 @@ describe('useHostJobNotifications', () => {
         type: NEBI_JOB_COMPLETED_MESSAGE,
         jobType: 'env_uninstall',
         status: 'completed',
-        workspaceId: 'ws-1',
+        projectId: 'ws-1',
       },
       window.location.origin,
     );
@@ -165,7 +165,7 @@ describe('useHostJobNotifications', () => {
       job({ id: 'job-a', status: 'running' }),
       job({
         id: 'job-b',
-        workspace_id: 'ws-2',
+        project_id: 'ws-2',
         type: 'delete',
         status: 'completed',
       }),
@@ -178,7 +178,7 @@ describe('useHostJobNotifications', () => {
         type: NEBI_JOB_COMPLETED_MESSAGE,
         jobType: 'delete',
         status: 'completed',
-        workspaceId: 'ws-2',
+        projectId: 'ws-2',
       },
       window.location.origin,
     );

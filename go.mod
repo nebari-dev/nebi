@@ -5,7 +5,6 @@ go 1.25.0
 toolchain go1.26.7
 
 require (
-	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/bmatcuk/doublestar/v4 v4.6.1
 	github.com/casbin/casbin/v2 v2.128.0
 	github.com/coreos/go-oidc/v3 v3.17.0
@@ -22,7 +21,6 @@ require (
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.1
 	github.com/swaggo/swag v1.16.6
-	github.com/valkey-io/valkey-go v1.0.67
 	github.com/wailsapp/wails/v2 v2.12.0
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/crypto v0.55.0
@@ -120,7 +118,6 @@ require (
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect
 	github.com/wailsapp/mimetype v1.4.1 // indirect
-	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.22.0 // indirect

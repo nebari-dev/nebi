@@ -25,7 +25,7 @@ export const PublishButton = ({
         disabled={environmentStatus !== 'ready'}
         title={
           environmentStatus !== 'ready'
-            ? 'Workspace must be ready to publish'
+            ? 'Project must be ready to publish'
             : 'Publish to OCI Registry'
         }
       >

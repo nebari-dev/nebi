@@ -20,23 +20,19 @@ import (
 	"github.com/nebari-dev/nebi/internal/process"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/service"
-	"github.com/valkey-io/valkey-go"
 )
 
 // Worker processes jobs from the queue
 type Worker struct {
-	queue        queue.Queue
-	executor     executor.Executor
-	svc          *service.WorkspaceService
-	jobSvc       *service.JobService
-	logger       *slog.Logger
-	broker       *logstream.LogBroker
-	valkeyClient valkey.Client // For distributed log streaming (optional, can be nil for local mode)
-	maxWorkers   int
-	semaphore    chan struct{}
-	wg           sync.WaitGroup
-	jobTimeout   time.Duration
-	maxLogBytes  int
+	queue           *queue.MemoryQueue
+	executor        executor.Executor
+	svc             *service.ProjectService
+	jobSvc          *service.JobService
+	logger          *slog.Logger
+	broker          *logstream.LogBroker
+	maxParallelJobs int
+	jobTimeout      time.Duration
+	maxLogBytes     int
 }
 
 type autoReinstallFailureError struct {
@@ -48,20 +44,17 @@ func (e *autoReinstallFailureError) Error() string {
 }
 
 // New creates a new worker instance
-func New(q queue.Queue, exec executor.Executor, svc *service.WorkspaceService, jobSvc *service.JobService, logger *slog.Logger, valkeyClient valkey.Client, limitCfg limits.Limits) *Worker {
-	maxWorkers := 10 // Allow up to 10 concurrent jobs
+func New(q *queue.MemoryQueue, exec executor.Executor, svc *service.ProjectService, jobSvc *service.JobService, logger *slog.Logger, limitCfg limits.Limits, maxParallelJobs int) *Worker {
 	return &Worker{
-		queue:        q,
-		executor:     exec,
-		svc:          svc,
-		jobSvc:       jobSvc,
-		logger:       logger,
-		broker:       logstream.NewBroker(),
-		valkeyClient: valkeyClient,
-		maxWorkers:   maxWorkers,
-		semaphore:    make(chan struct{}, maxWorkers),
-		jobTimeout:   limitCfg.JobTimeout(),
-		maxLogBytes:  limitCfg.JobLogBytes,
+		queue:           q,
+		executor:        exec,
+		svc:             svc,
+		jobSvc:          jobSvc,
+		logger:          logger,
+		broker:          logstream.NewBroker(),
+		maxParallelJobs: max(1, maxParallelJobs),
+		jobTimeout:      limitCfg.JobTimeout(),
+		maxLogBytes:     limitCfg.JobLogBytes,
 	}
 }
 
@@ -72,51 +65,25 @@ func (w *Worker) GetBroker() *logstream.LogBroker {
 
 // Start begins processing jobs from the queue
 func (w *Worker) Start(ctx context.Context) error {
-	w.logger.Info("Worker started", "max_concurrent_jobs", w.maxWorkers)
+	w.logger.Info("Worker started", "max_parallel_jobs", w.maxParallelJobs)
 
-	for {
-		select {
-		case <-ctx.Done():
-			w.logger.Info("Worker shutting down, waiting for jobs to complete")
-			w.wg.Wait() // Wait for all jobs to complete
-			w.logger.Info("All jobs completed, worker stopped")
-			return ctx.Err()
-		default:
-			job, err := w.queue.Dequeue(ctx)
-			if err != nil {
-				// DeadlineExceeded means no jobs available (normal timeout), not an error
-				if err == context.DeadlineExceeded {
-					// No jobs available, just continue polling
-					continue
+	var wg sync.WaitGroup
+	for range w.maxParallelJobs {
+		wg.Go(func() {
+			for ctx.Err() == nil {
+				// The in-memory queue blocks until work arrives, it closes, or
+				// the context is cancelled. There is no remote queue to poll.
+				job, err := w.queue.Dequeue(ctx)
+				if err != nil || ctx.Err() != nil {
+					return
 				}
-				// Actual errors (connection issues, etc.)
-				w.logger.Error("Failed to dequeue job", "error", err)
-				time.Sleep(time.Second) // Backoff on real errors
-				continue
+				w.processJob(ctx, job)
 			}
-
-			if job == nil {
-				time.Sleep(100 * time.Millisecond)
-				continue
-			}
-
-			// Acquire semaphore slot (blocks if max workers reached)
-			select {
-			case w.semaphore <- struct{}{}:
-				// Got a slot, process job asynchronously
-				w.wg.Add(1)
-				go func(j *models.Job) {
-					defer w.wg.Done()
-					defer func() { <-w.semaphore }() // Release slot when done
-
-					w.processJob(ctx, j)
-				}(job)
-			case <-ctx.Done():
-				w.logger.Info("Context cancelled while waiting for worker slot")
-				return ctx.Err()
-			}
-		}
+		})
 	}
+	wg.Wait()
+	w.logger.Info("All jobs completed, worker stopped")
+	return ctx.Err()
 }
 
 func (w *Worker) processJob(ctx context.Context, job *models.Job) {
@@ -160,17 +127,7 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 	// Create broker writer for in-memory streaming
 	brokerWriter := logstream.NewStreamWriter(job.ID, w.broker, safeWriter)
 
-	// Create multi-writer: buffer + broker (in-memory) + Valkey (distributed, if available)
-	var baseLogWriter io.Writer
-	if w.valkeyClient != nil {
-		// Create Valkey log writer for distributed streaming
-		valkeyWriter := logstream.NewValkeyLogWriter(w.valkeyClient, job.ID.String())
-		baseLogWriter = io.MultiWriter(brokerWriter, valkeyWriter)
-	} else {
-		// Use only in-memory broker for local mode
-		baseLogWriter = brokerWriter
-	}
-	logWriter := newCappedLogWriter(baseLogWriter, w.maxLogBytes)
+	logWriter := newCappedLogWriter(brokerWriter, w.maxLogBytes)
 
 	// Execute the job with streaming logs
 	jobCtx := ctx
@@ -211,21 +168,12 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 		// Publish error to subscribers
 		errorMsg := fmt.Sprintf("\n[ERROR] Job failed: %v\n", err)
 		w.broker.Publish(job.ID, errorMsg)
-		if w.valkeyClient != nil {
-			valkeyWriter := logstream.NewValkeyLogWriter(w.valkeyClient, job.ID.String())
-			valkeyWriter.Publish(errorMsg)
-		}
 	} else {
 		w.logger.Info("Job completed", "job_id", job.ID)
 		w.jobSvc.MarkCompleted(job, finalLogs)
 		// Publish completion to subscribers
 		completionMsg := "\n[COMPLETED] Job finished successfully\n"
 		w.broker.Publish(job.ID, completionMsg)
-		if w.valkeyClient != nil {
-			valkeyWriter := logstream.NewValkeyLogWriter(w.valkeyClient, job.ID.String())
-			valkeyWriter.Publish(completionMsg)
-			valkeyWriter.SetTTL(3600)
-		}
 	}
 }
 
@@ -233,10 +181,10 @@ func (w *Worker) cleanupFailedJobArtifacts(job *models.Job, jobErr error, logWri
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	ws, err := w.jobSvc.LoadWorkspace(job.WorkspaceID)
+	project, err := w.jobSvc.LoadProject(job.ProjectID)
 	if err != nil {
-		w.logger.Error("Failed to load workspace for job cleanup", "job_id", job.ID, "workspace_id", job.WorkspaceID, "error", err)
-		fmt.Fprintf(logWriter, "Job cleanup skipped: failed to load workspace: %v\n", err)
+		w.logger.Error("Failed to load project for job cleanup", "job_id", job.ID, "project_id", job.ProjectID, "error", err)
+		fmt.Fprintf(logWriter, "Job cleanup skipped: failed to load project: %v\n", err)
 		return
 	}
 	cleanupJobType := job.Type
@@ -244,8 +192,8 @@ func (w *Worker) cleanupFailedJobArtifacts(job *models.Job, jobErr error, logWri
 	if errors.As(jobErr, &reinstallErr) {
 		cleanupJobType = models.JobTypeEnvInstall
 	}
-	if err := w.executor.CleanupJobArtifacts(cleanupCtx, ws, cleanupJobType, logWriter); err != nil {
-		w.logger.Error("Job cleanup failed", "job_id", job.ID, "workspace_id", ws.ID, "error", err)
+	if err := w.executor.CleanupJobArtifacts(cleanupCtx, project, cleanupJobType, logWriter); err != nil {
+		w.logger.Error("Job cleanup failed", "job_id", job.ID, "project_id", project.ID, "error", err)
 		fmt.Fprintf(logWriter, "Job cleanup failed: %v\n", err)
 	}
 }
@@ -405,19 +353,19 @@ func (w *cappedLogWriter) writeTailLocked(p []byte) error {
 
 func isImportantLogMessage(p []byte) bool {
 	return bytes.Contains(p, []byte("[ERROR]")) ||
-		bytes.Contains(p, []byte("Workspace storage limit")) ||
+		bytes.Contains(p, []byte("Project storage limit")) ||
 		bytes.Contains(p, []byte("Job cleanup"))
 }
 
 func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.Writer) error {
-	// Load workspace
-	ws, err := w.jobSvc.LoadWorkspace(job.WorkspaceID)
+	// Load project
+	project, err := w.jobSvc.LoadProject(job.ProjectID)
 	if err != nil {
 		return err
 	}
 
 	// Prefer the job row's user ID; fall back to legacy metadata for older jobs.
-	userID := ws.OwnerID
+	userID := project.OwnerID
 	if job.UserID != uuid.Nil {
 		userID = job.UserID
 	} else if userIDInterface, ok := job.Metadata["user_id"]; ok {
@@ -430,43 +378,43 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 
 	switch job.Type {
 	case models.JobTypeCreate:
-		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusCreating)
+		w.svc.SetProjectStatus(project.ID, models.ProjectStatusCreating)
 
-		opts := buildCreateWorkspaceOptions(job.Metadata)
+		opts := buildCreateProjectOptions(job.Metadata)
 
-		if err := w.executor.CreateWorkspace(ctx, ws, logWriter, opts); err != nil {
-			w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusFailed)
+		if err := w.executor.CreateProject(ctx, project, logWriter, opts); err != nil {
+			w.svc.SetProjectStatus(project.ID, models.ProjectStatusFailed)
 			return err
 		}
 
-		// Persist the resolved path so the CLI can find the workspace on disk.
-		// Also update ws.Path in memory so the subsequent db.Save in UpdateWorkspaceSize
-		// does not overwrite the path back to "". Fail the workspace on a write
+		// Persist the resolved path so the CLI can find the project on disk.
+		// Also update project.Path in memory so the subsequent db.Save in UpdateProjectSize
+		// does not overwrite the path back to "". Fail the project on a write
 		// error so we never reach the "ready with empty path" state this fix exists
 		// to prevent.
-		if ws.Path == "" {
-			resolvedPath := w.executor.GetWorkspacePath(ws)
-			if err := w.svc.SetWorkspacePath(ws.ID, resolvedPath); err != nil {
-				w.logger.Error("failed to persist workspace path", "workspace_id", ws.ID, "resolved_path", resolvedPath, "error", err)
-				w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusFailed)
+		if project.Path == "" {
+			resolvedPath := w.executor.GetProjectPath(project)
+			if err := w.svc.SetProjectPath(project.ID, resolvedPath); err != nil {
+				w.logger.Error("failed to persist project path", "project_id", project.ID, "resolved_path", resolvedPath, "error", err)
+				w.svc.SetProjectStatus(project.ID, models.ProjectStatusFailed)
 				return err
 			}
-			ws.Path = resolvedPath
+			project.Path = resolvedPath
 		}
 
 		// Create version snapshot
-		if err := w.createVersionSnapshot(ctx, ws, job.ID, userID, "Initial workspace creation"); err != nil {
-			w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusFailed)
+		if err := w.createVersionSnapshot(ctx, project, job.ID, userID, "Initial project creation"); err != nil {
+			w.svc.SetProjectStatus(project.ID, models.ProjectStatusFailed)
 			return err
 		}
 
 		// List installed packages and save to database
-		if err := w.syncPackagesFromWorkspace(ctx, ws, "Failed to sync packages"); err != nil {
-			w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusFailed)
+		if err := w.syncPackagesFromProject(ctx, project, "Failed to sync packages"); err != nil {
+			w.svc.SetProjectStatus(project.ID, models.ProjectStatusFailed)
 			return err
 		}
 
-		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusReady)
+		w.svc.SetProjectStatus(project.ID, models.ProjectStatusReady)
 
 	case models.JobTypeInstall:
 		packages := parsePackagesFromMetadata(job.Metadata)
@@ -474,19 +422,19 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return fmt.Errorf("packages not found in job metadata")
 		}
 
-		wasInstalled := w.executor.IsEnvInstalled(ws)
+		wasInstalled := w.executor.IsEnvInstalled(project)
 
-		if err := w.executor.InstallPackages(ctx, ws, packages, logWriter); err != nil {
+		if err := w.executor.InstallPackages(ctx, project, packages, logWriter); err != nil {
 			return err
 		}
 
-		if err := w.createVersionSnapshot(ctx, ws, job.ID, userID, fmt.Sprintf("Installed packages: %v", packages)); err != nil {
+		if err := w.createVersionSnapshot(ctx, project, job.ID, userID, fmt.Sprintf("Installed packages: %v", packages)); err != nil {
 			return err
 		}
 
-		w.svc.SaveInstalledPackages(ws.ID, packages)
+		w.svc.SaveInstalledPackages(project.ID, packages)
 
-		if err := w.maybeReinstallEnv(ctx, ws, wasInstalled, logWriter); err != nil {
+		if err := w.maybeReinstallEnv(ctx, project, wasInstalled, logWriter); err != nil {
 			return err
 		}
 
@@ -496,74 +444,74 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return fmt.Errorf("packages not found in job metadata")
 		}
 
-		wasInstalled := w.executor.IsEnvInstalled(ws)
+		wasInstalled := w.executor.IsEnvInstalled(project)
 
-		if err := w.executor.RemovePackages(ctx, ws, packages, logWriter); err != nil {
+		if err := w.executor.RemovePackages(ctx, project, packages, logWriter); err != nil {
 			return err
 		}
 
-		if err := w.createVersionSnapshot(ctx, ws, job.ID, userID, fmt.Sprintf("Removed packages: %v", packages)); err != nil {
+		if err := w.createVersionSnapshot(ctx, project, job.ID, userID, fmt.Sprintf("Removed packages: %v", packages)); err != nil {
 			return err
 		}
 
-		w.svc.DeletePackagesByName(ws.ID, packages)
+		w.svc.DeletePackagesByName(project.ID, packages)
 
-		if err := w.maybeReinstallEnv(ctx, ws, wasInstalled, logWriter); err != nil {
+		if err := w.maybeReinstallEnv(ctx, project, wasInstalled, logWriter); err != nil {
 			return err
 		}
 
 	case models.JobTypeUpdate:
-		wasInstalled := w.executor.IsEnvInstalled(ws)
-		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusCreating)
+		wasInstalled := w.executor.IsEnvInstalled(project)
+		w.svc.SetProjectStatus(project.ID, models.ProjectStatusCreating)
 
 		fmt.Fprintf(logWriter, "Solving environment from current pixi.toml...\n")
 
-		if err := w.executor.SolveEnvironment(ctx, ws, logWriter); err != nil {
-			w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusFailed)
+		if err := w.executor.SolveEnvironment(ctx, project, logWriter); err != nil {
+			w.svc.SetProjectStatus(project.ID, models.ProjectStatusFailed)
 			return err
 		}
 
-		if err := w.createVersionSnapshot(ctx, ws, job.ID, userID, "Solved environment from updated pixi.toml"); err != nil {
-			w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusFailed)
+		if err := w.createVersionSnapshot(ctx, project, job.ID, userID, "Solved environment from updated pixi.toml"); err != nil {
+			w.svc.SetProjectStatus(project.ID, models.ProjectStatusFailed)
 			return err
 		}
 
-		if err := w.syncPackagesFromWorkspace(ctx, ws, "Failed to sync packages after solve"); err != nil {
-			w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusFailed)
+		if err := w.syncPackagesFromProject(ctx, project, "Failed to sync packages after solve"); err != nil {
+			w.svc.SetProjectStatus(project.ID, models.ProjectStatusFailed)
 			return err
 		}
 
-		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusReady)
+		w.svc.SetProjectStatus(project.ID, models.ProjectStatusReady)
 
-		if err := w.maybeReinstallEnv(ctx, ws, wasInstalled, logWriter); err != nil {
+		if err := w.maybeReinstallEnv(ctx, project, wasInstalled, logWriter); err != nil {
 			return err
 		}
 
 	case models.JobTypeEnvInstall:
-		if err := w.executor.InstallEnvironment(ctx, ws, logWriter); err != nil {
+		if err := w.executor.InstallEnvironment(ctx, project, logWriter); err != nil {
 			return err
 		}
-		w.svc.UpdateWorkspaceSize(ws)
+		w.svc.UpdateProjectSize(project)
 
 	case models.JobTypeEnvUninstall:
-		if err := w.executor.UninstallEnvironment(ctx, ws, logWriter); err != nil {
+		if err := w.executor.UninstallEnvironment(ctx, project, logWriter); err != nil {
 			return err
 		}
 		// Size tracks the installed environment; with no environment there
 		// is nothing to measure.
-		if err := w.svc.ResetWorkspaceSize(ws.ID); err != nil {
-			w.logger.Error("failed to reset workspace size", "workspace_id", ws.ID, "error", err)
+		if err := w.svc.ResetProjectSize(project.ID); err != nil {
+			w.logger.Error("failed to reset project size", "project_id", project.ID, "error", err)
 		}
 
 	case models.JobTypeDelete:
-		w.svc.SetWorkspaceStatus(ws.ID, models.WsStatusDeleting)
+		w.svc.SetProjectStatus(project.ID, models.ProjectStatusDeleting)
 
-		if err := w.executor.DeleteWorkspace(ctx, ws, logWriter); err != nil {
+		if err := w.executor.DeleteProject(ctx, project, logWriter); err != nil {
 			return err
 		}
 
-		w.svc.DeleteAllPackages(ws.ID)
-		w.svc.SoftDeleteWorkspace(ws.ID)
+		w.svc.DeleteAllPackages(project.ID)
+		w.svc.SoftDeleteProject(project.ID)
 
 	case models.JobTypeRollback:
 		versionIDStr, ok := job.Metadata["version_id"].(string)
@@ -582,27 +530,27 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return err
 		}
 
-		if version.WorkspaceID != ws.ID {
-			return fmt.Errorf("version does not belong to this workspace")
+		if version.ProjectID != project.ID {
+			return fmt.Errorf("version does not belong to this project")
 		}
 
 		fmt.Fprintf(logWriter, "Rolling back to version %d\n", version.VersionNumber)
 
-		wasInstalled := w.executor.IsEnvInstalled(ws)
+		wasInstalled := w.executor.IsEnvInstalled(project)
 
-		if err := w.executeRollback(ctx, ws, version, logWriter); err != nil {
+		if err := w.executeRollback(ctx, project, version, logWriter); err != nil {
 			return err
 		}
 
-		if err := w.createVersionSnapshot(ctx, ws, job.ID, userID, fmt.Sprintf("Rolled back to snapshot %d", version.VersionNumber)); err != nil {
+		if err := w.createVersionSnapshot(ctx, project, job.ID, userID, fmt.Sprintf("Rolled back to snapshot %d", version.VersionNumber)); err != nil {
 			return err
 		}
 
-		if err := w.syncPackagesFromWorkspace(ctx, ws, "Failed to sync packages after rollback"); err != nil {
+		if err := w.syncPackagesFromProject(ctx, project, "Failed to sync packages after rollback"); err != nil {
 			return err
 		}
 
-		if err := w.maybeReinstallEnv(ctx, ws, wasInstalled, logWriter); err != nil {
+		if err := w.maybeReinstallEnv(ctx, project, wasInstalled, logWriter); err != nil {
 			return err
 		}
 
@@ -615,12 +563,12 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 	return nil
 }
 
-func (w *Worker) createVersionSnapshot(ctx context.Context, ws *models.Workspace, jobID uuid.UUID, userID uuid.UUID, description string) error {
-	err := w.svc.CreateVersionSnapshot(ctx, ws, jobID, userID, description)
+func (w *Worker) createVersionSnapshot(ctx context.Context, project *models.Project, jobID uuid.UUID, userID uuid.UUID, description string) error {
+	err := w.svc.CreateVersionSnapshot(ctx, project, jobID, userID, description)
 	if err == nil {
 		return nil
 	}
-	w.logger.Error("Failed to create version snapshot", "workspace_id", ws.ID, "job_id", jobID, "error", err)
+	w.logger.Error("Failed to create version snapshot", "project_id", project.ID, "job_id", jobID, "error", err)
 
 	var validationErr *service.ValidationError
 	if errors.As(err, &validationErr) {
@@ -632,8 +580,8 @@ func (w *Worker) createVersionSnapshot(ctx context.Context, ws *models.Workspace
 	return nil
 }
 
-func (w *Worker) syncPackagesFromWorkspace(ctx context.Context, ws *models.Workspace, logMessage string) error {
-	err := w.svc.SyncPackagesFromWorkspace(ctx, ws)
+func (w *Worker) syncPackagesFromProject(ctx context.Context, project *models.Project, logMessage string) error {
+	err := w.svc.SyncPackagesFromProject(ctx, project)
 	if err == nil {
 		return nil
 	}
@@ -650,32 +598,32 @@ func (w *Worker) syncPackagesFromWorkspace(ctx context.Context, ws *models.Works
 }
 
 // maybeReinstallEnv reinstalls the environment after a lockfile-changing
-// operation, but only in local mode and only when the workspace had an
+// operation, but only in local mode and only when the project had an
 // installed environment before the operation. This keeps installed
 // environments in sync with the latest lockfile without ever implicitly
-// installing a workspace the user never installed.
+// installing a project the user never installed.
 //
 // By the time this runs, the manifest, lockfile, and version snapshot for
 // the triggering operation are already committed, so ordinary reinstall
 // failures are logged and recorded as install_status = install_failed instead
 // of hiding a change that actually succeeded. Fatal resource/deadline failures
 // still fail the job so processJob can run cleanup.
-func (w *Worker) maybeReinstallEnv(ctx context.Context, ws *models.Workspace, wasInstalled bool, logWriter io.Writer) error {
+func (w *Worker) maybeReinstallEnv(ctx context.Context, project *models.Project, wasInstalled bool, logWriter io.Writer) error {
 	if !w.svc.IsLocal() || !wasInstalled {
 		return nil
 	}
-	fmt.Fprintf(logWriter, "Workspace was installed; reinstalling environment from updated lockfile...\n")
-	if err := w.executor.InstallEnvironment(ctx, ws, logWriter); err != nil {
+	fmt.Fprintf(logWriter, "Project was installed; reinstalling environment from updated lockfile...\n")
+	if err := w.executor.InstallEnvironment(ctx, project, logWriter); err != nil {
 		fmt.Fprintf(logWriter, "Reinstall failed, environment may be out of sync: %v\n", err)
-		if recordErr := w.jobSvc.RecordFailedEnvInstall(ws.ID, err.Error()); recordErr != nil {
-			w.logger.Error("failed to record failed env install", "workspace_id", ws.ID, "error", recordErr)
+		if recordErr := w.jobSvc.RecordFailedEnvInstall(project.ID, err.Error()); recordErr != nil {
+			w.logger.Error("failed to record failed env install", "project_id", project.ID, "error", recordErr)
 		}
 		if isFatalResourceFailure(ctx, err) {
 			return &autoReinstallFailureError{err: err}
 		}
 		return nil
 	}
-	w.svc.UpdateWorkspaceSize(ws)
+	w.svc.UpdateProjectSize(project)
 	return nil
 }
 
@@ -689,9 +637,9 @@ func isFatalResourceFailure(ctx context.Context, err error) bool {
 	return executor.IsResourceLimitError(err) || process.IsResourceLimitError(err)
 }
 
-// executeRollback restores workspace to a previous version
-func (w *Worker) executeRollback(ctx context.Context, ws *models.Workspace, version *models.WorkspaceVersion, logWriter io.Writer) error {
-	envPath := w.svc.GetWorkspacePath(ws)
+// executeRollback restores project to a previous version
+func (w *Worker) executeRollback(ctx context.Context, project *models.Project, version *models.ProjectVersion, logWriter io.Writer) error {
+	envPath := w.svc.GetProjectPath(project)
 
 	if err := w.svc.ValidateVersionContent(version.ManifestContent, version.LockFileContent); err != nil {
 		return err
@@ -712,19 +660,19 @@ func (w *Worker) executeRollback(ctx context.Context, ws *models.Workspace, vers
 	// 3. Refresh the lockfile against the restored manifest. The restored
 	// pixi.lock is normally already consistent, so this is a fast no-op
 	// that doubles as validation. Packages are not installed here.
-	if err := w.executor.SolveEnvironment(ctx, ws, logWriter); err != nil {
+	if err := w.executor.SolveEnvironment(ctx, project, logWriter); err != nil {
 		return err
 	}
 
-	fmt.Fprintf(logWriter, "Workspace restored successfully\n")
+	fmt.Fprintf(logWriter, "Project restored successfully\n")
 	return nil
 }
 
-// buildCreateWorkspaceOptions converts JobTypeCreate metadata into the
-// executor's CreateWorkspaceOptions. It is lenient — missing keys or
+// buildCreateProjectOptions converts JobTypeCreate metadata into the
+// executor's CreateProjectOptions. It is lenient — missing keys or
 // non-string values yield zero-value fields rather than errors.
-func buildCreateWorkspaceOptions(metadata map[string]interface{}) executor.CreateWorkspaceOptions {
-	opts := executor.CreateWorkspaceOptions{}
+func buildCreateProjectOptions(metadata map[string]interface{}) executor.CreateProjectOptions {
+	opts := executor.CreateProjectOptions{}
 	if v, ok := metadata["pixi_toml"].(string); ok {
 		opts.PixiToml = v
 	}

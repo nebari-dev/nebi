@@ -11,8 +11,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// GroupService owns CRUD + membership ops for groups. Workspace shares and
-// registry/admin grants for groups live in WorkspaceService and AdminService
+// GroupService owns CRUD + membership ops for groups. Project shares and
+// registry/admin grants for groups live in ProjectService and AdminService
 // to keep their existing locality of behaviour.
 type GroupService struct {
 	db   *gorm.DB

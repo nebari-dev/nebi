@@ -20,7 +20,7 @@ import {
   usePublications,
   usePublicRegistries,
   usePublishDefaults,
-  usePublishWorkspace,
+  usePublishProject,
 } from '@/hooks/useRegistries';
 
 interface PublishDialogProps {
@@ -57,7 +57,7 @@ export const PublishDialog = ({
     defaultsRegistryId,
   );
   const { data: publications } = usePublications(environmentId);
-  const publishMutation = usePublishWorkspace();
+  const publishMutation = usePublishProject();
 
   const registryId = useId();
   const repositoryId = useId();
@@ -110,7 +110,7 @@ export const PublishDialog = ({
 
     try {
       await publishMutation.mutateAsync({
-        workspaceId: environmentId,
+        projectId: environmentId,
         data: {
           registry_id: selectedRegistry,
           repository: repository.trim(),
@@ -126,7 +126,7 @@ export const PublishDialog = ({
       const error = err as { response?: { data?: { error?: string } } };
       const errorMessage =
         error?.response?.data?.error ||
-        'Failed to publish workspace. Please try again.';
+        'Failed to publish project. Please try again.';
       setError(errorMessage);
       console.error('Failed to publish:', err);
     }
@@ -150,9 +150,9 @@ export const PublishDialog = ({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Publish Workspace to OCI Registry</DialogTitle>
+          <DialogTitle>Publish Project to OCI Registry</DialogTitle>
           <DialogDescription>
-            Publish the workspace's pixi.toml and pixi.lock files as an OCI
+            Publish the project's pixi.toml and pixi.lock files as an OCI
             artifact.
           </DialogDescription>
         </DialogHeader>

@@ -184,11 +184,7 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 	limitCfg := cfg.Limits
 	svc := service.New(database, jobQueue, exec, true, nil, rbac.NewDefaultProvider(), limitCfg)
 	jobSvc := service.NewJobService(database, true)
-	if err := jobSvc.RecoverInterruptedJobs(a.ctx); err != nil {
-		logToFile(fmt.Sprintf("startEmbeddedServer: job recovery error: %v", err))
-		return
-	}
-	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), limitCfg, cfg.Worker.MaxWorkers)
+	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), limitCfg, cfg.Worker.MaxParallelJobs)
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	_ = workerCancel // Keep reference to avoid unused warning
 	logToFile("startEmbeddedServer: worker created")

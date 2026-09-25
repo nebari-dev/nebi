@@ -283,8 +283,8 @@ func TestExecuteJob_UpdateSetsProjectFailedOnSolveError(t *testing.T) {
 }
 
 func TestStartHonorsConcurrencyWithLiveLogs(t *testing.T) {
-	for _, maxWorkers := range []int{1, 2, 3} {
-		t.Run(fmt.Sprintf("workers=%d", maxWorkers), func(t *testing.T) {
+	for _, maxParallelJobs := range []int{1, 2, 3} {
+		t.Run(fmt.Sprintf("parallel_jobs=%d", maxParallelJobs), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				db, svc, jobSvc, exec := setupWorkerTest(t)
 				sqlDB, err := db.DB()
@@ -296,7 +296,7 @@ func TestStartHonorsConcurrencyWithLiveLogs(t *testing.T) {
 				// synctest.Wait return before a worker reaches the executor.
 				sqlDB.SetMaxOpenConns(1)
 				exec.installLog = "Installing packages\n"
-				started := make(chan struct{}, maxWorkers+1)
+				started := make(chan struct{}, maxParallelJobs+1)
 				release := make(chan struct{})
 				exec.installHook = func(ctx context.Context) error {
 					started <- struct{}{}
@@ -312,7 +312,7 @@ func TestStartHonorsConcurrencyWithLiveLogs(t *testing.T) {
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
 				var jobs []*models.Job
-				for i := 0; i <= maxWorkers; i++ {
+				for i := 0; i <= maxParallelJobs; i++ {
 					_, job := newTestProject(t, db, exec, fmt.Sprintf("install-%d", i), models.JobTypeInstall,
 						map[string]interface{}{"packages": []string{"numpy"}})
 					jobs = append(jobs, job)
@@ -320,15 +320,15 @@ func TestStartHonorsConcurrencyWithLiveLogs(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				w := New(q, exec, svc, jobSvc, slog.Default(), limits.Defaults(), maxWorkers)
+				w := New(q, exec, svc, jobSvc, slog.Default(), limits.Defaults(), maxParallelJobs)
 				logs := w.GetBroker().Subscribe(jobs[0].ID)
 				done := make(chan error, 1)
 				go func() { done <- w.Start(ctx) }()
 
 				// One extra job must remain queued while all workers are busy.
 				synctest.Wait()
-				if got := len(started); got != maxWorkers {
-					t.Fatalf("started %d blocked jobs, want %d", got, maxWorkers)
+				if got := len(started); got != maxParallelJobs {
+					t.Fatalf("started %d blocked jobs, want %d", got, maxParallelJobs)
 				}
 				var liveLogs strings.Builder
 				for len(logs) > 0 {
@@ -340,8 +340,8 @@ func TestStartHonorsConcurrencyWithLiveLogs(t *testing.T) {
 
 				release <- struct{}{}
 				synctest.Wait()
-				if got := len(started); got != maxWorkers+1 {
-					t.Fatalf("started %d jobs after releasing a worker, want %d", got, maxWorkers+1)
+				if got := len(started); got != maxParallelJobs+1 {
+					t.Fatalf("started %d jobs after releasing a worker, want %d", got, maxParallelJobs+1)
 				}
 				close(release)
 				synctest.Wait()

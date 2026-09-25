@@ -320,8 +320,8 @@ func TestLoad_WorkerConcurrency(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "default", want: max(1, runtime.NumCPU()/2)},
-		{name: "config file", yaml: "worker:\n  max_workers: 3\n", want: 3},
-		{name: "environment overrides file", yaml: "worker:\n  max_workers: 3\n", env: "2", want: 2},
+		{name: "config file", yaml: "worker:\n  max_parallel_jobs: 3\n", want: 3},
+		{name: "environment overrides file", yaml: "worker:\n  max_parallel_jobs: 3\n", env: "2", want: 2},
 		{name: "zero rejected", env: "0", wantErr: true},
 		{name: "negative rejected", env: "-1", wantErr: true},
 	} {
@@ -330,19 +330,19 @@ func TestLoad_WorkerConcurrency(t *testing.T) {
 			if tc.yaml != "" {
 				writeConfigYAML(t, tc.yaml)
 			}
-			t.Setenv("NEBI_WORKER_MAX_WORKERS", tc.env)
+			t.Setenv("NEBI_WORKER_MAX_PARALLEL_JOBS", tc.env)
 			cfg, err := Load(WithMode(ModeLocal))
 			if tc.wantErr {
-				if err == nil || !strings.Contains(err.Error(), "worker.max_workers") {
-					t.Fatalf("expected worker.max_workers validation error, got %v", err)
+				if err == nil || !strings.Contains(err.Error(), "worker.max_parallel_jobs") {
+					t.Fatalf("expected worker.max_parallel_jobs validation error, got %v", err)
 				}
 				return
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
-			if cfg.Worker.MaxWorkers != tc.want {
-				t.Fatalf("max_workers = %d, want %d", cfg.Worker.MaxWorkers, tc.want)
+			if cfg.Worker.MaxParallelJobs != tc.want {
+				t.Fatalf("max_parallel_jobs = %d, want %d", cfg.Worker.MaxParallelJobs, tc.want)
 			}
 		})
 	}

@@ -24,15 +24,15 @@ import (
 
 // Worker processes jobs from the queue
 type Worker struct {
-	queue       *queue.MemoryQueue
-	executor    executor.Executor
-	svc         *service.ProjectService
-	jobSvc      *service.JobService
-	logger      *slog.Logger
-	broker      *logstream.LogBroker
-	maxWorkers  int
-	jobTimeout  time.Duration
-	maxLogBytes int
+	queue           *queue.MemoryQueue
+	executor        executor.Executor
+	svc             *service.ProjectService
+	jobSvc          *service.JobService
+	logger          *slog.Logger
+	broker          *logstream.LogBroker
+	maxParallelJobs int
+	jobTimeout      time.Duration
+	maxLogBytes     int
 }
 
 type autoReinstallFailureError struct {
@@ -44,17 +44,17 @@ func (e *autoReinstallFailureError) Error() string {
 }
 
 // New creates a new worker instance
-func New(q *queue.MemoryQueue, exec executor.Executor, svc *service.ProjectService, jobSvc *service.JobService, logger *slog.Logger, limitCfg limits.Limits, maxWorkers int) *Worker {
+func New(q *queue.MemoryQueue, exec executor.Executor, svc *service.ProjectService, jobSvc *service.JobService, logger *slog.Logger, limitCfg limits.Limits, maxParallelJobs int) *Worker {
 	return &Worker{
-		queue:       q,
-		executor:    exec,
-		svc:         svc,
-		jobSvc:      jobSvc,
-		logger:      logger,
-		broker:      logstream.NewBroker(),
-		maxWorkers:  max(1, maxWorkers),
-		jobTimeout:  limitCfg.JobTimeout(),
-		maxLogBytes: limitCfg.JobLogBytes,
+		queue:           q,
+		executor:        exec,
+		svc:             svc,
+		jobSvc:          jobSvc,
+		logger:          logger,
+		broker:          logstream.NewBroker(),
+		maxParallelJobs: max(1, maxParallelJobs),
+		jobTimeout:      limitCfg.JobTimeout(),
+		maxLogBytes:     limitCfg.JobLogBytes,
 	}
 }
 
@@ -66,10 +66,10 @@ func (w *Worker) GetBroker() *logstream.LogBroker {
 // Start begins processing jobs from the queue
 func (w *Worker) Start(ctx context.Context) error {
 	defer w.broker.Shutdown()
-	w.logger.Info("Worker started", "max_concurrent_jobs", w.maxWorkers)
+	w.logger.Info("Worker started", "max_parallel_jobs", w.maxParallelJobs)
 
 	var wg sync.WaitGroup
-	for range w.maxWorkers {
+	for range w.maxParallelJobs {
 		wg.Go(func() {
 			for ctx.Err() == nil {
 				// The in-memory queue blocks until work arrives, it closes, or

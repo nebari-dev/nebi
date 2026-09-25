@@ -54,11 +54,11 @@ For a single-user browser UI on your own machine, use `nebi-web` instead. It run
 
 ## Background Jobs
 
-Nebi processes background jobs concurrently using an in-memory queue and a worker in the same process. Live logs stream directly from that process; no external queue service or worker deployment is needed. On startup, abandoned pending/running jobs and unfinished workspace transitions are marked failed so operations can be retried. Jobs are not replayed automatically; saved logs remain in the database. Run only one Nebi instance per database.
+Nebi processes background jobs concurrently using an in-memory queue and a worker in the same process. Live logs stream directly from that process; no external queue service or worker deployment is needed. Jobs are not replayed automatically; saved logs remain in the database. Run only one Nebi instance per database.
 
-Job concurrency defaults to half the available CPU cores (at least one worker). Set `worker.max_workers` in the configuration or `NEBI_WORKER_MAX_WORKERS` to override it with a positive integer.
+Job concurrency defaults to half the available CPU cores (at least one parallel job). Set `worker.max_parallel_jobs` in the configuration or `NEBI_WORKER_MAX_PARALLEL_JOBS` to override it with a positive integer.
 
-The server and desktop app allow up to 40 seconds for HTTP shutdown and worker cleanup, including final job status and log writes. The supplied Compose deployments allow 45 seconds before forcibly stopping the container.
+The server allows up to 40 seconds for HTTP shutdown and worker cleanup, including final job status and log writes. The supplied Compose deployments allow 45 seconds before forcibly stopping the container.
 
 ## API Documentation
 

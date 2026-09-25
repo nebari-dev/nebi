@@ -142,12 +142,9 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	workerSvc := service.New(database, jobQueue, exec, appCfg.IsLocalMode(), workerEncKey, rbac.NewDefaultProvider(), limitCfg)
 	workerJobSvc := service.NewJobService(database, appCfg.IsLocalMode())
-	if err := workerJobSvc.RecoverInterruptedJobs(ctx); err != nil {
-		return err
-	}
 
 	// Run jobs in the background while the HTTP API remains responsive.
-	w := worker.New(jobQueue, exec, workerSvc, workerJobSvc, slog.Default(), limitCfg, appCfg.Worker.MaxWorkers)
+	w := worker.New(jobQueue, exec, workerSvc, workerJobSvc, slog.Default(), limitCfg, appCfg.Worker.MaxParallelJobs)
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	defer workerCancel()
 	workerDone := make(chan struct{})

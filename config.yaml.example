@@ -16,9 +16,9 @@ server:
   # allowed_origins: "https://hub.example.com"
 
 # Background job concurrency defaults to half the CPU cores, with a minimum of 1.
-# Override with a positive integer or NEBI_WORKER_MAX_WORKERS.
+# Override with a positive integer or NEBI_WORKER_MAX_PARALLEL_JOBS.
 # worker:
-#   max_workers: 4
+#   max_parallel_jobs: 4
 
 database:
   driver: sqlite  # or "postgres"

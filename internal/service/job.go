@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -23,32 +22,6 @@ type JobService struct {
 // filtering would hide jobs for projects created under a different mode.
 func NewJobService(db *gorm.DB, isLocal bool) *JobService {
 	return &JobService{db: db, isLocal: isLocal}
-}
-
-// RecoverInterruptedJobs settles work abandoned by the previous process. Call
-// only at startup, before starting the worker or accepting requests. Each Nebi
-// instance must own its database; an in-memory queue cannot share job ownership.
-func (s *JobService) RecoverInterruptedJobs(ctx context.Context) error {
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&models.Job{}).
-			Where("status IN ?", activeJobStatuses).
-			Updates(map[string]interface{}{
-				"status":       models.JobStatusFailed,
-				"error":        "Job interrupted by application shutdown; retry the operation",
-				"completed_at": time.Now(),
-			}).Error; err != nil {
-			return fmt.Errorf("recover interrupted jobs: %w", err)
-		}
-		// A crash may occur between updating a project and its job row, so
-		// also settle transitional projects whose job is already terminal.
-		if err := tx.Model(&models.Project{}).
-			Where("status IN ?", []models.ProjectStatus{
-				models.ProjectStatusPending, models.ProjectStatusCreating, models.ProjectStatusDeleting,
-			}).Update("status", models.ProjectStatusFailed).Error; err != nil {
-			return fmt.Errorf("recover interrupted projects: %w", err)
-		}
-		return nil
-	})
 }
 
 // ListJobs returns jobs for projects owned by the given user, or all

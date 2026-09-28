@@ -5,9 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
+	nebidb "github.com/nebari-dev/nebi/internal/db"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -57,6 +59,11 @@ func Open(dataDir string) (*Store, error) {
 		if err := db.Migrator().DropColumn(&LocalProject{}, "package_manager"); err != nil {
 			return nil, fmt.Errorf("dropping projects.package_manager column: %w", err)
 		}
+	}
+	// Drop the legacy password_hash column (NOT NULL without a default) from
+	// the users table shared with the local-mode server.
+	if err := nebidb.DropColumns(db, &LocalUser{}, "password_hash"); err != nil {
+		return nil, fmt.Errorf("dropping users.password_hash column: %w", err)
 	}
 
 	// Seed singleton rows
@@ -125,11 +132,17 @@ type Config struct {
 
 func (Config) TableName() string { return "store_config" }
 
-// Credentials stores auth info for the configured nebi server.
+// Credentials stores auth info for the configured nebi server. Token is the
+// identity provider's access token. When RefreshToken is set, the token is
+// refreshed against TokenURL for ClientID before it expires (TokenExpiry).
 type Credentials struct {
-	ID       int    `gorm:"primarykey"`
-	Token    string `gorm:"not null;default:''"`
-	Username string `gorm:"not null;default:''"`
+	ID           int    `gorm:"primarykey"`
+	Token        string `gorm:"not null;default:''"`
+	Username     string `gorm:"not null;default:''"`
+	RefreshToken string `gorm:"not null;default:''"`
+	TokenExpiry  *time.Time
+	TokenURL     string `gorm:"not null;default:''"`
+	ClientID     string `gorm:"not null;default:''"`
 }
 
 func (Credentials) TableName() string { return "store_credentials" }

@@ -104,7 +104,6 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 	err := db.AutoMigrate(
 		&models.User{},
 		&models.FederatedIdentity{},
-		&models.FederatedIdentityReview{},
 		&models.Role{},
 		&models.Project{},
 		&models.Job{},
@@ -121,7 +120,6 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 		&models.GroupPermission{},
 		&models.ResourceLock{},
 		&models.ResourceMetric{},
-		&models.AuthReconciliationStatus{},
 		&models.SystemSetting{},
 	)
 	if err != nil {
@@ -131,10 +129,12 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 	// Drop the legacy package_manager column: pixi is the only package
 	// manager, and the column was NOT NULL so leaving it would break inserts
 	// on databases created before its removal.
-	if db.Migrator().HasColumn(&models.Project{}, "package_manager") {
-		if err := dropLegacyPackageManagerColumn(db); err != nil {
-			return fmt.Errorf("failed to drop projects.package_manager column: %w", err)
-		}
+	if err := DropColumns(db, &models.Project{}, "package_manager"); err != nil {
+		return fmt.Errorf("failed to drop legacy projects columns: %w", err)
+	}
+
+	if err := migrateToIdentityProviderAuth(db); err != nil {
+		return fmt.Errorf("failed to remove built-in user management: %w", err)
 	}
 
 	if err := seedResourceLocks(db); err != nil {
@@ -160,28 +160,105 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 	return nil
 }
 
-// dropLegacyPackageManagerColumn removes the legacy projects.package_manager
-// column. On SQLite the driver emulates DropColumn by rebuilding the table
-// (create projects__temp, copy rows, drop projects, rename), and dropping
-// the old table violates the foreign keys that jobs/publications rows hold on
-// it, so enforcement is suspended for the duration. The foreign_keys pragma is
+// DropColumns removes the named columns from model's table when present. On
+// SQLite the driver emulates DropColumn by rebuilding the table (create
+// <table>__temp, copy rows, drop <table>, rename), and dropping the old table
+// violates the foreign keys that referencing rows hold on it, so enforcement
+// is suspended for the duration. The foreign_keys pragma is
 // connection-scoped (the DSN pragma re-enables it on every new pooled
 // connection) and a no-op inside a transaction, so every statement is pinned
 // to a single connection and the pragma is flipped outside the rebuild's
 // transaction.
-func dropLegacyPackageManagerColumn(db *gorm.DB) error {
+func DropColumns(db *gorm.DB, model any, columns ...string) error {
+	var present []string
+	for _, column := range columns {
+		if db.Migrator().HasColumn(model, column) {
+			present = append(present, column)
+		}
+	}
+	if len(present) == 0 {
+		return nil
+	}
+	drop := func(conn *gorm.DB) error {
+		for _, column := range present {
+			if err := conn.Migrator().DropColumn(model, column); err != nil {
+				return fmt.Errorf("drop column %s: %w", column, err)
+			}
+		}
+		return nil
+	}
 	if db.Dialector.Name() != "sqlite" {
-		return db.Migrator().DropColumn(&models.Project{}, "package_manager")
+		return drop(db)
 	}
 	return db.Connection(func(conn *gorm.DB) error {
 		if err := conn.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
 			return err
 		}
-		dropErr := conn.Migrator().DropColumn(&models.Project{}, "package_manager")
+		dropErr := drop(conn)
 		if err := conn.Exec("PRAGMA foreign_keys = ON").Error; err != nil && dropErr == nil {
 			dropErr = err
 		}
 		return dropErr
+	})
+}
+
+// migrateToIdentityProviderAuth removes the state of nebi's former built-in
+// user management once users and groups come only from the identity provider:
+// password hashes, admin-managed ("native") groups with every grant that
+// referenced them, the federated identity review queue, and the token
+// reconciliation status table. Idempotent.
+func migrateToIdentityProviderAuth(db *gorm.DB) error {
+	if db.Migrator().HasColumn(&models.Group{}, "source") {
+		if err := deleteNativeGroups(db); err != nil {
+			return err
+		}
+	}
+	if err := DropColumns(db, &models.Group{}, "source", "description"); err != nil {
+		return fmt.Errorf("drop legacy groups columns: %w", err)
+	}
+	if err := DropColumns(db, &models.User{}, "password_hash"); err != nil {
+		return fmt.Errorf("drop legacy users columns: %w", err)
+	}
+	for _, table := range []string{"federated_identity_reviews", "auth_reconciliation_statuses"} {
+		if db.Migrator().HasTable(table) {
+			if err := db.Migrator().DropTable(table); err != nil {
+				return fmt.Errorf("drop table %s: %w", table, err)
+			}
+		}
+	}
+	return nil
+}
+
+// deleteNativeGroups hard-deletes groups that were administered in nebi
+// rather than synced from the identity provider, along with their
+// memberships, project grants and Casbin policies (membership, project,
+// registry and admin grants). Keeping them would leave access that nobody
+// can manage any more.
+func deleteNativeGroups(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		var ids []string
+		if err := tx.Table("groups").Where("source IS NULL OR source <> ?", "oidc").Pluck("id", &ids).Error; err != nil {
+			return fmt.Errorf("list native groups: %w", err)
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		if err := tx.Exec("DELETE FROM group_members WHERE group_id IN ?", ids).Error; err != nil {
+			return fmt.Errorf("delete native group members: %w", err)
+		}
+		if err := tx.Exec("DELETE FROM group_permissions WHERE group_id IN ?", ids).Error; err != nil {
+			return fmt.Errorf("delete native group permissions: %w", err)
+		}
+		if tx.Migrator().HasTable("casbin_rule") {
+			if err := tx.Exec("DELETE FROM casbin_rule WHERE (ptype = 'g' AND v1 IN ?) OR (ptype = 'p' AND v0 IN ?)", ids, ids).Error; err != nil {
+				return fmt.Errorf("delete native group policies: %w", err)
+			}
+		}
+		if err := tx.Exec("DELETE FROM groups WHERE id IN ?", ids).Error; err != nil {
+			return fmt.Errorf("delete native groups: %w", err)
+		}
+		slog.Warn("Deleted admin-managed groups; groups now come only from the identity provider", "count", len(ids))
+		return nil
 	})
 }
 

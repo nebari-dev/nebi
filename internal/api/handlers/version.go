@@ -96,10 +96,6 @@ func resolveVersion() (string, string) {
 // Mode is set by the router based on config (e.g. "local" or "team")
 var Mode = "team"
 
-// LogoutURL is set by the router when the deployment requires an external
-// logout redirect (e.g. Envoy Gateway's /logout path for OIDC session cleanup).
-var LogoutURL = ""
-
 // GetVersion godoc
 // @Summary Get version information
 // @Description Returns version information about the Nebi server
@@ -125,9 +121,6 @@ func GetVersion(c *gin.Context) {
 		"arch":       runtime.GOARCH,
 		"mode":       Mode,
 		"features":   features,
-	}
-	if LogoutURL != "" {
-		resp["logout_url"] = LogoutURL
 	}
 
 	c.JSON(http.StatusOK, resp)

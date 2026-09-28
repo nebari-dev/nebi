@@ -31,16 +31,24 @@ database:
   # conn_max_lifetime: 60
 
 auth:
-  type: basic
+  # "oidc" (default): nebi accepts access tokens issued by an OpenID Connect
+  # provider (Keycloak, Okta, Auth0, ...). nebi has no users or passwords of
+  # its own; users are created on first sign-in.
+  # "none": no authentication, every request runs as an implicit admin.
+  type: oidc
+  # Secret that stored registry credentials are encrypted with (32+ chars).
   jwt_secret: replace-with-at-least-32-random-characters
 
-  # Optional: Enable OIDC/OAuth authentication
-  # Uncomment and configure to enable OAuth login button
-  # Works with any OIDC provider (Google, GitHub, Keycloak, Auth0, Okta, etc.)
-  # oidc_issuer_url: https://accounts.google.com
-  # oidc_client_id: your-client-id.apps.googleusercontent.com
-  # oidc_client_secret: your-client-secret
-  # oidc_redirect_url: http://localhost:8460/api/v1/auth/oidc/callback
+  # Must match the "iss" claim of access tokens.
+  oidc_issuer_url: https://keycloak.example.com/realms/nebi
+  # Public client (authorization code + PKCE, device authorization grant)
+  # used by the web UI, CLI and desktop app. Access tokens must list it in
+  # "aud" and carry the user's groups in a "groups" claim.
+  oidc_client_id: nebi
+  # Scopes the clients request (comma-separated).
+  # oidc_scopes: openid,profile,email
+  # Identity-provider groups whose members are nebi admins (comma-separated).
+  oidc_admin_groups: nebi-admin
   #
   # Optional: separate discovery URL for split-horizon deployments where the
   # issuer (the public URL browsers use, validated in the token's "iss" claim)

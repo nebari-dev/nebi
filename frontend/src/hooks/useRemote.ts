@@ -5,15 +5,17 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { remoteApi } from '@/api/remote';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
-import type {
-  ConnectServerRequest,
-  CreateRegistryRequest,
-  CreateRemoteProjectRequest,
-  FederatedIdentityReviewStatusFilter,
-  UpdateRegistryRequest,
+import {
+  type CreateRegistryRequest,
+  type CreateRemoteProjectRequest,
+  type DeviceAuthorization,
+  isRemoteConnected,
+  type RemoteConnected,
+  type UpdateRegistryRequest,
 } from '@/types';
 
 // Slow down interval polling while the query is errored (e.g. the remote
@@ -113,18 +115,142 @@ export const useRemoteView = () => {
   };
 };
 
-export const useConnectServer = () => {
-  const queryClient = useQueryClient();
+export type RemoteConnectState =
+  | { status: 'idle' }
+  | { status: 'starting' }
+  | { status: 'pending'; authorization: DeviceAuthorization }
+  | { status: 'error'; error: string };
 
-  return useMutation({
-    mutationFn: (req: ConnectServerRequest) => remoteApi.connectServer(req),
-    onSuccess: () => {
-      // Reset rather than invalidate: invalidation skips disabled queries, so
-      // an errored query left over from a previously unreachable server would
-      // keep its stale error (and banner) when reconnecting re-enables it.
-      queryClient.resetQueries({ queryKey: ['remote'] });
+const DEFAULT_POLL_INTERVAL_SECONDS = 5;
+
+const apiErrorMessage = (err: unknown, fallback: string) =>
+  (err as { response?: { data?: { error?: string } } })?.response?.data
+    ?.error || fallback;
+
+// Connects the desktop app to a remote server with the OAuth device flow:
+// the local backend starts a device authorization against the remote
+// server's identity provider, the user approves it in a browser, and this
+// hook polls the backend (at the interval it asks for) until the approval
+// lands, the code expires, or the user cancels. A remote server with auth
+// disabled connects straight away. Once connected the backend has stored the
+// credentials, so the remote queries are reset to pick them up.
+export const useRemoteConnect = ({
+  onConnected,
+}: {
+  onConnected?: (result: RemoteConnected) => void;
+} = {}) => {
+  const queryClient = useQueryClient();
+  const [state, setState] = useState<RemoteConnectState>({ status: 'idle' });
+  // Bumped whenever a flow stops (cancel, restart, unmount) so any timer or
+  // in-flight request from it is ignored.
+  const generation = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const onConnectedRef = useRef(onConnected);
+
+  useEffect(() => {
+    onConnectedRef.current = onConnected;
+  }, [onConnected]);
+
+  const stop = useCallback(() => {
+    generation.current += 1;
+    clearTimeout(timer.current);
+  }, []);
+
+  useEffect(() => stop, [stop]);
+
+  const start = useCallback(
+    async (url: string) => {
+      stop();
+      const flow = generation.current;
+      const isCurrent = () => flow === generation.current;
+      setState({ status: 'starting' });
+
+      const finish = (result: RemoteConnected) => {
+        stop();
+        setState({ status: 'idle' });
+        // Reset rather than invalidate: invalidation skips disabled queries,
+        // so an errored query left over from a previously unreachable server
+        // would keep its stale error (and banner) when reconnecting
+        // re-enables it.
+        queryClient.resetQueries({ queryKey: ['remote'] });
+        onConnectedRef.current?.(result);
+      };
+
+      let authorization: DeviceAuthorization;
+      try {
+        const started = await remoteApi.startConnect({ url });
+        if (!isCurrent()) return;
+        if (isRemoteConnected(started)) {
+          finish(started);
+          return;
+        }
+        authorization = started;
+      } catch (err) {
+        if (isCurrent()) {
+          setState({
+            status: 'error',
+            error: apiErrorMessage(err, 'Failed to connect to server'),
+          });
+        }
+        return;
+      }
+      if (!isCurrent()) return;
+      setState({ status: 'pending', authorization });
+
+      const deadline = authorization.expires_in
+        ? Date.now() + authorization.expires_in * 1000
+        : Number.POSITIVE_INFINITY;
+      let intervalMs =
+        (authorization.interval || DEFAULT_POLL_INTERVAL_SECONDS) * 1000;
+
+      const fail = (error: string) => {
+        stop();
+        setState({ status: 'error', error });
+      };
+
+      const poll = async () => {
+        if (!isCurrent()) return;
+        if (Date.now() >= deadline) {
+          fail('The sign-in code expired. Connect again to get a new code.');
+          return;
+        }
+        try {
+          const result = await remoteApi.pollConnect();
+          if (!isCurrent()) return;
+          if (isRemoteConnected(result)) {
+            finish(result);
+            return;
+          }
+          // The identity provider can ask clients to slow down.
+          if (result.interval && result.interval * 1000 > intervalMs) {
+            intervalMs = result.interval * 1000;
+          }
+        } catch (err) {
+          if (!isCurrent()) return;
+          const status = (err as { response?: { status?: number } })?.response
+            ?.status;
+          // 4xx is terminal (expired, denied, no pending flow). Anything else
+          // (a 5xx or a dropped request) is treated as transient and retried
+          // until the code expires.
+          if (status !== undefined && status >= 400 && status < 500) {
+            fail(apiErrorMessage(err, 'Sign-in was not completed'));
+            return;
+          }
+        }
+        timer.current = setTimeout(poll, intervalMs);
+      };
+
+      timer.current = setTimeout(poll, intervalMs);
     },
-  });
+    [queryClient, stop],
+  );
+
+  const cancel = useCallback(() => {
+    stop();
+    setState({ status: 'idle' });
+  }, [stop]);
+
+  return { state, start, cancel };
 };
 
 export const useDisconnectServer = () => {
@@ -133,7 +259,7 @@ export const useDisconnectServer = () => {
   return useMutation({
     mutationFn: () => remoteApi.disconnectServer(),
     onSuccess: () => {
-      // Reset for the same reason as useConnectServer: drop any errored state
+      // Reset for the same reason as useRemoteConnect: drop any errored state
       // so nothing stale survives into the next connection.
       queryClient.resetQueries({ queryKey: ['remote'] });
     },
@@ -319,67 +445,4 @@ export const useRemoteDashboardStats = (enabled: boolean) => {
       refetchInterval: pollWithErrorBackoff(30000),
     }),
   );
-};
-
-export const useRemoteFederatedIdentityReviews = (
-  enabled: boolean,
-  status: FederatedIdentityReviewStatusFilter = 'pending',
-) => {
-  return withRemoteFlags(
-    useQuery({
-      queryKey: ['remote', 'admin', 'federated-identity-reviews', status],
-      queryFn: () => remoteApi.listFederatedIdentityReviews(status),
-      enabled,
-      notifyOnChangeProps: remoteFlagNotifyProps,
-      refetchInterval: retryWhileUnreachable,
-    }),
-  );
-};
-
-export const useApproveRemoteFederatedIdentityReview = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (reviewId: string) =>
-      remoteApi.approveFederatedIdentityReview(reviewId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['remote', 'admin', 'federated-identity-reviews'],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['remote', 'admin', 'audit-logs'],
-      });
-    },
-  });
-};
-
-export const useRejectRemoteFederatedIdentityReview = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (reviewId: string) =>
-      remoteApi.rejectFederatedIdentityReview(reviewId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['remote', 'admin', 'federated-identity-reviews'],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['remote', 'admin', 'audit-logs'],
-      });
-    },
-  });
-};
-
-export const useDiscardRemoteFederatedIdentityReview = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (reviewId: string) =>
-      remoteApi.discardFederatedIdentityReview(reviewId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['remote', 'admin', 'federated-identity-reviews'],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['remote', 'admin', 'audit-logs'],
-      });
-    },
-  });
 };

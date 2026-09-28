@@ -12,7 +12,7 @@ make install-tools
 
 # Run with hot reload (frontend + backend)
 # Frontend dependencies will be automatically installed if needed
-ADMIN_USERNAME=admin ADMIN_PASSWORD=<your-password> make dev
+make dev
 ```
 
 This will start:
@@ -21,10 +21,8 @@ This will start:
 - **Backend API** at http://localhost:8460 (with hot reload)
 - **API docs** at http://localhost:8460/docs
 
-**Admin Credentials:**
-Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables to create the admin user on first startup.
-
-> **Note**: The admin user is automatically created on first startup when `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables are set. If you start the server without these variables, no admin user will be created and you won't be able to log in.
+**Authentication:**
+The checked-in `config.yaml` runs the dev server with `auth.type: none`, so there is no login and every request is an admin. To develop against a real identity provider, start the Keycloak stack from `docker-compose.yml` (see [Server Setup](docs/src/content/docs/server-setup.md#docker-compose-deployment)) and point the dev server at it with the `NEBI_AUTH_*` variables in `.env.example`. The identity provider's client must then also allow the dev frontend's `http://localhost:8461/auth/callback` redirect URI and web origin.
 
 > **Tip**: Access the app at http://localhost:8461 for the best development experience with instant hot reload of frontend changes!
 

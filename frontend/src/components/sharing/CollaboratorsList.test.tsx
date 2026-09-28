@@ -16,7 +16,6 @@ const groupViewer: Collaborator = {
   kind: 'group',
   group_id: 'g-1',
   name: 'admin',
-  source: 'oidc',
   role: 'viewer',
   is_owner: false,
 };
@@ -31,20 +30,10 @@ describe('CollaboratorsList', () => {
 
   it('renders group collaborators alongside users', () => {
     render(<CollaboratorsList collaborators={[owner, groupViewer]} />);
-    // The group name and its source label must be visible.
+    // The group name and a group label must be visible.
     expect(screen.getByText('admin')).toBeInTheDocument();
-    expect(screen.getByText('OIDC group')).toBeInTheDocument();
+    expect(screen.getByText('Group')).toBeInTheDocument();
     expect(screen.getByText('Viewer')).toBeInTheDocument();
-  });
-
-  it('labels native groups distinctly from OIDC groups', () => {
-    render(
-      <CollaboratorsList
-        collaborators={[{ ...groupViewer, source: 'native', name: 'devs' }]}
-      />,
-    );
-    expect(screen.getByText('devs')).toBeInTheDocument();
-    expect(screen.getByText('Native group')).toBeInTheDocument();
   });
 
   it('shows an empty state when there are no collaborators', () => {

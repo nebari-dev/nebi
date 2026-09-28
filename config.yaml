@@ -11,10 +11,11 @@ database:
   # Example Postgres DSN: "host=localhost user=nebi password=secret dbname=nebi port=5432 sslmode=disable"
 
 auth:
-  type: basic
+  # Local development runs without authentication: every request is an
+  # implicit admin. Set type: oidc plus oidc_issuer_url and oidc_client_id to
+  # sign in through an identity provider (see config.yaml.example).
+  type: none
   jwt_secret: dev-secret-that-is-at-least-32-chars-long
-  # All auth settings can be overridden via environment variables
-  # See .env file for OIDC/OAuth configuration
 
 log:
   format: text  # "text" or "json"

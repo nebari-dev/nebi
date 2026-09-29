@@ -1,43 +1,38 @@
-import { Loader2, Wifi, WifiOff } from 'lucide-react';
-import { useId, useState } from 'react';
+import { ExternalLink, Loader2, Wifi, WifiOff } from 'lucide-react';
+import { useCallback, useId, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
-  useConnectServer,
   useDisconnectServer,
+  useRemoteConnect,
   useRemoteServer,
 } from '@/hooks/useRemote';
+import { openExternal } from '@/lib/openExternal';
 import { useViewModeStore } from '@/store/viewModeStore';
+import type { DeviceAuthorization } from '@/types';
 
 export const Settings = () => {
   const { data: serverStatus, isLoading } = useRemoteServer();
-  const connectMutation = useConnectServer();
   const disconnectMutation = useDisconnectServer();
   const setViewMode = useViewModeStore((s) => s.setViewMode);
 
   const [url, setUrl] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const urlId = useId();
-  const usernameId = useId();
-  const passwordId = useId();
 
-  const handleConnect = async (e: React.FormEvent) => {
+  const handleConnected = useCallback(() => {
+    setViewMode('remote'); // Auto-switch to remote view on successful connection
+    setUrl('');
+  }, [setViewMode]);
+  const connect = useRemoteConnect({ onConnected: handleConnected });
+  const connectState = connect.state;
+
+  const handleConnect = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    try {
-      await connectMutation.mutateAsync({ url, username, password });
-      setViewMode('remote'); // Auto-switch to remote view on successful connection
-      setUrl('');
-      setUsername('');
-      setPassword('');
-    } catch (err: unknown) {
-      const apiError = err as { response?: { data?: { error?: string } } };
-      setError(apiError.response?.data?.error || 'Failed to connect to server');
-    }
+    void connect.start(url);
   };
 
   const handleDisconnect = async () => {
@@ -62,6 +57,8 @@ export const Settings = () => {
   }
 
   const isConnected = serverStatus?.status === 'connected';
+  const displayedError =
+    error || (connectState.status === 'error' ? connectState.error : '');
 
   return (
     <div className="space-y-6">
@@ -72,9 +69,12 @@ export const Settings = () => {
         </p>
       </div>
 
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded">
-          {error}
+      {displayedError && (
+        <div
+          role="alert"
+          className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded"
+        >
+          {displayedError}
         </div>
       )}
 
@@ -132,11 +132,17 @@ export const Settings = () => {
                 </Button>
               </div>
             </div>
+          ) : connectState.status === 'pending' ? (
+            <DeviceCodePrompt
+              authorization={connectState.authorization}
+              onCancel={connect.cancel}
+            />
           ) : (
             <form onSubmit={handleConnect} className="space-y-4">
               <p className="text-sm text-muted-foreground">
                 Connect to a remote Nebi server to sync projects and access
-                shared resources.
+                shared resources. You will approve the connection by signing in
+                to the server in your browser.
               </p>
               <div className="space-y-2">
                 <label htmlFor={urlId} className="text-sm font-medium">
@@ -151,37 +157,11 @@ export const Settings = () => {
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <label htmlFor={usernameId} className="text-sm font-medium">
-                  Username
-                </label>
-                <Input
-                  id={usernameId}
-                  type="text"
-                  placeholder="Username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <label htmlFor={passwordId} className="text-sm font-medium">
-                  Password
-                </label>
-                <Input
-                  id={passwordId}
-                  type="password"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </div>
               <Button
                 render={<button type="submit" />}
-                disabled={connectMutation.isPending}
+                disabled={connectState.status === 'starting'}
               >
-                {connectMutation.isPending ? (
+                {connectState.status === 'starting' ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Connecting...
@@ -194,6 +174,53 @@ export const Settings = () => {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+};
+
+type DeviceCodePromptProps = {
+  authorization: DeviceAuthorization;
+  onCancel: () => void;
+};
+
+const DeviceCodePrompt = ({
+  authorization,
+  onCancel,
+}: DeviceCodePromptProps) => {
+  const signInUrl =
+    authorization.verification_uri_complete || authorization.verification_uri;
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Open the sign-in page, sign in to the remote server, and confirm this
+        code:
+      </p>
+      <p className="font-mono text-3xl font-semibold tracking-widest">
+        {authorization.user_code}
+      </p>
+      <p className="text-sm text-muted-foreground">
+        Sign-in page:{' '}
+        <span className="font-mono break-all">
+          {authorization.verification_uri}
+        </span>
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={() => openExternal(signInUrl)}>
+          <ExternalLink className="mr-2 h-4 w-4" />
+          Open sign-in page
+        </Button>
+        <Button variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+      <p
+        role="status"
+        className="flex items-center gap-2 text-sm text-muted-foreground"
+      >
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Waiting for approval...
+      </p>
     </div>
   );
 };

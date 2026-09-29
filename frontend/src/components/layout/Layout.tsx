@@ -15,13 +15,15 @@ import {
 } from '@/components/ui/navigation-menu';
 import type { ThemeMode } from '@/hooks/use-theme-preference';
 import { useIsAdmin } from '@/hooks/useAdmin';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useHostJobNotifications } from '@/hooks/useHostJobNotifications';
 import { useRemoteView } from '@/hooks/useRemote';
 import { useVersion } from '@/hooks/useVersion';
 import { getBrandingLogoUrl } from '@/lib/brandingConfig';
+import { getUserManager } from '@/lib/oidc';
 import { openExternal } from '@/lib/openExternal';
+import { queryClient } from '@/lib/queryClient';
 import { useAuthStore } from '@/store/authStore';
-import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 import { ProfileMenu } from './ProfileMenu';
 
@@ -57,8 +59,11 @@ export const Layout = ({
   isDarkMode,
   onThemeChange,
 }: LayoutProps) => {
-  const { user, clearAuth } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
+  const clearAuth = useAuthStore((s) => s.clearAuth);
+  const isOidc = useAuthStore((s) => s.isOidc());
   const navigate = useNavigate();
+  useCurrentUser();
   const { data: isAdmin } = useIsAdmin();
   const { setViewMode } = useViewModeStore();
   const { data: versionInfo } = useVersion();
@@ -71,17 +76,18 @@ export const Layout = ({
   const location = useLocation();
   const isAdminPage = location.pathname.startsWith('/admin');
 
-  const logoutUrl = useModeStore((s) => s.logoutUrl);
-
-  const handleLogout = () => {
-    clearAuth();
-    if (logoutUrl) {
-      // Signal Login.tsx to NOT auto-redirect back to /auth/session
-      sessionStorage.setItem('nebi_logout', '1');
-      // Redirect to the gateway's OIDC logout path (e.g. Envoy's /logout)
-      // to clear IdToken cookies and terminate the Keycloak session.
-      window.location.href = logoutUrl;
-    } else {
+  // Ends the identity provider session too (RP-initiated logout), which
+  // sends the browser back to /login. If the provider cannot do that (e.g. it
+  // has no end_session_endpoint), fall back to forgetting the local session.
+  const handleLogout = async () => {
+    queryClient.clear();
+    const manager = getUserManager();
+    try {
+      if (!manager) throw new Error('OIDC is not configured');
+      await manager.signoutRedirect();
+    } catch {
+      await manager?.removeUser().catch(() => undefined);
+      clearAuth();
       navigate('/login');
     }
   };
@@ -198,7 +204,7 @@ export const Layout = ({
                 user={user}
                 themeMode={themeMode}
                 onThemeChange={onThemeChange}
-                onLogout={handleLogout}
+                onLogout={isOidc ? handleLogout : undefined}
               />
             )}
           </div>

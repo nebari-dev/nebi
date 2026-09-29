@@ -79,25 +79,7 @@ func findOrCreateProxyUser(db *gorm.DB, claims *ProxyTokenClaims) (*models.User,
 	})
 }
 
-func shouldBeAdminFromGroups(groups []string, adminGroups []string) bool {
-	adminGroupSet := make(map[string]bool, len(adminGroups))
-	for _, g := range adminGroups {
-		g = strings.TrimSpace(g)
-		if g != "" {
-			adminGroupSet[g] = true
-		}
-	}
-
-	for _, g := range groups {
-		// Strip leading "/" that Keycloak sometimes adds
-		g = strings.TrimPrefix(g, "/")
-		if adminGroupSet[g] {
-			return true
-		}
-	}
-
-	return false
-}
+// shouldBeAdminFromGroups lives in oidc.go (single shared implementation).
 
 func syncAdminRoleToDesired(userID uuid.UUID, shouldBeAdmin bool, rbacProvider rbac.Provider) error {
 	if rbacProvider == nil {

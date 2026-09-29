@@ -35,6 +35,16 @@ var rootCmd = &cobra.Command{
 	Short: "Run the Nebi team server",
 	Long: `Start the Nebi team-mode HTTP API server with an in-process worker.
 
+Authentication is delegated to an OpenID Connect provider; nebi accepts the
+access tokens it issues. Configure it with (config file keys under auth:):
+  NEBI_AUTH_TYPE               oidc (default) or none (no authentication)
+  NEBI_AUTH_OIDC_ISSUER_URL    issuer; must match the tokens' "iss" claim
+  NEBI_AUTH_OIDC_CLIENT_ID     public client of the web UI, CLI and desktop app
+  NEBI_AUTH_OIDC_ADMIN_GROUPS  identity-provider groups whose members are admins
+  NEBI_AUTH_OIDC_SCOPES        scopes clients request (default openid,profile,email)
+  NEBI_AUTH_OIDC_DISCOVERY_URL optional back-channel discovery URL
+  NEBI_AUTH_JWT_SECRET         secret stored registry credentials are encrypted with
+
 Examples:
   nebi-server                    # Run API server with an in-process worker
   nebi-server --port 8080        # Override port

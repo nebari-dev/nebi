@@ -376,7 +376,8 @@ func retryAuthReconciliationStatus(db *gorm.DB, rbacProvider rbac.Provider, stat
 		if err != nil {
 			return false, err
 		}
-		if err := syncOIDCGroupRemovalsOnly(db, status.UserID, claimGroups, rbacProvider); err != nil {
+		_, desired := normalizedOIDCGroupSet(claimGroups)
+		if err := syncOIDCGroupRemovalsWithDesired(db, status.UserID, desired, rbacProvider); err != nil {
 			recordAuthReconciliationFailureWithGroups(db, status.UserID, kind, err, claimGroups)
 			return false, err
 		}

@@ -313,11 +313,6 @@ func (a *BasicAuthenticator) Middleware() gin.HandlerFunc {
 		user, err := findOrCreateProxyUser(a.db, proxyClaims)
 		if err != nil {
 			slog.Error("Failed to find/create proxy user", "error", err)
-			if code, ok := FederatedIdentityReviewErrorCode(err); ok {
-				c.JSON(http.StatusForbidden, gin.H{"error": code})
-				c.Abort()
-				return
-			}
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "proxy authentication failed"})
 			c.Abort()
 			return

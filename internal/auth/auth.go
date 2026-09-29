@@ -7,6 +7,9 @@ import (
 	"github.com/nebari-dev/nebi/internal/models"
 )
 
+// NOTE(intermediate): UserContextKey is still defined in basic.go; do not add it
+// here until basic.go is removed.
+
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrUnauthorized       = errors.New("unauthorized")
@@ -25,14 +28,22 @@ type LoginResponse struct {
 	User  *models.User `json:"user"`
 }
 
-// Authenticator is an interface for authentication providers
+// Authenticator resolves the user behind a request.
 type Authenticator interface {
-	// Login authenticates a user and returns a JWT token
-	Login(username, password string) (*LoginResponse, error)
-
-	// Middleware returns a Gin middleware for authentication
+	// Middleware authenticates the request and stores the user under
+	// UserContextKey, or aborts it.
 	Middleware() gin.HandlerFunc
+}
 
-	// GetUserFromContext extracts the authenticated user from the Gin context
-	GetUserFromContext(c *gin.Context) (*models.User, error)
+// UserFromContext returns the user stored by an Authenticator's middleware.
+func UserFromContext(c *gin.Context) (*models.User, error) {
+	value, exists := c.Get(UserContextKey)
+	if !exists {
+		return nil, ErrUnauthorized
+	}
+	user, ok := value.(*models.User)
+	if !ok {
+		return nil, errors.New("invalid user in context")
+	}
+	return user, nil
 }

@@ -46,7 +46,7 @@ func callWithToken(t *testing.T, mw gin.HandlerFunc, token string) int {
 }
 
 func TestNewBasicAuthenticator_RejectsEmptySecret(t *testing.T) {
-	db := setupTestDB(t)
+	db := legacyTestDB(t)
 	_, err := NewBasicAuthenticator(db, "", nil)
 	if err == nil {
 		t.Fatal("expected error for empty JWT secret")
@@ -54,7 +54,7 @@ func TestNewBasicAuthenticator_RejectsEmptySecret(t *testing.T) {
 }
 
 func TestBasicAuthenticator_LoginTokenIsAccepted(t *testing.T) {
-	db := setupTestDB(t)
+	db := legacyTestDB(t)
 	newTestUser(t, db, "alice", "correct-horse-battery-staple")
 
 	authr, err := NewBasicAuthenticator(db, testJWTSecret, nil)
@@ -73,7 +73,7 @@ func TestBasicAuthenticator_LoginTokenIsAccepted(t *testing.T) {
 }
 
 func TestBasicAuthenticator_AcceptsFreshReconciledBearerToken(t *testing.T) {
-	db := setupTestDB(t)
+	db := legacyTestDB(t)
 	newTestUser(t, db, "alice", "correct-horse-battery-staple")
 
 	authr, err := NewBasicAuthenticator(db, testJWTSecret, nil)
@@ -97,7 +97,7 @@ func TestBasicAuthenticator_AcceptsFreshReconciledBearerToken(t *testing.T) {
 }
 
 func TestBasicAuthenticator_RejectsStaleReconciledBearerToken(t *testing.T) {
-	db := setupTestDB(t)
+	db := legacyTestDB(t)
 	newTestUser(t, db, "alice", "correct-horse-battery-staple")
 
 	authr, err := NewBasicAuthenticator(db, testJWTSecret, nil)
@@ -122,7 +122,7 @@ func TestBasicAuthenticator_RejectsStaleReconciledBearerToken(t *testing.T) {
 }
 
 func TestBasicAuthenticator_AcceptsLegacyUnstampedBearerToken(t *testing.T) {
-	db := setupTestDB(t)
+	db := legacyTestDB(t)
 	newTestUser(t, db, "alice", "correct-horse-battery-staple")
 
 	authr, err := NewBasicAuthenticator(db, testJWTSecret, nil)
@@ -157,7 +157,7 @@ func TestBasicAuthenticator_AcceptsLegacyUnstampedBearerToken(t *testing.T) {
 func TestBasicAuthenticator_AcceptsStaleReconciledBearerTokenWithFreshStatus(t *testing.T) {
 	setAuthReconciliationStaleAfterForTest(t, 5*time.Minute)
 
-	db := setupTestDB(t)
+	db := legacyTestDB(t)
 	newTestUser(t, db, "alice", "correct-horse-battery-staple")
 
 	authr, err := NewBasicAuthenticator(db, testJWTSecret, nil)
@@ -193,7 +193,7 @@ func TestBasicAuthenticator_AcceptsStaleReconciledBearerTokenWithFreshStatus(t *
 func TestBasicAuthenticator_RejectsStaleReconciledBearerTokenAfterCachedOIDCGroupRetry(t *testing.T) {
 	setAuthReconciliationStaleAfterForTest(t, 5*time.Minute)
 
-	db := syncTestDB(t)
+	db := legacyTestDB(t)
 	newTestUser(t, db, "alice", "correct-horse-battery-staple")
 
 	authr, err := NewBasicAuthenticator(db, testJWTSecret, nil)
@@ -249,7 +249,7 @@ func setAuthReconciliationStaleAfterForTest(t *testing.T, staleAfter time.Durati
 }
 
 func TestBasicAuthenticator_RejectsQueryToken(t *testing.T) {
-	db := setupTestDB(t)
+	db := legacyTestDB(t)
 	newTestUser(t, db, "alice", "correct-horse-battery-staple")
 
 	authr, err := NewBasicAuthenticator(db, testJWTSecret, nil)
@@ -282,7 +282,7 @@ func TestBasicAuthenticator_RejectsQueryToken(t *testing.T) {
 // who knows the raw secret but signs it directly (the pre-fix behavior) must
 // be rejected.
 func TestBasicAuthenticator_RejectsTokenForgedWithRawSecret(t *testing.T) {
-	db := setupTestDB(t)
+	db := legacyTestDB(t)
 	newTestUser(t, db, "bob", "correct-horse-battery-staple")
 
 	authr, err := NewBasicAuthenticator(db, testJWTSecret, nil)

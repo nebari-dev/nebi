@@ -13,17 +13,15 @@ import (
 // @Description Get the currently authenticated user's information
 // @Tags auth
 // @Produce json
+// @Security BearerAuth
 // @Success 200 {object} models.User
 // @Failure 401 {object} map[string]string
 // @Router /auth/me [get]
-func GetCurrentUser(authenticator auth.Authenticator) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		user, err := authenticator.GetUserFromContext(c)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-			return
-		}
-
-		c.JSON(http.StatusOK, user)
+func GetCurrentUser(c *gin.Context) {
+	user, err := auth.UserFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
 	}
+	c.JSON(http.StatusOK, user)
 }

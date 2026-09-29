@@ -7,10 +7,22 @@ import (
 	"time"
 
 	"github.com/nebari-dev/nebi/internal/models"
+	"gorm.io/gorm"
 )
 
-func TestAlertUnresolvedAuthReconciliationsReportsOnlyOpenFailures(t *testing.T) {
+// reconTestDB is syncTestDB plus the reconciliation status table (INTERMEDIATE:
+// only needed until the reconciliation monitor is removed).
+func reconTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
 	db := syncTestDB(t)
+	if err := db.AutoMigrate(&models.AuthReconciliationStatus{}); err != nil {
+		t.Fatalf("migrate reconciliation status: %v", err)
+	}
+	return db
+}
+
+func TestAlertUnresolvedAuthReconciliationsReportsOnlyOpenFailures(t *testing.T) {
+	db := reconTestDB(t)
 	now := time.Now().UTC()
 
 	u := models.User{Username: "alice", Email: "alice@test"}
@@ -54,7 +66,7 @@ func TestAlertUnresolvedAuthReconciliationsReportsOnlyOpenFailures(t *testing.T)
 }
 
 func TestAlertUnresolvedAuthReconciliationsDoesNotReplayOIDCGroupAdditions(t *testing.T) {
-	db := syncTestDB(t)
+	db := reconTestDB(t)
 	now := time.Now().UTC()
 
 	u := models.User{Username: "alice", Email: "alice@test"}
@@ -114,7 +126,7 @@ func TestAlertUnresolvedAuthReconciliationsDoesNotReplayOIDCGroupAdditions(t *te
 }
 
 func TestAlertUnresolvedAuthReconciliationsRetriesOIDCGroupRemovalsWithoutRefreshingSuccess(t *testing.T) {
-	db := syncTestDB(t)
+	db := reconTestDB(t)
 	now := time.Now().UTC()
 	oldSuccess := now.Add(-2 * authReconciliationStaleAfter())
 
@@ -200,7 +212,7 @@ func TestAlertUnresolvedAuthReconciliationsRetriesOIDCGroupRemovalsWithoutRefres
 }
 
 func TestAlertUnresolvedAuthReconciliationsRetriesPersistedFailuresRegardlessOfSource(t *testing.T) {
-	db := syncTestDB(t)
+	db := reconTestDB(t)
 	now := time.Now().UTC()
 
 	u := models.User{Username: "alice", Email: "alice@test"}
@@ -235,7 +247,7 @@ func TestAlertUnresolvedAuthReconciliationsRetriesPersistedFailuresRegardlessOfS
 }
 
 func TestAlertUnresolvedAuthReconciliationsRetriesProxyAdminState(t *testing.T) {
-	db := syncTestDB(t)
+	db := reconTestDB(t)
 	now := time.Now().UTC()
 
 	u := models.User{Username: "alice", Email: "alice@test"}
@@ -281,7 +293,7 @@ func TestAlertUnresolvedAuthReconciliationsRetriesProxyAdminState(t *testing.T) 
 }
 
 func TestAlertUnresolvedAuthReconciliationsDoesNotRetryProxyAdminGrants(t *testing.T) {
-	db := syncTestDB(t)
+	db := reconTestDB(t)
 	now := time.Now().UTC()
 
 	u := models.User{Username: "alice", Email: "alice@test"}

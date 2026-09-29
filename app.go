@@ -202,7 +202,7 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 
 	// Initialize API router
 	logToFile("startEmbeddedServer: initializing router...")
-	router := api.NewRouter(cfg, database, jobQueue, exec, w.GetBroker(), slog.Default())
+	router := api.NewRouter(workerCtx, cfg, database, jobQueue, exec, w.GetBroker(), slog.Default())
 	a.router = router
 	close(a.ready) // signal that router is ready for Wails handler
 	logToFile("startEmbeddedServer: router initialized")

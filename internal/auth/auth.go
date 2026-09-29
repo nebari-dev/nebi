@@ -7,26 +7,10 @@ import (
 	"github.com/nebari-dev/nebi/internal/models"
 )
 
-// NOTE(intermediate): UserContextKey is still defined in basic.go; do not add it
-// here until basic.go is removed.
+// UserContextKey is the key used to store the authenticated user in the Gin context.
+const UserContextKey = "user"
 
-var (
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrUnauthorized       = errors.New("unauthorized")
-	ErrAuthorizationStale = errors.New("authorization reconciliation is stale")
-)
-
-// LoginRequest represents a login request
-type LoginRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
-}
-
-// LoginResponse represents a login response
-type LoginResponse struct {
-	Token string       `json:"token"`
-	User  *models.User `json:"user"`
-}
+var ErrUnauthorized = errors.New("unauthorized")
 
 // Authenticator resolves the user behind a request.
 type Authenticator interface {

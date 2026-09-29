@@ -135,7 +135,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, db *gorm.DB, q *queue.Me
 	// Initialize services and handlers
 	svc := service.New(db, q, exec, localMode, encKey, rbacProvider, limitCfg)
 	adminSvc := service.NewAdminService(db, rbacProvider, limitCfg)
-	groupSvc := service.NewGroupService(db, rbacProvider) // INTERMEDIATE: old signature; final is NewGroupService(db)
+	groupSvc := service.NewGroupService(db)
 	registrySvc := service.NewRegistryService(db, encKey, localMode, rbacProvider)
 	jobSvc := service.NewJobService(db, localMode)
 

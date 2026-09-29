@@ -94,15 +94,3 @@ func (p *stubRBACProvider) GrantGroupRegistryAccess(_, _ uuid.UUID, _ string) er
 func (p *stubRBACProvider) RevokeGroupRegistryAccess(_, _ uuid.UUID) error {
 	return nil
 }
-
-func (p *stubRBACProvider) MakeGroupAdmin(uuid.UUID) error {
-	return nil
-}
-
-func (p *stubRBACProvider) RevokeGroupAdmin(uuid.UUID) error {
-	return nil
-}
-
-func (p *stubRBACProvider) RemoveAllGroupPolicies(uuid.UUID) error {
-	return nil
-}

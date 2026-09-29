@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/glebarez/sqlite"
+	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"gorm.io/gorm"
@@ -25,7 +26,6 @@ func syncTestDB(t *testing.T) *gorm.DB {
 		&models.Group{},
 		&models.GroupMember{},
 		&models.AuditLog{},
-		&models.AuthReconciliationStatus{},
 	); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -48,11 +48,6 @@ func TestOIDCGroupSync_CreatesGroupAndMembership(t *testing.T) {
 	db.Find(&groups)
 	if len(groups) != 2 {
 		t.Fatalf("expected 2 groups, got %d", len(groups))
-	}
-	for _, g := range groups {
-		if g.Source != models.GroupSourceOIDC {
-			t.Errorf("group %q expected source oidc, got %q", g.Name, g.Source)
-		}
 	}
 
 	memberships, _ := rbac.GetUserGroups(u.ID)
@@ -117,75 +112,69 @@ func TestOIDCGroupSync_KeepsZeroMemberGroups(t *testing.T) {
 	}
 }
 
-func TestOIDCGroupSync_DoesNotTouchNativeMemberships(t *testing.T) {
+func TestOIDCGroupSync_ReplacesMembershipsOfPreexistingGroups(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
-	native := models.Group{Name: "native-grp", Source: models.GroupSourceNative}
-	db.Create(&native)
-	db.Create(&models.GroupMember{GroupID: native.ID, UserID: u.ID})
-	_ = rbac.AddUserToGroup(u.ID, native.ID)
+	// A group created earlier (e.g. by another user's token) is joined, not
+	// duplicated, and a membership missing from the claim is removed.
+	existing := models.Group{Name: "engineering"}
+	db.Create(&existing)
+	stale := models.Group{Name: "old-team"}
+	db.Create(&stale)
+	db.Create(&models.GroupMember{GroupID: stale.ID, UserID: u.ID})
+	_ = rbac.AddUserToGroup(u.ID, stale.ID)
 
-	_ = syncOIDCGroups(db, u.ID, []string{"x"}, rbac.NewDefaultProvider())
-
-	var mem models.GroupMember
-	if err := db.Where("group_id = ? AND user_id = ?", native.ID, u.ID).First(&mem).Error; err != nil {
-		t.Fatalf("native membership should be untouched, err=%v", err)
-	}
-	memberships, _ := rbac.GetUserGroups(u.ID)
-	if len(memberships) != 2 {
-		t.Fatalf("expected 2 memberships (1 native + 1 oidc), got %d: %v", len(memberships), memberships)
-	}
-	nativeStillPresent := false
-	for _, id := range memberships {
-		if id == native.ID {
-			nativeStillPresent = true
-			break
-		}
-	}
-	if !nativeStillPresent {
-		t.Fatalf("native group %s missing from casbin memberships: %v", native.ID, memberships)
-	}
-}
-
-func TestOIDCGroupSync_RefusesToMergeIntoNativeGroup(t *testing.T) {
-	db := syncTestDB(t)
-	u := models.User{Username: "alice", Email: "alice@test"}
-	db.Create(&u)
-
-	// Operator pre-creates a native group with a name that an IdP could collide with.
-	native := models.Group{Name: "engineering", Source: models.GroupSourceNative}
-	if err := db.Create(&native).Error; err != nil {
-		t.Fatalf("seed native: %v", err)
-	}
-
-	// OIDC claim arrives with the same name.
 	if err := syncOIDCGroups(db, u.ID, []string{"engineering"}, rbac.NewDefaultProvider()); err != nil {
 		t.Fatalf("sync: %v", err)
 	}
 
-	// Alice must NOT be a member of the native group via DB.
-	var mem models.GroupMember
-	err := db.Where("group_id = ? AND user_id = ?", native.ID, u.ID).First(&mem).Error
-	if err == nil {
-		t.Fatalf("expected no GroupMember row for native group, found one")
+	var groups int64
+	db.Model(&models.Group{}).Count(&groups)
+	if groups != 2 {
+		t.Fatalf("expected no new group, got %d groups", groups)
 	}
-
-	// And NOT a member via Casbin.
 	memberships, _ := rbac.GetUserGroups(u.ID)
-	for _, id := range memberships {
-		if id == native.ID {
-			t.Fatalf("expected user NOT to be in casbin grouping rule for native group, got %v", memberships)
-		}
+	if len(memberships) != 1 || memberships[0] != existing.ID {
+		t.Fatalf("expected only the engineering membership, got %v", memberships)
 	}
+}
 
-	// The native group's source must remain unchanged.
-	var refetched models.Group
-	if err := db.First(&refetched, "id = ?", native.ID).Error; err != nil {
-		t.Fatalf("refetch native: %v", err)
+func TestOIDCGroupSync_ToleratesConcurrentGroupCreate(t *testing.T) {
+	db := syncTestDB(t)
+	u := models.User{Username: "alice", Email: "alice@test"}
+	db.Create(&u)
+
+	// Simulate another request creating the group between the lookup and
+	// the insert.
+	racer := uuid.New()
+	injected := false
+	const name = "race-group"
+	if err := db.Callback().Create().Before("gorm:create").Register("test:race_group_create", func(d *gorm.DB) {
+		if injected || d.Statement.Table != "groups" {
+			return
+		}
+		injected = true
+		now := time.Now()
+		if err := d.Session(&gorm.Session{NewDB: true}).Exec(
+			"INSERT INTO groups (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)", racer, name, now, now,
+		).Error; err != nil {
+			t.Fatalf("inject concurrent group: %v", err)
+		}
+	}); err != nil {
+		t.Fatalf("register callback: %v", err)
 	}
-	if refetched.Source != models.GroupSourceNative {
-		t.Fatalf("native group's source was reclassified to %q", refetched.Source)
+	t.Cleanup(func() { _ = db.Callback().Create().Remove("test:race_group_create") })
+
+	if err := syncOIDCGroups(db, u.ID, []string{name}, rbac.NewDefaultProvider()); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if !injected {
+		t.Fatal("expected the concurrent insert to be injected")
+	}
+	memberships, _ := rbac.GetUserGroups(u.ID)
+	if len(memberships) != 1 || memberships[0] != racer {
+		t.Fatalf("expected membership in the concurrently created group %s, got %v", racer, memberships)
 	}
 }
 
@@ -248,95 +237,6 @@ func TestOIDCGroupSync_RetainsStaleMembershipWhenRBACRemoveFails(t *testing.T) {
 	}
 }
 
-func TestOIDCGroupSync_RecordsSuccessAndFailureStatus(t *testing.T) {
-	db := syncTestDB(t)
-	u := models.User{Username: "alice", Email: "alice@test"}
-	db.Create(&u)
-
-	provider := &stubRBACProvider{}
-	if err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider); err != nil {
-		t.Fatalf("sync: %v", err)
-	}
-
-	var status models.AuthReconciliationStatus
-	if err := db.First(&status, "user_id = ? AND kind = ?", u.ID, string(authReconciliationOIDCGroups)).Error; err != nil {
-		t.Fatalf("load success status: %v", err)
-	}
-	if status.LastSuccessAt == nil {
-		t.Fatal("expected last success timestamp")
-	}
-	if status.ConsecutiveFailures != 0 {
-		t.Fatalf("expected failures reset after success, got %d", status.ConsecutiveFailures)
-	}
-	if status.DesiredGroupsJSON != `["engineering"]` {
-		t.Fatalf("expected desired groups to be stored, got %q", status.DesiredGroupsJSON)
-	}
-
-	wantErr := errors.New("casbin list failed")
-	provider.getUserGroupsErr = wantErr
-	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider)
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("expected rbac list error, got %v", err)
-	}
-
-	if err := db.First(&status, "user_id = ? AND kind = ?", u.ID, string(authReconciliationOIDCGroups)).Error; err != nil {
-		t.Fatalf("load failure status: %v", err)
-	}
-	if status.LastFailureAt == nil {
-		t.Fatal("expected last failure timestamp")
-	}
-	if status.ConsecutiveFailures != 1 {
-		t.Fatalf("expected one consecutive failure, got %d", status.ConsecutiveFailures)
-	}
-	if status.LastFailureSource != string(authReconciliationFailureSourceLocal) {
-		t.Fatalf("expected local failure source, got %q", status.LastFailureSource)
-	}
-	if !strings.Contains(status.LastError, wantErr.Error()) {
-		t.Fatalf("expected last error to contain %q, got %q", wantErr, status.LastError)
-	}
-}
-
-func TestOIDCGroupSync_ReturnsStatusCreateFailure(t *testing.T) {
-	db := syncTestDB(t)
-	u := models.User{Username: "alice", Email: "alice@test"}
-	db.Create(&u)
-
-	wantErr := errors.New("status create failed")
-	name := registerDBTableFailureCallback(t, db, "create", "auth_reconciliation_statuses", wantErr)
-	defer db.Callback().Create().Remove(name)
-
-	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, &stubRBACProvider{})
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("expected status create error, got %v", err)
-	}
-}
-
-func TestOIDCGroupSync_ReturnsStatusUpdateFailure(t *testing.T) {
-	db := syncTestDB(t)
-	u := models.User{Username: "alice", Email: "alice@test"}
-	db.Create(&u)
-
-	provider := &stubRBACProvider{}
-	if err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider); err != nil {
-		t.Fatalf("seed status: %v", err)
-	}
-	oldSuccess := time.Now().UTC().Add(-authReconciliationSuccessRefreshAfter() - time.Second)
-	if err := db.Model(&models.AuthReconciliationStatus{}).
-		Where("user_id = ? AND kind = ?", u.ID, string(authReconciliationOIDCGroups)).
-		Update("last_success_at", oldSuccess).Error; err != nil {
-		t.Fatalf("age status: %v", err)
-	}
-
-	wantErr := errors.New("status update failed")
-	name := registerDBTableFailureCallback(t, db, "update", "auth_reconciliation_statuses", wantErr)
-	defer db.Callback().Update().Remove(name)
-
-	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider)
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("expected status update error, got %v", err)
-	}
-}
-
 func TestOIDCGroupSync_ReturnsGroupLookupFailure(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
@@ -367,28 +267,11 @@ func TestOIDCGroupSync_ReturnsGroupCreateFailure(t *testing.T) {
 	}
 }
 
-func TestOIDCGroupSync_ReturnsMembershipLookupFailure(t *testing.T) {
-	db := syncTestDB(t)
-	u := models.User{Username: "alice", Email: "alice@test"}
-	db.Create(&u)
-	group := models.Group{Name: "engineering", Source: models.GroupSourceOIDC}
-	db.Create(&group)
-
-	wantErr := errors.New("membership lookup failed")
-	name := registerDBTableFailureCallbackAfter(t, db, "query", "group_members", 1, wantErr)
-	defer db.Callback().Query().Remove(name)
-
-	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, &stubRBACProvider{})
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("expected membership lookup error, got %v", err)
-	}
-}
-
 func TestOIDCGroupSync_ReturnsMembershipCreateFailure(t *testing.T) {
 	db := syncTestDB(t)
 	u := models.User{Username: "alice", Email: "alice@test"}
 	db.Create(&u)
-	group := models.Group{Name: "engineering", Source: models.GroupSourceOIDC}
+	group := models.Group{Name: "engineering"}
 	db.Create(&group)
 
 	wantErr := errors.New("membership create failed")
@@ -398,43 +281,6 @@ func TestOIDCGroupSync_ReturnsMembershipCreateFailure(t *testing.T) {
 	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, &stubRBACProvider{})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected membership create error, got %v", err)
-	}
-}
-
-func TestOIDCGroupSync_ReturnsOriginalErrorWhenFailureStatusCreateFails(t *testing.T) {
-	db := syncTestDB(t)
-	u := models.User{Username: "alice", Email: "alice@test"}
-	db.Create(&u)
-
-	wantErr := errors.New("casbin list failed")
-	provider := &stubRBACProvider{getUserGroupsErr: wantErr}
-	name := registerDBTableFailureCallback(t, db, "create", "auth_reconciliation_statuses", errors.New("status create failed"))
-	defer db.Callback().Create().Remove(name)
-
-	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider)
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("expected original reconciliation error, got %v", err)
-	}
-}
-
-func TestOIDCGroupSync_ReturnsOriginalErrorWhenFailureStatusUpdateFails(t *testing.T) {
-	db := syncTestDB(t)
-	u := models.User{Username: "alice", Email: "alice@test"}
-	db.Create(&u)
-
-	provider := &stubRBACProvider{}
-	if err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider); err != nil {
-		t.Fatalf("seed status: %v", err)
-	}
-
-	wantErr := errors.New("casbin list failed")
-	provider.getUserGroupsErr = wantErr
-	name := registerDBTableFailureCallback(t, db, "update", "auth_reconciliation_statuses", errors.New("status update failed"))
-	defer db.Callback().Update().Remove(name)
-
-	err := syncOIDCGroups(db, u.ID, []string{"engineering"}, provider)
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("expected original reconciliation error, got %v", err)
 	}
 }
 

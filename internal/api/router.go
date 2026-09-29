@@ -1,12 +1,14 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -29,10 +31,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// NewRouter creates and configures the Gin router
-func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec executor.Executor, logBroker *logstream.LogBroker, logger *slog.Logger) *gin.Engine {
-	auth.ConfigureAuthReconciliationStaleAfter(time.Duration(cfg.Auth.AuthorizationStaleAfterMins) * time.Minute)
-
+// NewRouter creates and configures the Gin router. ctx bounds background
+// work the router starts (OIDC provider discovery retries).
+func NewRouter(ctx context.Context, cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec executor.Executor, logBroker *logstream.LogBroker, logger *slog.Logger) *gin.Engine {
 	// Initialize RBAC enforcer and provider.
 	// In local mode the admin and project RBAC checks are unconditionally
 	// skipped (see RequireAdmin / RequireProjectAccess middleware), so
@@ -69,117 +70,59 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec execu
 	router.Use(gin.Recovery())
 	router.Use(middleware.MaxRequestBodyBytes(limitCfg.RequestBodyBytes))
 	router.Use(loggingMiddleware())
-	router.Use(securityHeadersMiddleware(localMode, cfg.Server.AllowedOriginsList()))
+	router.Use(securityHeadersMiddleware(localMode, cfg.Server.AllowedOriginsList(), identityProviderOrigin(cfg)))
 	router.Use(corsMiddleware(localMode, cfg.Server.AllowedOriginsList()))
 
-	// Initialize authenticator based on mode
+	// Initialize the authenticator. Local mode and team mode with auth.type
+	// "none" run every request as the well-known local user; team mode with
+	// "oidc" accepts access tokens issued by the configured provider.
 	var authenticator auth.Authenticator
-	var oidcAuth *auth.OIDCAuthenticator
-	// Session check endpoint needs a BasicAuthenticator for JWT generation.
-	sessionBasicAuth, err := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret, rbacProvider)
-	if err != nil {
-		logger.Error("Failed to initialize session authenticator", "error", err)
-		panic(err)
-	}
-
-	if localMode {
+	authConfig := handlers.AuthConfigResponse{Type: config.AuthTypeNone}
+	if localMode || cfg.Auth.Type == config.AuthTypeNone {
 		localAuth, err := auth.NewLocalAuthenticator(db)
 		if err != nil {
 			logger.Error("Failed to initialize local authenticator", "error", err)
 			panic(err)
 		}
 		authenticator = localAuth
-		logger.Info("Running in local mode — authentication bypassed", "user", auth.LocalUsername())
-	} else {
-		if cfg.Auth.Type == "basic" {
-			basicAuth, err := auth.NewBasicAuthenticator(db, cfg.Auth.JWTSecret, rbacProvider)
-			if err != nil {
-				logger.Error("Failed to initialize basic authenticator", "error", err)
+		if localMode {
+			logger.Info("Running in local mode, authentication bypassed", "user", auth.LocalUsername())
+		} else {
+			// Admin checks still run in team mode, so the implicit user must be
+			// an admin to reach the admin API.
+			if err := rbacProvider.MakeAdmin(localAuth.User().ID); err != nil {
+				logger.Error("Failed to grant admin to the unauthenticated user", "error", err)
 				panic(err)
 			}
-			basicAuth.SetProxyAdminGroups(cfg.Auth.ProxyAdminGroups)
-			authenticator = basicAuth
+			logger.Warn("Authentication is disabled (auth.type=none): every request runs as an admin",
+				"user", auth.LocalUsername())
 		}
-
-		// Initialize OIDC if configured
-		if cfg.Auth.OIDCIssuerURL != "" && cfg.Auth.OIDCClientID != "" {
-			oidcCfg := auth.OIDCConfig{
-				IssuerURL:    cfg.Auth.OIDCIssuerURL,
-				DiscoveryURL: cfg.Auth.OIDCDiscoveryURL,
-				ClientID:     cfg.Auth.OIDCClientID,
-				ClientSecret: cfg.Auth.OIDCClientSecret,
-				RedirectURL:  cfg.Auth.OIDCRedirectURL,
-			}
-			var err error
-			// Use context.Background() for initialization
-			oidcAuth, err = auth.NewOIDCAuthenticator(nil, oidcCfg, db, cfg.Auth.JWTSecret, rbacProvider)
-			if err != nil {
-				logger.Error("Failed to initialize OIDC authenticator, will retry in background", "error", err)
-				// Retry in background — the OIDC provider (e.g. Keycloak) may not
-				// be ready yet at startup. Once it becomes reachable, wire the
-				// verifier into the authenticators so proxy auth starts working.
-				go retryOIDCInit(oidcCfg, db, cfg.Auth.JWTSecret, rbacProvider, sessionBasicAuth, authenticator, logger)
-			} else {
-				logger.Info("OIDC authentication enabled", "issuer", cfg.Auth.OIDCIssuerURL)
-			}
-		}
-	}
-
-	// When OIDC is configured, logout requires redirecting to the gateway's
-	// /logout path to clear OIDC cookies and terminate the Keycloak session.
-	// Set this based on configuration, not initialization success, so the
-	// frontend knows about the gateway even while OIDC retries in background.
-	oidcConfigured := cfg.Auth.OIDCIssuerURL != "" && cfg.Auth.OIDCClientID != ""
-	if oidcConfigured {
-		handlers.LogoutURL = basePath + "/logout"
-	}
-
-	// Wire OIDC ID token verifier into authenticators that handle proxy cookies.
-	if oidcAuth != nil {
-		sessionBasicAuth.SetIDTokenVerifier(oidcAuth.Verifier())
-		if ba, ok := authenticator.(*auth.BasicAuthenticator); ok {
-			ba.SetIDTokenVerifier(oidcAuth.Verifier())
+	} else {
+		oidcAuth := auth.NewOIDCAuthenticator(auth.OIDCConfig{
+			IssuerURL:    cfg.Auth.OIDCIssuerURL,
+			DiscoveryURL: cfg.Auth.OIDCDiscoveryURL,
+			ClientID:     cfg.Auth.OIDCClientID,
+			AdminGroups:  cfg.Auth.OIDCAdminGroupsList(),
+		}, db, rbacProvider)
+		oidcAuth.DiscoverInBackground(ctx, logger)
+		authenticator = oidcAuth
+		authConfig = handlers.AuthConfigResponse{
+			Type:      config.AuthTypeOIDC,
+			IssuerURL: cfg.Auth.OIDCIssuerURL,
+			ClientID:  cfg.Auth.OIDCClientID,
+			Scopes:    cfg.Auth.OIDCScopesList(),
 		}
 	}
 
 	// Base group for all routes (supports reverse proxy path prefix)
 	base := router.Group(basePath)
 
-	// Authorization code store for the gateway session redirect flow.
-	// Codes are short-lived (30s) and single-use.
-	authCodeStore := auth.NewAuthCodeStore()
-
-	// Session redirect: exchanges an OIDC proxy IdToken cookie for a
-	// single-use authorization code (RFC 6749 §4.1 pattern) and redirects
-	// to /login?code=<code>. The frontend exchanges the code for a JWT via
-	// POST /api/v1/auth/code/exchange. This path is outside /api/ so that
-	// gateway proxies that strip cookies from public routes still forward
-	// them here.
-	base.GET("/auth/session", handlers.SessionRedirect(sessionBasicAuth, cfg.Auth.ProxyAdminGroups, basePath, authCodeStore))
-
 	// Public routes
 	public := base.Group("/api/v1")
 	{
 		public.GET("/health", handlers.HealthCheck)
 		public.GET("/version", handlers.GetVersion)
-		public.POST("/auth/login", handlers.Login(authenticator))
-
-		// Session check: exchanges proxy IdToken cookie for a Nebi JWT (no auth middleware)
-		public.GET("/auth/session", handlers.SessionCheck(sessionBasicAuth, cfg.Auth.ProxyAdminGroups))
-
-		// Code exchange: frontend exchanges a single-use authorization code for a JWT.
-		// The code was generated by GET /auth/session (the protected redirect endpoint).
-		public.POST("/auth/code/exchange", handlers.CodeExchange(authCodeStore))
-
-		// Device flow: RFC 8628 configuration and token exchange for CLI.
-		public.GET("/auth/device-config", handlers.DeviceConfig(cfg.Auth.OIDCIssuerURL, cfg.Auth.DeviceFlowClientID))
-		public.POST("/auth/device-token", handlers.DeviceToken(sessionBasicAuth, cfg.Auth.ProxyAdminGroups))
-
-		// OIDC routes (if enabled, team mode only)
-		if oidcAuth != nil {
-			public.GET("/auth/oidc/login", handlers.OIDCLogin(oidcAuth))
-			public.GET("/auth/oidc/callback", handlers.OIDCCallback(oidcAuth, authCodeStore, basePath))
-		}
+		public.GET("/auth/config", handlers.AuthConfig(authConfig))
 	}
 
 	// Derive encryption key for credential encryption at rest
@@ -192,7 +135,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec execu
 	// Initialize services and handlers
 	svc := service.New(db, q, exec, localMode, encKey, rbacProvider, limitCfg)
 	adminSvc := service.NewAdminService(db, rbacProvider, limitCfg)
-	groupSvc := service.NewGroupService(db, rbacProvider)
+	groupSvc := service.NewGroupService(db)
 	registrySvc := service.NewRegistryService(db, encKey, localMode, rbacProvider)
 	jobSvc := service.NewJobService(db, localMode)
 
@@ -205,7 +148,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec execu
 	protected.Use(authenticator.Middleware())
 	{
 		// User info
-		protected.GET("/auth/me", handlers.GetCurrentUser(authenticator))
+		protected.GET("/auth/me", handlers.GetCurrentUser)
 		protected.GET("/groups/me", groupHandler.MyGroups)
 
 		// Project endpoints
@@ -278,13 +221,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec execu
 		admin := protected.Group("/admin")
 		admin.Use(middleware.RequireAdmin(localMode, rbacProvider))
 		{
-			// User management
+			// Users (provisioned from the identity provider; read-only)
 			admin.GET("/users", adminHandler.ListUsers)
-			admin.POST("/users", adminHandler.CreateUser)
 			admin.GET("/users/:id", adminHandler.GetUser)
 			admin.GET("/users/:id/groups", adminHandler.ListUserGroups)
-			admin.POST("/users/:id/toggle-admin", adminHandler.ToggleAdmin)
-			admin.DELETE("/users/:id", adminHandler.DeleteUser)
 
 			// Role management
 			admin.GET("/roles", adminHandler.ListRoles)
@@ -293,12 +233,6 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec execu
 			admin.GET("/permissions", adminHandler.ListPermissions)
 			admin.POST("/permissions", adminHandler.GrantPermission)
 			admin.DELETE("/permissions/:id", adminHandler.RevokePermission)
-
-			// Federated identity reviews
-			admin.GET("/federated-identity-reviews", adminHandler.ListFederatedIdentityReviews)
-			admin.DELETE("/federated-identity-reviews/:id", adminHandler.DiscardFederatedIdentityReview)
-			admin.POST("/federated-identity-reviews/:id/approve", adminHandler.ApproveFederatedIdentityReview)
-			admin.POST("/federated-identity-reviews/:id/reject", adminHandler.RejectFederatedIdentityReview)
 
 			// Audit logs
 			admin.GET("/audit-logs", adminHandler.ListAuditLogs)
@@ -314,17 +248,10 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec execu
 			admin.PUT("/registries/:id", registryHandler.UpdateRegistry)
 			admin.DELETE("/registries/:id", registryHandler.DeleteRegistry)
 
-			// Groups
+			// Groups (synced from the identity provider; read-only)
 			admin.GET("/groups", groupHandler.ListGroups)
-			admin.POST("/groups", groupHandler.CreateGroup)
 			admin.GET("/groups/:id", groupHandler.GetGroup)
-			admin.PATCH("/groups/:id", groupHandler.UpdateGroup)
-			admin.DELETE("/groups/:id", groupHandler.DeleteGroup)
 			admin.GET("/groups/:id/members", groupHandler.ListMembers)
-			admin.POST("/groups/:id/members", groupHandler.AddMember)
-			admin.DELETE("/groups/:id/members/:user_id", groupHandler.RemoveMember)
-			admin.POST("/groups/:id/grant-admin", adminHandler.GrantGroupAdmin)
-			admin.DELETE("/groups/:id/grant-admin", adminHandler.RevokeGroupAdmin)
 			admin.POST("/registries/:id/grant-group", registryHandler.GrantRegistryToGroup)
 			admin.DELETE("/registries/:id/grant-group/:group_id", registryHandler.RevokeRegistryFromGroup)
 		}
@@ -335,6 +262,7 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec execu
 			remote := protected.Group("/remote")
 			{
 				remote.POST("/connect", remoteHandler.ConnectServer)
+				remote.POST("/connect/poll", remoteHandler.PollConnect)
 				remote.GET("/server", remoteHandler.GetServer)
 				remote.DELETE("/server", remoteHandler.DisconnectServer)
 				remote.GET("/projects", remoteHandler.ListProjects)
@@ -364,10 +292,6 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec execu
 					remoteAdmin.DELETE("/registries/:id", remoteHandler.DeleteAdminRegistry)
 					remoteAdmin.GET("/audit-logs", remoteHandler.ListAdminAuditLogs)
 					remoteAdmin.GET("/dashboard/stats", remoteHandler.GetAdminDashboardStats)
-					remoteAdmin.GET("/federated-identity-reviews", remoteHandler.ListAdminFederatedIdentityReviews)
-					remoteAdmin.DELETE("/federated-identity-reviews/:id", remoteHandler.DiscardAdminFederatedIdentityReview)
-					remoteAdmin.POST("/federated-identity-reviews/:id/approve", remoteHandler.ApproveAdminFederatedIdentityReview)
-					remoteAdmin.POST("/federated-identity-reviews/:id/reject", remoteHandler.RejectAdminFederatedIdentityReview)
 				}
 			}
 		}
@@ -512,28 +436,6 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec execu
 	return router
 }
 
-// retryOIDCInit retries OIDC provider discovery in the background until it
-// succeeds. This handles the case where the OIDC provider (e.g. Keycloak) is
-// not yet ready when Nebi starts. Once discovery succeeds, the ID token
-// verifier is wired into the authenticators so proxy auth starts working.
-func retryOIDCInit(cfg auth.OIDCConfig, db *gorm.DB, jwtSecret string, rbacProvider rbac.Provider,
-	sessionAuth *auth.BasicAuthenticator, mainAuth auth.Authenticator, logger *slog.Logger) {
-	for {
-		time.Sleep(10 * time.Second)
-		oa, err := auth.NewOIDCAuthenticator(nil, cfg, db, jwtSecret, rbacProvider)
-		if err != nil {
-			logger.Warn("OIDC initialization retry failed, will try again", "error", err)
-			continue
-		}
-		logger.Info("OIDC authentication enabled (after retry)", "issuer", cfg.IssuerURL)
-		sessionAuth.SetIDTokenVerifier(oa.Verifier())
-		if ba, ok := mainAuth.(*auth.BasicAuthenticator); ok {
-			ba.SetIDTokenVerifier(oa.Verifier())
-		}
-		return
-	}
-}
-
 func resolveBrandingConfigPath() string {
 	path := strings.TrimSpace(os.Getenv("NEBI_BRANDING_CONFIG_PATH"))
 	if path == "" {
@@ -569,7 +471,21 @@ const (
 	cspStyleNonceKey  = "cspStyleNonce"
 )
 
-func securityHeadersMiddleware(localMode bool, allowedOrigins []string) gin.HandlerFunc {
+// identityProviderOrigin returns the origin of the OIDC issuer the web UI
+// talks to directly (discovery, token and refresh requests), or "" when
+// authentication is not delegated to an identity provider.
+func identityProviderOrigin(cfg *config.Config) string {
+	if cfg.IsLocalMode() || cfg.Auth.Type != config.AuthTypeOIDC {
+		return ""
+	}
+	u, err := url.Parse(cfg.Auth.OIDCIssuerURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+func securityHeadersMiddleware(localMode bool, allowedOrigins []string, idpOrigin string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		scriptNonce, err := newCSPNonce()
 		if err != nil {
@@ -585,7 +501,7 @@ func securityHeadersMiddleware(localMode bool, allowedOrigins []string) gin.Hand
 		c.Set(cspScriptNonceKey, scriptNonce)
 		c.Set(cspStyleNonceKey, styleNonce)
 		headers := c.Writer.Header()
-		headers.Set("Content-Security-Policy", contentSecurityPolicy(scriptNonce, styleNonce, localMode, allowedOrigins))
+		headers.Set("Content-Security-Policy", contentSecurityPolicy(scriptNonce, styleNonce, localMode, allowedOrigins, idpOrigin))
 		headers.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		headers.Set("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()")
 		headers.Set("X-Content-Type-Options", "nosniff")
@@ -601,8 +517,11 @@ func securityHeadersMiddleware(localMode bool, allowedOrigins []string) gin.Hand
 	}
 }
 
-func contentSecurityPolicy(scriptNonce string, styleNonce string, localMode bool, allowedOrigins []string) string {
+func contentSecurityPolicy(scriptNonce string, styleNonce string, localMode bool, allowedOrigins []string, idpOrigin string) string {
 	connectSrc := "connect-src 'self'"
+	if idpOrigin != "" {
+		connectSrc += " " + idpOrigin
+	}
 	if localMode {
 		connectSrc = "connect-src 'self' http://localhost:* http://127.0.0.1:* https://localhost:* https://127.0.0.1:*"
 	}

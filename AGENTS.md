@@ -12,7 +12,7 @@ Run from the repo root unless noted.
 
 ```bash
 # Dev (hot reload, frontend + backend together)
-ADMIN_USERNAME=admin ADMIN_PASSWORD=<pw> make dev   # frontend :8461, backend :8460, docs :8460/docs
+make dev             # frontend :8461, backend :8460, docs :8460/docs (config.yaml: auth.type none)
 
 make install-tools   # installs swag, air, golangci-lint v2.12.2
 
@@ -53,7 +53,7 @@ make swagger         # regenerate API docs from server annotations into internal
 ### Local mode vs. team mode
 This is the single most important architectural distinction. `config.IsLocalMode()` reflects the explicit runtime mode selected by the binary entry point:
 - **local** (desktop / single user): authentication is bypassed, casbin RBAC checks are skipped, all workspaces are visible, no encryption key needed.
-- **team** (multi-user server): real auth (basic / JWT / OIDC-via-Keycloak), casbin RBAC enforcement, owner + permission/group-based workspace filtering, encrypted credentials.
+- **team** (multi-user server): OIDC resource server (clients send access tokens issued by the identity provider; nebi never mints tokens), casbin RBAC enforcement, owner + permission/group-based workspace filtering, encrypted credentials. `auth.type: none` turns authentication off in team mode: every request runs as the implicit `local-user`, who is made an admin.
 
 When changing auth, visibility, or permissions, check both branches — see `internal/api/router.go` and the `isLocal` flags threaded through `internal/service`.
 
@@ -63,7 +63,8 @@ When changing auth, visibility, or permissions, check both branches — see `int
 - `db/` + `models/` — GORM models and migrations (SQLite by default; DSN via `NEBI_DATABASE_DSN`). `db.Migrate` runs server tables; `store.MigrateServerDB` adds local-mode store tables.
 - `store/` — the **CLI-side** local index, config, and credentials (keyring). Distinct from the server's `db`; this is what the CLI reads/writes on the user's machine.
 - `cliclient/` — HTTP client the CLI commands use to talk to a remote server (mirrors the handler endpoints).
-- `auth/`, `rbac/` — authenticators (local/basic/OIDC) and casbin enforcer/provider. Every externally-authenticated login path must resolve users through `auth.findOrCreateFederatedUser`, matching existing external identities only by `(issuer, subject)` and never by mutable username/email claims. If that flow returns a review-gated error, clients should check `auth.FederatedIdentityReviewErrorCode` before falling through to a generic 401.
+- `auth/`, `rbac/`: authenticators (local for local mode and `auth.type: none`, OIDC resource server for team mode) and casbin enforcer/provider. nebi has no user management: users are provisioned from token claims through `auth.findOrCreateFederatedUser`, which matches existing identities only by `(issuer, subject)` and never by mutable username/email claims (a colliding new identity gets a suffixed username instead). Groups and the admin role are reconciled from the token's `groups` claim (`auth.oidc_admin_groups`); there are no nebi-managed groups. `auth/authtest` is an in-process OIDC provider for tests.
+- `oidcclient/`: client side of the login: device authorization grant (with PKCE) and a refreshing token source, shared by the CLI and the desktop app's remote connection.
 - `queue/` (in-memory) + `worker/` + `executor/` (local or docker) — async job pipeline. Long operations (env builds, installs) are enqueued, run by the worker through an executor, with output streamed via `logstream/`.
 - `pixi/` — pixi integration (`PixiManager`). This is where pixi commands are shelled out.
 - `oci/` — push/pull of environments to OCI registries.

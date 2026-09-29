@@ -7,32 +7,27 @@ import (
 	"github.com/nebari-dev/nebi/internal/models"
 )
 
-var (
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrUnauthorized       = errors.New("unauthorized")
-	ErrAuthorizationStale = errors.New("authorization reconciliation is stale")
-)
+// UserContextKey is the key used to store the authenticated user in the Gin context.
+const UserContextKey = "user"
 
-// LoginRequest represents a login request
-type LoginRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
-}
+var ErrUnauthorized = errors.New("unauthorized")
 
-// LoginResponse represents a login response
-type LoginResponse struct {
-	Token string       `json:"token"`
-	User  *models.User `json:"user"`
-}
-
-// Authenticator is an interface for authentication providers
+// Authenticator resolves the user behind a request.
 type Authenticator interface {
-	// Login authenticates a user and returns a JWT token
-	Login(username, password string) (*LoginResponse, error)
-
-	// Middleware returns a Gin middleware for authentication
+	// Middleware authenticates the request and stores the user under
+	// UserContextKey, or aborts it.
 	Middleware() gin.HandlerFunc
+}
 
-	// GetUserFromContext extracts the authenticated user from the Gin context
-	GetUserFromContext(c *gin.Context) (*models.User, error)
+// UserFromContext returns the user stored by an Authenticator's middleware.
+func UserFromContext(c *gin.Context) (*models.User, error) {
+	value, exists := c.Get(UserContextKey)
+	if !exists {
+		return nil, ErrUnauthorized
+	}
+	user, ok := value.(*models.User)
+	if !ok {
+		return nil, errors.New("invalid user in context")
+	}
+	return user, nil
 }

@@ -1,9 +1,16 @@
-import type { LoginRequest, LoginResponse } from '@/types';
+import type { AuthConfig, User } from '@/types';
 import { apiClient } from './client';
 
 export const authApi = {
-  login: async (credentials: LoginRequest): Promise<LoginResponse> => {
-    const { data } = await apiClient.post('/auth/login', credentials);
+  // Public: how this server authenticates requests.
+  getConfig: async (): Promise<AuthConfig> => {
+    const { data } = await apiClient.get('/auth/config');
+    return data;
+  },
+
+  // The Nebi user behind the current credentials (created on first request).
+  me: async (): Promise<User> => {
+    const { data } = await apiClient.get('/auth/me');
     return data;
   },
 };

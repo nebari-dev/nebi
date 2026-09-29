@@ -1,13 +1,20 @@
 package handlers
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nebari-dev/nebi/internal/cliclient"
+	"github.com/nebari-dev/nebi/internal/oidcclient"
 	"github.com/nebari-dev/nebi/internal/store"
+	"golang.org/x/oauth2"
 	"gorm.io/gorm"
 )
 
@@ -15,6 +22,20 @@ import (
 // Used in local/desktop mode so the frontend can browse remote servers.
 type RemoteHandler struct {
 	db *gorm.DB
+
+	mu      sync.Mutex
+	pending *pendingConnect    // device authorization awaiting approval
+	tokens  oauth2.TokenSource // cached so parallel requests share one refresh
+}
+
+// pendingConnect is a device authorization started by ConnectServer.
+type pendingConnect struct {
+	url       string
+	clientID  string
+	endpoints *oidcclient.Endpoints
+	device    *oidcclient.DeviceAuthorization
+	interval  int
+	expiresAt time.Time
 }
 
 // NewRemoteHandler creates a new remote handler.
@@ -32,10 +53,38 @@ func (h *RemoteHandler) getClient() (*cliclient.Client, error) {
 		return nil, fmt.Errorf("no server URL configured")
 	}
 	var creds store.Credentials
-	if err := h.db.First(&creds).Error; err != nil || creds.Token == "" {
+	if err := h.db.First(&creds).Error; err != nil || !creds.LoggedIn() {
 		return nil, fmt.Errorf("not authenticated with remote server")
 	}
-	return cliclient.New(cfg.ServerURL, creds.Token), nil
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.tokens == nil {
+		h.tokens = creds.TokenSource(context.Background(), func(tok *oauth2.Token) error {
+			return store.SaveToken(h.db, tok)
+		})
+	}
+	return cliclient.NewWithTokenSource(cfg.ServerURL, &resettingTokenSource{h: h, src: h.tokens}), nil
+}
+
+// resettingTokenSource drops the handler's cached token source when a
+// refresh fails, so the next request starts again from the stored
+// credentials (e.g. after the CLI refreshed and rotated them).
+type resettingTokenSource struct {
+	h   *RemoteHandler
+	src oauth2.TokenSource
+}
+
+func (r *resettingTokenSource) Token() (*oauth2.Token, error) {
+	tok, err := r.src.Token()
+	if err != nil {
+		r.h.mu.Lock()
+		if r.h.tokens == r.src {
+			r.h.tokens = nil
+		}
+		r.h.mu.Unlock()
+	}
+	return tok, err
 }
 
 // notConnected returns 503 when no remote server is configured.
@@ -43,43 +92,162 @@ func (h *RemoteHandler) notConnected(c *gin.Context, err error) {
 	c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: err.Error()})
 }
 
-// ConnectServer authenticates with a remote server and stores credentials.
+// ConnectServer starts connecting to a remote server. For a server with
+// authentication disabled the connection is stored right away. Otherwise it
+// starts an OAuth device authorization with the server's identity provider
+// and returns the code the user approves in their browser; the frontend
+// then calls PollConnect until the user has approved.
 func (h *RemoteHandler) ConnectServer(c *gin.Context) {
 	var req struct {
-		URL      string `json:"url" binding:"required"`
-		Username string `json:"username" binding:"required"`
-		Password string `json:"password" binding:"required"`
+		URL string `json:"url" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		handleBindError(c, err)
 		return
 	}
+	serverURL := strings.TrimRight(strings.TrimSpace(req.URL), "/")
+	if !strings.HasPrefix(serverURL, "http://") && !strings.HasPrefix(serverURL, "https://") {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Server URL must start with http:// or https://"})
+		return
+	}
 
-	// Login to remote server
-	client := cliclient.NewWithoutAuth(req.URL)
-	loginResp, err := client.Login(c.Request.Context(), req.Username, req.Password)
+	ctx := c.Request.Context()
+	authCfg, err := cliclient.NewWithoutAuth(serverURL).GetAuthConfig(ctx)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: fmt.Sprintf("Failed to connect: %v", err)})
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Failed to connect: %v", err)})
 		return
 	}
 
-	// Store URL and credentials
-	if err := h.db.Model(&store.Config{}).Where("id = ?", 1).Update("server_url", req.URL).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to store server URL"})
+	h.mu.Lock()
+	h.pending = nil
+	h.mu.Unlock()
+
+	switch authCfg.Type {
+	case cliclient.AuthTypeNone:
+		h.finishConnect(c, serverURL, &store.Credentials{})
+	case cliclient.AuthTypeOIDC:
+		endpoints, err := oidcclient.Discover(ctx, authCfg.IssuerURL)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Failed to connect: %v", err)})
+			return
+		}
+		scopes := append(authCfg.Scopes, oidcclient.OfflineAccessScope)
+		device, err := oidcclient.StartDeviceAuthorization(ctx, endpoints, authCfg.ClientID, scopes)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Failed to connect: %v", err)})
+			return
+		}
+		expiresIn := device.ExpiresIn
+		if expiresIn <= 0 {
+			expiresIn = 600
+		}
+		h.mu.Lock()
+		h.pending = &pendingConnect{
+			url:       serverURL,
+			clientID:  authCfg.ClientID,
+			endpoints: endpoints,
+			device:    device,
+			interval:  device.Interval,
+			expiresAt: time.Now().Add(time.Duration(expiresIn) * time.Second),
+		}
+		h.mu.Unlock()
+		c.JSON(http.StatusOK, gin.H{
+			"user_code":                 device.UserCode,
+			"verification_uri":          device.VerificationURI,
+			"verification_uri_complete": device.VerificationURIComplete,
+			"expires_in":                expiresIn,
+			"interval":                  device.Interval,
+		})
+	default:
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote server uses unsupported authentication %q", authCfg.Type)})
+	}
+}
+
+// PollConnect checks once whether the user approved the pending device
+// authorization, and stores the credentials when they did.
+func (h *RemoteHandler) PollConnect(c *gin.Context) {
+	h.mu.Lock()
+	p := h.pending
+	h.mu.Unlock()
+	if p == nil {
+		c.JSON(http.StatusConflict, ErrorResponse{Error: "No connection in progress"})
 		return
 	}
-	if err := h.db.Model(&store.Credentials{}).Where("id = ?", 1).Updates(map[string]any{
-		"token":    loginResp.Token,
-		"username": loginResp.User.Username,
-	}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to store credentials"})
+	if time.Now().After(p.expiresAt) {
+		h.clearPending(p)
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: oidcclient.ErrExpired.Error()})
 		return
 	}
+
+	tok, err := oidcclient.PollDeviceToken(c.Request.Context(), p.endpoints, p.clientID, p.device)
+	switch {
+	case errors.Is(err, oidcclient.ErrAuthorizationPending):
+		c.JSON(http.StatusOK, gin.H{"status": "pending", "interval": p.interval})
+		return
+	case errors.Is(err, oidcclient.ErrSlowDown):
+		h.mu.Lock()
+		p.interval += 5
+		interval := p.interval
+		h.mu.Unlock()
+		c.JSON(http.StatusOK, gin.H{"status": "pending", "interval": interval})
+		return
+	case errors.Is(err, oidcclient.ErrExpired), errors.Is(err, oidcclient.ErrAccessDenied):
+		h.clearPending(p)
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	case err != nil:
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Failed to connect: %v", err)})
+		return
+	}
+
+	creds := &store.Credentials{TokenURL: p.endpoints.Token, ClientID: p.clientID}
+	creds.SetOAuthToken(tok)
+	if h.clearPending(p) {
+		h.finishConnect(c, p.url, creds)
+		return
+	}
+	c.JSON(http.StatusConflict, ErrorResponse{Error: "Connection was restarted"})
+}
+
+// clearPending forgets p if it is still the pending connection, reporting
+// whether it was.
+func (h *RemoteHandler) clearPending(p *pendingConnect) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.pending != p {
+		return false
+	}
+	h.pending = nil
+	return true
+}
+
+// finishConnect resolves the remote user with creds and stores the connection.
+func (h *RemoteHandler) finishConnect(c *gin.Context, serverURL string, creds *store.Credentials) {
+	me, err := cliclient.New(serverURL, creds.Token).GetCurrentUser(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Failed to connect: %v", err)})
+		return
+	}
+	creds.ID = 1
+	creds.Username = me.Username
+
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&store.Config{}).Where("id = ?", 1).Update("server_url", serverURL).Error; err != nil {
+			return err
+		}
+		return tx.Save(creds).Error
+	}); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to store the server connection"})
+		return
+	}
+	h.mu.Lock()
+	h.tokens = nil
+	h.mu.Unlock()
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":   "connected",
-		"url":      req.URL,
-		"username": loginResp.User.Username,
+		"url":      serverURL,
+		"username": me.Username,
 	})
 }
 
@@ -91,7 +259,7 @@ func (h *RemoteHandler) GetServer(c *gin.Context) {
 	h.db.First(&creds)
 
 	status := "disconnected"
-	if cfg.ServerURL != "" && creds.Token != "" {
+	if cfg.ServerURL != "" && creds.LoggedIn() {
 		status = "connected"
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -107,13 +275,14 @@ func (h *RemoteHandler) DisconnectServer(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to clear server config"})
 		return
 	}
-	if err := h.db.Model(&store.Credentials{}).Where("id = ?", 1).Updates(map[string]any{
-		"token":    "",
-		"username": "",
-	}).Error; err != nil {
+	if err := h.db.Save(&store.Credentials{ID: 1}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to clear credentials"})
 		return
 	}
+	h.mu.Lock()
+	h.pending = nil
+	h.tokens = nil
+	h.mu.Unlock()
 	c.JSON(http.StatusOK, gin.H{"status": "disconnected"})
 }
 
@@ -447,4 +616,3 @@ func (h *RemoteHandler) GetAdminDashboardStats(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, stats)
 }
-

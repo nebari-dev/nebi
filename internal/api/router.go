@@ -262,6 +262,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, db *gorm.DB, q *queue.Me
 			remote := protected.Group("/remote")
 			{
 				remote.POST("/connect", remoteHandler.ConnectServer)
+				remote.POST("/connect/poll", remoteHandler.PollConnect)
 				remote.GET("/server", remoteHandler.GetServer)
 				remote.DELETE("/server", remoteHandler.DisconnectServer)
 				remote.GET("/projects", remoteHandler.ListProjects)

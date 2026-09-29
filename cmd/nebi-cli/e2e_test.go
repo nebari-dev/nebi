@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nebari-dev/nebi/internal/auth/authtest"
 	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/nebari-dev/nebi/internal/server"
 	"github.com/nebari-dev/nebi/internal/store"
@@ -30,6 +31,16 @@ var e2eEnv struct {
 	token     string
 	dataDir   string
 	configDir string
+	idp       *authtest.Server
+}
+
+// e2eAdmin is the identity provider user the shared server's tests act as.
+var e2eAdmin = authtest.Identity{
+	Subject:       "sub-e2e-admin",
+	Username:      "admin",
+	Email:         "admin@example.com",
+	EmailVerified: true,
+	Groups:        []string{"nebi-admin"},
 }
 
 // findFreePort returns a free TCP port on localhost.
@@ -85,8 +96,21 @@ func TestMain(m *testing.M) {
 	os.Setenv("NEBI_SERVER_MODE", "test")
 	os.Setenv("NEBI_LOG_LEVEL", "error")
 	os.Setenv("NEBI_DATABASE_LOG_LEVEL", "silent")
-	os.Setenv("ADMIN_USERNAME", "admin")
-	os.Setenv("ADMIN_PASSWORD", "adminpass")
+
+	// The server delegates authentication to an in-process identity provider.
+	idp, err := authtest.NewServer("nebi")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "E2E: failed to start identity provider: %v\n", err)
+		os.Exit(1)
+	}
+	defer idp.Close()
+	idp.TokenTTL = 24 * time.Hour // outlive the whole suite
+	e2eEnv.idp = idp
+	os.Setenv("NEBI_AUTH_TYPE", "oidc")
+	os.Setenv("NEBI_AUTH_OIDC_ISSUER_URL", idp.URL)
+	os.Setenv("NEBI_AUTH_OIDC_CLIENT_ID", idp.ClientID)
+	os.Setenv("NEBI_AUTH_OIDC_ADMIN_GROUPS", "nebi-admin")
+	openBrowser = func(string) error { return nil }
 
 	// Suppress server logs
 	origStdout := os.Stdout
@@ -119,14 +143,12 @@ func TestMain(m *testing.M) {
 	os.Stderr = origStderr
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-	// Login to server
-	client := cliclient.NewWithoutAuth(e2eEnv.serverURL)
-	loginResp, err := client.Login(context.Background(), "admin", "adminpass")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "E2E: login failed: %v\n", err)
+	// Authenticate once so the admin user is provisioned before tests run.
+	e2eEnv.token = idp.Token(e2eAdmin)
+	if _, err := cliclient.New(e2eEnv.serverURL, e2eEnv.token).GetCurrentUser(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "E2E: authenticating the admin user failed: %v\n", err)
 		os.Exit(1)
 	}
-	e2eEnv.token = loginResp.Token
 
 	code := m.Run()
 
@@ -627,12 +649,69 @@ func TestE2E_LoginWithToken(t *testing.T) {
 
 	dir := t.TempDir()
 
-	res := runCLI(t, dir, "login", e2eEnv.serverURL, "--token", "fake-token-123")
+	res := runCLI(t, dir, "login", e2eEnv.serverURL, "--token", e2eEnv.token)
 	if res.ExitCode != 0 {
 		t.Fatalf("login failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 	}
-	if !strings.Contains(res.Stderr, "Logged in") {
-		t.Errorf("expected 'Logged in' message, got stderr: %s", res.Stderr)
+	if !strings.Contains(res.Stderr, "Logged in to "+e2eEnv.serverURL+" as admin") {
+		t.Errorf("expected 'Logged in ... as admin' message, got stderr: %s", res.Stderr)
+	}
+
+	// A token the identity provider did not issue is rejected at login.
+	res = runCLI(t, dir, "login", e2eEnv.serverURL, "--token", "fake-token-123")
+	if res.ExitCode == 0 {
+		t.Fatalf("expected login with a forged token to fail, got stderr: %s", res.Stderr)
+	}
+}
+
+func TestE2E_LoginDeviceFlowAndRefresh(t *testing.T) {
+	setupLocalStore(t)
+	dir := t.TempDir()
+
+	user := authtest.Identity{Subject: "sub-device-user", Username: "device-user", Email: "device@example.com", EmailVerified: true}
+	e2eEnv.idp.AutoApprove = &user
+	t.Cleanup(func() { e2eEnv.idp.AutoApprove = nil })
+
+	res := runCLI(t, dir, "login", e2eEnv.serverURL)
+	if res.ExitCode != 0 {
+		t.Fatalf("device login failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(res.Stderr, "verify the code") || !strings.Contains(res.Stderr, "as device-user") {
+		t.Fatalf("unexpected login output: %s", res.Stderr)
+	}
+
+	s, err := store.New()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	creds, _ := s.LoadCredentials()
+	if creds.RefreshToken == "" || creds.TokenURL != e2eEnv.idp.URL+"/token" || creds.ClientID != "nebi" || creds.TokenExpiry == nil {
+		s.Close()
+		t.Fatalf("expected a refreshable login to be stored, got %+v", creds)
+	}
+
+	// An expired access token is refreshed transparently and the rotated
+	// tokens are stored.
+	expired := time.Now().Add(-time.Minute)
+	creds.TokenExpiry = &expired
+	if err := s.SaveCredentials(creds); err != nil {
+		s.Close()
+		t.Fatalf("save credentials: %v", err)
+	}
+	s.Close()
+
+	res = runCLI(t, dir, "project", "list", "--remote")
+	if res.ExitCode != 0 {
+		t.Fatalf("project list after expiry failed (exit %d):\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	s, err = store.New()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer s.Close()
+	refreshed, _ := s.LoadCredentials()
+	if refreshed.Token == creds.Token || refreshed.RefreshToken == creds.RefreshToken || !refreshed.TokenExpiry.After(time.Now()) {
+		t.Fatalf("expected refreshed tokens to be stored, got %+v", refreshed)
 	}
 }
 

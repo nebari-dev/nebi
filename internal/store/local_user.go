@@ -14,14 +14,13 @@ import (
 // same user (project_versions.created_by and projects.owner_id both
 // foreign-key into this table).
 type LocalUser struct {
-	ID           uuid.UUID      `gorm:"type:text;primary_key" json:"id"`
-	Username     string         `gorm:"uniqueIndex;not null" json:"username"`
-	PasswordHash string         `gorm:"not null" json:"-"`
-	Email        string         `gorm:"uniqueIndex;not null" json:"email"`
-	AvatarURL    string         `json:"avatar_url"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
+	ID        uuid.UUID      `gorm:"type:text;primary_key" json:"id"`
+	Username  string         `gorm:"uniqueIndex;not null" json:"username"`
+	Email     string         `gorm:"uniqueIndex;not null" json:"email"`
+	AvatarURL string         `json:"avatar_url"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 // TableName ensures GORM uses the "users" table.
@@ -53,9 +52,8 @@ func ensureLocalUser(db *gorm.DB) (uuid.UUID, error) {
 	}
 
 	user = LocalUser{
-		Username:     username,
-		Email:        username + "@nebi.local",
-		PasswordHash: "-",
+		Username: username,
+		Email:    username + "@nebi.local",
 	}
 	if err := db.Create(&user).Error; err != nil {
 		return uuid.Nil, err

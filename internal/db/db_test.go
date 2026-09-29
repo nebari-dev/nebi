@@ -29,7 +29,6 @@ func TestMigrateAllowsLegacyFederatedUsersWithoutIssuerSubject(t *testing.T) {
 	legacyUser := models.User{
 		Username:     "legacy-oidc",
 		Email:        "legacy@example.com",
-		PasswordHash: "",
 	}
 	if err := database.Create(&legacyUser).Error; err != nil {
 		t.Fatalf("create legacy user: %v", err)
@@ -48,7 +47,6 @@ func TestMigrateAllowsFederatedUsersWithIssuerSubjectBinding(t *testing.T) {
 	user := models.User{
 		Username:     "bound-oidc",
 		Email:        "bound@example.com",
-		PasswordHash: "",
 	}
 	if err := database.Create(&user).Error; err != nil {
 		t.Fatalf("create user: %v", err)

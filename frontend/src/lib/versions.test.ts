@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { getWorkspaceVersionLabel } from './versions';
+import { getProjectVersionLabel } from './versions';
 
-describe('getWorkspaceVersionLabel', () => {
+describe('getProjectVersionLabel', () => {
   it('uses the manifest version when present', () => {
     expect(
-      getWorkspaceVersionLabel({
+      getProjectVersionLabel({
         manifest_version: '0.0.3',
         version_number: 1,
       }),
@@ -12,6 +12,6 @@ describe('getWorkspaceVersionLabel', () => {
   });
 
   it('falls back to the snapshot number', () => {
-    expect(getWorkspaceVersionLabel({ version_number: 2 })).toBe('Snapshot 2');
+    expect(getProjectVersionLabel({ version_number: 2 })).toBe('Snapshot 2');
   });
 });

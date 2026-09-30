@@ -13,12 +13,12 @@ import (
 // RegistryBrowseHandler handles browsing and importing from OCI registries
 type RegistryBrowseHandler struct {
 	registrySvc *service.RegistryService
-	wsSvc       *service.WorkspaceService
+	projectSvc  *service.ProjectService
 }
 
 // NewRegistryBrowseHandler creates a new registry browse handler
-func NewRegistryBrowseHandler(registrySvc *service.RegistryService, wsSvc *service.WorkspaceService) *RegistryBrowseHandler {
-	return &RegistryBrowseHandler{registrySvc: registrySvc, wsSvc: wsSvc}
+func NewRegistryBrowseHandler(registrySvc *service.RegistryService, projectSvc *service.ProjectService) *RegistryBrowseHandler {
+	return &RegistryBrowseHandler{registrySvc: registrySvc, projectSvc: projectSvc}
 }
 
 // ImportRequest is the JSON body for the import endpoint.
@@ -154,7 +154,7 @@ func (h *RegistryBrowseHandler) ListTags(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"tags": tags})
 }
 
-// ImportEnvironment pulls an environment from a registry and creates a workspace
+// ImportEnvironment pulls an environment from a registry and creates a project
 func (h *RegistryBrowseHandler) ImportEnvironment(c *gin.Context) {
 	registryID := c.Param("id")
 	userID := getUserID(c)
@@ -176,7 +176,7 @@ func (h *RegistryBrowseHandler) ImportEnvironment(c *gin.Context) {
 		return
 	}
 
-	ws, err := h.wsSvc.ImportFromRegistry(c.Request.Context(), registryID, service.ImportFromRegistryRequest{
+	project, err := h.projectSvc.ImportFromRegistry(c.Request.Context(), registryID, service.ImportFromRegistryRequest{
 		Repository:     repository,
 		RepositoryPath: repositoryPath,
 		Tag:            req.Tag,
@@ -187,5 +187,5 @@ func (h *RegistryBrowseHandler) ImportEnvironment(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, ws)
+	c.JSON(http.StatusCreated, project)
 }

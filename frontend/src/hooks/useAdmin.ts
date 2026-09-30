@@ -3,7 +3,7 @@ import { adminApi } from '@/api/admin';
 import type {
   CreateUserRequest,
   FederatedIdentityReviewStatusFilter,
-  ShareWorkspaceRequest,
+  ShareProjectRequest,
 } from '@/types/models';
 
 // Check if current user is admin
@@ -90,27 +90,26 @@ export const useCollaborators = (environmentId: string, enabled = true) => {
   });
 };
 
-export const useShareWorkspace = (workspaceId: string) => {
+export const useShareProject = (projectId: string) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: ShareWorkspaceRequest) =>
-      adminApi.shareWorkspace(workspaceId, data),
+    mutationFn: (data: ShareProjectRequest) =>
+      adminApi.shareProject(projectId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['collaborators', workspaceId],
+        queryKey: ['collaborators', projectId],
       });
     },
   });
 };
 
-export const useUnshareWorkspace = (workspaceId: string) => {
+export const useUnshareProject = (projectId: string) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (userId: string) =>
-      adminApi.unshareWorkspace(workspaceId, userId),
+    mutationFn: (userId: string) => adminApi.unshareProject(projectId, userId),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['collaborators', workspaceId],
+        queryKey: ['collaborators', projectId],
       });
     },
   });

@@ -161,6 +161,8 @@ jobs:
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           nebi version
+          nebi-server version
+          nebi-web version
 
   test-windows:
     runs-on: windows-latest
@@ -316,3 +318,5 @@ jobs:
         run: |
           $env:PATH = "$env:RUNNER_TEMP\nebi;$env:PATH"
           nebi version
+          nebi-server version
+          nebi-web version

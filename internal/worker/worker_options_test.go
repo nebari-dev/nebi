@@ -7,23 +7,23 @@ import (
 	"github.com/nebari-dev/nebi/internal/executor"
 )
 
-func TestBuildCreateWorkspaceOptions(t *testing.T) {
+func TestBuildCreateProjectOptions(t *testing.T) {
 	tests := []struct {
 		name     string
 		metadata map[string]interface{}
-		want     executor.CreateWorkspaceOptions
+		want     executor.CreateProjectOptions
 	}{
 		{
 			name:     "empty metadata",
 			metadata: map[string]interface{}{},
-			want:     executor.CreateWorkspaceOptions{},
+			want:     executor.CreateProjectOptions{},
 		},
 		{
 			name: "pixi_toml only",
 			metadata: map[string]interface{}{
 				"pixi_toml": "[project]\nname = \"x\"\n",
 			},
-			want: executor.CreateWorkspaceOptions{
+			want: executor.CreateProjectOptions{
 				PixiToml: "[project]\nname = \"x\"\n",
 			},
 		},
@@ -32,7 +32,7 @@ func TestBuildCreateWorkspaceOptions(t *testing.T) {
 			metadata: map[string]interface{}{
 				"import_staging_dir": "/tmp/staging-abc",
 			},
-			want: executor.CreateWorkspaceOptions{
+			want: executor.CreateProjectOptions{
 				SeedDir: "/tmp/staging-abc",
 			},
 		},
@@ -42,7 +42,7 @@ func TestBuildCreateWorkspaceOptions(t *testing.T) {
 				"pixi_toml":          "[project]\nname = \"x\"\n",
 				"import_staging_dir": "/tmp/staging-abc",
 			},
-			want: executor.CreateWorkspaceOptions{
+			want: executor.CreateProjectOptions{
 				PixiToml: "[project]\nname = \"x\"\n",
 				SeedDir:  "/tmp/staging-abc",
 			},
@@ -53,14 +53,14 @@ func TestBuildCreateWorkspaceOptions(t *testing.T) {
 				"pixi_toml":          123,
 				"import_staging_dir": true,
 			},
-			want: executor.CreateWorkspaceOptions{},
+			want: executor.CreateProjectOptions{},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := buildCreateWorkspaceOptions(tc.metadata)
+			got := buildCreateProjectOptions(tc.metadata)
 			if !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("buildCreateWorkspaceOptions() = %+v, want %+v", got, tc.want)
+				t.Errorf("buildCreateProjectOptions() = %+v, want %+v", got, tc.want)
 			}
 		})
 	}

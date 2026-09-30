@@ -47,7 +47,7 @@ export const Groups = () => {
         <div>
           <h1 className="text-3xl font-bold">Groups</h1>
           <p className="text-muted-foreground">
-            Manage groups and grant permission to workspaces and registries.
+            Manage groups and grant permission to projects and registries.
           </p>
         </div>
         <CreateGroupDialog />

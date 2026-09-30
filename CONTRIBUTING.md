@@ -33,7 +33,7 @@ Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables to create the ad
 ```bash
 make help           # Show all targets
 make dev            # Run with hot reload
-make build          # Build binary
+make build          # Build CLI, server, and local web binaries
 make test           # Run tests
 make swagger        # Generate API docs
 ```
@@ -79,7 +79,9 @@ The built application will be in `build/bin/`.
 
 ```
 nebi/
-├── cmd/nebi/             # Unified CLI + server entry point
+├── cmd/nebi-cli/         # CLI client entry point
+├── cmd/nebi-server/      # Team server entry point
+├── cmd/nebi-web/         # Local web entry point
 ├── internal/
 │   ├── api/              # HTTP handlers and routing
 │   ├── auth/             # Authentication (JWT, basic auth)
@@ -87,7 +89,7 @@ nebi/
 │   ├── store/            # Local index, config, and credentials
 │   ├── db/               # Database models and migrations
 │   ├── executor/         # Job execution (local/docker)
-│   ├── queue/            # Job queue (memory/valkey)
+│   ├── queue/            # Job queue (in-memory)
 │   ├── server/           # Server initialization logic
 │   ├── worker/           # Background job processor
 │   └── pixi/             # Pixi CLI integration

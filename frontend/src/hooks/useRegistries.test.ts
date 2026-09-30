@@ -15,7 +15,7 @@ import {
   usePublications,
   usePublicRegistries,
   usePublishDefaults,
-  usePublishWorkspace,
+  usePublishProject,
   useRegistries,
 } from './useRegistries';
 
@@ -55,7 +55,7 @@ describe('useRegistries', () => {
 });
 
 describe('usePublishDefaults', () => {
-  it('fetches publish defaults for a workspace', async () => {
+  it('fetches publish defaults for a project', async () => {
     const { result } = renderHook(() => usePublishDefaults('ws-1'), {
       wrapper: createWrapper(),
     });
@@ -63,7 +63,7 @@ describe('usePublishDefaults', () => {
     expect(result.current.data).toEqual(mockPublishDefaults);
   });
 
-  it('does not fetch when workspaceId is empty', () => {
+  it('does not fetch when projectId is empty', () => {
     const { result } = renderHook(() => usePublishDefaults(''), {
       wrapper: createWrapper(),
     });
@@ -72,7 +72,7 @@ describe('usePublishDefaults', () => {
 });
 
 describe('usePublications', () => {
-  it('fetches publications for a workspace', async () => {
+  it('fetches publications for a project', async () => {
     const { result } = renderHook(() => usePublications('ws-1'), {
       wrapper: createWrapper(),
     });
@@ -80,7 +80,7 @@ describe('usePublications', () => {
     expect(result.current.data).toEqual([mockPublication]);
   });
 
-  it('does not fetch when workspaceId is empty', () => {
+  it('does not fetch when projectId is empty', () => {
     const { result } = renderHook(() => usePublications(''), {
       wrapper: createWrapper(),
     });
@@ -88,13 +88,13 @@ describe('usePublications', () => {
   });
 });
 
-describe('usePublishWorkspace', () => {
+describe('usePublishProject', () => {
   it('calls the publish endpoint and returns a job', async () => {
-    const { result } = renderHook(() => usePublishWorkspace(), {
+    const { result } = renderHook(() => usePublishProject(), {
       wrapper: createWrapper(),
     });
     result.current.mutate({
-      workspaceId: 'ws-1',
+      projectId: 'ws-1',
       data: { registry_id: 'reg-1', repository: 'myenv', tag: 'latest' },
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -103,15 +103,15 @@ describe('usePublishWorkspace', () => {
 
   it('enters error state when publish fails', async () => {
     server.use(
-      http.post('/api/v1/workspaces/:id/publish', () =>
+      http.post('/api/v1/projects/:id/publish', () =>
         HttpResponse.json({ error: 'registry unreachable' }, { status: 502 }),
       ),
     );
-    const { result } = renderHook(() => usePublishWorkspace(), {
+    const { result } = renderHook(() => usePublishProject(), {
       wrapper: createWrapper(),
     });
     result.current.mutate({
-      workspaceId: 'ws-1',
+      projectId: 'ws-1',
       data: { registry_id: 'reg-1', repository: 'myenv', tag: 'latest' },
     });
     await waitFor(() => expect(result.current.isError).toBe(true));

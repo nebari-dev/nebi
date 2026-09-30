@@ -47,7 +47,7 @@ export function useHostJobNotifications(): void {
           type: NEBI_JOB_COMPLETED_MESSAGE,
           jobType: job.type,
           status: job.status,
-          workspaceId: job.workspace_id,
+          projectId: job.project_id,
         });
       }
     }

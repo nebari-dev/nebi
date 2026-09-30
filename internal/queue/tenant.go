@@ -9,8 +9,8 @@ func tenantKeyForJob(job *models.Job) string {
 	if job.UserID != uuid.Nil {
 		return "user:" + job.UserID.String()
 	}
-	if job.WorkspaceID != uuid.Nil {
-		return "workspace:" + job.WorkspaceID.String()
+	if job.ProjectID != uuid.Nil {
+		return "project:" + job.ProjectID.String()
 	}
 	return "anonymous"
 }

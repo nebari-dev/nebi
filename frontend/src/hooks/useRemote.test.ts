@@ -7,9 +7,9 @@ import {
   mockFederatedIdentity,
   mockFederatedIdentityReview,
   mockJob,
+  mockProject,
   mockRegistry,
   mockUser,
-  mockWorkspace,
   server,
 } from '@/test/handlers';
 import { createWrapper } from '@/test/utils';
@@ -19,21 +19,21 @@ import {
   retryWhileUnreachable,
   useApproveRemoteFederatedIdentityReview,
   useConnectServer,
+  useCreateRemoteProject,
   useCreateRemoteRegistry,
-  useCreateRemoteWorkspace,
+  useDeleteRemoteProject,
   useDeleteRemoteRegistry,
-  useDeleteRemoteWorkspace,
   useDiscardRemoteFederatedIdentityReview,
   useDisconnectServer,
   useRejectRemoteFederatedIdentityReview,
   useRemoteFederatedIdentityReviews,
   useRemoteJobs,
+  useRemoteProject,
+  useRemoteProjects,
   useRemoteRegistries,
   useRemoteServer,
   useRemoteUsers,
   useRemoteView,
-  useRemoteWorkspace,
-  useRemoteWorkspaces,
   useUpdateRemoteRegistry,
 } from './useRemote';
 
@@ -43,8 +43,8 @@ const mockRemoteServer = {
   token: 'remote-token',
 };
 
-const mockRemoteWorkspace = {
-  ...mockWorkspace,
+const mockRemoteProject = {
+  ...mockProject,
   server_url: 'https://remote.example.com',
 };
 
@@ -232,17 +232,17 @@ describe('useDisconnectServer', () => {
   });
 });
 
-describe('useRemoteWorkspaces', () => {
+describe('useRemoteProjects', () => {
   beforeEach(() => {
     server.use(
-      http.get('/api/v1/remote/workspaces', () =>
-        HttpResponse.json([mockRemoteWorkspace]),
+      http.get('/api/v1/remote/projects', () =>
+        HttpResponse.json([mockRemoteProject]),
       ),
     );
   });
 
-  it('fetches remote workspaces when enabled', async () => {
-    const { result } = renderHook(() => useRemoteWorkspaces(true), {
+  it('fetches remote projects when enabled', async () => {
+    const { result } = renderHook(() => useRemoteProjects(true), {
       wrapper: createWrapper(),
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -250,24 +250,22 @@ describe('useRemoteWorkspaces', () => {
   });
 
   it('does not fetch when disabled', () => {
-    const { result } = renderHook(() => useRemoteWorkspaces(false), {
+    const { result } = renderHook(() => useRemoteProjects(false), {
       wrapper: createWrapper(),
     });
     expect(result.current.fetchStatus).toBe('idle');
   });
 
   it('reflects an error state when the remote server is unreachable', async () => {
-    server.use(
-      http.get('/api/v1/remote/workspaces', () => HttpResponse.error()),
-    );
-    const { result } = renderHook(() => useRemoteWorkspaces(true), {
+    server.use(http.get('/api/v1/remote/projects', () => HttpResponse.error()));
+    const { result } = renderHook(() => useRemoteProjects(true), {
       wrapper: createWrapper(),
     });
     await waitFor(() => expect(result.current.isError).toBe(true));
   });
 
   it('reports isFirstLoad until the query first resolves', async () => {
-    const { result } = renderHook(() => useRemoteWorkspaces(true), {
+    const { result } = renderHook(() => useRemoteProjects(true), {
       wrapper: createWrapper(),
     });
     expect(result.current.isFirstLoad).toBe(true);
@@ -277,10 +275,8 @@ describe('useRemoteWorkspaces', () => {
   });
 
   it('reports isUnreachable (and clears isFirstLoad) once the query errors', async () => {
-    server.use(
-      http.get('/api/v1/remote/workspaces', () => HttpResponse.error()),
-    );
-    const { result } = renderHook(() => useRemoteWorkspaces(true), {
+    server.use(http.get('/api/v1/remote/projects', () => HttpResponse.error()));
+    const { result } = renderHook(() => useRemoteProjects(true), {
       wrapper: createWrapper(),
     });
     await waitFor(() => expect(result.current.isUnreachable).toBe(true));
@@ -293,17 +289,17 @@ describe('useRemoteWorkspaces', () => {
     // flashes off during every failed retry.
     let requests = 0;
     server.use(
-      http.get('/api/v1/remote/workspaces', async () => {
+      http.get('/api/v1/remote/projects', async () => {
         requests += 1;
         if (requests === 1) {
           return HttpResponse.error();
         }
         // Hang the retry long enough for the pending window to be observable.
         await new Promise((resolve) => setTimeout(resolve, 300));
-        return HttpResponse.json([mockRemoteWorkspace]);
+        return HttpResponse.json([mockRemoteProject]);
       }),
     );
-    const { result } = renderHook(() => useRemoteWorkspaces(true), {
+    const { result } = renderHook(() => useRemoteProjects(true), {
       wrapper: createWrapper(),
     });
     await waitFor(() => expect(result.current.isUnreachable).toBe(true));
@@ -329,7 +325,7 @@ describe('useRemoteWorkspaces', () => {
     const { result } = renderHook(
       () => {
         renders += 1;
-        return useRemoteWorkspaces(true);
+        return useRemoteProjects(true);
       },
       { wrapper: createWrapper() },
     );
@@ -349,17 +345,17 @@ describe('useRemoteWorkspaces', () => {
   });
 });
 
-describe('useRemoteWorkspace', () => {
+describe('useRemoteProject', () => {
   beforeEach(() => {
     server.use(
-      http.get('/api/v1/remote/workspaces/:id', ({ params }) =>
-        HttpResponse.json({ ...mockRemoteWorkspace, id: params.id }),
+      http.get('/api/v1/remote/projects/:id', ({ params }) =>
+        HttpResponse.json({ ...mockRemoteProject, id: params.id }),
       ),
     );
   });
 
-  it('fetches a single remote workspace by id', async () => {
-    const { result } = renderHook(() => useRemoteWorkspace('ws-1'), {
+  it('fetches a single remote project by id', async () => {
+    const { result } = renderHook(() => useRemoteProject('ws-1'), {
       wrapper: createWrapper(),
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -367,21 +363,21 @@ describe('useRemoteWorkspace', () => {
   });
 
   it('does not fetch when id is empty', () => {
-    const { result } = renderHook(() => useRemoteWorkspace(''), {
+    const { result } = renderHook(() => useRemoteProject(''), {
       wrapper: createWrapper(),
     });
     expect(result.current.fetchStatus).toBe('idle');
   });
 });
 
-describe('useCreateRemoteWorkspace', () => {
-  it('calls the create endpoint and returns the new workspace', async () => {
+describe('useCreateRemoteProject', () => {
+  it('calls the create endpoint and returns the new project', async () => {
     server.use(
-      http.post('/api/v1/remote/workspaces', () =>
-        HttpResponse.json(mockRemoteWorkspace, { status: 201 }),
+      http.post('/api/v1/remote/projects', () =>
+        HttpResponse.json(mockRemoteProject, { status: 201 }),
       ),
     );
-    const { result } = renderHook(() => useCreateRemoteWorkspace(), {
+    const { result } = renderHook(() => useCreateRemoteProject(), {
       wrapper: createWrapper(),
     });
     result.current.mutate({ name: 'New Remote WS' });
@@ -389,15 +385,15 @@ describe('useCreateRemoteWorkspace', () => {
   });
 });
 
-describe('useDeleteRemoteWorkspace', () => {
+describe('useDeleteRemoteProject', () => {
   it('calls the delete endpoint successfully', async () => {
     server.use(
       http.delete(
-        '/api/v1/remote/workspaces/:id',
+        '/api/v1/remote/projects/:id',
         () => new HttpResponse(null, { status: 204 }),
       ),
     );
-    const { result } = renderHook(() => useDeleteRemoteWorkspace(), {
+    const { result } = renderHook(() => useDeleteRemoteProject(), {
       wrapper: createWrapper(),
     });
     result.current.mutate('ws-1');

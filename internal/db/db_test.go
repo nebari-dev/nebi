@@ -145,7 +145,7 @@ func TestMigrateDropsLegacyPackageManagerColumn(t *testing.T) {
 	// Simulate a database created before the package_manager column was
 	// removed: NOT NULL with no default, which would break inserts if left.
 	if err := database.Exec(
-		"CREATE TABLE `workspaces` (`id` text PRIMARY KEY, `name` text NOT NULL, `package_manager` text NOT NULL)",
+		"CREATE TABLE `projects` (`id` text PRIMARY KEY, `name` text NOT NULL, `package_manager` text NOT NULL)",
 	).Error; err != nil {
 		t.Fatalf("create legacy table: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestMigrateDropsLegacyPackageManagerColumn(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	if database.Migrator().HasColumn(&models.Workspace{}, "package_manager") {
+	if database.Migrator().HasColumn(&models.Project{}, "package_manager") {
 		t.Fatal("expected package_manager column to be dropped")
 	}
 
@@ -162,9 +162,9 @@ func TestMigrateDropsLegacyPackageManagerColumn(t *testing.T) {
 	if err := database.Create(&owner).Error; err != nil {
 		t.Fatalf("create owner: %v", err)
 	}
-	ws := models.Workspace{Name: "post-migration", OwnerID: owner.ID}
-	if err := database.Create(&ws).Error; err != nil {
-		t.Fatalf("create workspace after migration: %v", err)
+	project := models.Project{Name: "post-migration", OwnerID: owner.ID}
+	if err := database.Create(&project).Error; err != nil {
+		t.Fatalf("create project after migration: %v", err)
 	}
 }
 
@@ -173,7 +173,7 @@ func TestMigrateDropsLegacyPackageManagerColumnWithReferencingRows(t *testing.T)
 
 	// Simulate a real pre-removal database: the SQLite driver emulates
 	// DropColumn by rebuilding the table, and DROP TABLE on the old
-	// workspaces violates the foreign keys held by referencing jobs rows
+	// projects violates the foreign keys held by referencing jobs rows
 	// when enforcement is on (it is, via the DSN pragma).
 	if err := database.Exec(
 		"CREATE TABLE `users` (`id` text PRIMARY KEY, `username` text, `email` text, `password_hash` text NOT NULL)",
@@ -181,12 +181,12 @@ func TestMigrateDropsLegacyPackageManagerColumnWithReferencingRows(t *testing.T)
 		t.Fatalf("create legacy users table: %v", err)
 	}
 	if err := database.Exec(
-		"CREATE TABLE `workspaces` (`id` text PRIMARY KEY, `name` text NOT NULL, `package_manager` text NOT NULL, `owner_id` text, CONSTRAINT `fk_workspaces_owner` FOREIGN KEY (`owner_id`) REFERENCES `users`(`id`))",
+		"CREATE TABLE `projects` (`id` text PRIMARY KEY, `name` text NOT NULL, `package_manager` text NOT NULL, `owner_id` text, CONSTRAINT `fk_projects_owner` FOREIGN KEY (`owner_id`) REFERENCES `users`(`id`))",
 	).Error; err != nil {
-		t.Fatalf("create legacy workspaces table: %v", err)
+		t.Fatalf("create legacy projects table: %v", err)
 	}
 	if err := database.Exec(
-		"CREATE TABLE `jobs` (`id` text PRIMARY KEY, `workspace_id` text, `type` text NOT NULL, `status` text NOT NULL DEFAULT \"pending\", CONSTRAINT `fk_jobs_workspace` FOREIGN KEY (`workspace_id`) REFERENCES `workspaces`(`id`))",
+		"CREATE TABLE `jobs` (`id` text PRIMARY KEY, `project_id` text, `type` text NOT NULL, `status` text NOT NULL DEFAULT \"pending\", CONSTRAINT `fk_jobs_project` FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`))",
 	).Error; err != nil {
 		t.Fatalf("create legacy jobs table: %v", err)
 	}
@@ -196,12 +196,12 @@ func TestMigrateDropsLegacyPackageManagerColumnWithReferencingRows(t *testing.T)
 		t.Fatalf("insert legacy user: %v", err)
 	}
 	if err := database.Exec(
-		"INSERT INTO `workspaces` (`id`, `name`, `package_manager`, `owner_id`) VALUES ('ws-1', 'legacy', 'pixi', 'user-1')",
+		"INSERT INTO `projects` (`id`, `name`, `package_manager`, `owner_id`) VALUES ('ws-1', 'legacy', 'pixi', 'user-1')",
 	).Error; err != nil {
-		t.Fatalf("insert legacy workspace: %v", err)
+		t.Fatalf("insert legacy project: %v", err)
 	}
 	if err := database.Exec(
-		"INSERT INTO `jobs` (`id`, `workspace_id`, `type`) VALUES ('job-1', 'ws-1', 'create')",
+		"INSERT INTO `jobs` (`id`, `project_id`, `type`) VALUES ('job-1', 'ws-1', 'create')",
 	).Error; err != nil {
 		t.Fatalf("insert referencing job: %v", err)
 	}
@@ -209,16 +209,16 @@ func TestMigrateDropsLegacyPackageManagerColumnWithReferencingRows(t *testing.T)
 		t.Fatalf("migrate: %v", err)
 	}
 
-	if database.Migrator().HasColumn(&models.Workspace{}, "package_manager") {
+	if database.Migrator().HasColumn(&models.Project{}, "package_manager") {
 		t.Fatal("expected package_manager column to be dropped")
 	}
 
-	var wsCount, jobCount int64
-	if err := database.Table("workspaces").Count(&wsCount).Error; err != nil {
-		t.Fatalf("count workspaces: %v", err)
+	var projectCount, jobCount int64
+	if err := database.Table("projects").Count(&projectCount).Error; err != nil {
+		t.Fatalf("count projects: %v", err)
 	}
-	if wsCount != 1 {
-		t.Fatalf("expected 1 workspace to survive the migration, got %d", wsCount)
+	if projectCount != 1 {
+		t.Fatalf("expected 1 project to survive the migration, got %d", projectCount)
 	}
 	if err := database.Table("jobs").Count(&jobCount).Error; err != nil {
 		t.Fatalf("count jobs: %v", err)

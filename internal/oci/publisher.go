@@ -23,7 +23,7 @@ const (
 	MediaTypePixiToml = "application/vnd.pixi.toml.v1+toml"
 	// MediaTypePixiLock is the media type for pixi.lock lockfile
 	MediaTypePixiLock = "application/vnd.pixi.lock.v1+yaml"
-	// MediaTypeNebiAsset is the media type for arbitrary bundled workspace
+	// MediaTypeNebiAsset is the media type for arbitrary bundled project
 	// files. Path is carried in the layer's AnnotationTitle.
 	MediaTypeNebiAsset = "application/vnd.nebi.asset.v1"
 )
@@ -90,11 +90,11 @@ func WithProgress(fn func(label string, pushed, total int)) PublishOption {
 	return func(c *publishConfig) { c.progress = fn }
 }
 
-// withAssets bypasses the workspace walker and publishes the supplied
+// withAssets bypasses the project walker and publishes the supplied
 // list verbatim. Unexported on purpose: the only legitimate callers are
 // the walker and Preview, both of which produce validated Asset values.
 // Leaving it exported would let Go callers supply AbsPaths that escape
-// the workspace — a non-threat today (package is `internal/`) but a
+// the project — a non-threat today (package is `internal/`) but a
 // footgun worth not planting.
 func withAssets(assets []Asset) PublishOption {
 	return func(c *publishConfig) {
@@ -103,8 +103,8 @@ func withAssets(assets []Asset) PublishOption {
 	}
 }
 
-// Publish publishes the workspace at workspaceDir to reg/repo:tag. The
-// workspace is walked using hardcoded drops (.git/, .pixi/) →
+// Publish publishes the project at projectDir to reg/repo:tag. The
+// project is walked using hardcoded drops (.git/, .pixi/) →
 // [tool.nebi.bundle].include → .gitignore → [tool.nebi.bundle].exclude →
 // force-include of pixi.toml/pixi.lock. pixi.toml and pixi.lock always
 // become typed layers 0 and 1; every surviving file rides as a
@@ -112,7 +112,7 @@ func withAssets(assets []Asset) PublishOption {
 // leaves the process.
 func Publish(
 	ctx context.Context,
-	workspaceDir string,
+	projectDir string,
 	reg Registry,
 	repo, tag string,
 	opts ...PublishOption,
@@ -122,7 +122,7 @@ func Publish(
 	// Reject a symlinked pixi.toml up front — before we parse it — so
 	// a hostile link to a non-TOML target surfaces as a clear
 	// "regular file" error rather than a confusing parse error.
-	if err := assertCoreFile(filepath.Join(workspaceDir, "pixi.toml")); err != nil {
+	if err := assertCoreFile(filepath.Join(projectDir, "pixi.toml")); err != nil {
 		return PublishResult{}, err
 	}
 
@@ -130,25 +130,25 @@ func Publish(
 	if cfg.assetsOverride != nil {
 		assets = *cfg.assetsOverride
 	} else {
-		bundleCfg, err := loadBundleConfig(filepath.Join(workspaceDir, "pixi.toml"))
+		bundleCfg, err := loadBundleConfig(filepath.Join(projectDir, "pixi.toml"))
 		if err != nil {
 			return PublishResult{}, fmt.Errorf("invalid bundle config: %w", err)
 		}
-		files, err := walkBundle(workspaceDir, bundleCfg)
+		files, err := walkBundle(projectDir, bundleCfg)
 		if err != nil {
-			return PublishResult{}, fmt.Errorf("walk workspace: %w", err)
+			return PublishResult{}, fmt.Errorf("walk project: %w", err)
 		}
 		// publishBundle strips core files unconditionally; pass the
 		// walker output through.
 		assets = files
 	}
-	return publishBundle(ctx, workspaceDir, reg, repo, tag, assets, cfg)
+	return publishBundle(ctx, projectDir, reg, repo, tag, assets, cfg)
 }
 
 // PublishPixiOnly publishes only pixi.toml and pixi.lock from coreDir,
 // producing a legacy two-layer bundle byte-compatible with pre-bundle
 // artifacts. The walker is never invoked; stray files in coreDir are
-// ignored. Intended for server-side publish, where no user workspace
+// ignored. Intended for server-side publish, where no user project
 // exists on disk.
 func PublishPixiOnly(
 	ctx context.Context,
@@ -164,15 +164,15 @@ func PublishPixiOnly(
 // Preview returns the files Publish would bundle, in deterministic order,
 // without touching the network. Useful for pre-publish confirmation UI
 // and future "nebi bundle ls"-style commands.
-func Preview(ctx context.Context, workspaceDir string) ([]Asset, error) {
+func Preview(ctx context.Context, projectDir string) ([]Asset, error) {
 	_ = ctx
-	bundleCfg, err := loadBundleConfig(filepath.Join(workspaceDir, "pixi.toml"))
+	bundleCfg, err := loadBundleConfig(filepath.Join(projectDir, "pixi.toml"))
 	if err != nil {
 		return nil, fmt.Errorf("invalid bundle config: %w", err)
 	}
-	files, err := walkBundle(workspaceDir, bundleCfg)
+	files, err := walkBundle(projectDir, bundleCfg)
 	if err != nil {
-		return nil, fmt.Errorf("walk workspace: %w", err)
+		return nil, fmt.Errorf("walk project: %w", err)
 	}
 	return files, nil
 }
@@ -231,7 +231,7 @@ func publishBundle(
 	pixiTomlPath := filepath.Join(dir, "pixi.toml")
 	pixiLockPath := filepath.Join(dir, "pixi.lock")
 	// Lstat (not Stat) so a symlink at pixi.toml / pixi.lock pointing
-	// outside the workspace is rejected rather than silently bundled —
+	// outside the project is rejected rather than silently bundled —
 	// file.Store.Add follows symlinks when it reads the file, so this
 	// check is the only thing between a hostile symlink and an artifact
 	// that leaks the target file's contents.
@@ -350,7 +350,7 @@ func publishBundle(
 }
 
 // PublishOptions is the pre-bundle publish option shape. Kept for the
-// server-side caller (internal/service/workspace_publishing.go) which
+// server-side caller (internal/service/project_publishing.go) which
 // builds a concatenated repository string rather than a Registry struct.
 // New callers should use Publish / PublishPixiOnly instead.
 type PublishOptions struct {
@@ -362,12 +362,12 @@ type PublishOptions struct {
 	RegistryHost string
 }
 
-// PublishWorkspace is a thin shim retained for the server caller. It
+// PublishProject is a thin shim retained for the server caller. It
 // publishes pixi.toml + pixi.lock from envPath (no walker) — equivalent
 // to PublishPixiOnly applied to a pre-assembled repository string.
 // Returns the manifest digest so the caller's existing signature is
 // preserved.
-func PublishWorkspace(ctx context.Context, envPath string, opts PublishOptions) (string, error) {
+func PublishProject(ctx context.Context, envPath string, opts PublishOptions) (string, error) {
 	host, ns, repoName := splitRepoRef(opts.Repository)
 	reg := Registry{
 		Host:      host,

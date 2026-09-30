@@ -22,25 +22,21 @@ import (
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/logger"
-	"github.com/nebari-dev/nebi/internal/logstream"
 	"github.com/nebari-dev/nebi/internal/netguard"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/nebari-dev/nebi/internal/service"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/nebari-dev/nebi/internal/worker"
-
-	"github.com/valkey-io/valkey-go"
-	"gorm.io/gorm"
 )
 
 // Config holds the server configuration options.
 type Config struct {
-	Host    string // Bind host/IP (empty = config/default behavior)
-	Port    int    // Port to run the server on (0 = use config default)
-	Mode    string // Run mode: server, worker, or both
-	Version string // Version string to report
-	Commit  string // Git commit hash
+	Host        string      // Bind host/IP (empty = config/default behavior)
+	Port        int         // Port to run the server on (0 = use config default)
+	RuntimeMode config.Mode // Runtime mode: team or local
+	Version     string      // Version string to report
+	Commit      string      // Git commit hash
 }
 
 // Run starts the server with the given configuration and blocks until the context is canceled.
@@ -54,7 +50,11 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	// Load configuration
-	appCfg, err := config.Load()
+	runtimeMode := cfg.RuntimeMode
+	if runtimeMode == "" {
+		runtimeMode = config.ModeTeam
+	}
+	appCfg, err := config.Load(config.WithMode(runtimeMode))
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
@@ -121,20 +121,9 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 	}
 
-	// Initialize job queue based on configuration
-	jobQueue, err := createQueue(appCfg, database)
-	if err != nil {
-		return fmt.Errorf("failed to initialize job queue: %w", err)
-	}
+	// The API and worker share an in-process queue.
+	jobQueue := queue.NewMemoryQueue(100)
 	defer jobQueue.Close()
-	slog.Info("Job queue initialized", "type", appCfg.Queue.Type)
-
-	// Get Valkey client for log streaming (if using Valkey queue)
-	var valkeyClient valkey.Client
-	if vq, ok := jobQueue.(*queue.ValkeyQueue); ok {
-		valkeyClient = vq.GetClient()
-		slog.Info("Valkey client available for log streaming")
-	}
 
 	// Initialize executor
 	exec, err := executor.NewLocalExecutor(appCfg)
@@ -143,28 +132,9 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	slog.Info("Local executor initialized")
 
-	// Initialize components based on run mode
-	var w *worker.Worker
-	var srv *http.Server
-	var workerCancel context.CancelFunc
-
-	mode := cfg.Mode
-	if mode == "" {
-		mode = "both"
-	}
-
-	runServer := mode == "server" || mode == "both"
-	runWorker := mode == "worker" || mode == "both"
-
-	if !runServer && !runWorker {
-		return fmt.Errorf("invalid mode %q: valid modes are server, worker, both", mode)
-	}
-
-	slog.Info("Starting Nebi", "mode", mode)
 	limitCfg := appCfg.Limits
 
-	// Initialize service for the worker (encryption key derived later by router,
-	// but we derive one here for the standalone-worker case).
+	// Initialize the services used by the in-process worker.
 	workerEncKey, err := nebicrypto.DeriveKey(appCfg.Auth.JWTSecret)
 	if err != nil {
 		return fmt.Errorf("failed to derive encryption key: %w", err)
@@ -172,87 +142,67 @@ func Run(ctx context.Context, cfg Config) error {
 	workerSvc := service.New(database, jobQueue, exec, appCfg.IsLocalMode(), workerEncKey, rbac.NewDefaultProvider(), limitCfg)
 	workerJobSvc := service.NewJobService(database, appCfg.IsLocalMode())
 
-	// Initialize and start worker if needed
-	if runWorker {
-		w = worker.New(jobQueue, exec, workerSvc, workerJobSvc, slog.Default(), valkeyClient, limitCfg)
-		workerCtx, cancel := context.WithCancel(ctx)
-		workerCancel = cancel
+	// Run jobs in the background while the HTTP API remains responsive.
+	w := worker.New(jobQueue, exec, workerSvc, workerJobSvc, slog.Default(), limitCfg, appCfg.Worker.MaxParallelJobs)
+	workerCtx, workerCancel := context.WithCancel(ctx)
+	defer workerCancel()
+	go func() {
+		if err := w.Start(workerCtx); err != nil && err != context.Canceled {
+			slog.Error("Worker failed", "error", err)
+		}
+	}()
 
-		go func() {
-			if err := w.Start(workerCtx); err != nil && err != context.Canceled {
-				slog.Error("Worker failed", "error", err)
-			}
-		}()
-		slog.Info("Worker started")
+	router := api.NewRouter(appCfg, database, jobQueue, exec, w.GetBroker(), slog.Default())
+	if !appCfg.IsLocalMode() {
+		auth.StartAuthReconciliationMonitor(ctx, database, rbac.NewDefaultProvider(), slog.Default())
 	}
 
-	// Initialize and start API server if needed
-	if runServer {
-		var broker *logstream.LogBroker
-		if w != nil {
-			broker = w.GetBroker()
+	var handler http.Handler = router
+	if appCfg.IsLocalMode() {
+		// Local mode is a single-user, on-device setup: scope the
+		// listener to clients on the local machine.
+		allowAnyHost := !netguard.IsLoopbackHost(appCfg.Server.Host)
+		if allowAnyHost {
+			slog.Warn("Local mode is bound to a non-loopback interface; it is intended for local use only",
+				"host", appCfg.Server.Host)
 		}
-
-		var valkeyClientInterface interface{} = valkeyClient
-		router := api.NewRouter(appCfg, database, jobQueue, exec, broker, valkeyClientInterface, slog.Default())
-		if !appCfg.IsLocalMode() {
-			auth.StartAuthReconciliationMonitor(ctx, database, rbac.NewDefaultProvider(), slog.Default())
-		}
-
-		var handler http.Handler = router
-		if appCfg.IsLocalMode() {
-			// Local mode is a single-user, on-device setup: scope the
-			// listener to clients on the local machine.
-			allowAnyHost := !netguard.IsLoopbackHost(appCfg.Server.Host)
-			if allowAnyHost {
-				slog.Warn("Local mode is bound to a non-loopback interface; it is intended for local use only",
-					"host", appCfg.Server.Host)
-			}
-			handler = netguard.Middleware(router, allowAnyHost, appCfg.Server.AllowedOriginsList())
-		}
-
-		addr := listenAddress(appCfg.Server.Host, appCfg.Server.Port)
-		srv = &http.Server{
-			Addr:              addr,
-			Handler:           handler,
-			ReadHeaderTimeout: config.HTTPReadHeaderTimeout,
-			ReadTimeout:       appCfg.Server.ReadTimeout(),
-			WriteTimeout:      limitCfg.HTTPWriteTimeout(),
-			IdleTimeout:       config.HTTPIdleTimeout,
-			MaxHeaderBytes:    config.HTTPMaxHeaderBytes,
-		}
-
-		go func() {
-			slog.Info("Server listening", "address", addr)
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				slog.Error("Server failed", "error", err)
-			}
-		}()
-
-		url := serverURL(appCfg.Server.Host, appCfg.Server.Port, appCfg.Server.BasePath)
-		fmt.Printf("\n  \033[32m✔\033[0m Server running at \033[1;36m%s\033[0m\n\n", url)
+		handler = netguard.Middleware(router, allowAnyHost, appCfg.Server.AllowedOriginsList())
 	}
+
+	addr := listenAddress(appCfg.Server.Host, appCfg.Server.Port)
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: config.HTTPReadHeaderTimeout,
+		ReadTimeout:       appCfg.Server.ReadTimeout(),
+		WriteTimeout:      limitCfg.HTTPWriteTimeout(),
+		IdleTimeout:       config.HTTPIdleTimeout,
+		MaxHeaderBytes:    config.HTTPMaxHeaderBytes,
+	}
+
+	go func() {
+		slog.Info("Server listening", "address", addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("Server failed", "error", err)
+		}
+	}()
+
+	url := serverURL(appCfg.Server.Host, appCfg.Server.Port, appCfg.Server.BasePath)
+	fmt.Printf("\n  \033[32m✔\033[0m Server running at \033[1;36m%s\033[0m\n\n", url)
 
 	// Wait for context cancellation
 	<-ctx.Done()
 	slog.Info("Shutting down...")
 
-	// Stop worker if running
-	if workerCancel != nil {
-		workerCancel()
-		slog.Info("Worker stopped")
-	}
+	workerCancel()
+	slog.Info("Worker stopped")
 
-	// Shutdown server if running
-	if srv != nil {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("server forced to shutdown: %w", err)
-		}
-		slog.Info("Server stopped")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("server forced to shutdown: %w", err)
 	}
+	slog.Info("Server stopped")
 
 	slog.Info("Nebi exited")
 	return nil
@@ -318,20 +268,5 @@ func RunWithSignalHandling(cfg Config) error {
 		return <-errCh
 	case err := <-errCh:
 		return err
-	}
-}
-
-// createQueue creates a queue based on configuration.
-func createQueue(cfg *config.Config, database *gorm.DB) (queue.Queue, error) {
-	switch cfg.Queue.Type {
-	case "memory":
-		return queue.NewMemoryQueue(100), nil
-	case "valkey":
-		if cfg.Queue.ValkeyAddr == "" {
-			return nil, fmt.Errorf("valkey address is required when queue type is valkey")
-		}
-		return queue.NewValkeyQueue(cfg.Queue.ValkeyAddr, database)
-	default:
-		return nil, fmt.Errorf("unsupported queue type: %s (supported: memory, valkey)", cfg.Queue.Type)
 	}
 }

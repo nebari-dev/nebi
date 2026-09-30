@@ -23,11 +23,11 @@ type stubRBACProvider struct {
 	userGroups    []uuid.UUID
 }
 
-func (p *stubRBACProvider) CanReadWorkspace(_, _ uuid.UUID) (bool, error) {
+func (p *stubRBACProvider) CanReadProject(_, _ uuid.UUID) (bool, error) {
 	return true, nil
 }
 
-func (p *stubRBACProvider) CanWriteWorkspace(_, _ uuid.UUID) (bool, error) {
+func (p *stubRBACProvider) CanWriteProject(_, _ uuid.UUID) (bool, error) {
 	return true, nil
 }
 
@@ -43,11 +43,11 @@ func (p *stubRBACProvider) IsAdmin(uuid.UUID) (bool, error) {
 	return p.isAdmin, p.isAdminErr
 }
 
-func (p *stubRBACProvider) GrantWorkspaceAccess(_, _ uuid.UUID, _ string) error {
+func (p *stubRBACProvider) GrantProjectAccess(_, _ uuid.UUID, _ string) error {
 	return nil
 }
 
-func (p *stubRBACProvider) RevokeWorkspaceAccess(_, _ uuid.UUID) error {
+func (p *stubRBACProvider) RevokeProjectAccess(_, _ uuid.UUID) error {
 	return nil
 }
 
@@ -79,11 +79,11 @@ func (p *stubRBACProvider) GetUserGroups(uuid.UUID) ([]uuid.UUID, error) {
 	return p.userGroups, p.getUserGroupsErr
 }
 
-func (p *stubRBACProvider) GrantGroupWorkspaceAccess(_, _ uuid.UUID, _ string) error {
+func (p *stubRBACProvider) GrantGroupProjectAccess(_, _ uuid.UUID, _ string) error {
 	return nil
 }
 
-func (p *stubRBACProvider) RevokeGroupWorkspaceAccess(_, _ uuid.UUID) error {
+func (p *stubRBACProvider) RevokeGroupProjectAccess(_, _ uuid.UUID) error {
 	return nil
 }
 

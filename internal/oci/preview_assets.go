@@ -11,16 +11,16 @@ import (
 	"github.com/nebari-dev/nebi/internal/contenthash"
 )
 
-// PreviewAssetRefs walks a workspace directory with the same filters
-// Publish applies, and returns each asset (paths relative to workspaceDir,
+// PreviewAssetRefs walks a project directory with the same filters
+// Publish applies, and returns each asset (paths relative to projectDir,
 // forward-slash) paired with its SHA-256 content digest. pixi.toml and
 // pixi.lock are stripped — callers fold those in through
 // contenthash.HashBundle's first two arguments. The digest is the SHA-256
 // of the file bytes, not an OCI blob digest, but both the CLI-local
 // publish path and the server publish-defaults derive the hash the same
 // way from the same bytes, so the resulting tag is stable across paths.
-func PreviewAssetRefs(workspaceDir string) ([]contenthash.AssetRef, error) {
-	assets, err := Preview(context.Background(), workspaceDir)
+func PreviewAssetRefs(projectDir string) ([]contenthash.AssetRef, error) {
+	assets, err := Preview(context.Background(), projectDir)
 	if err != nil {
 		return nil, err
 	}

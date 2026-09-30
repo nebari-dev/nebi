@@ -45,10 +45,10 @@ export const Login = ({ isDarkMode }: LoginProps) => {
   const isLocalMode = useModeStore((s) => s.isLocalMode());
   const navigate = useNavigate();
 
-  // In local mode, redirect straight to workspaces
+  // In local mode, redirect straight to projects
   useEffect(() => {
     if (isLocalMode) {
-      navigate('/workspaces');
+      navigate('/projects');
     }
   }, [isLocalMode, navigate]);
 
@@ -149,7 +149,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
             />
           </div>
           <p className="text-center text-muted-foreground text-base">
-            Workspace Management System
+            Project Management System
           </p>
         </div>
         <div className="px-8 pb-8">

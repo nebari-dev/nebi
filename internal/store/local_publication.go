@@ -7,17 +7,17 @@ import (
 	"gorm.io/gorm"
 )
 
-// LocalPublication records a workspace publication to an OCI registry from the CLI.
+// LocalPublication records a project publication to an OCI registry from the CLI.
 type LocalPublication struct {
-	ID          uuid.UUID      `gorm:"type:text;primary_key" json:"id"`
-	WorkspaceID uuid.UUID      `gorm:"type:text;index;not null" json:"workspace_id"`
-	RegistryID  uuid.UUID      `gorm:"type:text;index;not null" json:"registry_id"`
-	Repository  string         `gorm:"not null" json:"repository"`
-	Tag         string         `gorm:"not null" json:"tag"`
-	Digest      string         `json:"digest"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	ID         uuid.UUID      `gorm:"type:text;primary_key" json:"id"`
+	ProjectID  uuid.UUID      `gorm:"type:text;index;not null" json:"project_id"`
+	RegistryID uuid.UUID      `gorm:"type:text;index;not null" json:"registry_id"`
+	Repository string         `gorm:"not null" json:"repository"`
+	Tag        string         `gorm:"not null" json:"tag"`
+	Digest     string         `json:"digest"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 // TableName ensures GORM uses the "local_publications" table.

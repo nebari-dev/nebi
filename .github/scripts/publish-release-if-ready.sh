@@ -28,6 +28,7 @@ marker_assets=(
   nebi-desktop-macos-universal.zip.release.json
   nebi-desktop-windows-amd64.exe.release.json
   nebi-container-image.json
+  nebi-web-container-image.json
 )
 
 release_assets=(
@@ -57,7 +58,7 @@ workflow_file_for_marker() {
     nebi-desktop-*.release.json)
       printf '%s\n' "desktop.yml"
       ;;
-    nebi-container-image.json)
+    nebi-container-image.json|nebi-web-container-image.json)
       printf '%s\n' "docker.yml"
       ;;
     *)

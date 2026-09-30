@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -27,17 +29,17 @@ import (
 
 // Worker tests stub the service's pixi list dependency so job flows stay on
 // their happy path (empty package lists) without a real pixi binary. Keeping
-// the create flow on its happy path means tests reach db.Save(ws) via
-// UpdateWorkspaceSize regardless of how the worker's error handling around
-// SyncPackagesFromWorkspace / CreateVersionSnapshot is refactored later.
+// the create flow on its happy path means tests reach db.Save(project) via
+// UpdateProjectSize regardless of how the worker's error handling around
+// SyncPackagesFromProject / CreateVersionSnapshot is refactored later.
 func init() {
 	service.SetPixiListPackagesForTests(func(context.Context, pixi.ListOptions) ([]pixi.Package, error) {
 		return nil, nil
 	})
 }
 
-// fakeExecutor is a minimal Executor stub for worker tests. CreateWorkspace
-// creates the workspace directory and writes empty manifest/lock files so
+// fakeExecutor is a minimal Executor stub for worker tests. CreateProject
+// creates the project directory and writes empty manifest/lock files so
 // CreateVersionSnapshot reads them successfully; the rest are no-ops.
 type fakeExecutor struct {
 	rootDir                           string
@@ -48,6 +50,7 @@ type fakeExecutor struct {
 	createManifest                    string
 	createLock                        string
 	installLog                        string
+	installHook                       func(context.Context) error
 	installLock                       string
 	installCalls                      int
 	uninstallCalls                    int
@@ -56,8 +59,8 @@ type fakeExecutor struct {
 	cleanupJobTypes                   []models.JobType
 }
 
-func (e *fakeExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspace, w io.Writer, opts executor.CreateWorkspaceOptions) error {
-	p := e.GetWorkspacePath(ws)
+func (e *fakeExecutor) CreateProject(ctx context.Context, project *models.Project, w io.Writer, opts executor.CreateProjectOptions) error {
+	p := e.GetProjectPath(project)
 	if err := os.MkdirAll(p, 0o755); err != nil {
 		return err
 	}
@@ -70,13 +73,13 @@ func (e *fakeExecutor) CreateWorkspace(ctx context.Context, ws *models.Workspace
 	}
 	return nil
 }
-func (e *fakeExecutor) InstallPackages(ctx context.Context, ws *models.Workspace, _ []string, w io.Writer) error {
+func (e *fakeExecutor) InstallPackages(ctx context.Context, project *models.Project, _ []string, w io.Writer) error {
 	if e.blockInstall {
 		<-ctx.Done()
 		return ctx.Err()
 	}
 	if e.installLock != "" {
-		if err := os.WriteFile(filepath.Join(e.GetWorkspacePath(ws), "pixi.lock"), []byte(e.installLock), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(e.GetProjectPath(project), "pixi.lock"), []byte(e.installLock), 0o644); err != nil {
 			return err
 		}
 	}
@@ -85,22 +88,25 @@ func (e *fakeExecutor) InstallPackages(ctx context.Context, ws *models.Workspace
 			return err
 		}
 	}
+	if e.installHook != nil {
+		return e.installHook(ctx)
+	}
 	return nil
 }
-func (e *fakeExecutor) RemovePackages(context.Context, *models.Workspace, []string, io.Writer) error {
+func (e *fakeExecutor) RemovePackages(context.Context, *models.Project, []string, io.Writer) error {
 	return nil
 }
-func (e *fakeExecutor) DeleteWorkspace(context.Context, *models.Workspace, io.Writer) error {
+func (e *fakeExecutor) DeleteProject(context.Context, *models.Project, io.Writer) error {
 	return nil
 }
-func (e *fakeExecutor) SolveEnvironment(context.Context, *models.Workspace, io.Writer) error {
+func (e *fakeExecutor) SolveEnvironment(context.Context, *models.Project, io.Writer) error {
 	e.solveCalls++
 	return e.solveErr
 }
 
 // InstallEnvironment/UninstallEnvironment/IsEnvInstalled mimic the real
-// executor's disk contract: installed means <ws>/.pixi/envs exists.
-func (e *fakeExecutor) InstallEnvironment(ctx context.Context, ws *models.Workspace, w io.Writer) error {
+// executor's disk contract: installed means <project>/.pixi/envs exists.
+func (e *fakeExecutor) InstallEnvironment(ctx context.Context, project *models.Project, w io.Writer) error {
 	e.installCalls++
 	if e.installErr != nil {
 		return e.installErr
@@ -108,22 +114,22 @@ func (e *fakeExecutor) InstallEnvironment(ctx context.Context, ws *models.Worksp
 	if e.succeedEnvInstallAfterContextDone {
 		<-ctx.Done()
 	}
-	return os.MkdirAll(filepath.Join(e.GetWorkspacePath(ws), ".pixi", "envs"), 0o755)
+	return os.MkdirAll(filepath.Join(e.GetProjectPath(project), ".pixi", "envs"), 0o755)
 }
-func (e *fakeExecutor) UninstallEnvironment(ctx context.Context, ws *models.Workspace, w io.Writer) error {
+func (e *fakeExecutor) UninstallEnvironment(ctx context.Context, project *models.Project, w io.Writer) error {
 	e.uninstallCalls++
-	return os.RemoveAll(filepath.Join(e.GetWorkspacePath(ws), ".pixi", "envs"))
+	return os.RemoveAll(filepath.Join(e.GetProjectPath(project), ".pixi", "envs"))
 }
-func (e *fakeExecutor) IsEnvInstalled(ws *models.Workspace) bool {
-	info, err := os.Stat(filepath.Join(e.GetWorkspacePath(ws), ".pixi", "envs"))
+func (e *fakeExecutor) IsEnvInstalled(project *models.Project) bool {
+	info, err := os.Stat(filepath.Join(e.GetProjectPath(project), ".pixi", "envs"))
 	return err == nil && info.IsDir()
 }
-func (e *fakeExecutor) CleanupJobArtifacts(ctx context.Context, ws *models.Workspace, jobType models.JobType, w io.Writer) error {
+func (e *fakeExecutor) CleanupJobArtifacts(ctx context.Context, project *models.Project, jobType models.JobType, w io.Writer) error {
 	e.cleanupCalls++
 	e.cleanupJobTypes = append(e.cleanupJobTypes, jobType)
-	paths := []string{filepath.Join(e.GetWorkspacePath(ws), ".nebi", "pixi-cache")}
+	paths := []string{filepath.Join(e.GetProjectPath(project), ".nebi", "pixi-cache")}
 	if jobType == models.JobTypeEnvInstall {
-		paths = append(paths, filepath.Join(e.GetWorkspacePath(ws), ".pixi", "envs"))
+		paths = append(paths, filepath.Join(e.GetProjectPath(project), ".pixi", "envs"))
 	}
 	for _, path := range paths {
 		if err := os.RemoveAll(path); err != nil {
@@ -132,23 +138,23 @@ func (e *fakeExecutor) CleanupJobArtifacts(ctx context.Context, ws *models.Works
 	}
 	return nil
 }
-func (e *fakeExecutor) GetWorkspacePath(ws *models.Workspace) string {
-	return filepath.Join(e.rootDir, ws.Name+"-"+ws.ID.String())
+func (e *fakeExecutor) GetProjectPath(project *models.Project) string {
+	return filepath.Join(e.rootDir, project.Name+"-"+project.ID.String())
 }
 func (e *fakeExecutor) StagingRoot() string {
 	return filepath.Join(e.rootDir, ".staging")
 }
 
-// TestExecuteJob_CreatePersistsWorkspacePath is a regression test for #294.
+// TestExecuteJob_CreatePersistsProjectPath is a regression test for #294.
 //
-// In the create flow, the worker calls SetWorkspacePath (a targeted UPDATE on
-// the path column) and then UpdateWorkspaceSize, which uses db.Save(ws) — a
-// full-row write. The ws struct was loaded at job start with Path="", so
+// In the create flow, the worker calls SetProjectPath (a targeted UPDATE on
+// the path column) and then UpdateProjectSize, which uses db.Save(project) — a
+// full-row write. The project struct was loaded at job start with Path="", so
 // without an in-memory sync the Save call clobbers the path back to empty.
-// The fix sets ws.Path = resolvedPath after SetWorkspacePath; this test
-// drives executeJob end-to-end with a stale workspace and asserts the path
+// The fix sets project.Path = resolvedPath after SetProjectPath; this test
+// drives executeJob end-to-end with a stale project and asserts the path
 // is non-empty in the DB after the create flow finishes.
-func TestExecuteJob_CreatePersistsWorkspacePath(t *testing.T) {
+func TestExecuteJob_CreatePersistsProjectPath(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
 
 	user := models.User{Username: "alice", Email: "alice@test.com"}
@@ -156,42 +162,42 @@ func TestExecuteJob_CreatePersistsWorkspacePath(t *testing.T) {
 		t.Fatalf("create user: %v", err)
 	}
 
-	ws := &models.Workspace{
+	project := &models.Project{
 		Name:    "regr-294",
 		OwnerID: user.ID,
-		Status:  models.WsStatusPending,
+		Status:  models.ProjectStatusPending,
 	}
-	if err := db.Create(ws).Error; err != nil {
+	if err := db.Create(project).Error; err != nil {
 		t.Fatalf("create ws: %v", err)
 	}
 
 	job := &models.Job{
-		WorkspaceID: ws.ID,
-		Type:        models.JobTypeCreate,
-		Status:      models.JobStatusPending,
-		Metadata:    map[string]interface{}{},
+		ProjectID: project.ID,
+		Type:      models.JobTypeCreate,
+		Status:    models.JobStatusPending,
+		Metadata:  map[string]interface{}{},
 	}
 	if err := db.Create(job).Error; err != nil {
 		t.Fatalf("create job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
 
-	want := exec.GetWorkspacePath(ws)
-	var stored models.Workspace
-	if err := db.First(&stored, "id = ?", ws.ID).Error; err != nil {
+	want := exec.GetProjectPath(project)
+	var stored models.Project
+	if err := db.First(&stored, "id = ?", project.ID).Error; err != nil {
 		t.Fatalf("reload: %v", err)
 	}
 	if stored.Path != want {
-		t.Errorf("workspace path was not persisted: want %q, got %q", want, stored.Path)
+		t.Errorf("project path was not persisted: want %q, got %q", want, stored.Path)
 	}
 }
 
-func TestExecuteJob_UpdateSetsWorkspaceReady(t *testing.T) {
+func TestExecuteJob_UpdateSetsProjectReady(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
 
 	user := models.User{Username: "alice", Email: "alice@test.com"}
@@ -199,41 +205,41 @@ func TestExecuteJob_UpdateSetsWorkspaceReady(t *testing.T) {
 		t.Fatalf("create user: %v", err)
 	}
 
-	ws := &models.Workspace{
+	project := &models.Project{
 		Name:    "update-ready",
 		OwnerID: user.ID,
-		Status:  models.WsStatusPending,
+		Status:  models.ProjectStatusPending,
 	}
-	if err := db.Create(ws).Error; err != nil {
+	if err := db.Create(project).Error; err != nil {
 		t.Fatalf("create ws: %v", err)
 	}
 
 	job := &models.Job{
-		WorkspaceID: ws.ID,
-		Type:        models.JobTypeUpdate,
-		Status:      models.JobStatusPending,
-		Metadata:    map[string]interface{}{},
+		ProjectID: project.ID,
+		Type:      models.JobTypeUpdate,
+		Status:    models.JobStatusPending,
+		Metadata:  map[string]interface{}{},
 	}
 	if err := db.Create(job).Error; err != nil {
 		t.Fatalf("create job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
 
-	var updated models.Workspace
-	if err := db.First(&updated, "id = ?", ws.ID).Error; err != nil {
+	var updated models.Project
+	if err := db.First(&updated, "id = ?", project.ID).Error; err != nil {
 		t.Fatalf("reload: %v", err)
 	}
-	if updated.Status != models.WsStatusReady {
-		t.Errorf("workspace status not updated to ready: got %q", updated.Status)
+	if updated.Status != models.ProjectStatusReady {
+		t.Errorf("project status not updated to ready: got %q", updated.Status)
 	}
 }
 
-func TestExecuteJob_UpdateSetsWorkspaceFailedOnSolveError(t *testing.T) {
+func TestExecuteJob_UpdateSetsProjectFailedOnSolveError(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
 	exec.solveErr = errors.New("solve failed")
 
@@ -242,37 +248,125 @@ func TestExecuteJob_UpdateSetsWorkspaceFailedOnSolveError(t *testing.T) {
 		t.Fatalf("create user: %v", err)
 	}
 
-	ws := &models.Workspace{
+	project := &models.Project{
 		Name:    "update-failed",
 		OwnerID: user.ID,
-		Status:  models.WsStatusReady,
+		Status:  models.ProjectStatusReady,
 	}
-	if err := db.Create(ws).Error; err != nil {
+	if err := db.Create(project).Error; err != nil {
 		t.Fatalf("create ws: %v", err)
 	}
 
 	job := &models.Job{
-		WorkspaceID: ws.ID,
-		Type:        models.JobTypeUpdate,
-		Status:      models.JobStatusPending,
-		Metadata:    map[string]interface{}{},
+		ProjectID: project.ID,
+		Type:      models.JobTypeUpdate,
+		Status:    models.JobStatusPending,
+		Metadata:  map[string]interface{}{},
 	}
 	if err := db.Create(job).Error; err != nil {
 		t.Fatalf("create job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err == nil {
 		t.Fatal("expected executeJob to fail, got nil")
 	}
 
-	var updated models.Workspace
-	if err := db.First(&updated, "id = ?", ws.ID).Error; err != nil {
+	var updated models.Project
+	if err := db.First(&updated, "id = ?", project.ID).Error; err != nil {
 		t.Fatalf("reload: %v", err)
 	}
-	if updated.Status != models.WsStatusFailed {
-		t.Errorf("workspace status not updated to failed: got %q", updated.Status)
+	if updated.Status != models.ProjectStatusFailed {
+		t.Errorf("project status not updated to failed: got %q", updated.Status)
+	}
+}
+
+func TestStartHonorsConcurrencyWithLiveLogs(t *testing.T) {
+	for _, maxParallelJobs := range []int{1, 2, 3} {
+		t.Run(fmt.Sprintf("parallel_jobs=%d", maxParallelJobs), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				db, svc, jobSvc, exec := setupWorkerTest(t)
+				sqlDB, err := db.DB()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer sqlDB.Close()
+				// Serialize SQLite writes so its busy-handler sleeps do not make
+				// synctest.Wait return before a worker reaches the executor.
+				sqlDB.SetMaxOpenConns(1)
+				exec.installLog = "Installing packages\n"
+				started := make(chan struct{}, maxParallelJobs+1)
+				release := make(chan struct{})
+				exec.installHook = func(ctx context.Context) error {
+					started <- struct{}{}
+					select {
+					case <-release:
+						return nil
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				}
+				q := queue.NewMemoryQueue(10)
+				defer q.Close()
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				var jobs []*models.Job
+				for i := 0; i <= maxParallelJobs; i++ {
+					_, job := newTestProject(t, db, exec, fmt.Sprintf("install-%d", i), models.JobTypeInstall,
+						map[string]interface{}{"packages": []string{"numpy"}})
+					jobs = append(jobs, job)
+					if err := q.Enqueue(ctx, job); err != nil {
+						t.Fatal(err)
+					}
+				}
+				w := New(q, exec, svc, jobSvc, slog.Default(), limits.Defaults(), maxParallelJobs)
+				logs := w.GetBroker().Subscribe(jobs[0].ID)
+				done := make(chan error, 1)
+				go func() { done <- w.Start(ctx) }()
+
+				// One extra job must remain queued while all workers are busy.
+				synctest.Wait()
+				if got := len(started); got != maxParallelJobs {
+					t.Fatalf("started %d blocked jobs, want %d", got, maxParallelJobs)
+				}
+				var liveLogs strings.Builder
+				for len(logs) > 0 {
+					liveLogs.WriteString(<-logs)
+				}
+				if !strings.Contains(liveLogs.String(), exec.installLog) {
+					t.Fatalf("missing live output while job is running: %q", liveLogs.String())
+				}
+
+				release <- struct{}{}
+				synctest.Wait()
+				if got := len(started); got != maxParallelJobs+1 {
+					t.Fatalf("started %d jobs after releasing a worker, want %d", got, maxParallelJobs+1)
+				}
+				close(release)
+				synctest.Wait()
+				var finalLogs strings.Builder
+				for line := range logs {
+					finalLogs.WriteString(line)
+				}
+				if !strings.Contains(finalLogs.String(), "[COMPLETED]") {
+					t.Fatalf("missing completion message: %q", finalLogs.String())
+				}
+				cancel()
+				if err := <-done; !errors.Is(err, context.Canceled) {
+					t.Fatalf("worker shutdown: %v", err)
+				}
+				for _, job := range jobs {
+					var stored models.Job
+					if err := db.First(&stored, "id = ?", job.ID).Error; err != nil {
+						t.Fatal(err)
+					}
+					if stored.Status != models.JobStatusCompleted || !strings.Contains(stored.Logs, exec.installLog) {
+						t.Fatalf("job %s: status=%s logs=%q", stored.ID, stored.Status, stored.Logs)
+					}
+				}
+			})
+		})
 	}
 }
 
@@ -280,10 +374,10 @@ func TestProcessJob_FailsJobAfterDeadline(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
 	exec.blockInstall = true
 
-	_, job := newTestWorkspace(t, db, exec, "timeout-install", models.JobTypeInstall,
+	_, job := newTestProject(t, db, exec, "timeout-install", models.JobTypeInstall,
 		map[string]interface{}{"packages": []string{"numpy"}})
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	w.jobTimeout = 10 * time.Millisecond
 	w.processJob(context.Background(), job)
 
@@ -315,9 +409,9 @@ func TestProcessJob_CompletesWhenExecutionSucceedsAtDeadlineBoundary(t *testing.
 	db, svc, jobSvc, exec := setupWorkerTest(t)
 	exec.succeedEnvInstallAfterContextDone = true
 
-	_, job := newTestWorkspace(t, db, exec, "deadline-success", models.JobTypeEnvInstall, nil)
+	_, job := newTestProject(t, db, exec, "deadline-success", models.JobTypeEnvInstall, nil)
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	w.jobTimeout = 10 * time.Millisecond
 	w.processJob(context.Background(), job)
 
@@ -348,9 +442,9 @@ func TestProcessJob_FailsCreateWhenSnapshotExceedsResourceLimit(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTestWithLimits(t, limitCfg)
 	exec.createLock = strings.Repeat("x", 9)
 
-	_, job := newTestWorkspace(t, db, exec, "snapshot-lock-limit", models.JobTypeCreate, nil)
+	_, job := newTestProject(t, db, exec, "snapshot-lock-limit", models.JobTypeCreate, nil)
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limitCfg)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limitCfg, 1)
 	w.processJob(context.Background(), job)
 
 	var stored models.Job
@@ -367,12 +461,12 @@ func TestProcessJob_FailsCreateWhenSnapshotExceedsResourceLimit(t *testing.T) {
 		t.Fatalf("expected cleanup after snapshot limit failure, got %d", exec.cleanupCalls)
 	}
 
-	var ws models.Workspace
-	if err := db.First(&ws, "id = ?", job.WorkspaceID).Error; err != nil {
-		t.Fatalf("reload workspace: %v", err)
+	var project models.Project
+	if err := db.First(&project, "id = ?", job.ProjectID).Error; err != nil {
+		t.Fatalf("reload project: %v", err)
 	}
-	if ws.Status != models.WsStatusFailed {
-		t.Fatalf("expected workspace status failed, got %q", ws.Status)
+	if project.Status != models.ProjectStatusFailed {
+		t.Fatalf("expected project status failed, got %q", project.Status)
 	}
 }
 
@@ -382,10 +476,10 @@ func TestProcessJob_DoesNotSavePackagesWhenInstallSnapshotExceedsLimit(t *testin
 	db, svc, jobSvc, exec := setupWorkerTestWithLimits(t, limitCfg)
 	exec.installLock = strings.Repeat("x", 9)
 
-	ws, job := newTestWorkspace(t, db, exec, "install-snapshot-limit", models.JobTypeInstall,
+	project, job := newTestProject(t, db, exec, "install-snapshot-limit", models.JobTypeInstall,
 		map[string]interface{}{"packages": []string{"numpy"}})
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limitCfg)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limitCfg, 1)
 	w.processJob(context.Background(), job)
 
 	var stored models.Job
@@ -397,7 +491,7 @@ func TestProcessJob_DoesNotSavePackagesWhenInstallSnapshotExceedsLimit(t *testin
 	}
 
 	var packageCount int64
-	if err := db.Model(&models.Package{}).Where("workspace_id = ?", ws.ID).Count(&packageCount).Error; err != nil {
+	if err := db.Model(&models.Package{}).Where("project_id = ?", project.ID).Count(&packageCount).Error; err != nil {
 		t.Fatalf("count packages: %v", err)
 	}
 	if packageCount != 0 {
@@ -407,13 +501,13 @@ func TestProcessJob_DoesNotSavePackagesWhenInstallSnapshotExceedsLimit(t *testin
 
 func TestProcessJob_FailsCreateAndCleansUpWhenPackageListHitsResourceLimit(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
-	ws, job := newTestWorkspace(t, db, exec, "list-resource-limit", models.JobTypeCreate, nil)
+	project, job := newTestProject(t, db, exec, "list-resource-limit", models.JobTypeCreate, nil)
 	restore := service.SetPixiListPackagesForTests(func(context.Context, pixi.ListOptions) ([]pixi.Package, error) {
 		return nil, process.NewResourceLimitError(errors.New("pixi list failed: exit status 125"))
 	})
 	t.Cleanup(restore)
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	w.processJob(context.Background(), job)
 
 	var stored models.Job
@@ -431,7 +525,7 @@ func TestProcessJob_FailsCreateAndCleansUpWhenPackageListHitsResourceLimit(t *te
 	}
 
 	var versions int64
-	if err := db.Model(&models.WorkspaceVersion{}).Where("workspace_id = ?", ws.ID).Count(&versions).Error; err != nil {
+	if err := db.Model(&models.ProjectVersion{}).Where("project_id = ?", project.ID).Count(&versions).Error; err != nil {
 		t.Fatalf("count versions: %v", err)
 	}
 	if versions != 0 {
@@ -445,10 +539,10 @@ func TestProcessJob_CapsPersistedLogs(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTestWithLimits(t, limitCfg)
 	exec.installLog = strings.Repeat("x", 512)
 
-	_, job := newTestWorkspace(t, db, exec, "log-limit", models.JobTypeInstall,
+	_, job := newTestProject(t, db, exec, "log-limit", models.JobTypeInstall,
 		map[string]interface{}{"packages": []string{"numpy"}})
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limitCfg)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limitCfg, 1)
 	w.processJob(context.Background(), job)
 
 	var stored models.Job
@@ -491,26 +585,26 @@ func TestCappedLogWriterReservesTailForNebiErrors(t *testing.T) {
 	}
 }
 
-// newTestWorkspace inserts a ready workspace (with backing dir and
+// newTestProject inserts a ready project (with backing dir and
 // manifest/lock files) plus a job of the given type, returning both.
-func newTestWorkspace(t *testing.T, db *gorm.DB, exec *fakeExecutor, name string, jobType models.JobType, metadata map[string]interface{}) (*models.Workspace, *models.Job) {
+func newTestProject(t *testing.T, db *gorm.DB, exec *fakeExecutor, name string, jobType models.JobType, metadata map[string]interface{}) (*models.Project, *models.Job) {
 	t.Helper()
 
-	user := models.User{Username: "alice", Email: "alice@example.com"}
+	user := models.User{Username: name, Email: name + "@example.com"}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create user: %v", err)
 	}
 
-	ws := &models.Workspace{
+	project := &models.Project{
 		Name:    name,
 		OwnerID: user.ID,
-		Status:  models.WsStatusReady,
+		Status:  models.ProjectStatusReady,
 	}
-	if err := db.Create(ws).Error; err != nil {
+	if err := db.Create(project).Error; err != nil {
 		t.Fatalf("create ws: %v", err)
 	}
 
-	p := exec.GetWorkspacePath(ws)
+	p := exec.GetProjectPath(project)
 	if err := os.MkdirAll(p, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -524,15 +618,15 @@ func newTestWorkspace(t *testing.T, db *gorm.DB, exec *fakeExecutor, name string
 		metadata = map[string]interface{}{}
 	}
 	job := &models.Job{
-		WorkspaceID: ws.ID,
-		Type:        jobType,
-		Status:      models.JobStatusPending,
-		Metadata:    metadata,
+		ProjectID: project.ID,
+		Type:      jobType,
+		Status:    models.JobStatusPending,
+		Metadata:  metadata,
 	}
 	if err := db.Create(job).Error; err != nil {
 		t.Fatalf("create job: %v", err)
 	}
-	return ws, job
+	return project, job
 }
 
 // TestExecuteJob_EnvInstallRunsInstall proves the explicit install job
@@ -541,9 +635,9 @@ func TestExecuteJob_EnvInstallRunsInstall(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
 	_ = db
 
-	ws, job := newTestWorkspace(t, db, exec, "env-install", models.JobTypeEnvInstall, nil)
+	project, job := newTestProject(t, db, exec, "env-install", models.JobTypeEnvInstall, nil)
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -551,7 +645,7 @@ func TestExecuteJob_EnvInstallRunsInstall(t *testing.T) {
 	if exec.installCalls != 1 {
 		t.Errorf("expected 1 InstallEnvironment call, got %d", exec.installCalls)
 	}
-	if !exec.IsEnvInstalled(ws) {
+	if !exec.IsEnvInstalled(project) {
 		t.Errorf("expected environment installed on disk after env_install job")
 	}
 }
@@ -561,20 +655,20 @@ func TestExecuteJob_EnvInstallRunsInstall(t *testing.T) {
 func TestExecuteJob_EnvUninstallRemovesEnv(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
 
-	ws, job := newTestWorkspace(t, db, exec, "env-uninstall", models.JobTypeEnvUninstall, nil)
-	if err := os.MkdirAll(filepath.Join(exec.GetWorkspacePath(ws), ".pixi", "envs"), 0o755); err != nil {
+	project, job := newTestProject(t, db, exec, "env-uninstall", models.JobTypeEnvUninstall, nil)
+	if err := os.MkdirAll(filepath.Join(exec.GetProjectPath(project), ".pixi", "envs"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Model(ws).Update("size_bytes", 999).Error; err != nil {
+	if err := db.Model(project).Update("size_bytes", 999).Error; err != nil {
 		t.Fatal(err)
 	}
 	// Leftover files keep a nonzero on-disk size; the job must still
 	// report 0 because size tracks the installed environment.
-	if err := os.WriteFile(filepath.Join(exec.GetWorkspacePath(ws), "pixi.lock"), []byte("version: 6\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(exec.GetProjectPath(project), "pixi.lock"), []byte("version: 6\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -582,12 +676,12 @@ func TestExecuteJob_EnvUninstallRemovesEnv(t *testing.T) {
 	if exec.uninstallCalls != 1 {
 		t.Errorf("expected 1 UninstallEnvironment call, got %d", exec.uninstallCalls)
 	}
-	if exec.IsEnvInstalled(ws) {
+	if exec.IsEnvInstalled(project) {
 		t.Errorf("expected environment removed after env_uninstall job")
 	}
 
-	var stored models.Workspace
-	if err := db.First(&stored, "id = ?", ws.ID).Error; err != nil {
+	var stored models.Project
+	if err := db.First(&stored, "id = ?", project.ID).Error; err != nil {
 		t.Fatalf("reload: %v", err)
 	}
 	if stored.SizeBytes != 0 {
@@ -601,50 +695,50 @@ func TestExecuteJob_EnvUninstallRemovesEnv(t *testing.T) {
 func TestExecuteJob_UpdateAutoInstallsWhenPreviouslyInstalled(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
 
-	ws, job := newTestWorkspace(t, db, exec, "update-autoinstall", models.JobTypeUpdate, nil)
-	if err := os.MkdirAll(filepath.Join(exec.GetWorkspacePath(ws), ".pixi", "envs"), 0o755); err != nil {
+	project, job := newTestProject(t, db, exec, "update-autoinstall", models.JobTypeUpdate, nil)
+	if err := os.MkdirAll(filepath.Join(exec.GetProjectPath(project), ".pixi", "envs"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
 
 	if exec.installCalls != 1 {
-		t.Errorf("expected auto-install after update of installed workspace, got %d install calls", exec.installCalls)
+		t.Errorf("expected auto-install after update of installed project, got %d install calls", exec.installCalls)
 	}
 }
 
 // TestExecuteJob_UpdateSkipsAutoInstallWhenNotInstalled proves updating a
-// never-installed workspace stops at the lockfile.
+// never-installed project stops at the lockfile.
 func TestExecuteJob_UpdateSkipsAutoInstallWhenNotInstalled(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
 
-	_, job := newTestWorkspace(t, db, exec, "update-noinstall", models.JobTypeUpdate, nil)
+	_, job := newTestProject(t, db, exec, "update-noinstall", models.JobTypeUpdate, nil)
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
 
 	if exec.installCalls != 0 {
-		t.Errorf("expected no auto-install for not-installed workspace, got %d install calls", exec.installCalls)
+		t.Errorf("expected no auto-install for not-installed project, got %d install calls", exec.installCalls)
 	}
 }
 
 // TestExecuteJob_UpdateNoAutoInstallInTeamMode proves team-mode servers never
-// install environments, even for workspaces with leftover .pixi/envs.
+// install environments, even for projects with leftover .pixi/envs.
 func TestExecuteJob_UpdateNoAutoInstallInTeamMode(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTestMode(t, false)
 	_ = svc
 
-	ws, job := newTestWorkspace(t, db, exec, "update-team", models.JobTypeUpdate, nil)
-	if err := os.MkdirAll(filepath.Join(exec.GetWorkspacePath(ws), ".pixi", "envs"), 0o755); err != nil {
+	project, job := newTestProject(t, db, exec, "update-team", models.JobTypeUpdate, nil)
+	if err := os.MkdirAll(filepath.Join(exec.GetProjectPath(project), ".pixi", "envs"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
@@ -661,13 +755,13 @@ func TestExecuteJob_PackageOpsAutoInstallWhenPreviouslyInstalled(t *testing.T) {
 		t.Run(string(jobType), func(t *testing.T) {
 			db, svc, jobSvc, exec := setupWorkerTest(t)
 
-			ws, job := newTestWorkspace(t, db, exec, "pkg-"+string(jobType), jobType,
+			project, job := newTestProject(t, db, exec, "pkg-"+string(jobType), jobType,
 				map[string]interface{}{"packages": []string{"numpy"}})
-			if err := os.MkdirAll(filepath.Join(exec.GetWorkspacePath(ws), ".pixi", "envs"), 0o755); err != nil {
+			if err := os.MkdirAll(filepath.Join(exec.GetProjectPath(project), ".pixi", "envs"), 0o755); err != nil {
 				t.Fatal(err)
 			}
 
-			w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+			w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 			if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 				t.Fatalf("executeJob: %v", err)
 			}
@@ -685,17 +779,17 @@ func TestExecuteJob_PackageOpsAutoInstallWhenPreviouslyInstalled(t *testing.T) {
 func TestExecuteJob_RollbackLocksAndAutoInstalls(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
 
-	ws, _ := newTestWorkspace(t, db, exec, "rollback-ws", models.JobTypeCreate, nil)
-	if err := os.MkdirAll(filepath.Join(exec.GetWorkspacePath(ws), ".pixi", "envs"), 0o755); err != nil {
+	project, _ := newTestProject(t, db, exec, "rollback-ws", models.JobTypeCreate, nil)
+	if err := os.MkdirAll(filepath.Join(exec.GetProjectPath(project), ".pixi", "envs"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	version := models.WorkspaceVersion{
-		WorkspaceID:     ws.ID,
+	version := models.ProjectVersion{
+		ProjectID:       project.ID,
 		ManifestContent: "[project]\nname = \"old\"\n",
 		LockFileContent: "version: 6\n",
 		PackageMetadata: "[]",
-		CreatedBy:       ws.OwnerID,
+		CreatedBy:       project.OwnerID,
 		Description:     "old version",
 	}
 	if err := db.Create(&version).Error; err != nil {
@@ -703,21 +797,21 @@ func TestExecuteJob_RollbackLocksAndAutoInstalls(t *testing.T) {
 	}
 
 	job := &models.Job{
-		WorkspaceID: ws.ID,
-		Type:        models.JobTypeRollback,
-		Status:      models.JobStatusPending,
-		Metadata:    map[string]interface{}{"version_id": version.ID.String()},
+		ProjectID: project.ID,
+		Type:      models.JobTypeRollback,
+		Status:    models.JobStatusPending,
+		Metadata:  map[string]interface{}{"version_id": version.ID.String()},
 	}
 	if err := db.Create(job).Error; err != nil {
 		t.Fatalf("create job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: %v", err)
 	}
 
-	restored, err := os.ReadFile(filepath.Join(exec.GetWorkspacePath(ws), "pixi.toml"))
+	restored, err := os.ReadFile(filepath.Join(exec.GetProjectPath(project), "pixi.toml"))
 	if err != nil {
 		t.Fatalf("read restored pixi.toml: %v", err)
 	}
@@ -728,7 +822,7 @@ func TestExecuteJob_RollbackLocksAndAutoInstalls(t *testing.T) {
 		t.Errorf("expected rollback to refresh lock via executor.SolveEnvironment, got %d solve calls", exec.solveCalls)
 	}
 	if exec.installCalls != 1 {
-		t.Errorf("expected auto-install after rollback of installed workspace, got %d install calls", exec.installCalls)
+		t.Errorf("expected auto-install after rollback of installed project, got %d install calls", exec.installCalls)
 	}
 }
 
@@ -737,23 +831,23 @@ func TestProcessJob_RollbackRejectsOversizedLegacyVersionBeforeWrite(t *testing.
 	limitCfg.LockBytes = 8
 	db, svc, jobSvc, exec := setupWorkerTestWithLimits(t, limitCfg)
 
-	ws, _ := newTestWorkspace(t, db, exec, "rollback-limit", models.JobTypeCreate, nil)
-	wsPath := exec.GetWorkspacePath(ws)
+	project, _ := newTestProject(t, db, exec, "rollback-limit", models.JobTypeCreate, nil)
+	projectPath := exec.GetProjectPath(project)
 	originalManifest := "[project]\nname = \"current\"\n"
 	originalLock := "version\n"
-	if err := os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte(originalManifest), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(projectPath, "pixi.toml"), []byte(originalManifest), 0o644); err != nil {
 		t.Fatalf("write current pixi.toml: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(wsPath, "pixi.lock"), []byte(originalLock), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(projectPath, "pixi.lock"), []byte(originalLock), 0o644); err != nil {
 		t.Fatalf("write current pixi.lock: %v", err)
 	}
 
-	version := models.WorkspaceVersion{
-		WorkspaceID:     ws.ID,
+	version := models.ProjectVersion{
+		ProjectID:       project.ID,
 		ManifestContent: "[project]\nname = \"legacy\"\n",
 		LockFileContent: strings.Repeat("x", 9),
 		PackageMetadata: "[]",
-		CreatedBy:       ws.OwnerID,
+		CreatedBy:       project.OwnerID,
 		Description:     "legacy oversized version",
 	}
 	if err := db.Create(&version).Error; err != nil {
@@ -761,16 +855,16 @@ func TestProcessJob_RollbackRejectsOversizedLegacyVersionBeforeWrite(t *testing.
 	}
 
 	job := &models.Job{
-		WorkspaceID: ws.ID,
-		Type:        models.JobTypeRollback,
-		Status:      models.JobStatusPending,
-		Metadata:    map[string]interface{}{"version_id": version.ID.String()},
+		ProjectID: project.ID,
+		Type:      models.JobTypeRollback,
+		Status:    models.JobStatusPending,
+		Metadata:  map[string]interface{}{"version_id": version.ID.String()},
 	}
 	if err := db.Create(job).Error; err != nil {
 		t.Fatalf("create rollback job: %v", err)
 	}
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limitCfg)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limitCfg, 1)
 	w.processJob(context.Background(), job)
 
 	var stored models.Job
@@ -784,11 +878,11 @@ func TestProcessJob_RollbackRejectsOversizedLegacyVersionBeforeWrite(t *testing.
 		t.Fatalf("expected lock limit error, got %q", stored.Error)
 	}
 
-	manifest, err := os.ReadFile(filepath.Join(wsPath, "pixi.toml"))
+	manifest, err := os.ReadFile(filepath.Join(projectPath, "pixi.toml"))
 	if err != nil {
 		t.Fatalf("read pixi.toml: %v", err)
 	}
-	lock, err := os.ReadFile(filepath.Join(wsPath, "pixi.lock"))
+	lock, err := os.ReadFile(filepath.Join(projectPath, "pixi.lock"))
 	if err != nil {
 		t.Fatalf("read pixi.lock: %v", err)
 	}
@@ -804,22 +898,22 @@ func TestProcessJob_RollbackRejectsOversizedLegacyVersionBeforeWrite(t *testing.
 // failure after a lockfile-changing job (the manifest, lockfile, and
 // version snapshot are already committed by this point) does not mark
 // the whole job as failed, and instead surfaces as install_status =
-// install_failed on the workspace.
+// install_failed on the project.
 func TestExecuteJob_UpdateReinstallFailureDoesNotFailJob(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
 
-	ws, job := newTestWorkspace(t, db, exec, "update-reinstall-fail", models.JobTypeUpdate, nil)
-	if err := os.MkdirAll(filepath.Join(exec.GetWorkspacePath(ws), ".pixi", "envs"), 0o755); err != nil {
+	project, job := newTestProject(t, db, exec, "update-reinstall-fail", models.JobTypeUpdate, nil)
+	if err := os.MkdirAll(filepath.Join(exec.GetProjectPath(project), ".pixi", "envs"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	exec.installErr = errors.New("pixi install failed: exit status 1")
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	if err := w.executeJob(context.Background(), job, &bytes.Buffer{}); err != nil {
 		t.Fatalf("executeJob: expected reinstall failure not to fail the job, got %v", err)
 	}
 
-	resp, err := svc.Get(ws.ID.String())
+	resp, err := svc.Get(project.ID.String(), project.OwnerID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -831,13 +925,13 @@ func TestExecuteJob_UpdateReinstallFailureDoesNotFailJob(t *testing.T) {
 func TestProcessJob_UpdateReinstallResourceFailureFailsAndCleansUp(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
 
-	ws, job := newTestWorkspace(t, db, exec, "update-reinstall-resource-fail", models.JobTypeUpdate, nil)
-	if err := os.MkdirAll(filepath.Join(exec.GetWorkspacePath(ws), ".pixi", "envs"), 0o755); err != nil {
+	project, job := newTestProject(t, db, exec, "update-reinstall-resource-fail", models.JobTypeUpdate, nil)
+	if err := os.MkdirAll(filepath.Join(exec.GetProjectPath(project), ".pixi", "envs"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	exec.installErr = process.NewResourceLimitError(errors.New("CPU budget exceeded"))
 
-	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), nil, limits.Defaults())
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 	w.processJob(context.Background(), job)
 
 	var stored models.Job
@@ -856,11 +950,11 @@ func TestProcessJob_UpdateReinstallResourceFailureFailsAndCleansUp(t *testing.T)
 	if len(exec.cleanupJobTypes) != 1 || exec.cleanupJobTypes[0] != models.JobTypeEnvInstall {
 		t.Fatalf("expected env-install cleanup, got %v", exec.cleanupJobTypes)
 	}
-	if _, err := os.Stat(filepath.Join(exec.GetWorkspacePath(ws), ".pixi", "envs")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(exec.GetProjectPath(project), ".pixi", "envs")); !os.IsNotExist(err) {
 		t.Fatalf("expected failed reinstall cleanup to remove .pixi/envs, stat err=%v", err)
 	}
 
-	resp, err := svc.Get(ws.ID.String())
+	resp, err := svc.Get(project.ID.String(), project.OwnerID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -869,22 +963,22 @@ func TestProcessJob_UpdateReinstallResourceFailureFailsAndCleansUp(t *testing.T)
 	}
 }
 
-func setupWorkerTest(t *testing.T) (*gorm.DB, *service.WorkspaceService, *service.JobService, *fakeExecutor) {
+func setupWorkerTest(t *testing.T) (*gorm.DB, *service.ProjectService, *service.JobService, *fakeExecutor) {
 	t.Helper()
 	return setupWorkerTestMode(t, true)
 }
 
-func setupWorkerTestWithLimits(t *testing.T, limitCfg limits.Limits) (*gorm.DB, *service.WorkspaceService, *service.JobService, *fakeExecutor) {
+func setupWorkerTestWithLimits(t *testing.T, limitCfg limits.Limits) (*gorm.DB, *service.ProjectService, *service.JobService, *fakeExecutor) {
 	t.Helper()
 	return setupWorkerTestModeWithLimits(t, true, limitCfg)
 }
 
-func setupWorkerTestMode(t *testing.T, isLocal bool) (*gorm.DB, *service.WorkspaceService, *service.JobService, *fakeExecutor) {
+func setupWorkerTestMode(t *testing.T, isLocal bool) (*gorm.DB, *service.ProjectService, *service.JobService, *fakeExecutor) {
 	t.Helper()
 	return setupWorkerTestModeWithLimits(t, isLocal)
 }
 
-func setupWorkerTestModeWithLimits(t *testing.T, isLocal bool, limitOpts ...limits.Limits) (*gorm.DB, *service.WorkspaceService, *service.JobService, *fakeExecutor) {
+func setupWorkerTestModeWithLimits(t *testing.T, isLocal bool, limitOpts ...limits.Limits) (*gorm.DB, *service.ProjectService, *service.JobService, *fakeExecutor) {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	dsn := dbPath + "?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
@@ -903,11 +997,11 @@ func setupWorkerTestModeWithLimits(t *testing.T, isLocal bool, limitOpts ...limi
 	if err := db.AutoMigrate(
 		&models.User{},
 		&models.Role{},
-		&models.Workspace{},
+		&models.Project{},
 		&models.Job{},
 		&models.Permission{},
-		&models.WorkspaceVersion{},
-		&models.WorkspaceTag{},
+		&models.ProjectVersion{},
+		&models.ProjectTag{},
 		&models.AuditLog{},
 		&models.Package{},
 		&models.OCIRegistry{},

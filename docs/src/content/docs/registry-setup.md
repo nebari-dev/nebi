@@ -4,7 +4,7 @@ sidebar:
   order: 6
 ---
 
-An OCI registry is a server that stores and distributes packages using the [Open Container Initiative](https://opencontainers.org/) standard. Nebi uses OCI registries to publish workspace bundles (`pixi.toml`, `pixi.lock`, and any project files you choose to include as asset layers) so anyone can import them without needing access to your Nebi server.
+An OCI registry is a server that stores and distributes packages using the [Open Container Initiative](https://opencontainers.org/) standard. Nebi uses OCI registries to publish project bundles (`pixi.toml`, `pixi.lock`, and any project files you choose to include as asset layers) so anyone can import them without needing access to your Nebi server.
 
 Nebi works with any OCI-compliant registry, for example:
 
@@ -35,7 +35,7 @@ nebi registry add \
 The `--namespace` is your username or organization on the registry. It becomes part of the URL: `ghcr.io/<namespace>/<repo-name>`. When prompted for a password, paste the token you created.
 
 :::tip
-Public packages on GHCR are free. Anyone can import them with `nebi import ghcr.io/your-username/my-workspace:v1.0`.
+Public packages on GHCR are free. Anyone can import them with `nebi import ghcr.io/your-username/my-project:v1.0`.
 :::
 
 ### Quay.io
@@ -79,7 +79,7 @@ Replace `your-dockerhub-username` with your Docker Hub username or organization.
 
 ## Pull from a Public Registry
 
-You do not need a Nebi server, an account, or registry credentials to consume a public environment. If someone publishes their workspace to a public OCI namespace, you can pull it directly:
+You do not need a Nebi server, an account, or registry credentials to consume a public environment. If someone publishes their project to a public OCI namespace, you can pull it directly:
 
 ```bash
 nebi import <registry>/<namespace>/<repo>:<tag>

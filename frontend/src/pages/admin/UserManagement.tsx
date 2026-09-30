@@ -1,10 +1,7 @@
-import { Loader2, Shield, ShieldOff, Trash2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { CreateUserDialog } from '@/components/admin/CreateUserDialog';
-import { ConfirmDialog } from '@/components/confirm-dialog';
+import { Loader2, Shield } from 'lucide-react';
+import { useMemo } from 'react';
 import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -13,12 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  useDeleteUser,
-  useToggleAdmin,
-  useUserGroups,
-  useUsers,
-} from '@/hooks/useAdmin';
+import { useUserGroups, useUsers } from '@/hooks/useAdmin';
 import { useRemoteUsers, useRemoteView } from '@/hooks/useRemote';
 import { useAuthStore } from '@/store/authStore';
 
@@ -31,17 +23,11 @@ const UserGroupsCell = ({ userId }: UserGroupsCellProps) => {
   if (isLoading)
     return <span className="text-xs text-muted-foreground">…</span>;
   if (!groups || groups.length === 0)
-    return <span className="text-xs text-muted-foreground">—</span>;
+    return <span className="text-xs text-muted-foreground">-</span>;
   return (
     <div className="flex flex-wrap gap-1">
       {groups.map((g) => (
-        <Badge
-          key={g.id}
-          variant="outline"
-          className={
-            g.source === 'oidc' ? 'border-blue-500/40 text-blue-500' : ''
-          }
-        >
+        <Badge key={g.id} variant="outline">
           {g.name}
         </Badge>
       ))}
@@ -49,10 +35,11 @@ const UserGroupsCell = ({ userId }: UserGroupsCellProps) => {
   );
 };
 
+// Users are provisioned by the identity provider on first sign-in, and admin
+// status comes from IdP groups in the server config, so this page is a
+// read-only directory.
 export const UserManagement = () => {
   const { data: users, isLoading: usersLoading } = useUsers();
-  const toggleAdminMutation = useToggleAdmin();
-  const deleteUserMutation = useDeleteUser();
   const currentUser = useAuthStore((state) => state.user);
 
   // View mode support
@@ -80,34 +67,6 @@ export const UserManagement = () => {
   // (see isFirstLoad in useRemote.ts).
   const isLoading = usersLoading || (isRemoteView && remoteFirstLoad);
 
-  const [confirmAction, setConfirmAction] = useState<{
-    type: 'toggle' | 'delete';
-    userId: string;
-    username?: string;
-    currentIsAdmin?: boolean;
-  } | null>(null);
-  const [error, setError] = useState('');
-
-  const handleConfirmAction = async () => {
-    if (!confirmAction) return;
-
-    setError('');
-    try {
-      if (confirmAction.type === 'toggle') {
-        await toggleAdminMutation.mutateAsync(confirmAction.userId);
-      } else if (confirmAction.type === 'delete') {
-        await deleteUserMutation.mutateAsync(confirmAction.userId);
-      }
-      setConfirmAction(null);
-    } catch (err) {
-      const error = err as { response?: { data?: { error?: string } } };
-      const errorMessage =
-        error?.response?.data?.error || 'Operation failed. Please try again.';
-      setError(errorMessage);
-      setConfirmAction(null);
-    }
-  };
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -118,21 +77,13 @@ export const UserManagement = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">User Management</h1>
-          <p className="text-muted-foreground">
-            Manage user accounts and permissions
-          </p>
-        </div>
-        <CreateUserDialog />
+      <div>
+        <h1 className="text-3xl font-bold">User Management</h1>
+        <p className="text-muted-foreground">
+          Users are created on first sign-in. Admin access and group membership
+          are managed in your identity provider.
+        </p>
       </div>
-
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded">
-          {error}
-        </div>
-      )}
 
       {remoteUnreachable && <RemoteUnreachableBanner />}
 
@@ -146,7 +97,6 @@ export const UserManagement = () => {
             <TableHead>Role</TableHead>
             <TableHead>Groups</TableHead>
             <TableHead>Created</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -179,68 +129,6 @@ export const UserManagement = () => {
               <TableCell className="text-muted-foreground">
                 {new Date(user.created_at).toLocaleDateString()}
               </TableCell>
-              <TableCell>
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      setConfirmAction({
-                        type: 'toggle',
-                        userId: user.id,
-                        username: user.username,
-                        currentIsAdmin: user.is_admin,
-                      })
-                    }
-                    disabled={
-                      toggleAdminMutation.isPending ||
-                      user.id === currentUser?.id
-                    }
-                    title={
-                      user.id === currentUser?.id
-                        ? 'Cannot modify your own admin status'
-                        : user.is_admin
-                          ? 'Revoke Admin'
-                          : 'Grant Admin'
-                    }
-                    aria-label={
-                      user.is_admin
-                        ? `Revoke admin for ${user.username}`
-                        : `Grant admin to ${user.username}`
-                    }
-                  >
-                    {user.is_admin ? (
-                      <ShieldOff className="h-4 w-4" />
-                    ) : (
-                      <Shield className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      if (user.id === currentUser?.id) return;
-                      setConfirmAction({
-                        type: 'delete',
-                        userId: user.id,
-                        username: user.username,
-                      });
-                    }}
-                    disabled={
-                      deleteUserMutation.isPending ||
-                      user.id === currentUser?.id
-                    }
-                    title={
-                      user.id === currentUser?.id
-                        ? 'Cannot delete yourself'
-                        : 'Delete User'
-                    }
-                    aria-label={`Delete ${user.username}`}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -251,29 +139,6 @@ export const UserManagement = () => {
           <p className="text-muted-foreground">No users found</p>
         </div>
       )}
-
-      <ConfirmDialog
-        open={!!confirmAction}
-        onOpenChange={(open) => !open && setConfirmAction(null)}
-        onConfirm={handleConfirmAction}
-        title={
-          confirmAction?.type === 'toggle'
-            ? confirmAction.currentIsAdmin
-              ? 'Revoke Admin Access'
-              : 'Grant Admin Access'
-            : 'Delete User'
-        }
-        description={
-          confirmAction?.type === 'toggle'
-            ? confirmAction.currentIsAdmin
-              ? `Are you sure you want to revoke admin access for ${confirmAction.username}? They will lose all admin privileges.`
-              : `Are you sure you want to grant admin access to ${confirmAction.username}? They will have full system access.`
-            : `Are you sure you want to delete ${confirmAction?.username}? This action cannot be undone. All their projects and data will be permanently removed.`
-        }
-        confirmText={confirmAction?.type === 'delete' ? 'Delete' : 'Confirm'}
-        cancelText="Cancel"
-        variant={confirmAction?.type === 'delete' ? 'destructive' : 'default'}
-      />
     </div>
   );
 };

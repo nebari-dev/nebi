@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,13 +14,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/nebari-dev/nebi/internal/auth"
+	"github.com/nebari-dev/nebi/internal/auth/authtest"
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/queue"
+	"gorm.io/gorm"
 )
 
 // buildTestRouter builds the real production router (local mode, so RBAC init is
@@ -53,23 +55,63 @@ func buildTestRouter(t *testing.T, basePath string, mutate ...func(*config.Confi
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, logger)
+	return NewRouter(t.Context(), cfg, database, queue.NewMemoryQueue(16), exec, nil, logger)
+}
+
+// newTestIdP starts an in-process OIDC provider whose tokens a team-mode
+// router built by teamModeConfig accepts.
+func newTestIdP(t *testing.T) *authtest.Server {
+	t.Helper()
+	idp, err := authtest.NewServer("nebi")
+	if err != nil {
+		t.Fatalf("start test idp: %v", err)
+	}
+	t.Cleanup(idp.Close)
+	return idp
+}
+
+// teamModeConfig returns a team-mode config that authenticates with idp.
+func teamModeConfig(t *testing.T, idp *authtest.Server, dbName string) *config.Config {
+	t.Helper()
+	cfg := &config.Config{Mode: config.ModeTeam}
+	cfg.Auth.Type = config.AuthTypeOIDC
+	cfg.Auth.JWTSecret = "test-secret-for-team-router-test"
+	cfg.Auth.OIDCIssuerURL = idp.URL
+	cfg.Auth.OIDCClientID = idp.ClientID
+	cfg.Auth.OIDCAdminGroups = "nebi-admin"
+	cfg.Database.Driver = "sqlite"
+	cfg.Database.DSN = filepath.Join(t.TempDir(), dbName)
+	cfg.Storage.ProjectsDir = t.TempDir()
+	return cfg
+}
+
+// provisionTestUser authenticates token once, which provisions its user, and
+// returns that user.
+func provisionTestUser(t *testing.T, router http.Handler, database *gorm.DB, token string) models.User {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /auth/me: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var me models.User
+	if err := json.Unmarshal(w.Body.Bytes(), &me); err != nil {
+		t.Fatalf("decode /auth/me: %v", err)
+	}
+	var user models.User
+	if err := database.First(&user, "id = ?", me.ID).Error; err != nil {
+		t.Fatalf("load provisioned user: %v", err)
+	}
+	return user
 }
 
 func buildTeamTestRouter(t *testing.T, logger *slog.Logger) (http.Handler, string) {
 	t.Helper()
 
-	const (
-		username  = "alice"
-		password  = "correct-horse-battery-staple"
-		jwtSecret = "test-secret-for-team-router-test"
-	)
-
-	cfg := &config.Config{Mode: config.ModeTeam}
-	cfg.Auth.Type = "basic"
-	cfg.Auth.JWTSecret = jwtSecret
-	cfg.Database.Driver = "sqlite"
-	cfg.Database.DSN = filepath.Join(t.TempDir(), "team-router-test.db")
+	idp := newTestIdP(t)
+	cfg := teamModeConfig(t, idp, "team-router-test.db")
 	cfg.Registries.SeedDefault = true
 
 	database, err := db.New(cfg.Database)
@@ -80,28 +122,6 @@ func buildTeamTestRouter(t *testing.T, logger *slog.Logger) (http.Handler, strin
 		t.Fatalf("db.Migrate: %v", err)
 	}
 
-	hash, err := auth.HashPassword(password)
-	if err != nil {
-		t.Fatalf("HashPassword: %v", err)
-	}
-	user := models.User{
-		Username:     username,
-		Email:        username + "@example.com",
-		PasswordHash: hash,
-	}
-	if err := database.Create(&user).Error; err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-
-	authenticator, err := auth.NewBasicAuthenticator(database, jwtSecret, nil)
-	if err != nil {
-		t.Fatalf("NewBasicAuthenticator: %v", err)
-	}
-	login, err := authenticator.Login(username, password)
-	if err != nil {
-		t.Fatalf("Login: %v", err)
-	}
-
 	exec, err := executor.NewLocalExecutor(cfg)
 	if err != nil {
 		t.Fatalf("NewLocalExecutor: %v", err)
@@ -110,7 +130,8 @@ func buildTeamTestRouter(t *testing.T, logger *slog.Logger) (http.Handler, strin
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 
-	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, logger), login.Token
+	token := idp.Token(authtest.Identity{Subject: "sub-alice", Username: "alice", Email: "alice@example.com", EmailVerified: true})
+	return NewRouter(t.Context(), cfg, database, queue.NewMemoryQueue(16), exec, nil, logger), token
 }
 
 func buildLimitedLocalRouter(t *testing.T, limitCfg limits.Limits) http.Handler {
@@ -136,7 +157,7 @@ func buildLimitedLocalRouter(t *testing.T, limitCfg limits.Limits) http.Handler 
 		t.Fatalf("NewLocalExecutor: %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, logger)
+	return NewRouter(t.Context(), cfg, database, queue.NewMemoryQueue(16), exec, nil, logger)
 }
 
 func TestCORSMiddlewareNoInvalidCredentialedWildcard(t *testing.T) {
@@ -256,6 +277,109 @@ func TestLegacyCLILoginRoutesRemoved(t *testing.T) {
 	}
 }
 
+// TestRemovedAuthRoutesAreGone checks that nebi no longer issues its own
+// tokens: password login, the gateway session cookie exchange, the auth-code
+// exchange, the device-token exchange and the server-side OIDC login are all
+// gone, in favor of IdP-issued access tokens.
+func TestRemovedAuthRoutesAreGone(t *testing.T) {
+	r, _ := buildTeamTestRouter(t, nil)
+
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/api/v1/auth/login"},
+		{http.MethodGet, "/api/v1/auth/session"},
+		{http.MethodPost, "/api/v1/auth/code/exchange"},
+		{http.MethodGet, "/api/v1/auth/device-config"},
+		{http.MethodPost, "/api/v1/auth/device-token"},
+		{http.MethodGet, "/api/v1/auth/oidc/login"},
+		{http.MethodGet, "/api/v1/auth/oidc/callback"},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("%s %s: expected 404, got %d", tc.method, tc.path, w.Code)
+		}
+	}
+}
+
+func TestAuthConfigAdvertisesIdentityProvider(t *testing.T) {
+	idp := newTestIdP(t)
+	cfg := teamModeConfig(t, idp, "auth-config.db")
+	cfg.Auth.OIDCScopes = "openid, profile"
+	database, err := db.New(cfg.Database)
+	if err != nil {
+		t.Fatalf("db.New: %v", err)
+	}
+	if err := db.Migrate(database, false); err != nil {
+		t.Fatalf("db.Migrate: %v", err)
+	}
+	exec, err := executor.NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+	r := NewRouter(t.Context(), cfg, database, queue.NewMemoryQueue(16), exec, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/auth/config", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var got struct {
+		Type      string   `json:"type"`
+		IssuerURL string   `json:"issuer_url"`
+		ClientID  string   `json:"client_id"`
+		Scopes    []string `json:"scopes"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Type != "oidc" || got.IssuerURL != idp.URL || got.ClientID != "nebi" || strings.Join(got.Scopes, " ") != "openid profile" {
+		t.Fatalf("unexpected auth config %+v", got)
+	}
+
+	// The web UI talks to the identity provider directly, so its origin must
+	// be allowed by the CSP.
+	if csp := w.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "connect-src 'self' "+idp.URL) {
+		t.Fatalf("expected CSP connect-src to allow the identity provider, got %q", csp)
+	}
+}
+
+func TestAuthTypeNoneRunsRequestsAsAdmin(t *testing.T) {
+	cfg := &config.Config{Mode: config.ModeTeam}
+	cfg.Auth.Type = config.AuthTypeNone
+	cfg.Auth.JWTSecret = "test-secret-for-auth-none-router-test"
+	cfg.Database.Driver = "sqlite"
+	cfg.Database.DSN = filepath.Join(t.TempDir(), "auth-none.db")
+	cfg.Storage.ProjectsDir = t.TempDir()
+	database, err := db.New(cfg.Database)
+	if err != nil {
+		t.Fatalf("db.New: %v", err)
+	}
+	if err := db.Migrate(database, false); err != nil {
+		t.Fatalf("db.Migrate: %v", err)
+	}
+	exec, err := executor.NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatalf("NewLocalExecutor: %v", err)
+	}
+	r := NewRouter(t.Context(), cfg, database, queue.NewMemoryQueue(16), exec, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	for path, want := range map[string]string{
+		"/api/v1/auth/config": `"type":"none"`,
+		"/api/v1/auth/me":     `"username":"local-user"`,
+		"/api/v1/admin/users": `"is_admin":true`,
+	} {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), want) {
+			t.Fatalf("GET %s without credentials: expected 200 with %s, got %d %s", path, want, w.Code, w.Body.String())
+		}
+	}
+}
+
 // TestAdminRegistryMutations_RejectConfigManaged exercises the config-managed
 // registry guards (see registry.go UpdateRegistry / DeleteRegistry) through
 // the real HTTP admin routes, not just the service layer.
@@ -280,7 +404,7 @@ func TestAdminRegistryMutations_RejectConfigManaged(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	r := NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, logger)
+	r := NewRouter(t.Context(), cfg, database, queue.NewMemoryQueue(16), exec, nil, logger)
 
 	managed := models.OCIRegistry{ID: uuid.New(), Name: "managed", URL: "a.io", ConfigManaged: true}
 	if err := database.Create(&managed).Error; err != nil {

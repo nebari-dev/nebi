@@ -6,9 +6,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/nebari-dev/nebi/internal/auth/authtest"
 	"github.com/nebari-dev/nebi/internal/store"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -39,6 +41,7 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 	remote := r.Group("/api/v1/remote")
 	{
 		remote.POST("/connect", h.ConnectServer)
+		remote.POST("/connect/poll", h.PollConnect)
 		remote.GET("/server", h.GetServer)
 		remote.DELETE("/server", h.DisconnectServer)
 		remote.GET("/projects", h.ListProjects)
@@ -183,65 +186,174 @@ func TestListProjects_NotConnected(t *testing.T) {
 	}
 }
 
-func TestConnectServer_WithMockRemote(t *testing.T) {
-	// Create a mock remote Nebi server
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "POST" && r.URL.Path == "/api/v1/auth/login" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]any{
-				"token": "test-token-abc",
-				"user": map[string]any{
-					"username": "remoteuser",
-					"id":       "user-123",
-				},
-			})
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer mockServer.Close()
+// fakeRemote is a remote nebi server whose API accepts access tokens from idp
+// (or any request when idp is nil, i.e. auth disabled).
+type fakeRemote struct {
+	*httptest.Server
+	idp       *authtest.Server
+	lastToken string
+}
 
+func newFakeRemote(t *testing.T, idp *authtest.Server) *fakeRemote {
+	t.Helper()
+	f := &fakeRemote{idp: idp}
+	f.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/auth/config":
+			if f.idp == nil {
+				_ = json.NewEncoder(w).Encode(map[string]any{"type": "none"})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"type": "oidc", "issuer_url": f.idp.URL, "client_id": f.idp.ClientID,
+				"scopes": []string{"openid", "profile"},
+			})
+		case "/api/v1/auth/me":
+			f.lastToken = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+			if f.idp != nil && f.lastToken == "" {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "missing authorization"})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "user-123", "username": "remoteuser"})
+		case "/api/v1/projects":
+			f.lastToken = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+			_ = json.NewEncoder(w).Encode([]any{})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(f.Close)
+	return f
+}
+
+func doJSON(t *testing.T, router *gin.Engine, method, path, body string) (int, map[string]any) {
+	t.Helper()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	var resp map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
+	return w.Code, resp
+}
+
+func TestConnectServer_DeviceFlow(t *testing.T) {
+	idp, err := authtest.NewServer("nebi")
+	if err != nil {
+		t.Fatalf("start idp: %v", err)
+	}
+	t.Cleanup(idp.Close)
+	remote := newFakeRemote(t, idp)
 	db := setupTestDB(t)
 	router := setupRouter(db)
 
-	body := `{"url":"` + mockServer.URL + `","username":"remoteuser","password":"secret"}`
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("POST", "/api/v1/remote/connect", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	status, resp := doJSON(t, router, "POST", "/api/v1/remote/connect", `{"url":"`+remote.URL+`/"}`)
+	if status != http.StatusOK {
+		t.Fatalf("connect: expected 200, got %d: %v", status, resp)
+	}
+	userCode, _ := resp["user_code"].(string)
+	if userCode == "" || resp["verification_uri"] == "" {
+		t.Fatalf("expected a device code response, got %v", resp)
 	}
 
-	var resp map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-	if resp["status"] != "connected" {
-		t.Errorf("expected status=connected, got %v", resp["status"])
-	}
-	if resp["url"] != mockServer.URL {
-		t.Errorf("expected url=%s, got %v", mockServer.URL, resp["url"])
-	}
-	if resp["username"] != "remoteuser" {
-		t.Errorf("expected username=remoteuser, got %v", resp["username"])
+	status, resp = doJSON(t, router, "POST", "/api/v1/remote/connect/poll", "")
+	if status != http.StatusOK || resp["status"] != "pending" {
+		t.Fatalf("expected pending, got %d %v", status, resp)
 	}
 
-	// Verify credentials were stored in DB
+	if err := idp.ApproveDevice(userCode, authtest.Identity{Subject: "sub-1", Username: "remoteuser"}); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	status, resp = doJSON(t, router, "POST", "/api/v1/remote/connect/poll", "")
+	if status != http.StatusOK || resp["status"] != "connected" || resp["username"] != "remoteuser" || resp["url"] != remote.URL {
+		t.Fatalf("expected connected, got %d %v", status, resp)
+	}
+
 	var cfg store.Config
 	db.First(&cfg)
-	if cfg.ServerURL != mockServer.URL {
-		t.Errorf("expected stored server_url=%s, got %q", mockServer.URL, cfg.ServerURL)
+	var creds store.Credentials
+	db.First(&creds)
+	if cfg.ServerURL != remote.URL || creds.Token == "" || creds.RefreshToken == "" ||
+		creds.TokenURL != idp.URL+"/token" || creds.ClientID != "nebi" || creds.TokenExpiry == nil || creds.Username != "remoteuser" {
+		t.Fatalf("unexpected stored connection %q %+v", cfg.ServerURL, creds)
+	}
+
+	// The connection is used for proxied calls; once the access token is
+	// about to expire it is refreshed and the rotated tokens are stored.
+	if status, _ := doJSON(t, router, "GET", "/api/v1/remote/projects", ""); status != http.StatusOK {
+		t.Fatalf("list projects: %d", status)
+	}
+	if remote.lastToken != creds.Token {
+		t.Fatal("expected the stored access token to be sent")
+	}
+	expired := time.Now().Add(-time.Minute)
+	db.Model(&store.Credentials{}).Where("id = ?", 1).Update("token_expiry", expired)
+	router = setupRouter(db) // fresh handler: no cached token source
+	if status, _ := doJSON(t, router, "GET", "/api/v1/remote/projects", ""); status != http.StatusOK {
+		t.Fatalf("list projects after expiry: %d", status)
+	}
+	var refreshed store.Credentials
+	db.First(&refreshed)
+	if refreshed.Token == creds.Token || refreshed.RefreshToken == creds.RefreshToken || remote.lastToken != refreshed.Token {
+		t.Fatalf("expected refreshed and persisted tokens, got %+v", refreshed)
+	}
+
+	// Nothing is pending any more.
+	if status, _ := doJSON(t, router, "POST", "/api/v1/remote/connect/poll", ""); status != http.StatusConflict {
+		t.Fatalf("expected 409 without a pending connection, got %d", status)
+	}
+}
+
+func TestConnectServer_DeviceFlowDenied(t *testing.T) {
+	idp, err := authtest.NewServer("nebi")
+	if err != nil {
+		t.Fatalf("start idp: %v", err)
+	}
+	t.Cleanup(idp.Close)
+	remote := newFakeRemote(t, idp)
+	db := setupTestDB(t)
+	router := setupRouter(db)
+
+	_, resp := doJSON(t, router, "POST", "/api/v1/remote/connect", `{"url":"`+remote.URL+`"}`)
+	if err := idp.DenyDevice(resp["user_code"].(string)); err != nil {
+		t.Fatalf("deny: %v", err)
+	}
+	status, resp := doJSON(t, router, "POST", "/api/v1/remote/connect/poll", "")
+	if status != http.StatusBadRequest || !strings.Contains(resp["error"].(string), "denied") {
+		t.Fatalf("expected 400 access denied, got %d %v", status, resp)
 	}
 	var creds store.Credentials
 	db.First(&creds)
-	if creds.Token != "test-token-abc" {
-		t.Errorf("expected stored token=test-token-abc, got %q", creds.Token)
+	if creds.LoggedIn() {
+		t.Fatalf("expected no stored login, got %+v", creds)
 	}
-	if creds.Username != "remoteuser" {
-		t.Errorf("expected stored username=remoteuser, got %q", creds.Username)
+}
+
+func TestConnectServer_AuthDisabledRemote(t *testing.T) {
+	remote := newFakeRemote(t, nil)
+	db := setupTestDB(t)
+	router := setupRouter(db)
+
+	status, resp := doJSON(t, router, "POST", "/api/v1/remote/connect", `{"url":"`+remote.URL+`"}`)
+	if status != http.StatusOK || resp["status"] != "connected" || resp["username"] != "remoteuser" {
+		t.Fatalf("expected immediate connection, got %d %v", status, resp)
+	}
+	_, resp = doJSON(t, router, "GET", "/api/v1/remote/server", "")
+	if resp["status"] != "connected" {
+		t.Fatalf("expected connected status, got %v", resp)
+	}
+	if status, _ := doJSON(t, router, "GET", "/api/v1/remote/projects", ""); status != http.StatusOK || remote.lastToken != "" {
+		t.Fatalf("expected an unauthenticated proxied call, got %d with token %q", status, remote.lastToken)
+	}
+}
+
+func TestConnectServer_RejectsNonHTTPURL(t *testing.T) {
+	db := setupTestDB(t)
+	router := setupRouter(db)
+	if status, _ := doJSON(t, router, "POST", "/api/v1/remote/connect", `{"url":"ftp://example.com"}`); status != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", status)
 	}
 }
 

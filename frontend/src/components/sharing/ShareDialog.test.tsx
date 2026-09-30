@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HttpResponse, http } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -192,8 +192,6 @@ describe('ShareDialog', () => {
     const group = {
       id: 'g-1',
       name: 'data-science',
-      description: '',
-      source: 'native',
       created_at: '',
       updated_at: '',
     };
@@ -221,16 +219,15 @@ describe('ShareDialog', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders a group collaborator with its source badge', async () => {
+  it('renders a group collaborator labeled as a group', async () => {
     server.use(
       http.get('/api/v1/projects/:id/collaborators', () =>
         HttpResponse.json([mockOwnerCollaborator, mockGroupCollaborator]),
       ),
     );
     renderWithProviders(<ShareDialog {...defaultProps} />);
-    await waitFor(() =>
-      expect(screen.getByText('data-science')).toBeInTheDocument(),
-    );
-    expect(screen.getByText(/Native group/i)).toBeInTheDocument();
+    const name = await screen.findByText('data-science');
+    const row = name.closest('.border') as HTMLElement;
+    expect(within(row).getByText('Group')).toBeInTheDocument();
   });
 });

@@ -8,16 +8,18 @@ import {
   Outlet,
   Route,
   Routes,
+  useLocation,
 } from 'react-router-dom';
 import { adminApi } from './api/admin';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { Layout } from './components/layout/Layout';
+import { Button } from './components/ui/button';
 import { useTheme } from './hooks/theme-provider';
 import { getBasePath } from './lib/basePath';
 import { queryClient } from './lib/queryClient';
+import { AuthCallback } from './pages/AuthCallback';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AuditLogs } from './pages/admin/AuditLogs';
-import { FederatedIdentityReviews } from './pages/admin/FederatedIdentityReviews';
 import { Groups } from './pages/admin/Groups';
 import { RegistryManagement } from './pages/admin/RegistryManagement';
 import { UserManagement } from './pages/admin/UserManagement';
@@ -30,15 +32,36 @@ import { Settings } from './pages/Settings';
 import { useAuthStore } from './store/authStore';
 import { useModeStore } from './store/modeStore';
 
-// Load mode before rendering any routes
+// Load mode, then the server's auth config, before rendering any routes
 const ModeLoader = ({ children }: { children: ReactElement }) => {
-  const { loading, fetchMode } = useModeStore();
+  const { loading, mode, fetchMode } = useModeStore();
+  const authStatus = useAuthStore((state) => state.status);
+  const initializeAuth = useAuthStore((state) => state.initialize);
 
   useEffect(() => {
     fetchMode();
   }, [fetchMode]);
 
-  if (loading) {
+  useEffect(() => {
+    if (!loading && mode) {
+      void initializeAuth(mode);
+    }
+  }, [loading, mode, initializeAuth]);
+
+  if (authStatus === 'error') {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4">
+        <p className="text-muted-foreground">
+          Could not load the server's sign-in configuration.
+        </p>
+        <Button variant="outline" onClick={() => mode && initializeAuth(mode)}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (loading || authStatus !== 'ready') {
     return (
       <div className="flex items-center justify-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -51,11 +74,20 @@ const ModeLoader = ({ children }: { children: ReactElement }) => {
 const PrivateRoute = ({ children }: { children: ReactElement }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
   const isLocalMode = useModeStore((state) => state.isLocalMode());
+  const location = useLocation();
 
   // In local mode, auth is bypassed
   if (isLocalMode) return children;
 
-  return isAuthenticated ? children : <Navigate to="/login" />;
+  return isAuthenticated ? (
+    children
+  ) : (
+    <Navigate
+      to="/login"
+      replace
+      state={{ from: location.pathname + location.search }}
+    />
+  );
 };
 
 const AdminRoute = () => {
@@ -96,6 +128,7 @@ function App() {
         <ModeLoader>
           <Routes>
             <Route path="/login" element={<Login isDarkMode={isDarkMode} />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
             <Route
               path="/"
               element={
@@ -127,10 +160,6 @@ function App() {
                   <Route path="admin" element={<AdminDashboard />} />
                   <Route path="admin/users" element={<UserManagement />} />
                   <Route path="admin/groups" element={<Groups />} />
-                  <Route
-                    path="admin/identity-reviews"
-                    element={<FederatedIdentityReviews />}
-                  />
                   <Route path="admin/audit-logs" element={<AuditLogs />} />
                   <Route
                     path="admin/registries"

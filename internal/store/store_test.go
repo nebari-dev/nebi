@@ -58,6 +58,52 @@ func testStore(t *testing.T) *Store {
 	return s
 }
 
+func TestOpenDropsLegacyPasswordHashColumn(t *testing.T) {
+	dataDir := t.TempDir()
+
+	// A CLI database from when users had passwords: password_hash is NOT
+	// NULL without a default, which would break inserts if left.
+	legacy, err := gorm.Open(sqlite.Open(filepath.Join(dataDir, "nebi.db")), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		t.Fatalf("open legacy db: %v", err)
+	}
+	for _, stmt := range []string{
+		"CREATE TABLE `users` (`id` text PRIMARY KEY, `username` text NOT NULL, `password_hash` text NOT NULL, `email` text NOT NULL, `avatar_url` text, `created_at` datetime, `updated_at` datetime, `deleted_at` datetime)",
+		"CREATE UNIQUE INDEX `idx_users_username` ON `users`(`username`)",
+		"CREATE TABLE `store_credentials` (`id` integer PRIMARY KEY, `token` text NOT NULL DEFAULT '', `username` text NOT NULL DEFAULT '')",
+		"INSERT INTO `store_credentials` (`id`, `token`, `username`) VALUES (1, 'old-token', 'alice')",
+	} {
+		if err := legacy.Exec(stmt).Error; err != nil {
+			t.Fatalf("seed legacy schema: %v", err)
+		}
+	}
+	if sqlDB, err := legacy.DB(); err == nil {
+		sqlDB.Close()
+	}
+
+	s, err := Open(dataDir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+
+	if s.DB().Migrator().HasColumn(&LocalUser{}, "password_hash") {
+		t.Fatal("expected password_hash column to be dropped")
+	}
+	if s.localUserID == uuid.Nil {
+		t.Fatal("expected the local user to be created after the migration")
+	}
+	creds, err := s.LoadCredentials()
+	if err != nil || creds.Token != "old-token" || creds.Username != "alice" || !creds.LoggedIn() {
+		t.Fatalf("expected existing credentials to survive, got %+v err=%v", creds, err)
+	}
+	if creds.OAuthToken().RefreshToken != "" {
+		t.Fatalf("expected a legacy login without a refresh token, got %+v", creds)
+	}
+}
+
 func TestProjectRoundTrip(t *testing.T) {
 	s := testStore(t)
 

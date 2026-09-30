@@ -1,11 +1,9 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 import {
-  mockFederatedIdentity,
-  mockFederatedIdentityReview,
   mockJob,
   mockProject,
   mockRegistry,
@@ -17,16 +15,12 @@ import {
   ERROR_BACKOFF_INTERVAL,
   pollWithErrorBackoff,
   retryWhileUnreachable,
-  useApproveRemoteFederatedIdentityReview,
-  useConnectServer,
   useCreateRemoteProject,
   useCreateRemoteRegistry,
   useDeleteRemoteProject,
   useDeleteRemoteRegistry,
-  useDiscardRemoteFederatedIdentityReview,
   useDisconnectServer,
-  useRejectRemoteFederatedIdentityReview,
-  useRemoteFederatedIdentityReviews,
+  useRemoteConnect,
   useRemoteJobs,
   useRemoteProject,
   useRemoteProjects,
@@ -179,40 +173,225 @@ describe('useRemoteServer', () => {
   });
 });
 
-describe('useConnectServer', () => {
-  it('calls the connect endpoint and returns server info', async () => {
+const mockDeviceAuthorization = {
+  user_code: 'ABCD-EFGH',
+  verification_uri: 'https://auth.example.com/device',
+  verification_uri_complete:
+    'https://auth.example.com/device?user_code=ABCD-EFGH',
+  expires_in: 600,
+  interval: 5,
+};
+
+describe('useRemoteConnect', () => {
+  let pollCalls: number;
+  let pollResponses: Array<() => Response>;
+
+  const usePollHandlers = () => {
+    pollCalls = 0;
     server.use(
       http.post('/api/v1/remote/connect', () =>
-        HttpResponse.json(mockRemoteServer),
+        HttpResponse.json(mockDeviceAuthorization),
       ),
+      http.post('/api/v1/remote/connect/poll', () => {
+        pollCalls += 1;
+        const next = pollResponses.shift();
+        return next ? next() : HttpResponse.json({ status: 'pending' });
+      }),
     );
-    const { result } = renderHook(() => useConnectServer(), {
-      wrapper: createWrapper(),
-    });
-    result.current.mutate({
-      url: 'https://remote.example.com',
-      username: 'user',
-      password: 'pass',
-    });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toMatchObject({ connected: true });
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    pollResponses = [];
+    usePollHandlers();
   });
 
-  it('enters error state when connect fails', async () => {
-    server.use(
-      http.post('/api/v1/remote/connect', () =>
-        HttpResponse.json({ error: 'unauthorized' }, { status: 401 }),
-      ),
-    );
-    const { result } = renderHook(() => useConnectServer(), {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const advance = (ms: number) =>
+    act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+
+  it('shows the device code and polls until connected', async () => {
+    const onConnected = vi.fn();
+    pollResponses = [
+      () => HttpResponse.json({ status: 'pending' }),
+      () =>
+        HttpResponse.json({
+          status: 'connected',
+          url: 'https://remote.example.com',
+          username: 'alice',
+        }),
+    ];
+    const { result } = renderHook(() => useRemoteConnect({ onConnected }), {
       wrapper: createWrapper(),
     });
-    result.current.mutate({
-      url: 'https://bad.example.com',
-      username: 'user',
-      password: 'pass',
+
+    await act(async () => {
+      await result.current.start('https://remote.example.com');
     });
-    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.state).toEqual({
+      status: 'pending',
+      authorization: mockDeviceAuthorization,
+    });
+    expect(pollCalls).toBe(0);
+
+    await advance(5000);
+    await waitFor(() => expect(pollCalls).toBe(1));
+    expect(result.current.state.status).toBe('pending');
+
+    await advance(5000);
+    await waitFor(() => expect(result.current.state.status).toBe('idle'));
+    expect(pollCalls).toBe(2);
+    expect(onConnected).toHaveBeenCalledWith({
+      status: 'connected',
+      url: 'https://remote.example.com',
+      username: 'alice',
+    });
+
+    // Polling stops once connected.
+    await advance(20000);
+    expect(pollCalls).toBe(2);
+  });
+
+  it('connects without polling when the remote has auth disabled', async () => {
+    const onConnected = vi.fn();
+    const connected = {
+      status: 'connected',
+      url: 'https://remote.example.com',
+      username: 'admin',
+    };
+    server.use(
+      http.post('/api/v1/remote/connect', () => HttpResponse.json(connected)),
+    );
+    const { result } = renderHook(() => useRemoteConnect({ onConnected }), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.start('https://remote.example.com');
+    });
+
+    expect(result.current.state).toEqual({ status: 'idle' });
+    expect(onConnected).toHaveBeenCalledWith(connected);
+    await advance(20000);
+    expect(pollCalls).toBe(0);
+  });
+
+  it('slows down when the backend asks for a longer interval', async () => {
+    pollResponses = [
+      () => HttpResponse.json({ status: 'pending', interval: 10 }),
+    ];
+    const { result } = renderHook(() => useRemoteConnect(), {
+      wrapper: createWrapper(),
+    });
+    await act(async () => {
+      await result.current.start('https://remote.example.com');
+    });
+
+    await advance(5000);
+    await waitFor(() => expect(pollCalls).toBe(1));
+
+    await advance(5000);
+    expect(pollCalls).toBe(1);
+
+    await advance(5000);
+    await waitFor(() => expect(pollCalls).toBe(2));
+  });
+
+  it('stops with the backend error when the flow fails', async () => {
+    pollResponses = [
+      () => HttpResponse.json({ error: 'access denied' }, { status: 400 }),
+    ];
+    const { result } = renderHook(() => useRemoteConnect(), {
+      wrapper: createWrapper(),
+    });
+    await act(async () => {
+      await result.current.start('https://remote.example.com');
+    });
+
+    await advance(5000);
+    await waitFor(() =>
+      expect(result.current.state).toEqual({
+        status: 'error',
+        error: 'access denied',
+      }),
+    );
+
+    await advance(20000);
+    expect(pollCalls).toBe(1);
+  });
+
+  it('keeps polling through transient server errors', async () => {
+    pollResponses = [
+      () => HttpResponse.json({ error: 'bad gateway' }, { status: 502 }),
+    ];
+    const { result } = renderHook(() => useRemoteConnect(), {
+      wrapper: createWrapper(),
+    });
+    await act(async () => {
+      await result.current.start('https://remote.example.com');
+    });
+
+    await advance(5000);
+    await waitFor(() => expect(pollCalls).toBe(1));
+    expect(result.current.state.status).toBe('pending');
+
+    await advance(5000);
+    await waitFor(() => expect(pollCalls).toBe(2));
+  });
+
+  it('reports a failure to start the flow', async () => {
+    server.use(
+      http.post('/api/v1/remote/connect', () =>
+        HttpResponse.json(
+          { error: 'remote server has authentication disabled' },
+          { status: 400 },
+        ),
+      ),
+    );
+    const { result } = renderHook(() => useRemoteConnect(), {
+      wrapper: createWrapper(),
+    });
+    await act(async () => {
+      await result.current.start('https://remote.example.com');
+    });
+
+    expect(result.current.state).toEqual({
+      status: 'error',
+      error: 'remote server has authentication disabled',
+    });
+  });
+
+  it('stops polling when cancelled', async () => {
+    const { result } = renderHook(() => useRemoteConnect(), {
+      wrapper: createWrapper(),
+    });
+    await act(async () => {
+      await result.current.start('https://remote.example.com');
+    });
+
+    act(() => result.current.cancel());
+    expect(result.current.state).toEqual({ status: 'idle' });
+
+    await advance(20000);
+    expect(pollCalls).toBe(0);
+  });
+
+  it('stops polling on unmount', async () => {
+    const { result, unmount } = renderHook(() => useRemoteConnect(), {
+      wrapper: createWrapper(),
+    });
+    await act(async () => {
+      await result.current.start('https://remote.example.com');
+    });
+
+    unmount();
+    await advance(20000);
+    expect(pollCalls).toBe(0);
   });
 });
 
@@ -534,86 +713,5 @@ describe('useRemoteUsers', () => {
       wrapper: createWrapper(),
     });
     expect(result.current.fetchStatus).toBe('idle');
-  });
-});
-
-describe('useRemoteFederatedIdentityReviews', () => {
-  it('fetches remote federated identity reviews when enabled', async () => {
-    const { result } = renderHook(
-      () => useRemoteFederatedIdentityReviews(true),
-      {
-        wrapper: createWrapper(),
-      },
-    );
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual([mockFederatedIdentityReview]);
-  });
-
-  it('does not fetch when disabled', () => {
-    const { result } = renderHook(
-      () => useRemoteFederatedIdentityReviews(false),
-      {
-        wrapper: createWrapper(),
-      },
-    );
-    expect(result.current.fetchStatus).toBe('idle');
-  });
-});
-
-describe('useApproveRemoteFederatedIdentityReview', () => {
-  it('calls the remote approve endpoint successfully', async () => {
-    server.use(
-      http.post(
-        '/api/v1/remote/admin/federated-identity-reviews/:id/approve',
-        () => HttpResponse.json(mockFederatedIdentity, { status: 201 }),
-      ),
-    );
-    const { result } = renderHook(
-      () => useApproveRemoteFederatedIdentityReview(),
-      {
-        wrapper: createWrapper(),
-      },
-    );
-    result.current.mutate('review-1');
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual(mockFederatedIdentity);
-  });
-});
-
-describe('useRejectRemoteFederatedIdentityReview', () => {
-  it('calls the remote reject endpoint successfully', async () => {
-    server.use(
-      http.post(
-        '/api/v1/remote/admin/federated-identity-reviews/:id/reject',
-        () => new HttpResponse(null, { status: 204 }),
-      ),
-    );
-    const { result } = renderHook(
-      () => useRejectRemoteFederatedIdentityReview(),
-      {
-        wrapper: createWrapper(),
-      },
-    );
-    result.current.mutate('review-1');
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-  });
-});
-
-describe('useDiscardRemoteFederatedIdentityReview', () => {
-  it('calls the remote discard endpoint successfully', async () => {
-    server.use(
-      http.delete(
-        '/api/v1/remote/admin/federated-identity-reviews/:id',
-        () => new HttpResponse(null, { status: 204 }),
-      ),
-    );
-    const { result } = renderHook(
-      () => useDiscardRemoteFederatedIdentityReview(),
-      {
-        wrapper: createWrapper(),
-      },
-    );
-    result.current.mutate('review-1');
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
   });
 });

@@ -4,23 +4,15 @@ import { describe, expect, it } from 'vitest';
 import {
   mockAdminUser,
   mockCollaborator,
-  mockFederatedIdentity,
-  mockFederatedIdentityReview,
   mockOwnerCollaborator,
   mockUser,
   server,
 } from '@/test/handlers';
 import { createWrapper } from '@/test/utils';
 import {
-  useApproveFederatedIdentityReview,
   useCollaborators,
-  useCreateUser,
   useDashboardStats,
-  useDeleteUser,
-  useDiscardFederatedIdentityReview,
-  useFederatedIdentityReviews,
   useIsAdmin,
-  useRejectFederatedIdentityReview,
   useShareProject,
   useUnshareProject,
   useUsers,
@@ -56,58 +48,6 @@ describe('useUsers', () => {
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual([mockUser, mockAdminUser]);
-  });
-});
-
-describe('useCreateUser', () => {
-  it('calls the create user endpoint', async () => {
-    server.use(
-      http.post('/api/v1/admin/users', () =>
-        HttpResponse.json(mockUser, { status: 201 }),
-      ),
-    );
-    const { result } = renderHook(() => useCreateUser(), {
-      wrapper: createWrapper(),
-    });
-    result.current.mutate({
-      username: 'newuser',
-      email: 'new@example.com',
-      password: 'pass',
-    });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-  });
-
-  it('enters error state when creation fails', async () => {
-    server.use(
-      http.post('/api/v1/admin/users', () =>
-        HttpResponse.json({ error: 'conflict' }, { status: 409 }),
-      ),
-    );
-    const { result } = renderHook(() => useCreateUser(), {
-      wrapper: createWrapper(),
-    });
-    result.current.mutate({
-      username: 'dup',
-      email: 'dup@example.com',
-      password: 'pass',
-    });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-  });
-});
-
-describe('useDeleteUser', () => {
-  it('calls the delete endpoint successfully', async () => {
-    server.use(
-      http.delete(
-        '/api/v1/admin/users/:id',
-        () => new HttpResponse(null, { status: 204 }),
-      ),
-    );
-    const { result } = renderHook(() => useDeleteUser(), {
-      wrapper: createWrapper(),
-    });
-    result.current.mutate('user-1');
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
   });
 });
 
@@ -158,63 +98,5 @@ describe('useDashboardStats', () => {
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toMatchObject({ total_disk_usage_bytes: 0 });
-  });
-});
-
-describe('useFederatedIdentityReviews', () => {
-  it('fetches federated identity reviews', async () => {
-    const { result } = renderHook(() => useFederatedIdentityReviews(), {
-      wrapper: createWrapper(),
-    });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual([mockFederatedIdentityReview]);
-  });
-});
-
-describe('useApproveFederatedIdentityReview', () => {
-  it('calls the approve endpoint successfully', async () => {
-    server.use(
-      http.post('/api/v1/admin/federated-identity-reviews/:id/approve', () =>
-        HttpResponse.json(mockFederatedIdentity, { status: 201 }),
-      ),
-    );
-    const { result } = renderHook(() => useApproveFederatedIdentityReview(), {
-      wrapper: createWrapper(),
-    });
-    result.current.mutate('review-1');
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual(mockFederatedIdentity);
-  });
-});
-
-describe('useRejectFederatedIdentityReview', () => {
-  it('calls the reject endpoint successfully', async () => {
-    server.use(
-      http.post(
-        '/api/v1/admin/federated-identity-reviews/:id/reject',
-        () => new HttpResponse(null, { status: 204 }),
-      ),
-    );
-    const { result } = renderHook(() => useRejectFederatedIdentityReview(), {
-      wrapper: createWrapper(),
-    });
-    result.current.mutate('review-1');
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-  });
-});
-
-describe('useDiscardFederatedIdentityReview', () => {
-  it('calls the discard endpoint successfully', async () => {
-    server.use(
-      http.delete(
-        '/api/v1/admin/federated-identity-reviews/:id',
-        () => new HttpResponse(null, { status: 204 }),
-      ),
-    );
-    const { result } = renderHook(() => useDiscardFederatedIdentityReview(), {
-      wrapper: createWrapper(),
-    });
-    result.current.mutate('review-1');
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
   });
 });

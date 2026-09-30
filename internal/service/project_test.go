@@ -45,7 +45,6 @@ func testSetup(t *testing.T, isLocal bool) (*ProjectService, *gorm.DB) {
 	if err := db.AutoMigrate(
 		&models.User{},
 		&models.FederatedIdentity{},
-		&models.FederatedIdentityReview{},
 		&models.Role{},
 		&models.Project{},
 		&models.Job{},
@@ -94,6 +93,28 @@ func createTestUser(t *testing.T, db *gorm.DB, username string) uuid.UUID {
 		t.Fatalf("create user: %v", err)
 	}
 	return user.ID
+}
+
+// createTestGroup creates an identity-provider group the way token
+// reconciliation would.
+func createTestGroup(t *testing.T, db *gorm.DB, name string) *models.Group {
+	t.Helper()
+	g := models.Group{Name: name}
+	if err := db.Create(&g).Error; err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	return &g
+}
+
+// addTestGroupMember adds userID to a group in the database and in Casbin.
+func addTestGroupMember(t *testing.T, db *gorm.DB, groupID, userID uuid.UUID) {
+	t.Helper()
+	if err := db.Create(&models.GroupMember{GroupID: groupID, UserID: userID}).Error; err != nil {
+		t.Fatalf("add group member: %v", err)
+	}
+	if err := rbac.AddUserToGroup(userID, groupID); err != nil {
+		t.Fatalf("add casbin group member: %v", err)
+	}
 }
 
 // createReadyProject is a shortcut that creates a project and marks it ready.

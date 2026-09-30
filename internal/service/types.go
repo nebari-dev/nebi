@@ -72,7 +72,6 @@ type CollaboratorResult struct {
 	Email    string           `json:"email,omitempty"`
 	GroupID  *uuid.UUID       `json:"group_id,omitempty"`
 	Name     string           `json:"name,omitempty"`
-	Source   string           `json:"source,omitempty"` // "" for users, "native"/"oidc" for groups
 	Role     string           `json:"role"`
 	IsOwner  bool             `json:"is_owner"`
 }

@@ -58,7 +58,10 @@ FROM ghcr.io/prefix-dev/pixi:0.76.2-noble@sha256:8b206ef57005a902cb53f50dbaa4789
 WORKDIR /app
 
 # Install CA certificates (required for OIDC/HTTPS connections)
-RUN apt-get update && apt-get install -y ca-certificates git && rm -rf /var/lib/apt/lists/*
+# Explicitly upgrade OpenSSL packages inherited from the pinned runtime image.
+RUN apt-get update && \
+    apt-get install -y ca-certificates git libssl3t64 openssl && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy RBAC configuration
 COPY --from=backend-base /app/internal/rbac/model.conf /app/internal/rbac/model.conf

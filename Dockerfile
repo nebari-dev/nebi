@@ -49,7 +49,8 @@ WORKDIR /app
 
 # Pull in security updates for packages from the pinned base image (e.g.
 # openssl), then install CA certificates (required for OIDC/HTTPS connections)
-RUN apt-get update && apt-get upgrade -y \
+RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y ca-certificates git \
     && rm -rf /var/lib/apt/lists/*
 

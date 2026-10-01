@@ -401,14 +401,14 @@ jobs:
 
       - name: Attest desktop release artifact
         if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # pinned commit
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # pinned commit
         with:
           subject-path: ${{ steps.release_asset.outputs.path }}
           create-storage-record: false
 
       - name: Attest desktop SBOM
         if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # pinned commit
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # pinned commit
         with:
           subject-path: ${{ steps.release_asset.outputs.path }}
           sbom-path: ${{ steps.release_asset.outputs.sbom_path }}

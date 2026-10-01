@@ -362,7 +362,7 @@ jobs:
 
       - name: Attest published image digest
         if: github.event_name != 'pull_request' && steps.registry.outputs.publish == 'true'
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # pinned commit
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # pinned commit
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.manifest.outputs.digest }}
@@ -371,7 +371,7 @@ jobs:
 
       - name: Attest published image SBOM
         if: github.event_name != 'pull_request' && steps.registry.outputs.publish == 'true'
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # pinned commit
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # pinned commit
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.manifest.outputs.digest }}
@@ -444,7 +444,7 @@ jobs:
 
       - name: Attest container image release metadata
         if: startsWith(github.ref, 'refs/tags/') && steps.registry.outputs.publish == 'true'
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # pinned commit
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # pinned commit
         with:
           subject-path: nebi-container-image.json
           create-storage-record: false

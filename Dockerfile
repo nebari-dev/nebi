@@ -47,8 +47,12 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 FROM ghcr.io/prefix-dev/pixi:0.76.2-noble@sha256:8b206ef57005a902cb53f50dbaa47893a4038ca269f0b00038b51f18b1313cd4
 WORKDIR /app
 
-# Install CA certificates (required for OIDC/HTTPS connections)
-RUN apt-get update && apt-get install -y ca-certificates git && rm -rf /var/lib/apt/lists/*
+# Pull in security updates for packages from the pinned base image (e.g.
+# openssl), then install CA certificates (required for OIDC/HTTPS connections)
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y ca-certificates git \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the static binary
 COPY --from=backend-builder /nebi /app/nebi

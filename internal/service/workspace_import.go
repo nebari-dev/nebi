@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -161,22 +160,30 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 //
 // Anything else is wrapped with op and stays an internal error.
 //
-// Caller-facing messages are built from the repository reference and the
-// bundle validation reason only. The registry's own response, request
-// URLs and credentials are never included.
+// The typed errors are built only from fixed text, the repository
+// reference the caller asked for, and the upstream status. Nothing the
+// registry sent (manifest fields, response bodies) and nothing from the
+// underlying client error (request URLs, credentials) is copied into
+// them, because both the response body and the log are downstream.
 func classifyBundlePullError(op string, err error, repoRef, tag string) error {
-	if errors.Is(err, oci.ErrNotNebiArtifact) || errors.Is(err, oci.ErrInvalidBundle) {
-		return &UnprocessableError{Message: err.Error()}
+	if errors.Is(err, oci.ErrNotNebiArtifact) {
+		return &UnprocessableError{Message: "not a Nebi artifact"}
+	}
+	var invalid *oci.InvalidBundleError
+	if errors.As(err, &invalid) {
+		return &UnprocessableError{Message: "invalid bundle: " + invalid.Reason}
 	}
 	ref := displayRepoRef(repoRef)
 	if errors.Is(err, oci.ErrReferenceNotFound) {
 		return &NotFoundError{Message: fmt.Sprintf("repository or tag not found: %s:%s", ref, tag)}
 	}
-	if status, ok := oci.RegistryStatus(err); ok && (status == http.StatusUnauthorized || status == http.StatusForbidden) {
+	var refused *oci.RegistryAccessError
+	if errors.As(err, &refused) {
 		return &UpstreamError{
 			Message:        fmt.Sprintf("registry refused access to %s", ref),
-			UpstreamStatus: status,
-			Err:            fmt.Errorf("%s: %w", op, err),
+			UpstreamStatus: refused.StatusCode,
+			Op:             op,
+			Target:         ref,
 		}
 	}
 	return fmt.Errorf("%s: %w", op, err)

@@ -47,18 +47,22 @@ type UnprocessableError struct {
 
 func (e *UnprocessableError) Error() string { return e.Message }
 
-// UpstreamError represents a failure answered by an upstream service the
-// server called on the caller's behalf, such as an OCI registry refusing
-// access (HTTP 502). Message is safe to return to the caller; Err holds
-// the underlying cause for server-side logging and is never sent to the
-// caller.
+// UpstreamError represents a refusal by an upstream service the server
+// called on the caller's behalf, such as an OCI registry denying access
+// (HTTP 502).
+//
+// Every field is safe to return to the caller and to log. The upstream's
+// own error is deliberately not carried: it can hold request URLs with
+// signed query strings and response bodies that echo credentials.
 type UpstreamError struct {
 	Message string
 	// UpstreamStatus is the HTTP status the upstream answered with.
 	UpstreamStatus int
-	Err            error
+	// Op is the server-side operation that was refused, for logs.
+	Op string
+	// Target names what was being accessed (for a registry,
+	// "host/repository"), for logs.
+	Target string
 }
 
 func (e *UpstreamError) Error() string { return e.Message }
-
-func (e *UpstreamError) Unwrap() error { return e.Err }

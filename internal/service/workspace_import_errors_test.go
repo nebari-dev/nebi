@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -305,18 +306,17 @@ func TestImportFromRegistry_RegistryRefused_Upstream(t *testing.T) {
 				if upstream.Message != want || err.Error() != want {
 					t.Errorf("message: got %q (Error() %q) want %q", upstream.Message, err.Error(), want)
 				}
-				if upstream.Err == nil {
-					t.Fatal("UpstreamError must keep the cause for the server log")
+				if upstream.Op == "" || upstream.Target != host+"/demo/private" {
+					t.Errorf("log fields: got op %q target %q", upstream.Op, upstream.Target)
 				}
-				// Neither the caller-facing message nor the logged cause
-				// may carry the registry credentials.
-				for _, leak := range []string{secret, "robot", "Basic ", "Bearer "} {
-					if strings.Contains(err.Error(), leak) {
-						t.Errorf("caller-facing message leaks %q: %s", leak, err.Error())
+				// The typed error is what reaches the response and the
+				// log. Nothing in it may carry the registry credentials
+				// or anything from the registry client's own error.
+				dump := fmt.Sprintf("%s | %+v", err.Error(), *upstream)
+				for _, leak := range []string{secret, "robot", "Basic ", "Bearer ", "http://", "/v2/", "/token"} {
+					if strings.Contains(dump, leak) {
+						t.Errorf("UpstreamError leaks %q: %s", leak, dump)
 					}
-				}
-				if strings.Contains(upstream.Err.Error(), secret) {
-					t.Errorf("logged cause leaks the registry password: %s", upstream.Err.Error())
 				}
 			})
 		}

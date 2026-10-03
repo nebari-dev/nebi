@@ -14,46 +14,83 @@ import (
 	"oras.land/oras-go/v2/registry/remote"
 )
 
-// TestClassifyBundleManifest_RejectionsAreInvalidBundle pins that every
-// way a manifest can be rejected is reported as ErrInvalidBundle, so
-// callers can classify with errors.Is.
-func TestClassifyBundleManifest_RejectionsAreInvalidBundle(t *testing.T) {
-	cases := map[string][]ocispec.Descriptor{
+// TestClassifyBundleManifest_SafeReasons pins that every manifest
+// rejection is an InvalidBundleError whose Reason is fixed text: it must
+// not quote the layer title, media type or asset path that triggered it,
+// because the registry controls those values.
+func TestClassifyBundleManifest_SafeReasons(t *testing.T) {
+	const planted = "Bearer PLANTED-SECRET"
+	cases := map[string]struct {
+		layers     []ocispec.Descriptor
+		wantReason string
+	}{
 		"missing core layers": {
-			layerDesc(MediaTypeNebiAsset, "README.md"),
+			layers:     []ocispec.Descriptor{layerDesc(MediaTypeNebiAsset, planted)},
+			wantReason: "missing pixi.{toml,lock}",
 		},
 		"duplicate core layer": {
-			layerDesc(MediaTypePixiToml, "pixi.toml"),
-			layerDesc(MediaTypePixiToml, "pixi.toml"),
-			layerDesc(MediaTypePixiLock, "pixi.lock"),
+			layers: []ocispec.Descriptor{
+				layerDesc(MediaTypePixiToml, "pixi.toml"),
+				layerDesc(MediaTypePixiToml, "pixi.toml"),
+				layerDesc(MediaTypePixiLock, "pixi.lock"),
+			},
+			wantReason: "duplicate core layer",
 		},
 		"wrong pixi.toml title": {
-			layerDesc(MediaTypePixiToml, "other.toml"),
-			layerDesc(MediaTypePixiLock, "pixi.lock"),
+			layers: []ocispec.Descriptor{
+				layerDesc(MediaTypePixiToml, planted),
+				layerDesc(MediaTypePixiLock, "pixi.lock"),
+			},
+			wantReason: "pixi.toml core layer has an unexpected title",
 		},
 		"wrong pixi.lock title": {
-			layerDesc(MediaTypePixiToml, "pixi.toml"),
-			layerDesc(MediaTypePixiLock, "other.lock"),
+			layers: []ocispec.Descriptor{
+				layerDesc(MediaTypePixiToml, "pixi.toml"),
+				layerDesc(MediaTypePixiLock, planted),
+			},
+			wantReason: "pixi.lock core layer has an unexpected title",
 		},
 		"unknown media type": {
-			layerDesc(MediaTypePixiToml, "pixi.toml"),
-			layerDesc(MediaTypePixiLock, "pixi.lock"),
-			layerDesc("application/vnd.example.future.v2", "future.bin"),
+			layers: []ocispec.Descriptor{
+				layerDesc(MediaTypePixiToml, "pixi.toml"),
+				layerDesc(MediaTypePixiLock, "pixi.lock"),
+				layerDesc("application/vnd."+planted, "future.bin"),
+			},
+			wantReason: "layer has an unknown media type",
 		},
 		"unsafe asset path": {
-			layerDesc(MediaTypePixiToml, "pixi.toml"),
-			layerDesc(MediaTypePixiLock, "pixi.lock"),
-			layerDesc(MediaTypeNebiAsset, "../escape.txt"),
+			layers: []ocispec.Descriptor{
+				layerDesc(MediaTypePixiToml, "pixi.toml"),
+				layerDesc(MediaTypePixiLock, "pixi.lock"),
+				layerDesc(MediaTypeNebiAsset, "../"+planted),
+			},
+			wantReason: "unsafe or colliding asset path",
+		},
+		"colliding asset paths": {
+			layers: []ocispec.Descriptor{
+				layerDesc(MediaTypePixiToml, "pixi.toml"),
+				layerDesc(MediaTypePixiLock, "pixi.lock"),
+				layerDesc(MediaTypeNebiAsset, planted),
+				layerDesc(MediaTypeNebiAsset, planted),
+			},
+			wantReason: "unsafe or colliding asset path",
 		},
 	}
-	for name, layers := range cases {
+	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := classifyBundleManifest(ocispec.Manifest{Layers: layers})
+			_, err := classifyBundleManifest(ocispec.Manifest{Layers: tc.layers})
 			if !errors.Is(err, ErrInvalidBundle) {
 				t.Fatalf("want ErrInvalidBundle, got %v", err)
 			}
-			if !strings.HasPrefix(err.Error(), "invalid bundle: ") {
-				t.Fatalf("message should start with \"invalid bundle: \", got %q", err.Error())
+			var invalid *InvalidBundleError
+			if !errors.As(err, &invalid) {
+				t.Fatalf("want *InvalidBundleError, got %T", err)
+			}
+			if invalid.Reason != tc.wantReason {
+				t.Errorf("Reason: got %q want %q", invalid.Reason, tc.wantReason)
+			}
+			if strings.Contains(invalid.Reason, "PLANTED") {
+				t.Errorf("Reason quotes manifest content: %q", invalid.Reason)
 			}
 		})
 	}
@@ -159,37 +196,43 @@ func TestBundlePull_ReferenceNotFound(t *testing.T) {
 				if !errors.Is(err, ErrReferenceNotFound) {
 					t.Fatalf("want ErrReferenceNotFound, got %v", err)
 				}
-				if status, ok := RegistryStatus(err); !ok || status != http.StatusNotFound {
-					t.Fatalf("RegistryStatus: got (%d, %v), want (404, true)", status, ok)
+				var refused *RegistryAccessError
+				if errors.As(err, &refused) {
+					t.Fatalf("a missing reference must not be a RegistryAccessError: %v", err)
 				}
 			})
 		})
 	}
 }
 
-func TestBundlePull_RegistryStatus(t *testing.T) {
-	// 400 stands in for "some other upstream failure"; a 5xx would work
-	// too but the registry client retries those with backoff.
-	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusBadRequest} {
+func TestBundlePull_RegistryAccess(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
 			host := startStatusRegistry(t, status)
 			pullAndExtract(t, host+"/demo/any", "v1", func(t *testing.T, err error) {
-				got, ok := RegistryStatus(err)
-				if !ok || got != status {
-					t.Fatalf("RegistryStatus: got (%d, %v), want (%d, true); err=%v", got, ok, status, err)
+				var refused *RegistryAccessError
+				if !errors.As(err, &refused) {
+					t.Fatalf("want RegistryAccessError, got %T: %v", err, err)
+				}
+				if refused.StatusCode != status {
+					t.Errorf("StatusCode: got %d want %d", refused.StatusCode, status)
 				}
 				if errors.Is(err, ErrReferenceNotFound) {
-					t.Fatalf("status %d must not be reported as not found: %v", status, err)
+					t.Errorf("status %d must not be reported as not found: %v", status, err)
 				}
 			})
 		})
 	}
-}
 
-func TestRegistryStatus_NoStatus(t *testing.T) {
-	for _, err := range []error{nil, errors.New("dial tcp: connection refused"), ErrInvalidBundle, ErrNotNebiArtifact} {
-		if status, ok := RegistryStatus(err); ok {
-			t.Errorf("RegistryStatus(%v) = (%d, true), want no status", err, status)
-		}
-	}
+	// 400 stands in for "some other upstream failure"; a 5xx would work
+	// too but the registry client retries those with backoff.
+	t.Run("other statuses are not access errors", func(t *testing.T) {
+		host := startStatusRegistry(t, http.StatusBadRequest)
+		pullAndExtract(t, host+"/demo/any", "v1", func(t *testing.T, err error) {
+			var refused *RegistryAccessError
+			if err == nil || errors.As(err, &refused) || errors.Is(err, ErrReferenceNotFound) {
+				t.Fatalf("want an unclassified error, got %T: %v", err, err)
+			}
+		})
+	})
 }

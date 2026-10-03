@@ -64,11 +64,12 @@ func TestHandleServiceError_StatusAndBody(t *testing.T) {
 			wantBody:   `{"error":"invalid bundle: missing pixi.{toml,lock}"}`,
 		},
 		{
-			name: "UpstreamError reports the upstream status, not the cause",
+			name: "UpstreamError reports the upstream status",
 			err: &service.UpstreamError{
 				Message:        "registry refused access to quay.io/org/repo",
 				UpstreamStatus: http.StatusUnauthorized,
-				Err:            errors.New(`HEAD "https://quay.io/v2/org/repo/manifests/v1": response status code 401: Unauthorized`),
+				Op:             "pull bundle",
+				Target:         "quay.io/org/repo",
 			},
 			wantStatus: http.StatusBadGateway,
 			wantBody:   `{"error":"registry refused access to quay.io/org/repo","upstream_status":401}`,

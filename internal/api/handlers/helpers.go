@@ -45,8 +45,10 @@ func handleServiceError(c *gin.Context, err error) {
 	}
 	var upstreamErr *service.UpstreamError
 	if errors.As(err, &upstreamErr) {
-		// The cause can name upstream URLs, so it goes to the log only.
-		slog.Warn("upstream service error", "error", upstreamErr.Err, "upstream_status", upstreamErr.UpstreamStatus)
+		slog.Warn("upstream service refused the request",
+			"op", upstreamErr.Op,
+			"target", upstreamErr.Target,
+			"upstream_status", upstreamErr.UpstreamStatus)
 		c.JSON(http.StatusBadGateway, ErrorResponse{
 			Error:          upstreamErr.Message,
 			UpstreamStatus: upstreamErr.UpstreamStatus,

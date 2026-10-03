@@ -541,6 +541,22 @@ func TestImport_ReferenceNotFound(t *testing.T) {
 				`{"error":"repository or tag not found: `+registryHost+`/demo/absent:v1"}`)
 		})
 
+		t.Run("tag resolves, then the registry answers 404 for the manifest itself", func(t *testing.T) {
+			bundle := artifactHandler(validBundle(t))
+			registryHost := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/manifests/") {
+					writeRegistryError(w, http.StatusNotFound, registryErrorBody("MANIFEST_UNKNOWN", "manifest unknown", ""))
+					return
+				}
+				bundle(w, r)
+			}))
+
+			res := runImport(t, isLocal, registryHost, "deleted", false)
+
+			res.expect(t, http.StatusNotFound,
+				`{"error":"repository or tag not found: `+registryHost+`/demo/deleted:v1"}`)
+		})
+
 		t.Run("token service answers 404", func(t *testing.T) {
 			tokenHost := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				writeRegistryError(w, http.StatusNotFound, registryErrorBody("NOT_FOUND", "no", ""))

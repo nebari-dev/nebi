@@ -262,11 +262,12 @@ func TestBundlePull_AnonymousBasicChallenge(t *testing.T) {
 	})
 }
 
-// TestBundlePull_ZeroSizeLayer: a layer declaring Size 0 with a
-// non-empty digest is an invalid bundle from both entry points, whether
-// it is a core layer or an asset.
+// TestBundlePull_ZeroSizeLayer: with RejectUnverifiableLayers, a layer
+// declaring Size 0 with a non-empty digest is an invalid bundle from
+// both entry points, whether it is a core layer or an asset.
 func TestBundlePull_ZeroSizeLayer(t *testing.T) {
 	const lying = "sha256:" + "1111111111111111111111111111111111111111111111111111111111111111"
+	opts := PullOptions{PlainHTTP: true, RejectUnverifiableLayers: true}
 	for name, m := range map[string]ocispec.Manifest{
 		"pixi.toml": zeroSizeManifest(MediaTypePixiToml, "pixi.toml", lying),
 		"pixi.lock": zeroSizeManifest(MediaTypePixiLock, "pixi.lock", lying),
@@ -274,12 +275,14 @@ func TestBundlePull_ZeroSizeLayer(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			host := startManifestRegistry(t, m)
-			pullAndExtract(t, host+"/demo/zero", "v1", func(t *testing.T, err error) {
+			_, pullErr := PullBundle(context.Background(), host+"/demo/zero", "v1", opts)
+			_, extractErr := ExtractBundle(context.Background(), host+"/demo/zero", "v1", t.TempDir(), opts)
+			for path, err := range map[string]error{"PullBundle": pullErr, "ExtractBundle": extractErr} {
 				var invalid *InvalidBundleError
 				if !errors.As(err, &invalid) || invalid.Reason != "zero-size layer has a non-empty digest" {
-					t.Fatalf("want InvalidBundleError for the zero-size layer, got %T: %v", err, err)
+					t.Errorf("%s: want InvalidBundleError for the zero-size layer, got %T: %v", path, err, err)
 				}
-			})
+			}
 		})
 	}
 }

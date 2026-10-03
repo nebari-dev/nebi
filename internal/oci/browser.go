@@ -61,6 +61,11 @@ type PullOptions struct {
 	// registry cannot exhaust disk by streaming a multi-GB asset blob.
 	// Zero or negative = no cap.
 	MaxBundleBytes int64
+	// RejectUnverifiableLayers makes PullBundle reject, before fetching
+	// anything, a bundle with a layer that declares Size 0 but whose
+	// digest is not that of empty content. ExtractBundle always rejects
+	// such a layer as it copies, so the option has no effect there.
+	RejectUnverifiableLayers bool
 }
 
 // AssetBlob names a single asset layer in a bundle. It is a listing
@@ -389,7 +394,13 @@ func resolveBundleManifest(
 	}
 	manifestReader, err := repo.Fetch(ctx, desc)
 	if err != nil {
-		return nil, cm, classifyAccess(fmt.Errorf("failed to fetch manifest: %w", err))
+		wrapped := fmt.Errorf("failed to fetch manifest: %w", err)
+		// The tag resolved but the manifest it points at is gone (for
+		// example, deleted in between).
+		if errors.Is(err, errdef.ErrNotFound) {
+			return nil, cm, &referenceNotFoundError{err: wrapped}
+		}
+		return nil, cm, classifyAccess(wrapped)
 	}
 	manifestData, err := io.ReadAll(manifestReader)
 	manifestReader.Close()
@@ -445,10 +456,11 @@ func PullBundle(ctx context.Context, repoRef, tag string, opts PullOptions) (*Pu
 		return nil, err
 	}
 
-	// ExtractBundle makes the same check as it copies each layer.
-	for _, layer := range append([]ocispec.Descriptor{cm.pixiToml, cm.pixiLock}, cm.assets...) {
-		if err := zeroSizeLayerError(layer); err != nil {
-			return nil, err
+	if opts.RejectUnverifiableLayers {
+		for _, layer := range append([]ocispec.Descriptor{cm.pixiToml, cm.pixiLock}, cm.assets...) {
+			if err := zeroSizeLayerError(layer); err != nil {
+				return nil, err
+			}
 		}
 	}
 

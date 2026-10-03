@@ -88,6 +88,9 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 		// is well above any reasonable Pixi environment but small
 		// enough that exhausting disk requires deliberate effort.
 		MaxBundleBytes: 5 * 1024 * 1024 * 1024,
+		// Team mode never downloads asset layers, so without this a
+		// layer that can never verify would be imported unnoticed.
+		RejectUnverifiableLayers: true,
 	}
 
 	// Cap the synchronous OCI pull so a slow or malicious registry

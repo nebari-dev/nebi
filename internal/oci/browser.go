@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content/file"
+	"oras.land/oras-go/v2/errdef"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 )
@@ -59,6 +61,11 @@ type PullOptions struct {
 	// registry cannot exhaust disk by streaming a multi-GB asset blob.
 	// Zero or negative = no cap.
 	MaxBundleBytes int64
+	// RejectUnverifiableLayers makes PullBundle reject, before fetching
+	// anything, a bundle with a layer that declares Size 0 but whose
+	// digest is not that of empty content. ExtractBundle always rejects
+	// such a layer as it copies, so the option has no effect there.
+	RejectUnverifiableLayers bool
 }
 
 // AssetBlob names a single asset layer in a bundle. It is a listing
@@ -269,6 +276,22 @@ func ListTags(ctx context.Context, repoRef string, opts BrowseOptions) ([]TagInf
 	return tags, nil
 }
 
+// invalidBundle builds an InvalidBundleError. reason must not quote
+// anything from the manifest; detail is the full diagnostic.
+func invalidBundle(reason, detail string) error {
+	return &InvalidBundleError{Reason: reason, detail: detail}
+}
+
+// zeroSizeLayerError rejects a layer that declares Size 0 but whose
+// digest is not that of empty content: no content can satisfy both.
+func zeroSizeLayerError(desc ocispec.Descriptor) error {
+	if desc.Size != 0 || desc.Digest == emptyBlobDigest {
+		return nil
+	}
+	return invalidBundle("zero-size layer has a non-empty digest",
+		fmt.Sprintf("zero-size layer %q has non-empty digest %s", desc.Annotations[ocispec.AnnotationTitle], desc.Digest))
+}
+
 // classifiedManifest is the result of splitting layers by role.
 type classifiedManifest struct {
 	manifestDesc ocispec.Descriptor // the manifest itself — used to pin Copy by digest
@@ -292,30 +315,33 @@ func classifyBundleManifest(m ocispec.Manifest) (classifiedManifest, error) {
 		switch layer.MediaType {
 		case MediaTypePixiToml:
 			if haveToml {
-				return out, fmt.Errorf("invalid bundle: duplicate core layer")
+				return out, invalidBundle("duplicate core layer", "invalid bundle: duplicate core layer")
 			}
 			if title := layer.Annotations[ocispec.AnnotationTitle]; title != "pixi.toml" {
-				return out, fmt.Errorf("invalid bundle: pixi.toml core layer has title %q, expected \"pixi.toml\"", title)
+				return out, invalidBundle("pixi.toml core layer has an unexpected title",
+					fmt.Sprintf("invalid bundle: pixi.toml core layer has title %q, expected \"pixi.toml\"", title))
 			}
 			out.pixiToml = layer
 			haveToml = true
 		case MediaTypePixiLock:
 			if haveLock {
-				return out, fmt.Errorf("invalid bundle: duplicate core layer")
+				return out, invalidBundle("duplicate core layer", "invalid bundle: duplicate core layer")
 			}
 			if title := layer.Annotations[ocispec.AnnotationTitle]; title != "pixi.lock" {
-				return out, fmt.Errorf("invalid bundle: pixi.lock core layer has title %q, expected \"pixi.lock\"", title)
+				return out, invalidBundle("pixi.lock core layer has an unexpected title",
+					fmt.Sprintf("invalid bundle: pixi.lock core layer has title %q, expected \"pixi.lock\"", title))
 			}
 			out.pixiLock = layer
 			haveLock = true
 		case MediaTypeNebiAsset:
 			out.assets = append(out.assets, layer)
 		default:
-			return out, fmt.Errorf("invalid bundle: unknown media type %q", layer.MediaType)
+			return out, invalidBundle("layer has an unknown media type",
+				fmt.Sprintf("invalid bundle: unknown media type %q", layer.MediaType))
 		}
 	}
 	if !haveToml || !haveLock {
-		return out, fmt.Errorf("invalid bundle: missing pixi.{toml,lock}")
+		return out, invalidBundle("missing pixi.{toml,lock}", "invalid bundle: missing pixi.{toml,lock}")
 	}
 	// Validate every asset title before fetch. This also rejects dupes
 	// and case-insensitive collisions.
@@ -325,7 +351,11 @@ func classifyBundleManifest(m ocispec.Manifest) (classifiedManifest, error) {
 		paths = append(paths, title)
 	}
 	if err := validateAssetPaths(paths); err != nil {
-		return out, fmt.Errorf("unsafe path in bundle: %w", err)
+		return out, &InvalidBundleError{
+			Reason: "unsafe or colliding asset path",
+			detail: fmt.Sprintf("unsafe path in bundle: %v", err),
+			cause:  err,
+		}
 	}
 	return out, nil
 }
@@ -352,11 +382,25 @@ func resolveBundleManifest(
 
 	desc, err := repo.Resolve(ctx, tag)
 	if err != nil {
-		return nil, cm, fmt.Errorf("failed to resolve tag %s: %w", tag, err)
+		wrapped := fmt.Errorf("failed to resolve tag %s: %w", tag, err)
+		// The registry client reports a 404 on the manifest request as
+		// errdef.ErrNotFound. A 404 from the token service arrives as a
+		// typed error response instead, so it is not mistaken for a
+		// missing reference.
+		if errors.Is(err, errdef.ErrNotFound) {
+			return nil, cm, &referenceNotFoundError{err: wrapped}
+		}
+		return nil, cm, classifyAccess(wrapped)
 	}
 	manifestReader, err := repo.Fetch(ctx, desc)
 	if err != nil {
-		return nil, cm, fmt.Errorf("failed to fetch manifest: %w", err)
+		wrapped := fmt.Errorf("failed to fetch manifest: %w", err)
+		// The tag resolved but the manifest it points at is gone (for
+		// example, deleted in between).
+		if errors.Is(err, errdef.ErrNotFound) {
+			return nil, cm, &referenceNotFoundError{err: wrapped}
+		}
+		return nil, cm, classifyAccess(wrapped)
 	}
 	manifestData, err := io.ReadAll(manifestReader)
 	manifestReader.Close()
@@ -365,10 +409,14 @@ func resolveBundleManifest(
 	}
 	var manifest ocispec.Manifest
 	if err := json.Unmarshal(manifestData, &manifest); err != nil {
-		return nil, cm, fmt.Errorf("failed to parse manifest: %w", err)
+		return nil, cm, &InvalidBundleError{
+			Reason: "manifest is not valid JSON",
+			detail: fmt.Sprintf("failed to parse manifest: %v", err),
+			cause:  err,
+		}
 	}
 	if manifest.Config.MediaType != MediaTypePixiConfig {
-		return nil, cm, fmt.Errorf("not a Nebi artifact")
+		return nil, cm, ErrNotNebiArtifact
 	}
 	cm, err = classifyBundleManifest(manifest)
 	if err != nil {
@@ -408,13 +456,21 @@ func PullBundle(ctx context.Context, repoRef, tag string, opts PullOptions) (*Pu
 		return nil, err
 	}
 
+	if opts.RejectUnverifiableLayers {
+		for _, layer := range append([]ocispec.Descriptor{cm.pixiToml, cm.pixiLock}, cm.assets...) {
+			if err := zeroSizeLayerError(layer); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	tomlBytes, err := fetchLayerBytes(ctx, repo, cm.pixiToml)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch pixi.toml layer: %w", err)
+		return nil, classifyAccess(fmt.Errorf("failed to fetch pixi.toml layer: %w", err))
 	}
 	lockBytes, err := fetchLayerBytes(ctx, repo, cm.pixiLock)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch pixi.lock layer: %w", err)
+		return nil, classifyAccess(fmt.Errorf("failed to fetch pixi.lock layer: %w", err))
 	}
 
 	return &PullResult{
@@ -467,8 +523,8 @@ func ExtractBundle(ctx context.Context, repoRef, tag, destDir string, opts PullO
 		if desc.Size != 0 {
 			return nil
 		}
-		if desc.Digest != emptyBlobDigest {
-			return fmt.Errorf("zero-size layer %q has non-empty digest %s", desc.Annotations[ocispec.AnnotationTitle], desc.Digest)
+		if err := zeroSizeLayerError(desc); err != nil {
+			return err
 		}
 		if err := fs.Push(ctx, desc, bytes.NewReader(nil)); err != nil {
 			return fmt.Errorf("write empty layer %q: %w", desc.Annotations[ocispec.AnnotationTitle], err)
@@ -480,7 +536,16 @@ func ExtractBundle(ctx context.Context, repoRef, tag, destDir string, opts PullO
 	// between classify and copy cannot swap in a different bundle.
 	srcRef := cm.manifestDesc.Digest.String()
 	if _, err := oras.Copy(ctx, repo, srcRef, fs, srcRef, copyOpts); err != nil {
-		return nil, fmt.Errorf("extract bundle: %w", err)
+		wrapped := fmt.Errorf("extract bundle: %w", err)
+		// oras.Copy starts by fetching the manifest again. If it is gone
+		// by now, that is a missing reference; a layer that is not found
+		// fails under a different operation and is not.
+		var copyErr *oras.CopyError
+		if errors.As(err, &copyErr) && copyErr.Origin == oras.CopyErrorOriginSource &&
+			copyErr.Op == "FetchReference" && errors.Is(copyErr.Err, errdef.ErrNotFound) {
+			return nil, &referenceNotFoundError{err: wrapped}
+		}
+		return nil, classifyAccess(wrapped)
 	}
 
 	// pixi.toml / pixi.lock are written by oras.Copy via their

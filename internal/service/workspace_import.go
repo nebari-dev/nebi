@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,8 +46,10 @@ type ImportFromRegistryRequest struct {
 //     bug where team-mode imports re-solved from pixi.toml alone.
 //
 // Network errors surface synchronously so the caller knows the import
-// did not start. On any failure after the staging dir is created, the
-// staging dir is removed before returning.
+// did not start. Failures the caller can act on come back typed (see
+// classifyBundlePullError) instead of as an opaque internal error. On
+// any failure after the staging dir is created, the staging dir is
+// removed before returning.
 func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID string, req ImportFromRegistryRequest, userID uuid.UUID) (*models.Workspace, error) {
 	regID, err := uuid.Parse(registryID)
 	if err != nil {
@@ -85,6 +88,9 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 		// is well above any reasonable Pixi environment but small
 		// enough that exhausting disk requires deliberate effort.
 		MaxBundleBytes: 5 * 1024 * 1024 * 1024,
+		// Team mode never downloads asset layers, so without this a
+		// layer that can never verify would be imported unnoticed.
+		RejectUnverifiableLayers: true,
 	}
 
 	// Cap the synchronous OCI pull so a slow or malicious registry
@@ -104,14 +110,14 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 		result, err := oci.ExtractBundle(pullCtx, repoRef, req.Tag, stagingDir, pullOpts)
 		if err != nil {
 			_ = os.RemoveAll(stagingDir)
-			return nil, fmt.Errorf("extract bundle: %w", err)
+			return nil, classifyBundlePullError("extract bundle", err, repoRef, req.Tag)
 		}
 		digest = result.Digest
 	} else {
 		result, err := oci.PullBundle(pullCtx, repoRef, req.Tag, pullOpts)
 		if err != nil {
 			_ = os.RemoveAll(stagingDir)
-			return nil, fmt.Errorf("pull bundle: %w", err)
+			return nil, classifyBundlePullError("pull bundle", err, repoRef, req.Tag)
 		}
 		// Stage just the two core files; asset layers stay in the
 		// registry until team mode opts in to bundle support.
@@ -144,4 +150,59 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 	})
 
 	return ws, nil
+}
+
+// classifyBundlePullError turns a failed bundle pull into a typed service
+// error when the caller can act on it, so API clients can tell a bad
+// artifact or a registry refusal from a broken server:
+//
+//   - the artifact is not a Nebi bundle, or is a malformed one →
+//     UnprocessableError carrying the reason;
+//   - the registry has no such repository or tag → NotFoundError;
+//   - the pull was refused with 401/403 by the registry or something
+//     it delegates to (its token service, a host it redirected to) →
+//     UpstreamError carrying that status.
+//
+// Anything else is wrapped with op and stays an internal error.
+//
+// The typed errors are built only from fixed text, the repository
+// reference the caller asked for, and the upstream status. Nothing the
+// registry sent (manifest fields, response bodies) and nothing from the
+// underlying client error (request URLs, credentials) is copied into
+// them, because both the response body and the log are downstream.
+func classifyBundlePullError(op string, err error, repoRef, tag string) error {
+	if errors.Is(err, oci.ErrNotNebiArtifact) {
+		return &UnprocessableError{Message: "not a Nebi artifact"}
+	}
+	var invalid *oci.InvalidBundleError
+	if errors.As(err, &invalid) {
+		return &UnprocessableError{Message: "invalid bundle: " + invalid.Reason}
+	}
+	ref := displayRepoRef(repoRef)
+	if errors.Is(err, oci.ErrReferenceNotFound) {
+		return &NotFoundError{Message: fmt.Sprintf("repository or tag not found: %s:%s", ref, tag)}
+	}
+	var refused *oci.RegistryAccessError
+	if errors.As(err, &refused) {
+		return &UpstreamError{
+			Message:        fmt.Sprintf("registry refused access to %s", ref),
+			UpstreamStatus: refused.StatusCode,
+			Op:             op,
+			Target:         ref,
+		}
+	}
+	return fmt.Errorf("%s: %w", op, err)
+}
+
+// displayRepoRef returns repoRef in a form safe to show to a caller: any
+// userinfo embedded in the host part ("user:secret@host/repo") is dropped.
+func displayRepoRef(repoRef string) string {
+	host, rest, hasPath := strings.Cut(repoRef, "/")
+	if i := strings.LastIndex(host, "@"); i >= 0 {
+		host = host[i+1:]
+	}
+	if !hasPath {
+		return host
+	}
+	return host + "/" + rest
 }

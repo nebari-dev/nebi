@@ -14,6 +14,11 @@ import (
 
 // handleServiceError maps service-layer errors to HTTP status codes.
 func handleServiceError(c *gin.Context, err error) {
+	var notFoundErr *service.NotFoundError
+	if errors.As(err, &notFoundErr) {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: notFoundErr.Message})
+		return
+	}
 	if errors.Is(err, service.ErrNotFound) {
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Not found"})
 		return
@@ -31,6 +36,23 @@ func handleServiceError(c *gin.Context, err error) {
 	var forbiddenErr *service.ForbiddenError
 	if errors.As(err, &forbiddenErr) {
 		c.JSON(http.StatusForbidden, ErrorResponse{Error: forbiddenErr.Message})
+		return
+	}
+	var unprocessableErr *service.UnprocessableError
+	if errors.As(err, &unprocessableErr) {
+		c.JSON(http.StatusUnprocessableEntity, ErrorResponse{Error: unprocessableErr.Message})
+		return
+	}
+	var upstreamErr *service.UpstreamError
+	if errors.As(err, &upstreamErr) {
+		slog.Warn("upstream service refused the request",
+			"op", upstreamErr.Op,
+			"target", upstreamErr.Target,
+			"upstream_status", upstreamErr.UpstreamStatus)
+		c.JSON(http.StatusBadGateway, ErrorResponse{
+			Error:          upstreamErr.Message,
+			UpstreamStatus: upstreamErr.UpstreamStatus,
+		})
 		return
 	}
 	slog.Error("unhandled service error", "error", err)

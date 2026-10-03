@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,7 +47,8 @@ type ImportFromRegistryRequest struct {
 //     bug where team-mode imports re-solved from pixi.toml alone.
 //
 // Network errors surface synchronously so the caller knows the import
-// did not start. On any failure after the staging dir is created, the
+// did not start. Failures the caller can act on come back typed (see
+// classifyBundlePullError) instead of as an opaque internal error. On any failure after the staging dir is created, the
 // staging dir is removed before returning.
 func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID string, req ImportFromRegistryRequest, userID uuid.UUID) (*models.Workspace, error) {
 	regID, err := uuid.Parse(registryID)
@@ -104,14 +107,14 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 		result, err := oci.ExtractBundle(pullCtx, repoRef, req.Tag, stagingDir, pullOpts)
 		if err != nil {
 			_ = os.RemoveAll(stagingDir)
-			return nil, fmt.Errorf("extract bundle: %w", err)
+			return nil, classifyBundlePullError("extract bundle", err, repoRef, req.Tag)
 		}
 		digest = result.Digest
 	} else {
 		result, err := oci.PullBundle(pullCtx, repoRef, req.Tag, pullOpts)
 		if err != nil {
 			_ = os.RemoveAll(stagingDir)
-			return nil, fmt.Errorf("pull bundle: %w", err)
+			return nil, classifyBundlePullError("pull bundle", err, repoRef, req.Tag)
 		}
 		// Stage just the two core files; asset layers stay in the
 		// registry until team mode opts in to bundle support.
@@ -144,4 +147,50 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 	})
 
 	return ws, nil
+}
+
+// classifyBundlePullError turns a failed bundle pull into a typed service
+// error when the caller can act on it, so API clients can tell a bad
+// artifact or a registry refusal from a broken server:
+//
+//   - the artifact is not a Nebi bundle, or is a malformed one →
+//     UnprocessableError carrying the reason;
+//   - the registry has no such repository or tag → NotFoundError;
+//   - the registry (or its token service) answered 401/403 →
+//     UpstreamError carrying that status.
+//
+// Anything else is wrapped with op and stays an internal error.
+//
+// Caller-facing messages are built from the repository reference and the
+// bundle validation reason only. The registry's own response, request
+// URLs and credentials are never included.
+func classifyBundlePullError(op string, err error, repoRef, tag string) error {
+	if errors.Is(err, oci.ErrNotNebiArtifact) || errors.Is(err, oci.ErrInvalidBundle) {
+		return &UnprocessableError{Message: err.Error()}
+	}
+	ref := displayRepoRef(repoRef)
+	if errors.Is(err, oci.ErrReferenceNotFound) {
+		return &NotFoundError{Message: fmt.Sprintf("repository or tag not found: %s:%s", ref, tag)}
+	}
+	if status, ok := oci.RegistryStatus(err); ok && (status == http.StatusUnauthorized || status == http.StatusForbidden) {
+		return &UpstreamError{
+			Message:        fmt.Sprintf("registry refused access to %s", ref),
+			UpstreamStatus: status,
+			Err:            fmt.Errorf("%s: %w", op, err),
+		}
+	}
+	return fmt.Errorf("%s: %w", op, err)
+}
+
+// displayRepoRef returns repoRef in a form safe to show to a caller: any
+// userinfo embedded in the host part ("user:secret@host/repo") is dropped.
+func displayRepoRef(repoRef string) string {
+	host, rest, hasPath := strings.Cut(repoRef, "/")
+	if i := strings.LastIndex(host, "@"); i >= 0 {
+		host = host[i+1:]
+	}
+	if !hasPath {
+		return host
+	}
+	return host + "/" + rest
 }

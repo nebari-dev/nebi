@@ -3498,6 +3498,10 @@ const docTemplate = `{
             "properties": {
                 "error": {
                     "type": "string"
+                },
+                "upstream_status": {
+                    "description": "UpstreamStatus is the HTTP status an upstream service (such as an\nOCI registry) answered with. Set only on 502 responses.",
+                    "type": "integer"
                 }
             }
         },

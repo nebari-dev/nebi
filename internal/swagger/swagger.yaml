@@ -85,6 +85,11 @@ definitions:
     properties:
       error:
         type: string
+      upstream_status:
+        description: |-
+          UpstreamStatus is the HTTP status an upstream service (such as an
+          OCI registry) answered with. Set only on 502 responses.
+        type: integer
     type: object
   handlers.GrantPermissionRequest:
     properties:

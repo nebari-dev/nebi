@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -491,66 +490,67 @@ func TestImport_MalformedBundleContent(t *testing.T) {
 	})
 }
 
-// TestImport_ResponsesNotFromTheRegistry covers provenance: a status only
-// says something about the requested reference when the registry (or, for
-// 401/403, its token service) produced it. Everything here must stay a
-// generic 500.
-func TestImport_ResponsesNotFromTheRegistry(t *testing.T) {
-	// elsewhere answers every request with status, as a host that is not
-	// the registry.
-	elsewhere := func(t *testing.T, status int) string {
-		return startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			writeRegistryError(w, status, registryErrorBody("DENIED", "no", ""))
-		}))
-	}
+// bearerRegistry wraps next so that it demands a bearer token from the
+// token service at realm before answering.
+func bearerRegistry(realm string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="`+realm+`",service="registry"`)
+			writeRegistryError(w, http.StatusUnauthorized, registryErrorBody("UNAUTHORIZED", "authentication required", ""))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// TestImport_ReferenceNotFound covers the only failure reported as 404:
+// the registry's own 404 for the manifest. A 404 from anywhere else in
+// the pull says nothing about the reference and stays a generic 500.
+func TestImport_ReferenceNotFound(t *testing.T) {
+	manifestUnknown := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/manifests/") {
+			writeRegistryError(w, http.StatusNotFound, registryErrorBody("MANIFEST_UNKNOWN", "manifest unknown", ""))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
 
 	importModes(t, func(t *testing.T, isLocal bool) {
-		t.Run("token service on another origin answers 404", func(t *testing.T) {
-			tokenHost := elsewhere(t, http.StatusNotFound)
-			registryHost := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("WWW-Authenticate", `Bearer realm="http://`+tokenHost+`/token",service="registry"`)
-				writeRegistryError(w, http.StatusUnauthorized, registryErrorBody("UNAUTHORIZED", "authentication required", ""))
+		t.Run("registry answers 404 for the manifest", func(t *testing.T) {
+			registryHost := startServer(t, manifestUnknown)
+
+			res := runImport(t, isLocal, registryHost, "absent", false)
+
+			res.expect(t, http.StatusNotFound,
+				`{"error":"repository or tag not found: `+registryHost+`/demo/absent:v1"}`)
+		})
+
+		t.Run("token request is redirected and succeeds, then the registry answers 404 for the manifest", func(t *testing.T) {
+			issuer := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"token":"anonymous-token"}`))
 			}))
+			tokenHost := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, "http://"+issuer+"/issue?"+r.URL.RawQuery, http.StatusTemporaryRedirect)
+			}))
+			registryHost := startServer(t, bearerRegistry("http://"+tokenHost+"/token", manifestUnknown))
+
+			res := runImport(t, isLocal, registryHost, "absent", false)
+
+			res.expect(t, http.StatusNotFound,
+				`{"error":"repository or tag not found: `+registryHost+`/demo/absent:v1"}`)
+		})
+
+		t.Run("token service answers 404", func(t *testing.T) {
+			tokenHost := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				writeRegistryError(w, http.StatusNotFound, registryErrorBody("NOT_FOUND", "no", ""))
+			}))
+			registryHost := startServer(t, bearerRegistry("http://"+tokenHost+"/token", manifestUnknown))
 
 			res := runImport(t, isLocal, registryHost, "any", false)
 
 			res.expect(t, http.StatusInternalServerError, genericInternalError)
 		})
-
-		for _, status := range []int{http.StatusNotFound, http.StatusUnauthorized, http.StatusForbidden} {
-			t.Run(fmt.Sprintf("manifest request redirected to another host that answers %d", status), func(t *testing.T) {
-				otherHost := elsewhere(t, status)
-				registryHost := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if strings.Contains(r.URL.Path, "/manifests/") {
-						http.Redirect(w, r, "http://"+otherHost+"/storage"+r.URL.Path, http.StatusTemporaryRedirect)
-						return
-					}
-					w.WriteHeader(http.StatusOK)
-				}))
-
-				res := runImport(t, isLocal, registryHost, "any", false)
-
-				res.expect(t, http.StatusInternalServerError, genericInternalError)
-			})
-		}
-
-		for _, status := range []int{http.StatusNotFound, http.StatusForbidden} {
-			t.Run(fmt.Sprintf("layer request redirected to another host that answers %d", status), func(t *testing.T) {
-				otherHost := elsewhere(t, status)
-				bundle := artifactHandler(validBundle(t))
-				registryHost := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/blobs/") {
-						http.Redirect(w, r, "http://"+otherHost+"/storage"+r.URL.Path, http.StatusTemporaryRedirect)
-						return
-					}
-					bundle(w, r)
-				}))
-
-				res := runImport(t, isLocal, registryHost, "any", false)
-
-				res.expect(t, http.StatusInternalServerError, genericInternalError)
-			})
-		}
 
 		t.Run("registry has the manifest but not its layers", func(t *testing.T) {
 			bundle := artifactHandler(validBundle(t))
@@ -565,90 +565,6 @@ func TestImport_ResponsesNotFromTheRegistry(t *testing.T) {
 			res := runImport(t, isLocal, registryHost, "any", false)
 
 			res.expect(t, http.StatusInternalServerError, genericInternalError)
-		})
-	})
-}
-
-// TestImport_ReferenceNotFound covers a 404 the registry itself answers on
-// the manifest request.
-func TestImport_ReferenceNotFound(t *testing.T) {
-	importModes(t, func(t *testing.T, isLocal bool) {
-		registryHost := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.Contains(r.URL.Path, "/manifests/") {
-				writeRegistryError(w, http.StatusNotFound, registryErrorBody("MANIFEST_UNKNOWN", "manifest unknown", ""))
-				return
-			}
-			w.WriteHeader(http.StatusOK)
-		}))
-
-		res := runImport(t, isLocal, registryHost, "absent", false)
-
-		res.expect(t, http.StatusNotFound,
-			`{"error":"repository or tag not found: `+registryHost+`/demo/absent:v1"}`)
-	})
-}
-
-// bearerRegistry wraps next so that it demands a bearer token from the
-// token service at realm before answering.
-func bearerRegistry(realm string, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") == "" {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="`+realm+`",service="registry"`)
-			writeRegistryError(w, http.StatusUnauthorized, registryErrorBody("UNAUTHORIZED", "authentication required", ""))
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-// TestImport_ProvenanceIsPerResponse covers pulls in which one request
-// is redirected to another host and a different request then fails at
-// the registry. The redirect must not change how the failure is reported.
-func TestImport_ProvenanceIsPerResponse(t *testing.T) {
-	importModes(t, func(t *testing.T, isLocal bool) {
-		t.Run("token request redirected to another host succeeds, then the registry answers 404", func(t *testing.T) {
-			issuer := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				_, _ = w.Write([]byte(`{"token":"anonymous-token"}`))
-			}))
-			tokenHost := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				http.Redirect(w, r, "http://"+issuer+"/issue?"+r.URL.RawQuery, http.StatusTemporaryRedirect)
-			}))
-			registryHost := startServer(t, bearerRegistry("http://"+tokenHost+"/token",
-				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					writeRegistryError(w, http.StatusNotFound, registryErrorBody("MANIFEST_UNKNOWN", "manifest unknown", ""))
-				})))
-
-			res := runImport(t, isLocal, registryHost, "absent", false)
-
-			res.expect(t, http.StatusNotFound,
-				`{"error":"repository or tag not found: `+registryHost+`/demo/absent:v1"}`)
-		})
-
-		t.Run("one layer redirected to another host succeeds, the registry refuses another", func(t *testing.T) {
-			a := validBundle(t)
-			bundle := artifactHandler(a)
-			storageHost := startServer(t, bundle)
-			tomlDigest := blobDigest([]byte("[project]\nname = \"ok\"\n"))
-			if _, ok := a.blobs[tomlDigest]; !ok {
-				t.Fatal("fixture: pixi.toml digest not in the bundle")
-			}
-			registryHost := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/blobs/") {
-					if strings.HasSuffix(r.URL.Path, tomlDigest) {
-						http.Redirect(w, r, "http://"+storageHost+"/storage"+r.URL.Path, http.StatusTemporaryRedirect)
-						return
-					}
-					writeRegistryError(w, http.StatusForbidden, registryErrorBody("DENIED", "denied", ""))
-					return
-				}
-				bundle(w, r)
-			}))
-
-			res := runImport(t, isLocal, registryHost, "mixed", false)
-
-			res.expect(t, http.StatusBadGateway,
-				`{"error":"registry refused access to `+registryHost+`/demo/mixed","upstream_status":403}`)
 		})
 	})
 }

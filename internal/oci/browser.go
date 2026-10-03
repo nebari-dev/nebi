@@ -277,27 +277,6 @@ func invalidBundle(reason, detail string) error {
 	return &InvalidBundleError{Reason: reason, detail: detail}
 }
 
-// newPullClient returns the registry client for one bundle pull: a copy
-// of the client the other registry calls use (auth.DefaultClient for
-// anonymous access, newAuthClient otherwise) whose HTTP client is a copy
-// of the one that client would have used, with only its transport wrapped
-// in originTransport. Timeout, cookie jar, redirect policy, the
-// underlying transport, headers and the auth cache are all inherited.
-func newPullClient(opts PullOptions) *auth.Client {
-	client := *auth.DefaultClient
-	if c := newAuthClient(opts.Username, opts.Password); c != nil {
-		client = *c
-	}
-	httpClient := http.DefaultClient
-	if client.Client != nil {
-		httpClient = client.Client
-	}
-	wrapped := *httpClient
-	wrapped.Transport = &originTransport{base: httpClient.Transport}
-	client.Client = &wrapped
-	return &client
-}
-
 // zeroSizeLayerError rejects a layer that declares Size 0 but whose
 // digest is not that of empty content: no content can satisfy both.
 func zeroSizeLayerError(desc ocispec.Descriptor) error {
@@ -392,16 +371,17 @@ func resolveBundleManifest(
 		return nil, cm, fmt.Errorf("failed to create repository client: %w", err)
 	}
 	repo.PlainHTTP = opts.PlainHTTP
-	repo.Client = newPullClient(opts)
+	if c := newAuthClient(opts.Username, opts.Password); c != nil {
+		repo.Client = c
+	}
 
 	desc, err := repo.Resolve(ctx, tag)
 	if err != nil {
 		wrapped := fmt.Errorf("failed to resolve tag %s: %w", tag, err)
 		// The registry client reports a 404 on the manifest request as
 		// errdef.ErrNotFound. A 404 from the token service arrives as a
-		// typed error response instead and is not a missing reference;
-		// a 404 from a host the request was redirected to never gets
-		// this far (see originTransport).
+		// typed error response instead, so it is not mistaken for a
+		// missing reference.
 		if errors.Is(err, errdef.ErrNotFound) {
 			return nil, cm, &referenceNotFoundError{err: wrapped}
 		}

@@ -47,8 +47,9 @@ type ImportFromRegistryRequest struct {
 //
 // Network errors surface synchronously so the caller knows the import
 // did not start. Failures the caller can act on come back typed (see
-// classifyBundlePullError) instead of as an opaque internal error. On any failure after the staging dir is created, the
-// staging dir is removed before returning.
+// classifyBundlePullError) instead of as an opaque internal error. On
+// any failure after the staging dir is created, the staging dir is
+// removed before returning.
 func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID string, req ImportFromRegistryRequest, userID uuid.UUID) (*models.Workspace, error) {
 	regID, err := uuid.Parse(registryID)
 	if err != nil {
@@ -155,7 +156,8 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 //   - the artifact is not a Nebi bundle, or is a malformed one →
 //     UnprocessableError carrying the reason;
 //   - the registry has no such repository or tag → NotFoundError;
-//   - the registry (or its token service) answered 401/403 →
+//   - the pull was refused with 401/403 by the registry or something
+//     it delegates to (its token service, a host it redirected to) →
 //     UpstreamError carrying that status.
 //
 // Anything else is wrapped with op and stays an internal error.

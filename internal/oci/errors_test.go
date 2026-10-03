@@ -5,12 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
 	"strings"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
@@ -285,73 +282,4 @@ func TestBundlePull_ZeroSizeLayer(t *testing.T) {
 			})
 		})
 	}
-}
-
-// countingTransport counts the requests that pass through it.
-type countingTransport struct {
-	base  http.RoundTripper
-	count atomic.Int64
-}
-
-func (c *countingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	c.count.Add(1)
-	return c.base.RoundTrip(req)
-}
-
-// TestBundlePull_InheritsClientConfiguration: a bundle pull uses the
-// same HTTP client configuration as the other registry calls
-// (http.DefaultClient with credentials, auth.DefaultClient's client
-// without). Only the transport is wrapped, and the shared clients are
-// left untouched.
-func TestBundlePull_InheritsClientConfiguration(t *testing.T) {
-	host := startTestRegistry(t)
-
-	t.Run("with credentials: http.DefaultClient", func(t *testing.T) {
-		counter := &countingTransport{base: http.DefaultTransport}
-		saved := *http.DefaultClient
-		http.DefaultClient.Transport = counter
-		http.DefaultClient.Timeout = 42 * time.Second
-		t.Cleanup(func() { *http.DefaultClient = saved })
-
-		c := newPullClient(PullOptions{Username: "u", Password: "p"})
-		if c.Client.Timeout != 42*time.Second {
-			t.Errorf("Timeout not inherited: %v", c.Client.Timeout)
-		}
-		if http.DefaultClient.Transport != http.RoundTripper(counter) {
-			t.Error("http.DefaultClient was modified")
-		}
-
-		opts := PullOptions{PlainHTTP: true, Username: "u", Password: "p"}
-		_, _ = PullBundle(context.Background(), host+"/demo/absent", "v1", opts)
-		if counter.count.Load() == 0 {
-			t.Error("the transport configured on http.DefaultClient was not used")
-		}
-	})
-
-	t.Run("anonymous: auth.DefaultClient", func(t *testing.T) {
-		counter := &countingTransport{base: http.DefaultTransport}
-		jar, err := cookiejar.New(nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		saved := *auth.DefaultClient
-		auth.DefaultClient.Client = &http.Client{Transport: counter, Jar: jar}
-		t.Cleanup(func() { *auth.DefaultClient = saved })
-
-		c := newPullClient(PullOptions{})
-		if c.Client.Jar != http.CookieJar(jar) {
-			t.Error("cookie jar not inherited")
-		}
-		if c.Cache != auth.DefaultClient.Cache || c.Header.Get("User-Agent") != auth.DefaultClient.Header.Get("User-Agent") {
-			t.Error("auth cache or headers not inherited")
-		}
-		if auth.DefaultClient.Client.Transport != http.RoundTripper(counter) {
-			t.Error("auth.DefaultClient was modified")
-		}
-
-		_, _ = PullBundle(context.Background(), host+"/demo/absent", "v1", PullOptions{PlainHTTP: true})
-		if counter.count.Load() == 0 {
-			t.Error("the transport configured on auth.DefaultClient was not used")
-		}
-	})
 }

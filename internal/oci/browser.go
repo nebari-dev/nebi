@@ -21,7 +21,6 @@ import (
 	"oras.land/oras-go/v2/errdef"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
-	"oras.land/oras-go/v2/registry/remote/retry"
 )
 
 // emptyBlobDigest is the canonical sha256 of a zero-byte payload. Some
@@ -278,32 +277,35 @@ func invalidBundle(reason, detail string) error {
 	return &InvalidBundleError{Reason: reason, detail: detail}
 }
 
-// bundleSource is the remote repository a bundle is pulled from, plus the
-// redirect history of this pull that failure classification needs.
-type bundleSource struct {
-	*remote.Repository
-	redirects *redirectLog
+// newPullClient returns the registry client for one bundle pull: a copy
+// of the client the other registry calls use (auth.DefaultClient for
+// anonymous access, newAuthClient otherwise) whose HTTP client is a copy
+// of the one that client would have used, with only its transport wrapped
+// in originTransport. Timeout, cookie jar, redirect policy, the
+// underlying transport, headers and the auth cache are all inherited.
+func newPullClient(opts PullOptions) *auth.Client {
+	client := *auth.DefaultClient
+	if c := newAuthClient(opts.Username, opts.Password); c != nil {
+		client = *c
+	}
+	httpClient := http.DefaultClient
+	if client.Client != nil {
+		httpClient = client.Client
+	}
+	wrapped := *httpClient
+	wrapped.Transport = &originTransport{base: httpClient.Transport}
+	client.Client = &wrapped
+	return &client
 }
 
-// newPullClient returns the registry client for one bundle pull. It
-// behaves like the client the other registry calls use (the library's
-// default retrying client for anonymous access, a plain one when
-// credentials are configured) and additionally records redirects that
-// leave the registry host.
-func newPullClient(opts PullOptions, redirects *redirectLog) *auth.Client {
-	if opts.Username == "" && opts.Password == "" {
-		return &auth.Client{
-			Client: &http.Client{
-				Transport:     retry.NewTransport(nil),
-				CheckRedirect: redirects.checkRedirect,
-			},
-			Header: auth.DefaultClient.Header.Clone(),
-			Cache:  auth.DefaultCache,
-		}
+// zeroSizeLayerError rejects a layer that declares Size 0 but whose
+// digest is not that of empty content: no content can satisfy both.
+func zeroSizeLayerError(desc ocispec.Descriptor) error {
+	if desc.Size != 0 || desc.Digest == emptyBlobDigest {
+		return nil
 	}
-	c := newAuthClient(opts.Username, opts.Password)
-	c.Client = &http.Client{CheckRedirect: redirects.checkRedirect}
-	return c
+	return invalidBundle("zero-size layer has a non-empty digest",
+		fmt.Sprintf("zero-size layer %q has non-empty digest %s", desc.Annotations[ocispec.AnnotationTitle], desc.Digest))
 }
 
 // classifiedManifest is the result of splitting layers by role.
@@ -383,32 +385,31 @@ func resolveBundleManifest(
 	ctx context.Context,
 	repoRef, tag string,
 	opts PullOptions,
-) (*bundleSource, classifiedManifest, error) {
+) (*remote.Repository, classifiedManifest, error) {
 	var cm classifiedManifest
 	repo, err := remote.NewRepository(repoRef)
 	if err != nil {
 		return nil, cm, fmt.Errorf("failed to create repository client: %w", err)
 	}
 	repo.PlainHTTP = opts.PlainHTTP
-	redirects := newRedirectLog(repo.Reference.Host())
-	repo.Client = newPullClient(opts, redirects)
-	src := &bundleSource{Repository: repo, redirects: redirects}
+	repo.Client = newPullClient(opts)
 
 	desc, err := repo.Resolve(ctx, tag)
 	if err != nil {
 		wrapped := fmt.Errorf("failed to resolve tag %s: %w", tag, err)
 		// The registry client reports a 404 on the manifest request as
 		// errdef.ErrNotFound. A 404 from the token service arrives as a
-		// typed error response instead and is not a missing reference.
-		// Neither is a 404 from a host the registry redirected to.
-		if errors.Is(err, errdef.ErrNotFound) && !redirects.leftRegistry() {
+		// typed error response instead and is not a missing reference;
+		// a 404 from a host the request was redirected to never gets
+		// this far (see originTransport).
+		if errors.Is(err, errdef.ErrNotFound) {
 			return nil, cm, &referenceNotFoundError{err: wrapped}
 		}
-		return nil, cm, redirects.classifyAccess(wrapped)
+		return nil, cm, classifyAccess(wrapped)
 	}
 	manifestReader, err := repo.Fetch(ctx, desc)
 	if err != nil {
-		return nil, cm, redirects.classifyAccess(fmt.Errorf("failed to fetch manifest: %w", err))
+		return nil, cm, classifyAccess(fmt.Errorf("failed to fetch manifest: %w", err))
 	}
 	manifestData, err := io.ReadAll(manifestReader)
 	manifestReader.Close()
@@ -441,7 +442,7 @@ func resolveBundleManifest(
 			return nil, cm, fmt.Errorf("bundle size %d bytes exceeds cap %d bytes", total, opts.MaxBundleBytes)
 		}
 	}
-	return src, cm, nil
+	return repo, cm, nil
 }
 
 // assetListing converts classified asset layers into the path-only
@@ -464,13 +465,20 @@ func PullBundle(ctx context.Context, repoRef, tag string, opts PullOptions) (*Pu
 		return nil, err
 	}
 
-	tomlBytes, err := fetchLayerBytes(ctx, repo.Repository, cm.pixiToml)
-	if err != nil {
-		return nil, repo.redirects.classifyAccess(fmt.Errorf("failed to fetch pixi.toml layer: %w", err))
+	// ExtractBundle makes the same check as it copies each layer.
+	for _, layer := range append([]ocispec.Descriptor{cm.pixiToml, cm.pixiLock}, cm.assets...) {
+		if err := zeroSizeLayerError(layer); err != nil {
+			return nil, err
+		}
 	}
-	lockBytes, err := fetchLayerBytes(ctx, repo.Repository, cm.pixiLock)
+
+	tomlBytes, err := fetchLayerBytes(ctx, repo, cm.pixiToml)
 	if err != nil {
-		return nil, repo.redirects.classifyAccess(fmt.Errorf("failed to fetch pixi.lock layer: %w", err))
+		return nil, classifyAccess(fmt.Errorf("failed to fetch pixi.toml layer: %w", err))
+	}
+	lockBytes, err := fetchLayerBytes(ctx, repo, cm.pixiLock)
+	if err != nil {
+		return nil, classifyAccess(fmt.Errorf("failed to fetch pixi.lock layer: %w", err))
 	}
 
 	return &PullResult{
@@ -523,9 +531,8 @@ func ExtractBundle(ctx context.Context, repoRef, tag, destDir string, opts PullO
 		if desc.Size != 0 {
 			return nil
 		}
-		if desc.Digest != emptyBlobDigest {
-			return invalidBundle("zero-size layer has a non-empty digest",
-				fmt.Sprintf("zero-size layer %q has non-empty digest %s", desc.Annotations[ocispec.AnnotationTitle], desc.Digest))
+		if err := zeroSizeLayerError(desc); err != nil {
+			return err
 		}
 		if err := fs.Push(ctx, desc, bytes.NewReader(nil)); err != nil {
 			return fmt.Errorf("write empty layer %q: %w", desc.Annotations[ocispec.AnnotationTitle], err)
@@ -536,8 +543,8 @@ func ExtractBundle(ctx context.Context, repoRef, tag, destDir string, opts PullO
 	// extract to exactly the manifest we validated above, so a tag move
 	// between classify and copy cannot swap in a different bundle.
 	srcRef := cm.manifestDesc.Digest.String()
-	if _, err := oras.Copy(ctx, repo.Repository, srcRef, fs, srcRef, copyOpts); err != nil {
-		return nil, repo.redirects.classifyAccess(fmt.Errorf("extract bundle: %w", err))
+	if _, err := oras.Copy(ctx, repo, srcRef, fs, srcRef, copyOpts); err != nil {
+		return nil, classifyAccess(fmt.Errorf("extract bundle: %w", err))
 	}
 
 	// pixi.toml / pixi.lock are written by oras.Copy via their

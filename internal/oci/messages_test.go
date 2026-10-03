@@ -2,9 +2,14 @@ package oci
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -67,10 +72,26 @@ func TestBundleErrorMessages_Unchanged(t *testing.T) {
 			layerDesc(MediaTypePixiLock, "pixi.lock"),
 			layerDesc(MediaTypeNebiAsset, "../escape.txt"),
 		}})
-		if err == nil || !strings.HasPrefix(err.Error(), "unsafe path in bundle: ../escape.txt: ") {
-			t.Fatalf("message: got %v, want prefix %q", err, "unsafe path in bundle: ../escape.txt: ")
+		const want = "unsafe path in bundle: ../escape.txt: parent segment not allowed"
+		if err == nil || err.Error() != want {
+			t.Fatalf("message:\n got %v\nwant %s", err, want)
 		}
 	})
+}
+
+// TestExtractBundleZeroSizeMessage_Unchanged pins the message `nebi
+// import` prints for a zero-size layer whose digest is not the empty
+// digest.
+func TestExtractBundleZeroSizeMessage_Unchanged(t *testing.T) {
+	const digest = "sha256:" + "1111111111111111111111111111111111111111111111111111111111111111"
+	host := startManifestRegistry(t, zeroSizeManifest(MediaTypeNebiAsset, "data.bin", digest))
+
+	_, err := ExtractBundle(context.Background(), host+"/demo/zero", "v1", t.TempDir(), PullOptions{PlainHTTP: true})
+
+	const want = `extract bundle: zero-size layer "data.bin" has non-empty digest ` + digest
+	if err == nil || err.Error() != want {
+		t.Fatalf("message:\n got %v\nwant %s", err, want)
+	}
 }
 
 func TestBundlePullMessages_Unchanged(t *testing.T) {
@@ -106,4 +127,55 @@ func TestBundlePullMessages_Unchanged(t *testing.T) {
 			}
 		})
 	}
+}
+
+// zeroSizeManifest is a bundle manifest with empty pixi.toml and
+// pixi.lock layers plus, when mediaType is the asset type, one asset. The
+// layer of the given mediaType declares Size 0 with a non-empty digest.
+func zeroSizeManifest(mediaType, title string, lyingDigest digest.Digest) ocispec.Manifest {
+	empty := func(mediaType, title string) ocispec.Descriptor {
+		d := layerDesc(mediaType, title)
+		d.Digest = emptyBlobDigest
+		return d
+	}
+	m := ocispec.Manifest{
+		Config: ocispec.Descriptor{MediaType: MediaTypePixiConfig, Digest: emptyBlobDigest},
+		Layers: []ocispec.Descriptor{empty(MediaTypePixiToml, "pixi.toml"), empty(MediaTypePixiLock, "pixi.lock")},
+	}
+	lying := layerDesc(mediaType, title)
+	lying.Digest = lyingDigest
+	switch mediaType {
+	case MediaTypePixiToml:
+		m.Layers[0] = lying
+	case MediaTypePixiLock:
+		m.Layers[1] = lying
+	default:
+		m.Layers = append(m.Layers, lying)
+	}
+	return m
+}
+
+// startManifestRegistry serves m as the manifest of every reference and
+// an empty body for every blob.
+func startManifestRegistry(t *testing.T, m ocispec.Manifest) string {
+	t.Helper()
+	m.SchemaVersion = 2
+	m.MediaType = ocispec.MediaTypeImageManifest
+	body, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/manifests/") {
+			return
+		}
+		w.Header().Set("Content-Type", ocispec.MediaTypeImageManifest)
+		w.Header().Set("Docker-Content-Digest", digest.FromBytes(body).String())
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		if r.Method != http.MethodHead {
+			_, _ = w.Write(body)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return strings.TrimPrefix(srv.URL, "http://")
 }

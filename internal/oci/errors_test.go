@@ -5,13 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/registry/remote"
+	"oras.land/oras-go/v2/registry/remote/auth"
 )
 
 // TestClassifyBundleManifest_SafeReasons pins that every manifest
@@ -234,5 +238,120 @@ func TestBundlePull_RegistryAccess(t *testing.T) {
 				t.Fatalf("want an unclassified error, got %T: %v", err, err)
 			}
 		})
+	})
+}
+
+// TestBundlePull_AnonymousBasicChallenge: with no credentials configured
+// the registry client answers a Basic challenge with
+// auth.ErrBasicCredentialNotFound rather than an error response. That is
+// still the registry answering 401, and the client's error must stay in
+// the chain.
+func TestBundlePull_AnonymousBasicChallenge(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", `Basic realm="registry"`)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	}))
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+
+	pullAndExtract(t, host+"/demo/private", "v1", func(t *testing.T, err error) {
+		var refused *RegistryAccessError
+		if !errors.As(err, &refused) || refused.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("want RegistryAccessError with 401, got %T: %v", err, err)
+		}
+		if !errors.Is(err, auth.ErrBasicCredentialNotFound) {
+			t.Errorf("the client's error should stay in the chain: %v", err)
+		}
+	})
+}
+
+// TestBundlePull_ZeroSizeLayer: a layer declaring Size 0 with a
+// non-empty digest is an invalid bundle from both entry points, whether
+// it is a core layer or an asset.
+func TestBundlePull_ZeroSizeLayer(t *testing.T) {
+	const lying = "sha256:" + "1111111111111111111111111111111111111111111111111111111111111111"
+	for name, m := range map[string]ocispec.Manifest{
+		"pixi.toml": zeroSizeManifest(MediaTypePixiToml, "pixi.toml", lying),
+		"pixi.lock": zeroSizeManifest(MediaTypePixiLock, "pixi.lock", lying),
+		"asset":     zeroSizeManifest(MediaTypeNebiAsset, "data.bin", lying),
+	} {
+		t.Run(name, func(t *testing.T) {
+			host := startManifestRegistry(t, m)
+			pullAndExtract(t, host+"/demo/zero", "v1", func(t *testing.T, err error) {
+				var invalid *InvalidBundleError
+				if !errors.As(err, &invalid) || invalid.Reason != "zero-size layer has a non-empty digest" {
+					t.Fatalf("want InvalidBundleError for the zero-size layer, got %T: %v", err, err)
+				}
+			})
+		})
+	}
+}
+
+// countingTransport counts the requests that pass through it.
+type countingTransport struct {
+	base  http.RoundTripper
+	count atomic.Int64
+}
+
+func (c *countingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	c.count.Add(1)
+	return c.base.RoundTrip(req)
+}
+
+// TestBundlePull_InheritsClientConfiguration: a bundle pull uses the
+// same HTTP client configuration as the other registry calls
+// (http.DefaultClient with credentials, auth.DefaultClient's client
+// without). Only the transport is wrapped, and the shared clients are
+// left untouched.
+func TestBundlePull_InheritsClientConfiguration(t *testing.T) {
+	host := startTestRegistry(t)
+
+	t.Run("with credentials: http.DefaultClient", func(t *testing.T) {
+		counter := &countingTransport{base: http.DefaultTransport}
+		saved := *http.DefaultClient
+		http.DefaultClient.Transport = counter
+		http.DefaultClient.Timeout = 42 * time.Second
+		t.Cleanup(func() { *http.DefaultClient = saved })
+
+		c := newPullClient(PullOptions{Username: "u", Password: "p"})
+		if c.Client.Timeout != 42*time.Second {
+			t.Errorf("Timeout not inherited: %v", c.Client.Timeout)
+		}
+		if http.DefaultClient.Transport != http.RoundTripper(counter) {
+			t.Error("http.DefaultClient was modified")
+		}
+
+		opts := PullOptions{PlainHTTP: true, Username: "u", Password: "p"}
+		_, _ = PullBundle(context.Background(), host+"/demo/absent", "v1", opts)
+		if counter.count.Load() == 0 {
+			t.Error("the transport configured on http.DefaultClient was not used")
+		}
+	})
+
+	t.Run("anonymous: auth.DefaultClient", func(t *testing.T) {
+		counter := &countingTransport{base: http.DefaultTransport}
+		jar, err := cookiejar.New(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		saved := *auth.DefaultClient
+		auth.DefaultClient.Client = &http.Client{Transport: counter, Jar: jar}
+		t.Cleanup(func() { *auth.DefaultClient = saved })
+
+		c := newPullClient(PullOptions{})
+		if c.Client.Jar != http.CookieJar(jar) {
+			t.Error("cookie jar not inherited")
+		}
+		if c.Cache != auth.DefaultClient.Cache || c.Header.Get("User-Agent") != auth.DefaultClient.Header.Get("User-Agent") {
+			t.Error("auth cache or headers not inherited")
+		}
+		if auth.DefaultClient.Client.Transport != http.RoundTripper(counter) {
+			t.Error("auth.DefaultClient was modified")
+		}
+
+		_, _ = PullBundle(context.Background(), host+"/demo/absent", "v1", PullOptions{PlainHTTP: true})
+		if counter.count.Load() == 0 {
+			t.Error("the transport configured on auth.DefaultClient was not used")
+		}
 	})
 }

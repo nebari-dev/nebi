@@ -463,19 +463,31 @@ func TestImport_MalformedBundleContent(t *testing.T) {
 		})
 	})
 
-	// Only local mode downloads asset layers, so only local mode reaches
-	// the zero-size check; team mode never fetches the layer.
-	t.Run("local mode: zero-size layer with a non-empty digest", func(t *testing.T) {
-		registryHost := startServer(t, artifactHandler(newArtifact(t, oci.MediaTypePixiConfig,
-			layer{mediaType: oci.MediaTypePixiToml, title: "pixi.toml", content: "[project]\n"},
-			layer{mediaType: oci.MediaTypePixiLock, title: "pixi.lock", content: "version: 6\n"},
-			layer{mediaType: oci.MediaTypeNebiAsset, title: "PLANTED-SECRET.bin", content: "not empty", lieAboutSize: true},
-		)))
+	// A layer that declares size 0 with the digest of non-empty content
+	// can never verify, whichever layer it is and whether or not the
+	// mode downloads it.
+	zeroSize := map[string][]layer{
+		"zero-size core layer with a non-empty digest": {
+			{mediaType: oci.MediaTypePixiToml, title: "pixi.toml", content: "[project]\n", lieAboutSize: true},
+			{mediaType: oci.MediaTypePixiLock, title: "pixi.lock", content: "version: 6\n"},
+		},
+		"zero-size asset layer with a non-empty digest": {
+			{mediaType: oci.MediaTypePixiToml, title: "pixi.toml", content: "[project]\n"},
+			{mediaType: oci.MediaTypePixiLock, title: "pixi.lock", content: "version: 6\n"},
+			{mediaType: oci.MediaTypeNebiAsset, title: "PLANTED-SECRET.bin", content: "not empty", lieAboutSize: true},
+		},
+	}
+	importModes(t, func(t *testing.T, isLocal bool) {
+		for name, layers := range zeroSize {
+			t.Run(name, func(t *testing.T) {
+				registryHost := startServer(t, artifactHandler(newArtifact(t, oci.MediaTypePixiConfig, layers...)))
 
-		res := runImport(t, true, registryHost, "zero-size", false)
+				res := runImport(t, isLocal, registryHost, "zero-size", false)
 
-		res.expect(t, http.StatusUnprocessableEntity, `{"error":"invalid bundle: zero-size layer has a non-empty digest"}`)
-		res.expectNoLeak(t, false, "PLANTED-SECRET")
+				res.expect(t, http.StatusUnprocessableEntity, `{"error":"invalid bundle: zero-size layer has a non-empty digest"}`)
+				res.expectNoLeak(t, false, "PLANTED-SECRET")
+			})
+		}
 	})
 }
 
@@ -573,5 +585,91 @@ func TestImport_ReferenceNotFound(t *testing.T) {
 
 		res.expect(t, http.StatusNotFound,
 			`{"error":"repository or tag not found: `+registryHost+`/demo/absent:v1"}`)
+	})
+}
+
+// bearerRegistry wraps next so that it demands a bearer token from the
+// token service at realm before answering.
+func bearerRegistry(realm string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="`+realm+`",service="registry"`)
+			writeRegistryError(w, http.StatusUnauthorized, registryErrorBody("UNAUTHORIZED", "authentication required", ""))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// TestImport_ProvenanceIsPerResponse covers pulls in which one request
+// is redirected to another host and a different request then fails at
+// the registry. The redirect must not change how the failure is reported.
+func TestImport_ProvenanceIsPerResponse(t *testing.T) {
+	importModes(t, func(t *testing.T, isLocal bool) {
+		t.Run("token request redirected to another host succeeds, then the registry answers 404", func(t *testing.T) {
+			issuer := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"token":"anonymous-token"}`))
+			}))
+			tokenHost := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, "http://"+issuer+"/issue?"+r.URL.RawQuery, http.StatusTemporaryRedirect)
+			}))
+			registryHost := startServer(t, bearerRegistry("http://"+tokenHost+"/token",
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					writeRegistryError(w, http.StatusNotFound, registryErrorBody("MANIFEST_UNKNOWN", "manifest unknown", ""))
+				})))
+
+			res := runImport(t, isLocal, registryHost, "absent", false)
+
+			res.expect(t, http.StatusNotFound,
+				`{"error":"repository or tag not found: `+registryHost+`/demo/absent:v1"}`)
+		})
+
+		t.Run("one layer redirected to another host succeeds, the registry refuses another", func(t *testing.T) {
+			a := validBundle(t)
+			bundle := artifactHandler(a)
+			storageHost := startServer(t, bundle)
+			tomlDigest := blobDigest([]byte("[project]\nname = \"ok\"\n"))
+			if _, ok := a.blobs[tomlDigest]; !ok {
+				t.Fatal("fixture: pixi.toml digest not in the bundle")
+			}
+			registryHost := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/blobs/") {
+					if strings.HasSuffix(r.URL.Path, tomlDigest) {
+						http.Redirect(w, r, "http://"+storageHost+"/storage"+r.URL.Path, http.StatusTemporaryRedirect)
+						return
+					}
+					writeRegistryError(w, http.StatusForbidden, registryErrorBody("DENIED", "denied", ""))
+					return
+				}
+				bundle(w, r)
+			}))
+
+			res := runImport(t, isLocal, registryHost, "mixed", false)
+
+			res.expect(t, http.StatusBadGateway,
+				`{"error":"registry refused access to `+registryHost+`/demo/mixed","upstream_status":403}`)
+		})
+	})
+}
+
+// TestImport_AnonymousBasicChallenge covers a registry that asks for
+// Basic credentials when none are configured. The registry client gives
+// up without sending a second request, so there is no error response to
+// read the status from, but it is still the registry answering 401.
+func TestImport_AnonymousBasicChallenge(t *testing.T) {
+	importModes(t, func(t *testing.T, isLocal bool) {
+		registryHost := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("WWW-Authenticate", `Basic realm="registry"`)
+			writeRegistryError(w, http.StatusUnauthorized, registryErrorBody("UNAUTHORIZED", "authentication required", ""))
+		}))
+
+		res := runImport(t, isLocal, registryHost, "private", false)
+
+		res.expect(t, http.StatusBadGateway,
+			`{"error":"registry refused access to `+registryHost+`/demo/private","upstream_status":401}`)
+		if !strings.Contains(res.logs, "upstream_status=401") {
+			t.Errorf("log should record the upstream status:\n%s", res.logs)
+		}
 	})
 }

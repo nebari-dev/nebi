@@ -292,30 +292,30 @@ func classifyBundleManifest(m ocispec.Manifest) (classifiedManifest, error) {
 		switch layer.MediaType {
 		case MediaTypePixiToml:
 			if haveToml {
-				return out, fmt.Errorf("invalid bundle: duplicate core layer")
+				return out, fmt.Errorf("%w: duplicate core layer", ErrInvalidBundle)
 			}
 			if title := layer.Annotations[ocispec.AnnotationTitle]; title != "pixi.toml" {
-				return out, fmt.Errorf("invalid bundle: pixi.toml core layer has title %q, expected \"pixi.toml\"", title)
+				return out, fmt.Errorf("%w: pixi.toml core layer has title %q, expected \"pixi.toml\"", ErrInvalidBundle, title)
 			}
 			out.pixiToml = layer
 			haveToml = true
 		case MediaTypePixiLock:
 			if haveLock {
-				return out, fmt.Errorf("invalid bundle: duplicate core layer")
+				return out, fmt.Errorf("%w: duplicate core layer", ErrInvalidBundle)
 			}
 			if title := layer.Annotations[ocispec.AnnotationTitle]; title != "pixi.lock" {
-				return out, fmt.Errorf("invalid bundle: pixi.lock core layer has title %q, expected \"pixi.lock\"", title)
+				return out, fmt.Errorf("%w: pixi.lock core layer has title %q, expected \"pixi.lock\"", ErrInvalidBundle, title)
 			}
 			out.pixiLock = layer
 			haveLock = true
 		case MediaTypeNebiAsset:
 			out.assets = append(out.assets, layer)
 		default:
-			return out, fmt.Errorf("invalid bundle: unknown media type %q", layer.MediaType)
+			return out, fmt.Errorf("%w: unknown media type %q", ErrInvalidBundle, layer.MediaType)
 		}
 	}
 	if !haveToml || !haveLock {
-		return out, fmt.Errorf("invalid bundle: missing pixi.{toml,lock}")
+		return out, fmt.Errorf("%w: missing pixi.{toml,lock}", ErrInvalidBundle)
 	}
 	// Validate every asset title before fetch. This also rejects dupes
 	// and case-insensitive collisions.
@@ -325,7 +325,7 @@ func classifyBundleManifest(m ocispec.Manifest) (classifiedManifest, error) {
 		paths = append(paths, title)
 	}
 	if err := validateAssetPaths(paths); err != nil {
-		return out, fmt.Errorf("unsafe path in bundle: %w", err)
+		return out, fmt.Errorf("%w: unsafe path: %w", ErrInvalidBundle, err)
 	}
 	return out, nil
 }
@@ -352,6 +352,9 @@ func resolveBundleManifest(
 
 	desc, err := repo.Resolve(ctx, tag)
 	if err != nil {
+		if status, ok := RegistryStatus(err); ok && status == http.StatusNotFound {
+			return nil, cm, fmt.Errorf("failed to resolve tag %s: %w: %w", tag, ErrReferenceNotFound, err)
+		}
 		return nil, cm, fmt.Errorf("failed to resolve tag %s: %w", tag, err)
 	}
 	manifestReader, err := repo.Fetch(ctx, desc)
@@ -368,7 +371,7 @@ func resolveBundleManifest(
 		return nil, cm, fmt.Errorf("failed to parse manifest: %w", err)
 	}
 	if manifest.Config.MediaType != MediaTypePixiConfig {
-		return nil, cm, fmt.Errorf("not a Nebi artifact")
+		return nil, cm, ErrNotNebiArtifact
 	}
 	cm, err = classifyBundleManifest(manifest)
 	if err != nil {

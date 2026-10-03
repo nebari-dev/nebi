@@ -536,7 +536,16 @@ func ExtractBundle(ctx context.Context, repoRef, tag, destDir string, opts PullO
 	// between classify and copy cannot swap in a different bundle.
 	srcRef := cm.manifestDesc.Digest.String()
 	if _, err := oras.Copy(ctx, repo, srcRef, fs, srcRef, copyOpts); err != nil {
-		return nil, classifyAccess(fmt.Errorf("extract bundle: %w", err))
+		wrapped := fmt.Errorf("extract bundle: %w", err)
+		// oras.Copy starts by fetching the manifest again. If it is gone
+		// by now, that is a missing reference; a layer that is not found
+		// fails under a different operation and is not.
+		var copyErr *oras.CopyError
+		if errors.As(err, &copyErr) && copyErr.Origin == oras.CopyErrorOriginSource &&
+			copyErr.Op == "FetchReference" && errors.Is(copyErr.Err, errdef.ErrNotFound) {
+			return nil, &referenceNotFoundError{err: wrapped}
+		}
+		return nil, classifyAccess(wrapped)
 	}
 
 	// pixi.toml / pixi.lock are written by oras.Copy via their

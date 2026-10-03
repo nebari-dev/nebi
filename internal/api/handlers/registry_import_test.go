@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -583,6 +584,29 @@ func TestImport_ReferenceNotFound(t *testing.T) {
 			res.expect(t, http.StatusInternalServerError, genericInternalError)
 		})
 	})
+}
+
+// TestImport_ManifestVanishesDuringExtraction covers local mode, where
+// the manifest is fetched once to validate it and again by the copy
+// that extracts the bundle. Only the second fetch returns 404.
+func TestImport_ManifestVanishesDuringExtraction(t *testing.T) {
+	bundle := artifactHandler(validBundle(t))
+	var manifestGets atomic.Int32
+	registryHost := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/manifests/") && manifestGets.Add(1) == 2 {
+			writeRegistryError(w, http.StatusNotFound, registryErrorBody("MANIFEST_UNKNOWN", "manifest unknown", ""))
+			return
+		}
+		bundle(w, r)
+	}))
+
+	res := runImport(t, true, registryHost, "vanishing", false)
+
+	if manifestGets.Load() != 2 {
+		t.Fatalf("fixture: want 2 manifest GETs, got %d", manifestGets.Load())
+	}
+	res.expect(t, http.StatusNotFound,
+		`{"error":"repository or tag not found: `+registryHost+`/demo/vanishing:v1"}`)
 }
 
 // TestImport_AnonymousBasicChallenge covers a registry that asks for

@@ -68,7 +68,8 @@ func (e *RegistryAccessError) Error() string { return e.err.Error() }
 func (e *RegistryAccessError) Unwrap() error { return e.err }
 
 // referenceNotFoundError marks a failure to resolve the tag or fetch its
-// manifest as ErrReferenceNotFound without changing its message.
+// manifest (including the fetch oras.Copy makes) as ErrReferenceNotFound
+// without changing its message.
 type referenceNotFoundError struct{ err error }
 
 func (e *referenceNotFoundError) Error() string { return e.err.Error() }

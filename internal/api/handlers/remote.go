@@ -182,7 +182,10 @@ func (h *RemoteHandler) PollConnect(c *gin.Context) {
 	tok, err := oidcclient.PollDeviceToken(c.Request.Context(), p.endpoints, p.clientID, p.device)
 	switch {
 	case errors.Is(err, oidcclient.ErrAuthorizationPending):
-		c.JSON(http.StatusOK, gin.H{"status": "pending", "interval": p.interval})
+		h.mu.Lock()
+		interval := p.interval
+		h.mu.Unlock()
+		c.JSON(http.StatusOK, gin.H{"status": "pending", "interval": interval})
 		return
 	case errors.Is(err, oidcclient.ErrSlowDown):
 		h.mu.Lock()

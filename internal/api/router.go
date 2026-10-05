@@ -62,6 +62,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, db *gorm.DB, q *queue.Me
 	} else {
 		handlers.Mode = "team"
 	}
+	handlers.AuthEnabled = !localMode && cfg.Auth.Type != config.AuthTypeNone
 
 	router := gin.New()
 	limitCfg := cfg.Limits

@@ -29,7 +29,6 @@ func LogAction(db *gorm.DB, userID uuid.UUID, action, resource string, details i
 
 // Audit actions constants
 const (
-	ActionUpdateUser           = "update_user"
 	ActionGrantPermission      = "grant_permission"
 	ActionRevokePermission     = "revoke_permission"
 	ActionCreateGroup          = "create_group"
@@ -50,15 +49,11 @@ const (
 	ActionRegistryAccessDenied = "registry_access_denied"
 	ActionPush                 = "push"
 	ActionReassignTag          = "reassign_tag"
-	ActionLogin                = "login"
-	ActionLoginFailed          = "login_failed"
 )
 
 // Resource types
 const (
-	ResourceUser       = "user"
-	ResourceProject    = "project"
-	ResourcePermission = "permission"
+	ResourceProject = "project"
 )
 
 // Log is a convenience function for logging with resource ID

@@ -82,7 +82,7 @@ nebi/
 ├── cmd/nebi-web/         # Local web entry point
 ├── internal/
 │   ├── api/              # HTTP handlers and routing
-│   ├── auth/             # Authentication (JWT, basic auth)
+│   ├── auth/             # Authentication (OIDC resource server)
 │   ├── cliclient/        # HTTP client for CLI-to-server communication
 │   ├── store/            # Local index, config, and credentials
 │   ├── db/               # Database models and migrations

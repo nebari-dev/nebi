@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -228,8 +229,13 @@ func TokenSource(ctx context.Context, tokenURL, clientID string, tok *oauth2.Tok
 
 type notifyingSource struct {
 	src       oauth2.TokenSource
-	last      string
 	onRefresh func(*oauth2.Token) error
+
+	// mu guards last. ReuseTokenSource serialises the refresh itself, but
+	// callers sharing one source (the desktop app serves parallel requests
+	// from it) all observe the new token at once and must not race on it.
+	mu   sync.Mutex
+	last string
 }
 
 func (s *notifyingSource) Token() (*oauth2.Token, error) {
@@ -237,6 +243,8 @@ func (s *notifyingSource) Token() (*oauth2.Token, error) {
 	if err != nil {
 		return nil, fmt.Errorf("refreshing login (run 'nebi login' again if this persists): %w", err)
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if tok.AccessToken != s.last {
 		s.last = tok.AccessToken
 		if s.onRefresh != nil {

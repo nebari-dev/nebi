@@ -29,6 +29,13 @@ const authorizationCacheTTL = 5 * time.Minute
 // maxCachedTokens caps the verified-token cache.
 const maxCachedTokens = 10000
 
+// providerHTTPClient bounds every call to the identity provider (discovery
+// and later JWKS fetches). go-oidc would otherwise use http.DefaultClient,
+// which has no timeout, so a stalled provider could block server startup
+// (the first discovery attempt runs before the listener starts) or pin a
+// request goroutine on a key refresh.
+var providerHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
 var (
 	errMissingAuthorization = errors.New("missing authorization")
 	errInvalidToken         = errors.New("invalid or expired token")
@@ -92,6 +99,7 @@ type accessTokenClaims struct {
 // the token's "iss" claim. When DiscoveryURL is set, discovery is fetched
 // from it but "iss" is still validated against IssuerURL.
 func (a *OIDCAuthenticator) Discover(ctx context.Context) error {
+	ctx = oidc.ClientContext(ctx, providerHTTPClient)
 	discoveryURL := a.cfg.DiscoveryURL
 	if discoveryURL != "" && discoveryURL != a.cfg.IssuerURL {
 		ctx = oidc.InsecureIssuerURLContext(ctx, a.cfg.IssuerURL)

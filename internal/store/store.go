@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
-	nebidb "github.com/nebari-dev/nebi/internal/db"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -32,8 +32,14 @@ func New() (*Store, error) {
 
 // Open creates a Store with a specific data directory.
 func Open(dataDir string) (*Store, error) {
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	// The store holds the identity-provider refresh token, so keep the
+	// directory (and with it the SQLite WAL files) private to the user.
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
+	}
+	if err := os.Chmod(dataDir, 0o700); err != nil {
+		// Not fatal: e.g. a bind-mounted volume owned by another user.
+		slog.Warn("Could not restrict data directory permissions", "dir", dataDir, "error", err)
 	}
 
 	dbPath := filepath.Join(dataDir, "nebi.db")
@@ -62,8 +68,10 @@ func Open(dataDir string) (*Store, error) {
 	}
 	// Drop the legacy password_hash column (NOT NULL without a default) from
 	// the users table shared with the local-mode server.
-	if err := nebidb.DropColumns(db, &LocalUser{}, "password_hash"); err != nil {
-		return nil, fmt.Errorf("dropping users.password_hash column: %w", err)
+	if db.Migrator().HasColumn(&LocalUser{}, "password_hash") {
+		if err := db.Migrator().DropColumn(&LocalUser{}, "password_hash"); err != nil {
+			return nil, fmt.Errorf("dropping users.password_hash column: %w", err)
+		}
 	}
 
 	// Seed singleton rows

@@ -9,14 +9,14 @@ Modern React frontend for the Nebi environment management system.
 - **Tailwind CSS v4** - Utility-first CSS framework
 - **shadcn/ui** - Beautiful, accessible component library
 - **TanStack Query (React Query)** - Powerful server state management
-- **Zustand** - Lightweight client state for authentication
+- **Zustand** - Lightweight client state (auth session, app mode)
 - **React Router v6** - Client-side routing
 - **Axios** - HTTP client
 - **Lucide React** - Icon library
 
 ## Features
 
-- ✅ User authentication with JWT
+- ✅ Sign-in through the identity provider (OIDC, PKCE)
 - ✅ Environment management (create, view, delete)
 - ✅ Package installation and removal
 - ✅ Real-time job status updates (2-second polling)
@@ -133,13 +133,7 @@ VITE_API_URL=/api/v1
 
 ### Login
 
-1. Navigate to http://localhost:3000/login
-2. Enter your credentials (created via the backend)
-3. You'll be redirected to the Environments page
-
-Default test user (if created):
-- Username: `admin`
-- Password: `password123`
+The dev server (`config.yaml`) runs with `auth.type: none`, so there is no login and every request is an admin. Against a server with `auth.type: oidc`, http://localhost:8461/login sends you to the identity provider, which redirects back to `/auth/callback` once you have signed in; see [Server Setup](../docs/src/content/docs/server-setup.md#authentication) for the provider configuration.
 
 ### Managing Environments
 
@@ -182,10 +176,10 @@ Jobs auto-refresh every 2 seconds for real-time updates.
 
 The frontend communicates with the Nebi backend via REST API:
 
-- **Authentication:** JWT tokens stored in localStorage
+- **Authentication:** the SPA is a public OIDC client (`oidc-client-ts`, authorization code + PKCE); access tokens come from the identity provider and are renewed silently
 - **Auto-refresh:** React Query polls every 2 seconds for updates
 - **Error Handling:** Automatic redirect to login on 401
-- **Request Interceptor:** Adds JWT token to all requests
+- **Request Interceptor:** Adds the access token as a Bearer header to all requests
 - **Response Interceptor:** Handles auth errors globally
 
 ## Styling
@@ -254,8 +248,8 @@ Visual indicators for:
 - Inspect browser console for CORS errors
 
 **Authentication Issues:**
-- Clear localStorage and try logging in again
-- Verify JWT token is being sent in request headers
+- Sign out and in again so the identity provider issues a fresh token
+- Verify the `Authorization: Bearer` header is being sent and that the server's `auth.oidc_client_id` matches the token's `aud`
 
 ## Future Enhancements
 

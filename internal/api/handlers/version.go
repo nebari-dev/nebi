@@ -96,6 +96,10 @@ func resolveVersion() (string, string) {
 // Mode is set by the router based on config (e.g. "local" or "team")
 var Mode = "team"
 
+// AuthEnabled is set by the router: false in local mode and when
+// auth.type is "none", true when requests must carry an OIDC access token.
+var AuthEnabled = true
+
 // GetVersion godoc
 // @Summary Get version information
 // @Description Returns version information about the Nebi server
@@ -105,7 +109,7 @@ var Mode = "team"
 // @Router /version [get]
 func GetVersion(c *gin.Context) {
 	features := map[string]bool{
-		"auth":          Mode != "local",
+		"auth":          AuthEnabled,
 		"rbac":          Mode != "local",
 		"remote_proxy":  Mode == "local",
 		"local_storage": Mode == "local",

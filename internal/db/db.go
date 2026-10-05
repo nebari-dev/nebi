@@ -284,7 +284,7 @@ func backfillJobUserIDs(db *gorm.DB) error {
 // seedDefaultRoles creates default roles (admin, owner, editor, viewer)
 func seedDefaultRoles(db *gorm.DB) error {
 	defaultRoles := []models.Role{
-		{Name: "admin", Description: "Full system access including user management"},
+		{Name: "admin", Description: "Full system access"},
 		{Name: "owner", Description: "Full access to owned projects"},
 		{Name: "editor", Description: "Can modify projects but not delete"},
 		{Name: "viewer", Description: "Read-only access to projects"},

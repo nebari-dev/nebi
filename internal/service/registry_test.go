@@ -347,7 +347,7 @@ func TestFallbackRepositories_ReturnsNamespaceQualifiedPaths(t *testing.T) {
 	publishedBy := uuid.New()
 	for _, repository := range []string{"notebook", "demo/already-qualified"} {
 		if err := db.Create(&models.Publication{
-			WorkspaceID:   uuid.New(),
+			ProjectID:     uuid.New(),
 			VersionNumber: 1,
 			RegistryID:    created.ID,
 			Repository:    repository,

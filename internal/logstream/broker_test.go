@@ -173,3 +173,32 @@ func TestConcurrentPublishDoesNotRace(t *testing.T) {
 		t.Fatalf("delivered %d lines, want 1..%d", n, subscriberBufferSize)
 	}
 }
+
+func TestShutdownClosesCurrentAndFutureSubscriptions(t *testing.T) {
+	b := NewBroker()
+	first, second := uuid.New(), uuid.New()
+	streams := []chan string{b.Subscribe(first), b.Subscribe(first), b.Subscribe(second)}
+	b.Publish(first, "saved output")
+	b.Shutdown()
+	b.Shutdown() // Repeated shutdown and per-request cleanup must be safe.
+	b.Close(first)
+	streams = append(streams, b.Subscribe(first), b.Subscribe(uuid.New()))
+	for _, stream := range streams {
+		for len(stream) > 0 {
+			<-stream // Buffered output remains readable after shutdown.
+		}
+		select {
+		case _, ok := <-stream:
+			if ok {
+				t.Fatal("unexpected output after draining stream")
+			}
+		default:
+			t.Fatal("stream still open after shutdown")
+		}
+	}
+	b.Unsubscribe(first, streams[0])
+	b.Publish(first, "after shutdown")
+	if b.HasSubscribers(first) || b.HasSubscribers(second) {
+		t.Fatal("shutdown retained subscribers")
+	}
+}

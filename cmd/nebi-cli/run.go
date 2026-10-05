@@ -1,0 +1,82 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+
+	"github.com/spf13/cobra"
+)
+
+var runCmd = &cobra.Command{
+	Use:   "run [project-name] [pixi-args...]",
+	Short: "Run a command or task via pixi",
+	Long: `Run a command or task in a pixi workspace.
+
+With no project name, runs in the current directory (auto-initializes if needed).
+If the first argument matches a tracked project name, runs in that project.
+If multiple projects share the same name, an interactive picker is shown.
+A path (with a slash) uses that local directory.
+All arguments are passed through to pixi run.
+
+The --manifest-path flag is managed by nebi; use pixi run directly if you need custom manifest paths.
+
+Named projects run via --manifest-path so you stay in your current directory.
+
+Examples:
+  nebi run my-task                    # run a pixi task in the current directory
+  nebi run data-science my-task       # run a task in a project by name (stays in cwd)
+  nebi run ./my-project my-task       # run a task in a local directory
+  nebi run -e dev my-task             # run with a specific pixi environment`,
+	DisableFlagParsing: true,
+	RunE:               runRun,
+	ValidArgsFunction:  completeProjectNames,
+}
+
+func runRun(cmd *cobra.Command, args []string) error {
+	if err := rejectManifestPath(args, "run"); err != nil {
+		return err
+	}
+
+	dir, pixiArgs, useManifestPath, err := resolveProjectArgs(args)
+	if err != nil {
+		return err
+	}
+
+	if !useManifestPath {
+		if err := ensureInit(dir); err != nil {
+			return err
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "pixi.toml")); err != nil {
+		return fmt.Errorf("no pixi.toml found in %s", dir)
+	}
+
+	pixiPath, err := exec.LookPath("pixi")
+	if err != nil {
+		return fmt.Errorf("pixi not found in PATH; install it from https://pixi.sh")
+	}
+
+	fullArgs := []string{"run"}
+	if useManifestPath {
+		fullArgs = append(fullArgs, "--manifest-path", filepath.Join(dir, "pixi.toml"))
+	}
+	fullArgs = append(fullArgs, pixiArgs...)
+	c := exec.Command(pixiPath, fullArgs...)
+	if !useManifestPath {
+		c.Dir = dir
+	}
+	c.Stdin = os.Stdin
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+
+	if err := c.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return fmt.Errorf("pixi run exited with code %d", exitErr.ExitCode())
+		}
+		return fmt.Errorf("failed to start pixi run: %w", err)
+	}
+	return nil
+}

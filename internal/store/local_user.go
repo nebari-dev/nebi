@@ -11,7 +11,7 @@ import (
 
 // LocalUser mirrors models.User for CLI/local use. It shares the "users"
 // table with the server-side model so the GUI and CLI can reference the
-// same user (workspace_versions.created_by and workspaces.owner_id both
+// same user (project_versions.created_by and projects.owner_id both
 // foreign-key into this table).
 type LocalUser struct {
 	ID           uuid.UUID      `gorm:"type:text;primary_key" json:"id"`

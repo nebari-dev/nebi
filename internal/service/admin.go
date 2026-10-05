@@ -49,12 +49,12 @@ type DashboardStats struct {
 }
 
 type ResourceMetrics struct {
-	Limits                limits.Limits                          `json:"limits"`
-	ActiveJobsGlobal      int64                                  `json:"active_jobs_global"`
-	ActiveJobsByUser      []UserActiveJobUsage                   `json:"active_jobs_by_user"`
-	ActiveJobsByWorkspace []WorkspaceActiveJobUsage              `json:"active_jobs_by_workspace"`
-	QuotaRejections       resourcemetrics.QuotaRejectionSnapshot `json:"quota_rejections"`
-	JobTimeoutsTotal      int64                                  `json:"job_timeouts_total"`
+	Limits              limits.Limits                          `json:"limits"`
+	ActiveJobsGlobal    int64                                  `json:"active_jobs_global"`
+	ActiveJobsByUser    []UserActiveJobUsage                   `json:"active_jobs_by_user"`
+	ActiveJobsByProject []ProjectActiveJobUsage                `json:"active_jobs_by_project"`
+	QuotaRejections     resourcemetrics.QuotaRejectionSnapshot `json:"quota_rejections"`
+	JobTimeoutsTotal    int64                                  `json:"job_timeouts_total"`
 }
 
 type UserActiveJobUsage struct {
@@ -62,9 +62,9 @@ type UserActiveJobUsage struct {
 	ActiveJobs int64     `json:"active_jobs"`
 }
 
-type WorkspaceActiveJobUsage struct {
-	WorkspaceID uuid.UUID `json:"workspace_id"`
-	ActiveJobs  int64     `json:"active_jobs"`
+type ProjectActiveJobUsage struct {
+	ProjectID  uuid.UUID `json:"project_id"`
+	ActiveJobs int64     `json:"active_jobs"`
 }
 
 // ListUsers returns all users with their admin status.
@@ -225,7 +225,7 @@ func (s *AdminService) ListRoles() ([]models.Role, error) {
 }
 
 // GrantPermission creates a permission record and grants RBAC access.
-func (s *AdminService) GrantPermission(userID, workspaceID uuid.UUID, roleID uint, adminUserID uuid.UUID) (*models.Permission, error) {
+func (s *AdminService) GrantPermission(userID, projectID uuid.UUID, roleID uint, adminUserID uuid.UUID) (*models.Permission, error) {
 	var user models.User
 	if err := s.db.First(&user, "id = ?", userID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -234,10 +234,10 @@ func (s *AdminService) GrantPermission(userID, workspaceID uuid.UUID, roleID uin
 		return nil, err
 	}
 
-	var ws models.Workspace
-	if err := s.db.First(&ws, "id = ?", workspaceID).Error; err != nil {
+	var project models.Project
+	if err := s.db.First(&project, "id = ?", projectID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, &ValidationError{Message: "Workspace not found"}
+			return nil, &ValidationError{Message: "Project not found"}
 		}
 		return nil, err
 	}
@@ -253,18 +253,18 @@ func (s *AdminService) GrantPermission(userID, workspaceID uuid.UUID, roleID uin
 	var permission models.Permission
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		permission = models.Permission{
-			UserID:      userID,
-			WorkspaceID: workspaceID,
-			RoleID:      roleID,
+			UserID:    userID,
+			ProjectID: projectID,
+			RoleID:    roleID,
 		}
 		if err := tx.Create(&permission).Error; err != nil {
 			return fmt.Errorf("create permission: %w", err)
 		}
 
 		audit.LogAction(tx, adminUserID, audit.ActionGrantPermission, fmt.Sprintf("permission:%d", permission.ID), map[string]any{
-			"user_id":      userID,
-			"workspace_id": workspaceID,
-			"role":         role.Name,
+			"user_id":    userID,
+			"project_id": projectID,
+			"role":       role.Name,
 		})
 
 		return nil
@@ -273,7 +273,7 @@ func (s *AdminService) GrantPermission(userID, workspaceID uuid.UUID, roleID uin
 		return nil, err
 	}
 
-	if err := s.rbac.GrantWorkspaceAccess(user.ID, ws.ID, role.Name); err != nil {
+	if err := s.rbac.GrantProjectAccess(user.ID, project.ID, role.Name); err != nil {
 		return nil, fmt.Errorf("grant RBAC permission: %w", err)
 	}
 
@@ -283,7 +283,7 @@ func (s *AdminService) GrantPermission(userID, workspaceID uuid.UUID, roleID uin
 // ListPermissions returns all permissions with preloaded relations.
 func (s *AdminService) ListPermissions() ([]models.Permission, error) {
 	var permissions []models.Permission
-	if err := s.db.Preload("User").Preload("Workspace").Preload("Role").Find(&permissions).Error; err != nil {
+	if err := s.db.Preload("User").Preload("Project").Preload("Role").Find(&permissions).Error; err != nil {
 		return nil, fmt.Errorf("fetch permissions: %w", err)
 	}
 	return permissions, nil
@@ -292,7 +292,7 @@ func (s *AdminService) ListPermissions() ([]models.Permission, error) {
 // RevokePermission revokes a permission by ID and removes RBAC access.
 func (s *AdminService) RevokePermission(permissionID string, adminUserID uuid.UUID) error {
 	var permission models.Permission
-	if err := s.db.Preload("User").Preload("Workspace").First(&permission, "id = ?", permissionID).Error; err != nil {
+	if err := s.db.Preload("User").Preload("Project").First(&permission, "id = ?", permissionID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return ErrNotFound
 		}
@@ -305,8 +305,8 @@ func (s *AdminService) RevokePermission(permissionID string, adminUserID uuid.UU
 		}
 
 		audit.LogAction(tx, adminUserID, audit.ActionRevokePermission, "permission:"+permissionID, map[string]any{
-			"user_id":      permission.UserID,
-			"workspace_id": permission.WorkspaceID,
+			"user_id":    permission.UserID,
+			"project_id": permission.ProjectID,
 		})
 
 		return nil
@@ -315,7 +315,7 @@ func (s *AdminService) RevokePermission(permissionID string, adminUserID uuid.UU
 		return err
 	}
 
-	if err := s.rbac.RevokeWorkspaceAccess(permission.UserID, permission.WorkspaceID); err != nil {
+	if err := s.rbac.RevokeProjectAccess(permission.UserID, permission.ProjectID); err != nil {
 		return fmt.Errorf("revoke RBAC permission: %w", err)
 	}
 
@@ -515,7 +515,7 @@ func (s *AdminService) GetDashboardStats() (*DashboardStats, error) {
 	var result struct {
 		TotalBytes int64
 	}
-	if err := s.db.Model(&models.Workspace{}).
+	if err := s.db.Model(&models.Project{}).
 		Select("COALESCE(SUM(size_bytes), 0) as total_bytes").
 		Scan(&result).Error; err != nil {
 		return nil, fmt.Errorf("fetch dashboard stats: %w", err)
@@ -533,11 +533,11 @@ func (s *AdminService) GetResourceMetrics() (*ResourceMetrics, error) {
 		return nil, fmt.Errorf("count active jobs: %w", err)
 	}
 
-	effectiveUserID := fmt.Sprintf("COALESCE(NULLIF(NULLIF(jobs.user_id, '%s'), ''), workspaces.owner_id)", uuid.Nil.String())
+	effectiveUserID := fmt.Sprintf("COALESCE(NULLIF(NULLIF(jobs.user_id, '%s'), ''), projects.owner_id)", uuid.Nil.String())
 	var activeByUser []UserActiveJobUsage
 	if err := s.db.Model(&models.Job{}).
 		Select(effectiveUserID+" AS user_id, COUNT(*) AS active_jobs").
-		Joins("LEFT JOIN workspaces ON workspaces.id = jobs.workspace_id").
+		Joins("LEFT JOIN projects ON projects.id = jobs.project_id").
 		Where("jobs.status IN ?", activeJobStatuses).
 		Where(effectiveUserID + " IS NOT NULL").
 		Group(effectiveUserID).
@@ -545,13 +545,13 @@ func (s *AdminService) GetResourceMetrics() (*ResourceMetrics, error) {
 		return nil, fmt.Errorf("count active jobs by user: %w", err)
 	}
 
-	var activeByWorkspace []WorkspaceActiveJobUsage
+	var activeByProject []ProjectActiveJobUsage
 	if err := s.db.Model(&models.Job{}).
-		Select("workspace_id, COUNT(*) as active_jobs").
+		Select("project_id, COUNT(*) as active_jobs").
 		Where("status IN ?", activeJobStatuses).
-		Group("workspace_id").
-		Scan(&activeByWorkspace).Error; err != nil {
-		return nil, fmt.Errorf("count active jobs by workspace: %w", err)
+		Group("project_id").
+		Scan(&activeByProject).Error; err != nil {
+		return nil, fmt.Errorf("count active jobs by project: %w", err)
 	}
 
 	snapshot, err := resourcemetrics.Snapshot(s.db)
@@ -559,12 +559,12 @@ func (s *AdminService) GetResourceMetrics() (*ResourceMetrics, error) {
 		return nil, err
 	}
 	return &ResourceMetrics{
-		Limits:                s.limits,
-		ActiveJobsGlobal:      activeGlobal,
-		ActiveJobsByUser:      activeByUser,
-		ActiveJobsByWorkspace: activeByWorkspace,
-		QuotaRejections:       snapshot.QuotaRejections,
-		JobTimeoutsTotal:      snapshot.JobTimeouts,
+		Limits:              s.limits,
+		ActiveJobsGlobal:    activeGlobal,
+		ActiveJobsByUser:    activeByUser,
+		ActiveJobsByProject: activeByProject,
+		QuotaRejections:     snapshot.QuotaRejections,
+		JobTimeoutsTotal:    snapshot.JobTimeouts,
 	}, nil
 }
 

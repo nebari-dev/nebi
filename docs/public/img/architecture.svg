@@ -59,7 +59,7 @@
   <text x="480" y="154" text-anchor="middle" class="label" fill="#b0b2cc">PostgreSQL / SQLite</text>
 
   <rect x="640" y="133" width="190" height="32" class="chip" fill="#23242f" stroke="#505270" />
-  <text x="735" y="154" text-anchor="middle" class="label" fill="#b0b2cc">Valkey / Memory Queue</text>
+  <text x="735" y="154" text-anchor="middle" class="label" fill="#b0b2cc">In-Memory Queue</text>
 
   <!-- bundled frontend -->
   <rect x="340" y="178" width="490" height="28" class="chip" fill="#4d2582" stroke="#7834d6" />

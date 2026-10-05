@@ -22,11 +22,11 @@ import { Groups } from './pages/admin/Groups';
 import { RegistryManagement } from './pages/admin/RegistryManagement';
 import { UserManagement } from './pages/admin/UserManagement';
 import { Login } from './pages/Login';
+import { ProjectDetail } from './pages/ProjectDetail';
+import { Projects } from './pages/Projects';
 import { Registries, RegistryRepositories } from './pages/Registries';
-import { RemoteWorkspaceDetail } from './pages/RemoteWorkspaceDetail';
+import { RemoteProjectDetail } from './pages/RemoteProjectDetail';
 import { Settings } from './pages/Settings';
-import { WorkspaceDetail } from './pages/WorkspaceDetail';
-import { Workspaces } from './pages/Workspaces';
 import { useAuthStore } from './store/authStore';
 import { useModeStore } from './store/modeStore';
 
@@ -81,7 +81,7 @@ const AdminRoute = () => {
   }
 
   if (!isAdmin) {
-    return <Navigate to="/workspaces" replace />;
+    return <Navigate to="/projects" replace />;
   }
 
   return <Outlet />;
@@ -108,12 +108,12 @@ function App() {
                 </PrivateRoute>
               }
             >
-              <Route index element={<Navigate to="/workspaces" replace />} />
-              <Route path="workspaces" element={<Workspaces />} />
-              <Route path="workspaces/:id" element={<WorkspaceDetail />} />
+              <Route index element={<Navigate to="/projects" replace />} />
+              <Route path="projects" element={<Projects />} />
+              <Route path="projects/:id" element={<ProjectDetail />} />
               <Route
-                path="remote/workspaces/:id"
-                element={<RemoteWorkspaceDetail />}
+                path="remote/projects/:id"
+                element={<RemoteProjectDetail />}
               />
               <Route path="registries" element={<Registries />} />
               <Route

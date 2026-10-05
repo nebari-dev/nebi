@@ -7,7 +7,7 @@ import type {
   FederatedIdentityReview,
   FederatedIdentityReviewStatusFilter,
   Group,
-  ShareWorkspaceRequest,
+  ShareProjectRequest,
   User,
 } from '@/types/models';
 import { apiClient } from './client';
@@ -46,26 +46,23 @@ export const adminApi = {
     return response.data;
   },
 
-  // Workspace Sharing
-  getCollaborators: async (workspaceId: string): Promise<Collaborator[]> => {
+  // Project Sharing
+  getCollaborators: async (projectId: string): Promise<Collaborator[]> => {
     const response = await apiClient.get(
-      `/workspaces/${workspaceId}/collaborators`,
+      `/projects/${projectId}/collaborators`,
     );
     return response.data;
   },
 
-  shareWorkspace: async (
-    workspaceId: string,
-    data: ShareWorkspaceRequest,
+  shareProject: async (
+    projectId: string,
+    data: ShareProjectRequest,
   ): Promise<void> => {
-    await apiClient.post(`/workspaces/${workspaceId}/share`, data);
+    await apiClient.post(`/projects/${projectId}/share`, data);
   },
 
-  unshareWorkspace: async (
-    workspaceId: string,
-    userId: string,
-  ): Promise<void> => {
-    await apiClient.delete(`/workspaces/${workspaceId}/share/${userId}`);
+  unshareProject: async (projectId: string, userId: string): Promise<void> => {
+    await apiClient.delete(`/projects/${projectId}/share/${userId}`);
   },
 
   // Dashboard Stats

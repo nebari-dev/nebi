@@ -229,7 +229,7 @@ const RepositoryRow = ({
         },
       });
       setShowImport(false);
-      navigate('/workspaces');
+      navigate('/projects');
     } catch (err) {
       const e = err as { response?: { data?: { error?: string } } };
       setError(e?.response?.data?.error || 'Failed to import environment.');
@@ -322,7 +322,7 @@ const RepositoryRow = ({
               title={
                 showImport
                   ? 'Close the import panel'
-                  : 'Import this environment into a new workspace'
+                  : 'Import this environment into a new project'
               }
             >
               {showImport ? (
@@ -368,13 +368,13 @@ const RepositoryRow = ({
                   htmlFor={importNameId}
                   className="text-sm font-medium mb-2 block"
                 >
-                  Workspace Name
+                  Project Name
                 </label>
                 <Input
                   id={importNameId}
                   value={importName}
                   onChange={(e) => setImportName(e.target.value)}
-                  placeholder="Enter workspace name"
+                  placeholder="Enter project name"
                   autoFocus
                 />
               </div>

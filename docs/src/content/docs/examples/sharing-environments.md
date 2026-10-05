@@ -43,7 +43,7 @@ nebi init
 
 :::
 
-### Step 1: Create the workspace
+### Step 1: Create the project
 
 Alice creates a data science environment with Python, scikit-learn, and Streamlit. Here's her `pixi.toml`:
 
@@ -146,7 +146,7 @@ pixi run app
 
 ![Streamlit prediction app](/img/example-streamlit-app.png)
 
-Alice's workspace now looks like this:
+Alice's project now looks like this:
 
 ```text
 .
@@ -198,7 +198,7 @@ Example output with Docker Hub:
 Published docker.io/alice/data-science-demo:v1.0 (digest: sha256:...)
 ```
 
-The bundle now lives at `docker.io/alice/data-science-demo:v1.0` and contains every file from Alice's workspace: `pixi.toml`, `pixi.lock`, `train.py`, `app.py`, `README.md`.
+The bundle now lives at `docker.io/alice/data-science-demo:v1.0` and contains every file from Alice's project: `pixi.toml`, `pixi.lock`, `train.py`, `app.py`, `README.md`.
 
 ## Bob: Download and Run the Environment
 
@@ -218,7 +218,7 @@ For example, with Alice's Docker Hub registry, the command would be:
 nebi import docker.io/alice/data-science-demo:v1.0
 ```
 
-This restores all of Alice's workspace files into the current directory at their original relative paths:
+This restores all of Alice's project files into the current directory at their original relative paths:
 
 ```text
 .
@@ -257,7 +257,7 @@ Here's the full flow at a glance:
 
 | Step | Who | Command |
 |------|-----|---------|
-| Create workspace | Alice | `nebi init` + `pixi add` |
+| Create project | Alice | `nebi init` + `pixi add` |
 | Add tasks | Alice | Edit `pixi.toml` |
 | Publish to OCI | Alice | `nebi publish` |
 | Import environment | Bob | `nebi import` |

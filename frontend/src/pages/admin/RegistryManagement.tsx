@@ -97,7 +97,7 @@ export const RegistryManagement = () => {
         <div>
           <h1 className="text-3xl font-bold">OCI Registry Management</h1>
           <p className="text-muted-foreground">
-            Manage OCI registries for workspace publishing
+            Manage OCI registries for project publishing
           </p>
         </div>
         <CreateRegistryDialog isRemote={isRemoteView} />
@@ -220,7 +220,7 @@ export const RegistryManagement = () => {
         <div className="text-center py-12">
           <p className="text-muted-foreground">
             No registries configured. Add your first registry to start
-            publishing workspaces.
+            publishing projects.
           </p>
         </div>
       )}

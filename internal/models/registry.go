@@ -25,11 +25,11 @@ type OCIRegistry struct {
 	DeletedAt     *time.Time `gorm:"index" json:"-"`
 }
 
-// Publication tracks when and where a workspace was published
+// Publication tracks when and where a project was published
 type Publication struct {
 	ID              uuid.UUID   `gorm:"type:uuid;primary_key" json:"id"`
-	WorkspaceID     uuid.UUID   `gorm:"type:uuid;index;not null" json:"workspace_id"`
-	Workspace       Workspace   `gorm:"foreignKey:WorkspaceID" json:"workspace,omitempty"`
+	ProjectID       uuid.UUID   `gorm:"type:uuid;index;not null" json:"project_id"`
+	Project         Project     `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
 	VersionNumber   int         `gorm:"not null" json:"version_number"` // Which version was published
 	RegistryID      uuid.UUID   `gorm:"type:uuid;index;not null" json:"registry_id"`
 	Registry        OCIRegistry `gorm:"foreignKey:RegistryID" json:"registry,omitempty"`

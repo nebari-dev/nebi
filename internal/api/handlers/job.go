@@ -11,24 +11,17 @@ import (
 	"github.com/nebari-dev/nebi/internal/logstream"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/service"
-	"github.com/valkey-io/valkey-go"
 )
 
 type JobHandler struct {
-	svc          *service.JobService
-	broker       *logstream.LogBroker
-	valkeyClient valkey.Client
+	svc    *service.JobService
+	broker *logstream.LogBroker
 }
 
-func NewJobHandler(svc *service.JobService, broker *logstream.LogBroker, valkeyClient interface{}) *JobHandler {
-	var client valkey.Client
-	if valkeyClient != nil {
-		client, _ = valkeyClient.(valkey.Client)
-	}
+func NewJobHandler(svc *service.JobService, broker *logstream.LogBroker) *JobHandler {
 	return &JobHandler{
-		svc:          svc,
-		broker:       broker,
-		valkeyClient: client,
+		svc:    svc,
+		broker: broker,
 	}
 }
 
@@ -49,7 +42,7 @@ func writeSSEData(w io.Writer, data string) {
 }
 
 // ListJobs godoc
-// @Summary List all jobs for user's workspaces
+// @Summary List all jobs for user's projects
 // @Tags jobs
 // @Security BearerAuth
 // @Produce json
@@ -134,9 +127,7 @@ func (h *JobHandler) StreamJobLogs(c *gin.Context) {
 	}
 
 	// Stream real-time logs
-	if h.valkeyClient != nil {
-		h.streamLogsFromValkey(c, jobUUID)
-	} else if h.broker != nil {
+	if h.broker != nil {
 		h.streamLogsFromBroker(c, jobUUID)
 	} else {
 		writeSSEEvent(c.Writer, "error", "Log streaming not available")
@@ -144,37 +135,7 @@ func (h *JobHandler) StreamJobLogs(c *gin.Context) {
 	}
 }
 
-// streamLogsFromValkey streams logs from Valkey pub/sub channel
-func (h *JobHandler) streamLogsFromValkey(c *gin.Context, jobID uuid.UUID) {
-	channel := fmt.Sprintf("logs:%s", jobID.String())
-	ctx := c.Request.Context()
-
-	subscribeCmd := h.valkeyClient.B().Subscribe().Channel(channel).Build()
-
-	err := h.valkeyClient.Receive(ctx, subscribeCmd, func(msg valkey.PubSubMessage) {
-		logLine := msg.Message
-
-		writeSSEData(c.Writer, logLine)
-		if flusher, ok := c.Writer.(http.Flusher); ok {
-			flusher.Flush()
-		}
-
-		if logLine == "\n[COMPLETED] Job finished successfully\n" ||
-			(len(logLine) > 7 && logLine[:7] == "\n[ERROR]") {
-			writeSSEEvent(c.Writer, "done", "Job completed")
-			c.Writer.Flush()
-		}
-	})
-
-	if err != nil {
-		if err.Error() != "context canceled" {
-			writeSSEEvent(c.Writer, "error", err.Error())
-			c.Writer.Flush()
-		}
-	}
-}
-
-// streamLogsFromBroker streams logs from in-memory broker (fallback)
+// streamLogsFromBroker streams logs from in-memory broker
 func (h *JobHandler) streamLogsFromBroker(c *gin.Context, jobID uuid.UUID) {
 	logChan := h.broker.Subscribe(jobID)
 	defer h.broker.Unsubscribe(jobID, logChan)

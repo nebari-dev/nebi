@@ -2,7 +2,7 @@
 title: "Quick Start"
 ---
 
-Nebi lets you version your software environments the same way git versions your code, and Nebi server lets you share and manage these versioned environments in your team. In this guide, you will create a workspace, push two versions, compare what changed, and roll back to a working state.
+Nebi lets you version your software environments the same way git versions your code, and Nebi server lets you share and manage these versioned environments in your team. In this guide, you will create a project, push two versions, compare what changed, and roll back to a working state.
 
 ## Prerequisites
 
@@ -10,9 +10,9 @@ Nebi lets you version your software environments the same way git versions your 
 - [Pixi](https://pixi.sh) installed
 - A running Nebi server (see [Server Setup](/server-setup/))
 
-## Create a Workspace
+## Create a Project
 
-Before you can version or share an environment, Nebi needs to track it. `nebi init` creates a workspace in the current directory.
+Before you can version or share an environment, Nebi needs to track it. `nebi init` creates a project in the current directory.
 
 ```bash
 mkdir my-project && cd my-project
@@ -22,18 +22,18 @@ nebi init
 ```bash title="Output"
 No pixi.toml found; running pixi init...
 ✔ Created /home/user/my-project/pixi.toml
-Workspace 'my-project' initialized (/home/user/my-project)
+Project 'my-project' initialized (/home/user/my-project)
 ```
 
 ## Add Packages
 
-Add dependencies to your workspace. This records them in `pixi.toml` so they become part of the environment you version and share.
+Add dependencies to your project. This records them in `pixi.toml` so they become part of the environment you version and share.
 
 ```bash
 pixi add python numpy scikit-learn
 ```
 
-Your workspace now has two files:
+Your project now has two files:
 
 ```text
 my-project/
@@ -51,7 +51,7 @@ You need a running server to push to. See [Server Setup](/server-setup/) if you 
 nebi login http://localhost:8460
 ```
 
-Then push the workspace with a version tag:
+Then push the project with a version tag:
 
 ```bash
 nebi push my-project:v1.0
@@ -72,7 +72,7 @@ nebi push my-project:v2.0
 
 ## Compare Versions
 
-Before pulling a version, you can preview what would change. `nebi diff` compares any two versions on the server, or a server version against your local workspace.
+Before pulling a version, you can preview what would change. `nebi diff` compares any two versions on the server, or a server version against your local project.
 
 ```bash
 nebi diff my-project:v1.0 my-project:v2.0
@@ -107,6 +107,6 @@ pixi install
 
 ## Next Steps
 
-- [Local CLI Workflows](/cli-local/): activate workspaces by name, run tasks from anywhere
+- [Local CLI Workflows](/cli-local/): activate projects by name, run tasks from anywhere
 - [Version Rollback](/examples/version-rollback/): diff, debug, and roll back to a known good version
 - [Registry Setup](/registry-setup/): configure GHCR, Quay.io, or Docker Hub for publishing

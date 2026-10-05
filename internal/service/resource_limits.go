@@ -23,7 +23,7 @@ var activeJobStatuses = []models.JobStatus{
 	models.JobStatusRunning,
 }
 
-func (s *WorkspaceService) validateManifestContent(name string, content string) error {
+func (s *ProjectService) validateManifestContent(name string, content string) error {
 	if content == "" {
 		return nil
 	}
@@ -47,7 +47,7 @@ func (s *WorkspaceService) validateManifestContent(name string, content string) 
 	return nil
 }
 
-func (s *WorkspaceService) validateLockContent(name string, content string) error {
+func (s *ProjectService) validateLockContent(name string, content string) error {
 	if content == "" {
 		return nil
 	}
@@ -57,7 +57,7 @@ func (s *WorkspaceService) validateLockContent(name string, content string) erro
 	return nil
 }
 
-func (s *WorkspaceService) validatePushRequest(req PushRequest) error {
+func (s *ProjectService) validatePushRequest(req PushRequest) error {
 	if err := s.validateManifestContent("pixi.toml", req.PixiToml); err != nil {
 		return err
 	}
@@ -66,27 +66,27 @@ func (s *WorkspaceService) validatePushRequest(req PushRequest) error {
 
 // ValidateVersionContent checks stored manifest/lock content before a worker
 // uses it as fresh build input, for example during rollback of legacy versions.
-func (s *WorkspaceService) ValidateVersionContent(manifestContent, lockContent string) error {
+func (s *ProjectService) ValidateVersionContent(manifestContent, lockContent string) error {
 	if err := s.validateManifestContent("pixi.toml", manifestContent); err != nil {
 		return err
 	}
 	return s.validateLockContent("pixi.lock", lockContent)
 }
 
-func (s *WorkspaceService) validateWorkspaceManifestForJob(_ *gorm.DB, ws *models.Workspace) error {
-	envPath := s.executor.GetWorkspacePath(ws)
-	return s.validateWorkspaceFileForJob(filepath.Join(envPath, "pixi.toml"), "pixi.toml", s.limits.ManifestBytes, s.validateManifestContent)
+func (s *ProjectService) validateProjectManifestForJob(_ *gorm.DB, project *models.Project) error {
+	envPath := s.executor.GetProjectPath(project)
+	return s.validateProjectFileForJob(filepath.Join(envPath, "pixi.toml"), "pixi.toml", s.limits.ManifestBytes, s.validateManifestContent)
 }
 
-func (s *WorkspaceService) validateWorkspaceManifestAndLockForJob(_ *gorm.DB, ws *models.Workspace) error {
-	envPath := s.executor.GetWorkspacePath(ws)
-	if err := s.validateWorkspaceFileForJob(filepath.Join(envPath, "pixi.toml"), "pixi.toml", s.limits.ManifestBytes, s.validateManifestContent); err != nil {
+func (s *ProjectService) validateProjectManifestAndLockForJob(_ *gorm.DB, project *models.Project) error {
+	envPath := s.executor.GetProjectPath(project)
+	if err := s.validateProjectFileForJob(filepath.Join(envPath, "pixi.toml"), "pixi.toml", s.limits.ManifestBytes, s.validateManifestContent); err != nil {
 		return err
 	}
-	return s.validateWorkspaceFileForJob(filepath.Join(envPath, "pixi.lock"), "pixi.lock", s.limits.LockBytes, s.validateLockContent)
+	return s.validateProjectFileForJob(filepath.Join(envPath, "pixi.lock"), "pixi.lock", s.limits.LockBytes, s.validateLockContent)
 }
 
-func (s *WorkspaceService) validateWorkspaceFileForJob(path string, name string, maxBytes int, validate func(string, string) error) error {
+func (s *ProjectService) validateProjectFileForJob(path string, name string, maxBytes int, validate func(string, string) error) error {
 	content, err := s.readLimitedTextFile(path, name, maxBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -97,7 +97,7 @@ func (s *WorkspaceService) validateWorkspaceFileForJob(path string, name string,
 	return validate(name, content)
 }
 
-func (s *WorkspaceService) validatePackages(packages []string) error {
+func (s *ProjectService) validatePackages(packages []string) error {
 	if len(packages) == 0 {
 		return &ValidationError{Message: "packages must not be empty"}
 	}
@@ -112,7 +112,7 @@ func (s *WorkspaceService) validatePackages(packages []string) error {
 	return nil
 }
 
-func (s *WorkspaceService) listOptions(envPath string) pixi.ListOptions {
+func (s *ProjectService) listOptions(envPath string) pixi.ListOptions {
 	return pixi.ListOptions{
 		EnvPath:        envPath,
 		ResourceLimits: s.limits.ProcessLimits(),
@@ -120,7 +120,7 @@ func (s *WorkspaceService) listOptions(envPath string) pixi.ListOptions {
 	}
 }
 
-func (s *WorkspaceService) mapPixiListError(err error) error {
+func (s *ProjectService) mapPixiListError(err error) error {
 	var outputLimitErr *pixi.OutputLimitError
 	if errors.As(err, &outputLimitErr) {
 		return &ValidationError{Message: outputLimitErr.Error()}
@@ -128,7 +128,7 @@ func (s *WorkspaceService) mapPixiListError(err error) error {
 	return err
 }
 
-func (s *WorkspaceService) validateListedPackages(name string, packages []pixi.Package) error {
+func (s *ProjectService) validateListedPackages(name string, packages []pixi.Package) error {
 	for i, pkg := range packages {
 		fields := []struct {
 			name  string
@@ -150,7 +150,7 @@ func (s *WorkspaceService) validateListedPackages(name string, packages []pixi.P
 	return nil
 }
 
-func (s *WorkspaceService) packageMetadataJSON(packages []pixi.Package) ([]byte, error) {
+func (s *ProjectService) packageMetadataJSON(packages []pixi.Package) ([]byte, error) {
 	if err := s.validateListedPackages("package metadata", packages); err != nil {
 		return nil, err
 	}
@@ -164,7 +164,7 @@ func (s *WorkspaceService) packageMetadataJSON(packages []pixi.Package) ([]byte,
 	return packageMetadata, nil
 }
 
-func (s *WorkspaceService) validateJobMetadata(metadata map[string]interface{}) error {
+func (s *ProjectService) validateJobMetadata(metadata map[string]interface{}) error {
 	if len(metadata) == 0 {
 		return nil
 	}
@@ -188,7 +188,7 @@ func (s *WorkspaceService) validateJobMetadata(metadata map[string]interface{}) 
 	return nil
 }
 
-func (s *WorkspaceService) readLimitedTextFile(path string, name string, maxBytes int) (string, error) {
+func (s *ProjectService) readLimitedTextFile(path string, name string, maxBytes int) (string, error) {
 	if maxBytes <= 0 {
 		content, err := os.ReadFile(path)
 		if err != nil {
@@ -221,7 +221,7 @@ func (s *WorkspaceService) readLimitedTextFile(path string, name string, maxByte
 	return string(content), nil
 }
 
-func (s *WorkspaceService) lockJobAdmission(tx *gorm.DB) error {
+func (s *ProjectService) lockJobAdmission(tx *gorm.DB) error {
 	// This row deliberately serializes admissions server-wide. Manifest reads
 	// and quota checks happen while the row is write-locked so job creation,
 	// audit logging, and quota decisions observe one consistent active-job set.
@@ -241,7 +241,7 @@ func (s *WorkspaceService) lockJobAdmission(tx *gorm.DB) error {
 	return nil
 }
 
-func (s *WorkspaceService) checkActiveJobQuotas(tx *gorm.DB, userID, workspaceID uuid.UUID) error {
+func (s *ProjectService) checkActiveJobQuotas(tx *gorm.DB, userID, projectID uuid.UUID) error {
 	if s.limits.ActiveJobsGlobal > 0 {
 		count, err := activeJobCount(tx)
 		if err != nil {
@@ -262,13 +262,13 @@ func (s *WorkspaceService) checkActiveJobQuotas(tx *gorm.DB, userID, workspaceID
 		}
 	}
 
-	if workspaceID != uuid.Nil && s.limits.ActiveJobsPerWorkspace > 0 {
-		count, err := activeJobCount(tx.Where("workspace_id = ?", workspaceID))
+	if projectID != uuid.Nil && s.limits.ActiveJobsPerProject > 0 {
+		count, err := activeJobCount(tx.Where("project_id = ?", projectID))
 		if err != nil {
 			return err
 		}
-		if count >= int64(s.limits.ActiveJobsPerWorkspace) {
-			return newQuotaExceededError("workspace", fmt.Sprintf("active job limit %d reached for workspace", s.limits.ActiveJobsPerWorkspace))
+		if count >= int64(s.limits.ActiveJobsPerProject) {
+			return newQuotaExceededError("project", fmt.Sprintf("active job limit %d reached for project", s.limits.ActiveJobsPerProject))
 		}
 	}
 
@@ -286,11 +286,11 @@ func activeJobCount(query *gorm.DB) (int64, error) {
 func activeJobCountForUser(query *gorm.DB, userID uuid.UUID) (int64, error) {
 	var count int64
 	err := query.Model(&models.Job{}).
-		Joins("LEFT JOIN workspaces ON workspaces.id = jobs.workspace_id").
+		Joins("LEFT JOIN projects ON projects.id = jobs.project_id").
 		Where("jobs.status IN ?", activeJobStatuses).
 		Where(`
 			jobs.user_id = ?
-			OR ((jobs.user_id IS NULL OR jobs.user_id = '' OR jobs.user_id = ?) AND workspaces.owner_id = ?)
+			OR ((jobs.user_id IS NULL OR jobs.user_id = '' OR jobs.user_id = ?) AND projects.owner_id = ?)
 		`, userID, uuid.Nil.String(), userID).
 		Count(&count).Error
 	if err != nil {
@@ -315,7 +315,7 @@ func (e *quotaExceededError) Error() string {
 	return e.message
 }
 
-func (s *WorkspaceService) finishAdmissionError(err error) error {
+func (s *ProjectService) finishAdmissionError(err error) error {
 	var quotaErr *quotaExceededError
 	if errors.As(err, &quotaErr) {
 		_ = resourcemetrics.IncQuotaRejected(s.db, quotaErr.scope)

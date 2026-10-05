@@ -15,6 +15,11 @@ server:
   # Comma-separated. Env: NEBI_SERVER_ALLOWED_ORIGINS
   # allowed_origins: "https://hub.example.com"
 
+# Background job concurrency defaults to half the CPU cores, with a minimum of 1.
+# Override with a positive integer or NEBI_WORKER_MAX_PARALLEL_JOBS.
+# worker:
+#   max_parallel_jobs: 4
+
 database:
   driver: sqlite  # or "postgres"
   dsn: ./nebi.db
@@ -27,7 +32,7 @@ database:
 
 auth:
   type: basic
-  jwt_secret: change-me-in-production
+  jwt_secret: replace-with-at-least-32-random-characters
 
   # Optional: Enable OIDC/OAuth authentication
   # Uncomment and configure to enable OAuth login button
@@ -45,10 +50,6 @@ auth:
   # Example (in-cluster Keycloak Service):
   # oidc_discovery_url: http://keycloak-http.keycloak.svc.cluster.local/realms/nebari
 
-queue:
-  type: memory  # or "valkey"
-  # valkey_addr: localhost:6379
-
 log:
   format: text  # or "json"
   level: info   # debug, info, warn, error
@@ -57,7 +58,7 @@ package_manager:
   # pixi_path: /custom/path/to/pixi  # Optional: custom binary path
 
 storage:
-  workspaces_dir: ./data/workspaces
+  projects_dir: ./data/projects
 
 # Resource limits and admission quotas. For all numeric limits, 0 disables
 # that specific limit. Environment variable names are shown in comments.
@@ -70,9 +71,9 @@ storage:
 #   package_string_bytes: 256         # NEBI_LIMITS_PACKAGE_STRING_BYTES
 #
 #   # Active-job admission quotas. Delete jobs bypass these quotas so a
-#   # saturated workspace can still be removed.
+#   # saturated project can still be removed.
 #   active_jobs_per_user: 4            # NEBI_LIMITS_ACTIVE_JOBS_PER_USER
-#   active_jobs_per_workspace: 2       # NEBI_LIMITS_ACTIVE_JOBS_PER_WORKSPACE
+#   active_jobs_per_project: 2         # NEBI_LIMITS_ACTIVE_JOBS_PER_PROJECT
 #   active_jobs_global: 100            # NEBI_LIMITS_ACTIVE_JOBS_GLOBAL
 #
 #   # Job runtime/resource limits. job_cpu_seconds and job_storage_bytes use
@@ -85,7 +86,7 @@ storage:
 #   job_log_bytes: 4194304             # NEBI_LIMITS_JOB_LOG_BYTES
 #
 # Per-job memory and process-count limits are intentionally not configured
-# here. Enforce those with worker pod/container limits until Nebi runs jobs in
+# here. Enforce those with Nebi pod/container limits until Nebi runs jobs in
 # isolated execution units.
 
 # Admin-provisioned OCI registries (optional). Entries carry no credentials.

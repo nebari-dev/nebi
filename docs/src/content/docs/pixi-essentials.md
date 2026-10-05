@@ -2,7 +2,7 @@
 title: "Pixi Basics"
 ---
 
-Nebi manages environments built with [Pixi](https://pixi.sh), a cross-platform package manager built on the conda ecosystem. This page covers the Pixi commands you'll use most often when working with Nebi workspaces.
+Nebi manages environments built with [Pixi](https://pixi.sh), a cross-platform package manager built on the conda ecosystem. This page covers the Pixi commands you'll use most often when working with Nebi projects.
 
 > If you're already comfortable with Pixi, you can skip ahead to the CLI Guides: [CLI Local](/cli-local/) and [CLI Team](/cli-team/).
 
@@ -50,7 +50,7 @@ This removes the package from `pixi.toml` and updates `pixi.lock`.
 
 ## Install the Environment
 
-After pulling a workspace or editing `pixi.toml` manually, run:
+After pulling a project or editing `pixi.toml` manually, run:
 
 ```bash
 pixi install
@@ -83,7 +83,7 @@ pixi run python my_script.py
 Here's how Pixi commands fit into a typical Nebi workflow:
 
 ```bash
-# 1. Create and track a new workspace
+# 1. Create and track a new project
 mkdir my-project && cd my-project
 nebi init
 
@@ -93,7 +93,7 @@ pixi shell
 # 3. Add dependencies
 pixi add numpy pandas matplotlib
 
-# 4. Push the workspace to your team
+# 4. Push the project to your team
 nebi push my-project
 ```
 

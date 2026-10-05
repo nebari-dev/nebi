@@ -2,7 +2,7 @@
 title: "Team CLI Workflows"
 ---
 
-This page covers working with a Nebi server to share workspaces with your team.
+This page covers working with a Nebi server to share projects with your team.
 
 ## Prerequisite: Nebi server
 
@@ -10,7 +10,7 @@ If you don't have a server for your team or organization yet, see [Server Setup]
 
 ## Connect to a Server
 
-Before syncing workspaces, connect and authenticate with your Nebi server. You only need to do this once per server.
+Before syncing projects, connect and authenticate with your Nebi server. You only need to do this once per server.
 
 ```bash
 $ nebi login https://nebi.company.com
@@ -21,7 +21,7 @@ Logged in to "https://nebi.company.com" as alice
 
 ## Server Push and Pull
 
-**Push** uploads your local `pixi.toml` and `pixi.lock` to the Nebi server. This is how you share workspace specs with your team, or stage them for publishing to an OCI registry.
+**Push** uploads your local `pixi.toml` and `pixi.lock` to the Nebi server. This is how you share project specs with your team, or stage them for publishing to an OCI registry.
 
 Every push automatically creates a **content-addressed tag** (`sha-<hash>`) and updates a **`latest`** tag. If you specify a tag, it's added alongside these auto-tags. If the content hasn't changed since the last push, the version is **deduplicated** (no new version created, tags are updated).
 
@@ -42,7 +42,7 @@ Pushed my-project (version 1, tags: sha-a1b2c3d4e5f6, latest, v1.0)
 $ nebi push my-project
 Content unchanged — my-project (version 1, tags: sha-a1b2c3d4e5f6, latest)
 
-# After the first push, you can omit the workspace name
+# After the first push, you can omit the project name
 $ nebi push :dev
 ```
 
@@ -59,27 +59,27 @@ Pulled my-project:v1.0
 $ nebi pull my-project:v1.0 -o ./reproduced-env
 ```
 
-After pulling, the workspace is automatically tracked by Nebi. Future pulls can omit the workspace name:
+After pulling, the project is automatically tracked by Nebi. Future pulls can omit the project name:
 
 ```bash
-# Re-pull the same workspace with just:
+# Re-pull the same project with just:
 $ nebi pull
 ```
 
-## Browse Remote Workspaces
+## Browse Remote Projects
 
 ```bash
-$ nebi workspace list --remote
+$ nebi project list --remote
 NAME             STATUS  OWNER  UPDATED
 my-data-project  ready   alice  2024-01-15 14:22
 ml-pipeline      ready   alice  2024-01-14 10:30
 shared-env       ready   bob    2024-01-13 09:15
 ```
 
-View available tags for a workspace:
+View available tags for a project:
 
 ```bash
-$ nebi workspace tags my-data-project
+$ nebi project tags my-data-project
 TAG               VERSION  CREATED           UPDATED
 prod              2        2024-01-15 14:22
 latest            2        2024-01-15 10:30  2024-01-15 14:22
@@ -88,23 +88,23 @@ sha-b2c3d4e5f6a7  2        2024-01-15 14:22
 sha-a1b2c3d4e5f6  1        2024-01-15 10:30
 ```
 
-## Remove a Remote Workspace
+## Remove a Remote Project
 
-By default, `nebi workspace remove` only removes the local tracking entry (your project files are untouched). To delete a workspace from the server, use the `--remote` flag:
+By default, `nebi project remove` only removes the local tracking entry (your project files are untouched). To delete a project from the server, use the `--remote` flag:
 
 ```bash
-nebi workspace remove my-workspace --remote
+nebi project remove my-project --remote
 ```
 
 ## Diff and Status
 
 ### Check for Changes
 
-See if your local workspace has diverged from the server:
+See if your local project has diverged from the server:
 
 ```bash
 $ nebi status
-Workspace: my-data-project
+Project: my-data-project
 Path:      /home/user/my-data-project
 Server:    https://nebi.company.com
 
@@ -117,7 +117,7 @@ Origin:
 ### Compare Changes
 
 ```bash
-# Compare local workspace against its server origin
+# Compare local project against its server origin
 $ nebi diff
 
 # Compare two server versions
@@ -160,14 +160,14 @@ $ nebi registry list
 $ nebi registry remove <name>
 
 # Publish to a specific registry (instead of the default)
-$ nebi publish my-workspace --registry ghcr --tag v1.0
+$ nebi publish my-project --registry ghcr --tag v1.0
 ```
 
 ### Publish to an OCI Registry
 
-**Publish** takes the workspace files already on the Nebi server and pushes them to an external OCI registry (e.g., Quay.io, GHCR) for distribution. You must **push** before you **publish**, as publish reads from the server, not your local files.
+**Publish** takes the project files already on the Nebi server and pushes them to an external OCI registry (e.g., Quay.io, GHCR) for distribution. You must **push** before you **publish**, as publish reads from the server, not your local files.
 
-By default, the content hash tag is used as the primary OCI tag, and a `latest` tag is always created. All workspace tags are propagated to the OCI registry.
+By default, the content hash tag is used as the primary OCI tag, and a `latest` tag is always created. All project tags are propagated to the OCI registry.
 
 ```bash
 # Typical workflow: push local changes, then publish to OCI

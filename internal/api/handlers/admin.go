@@ -170,7 +170,7 @@ func (h *AdminHandler) ListRoles(c *gin.Context) {
 }
 
 // GrantPermission godoc
-// @Summary Grant workspace access to a user
+// @Summary Grant project access to a user
 // @Tags admin
 // @Security BearerAuth
 // @Accept json
@@ -185,7 +185,7 @@ func (h *AdminHandler) GrantPermission(c *gin.Context) {
 		return
 	}
 
-	perm, err := h.svc.GrantPermission(req.UserID, req.WorkspaceID, req.RoleID, getAdminUserID(c))
+	perm, err := h.svc.GrantPermission(req.UserID, req.ProjectID, req.RoleID, getAdminUserID(c))
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -366,9 +366,9 @@ type CreateUserRequest struct {
 }
 
 type GrantPermissionRequest struct {
-	UserID      uuid.UUID `json:"user_id" binding:"required"`
-	WorkspaceID uuid.UUID `json:"workspace_id" binding:"required"`
-	RoleID      uint      `json:"role_id" binding:"required"`
+	UserID    uuid.UUID `json:"user_id" binding:"required"`
+	ProjectID uuid.UUID `json:"project_id" binding:"required"`
+	RoleID    uint      `json:"role_id" binding:"required"`
 }
 
 // getAdminUserID reuses getUserID from helpers.go.

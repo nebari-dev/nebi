@@ -19,7 +19,7 @@ const secondaryUser = {
   updated_at: '2026-01-02T00:00:00Z',
 };
 
-export const makeWorkspace = (id: string, name: string) => ({
+export const makeProject = (id: string, name: string) => ({
   id,
   name,
   owner_id: mockUser.id,
@@ -49,10 +49,10 @@ const registries = [
 const jobs = [
   {
     id: 'job-1',
-    workspace_id: 'ws-created',
+    project_id: 'ws-created',
     type: 'create',
     status: 'completed',
-    logs: 'Workspace created successfully',
+    logs: 'Project created successfully',
     created_at: '2026-01-01T00:01:00Z',
     completed_at: '2026-01-01T00:01:05Z',
   },
@@ -76,7 +76,7 @@ const dashboardStats = {
 };
 
 const pixiToml = `[workspace]
-name = "analytics-workspace"
+name = "analytics-project"
 channels = ["conda-forge"]
 platforms = ["osx-arm64", "linux-64"]
 
@@ -97,7 +97,7 @@ export const fulfillJson = async (
 };
 
 export const mockApi = async (page: Page) => {
-  const workspaces = [makeWorkspace('ws-seed', 'analytics-workspace')];
+  const projects = [makeProject('ws-seed', 'analytics-project')];
 
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
@@ -188,30 +188,30 @@ export const mockApi = async (page: Page) => {
       return;
     }
 
-    if (method === 'GET' && path === '/workspaces') {
-      await fulfillJson(route, workspaces);
+    if (method === 'GET' && path === '/projects') {
+      await fulfillJson(route, projects);
       return;
     }
 
-    if (method === 'POST' && path === '/workspaces') {
+    if (method === 'POST' && path === '/projects') {
       const body = request.postDataJSON() as { name?: string };
-      const workspace = makeWorkspace(
+      const project = makeProject(
         'ws-created',
-        body.name || 'created-workspace',
+        body.name || 'created-project',
       );
-      workspaces.push(workspace);
-      await fulfillJson(route, workspace, 201);
+      projects.push(project);
+      await fulfillJson(route, project, 201);
       return;
     }
 
-    const workspacePackagesMatch = path.match(
-      /^\/workspaces\/([^/]+)\/packages$/,
+    const projectPackagesMatch = path.match(
+      /^\/projects\/([^/]+)\/packages$/,
     );
-    if (method === 'GET' && workspacePackagesMatch) {
+    if (method === 'GET' && projectPackagesMatch) {
       await fulfillJson(route, [
         {
           id: 'package-1',
-          workspace_id: workspacePackagesMatch[1],
+          project_id: projectPackagesMatch[1],
           name: 'python',
           version: '3.11.0',
           installed_at: '2026-01-01T00:00:00Z',
@@ -220,10 +220,10 @@ export const mockApi = async (page: Page) => {
       return;
     }
 
-    const workspaceCollaboratorsMatch = path.match(
-      /^\/workspaces\/([^/]+)\/collaborators$/,
+    const projectCollaboratorsMatch = path.match(
+      /^\/projects\/([^/]+)\/collaborators$/,
     );
-    if (method === 'GET' && workspaceCollaboratorsMatch) {
+    if (method === 'GET' && projectCollaboratorsMatch) {
       await fulfillJson(route, [
         {
           kind: 'user',
@@ -245,17 +245,17 @@ export const mockApi = async (page: Page) => {
       return;
     }
 
-    const workspacePublicationsMatch = path.match(
-      /^\/workspaces\/([^/]+)\/publications$/,
+    const projectPublicationsMatch = path.match(
+      /^\/projects\/([^/]+)\/publications$/,
     );
-    if (method === 'GET' && workspacePublicationsMatch) {
+    if (method === 'GET' && projectPublicationsMatch) {
       await fulfillJson(route, [
         {
           id: 'publication-1',
           registry_name: 'Quay',
           registry_url: 'quay.io',
           registry_namespace: 'nebari',
-          repository: 'analytics-workspace',
+          repository: 'analytics-project',
           tag: 'latest',
           digest: 'sha256:test',
           is_public: true,
@@ -266,15 +266,15 @@ export const mockApi = async (page: Page) => {
       return;
     }
 
-    const workspaceMatch = path.match(/^\/workspaces\/([^/]+)$/);
-    if (method === 'GET' && workspaceMatch) {
-      const workspace = workspaces.find(
-        (item) => item.id === workspaceMatch[1],
+    const projectMatch = path.match(/^\/projects\/([^/]+)$/);
+    if (method === 'GET' && projectMatch) {
+      const project = projects.find(
+        (item) => item.id === projectMatch[1],
       );
       await fulfillJson(
         route,
-        workspace || { error: 'not found' },
-        workspace ? 200 : 404,
+        project || { error: 'not found' },
+        project ? 200 : 404,
       );
       return;
     }
@@ -284,10 +284,10 @@ export const mockApi = async (page: Page) => {
       return;
     }
 
-    const remoteWorkspaceMatch = path.match(/^\/remote\/workspaces\/([^/]+)$/);
-    if (method === 'GET' && remoteWorkspaceMatch) {
+    const remoteProjectMatch = path.match(/^\/remote\/projects\/([^/]+)$/);
+    if (method === 'GET' && remoteProjectMatch) {
       await fulfillJson(route, {
-        ...makeWorkspace(remoteWorkspaceMatch[1], 'remote-python'),
+        ...makeProject(remoteProjectMatch[1], 'remote-python'),
         size_bytes: 2048,
       });
       return;
@@ -302,7 +302,7 @@ export const signIn = async (page: Page) => {
   await page.getByPlaceholder('Username').fill(mockUser.username);
   await page.getByPlaceholder('Password').fill('password123');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Workspaces' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
 };
 
 export const selectTheme = async (

@@ -66,7 +66,7 @@ describe('RegistryRepositories', () => {
     expect(select).toHaveTextContent('v1');
   });
 
-  it('uses the default tag in the command preview and prefilled workspace name', async () => {
+  it('uses the default tag in the command preview and prefilled project name', async () => {
     mockTags = [{ name: 'v1' }, { name: 'latest' }];
     const user = userEvent.setup();
     renderPage();
@@ -74,7 +74,7 @@ describe('RegistryRepositories', () => {
     expect(screen.getByText(/team\/app:latest/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /import/i }));
-    expect(screen.getByLabelText('Workspace Name')).toHaveValue('app-latest');
+    expect(screen.getByLabelText('Project Name')).toHaveValue('app-latest');
   });
 
   it('toggles the import panel from the row trigger', async () => {
@@ -86,12 +86,12 @@ describe('RegistryRepositories', () => {
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
 
     await user.click(trigger);
-    expect(screen.getByLabelText('Workspace Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('Project Name')).toBeInTheDocument();
     const closeTrigger = screen.getByRole('button', { name: /close/i });
     expect(closeTrigger).toHaveAttribute('aria-expanded', 'true');
 
     await user.click(closeTrigger);
-    expect(screen.queryByLabelText('Workspace Name')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Project Name')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /import/i })).toHaveAttribute(
       'aria-expanded',
       'false',

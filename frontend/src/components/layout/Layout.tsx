@@ -90,11 +90,11 @@ export const Layout = ({
     <div className="min-h-screen bg-canvas flex flex-col">
       <NavigationMenu className="h-14 shrink-0 justify-between border-border bg-header pl-4 text-header-foreground">
         <MenuBarBrand
-          href="/workspaces"
+          href="/projects"
           aria-label="Go to homepage"
           onClick={(event) => {
             event.preventDefault();
-            navigate('/workspaces');
+            navigate('/projects');
           }}
         >
           <img
@@ -105,11 +105,11 @@ export const Layout = ({
         </MenuBarBrand>
         <MenuBarNav aria-label="Primary" className="ml-4">
           <NavLink
-            render={<RouterNavLink to="/workspaces" />}
-            active={location.pathname === '/workspaces'}
+            render={<RouterNavLink to="/projects" />}
+            active={location.pathname === '/projects'}
             icon={<Boxes className="h-4 w-4" />}
           >
-            Workspaces
+            Projects
           </NavLink>
           <NavLink
             render={<RouterNavLink to="/registries" />}

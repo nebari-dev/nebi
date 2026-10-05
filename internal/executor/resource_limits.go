@@ -27,13 +27,13 @@ type storageLimitExceededError struct {
 
 func (e *storageLimitExceededError) Error() string {
 	if e.err != nil {
-		return fmt.Sprintf("workspace %s limit check failed for %s: %v", e.Kind, e.path, e.err)
+		return fmt.Sprintf("project %s limit check failed for %s: %v", e.Kind, e.path, e.err)
 	}
-	return fmt.Sprintf("workspace %s limit exceeded for %s: %d bytes used, limit is %d bytes", e.Kind, e.path, e.size, e.limit)
+	return fmt.Sprintf("project %s limit exceeded for %s: %d bytes used, limit is %d bytes", e.Kind, e.path, e.size, e.limit)
 }
 
 // IsResourceLimitError reports errors produced by executor-owned resource
-// guards, such as workspace storage budgets.
+// guards, such as project storage budgets.
 func IsResourceLimitError(err error) bool {
 	var storageErr *storageLimitExceededError
 	return errors.As(err, &storageErr)
@@ -76,7 +76,7 @@ func (e *LocalExecutor) withStorageLimit(ctx context.Context, path string, logWr
 		recordOnce.Do(func() {
 			err := &storageLimitExceededError{Kind: "storage", path: path, limit: e.limits.JobStorageBytes, size: size}
 			exceeded.Store(err)
-			fmt.Fprintf(logWriter, "Workspace storage limit exceeded: %d bytes used, limit is %d bytes\n", size, e.limits.JobStorageBytes)
+			fmt.Fprintf(logWriter, "Project storage limit exceeded: %d bytes used, limit is %d bytes\n", size, e.limits.JobStorageBytes)
 			cancel()
 		})
 	}
@@ -84,7 +84,7 @@ func (e *LocalExecutor) withStorageLimit(ctx context.Context, path string, logWr
 		recordOnce.Do(func() {
 			limitErr := &storageLimitExceededError{Kind: "storage", path: path, limit: e.limits.JobStorageBytes, err: err}
 			exceeded.Store(limitErr)
-			fmt.Fprintf(logWriter, "Workspace storage limit check failed: %v\n", err)
+			fmt.Fprintf(logWriter, "Project storage limit check failed: %v\n", err)
 			cancel()
 		})
 	}

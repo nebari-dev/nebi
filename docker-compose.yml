@@ -114,6 +114,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: nebi-server
+    stop_grace_period: 45s
     environment:
       NEBI_DATABASE_DRIVER: postgres
       NEBI_DATABASE_DSN: postgres://nebi:${NEBI_DB_PASSWORD}@postgres:5432/nebi?sslmode=disable

@@ -116,6 +116,7 @@ func (q *MemoryQueue) nextJobLocked() *models.Job {
 		}
 
 		job := jobs[0]
+		jobs[0] = nil // Release the reference held by the pending slice backing array.
 		jobs = jobs[1:]
 		q.pendingSize--
 		if len(jobs) == 0 {

@@ -26,8 +26,7 @@ Load these before writing UI code. They live in `.agents/skills/` (and
   generated API clients, state, connectivity invariants, testing, quality
   gate).
 - **`nebari-ui`**: the Nebari design system (components, tokens, surface
-  stack, header, motion). Vendored from upstream: **never edit it**. Update it
-  with `npm run skills:sync`.
+  stack, header, motion). Vendored from upstream: **never edit it**.
 - **`nebi-screen`**: the step-by-step workflow for building one screen or
   shared component from a Figma frame, including the human approval
   checkpoint.
@@ -46,8 +45,6 @@ npm run dev          # legacy app on :8461 (proxies the backend on :8460)
 npm test             # vitest
 npm run ci           # biome ci (what CI runs)
 npm run test:a11y    # playwright + axe
-npm run skills:sync  # re-vendor the nebari-ui skill from nebari-design
-npm run skills:check # fail if the vendored nebari-ui skill has drifted
 ```
 
 Workspace-aware commands are added when `apps/*` and `packages/*` are

@@ -17,7 +17,9 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:a11y": "playwright test --grep @a11y",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "skills:sync": "./scripts/sync-nebari-ui-skill.sh",
+    "skills:check": "./scripts/sync-nebari-ui-skill.sh --check"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

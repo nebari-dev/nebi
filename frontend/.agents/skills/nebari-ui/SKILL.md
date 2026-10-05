@@ -63,10 +63,10 @@ npx shadcn add @nebari/theme
 npx shadcn add @nebari/button
 ```
 
-Installed files land under the app's configured aliases (`@/ui`, `@/hooks`,
-`@/lib`), so
-imports look like `import { Button } from '@/components/ui/button'` — match the
-host app's existing alias resolution.
+Installed files land under the app's configured aliases (`@/components/ui`,
+`@/hooks`, `@/lib` by default), so imports look like
+`import { Button } from '@/components/ui/button'` — match the host app's existing
+alias resolution.
 
 ## Treat installed components as managed
 
@@ -170,12 +170,40 @@ link.
 
 ## Theming
 
-Install the theme once; it writes the Nebari brand color tokens and radius into
-the app's global stylesheet as CSS variables for both light and dark modes:
+Install the theme once; it writes the Nebari brand color tokens, radius, fonts,
+and motion tokens into the app's global stylesheet as CSS variables for both
+light and dark modes:
 
 ```sh
 npx shadcn add @nebari/theme
 ```
+
+- **What it writes, and where.** One `:root` block (the semantic light tokens
+  plus the Figma primitive ramps), one `.dark` block, and one `@theme inline`
+  block holding the Tailwind mappings, radius steps, motion tokens, and the
+  `@keyframes`. That is exactly the shape of
+  [`registry/nebari/globals.css`](https://github.com/nebari-dev/nebari-design/blob/main/registry/nebari/globals.css)
+  in the registry repo — the canonical reference when diffing an app stylesheet.
+- **Re-applying is safe, but resets Nebari-owned values.** On a stylesheet
+  already in that shape, running `npx shadcn add @nebari/theme` again changes
+  only whitespace. Because it is a `registry:theme` item, the CLI *overwrites*
+  every existing `:root` / `.dark` / `@theme inline` value the theme owns
+  (`--primary`, `--radius`, `--font-sans`, …) — that is how token updates
+  reach apps. Installing a component (`npx shadcn add @nebari/button`) pulls the
+  theme in transitively but only *appends* tokens that are missing; it never
+  overwrites.
+- **Keep app-owned overrides in their own block.** Never edit a Nebari value in
+  place — the next theme apply clobbers it. Put overrides and derived tokens in
+  a separate `:root` / `.dark` block *after* the Nebari one (or in a separately
+  imported file). The CLI merges only into the first matching block, and the
+  later declaration wins in the cascade:
+
+  ```css
+  /* App overrides — keep below the Nebari theme blocks. */
+  :root {
+    --primary-hover: color-mix(in oklch, var(--primary), black 12%);
+  }
+  ```
 
 - Tokens are **semantic** (`--primary`, `--muted-foreground`, `--destructive`,
   `--info`, `--success`, `--warning`, `--border`, `--ring`, chart + sidebar
@@ -286,11 +314,15 @@ the canonical recipe. The reference implementation is
 ### Composition and sizing
 
 The header is built from `@nebari/navigation-menu` (its menus also need
-`@nebari/dropdown-menu`, `@nebari/avatar`, and `@nebari/button`):
+`@nebari/dropdown-menu` and `@nebari/button`):
 
 ```sh
-npx shadcn add @nebari/navigation-menu @nebari/dropdown-menu @nebari/avatar @nebari/button
+npx shadcn add @nebari/navigation-menu @nebari/dropdown-menu @nebari/button
 ```
+
+There is **no `avatar` item in the `@nebari` registry** — don't try to install
+one. The profile menu's `Avatar` is an app-owned component; see
+[App-owned Avatar](#app-owned-avatar) below.
 
 - **`NavigationMenu`** (alias of `MenuBar`, a semantic `<header>`) is the bar.
   Its default is `h-12 px-3`; the canonical app header overrides to **`h-14`**
@@ -385,6 +417,59 @@ scrollable while the menu is open — don't omit it:
 
 Only render the bell if the app actually has notifications — don't ship an
 empty menu.
+
+### App-owned Avatar
+
+The registry does not ship an avatar. Every Nebari app owns a small one built
+directly on Base UI's `Avatar` primitive (already a dependency via
+`@base-ui/react`). Put it **outside** `components/ui/` — that folder is for
+registry-owned files that `npx shadcn add` may overwrite — e.g.
+`src/components/avatar.tsx`, and import it from there in the header:
+
+```tsx
+import { Avatar as AvatarPrimitive } from "@base-ui/react/avatar";
+
+import { cn } from "@/lib/utils";
+
+function Avatar({ className, ...props }: AvatarPrimitive.Root.Props) {
+  return (
+    <AvatarPrimitive.Root
+      data-slot="avatar"
+      className={cn("relative flex size-8 shrink-0 overflow-hidden rounded-full select-none", className)}
+      {...props}
+    />
+  );
+}
+
+function AvatarImage({ className, ...props }: AvatarPrimitive.Image.Props) {
+  return (
+    <AvatarPrimitive.Image
+      data-slot="avatar-image"
+      className={cn("aspect-square size-full object-cover", className)}
+      {...props}
+    />
+  );
+}
+
+function AvatarFallback({ className, ...props }: AvatarPrimitive.Fallback.Props) {
+  return (
+    <AvatarPrimitive.Fallback
+      data-slot="avatar-fallback"
+      className={cn(
+        "flex size-full items-center justify-center rounded-full bg-muted text-sm text-muted-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export { Avatar, AvatarFallback, AvatarImage };
+```
+
+Base UI owns the image loading state, so `AvatarFallback` renders whenever
+`AvatarImage` is missing or fails to load. Style it with semantic tokens only
+(the header recipe overrides the fallback to `bg-primary text-primary-foreground`).
 
 ### Profile / account menu
 
@@ -510,7 +595,7 @@ tokens. Use them to add consistent, accessible, on-brand animation at the
 | `--ease-emphasized` | `cubic-bezier(0.2, 0, 0, 1)` | Overlays sliding into view |
 
 And five ready-made Tailwind `animate-*` utilities (backed by `@keyframes`
-that the theme installs):
+that the theme installs inside `@theme inline`):
 
 | Utility | Effect |
 |---|---|

@@ -70,6 +70,8 @@ When changing auth, visibility, or permissions, check both branches — see `int
 - `swagger/` — generated; do not hand-edit (run `make swagger`).
 
 ### Frontend (`frontend/`, embedded into the binary)
+> **The UI is being rebuilt** as separate client and server apps plus a shared `packages/ui` (#587). New UI work follows `frontend/AGENTS.md` and the `nebi-frontend`, `nebari-ui` and `nebi-screen` skills in `frontend/.agents/skills/`. The description below covers the **legacy** app in `frontend/src`, which new code may read for reference but must not import or copy.
+
 React 19 + TypeScript + Vite, **shadcn/ui + Tailwind v4**, tooled with **Biome** (not ESLint/Prettier) and **Vitest** (jsdom + MSW). Note state management here is **Zustand** (`src/store/`, e.g. `authStore`, `modeStore`) plus **TanStack Query** for server data — `src/api/*.ts` are the typed API clients (axios), one per backend resource. Pages in `src/pages/`, feature components grouped under `src/components/`. The `modeStore`/`viewModeStore` mirror the backend local-vs-team distinction in the UI.
 
 In dev the Vite server (`:8461`) proxies to the backend (`:8460`); in production the built `dist` is served by the Go binary itself.

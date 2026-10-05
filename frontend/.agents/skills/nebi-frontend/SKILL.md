@@ -28,8 +28,6 @@ installed, and where nebi differs from it, **this skill wins**.
 | Components, tokens, surface stack, header recipe, motion | `nebari-ui` skill (vendored, upstream-managed — never edit) |
 | Layout, boundaries, data, state, tests, naming | This skill |
 | Per-screen workflow (Figma → spec → tests → build → verify) | `nebi-screen` skill |
-| What the old app did, behavior by behavior | `frontend/docs/rebuild/parity-inventory.md` |
-| Open team decisions | `frontend/docs/rebuild/README.md#decisions` |
 
 ## The layout
 
@@ -75,8 +73,6 @@ import that crosses a workspace.
 10. **Run the gate before saying done** (below). Report failures as failures.
 
 ## Naming and file layout
-
-> **Proposed — confirm at sync** (see Decisions). Follow it until changed.
 
 - Components and pages: PascalCase folder with the component, its test, and a
   barrel `index.ts`. Import from the folder, never the inner file.

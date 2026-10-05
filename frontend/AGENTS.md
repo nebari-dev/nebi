@@ -39,13 +39,6 @@ the Figma MCP (`get_design_context`, `get_screenshot`, `get_variable_defs`).
 No frame means stop and ask. When a shared component lands in `packages/ui`,
 map it with Code Connect.
 
-## Rebuild docs
-
-- `docs/rebuild/README.md`: how the team uses AI on the rebuild, the PR
-  rules, and the open decisions.
-- `docs/rebuild/parity-inventory.md`: every behavior of the legacy app, with
-  its target app and status. Update the rows a PR covers.
-
 ## Commands
 
 ```bash

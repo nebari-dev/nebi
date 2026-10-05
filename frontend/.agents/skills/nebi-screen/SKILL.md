@@ -45,11 +45,11 @@ paste. Rewrite it with Nebari components, semantic tokens, and the
 
 ## Phase 2 — Extract the behavior spec
 
-1. Find the screen's rows in `frontend/docs/rebuild/parity-inventory.md`.
-2. Read the legacy code they cite (`frontend/src/...`) to understand behavior:
+1. Find the legacy screen in `frontend/src` (route in `App.tsx`, its page and
+   the components and hooks it uses) and read it to understand behavior:
    states, edge cases, API calls and their order, validations, confirmations,
    polling. **Read only — never import or copy it.**
-3. Write the spec as a checklist of user-observable acceptance criteria,
+2. Write the spec as a checklist of user-observable acceptance criteria,
    covering the required states in `nebi-frontend` → `references/testing.md`.
    Note anything in Figma that the old app didn't do, and anything the old app
    did that Figma doesn't show (ask: intentional drop, or missing design?).
@@ -93,8 +93,6 @@ red.
    compare against the Phase 1 Figma screenshot. List visible differences;
    fix the unintended ones, call out the intentional ones.
 3. Keyboard pass: tab order, focus visibility, Escape closes overlays.
-4. Mark the screen's rows in `parity-inventory.md` as `covered` (or `dropped`
-   / `deferred` with a reason).
 
 ## Phase 7 — Hand off  ⛔ checkpoint
 
@@ -102,7 +100,7 @@ red.
   mapping (`figma-code-connect` skill / `add_code_connect_map`) so the next
   screen gets real imports.
 - Open the PR (don't merge): Figma link, acceptance criteria with checkboxes,
-  before/after screenshots in both themes, parity rows updated, and an
+  before/after screenshots in both themes, and an
   "AI-assisted" note. Run the `pr-review` skill (frontend lens) if available
   and address its blockers before requesting human review.
 - Recurring review comments → propose a lint rule (preferred) or a line in

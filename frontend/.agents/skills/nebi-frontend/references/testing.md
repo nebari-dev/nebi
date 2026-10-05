@@ -3,7 +3,7 @@
 ## Test-first from the spec
 
 Each screen issue carries a list of acceptance criteria: the behaviors taken
-from the Figma frame and the parity inventory. Turn them into failing tests
+from the Figma frame and the legacy app's behavior. Turn them into failing tests
 **before** writing the screen. Old tests in `frontend/src` can remind you of
 edge cases, but don't port them. They exercise the old structure.
 

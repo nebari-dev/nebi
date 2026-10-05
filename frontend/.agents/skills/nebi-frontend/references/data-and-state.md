@@ -10,10 +10,9 @@ Three kinds of state, three homes:
 
 Never copy server data into client state. Derive from the query instead.
 
-> **Client-state library — proposed, confirm at sync.** The OpenTeams default
-> is Jotai, and since this is a rebuild there's no migration cost, so the
-> proposal is Jotai. Keep client state small. Most of what the legacy app kept
-> in stores (mode, view mode, auth) goes away with the split.
+> **Client-state library: Jotai** (decided; matches the OpenTeams default).
+> Keep client state small. Most of what the legacy app kept in stores (mode,
+> view mode, auth) goes away with the split.
 
 ## Generated API clients
 

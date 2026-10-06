@@ -39,6 +39,9 @@ export interface Workspace {
   origin_name?: string;
   origin_tag?: string;
   origin_action?: string;
+  import_repository?: string;
+  import_tag?: string;
+  import_digest?: string;
 }
 
 export interface CreateWorkspaceRequest {
@@ -338,7 +341,8 @@ export interface RegistryTag {
 export interface ImportEnvironmentRequest {
   repository?: string;
   repository_path?: string;
-  tag: string;
+  tag?: string;
+  digest?: string;
   name: string;
 }
 

@@ -49,9 +49,16 @@ type Workspace struct {
 	Source    string          `gorm:"default:'managed'" json:"source"` // "managed", "local"
 	Path      string          `json:"path,omitempty"`                  // filesystem path (local-mode)
 	SizeBytes int64           `gorm:"default:0" json:"size_bytes,omitempty"`
-	CreatedAt time.Time       `json:"created_at"`
-	UpdatedAt time.Time       `json:"updated_at"`
-	DeletedAt gorm.DeletedAt  `gorm:"index" json:"-"`
+
+	// ImportRepository, ImportTag, and ImportDigest identify the OCI artifact
+	// that seeded this workspace. ImportDigest is always the resolved manifest
+	// digest, including when the request selected a mutable tag.
+	ImportRepository string         `json:"import_repository,omitempty"`
+	ImportTag        string         `json:"import_tag,omitempty"`
+	ImportDigest     string         `json:"import_digest,omitempty"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	DeletedAt        gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 // TableName ensures GORM uses the "workspaces" table

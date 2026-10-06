@@ -131,11 +131,14 @@ func (s *WorkspaceService) Create(ctx context.Context, req CreateRequest, userID
 	}
 
 	ws := models.Workspace{
-		Name:    name,
-		OwnerID: userID,
-		Status:  models.WsStatusPending,
-		Source:  req.Source,
-		Path:    req.Path,
+		Name:             name,
+		OwnerID:          userID,
+		Status:           models.WsStatusPending,
+		Source:           req.Source,
+		Path:             req.Path,
+		ImportRepository: req.ImportRepository,
+		ImportTag:        req.ImportTag,
+		ImportDigest:     req.ImportDigest,
 	}
 
 	var job *models.Job

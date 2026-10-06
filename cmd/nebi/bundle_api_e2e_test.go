@@ -165,7 +165,8 @@ func TestE2E_BundlePublishImportViaAPI_LocalMode(t *testing.T) {
 	writeFile("notebook.ipynb", notebookBody)
 
 	reg := oci.Registry{Host: ociHost, Namespace: ociNS, PlainHTTP: true}
-	if _, err := oci.Publish(ctx, srcDir, reg, repoName, bundleTag); err != nil {
+	published, err := oci.Publish(ctx, srcDir, reg, repoName, bundleTag)
+	if err != nil {
 		t.Fatalf("seed oci.Publish: %v", err)
 	}
 
@@ -178,11 +179,15 @@ func TestE2E_BundlePublishImportViaAPI_LocalMode(t *testing.T) {
 	})
 
 	// ---- Import via POST /registries/:id/import ----
-	wsID := importViaAPI(t, serverURL, token, registryID, map[string]interface{}{
+	imported := importViaAPI(t, serverURL, token, registryID, map[string]interface{}{
 		"repository_path": ociNS + "/" + repoName,
-		"tag":             bundleTag,
+		"digest":          published.Digest,
 		"name":            "notebook-imported",
 	})
+	if imported.ImportRepository != published.Repository || imported.ImportTag != "" || imported.ImportDigest != published.Digest {
+		t.Fatalf("unexpected import metadata: repository=%q tag=%q digest=%q", imported.ImportRepository, imported.ImportTag, imported.ImportDigest)
+	}
+	wsID := imported.ID
 
 	// ---- Poll workspace until ready (or fail after 30s) ----
 	pollWorkspaceReady(t, serverURL, token, wsID, 30*time.Second)
@@ -337,8 +342,15 @@ func createRegistryViaAPI(t *testing.T, serverURL, token string, body map[string
 	return result.ID
 }
 
-// importViaAPI POSTs to /registries/:id/import and returns the created workspace ID.
-func importViaAPI(t *testing.T, serverURL, token, registryID string, body map[string]interface{}) string {
+type importedWorkspace struct {
+	ID               string `json:"id"`
+	ImportRepository string `json:"import_repository"`
+	ImportTag        string `json:"import_tag"`
+	ImportDigest     string `json:"import_digest"`
+}
+
+// importViaAPI POSTs to /registries/:id/import and returns the created workspace.
+func importViaAPI(t *testing.T, serverURL, token, registryID string, body map[string]interface{}) importedWorkspace {
 	t.Helper()
 	b, _ := json.Marshal(body)
 	url := fmt.Sprintf("%s/api/v1/registries/%s/import", serverURL, registryID)
@@ -354,16 +366,14 @@ func importViaAPI(t *testing.T, serverURL, token, registryID string, body map[st
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("POST /registries/%s/import: status %d, body: %s", registryID, resp.StatusCode, raw)
 	}
-	var result struct {
-		ID string `json:"id"`
-	}
+	var result importedWorkspace
 	if err := json.Unmarshal(raw, &result); err != nil {
 		t.Fatalf("decode import response: %v (body: %s)", err, raw)
 	}
 	if result.ID == "" {
 		t.Fatalf("import response missing id: %s", raw)
 	}
-	return result.ID
+	return result
 }
 
 // pollWorkspaceReady polls GET /workspaces/:id until status == "ready" or times out.

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -34,7 +35,8 @@ platforms = ["linux-64"]
 	os.WriteFile(filepath.Join(srcDir, "notebook.ipynb"), []byte(`{"cells":[]}`), 0o644)
 
 	reg := oci.Registry{Host: u.Host, Namespace: "demo", PlainHTTP: true}
-	if _, err := oci.Publish(context.Background(), srcDir, reg, "bundle-import", "v1"); err != nil {
+	published, err := oci.Publish(context.Background(), srcDir, reg, "bundle-import", "v1")
+	if err != nil {
 		t.Fatalf("seed publish: %v", err)
 	}
 
@@ -56,6 +58,15 @@ platforms = ["linux-64"]
 	}
 	if ws.Name != "imported-env" {
 		t.Errorf("workspace name: got %q want %q", ws.Name, "imported-env")
+	}
+	if ws.ImportRepository != published.Repository {
+		t.Errorf("import repository: got %q want %q", ws.ImportRepository, published.Repository)
+	}
+	if ws.ImportTag != "v1" {
+		t.Errorf("import tag: got %q want %q", ws.ImportTag, "v1")
+	}
+	if ws.ImportDigest != published.Digest {
+		t.Errorf("import digest: got %q want %q", ws.ImportDigest, published.Digest)
 	}
 
 	// Expect a JobTypeCreate job with import_staging_dir pointing at an
@@ -93,6 +104,114 @@ platforms = ["linux-64"]
 		if !strings.Contains(audits[0].DetailsJSON, want) {
 			t.Errorf("audit details missing %s; got %s", want, audits[0].DetailsJSON)
 		}
+	}
+}
+
+func TestImportFromRegistry_DigestOverridesMovedTag(t *testing.T) {
+	svc, db := testSetup(t, true)
+	userID := createTestUser(t, db, "alice")
+
+	srv := httptest.NewServer(registry.New())
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+	reg := oci.Registry{Host: u.Host, Namespace: "demo", PlainHTTP: true}
+
+	originalDir := t.TempDir()
+	writeImportTestBundle(t, originalDir, "reviewed")
+	original, err := oci.Publish(context.Background(), originalDir, reg, "digest-import", "v1")
+	if err != nil {
+		t.Fatalf("publish reviewed bundle: %v", err)
+	}
+
+	movedDir := t.TempDir()
+	writeImportTestBundle(t, movedDir, "moved")
+	moved, err := oci.Publish(context.Background(), movedDir, reg, "digest-import", "v1")
+	if err != nil {
+		t.Fatalf("move tag to replacement bundle: %v", err)
+	}
+	if moved.Digest == original.Digest {
+		t.Fatal("test setup produced identical manifests")
+	}
+
+	dbReg := models.OCIRegistry{
+		Name: "digest-source", URL: "http://" + u.Host, Namespace: "demo", IsDefault: true,
+	}
+	if err := db.Create(&dbReg).Error; err != nil {
+		t.Fatalf("create registry: %v", err)
+	}
+
+	ws, err := svc.ImportFromRegistry(context.Background(), dbReg.ID.String(), ImportFromRegistryRequest{
+		Repository: "digest-import",
+		Tag:        "v1",
+		Digest:     original.Digest,
+		Name:       "digest-pinned",
+	}, userID)
+	if err != nil {
+		t.Fatalf("ImportFromRegistry: %v", err)
+	}
+	if ws.ImportRepository != original.Repository || ws.ImportTag != "v1" || ws.ImportDigest != original.Digest {
+		t.Fatalf("unexpected import metadata: repository=%q tag=%q digest=%q", ws.ImportRepository, ws.ImportTag, ws.ImportDigest)
+	}
+
+	var job models.Job
+	if err := db.Where("workspace_id = ? AND type = ?", ws.ID, models.JobTypeCreate).First(&job).Error; err != nil {
+		t.Fatalf("find create job: %v", err)
+	}
+	stagingDir, _ := job.Metadata["import_staging_dir"].(string)
+	tomlBytes, err := os.ReadFile(filepath.Join(stagingDir, "pixi.toml"))
+	if err != nil {
+		t.Fatalf("read staged pixi.toml: %v", err)
+	}
+	if !strings.Contains(string(tomlBytes), "name = \"reviewed\"") {
+		t.Fatalf("import followed the moved tag instead of the requested digest: %s", tomlBytes)
+	}
+}
+
+func TestImportSelector(t *testing.T) {
+	validDigest := "sha256:" + strings.Repeat("a", 64)
+	tests := []struct {
+		name          string
+		tag           string
+		digest        string
+		wantSelector  string
+		wantRequested string
+		wantErr       string
+	}{
+		{name: "tag", tag: "v1", wantSelector: "v1"},
+		{name: "digest", digest: validDigest, wantSelector: validDigest, wantRequested: validDigest},
+		{name: "digest takes precedence", tag: "v1", digest: validDigest, wantSelector: validDigest, wantRequested: validDigest},
+		{name: "missing selector", wantErr: "tag or digest is required"},
+		{name: "invalid digest", digest: "sha256:abc", wantErr: "invalid digest"},
+		{name: "invalid tag with digest", tag: "bad tag", digest: validDigest, wantErr: "invalid tag"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			selector, requested, err := importSelector(tt.tag, tt.digest)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error = %v, want substring %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("importSelector: %v", err)
+			}
+			if selector != tt.wantSelector || requested != tt.wantRequested {
+				t.Fatalf("selector=%q requested=%q, want selector=%q requested=%q", selector, requested, tt.wantSelector, tt.wantRequested)
+			}
+		})
+	}
+}
+
+func writeImportTestBundle(t *testing.T, dir, name string) {
+	t.Helper()
+	toml := fmt.Sprintf("[project]\nname = %q\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n", name)
+	if err := os.WriteFile(filepath.Join(dir, "pixi.toml"), []byte(toml), 0o644); err != nil {
+		t.Fatalf("write pixi.toml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pixi.lock"), []byte("version: 6\n# "+name+"\n"), 0o644); err != nil {
+		t.Fatalf("write pixi.lock: %v", err)
 	}
 }
 

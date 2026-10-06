@@ -26,14 +26,17 @@ type User struct {
 
 // Workspace represents a workspace.
 type Workspace struct {
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	Status        string    `json:"status"`
-	InstallStatus string    `json:"install_status,omitempty"` // local-mode servers only
-	SizeBytes     int64     `json:"size_bytes,omitempty"`
-	Owner         *User     `json:"owner,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	Status           string    `json:"status"`
+	InstallStatus    string    `json:"install_status,omitempty"` // local-mode servers only
+	SizeBytes        int64     `json:"size_bytes,omitempty"`
+	Owner            *User     `json:"owner,omitempty"`
+	ImportRepository string    `json:"import_repository,omitempty"`
+	ImportTag        string    `json:"import_tag,omitempty"`
+	ImportDigest     string    `json:"import_digest,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // CreateWorkspaceRequest represents a request to create a workspace.

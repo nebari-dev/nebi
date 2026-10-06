@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/nebari-dev/nebi/internal/store"
@@ -39,6 +40,29 @@ func TestIsPath(t *testing.T) {
 			got := isPath(tt.ref)
 			if got != tt.want {
 				t.Errorf("isPath(%q) = %v, want %v", tt.ref, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLooksLikeOCIReference(t *testing.T) {
+	tests := []struct {
+		ref  string
+		want bool
+	}{
+		{"quay.io/nebari/workspace:v1", true},
+		{"localhost:5000/demo/workspace:v1", true},
+		{"https://registry.example.com/demo/workspace:v1", true},
+		{"registry/demo/workspace@sha256:" + strings.Repeat("0", 64), true},
+		{"foo/bar", false},
+		{"foo/bar:v1", false},
+		{"workspace:v1", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.ref, func(t *testing.T) {
+			if got := looksLikeOCIReference(tt.ref); got != tt.want {
+				t.Errorf("looksLikeOCIReference(%q) = %v, want %v", tt.ref, got, tt.want)
 			}
 		})
 	}

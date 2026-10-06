@@ -224,6 +224,34 @@ func saveOrigin(remoteID, name, tag, action, tomlContent, lockContent string) er
 	return s.SaveWorkspace(ws)
 }
 
+// saveImportMetadata records the immutable OCI identity that seeded a local
+// workspace. The workspace must already have been registered by ensureInit.
+func saveImportMetadata(dir, repository, tag, manifestDigest string) error {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("resolving import directory: %w", err)
+	}
+
+	s, err := store.New()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	ws, err := s.FindWorkspaceByPath(absDir)
+	if err != nil {
+		return err
+	}
+	if ws == nil {
+		return fmt.Errorf("imported workspace at %s is not tracked", absDir)
+	}
+
+	ws.ImportRepository = repository
+	ws.ImportTag = tag
+	ws.ImportDigest = manifestDigest
+	return s.SaveWorkspace(ws)
+}
+
 // parseWsRef parses a reference in the format workspace:tag.
 // Returns (workspace, tag) where tag may be empty if not specified.
 func parseWsRef(ref string) (string, string) {

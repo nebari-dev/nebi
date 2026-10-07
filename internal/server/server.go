@@ -123,7 +123,7 @@ func Run(ctx context.Context, cfg Config) error {
 	limitCfg := appCfg.Limits
 
 	// Initialize the services used by the in-process worker.
-	workerEncKey, err := nebicrypto.DeriveKey(appCfg.Auth.JWTSecret)
+	workerEncKey, err := nebicrypto.DeriveKey(appCfg.EncryptionKey)
 	if err != nil {
 		return fmt.Errorf("failed to derive encryption key: %w", err)
 	}

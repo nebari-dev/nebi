@@ -41,7 +41,7 @@ jobs:
       - name: Set Fly.io secrets
         run: |
           flyctl secrets set \
-            NEBI_AUTH_JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+            NEBI_ENCRYPTION_KEY="${{ secrets.JWT_SECRET }}" \
             NEBI_AUTH_OIDC_ISSUER_URL="${{ secrets.OIDC_ISSUER_URL }}" \
             NEBI_AUTH_OIDC_CLIENT_ID="${{ secrets.OIDC_CLIENT_ID }}" \
             --app nebi

@@ -103,12 +103,12 @@ func interactiveLogin(ctx context.Context, serverURL string) (*store.Credentials
 		return nil, fmt.Errorf("server uses unsupported authentication %q; upgrade nebi", authCfg.Type)
 	}
 
-	endpoints, err := oidcclient.Discover(ctx, authCfg.IssuerURL)
+	scopes := append(authCfg.Scopes, oidcclient.OfflineAccessScope)
+	oauthCfg, err := oidcclient.Discover(ctx, authCfg.IssuerURL, authCfg.ClientID, scopes)
 	if err != nil {
 		return nil, err
 	}
-	scopes := append(authCfg.Scopes, oidcclient.OfflineAccessScope)
-	device, err := oidcclient.StartDeviceAuthorization(ctx, endpoints, authCfg.ClientID, scopes)
+	device, err := oidcclient.StartDeviceAuthorization(ctx, oauthCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -122,12 +122,12 @@ func interactiveLogin(ctx context.Context, serverURL string) (*store.Credentials
 	}
 	fmt.Fprintf(os.Stderr, "Waiting for authentication...\n")
 
-	tok, err := oidcclient.WaitForDeviceToken(ctx, endpoints, authCfg.ClientID, device)
+	tok, err := oidcclient.WaitForDeviceToken(ctx, oauthCfg, device)
 	if err != nil {
 		return nil, fmt.Errorf("device login failed: %w", err)
 	}
 
-	creds := &store.Credentials{TokenURL: endpoints.Token, ClientID: authCfg.ClientID}
+	creds := &store.Credentials{TokenURL: oauthCfg.Endpoint.TokenURL, ClientID: authCfg.ClientID}
 	creds.SetOAuthToken(tok)
 	return creds, nil
 }

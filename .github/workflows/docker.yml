@@ -169,7 +169,7 @@ jobs:
           # Start container with port mapping
           docker run --rm -d --name "${CONTAINER_NAME}" \
             -p 8460:8460 \
-            -e NEBI_AUTH_JWT_SECRET=test-secret-that-is-at-least-32-chars-long \
+            -e NEBI_ENCRYPTION_KEY=test-secret-that-is-at-least-32-chars-long \
             -e NEBI_AUTH_TYPE=none \
             -e NEBI_DATABASE_DSN=/tmp/test.db \
             "${IMAGE_TAG}" --host 0.0.0.0

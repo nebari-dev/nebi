@@ -124,7 +124,7 @@ services:
       NEBI_LOG_LEVEL: ${NEBI_LOG_LEVEL:-info}
       NEBI_LOG_FORMAT: text
       # Encrypts stored registry credentials.
-      NEBI_AUTH_JWT_SECRET: ${NEBI_JWT_SECRET:?NEBI_JWT_SECRET is required (32+ chars)}
+      NEBI_ENCRYPTION_KEY: ${NEBI_ENCRYPTION_KEY:?NEBI_ENCRYPTION_KEY is required (32+ chars)}
 
       # nebi accepts access tokens issued by Keycloak for the "nebi" client.
       # The issuer is the public URL (it must match the tokens' "iss"), while

@@ -39,6 +39,9 @@ type Config struct {
 	Storage    StorageConfig    `mapstructure:"storage"`
 	Limits     limits.Limits    `mapstructure:"limits"`
 	Registries RegistriesConfig `mapstructure:"registries"`
+	// EncryptionKey is the secret the key that encrypts stored registry
+	// credentials is derived from (team mode: 32+ characters).
+	EncryptionKey string `mapstructure:"encryption_key"`
 }
 
 // IsLocalMode returns true when the server is running in local/desktop mode.
@@ -108,7 +111,6 @@ const (
 // provider and nebi only validates them.
 type AuthConfig struct {
 	Type             string `mapstructure:"type"`               // "oidc" (default) or "none" (no authentication, every request is an implicit admin)
-	JWTSecret        string `mapstructure:"jwt_secret"`         // Secret the registry-credential encryption key is derived from
 	OIDCIssuerURL    string `mapstructure:"oidc_issuer_url"`    // OIDC provider issuer URL; must match the "iss" claim of access tokens
 	OIDCDiscoveryURL string `mapstructure:"oidc_discovery_url"` // Optional: URL for fetching .well-known/openid-configuration when it differs from the issuer (e.g. in-cluster Keycloak Service for back-channel calls); falls back to oidc_issuer_url when unset
 	OIDCClientID     string `mapstructure:"oidc_client_id"`     // Public OIDC client used by the web UI, CLI and desktop app; access tokens must list it in "aud"
@@ -209,7 +211,7 @@ func Load(options ...LoadOption) (*Config, error) {
 	v.SetDefault("database.max_open_conns", 100)
 	v.SetDefault("database.conn_max_lifetime", 60) // 60 minutes
 	v.SetDefault("auth.type", AuthTypeOIDC)
-	v.SetDefault("auth.jwt_secret", "change-me-in-production")
+	v.SetDefault("encryption_key", defaultEncryptionKey)
 	v.SetDefault("auth.oidc_issuer_url", "")
 	v.SetDefault("auth.oidc_discovery_url", "")
 	v.SetDefault("auth.oidc_client_id", "")
@@ -269,7 +271,7 @@ func Load(options ...LoadOption) (*Config, error) {
 	_ = v.BindEnv("database.driver", "NEBI_DATABASE_DRIVER")
 	_ = v.BindEnv("database.dsn", "NEBI_DATABASE_DSN")
 	_ = v.BindEnv("auth.type", "NEBI_AUTH_TYPE")
-	_ = v.BindEnv("auth.jwt_secret", "NEBI_AUTH_JWT_SECRET")
+	_ = v.BindEnv("encryption_key", "NEBI_ENCRYPTION_KEY")
 	_ = v.BindEnv("auth.oidc_issuer_url", "NEBI_AUTH_OIDC_ISSUER_URL")
 	_ = v.BindEnv("auth.oidc_discovery_url", "NEBI_AUTH_OIDC_DISCOVERY_URL")
 	_ = v.BindEnv("auth.oidc_client_id", "NEBI_AUTH_OIDC_CLIENT_ID")
@@ -322,7 +324,7 @@ func Load(options ...LoadOption) (*Config, error) {
 	// this secret, so it must not be empty, the shipped default, or too short
 	// to resist brute force. Local mode is exempt.
 	if !cfg.IsLocalMode() {
-		if err := validateTeamModeJWTSecret(cfg.Auth.JWTSecret); err != nil {
+		if err := validateTeamModeEncryptionKey(cfg.EncryptionKey); err != nil {
 			return nil, err
 		}
 		if err := validateTeamModeAuth(&cfg.Auth); err != nil {
@@ -343,19 +345,19 @@ func validateMode(mode Mode) error {
 }
 
 const (
-	defaultJWTSecret   = "change-me-in-production"
-	minJWTSecretLength = 32
+	defaultEncryptionKey   = "change-me-in-production"
+	minEncryptionKeyLength = 32
 )
 
-func validateTeamModeJWTSecret(secret string) error {
-	if secret == "" {
-		return fmt.Errorf("auth.jwt_secret (NEBI_AUTH_JWT_SECRET) must be set in team mode")
+func validateTeamModeEncryptionKey(key string) error {
+	if key == "" {
+		return fmt.Errorf("encryption_key (NEBI_ENCRYPTION_KEY) must be set in team mode")
 	}
-	if secret == defaultJWTSecret {
-		return fmt.Errorf("auth.jwt_secret (NEBI_AUTH_JWT_SECRET) must not be the default value %q in team mode", defaultJWTSecret)
+	if key == defaultEncryptionKey {
+		return fmt.Errorf("encryption_key (NEBI_ENCRYPTION_KEY) must not be the default value %q in team mode", defaultEncryptionKey)
 	}
-	if len(secret) < minJWTSecretLength {
-		return fmt.Errorf("auth.jwt_secret (NEBI_AUTH_JWT_SECRET) must be at least %d characters in team mode", minJWTSecretLength)
+	if len(key) < minEncryptionKeyLength {
+		return fmt.Errorf("encryption_key (NEBI_ENCRYPTION_KEY) must be at least %d characters in team mode", minEncryptionKeyLength)
 	}
 	return nil
 }

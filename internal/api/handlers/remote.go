@@ -28,14 +28,19 @@ type RemoteHandler struct {
 	tokens  oauth2.TokenSource // cached so parallel requests share one refresh
 }
 
-// pendingConnect is a device authorization started by ConnectServer.
+// pendingConnect is a device authorization started by ConnectServer. A
+// goroutine waits for the user's approval with oauth2's RFC 8628 polling and
+// closes done once it has a token or has failed; PollConnect only reads the
+// outcome.
 type pendingConnect struct {
-	url       string
-	clientID  string
-	endpoints *oidcclient.Endpoints
-	device    *oidcclient.DeviceAuthorization
-	interval  int
-	expiresAt time.Time
+	url      string
+	cfg      *oauth2.Config
+	interval int
+	cancel   context.CancelFunc
+
+	done chan struct{}
+	tok  *oauth2.Token // set before done is closed
+	err  error         // set before done is closed
 }
 
 // NewRemoteHandler creates a new remote handler.
@@ -118,52 +123,49 @@ func (h *RemoteHandler) ConnectServer(c *gin.Context) {
 		return
 	}
 
-	h.mu.Lock()
-	h.pending = nil
-	h.mu.Unlock()
+	h.replacePending(nil)
 
 	switch authCfg.Type {
 	case cliclient.AuthTypeNone:
 		h.finishConnect(c, serverURL, &store.Credentials{})
 	case cliclient.AuthTypeOIDC:
-		endpoints, err := oidcclient.Discover(ctx, authCfg.IssuerURL)
-		if err != nil {
-			c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Failed to connect: %v", err)})
-			return
-		}
 		scopes := append(authCfg.Scopes, oidcclient.OfflineAccessScope)
-		device, err := oidcclient.StartDeviceAuthorization(ctx, endpoints, authCfg.ClientID, scopes)
+		oauthCfg, err := oidcclient.Discover(ctx, authCfg.IssuerURL, authCfg.ClientID, scopes)
 		if err != nil {
 			c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Failed to connect: %v", err)})
 			return
 		}
-		expiresIn := device.ExpiresIn
-		if expiresIn <= 0 {
-			expiresIn = 600
+		device, err := oidcclient.StartDeviceAuthorization(ctx, oauthCfg)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Failed to connect: %v", err)})
+			return
 		}
-		h.mu.Lock()
-		h.pending = &pendingConnect{
-			url:       serverURL,
-			clientID:  authCfg.ClientID,
-			endpoints: endpoints,
-			device:    device,
-			interval:  device.Interval,
-			expiresAt: time.Now().Add(time.Duration(expiresIn) * time.Second),
+		interval := int(device.Interval)
+		if interval <= 0 {
+			interval = 5 // RFC 8628 §3.2 default
 		}
-		h.mu.Unlock()
+		// The wait outlives this request; it ends at the device code's expiry,
+		// when the user approves or declines, or when replacePending cancels it.
+		waitCtx, cancel := context.WithCancel(context.Background())
+		p := &pendingConnect{url: serverURL, cfg: oauthCfg, interval: interval, cancel: cancel, done: make(chan struct{})}
+		go func() {
+			defer close(p.done)
+			p.tok, p.err = oidcclient.WaitForDeviceToken(waitCtx, oauthCfg, device)
+		}()
+		h.replacePending(p)
 		c.JSON(http.StatusOK, gin.H{
 			"user_code":                 device.UserCode,
 			"verification_uri":          device.VerificationURI,
 			"verification_uri_complete": device.VerificationURIComplete,
-			"expires_in":                expiresIn,
-			"interval":                  device.Interval,
+			"expires_in":                int(time.Until(device.Expiry).Seconds()),
+			"interval":                  interval,
 		})
 	default:
 		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote server uses unsupported authentication %q", authCfg.Type)})
 	}
 }
 
-// PollConnect checks once whether the user approved the pending device
+// PollConnect reports whether the user approved the pending device
 // authorization, and stores the credentials when they did.
 func (h *RemoteHandler) PollConnect(c *gin.Context) {
 	h.mu.Lock()
@@ -173,43 +175,43 @@ func (h *RemoteHandler) PollConnect(c *gin.Context) {
 		c.JSON(http.StatusConflict, ErrorResponse{Error: "No connection in progress"})
 		return
 	}
-	if time.Now().After(p.expiresAt) {
-		h.clearPending(p)
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: oidcclient.ErrExpired.Error()})
+
+	select {
+	case <-p.done:
+	default:
+		c.JSON(http.StatusOK, gin.H{"status": "pending", "interval": p.interval})
 		return
 	}
 
-	tok, err := oidcclient.PollDeviceToken(c.Request.Context(), p.endpoints, p.clientID, p.device)
 	switch {
-	case errors.Is(err, oidcclient.ErrAuthorizationPending):
-		h.mu.Lock()
-		interval := p.interval
-		h.mu.Unlock()
-		c.JSON(http.StatusOK, gin.H{"status": "pending", "interval": interval})
-		return
-	case errors.Is(err, oidcclient.ErrSlowDown):
-		h.mu.Lock()
-		p.interval += 5
-		interval := p.interval
-		h.mu.Unlock()
-		c.JSON(http.StatusOK, gin.H{"status": "pending", "interval": interval})
-		return
-	case errors.Is(err, oidcclient.ErrExpired), errors.Is(err, oidcclient.ErrAccessDenied):
+	case errors.Is(p.err, oidcclient.ErrExpired), errors.Is(p.err, oidcclient.ErrAccessDenied):
 		h.clearPending(p)
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: p.err.Error()})
 		return
-	case err != nil:
-		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Failed to connect: %v", err)})
+	case p.err != nil:
+		h.clearPending(p)
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Failed to connect: %v", p.err)})
 		return
 	}
 
-	creds := &store.Credentials{TokenURL: p.endpoints.Token, ClientID: p.clientID}
-	creds.SetOAuthToken(tok)
+	creds := &store.Credentials{TokenURL: p.cfg.Endpoint.TokenURL, ClientID: p.cfg.ClientID}
+	creds.SetOAuthToken(p.tok)
 	if h.clearPending(p) {
 		h.finishConnect(c, p.url, creds)
 		return
 	}
 	c.JSON(http.StatusConflict, ErrorResponse{Error: "Connection was restarted"})
+}
+
+// replacePending makes p the pending connection, stopping the wait of the
+// one it replaces.
+func (h *RemoteHandler) replacePending(p *pendingConnect) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.pending != nil {
+		h.pending.cancel()
+	}
+	h.pending = p
 }
 
 // clearPending forgets p if it is still the pending connection, reporting
@@ -220,6 +222,7 @@ func (h *RemoteHandler) clearPending(p *pendingConnect) bool {
 	if h.pending != p {
 		return false
 	}
+	p.cancel()
 	h.pending = nil
 	return true
 }
@@ -283,9 +286,9 @@ func (h *RemoteHandler) DisconnectServer(c *gin.Context) {
 		return
 	}
 	h.mu.Lock()
-	h.pending = nil
 	h.tokens = nil
 	h.mu.Unlock()
+	h.replacePending(nil)
 	c.JSON(http.StatusOK, gin.H{"status": "disconnected"})
 }
 

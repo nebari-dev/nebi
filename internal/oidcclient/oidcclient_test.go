@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nebari-dev/nebi/internal/auth/authtest"
 	"golang.org/x/oauth2"
 )
 
@@ -73,88 +74,109 @@ func TestTokenSourceWithoutRefreshTokenIsStatic(t *testing.T) {
 	}
 }
 
-// TestWaitForDeviceTokenHonoursSlowDown pins the RFC 8628 polling rules:
-// slow_down adds five seconds to the interval, authorization_pending keeps
-// polling, and the first success is returned.
-func TestWaitForDeviceTokenHonoursSlowDown(t *testing.T) {
-	var polls atomic.Int32
-	var pollTimes []time.Time
-	var mu sync.Mutex
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		pollTimes = append(pollTimes, time.Now())
-		mu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
-		switch polls.Add(1) {
-		case 1:
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"error":"authorization_pending"}`))
-		case 2:
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"error":"slow_down"}`))
-		default:
-			_, _ = w.Write([]byte(`{"access_token":"ok","token_type":"Bearer","expires_in":60}`))
-		}
-	}))
-	defer srv.Close()
-
-	// Use a sub-second interval by expressing it through a zero Interval
-	// (0s) so the test stays fast; slow_down then raises it to 5s, which we
-	// observe as the gap before the third poll. Keep the test bounded.
-	da := &DeviceAuthorization{DeviceCode: "dc", Interval: 0, ExpiresIn: 30}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	start := time.Now()
-	tok, err := WaitForDeviceToken(ctx, &Endpoints{Token: srv.URL}, "cli", da)
+// TestDeviceFlowAgainstProvider runs discovery, the device authorization and
+// the token wait against an in-process provider that enforces PKCE, so the
+// verifier must reach the token request.
+func TestDeviceFlowAgainstProvider(t *testing.T) {
+	idp, err := authtest.NewServer("cli")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tok.AccessToken != "ok" {
-		t.Fatalf("got %q", tok.AccessToken)
+	defer idp.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	cfg, err := Discover(ctx, idp.URL, "cli", []string{"openid", OfflineAccessScope})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if polls.Load() != 3 {
-		t.Fatalf("polled %d times, want 3", polls.Load())
+	if cfg.Endpoint.TokenURL != idp.URL+"/token" || cfg.Endpoint.DeviceAuthURL != idp.URL+"/device" {
+		t.Fatalf("unexpected endpoint %+v", cfg.Endpoint)
 	}
-	if elapsed := time.Since(start); elapsed < 5*time.Second {
-		t.Fatalf("slow_down was not applied: finished in %s", elapsed)
+	da, err := StartDeviceAuthorization(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
 	}
-	mu.Lock()
-	gap := pollTimes[2].Sub(pollTimes[1])
-	mu.Unlock()
-	if gap < 5*time.Second {
-		t.Fatalf("gap after slow_down was %s, want >= 5s", gap)
+	if da.Verifier == "" || da.BrowseURL() == "" {
+		t.Fatalf("unexpected device authorization %+v", da)
+	}
+	if err := idp.ApproveDevice(da.UserCode, authtest.Identity{Subject: "sub-1", Username: "alice"}); err != nil {
+		t.Fatal(err)
+	}
+	tok, err := WaitForDeviceToken(ctx, cfg, da)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.AccessToken == "" || tok.RefreshToken == "" {
+		t.Fatalf("unexpected token %+v", tok)
 	}
 }
 
-func TestWaitForDeviceTokenReturnsExpiredAndDenied(t *testing.T) {
-	for _, tc := range []struct {
-		code string
-		want error
-	}{{"expired_token", ErrExpired}, {"access_denied", ErrAccessDenied}} {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"error":"` + tc.code + `"}`))
-		}))
-		da := &DeviceAuthorization{DeviceCode: "dc", Interval: 0, ExpiresIn: 30}
-		_, err := WaitForDeviceToken(context.Background(), &Endpoints{Token: srv.URL}, "cli", da)
-		srv.Close()
-		if !errors.Is(err, tc.want) {
-			t.Errorf("%s: got %v, want %v", tc.code, err, tc.want)
-		}
+func TestWaitForDeviceTokenAccessDenied(t *testing.T) {
+	idp, err := authtest.NewServer("cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idp.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	cfg, err := Discover(ctx, idp.URL, "cli", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	da, err := StartDeviceAuthorization(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idp.DenyDevice(da.UserCode); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WaitForDeviceToken(ctx, cfg, da); !errors.Is(err, ErrAccessDenied) {
+		t.Fatalf("got %v, want ErrAccessDenied", err)
+	}
+}
+
+// tokenEndpoint serves a fixed RFC 8628 error from a token endpoint.
+func tokenEndpoint(t *testing.T, code string) *oauth2.Config {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"` + code + `"}`))
+	}))
+	t.Cleanup(srv.Close)
+	return &oauth2.Config{ClientID: "cli", Endpoint: oauth2.Endpoint{TokenURL: srv.URL, AuthStyle: oauth2.AuthStyleInParams}}
+}
+
+func pendingDevice(expiresIn time.Duration) *DeviceAuthorization {
+	return &DeviceAuthorization{
+		DeviceAuthResponse: oauth2.DeviceAuthResponse{DeviceCode: "dc", Interval: 1, Expiry: time.Now().Add(expiresIn)},
+		Verifier:           "verifier",
+	}
+}
+
+func TestWaitForDeviceTokenExpiredTokenError(t *testing.T) {
+	_, err := WaitForDeviceToken(context.Background(), tokenEndpoint(t, "expired_token"), pendingDevice(time.Minute))
+	if !errors.Is(err, ErrExpired) {
+		t.Fatalf("got %v, want ErrExpired", err)
+	}
+}
+
+// TestWaitForDeviceTokenStopsAtExpiry pins that polling ends at the device
+// code's expiry even while the provider keeps answering authorization_pending.
+func TestWaitForDeviceTokenStopsAtExpiry(t *testing.T) {
+	_, err := WaitForDeviceToken(context.Background(), tokenEndpoint(t, "authorization_pending"), pendingDevice(1500*time.Millisecond))
+	if !errors.Is(err, ErrExpired) {
+		t.Fatalf("got %v, want ErrExpired", err)
 	}
 }
 
 func TestWaitForDeviceTokenStopsOnContextCancel(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"error":"authorization_pending"}`))
-	}))
-	defer srv.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
-	da := &DeviceAuthorization{DeviceCode: "dc", Interval: 0, ExpiresIn: 30}
-	_, err := WaitForDeviceToken(ctx, &Endpoints{Token: srv.URL}, "cli", da)
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("got %v, want context deadline", err)
+	_, err := WaitForDeviceToken(ctx, tokenEndpoint(t, "authorization_pending"), pendingDevice(time.Minute))
+	if !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrExpired) {
+		t.Fatalf("got %v, want the caller's context deadline", err)
 	}
 }

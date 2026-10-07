@@ -43,7 +43,9 @@ access tokens it issues. Configure it with (config file keys under auth:):
   NEBI_AUTH_OIDC_ADMIN_GROUPS  identity-provider groups whose members are admins
   NEBI_AUTH_OIDC_SCOPES        scopes clients request (default openid,profile,email)
   NEBI_AUTH_OIDC_DISCOVERY_URL optional back-channel discovery URL
-  NEBI_AUTH_JWT_SECRET         secret stored registry credentials are encrypted with
+
+Stored registry credentials are encrypted with a key derived from
+NEBI_ENCRYPTION_KEY (encryption_key, 32+ characters).
 
 Examples:
   nebi-server                    # Run API server with an in-process worker

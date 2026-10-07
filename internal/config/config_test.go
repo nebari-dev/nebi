@@ -14,9 +14,9 @@ func isolate(t *testing.T) {
 	t.Chdir(t.TempDir())
 }
 
-func TestLoad_TeamMode_RejectsDefaultJWTSecret(t *testing.T) {
+func TestLoad_TeamMode_RejectsDefaultEncryptionKey(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_AUTH_JWT_SECRET", "change-me-in-production")
+	t.Setenv("NEBI_ENCRYPTION_KEY", "change-me-in-production")
 
 	_, err := Load(WithMode(ModeTeam))
 	if err == nil {
@@ -24,9 +24,9 @@ func TestLoad_TeamMode_RejectsDefaultJWTSecret(t *testing.T) {
 	}
 }
 
-func TestLoad_TeamMode_RejectsEmptyJWTSecret(t *testing.T) {
+func TestLoad_TeamMode_RejectsEmptyEncryptionKey(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_AUTH_JWT_SECRET", "")
+	t.Setenv("NEBI_ENCRYPTION_KEY", "")
 
 	_, err := Load(WithMode(ModeTeam))
 	if err == nil {
@@ -34,9 +34,9 @@ func TestLoad_TeamMode_RejectsEmptyJWTSecret(t *testing.T) {
 	}
 }
 
-func TestLoad_TeamMode_RejectsShortJWTSecret(t *testing.T) {
+func TestLoad_TeamMode_RejectsShortEncryptionKey(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_AUTH_JWT_SECRET", "too-short")
+	t.Setenv("NEBI_ENCRYPTION_KEY", "too-short")
 
 	_, err := Load(WithMode(ModeTeam))
 	if err == nil {
@@ -44,23 +44,23 @@ func TestLoad_TeamMode_RejectsShortJWTSecret(t *testing.T) {
 	}
 }
 
-func TestLoad_TeamMode_AcceptsStrongJWTSecret(t *testing.T) {
+func TestLoad_TeamMode_AcceptsStrongEncryptionKey(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_AUTH_JWT_SECRET", strings.Repeat("s", 32))
+	t.Setenv("NEBI_ENCRYPTION_KEY", strings.Repeat("s", 32))
 	t.Setenv("NEBI_AUTH_TYPE", "none")
 
 	cfg, err := Load(WithMode(ModeTeam))
 	if err != nil {
 		t.Fatalf("unexpected error with a strong secret: %v", err)
 	}
-	if cfg.Auth.JWTSecret != strings.Repeat("s", 32) {
-		t.Fatalf("expected configured secret to be loaded, got %q", cfg.Auth.JWTSecret)
+	if cfg.EncryptionKey != strings.Repeat("s", 32) {
+		t.Fatalf("expected configured secret to be loaded, got %q", cfg.EncryptionKey)
 	}
 }
 
 func TestLoad_TeamMode_DefaultsToOIDCAndRequiresIssuerAndClient(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_AUTH_JWT_SECRET", strings.Repeat("s", 32))
+	t.Setenv("NEBI_ENCRYPTION_KEY", strings.Repeat("s", 32))
 
 	if _, err := Load(WithMode(ModeTeam)); err == nil || !strings.Contains(err.Error(), "oidc_issuer_url") {
 		t.Fatalf("expected missing issuer error, got %v", err)
@@ -90,7 +90,7 @@ func TestLoad_TeamMode_DefaultsToOIDCAndRequiresIssuerAndClient(t *testing.T) {
 
 func TestLoad_TeamMode_RejectsUnknownAuthType(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_AUTH_JWT_SECRET", strings.Repeat("s", 32))
+	t.Setenv("NEBI_ENCRYPTION_KEY", strings.Repeat("s", 32))
 	t.Setenv("NEBI_AUTH_TYPE", "basic")
 
 	if _, err := Load(WithMode(ModeTeam)); err == nil || !strings.Contains(err.Error(), "invalid auth.type") {
@@ -98,9 +98,9 @@ func TestLoad_TeamMode_RejectsUnknownAuthType(t *testing.T) {
 	}
 }
 
-func TestLoad_LocalMode_AllowsDefaultJWTSecret(t *testing.T) {
+func TestLoad_LocalMode_AllowsDefaultEncryptionKey(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_AUTH_JWT_SECRET", "change-me-in-production")
+	t.Setenv("NEBI_ENCRYPTION_KEY", "change-me-in-production")
 
 	// Local mode has no network-facing auth or shared registry credentials,
 	// so the default secret is not a security issue.
@@ -111,7 +111,7 @@ func TestLoad_LocalMode_AllowsDefaultJWTSecret(t *testing.T) {
 
 func TestLoad_ModeIsExplicit(t *testing.T) {
 	isolate(t)
-	t.Setenv("NEBI_AUTH_JWT_SECRET", "change-me-in-production")
+	t.Setenv("NEBI_ENCRYPTION_KEY", "change-me-in-production")
 
 	if _, err := Load(WithMode(ModeTeam)); err == nil {
 		t.Fatal("expected team mode validation")

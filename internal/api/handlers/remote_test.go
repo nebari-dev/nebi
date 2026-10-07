@@ -239,6 +239,20 @@ func doJSON(t *testing.T, router *gin.Engine, method, path, body string) (int, m
 	return w.Code, resp
 }
 
+// pollUntilDone polls the pending connection until the device-token wait has
+// finished, which takes at least one provider poll interval after approval.
+func pollUntilDone(t *testing.T, router *gin.Engine) (int, map[string]any) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		status, resp := doJSON(t, router, "POST", "/api/v1/remote/connect/poll", "")
+		if status != http.StatusOK || resp["status"] != "pending" || time.Now().After(deadline) {
+			return status, resp
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 func TestConnectServer_DeviceFlow(t *testing.T) {
 	idp, err := authtest.NewServer("nebi")
 	if err != nil {
@@ -266,7 +280,7 @@ func TestConnectServer_DeviceFlow(t *testing.T) {
 	if err := idp.ApproveDevice(userCode, authtest.Identity{Subject: "sub-1", Username: "remoteuser"}); err != nil {
 		t.Fatalf("approve: %v", err)
 	}
-	status, resp = doJSON(t, router, "POST", "/api/v1/remote/connect/poll", "")
+	status, resp = pollUntilDone(t, router)
 	if status != http.StatusOK || resp["status"] != "connected" || resp["username"] != "remoteuser" || resp["url"] != remote.URL {
 		t.Fatalf("expected connected, got %d %v", status, resp)
 	}
@@ -320,7 +334,7 @@ func TestConnectServer_DeviceFlowDenied(t *testing.T) {
 	if err := idp.DenyDevice(resp["user_code"].(string)); err != nil {
 		t.Fatalf("deny: %v", err)
 	}
-	status, resp := doJSON(t, router, "POST", "/api/v1/remote/connect/poll", "")
+	status, resp := pollUntilDone(t, router)
 	if status != http.StatusBadRequest || !strings.Contains(resp["error"].(string), "denied") {
 		t.Fatalf("expected 400 access denied, got %d %v", status, resp)
 	}

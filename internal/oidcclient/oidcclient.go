@@ -1,21 +1,20 @@
 // Package oidcclient implements the client side of nebi's OIDC login: the
 // RFC 8628 device authorization grant used by the CLI and the desktop app,
 // and a refreshing token source for the stored tokens. Tokens are issued by
-// the identity provider; the nebi server only validates them.
+// the identity provider; the nebi server only validates them. Discovery,
+// the device flow, PKCE and token refresh are delegated to go-oidc and
+// golang.org/x/oauth2; this package only adds nebi's defaults and errors.
 package oidcclient
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"net/url"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 )
 
@@ -25,10 +24,6 @@ import (
 const OfflineAccessScope = "offline_access"
 
 var (
-	// ErrAuthorizationPending means the user has not approved the device yet.
-	ErrAuthorizationPending = errors.New("authorization pending")
-	// ErrSlowDown means the client must increase its polling interval.
-	ErrSlowDown = errors.New("slow down")
 	// ErrExpired means the device code expired before the user approved it.
 	ErrExpired = errors.New("device code expired, please try again")
 	// ErrAccessDenied means the user declined the authorization request.
@@ -37,53 +32,34 @@ var (
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 
-// Endpoints are the provider endpoints a device-flow client needs.
-type Endpoints struct {
-	DeviceAuthorization string `json:"device_authorization_endpoint"`
-	Token               string `json:"token_endpoint"`
+// withHTTPClient makes go-oidc and oauth2 use the bounded httpClient instead
+// of http.DefaultClient, which has no timeout.
+func withHTTPClient(ctx context.Context) context.Context {
+	return oidc.ClientContext(ctx, httpClient)
 }
 
-// Discover reads the provider's OpenID configuration.
-func Discover(ctx context.Context, issuerURL string) (*Endpoints, error) {
-	wellKnown := strings.TrimRight(issuerURL, "/") + "/.well-known/openid-configuration"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wellKnown, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := httpClient.Do(req)
+// Discover reads the provider's OpenID configuration and returns the
+// configuration of nebi's public client for the device flow.
+func Discover(ctx context.Context, issuerURL, clientID string, scopes []string) (*oauth2.Config, error) {
+	provider, err := oidc.NewProvider(withHTTPClient(ctx), issuerURL)
 	if err != nil {
 		return nil, fmt.Errorf("OIDC discovery: %w", err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OIDC discovery returned %d", resp.StatusCode)
-	}
-
-	var ep Endpoints
-	if err := json.NewDecoder(resp.Body).Decode(&ep); err != nil {
-		return nil, fmt.Errorf("decode OIDC discovery: %w", err)
-	}
-	if ep.Token == "" {
-		return nil, errors.New("OIDC provider does not advertise a token endpoint")
-	}
-	if ep.DeviceAuthorization == "" {
+	endpoint := provider.Endpoint()
+	if endpoint.DeviceAuthURL == "" {
 		return nil, errors.New("OIDC provider does not support the device authorization grant")
 	}
-	return &ep, nil
+	// nebi's client is public: send client_id in the form instead of letting
+	// oauth2 probe for HTTP basic auth with an empty secret.
+	endpoint.AuthStyle = oauth2.AuthStyleInParams
+	return &oauth2.Config{ClientID: clientID, Endpoint: endpoint, Scopes: scopes}, nil
 }
 
-// DeviceAuthorization is the provider's answer to a device authorization request.
+// DeviceAuthorization is a pending device authorization and the PKCE
+// verifier (RFC 7636) that the token request for it must present.
 type DeviceAuthorization struct {
-	DeviceCode              string `json:"device_code"`
-	UserCode                string `json:"user_code"`
-	VerificationURI         string `json:"verification_uri"`
-	VerificationURIComplete string `json:"verification_uri_complete"`
-	ExpiresIn               int    `json:"expires_in"`
-	Interval                int    `json:"interval"`
-
-	// CodeVerifier is the PKCE verifier bound to this authorization. It is
-	// sent with every token request for the device code.
-	CodeVerifier string `json:"-"`
+	oauth2.DeviceAuthResponse
+	Verifier string
 }
 
 // BrowseURL returns the URL the user should open to approve the device.
@@ -96,115 +72,44 @@ func (d *DeviceAuthorization) BrowseURL() string {
 }
 
 // StartDeviceAuthorization requests a device and user code. The request
-// carries a PKCE challenge (RFC 7636), which providers may require for public
-// clients such as the CLI.
-func StartDeviceAuthorization(ctx context.Context, ep *Endpoints, clientID string, scopes []string) (*DeviceAuthorization, error) {
+// carries a PKCE challenge, which providers may require for public clients
+// such as the CLI.
+func StartDeviceAuthorization(ctx context.Context, cfg *oauth2.Config) (*DeviceAuthorization, error) {
 	verifier := oauth2.GenerateVerifier()
-	form := url.Values{
-		"client_id":             {clientID},
-		"scope":                 {strings.Join(scopes, " ")},
-		"code_challenge":        {oauth2.S256ChallengeFromVerifier(verifier)},
-		"code_challenge_method": {"S256"},
-	}
-	body, status, err := postForm(ctx, ep.DeviceAuthorization, form)
+	resp, err := cfg.DeviceAuth(withHTTPClient(ctx), oauth2.S256ChallengeOption(verifier))
 	if err != nil {
 		return nil, fmt.Errorf("device authorization: %w", err)
 	}
-	if status != http.StatusOK {
-		return nil, fmt.Errorf("device authorization returned %d: %s", status, providerError(body))
-	}
-
-	var da DeviceAuthorization
-	if err := json.Unmarshal(body, &da); err != nil {
-		return nil, fmt.Errorf("decode device authorization: %w", err)
-	}
-	if da.DeviceCode == "" || da.UserCode == "" {
+	if resp.DeviceCode == "" || resp.UserCode == "" {
 		return nil, errors.New("device authorization response is missing the device or user code")
 	}
-	if da.Interval <= 0 {
-		da.Interval = 5
+	// expires_in is required (RFC 8628 §3.2) and is what bounds polling in
+	// WaitForDeviceToken; without it the wait would only end on cancellation.
+	if resp.Expiry.IsZero() {
+		return nil, errors.New("device authorization response has no expires_in")
 	}
-	da.CodeVerifier = verifier
-	return &da, nil
-}
-
-// PollDeviceToken makes one token request for a pending device
-// authorization. It returns ErrAuthorizationPending or ErrSlowDown while the
-// user has not approved yet, and ErrExpired or ErrAccessDenied when the flow
-// is over.
-func PollDeviceToken(ctx context.Context, ep *Endpoints, clientID string, da *DeviceAuthorization) (*oauth2.Token, error) {
-	form := url.Values{
-		"grant_type":    {"urn:ietf:params:oauth:grant-type:device_code"},
-		"client_id":     {clientID},
-		"device_code":   {da.DeviceCode},
-		"code_verifier": {da.CodeVerifier},
-	}
-	body, status, err := postForm(ctx, ep.Token, form)
-	if err != nil {
-		return nil, fmt.Errorf("device token: %w", err)
-	}
-	if status != http.StatusOK {
-		switch code := providerErrorCode(body); code {
-		case "authorization_pending":
-			return nil, ErrAuthorizationPending
-		case "slow_down":
-			return nil, ErrSlowDown
-		case "expired_token":
-			return nil, ErrExpired
-		case "access_denied":
-			return nil, ErrAccessDenied
-		default:
-			return nil, fmt.Errorf("token endpoint returned %d: %s", status, providerError(body))
-		}
-	}
-
-	var tr struct {
-		AccessToken  string `json:"access_token"`
-		TokenType    string `json:"token_type"`
-		RefreshToken string `json:"refresh_token"`
-		ExpiresIn    int64  `json:"expires_in"`
-	}
-	if err := json.Unmarshal(body, &tr); err != nil {
-		return nil, fmt.Errorf("decode device token: %w", err)
-	}
-	if tr.AccessToken == "" {
-		return nil, errors.New("token response has no access token")
-	}
-	tok := &oauth2.Token{
-		AccessToken:  tr.AccessToken,
-		TokenType:    tr.TokenType,
-		RefreshToken: tr.RefreshToken,
-	}
-	if tr.ExpiresIn > 0 {
-		tok.Expiry = time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)
-	}
-	return tok, nil
+	return &DeviceAuthorization{DeviceAuthResponse: *resp, Verifier: verifier}, nil
 }
 
 // WaitForDeviceToken polls until the user approves the device, the code
-// expires, or ctx is done.
-func WaitForDeviceToken(ctx context.Context, ep *Endpoints, clientID string, da *DeviceAuthorization) (*oauth2.Token, error) {
-	interval := time.Duration(da.Interval) * time.Second
-	deadline := time.Now().Add(time.Duration(da.ExpiresIn) * time.Second)
-	for da.ExpiresIn <= 0 || time.Now().Before(deadline) {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(interval):
-		}
-		tok, err := PollDeviceToken(ctx, ep, clientID, da)
-		switch {
-		case errors.Is(err, ErrAuthorizationPending):
-			continue
-		case errors.Is(err, ErrSlowDown):
-			interval += 5 * time.Second
-			continue
-		case err != nil:
-			return nil, err
-		}
+// expires, or ctx is done. Polling follows RFC 8628 §3.5 (interval and
+// slow_down) as implemented by oauth2.Config.DeviceAccessToken.
+func WaitForDeviceToken(ctx context.Context, cfg *oauth2.Config, da *DeviceAuthorization) (*oauth2.Token, error) {
+	tok, err := cfg.DeviceAccessToken(withHTTPClient(ctx), &da.DeviceAuthResponse, oauth2.VerifierOption(da.Verifier))
+	if err == nil {
 		return tok, nil
 	}
-	return nil, ErrExpired
+	var re *oauth2.RetrieveError
+	switch {
+	case errors.As(err, &re) && re.ErrorCode == "expired_token":
+		return nil, ErrExpired
+	case errors.As(err, &re) && re.ErrorCode == "access_denied":
+		return nil, ErrAccessDenied
+	case errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil:
+		// DeviceAccessToken stops polling at the device code's expiry.
+		return nil, ErrExpired
+	}
+	return nil, err
 }
 
 // TokenSource returns a source that serves tok until it is about to expire
@@ -219,9 +124,8 @@ func TokenSource(ctx context.Context, tokenURL, clientID string, tok *oauth2.Tok
 		ClientID: clientID,
 		Endpoint: oauth2.Endpoint{TokenURL: tokenURL, AuthStyle: oauth2.AuthStyleInParams},
 	}
-	ctx = context.WithValue(ctx, oauth2.HTTPClient, httpClient)
 	return &notifyingSource{
-		src:       oauth2.ReuseTokenSource(tok, cfg.TokenSource(ctx, tok)),
+		src:       oauth2.ReuseTokenSource(tok, cfg.TokenSource(withHTTPClient(ctx), tok)),
 		last:      tok.AccessToken,
 		onRefresh: onRefresh,
 	}
@@ -254,45 +158,4 @@ func (s *notifyingSource) Token() (*oauth2.Token, error) {
 		}
 	}
 	return tok, nil
-}
-
-func postForm(ctx context.Context, endpoint string, form url.Values) ([]byte, int, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
-	if err != nil {
-		return nil, 0, err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, resp.StatusCode, err
-	}
-	return body, resp.StatusCode, nil
-}
-
-func providerErrorCode(body []byte) string {
-	var e struct {
-		Error string `json:"error"`
-	}
-	_ = json.Unmarshal(body, &e)
-	return e.Error
-}
-
-func providerError(body []byte) string {
-	var e struct {
-		Error       string `json:"error"`
-		Description string `json:"error_description"`
-	}
-	if json.Unmarshal(body, &e) != nil || e.Error == "" {
-		return strings.TrimSpace(string(body))
-	}
-	if e.Description != "" {
-		return e.Error + ": " + e.Description
-	}
-	return e.Error
 }

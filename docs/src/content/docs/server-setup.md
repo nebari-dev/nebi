@@ -25,10 +25,9 @@ Configure the provider with these settings (config file keys under `auth:`, or t
 | `type` | `NEBI_AUTH_TYPE` | `oidc` (default) or `none` |
 | `oidc_issuer_url` | `NEBI_AUTH_OIDC_ISSUER_URL` | Issuer URL; must match the `iss` claim of access tokens |
 | `oidc_client_id` | `NEBI_AUTH_OIDC_CLIENT_ID` | Public client used by the web UI, CLI and desktop app; access tokens must list it in `aud` |
-| `oidc_scopes` | `NEBI_AUTH_OIDC_SCOPES` | Comma-separated scopes clients request (default `openid,profile,email`) |
+| `oidc_scopes` | `NEBI_AUTH_OIDC_SCOPES` | Comma-separated scopes clients request (default `openid,profile,email`). Add `groups` for providers that only put the `groups` claim in tokens when it is requested, such as Dex or Okta |
 | `oidc_admin_groups` | `NEBI_AUTH_OIDC_ADMIN_GROUPS` | Comma-separated identity-provider groups whose members are Nebi admins (default `admin`) |
 | `oidc_discovery_url` | `NEBI_AUTH_OIDC_DISCOVERY_URL` | Optional: where Nebi fetches the provider configuration when the issuer URL is not reachable from the server (for example an in-cluster Keycloak service) |
-| `jwt_secret` | `NEBI_AUTH_JWT_SECRET` | Secret (32+ characters) that stored registry credentials are encrypted with |
 
 The client in the identity provider must:
 
@@ -45,10 +44,12 @@ Set `NEBI_AUTH_TYPE=none` to turn authentication off. Every request then runs as
 
 ```bash
 export NEBI_AUTH_TYPE=none
-export NEBI_AUTH_JWT_SECRET=replace-with-at-least-32-random-characters
+export NEBI_ENCRYPTION_KEY=replace-with-at-least-32-random-characters
 ```
 
 ## Running the Server
+
+In team mode the server also needs `encryption_key` (`NEBI_ENCRYPTION_KEY`), a secret of at least 32 characters. Stored registry credentials are encrypted with a key derived from it, so keep it stable across restarts and upgrades.
 
 Start the server:
 
@@ -150,7 +151,8 @@ Groups with zero members are kept so existing project shares survive temporary c
 Earlier versions of Nebi had built-in users with passwords, admin-managed groups and an identity review queue. When upgrading:
 
 - Password users can no longer sign in. Their projects stay in place. Users signing in through the identity provider are matched only by the provider's issuer and subject, never by username or email, so a new account is created even if a password user with the same name exists.
-- Groups created in the Nebi admin UI are deleted, together with their memberships and every project, registry and admin grant they held. Recreate them in the identity provider.
+- Existing databases are not migrated yet. Password hashes, groups created in the Nebi admin UI and the identity review tables are left in place, and users cannot be created on first sign-in until the password hash column is removed. The upgrade migration is tracked in [#589](https://github.com/nebari-dev/nebi/issues/589).
+- `auth.jwt_secret` (`NEBI_AUTH_JWT_SECRET`) is now `encryption_key` (`NEBI_ENCRYPTION_KEY`). Set it to the old value, otherwise stored registry credentials cannot be decrypted.
 - `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `auth.type: basic`, `auth.oidc_client_secret`, `auth.oidc_redirect_url`, `auth.proxy_admin_groups` (now `auth.oidc_admin_groups`), `auth.proxy_default_role`, `auth.device_flow_client_id` (the web UI, CLI and desktop app all use `auth.oidc_client_id`) and `auth.authorization_stale_after_mins` are no longer supported.
 - Log in again with `nebi login` and in the desktop app. Tokens issued by earlier Nebi versions are not accepted.
 

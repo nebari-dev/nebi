@@ -30,14 +30,16 @@ database:
   # max_open_conns: 100
   # conn_max_lifetime: 60
 
+# Secret that stored registry credentials are encrypted with (32+ chars,
+# required in team mode). Env: NEBI_ENCRYPTION_KEY
+encryption_key: replace-with-at-least-32-random-characters
+
 auth:
   # "oidc" (default): nebi accepts access tokens issued by an OpenID Connect
   # provider (Keycloak, Okta, Auth0, ...). nebi has no users or passwords of
   # its own; users are created on first sign-in.
   # "none": no authentication, every request runs as an implicit admin.
   type: oidc
-  # Secret that stored registry credentials are encrypted with (32+ chars).
-  jwt_secret: replace-with-at-least-32-random-characters
 
   # Must match the "iss" claim of access tokens.
   oidc_issuer_url: https://keycloak.example.com/realms/nebi
@@ -45,7 +47,9 @@ auth:
   # used by the web UI, CLI and desktop app. Access tokens must list it in
   # "aud" and carry the user's groups in a "groups" claim.
   oidc_client_id: nebi
-  # Scopes the clients request (comma-separated).
+  # Scopes the clients request (comma-separated). Add "groups" for
+  # providers that only release the groups claim when it is requested
+  # (e.g. Dex, Okta).
   # oidc_scopes: openid,profile,email
   # Identity-provider groups whose members are nebi admins (comma-separated).
   oidc_admin_groups: nebi-admin

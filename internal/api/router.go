@@ -127,7 +127,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, db *gorm.DB, q *queue.Me
 	}
 
 	// Derive encryption key for credential encryption at rest
-	encKey, err := nebicrypto.DeriveKey(cfg.Auth.JWTSecret)
+	encKey, err := nebicrypto.DeriveKey(cfg.EncryptionKey)
 	if err != nil {
 		logger.Error("Failed to derive encryption key", "error", err)
 		panic(err)

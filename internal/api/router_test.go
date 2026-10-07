@@ -33,7 +33,7 @@ func buildTestRouter(t *testing.T, basePath string, mutate ...func(*config.Confi
 
 	cfg := &config.Config{Mode: config.ModeLocal}
 	cfg.Server.BasePath = basePath
-	cfg.Auth.JWTSecret = "test-secret-for-router-test"
+	cfg.EncryptionKey = "test-secret-for-router-test"
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = filepath.Join(t.TempDir(), "router-test.db")
 	cfg.Registries.SeedDefault = true
@@ -75,7 +75,7 @@ func teamModeConfig(t *testing.T, idp *authtest.Server, dbName string) *config.C
 	t.Helper()
 	cfg := &config.Config{Mode: config.ModeTeam}
 	cfg.Auth.Type = config.AuthTypeOIDC
-	cfg.Auth.JWTSecret = "test-secret-for-team-router-test"
+	cfg.EncryptionKey = "test-secret-for-team-router-test"
 	cfg.Auth.OIDCIssuerURL = idp.URL
 	cfg.Auth.OIDCClientID = idp.ClientID
 	cfg.Auth.OIDCAdminGroups = "nebi-admin"
@@ -138,7 +138,7 @@ func buildLimitedLocalRouter(t *testing.T, limitCfg limits.Limits) http.Handler 
 	t.Helper()
 
 	cfg := &config.Config{Mode: config.ModeLocal, Limits: limitCfg}
-	cfg.Auth.JWTSecret = "test-secret-for-router-test"
+	cfg.EncryptionKey = "test-secret-for-router-test"
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = filepath.Join(t.TempDir(), "limited-router-test.db")
 	cfg.Storage.ProjectsDir = t.TempDir()
@@ -249,62 +249,6 @@ func TestLoggingMiddlewareOmitsQueryString(t *testing.T) {
 	}
 }
 
-// TestLegacyCLILoginRoutesRemoved is the regression test for issue #448: the
-// legacy device-code CLI login flow silently authorized the CLI from an
-// existing proxy session cookie on a bare GET, with no confirmation step
-// (CSRF) and no single-use enforcement on the completed code. Nothing in the
-// shipped CLI uses it (nebi login only speaks the RFC 8628 device flow at
-// /auth/device-config and /auth/device-token), so the fix removes the routes
-// outright rather than hardening a flow with no legitimate caller.
-func TestLegacyCLILoginRoutesRemoved(t *testing.T) {
-	r := buildTestRouter(t, "")
-
-	for _, tc := range []struct {
-		method string
-		path   string
-	}{
-		{http.MethodGet, "/api/v1/auth/cli-login?code=ABCD-1234"},
-		{http.MethodPost, "/api/v1/auth/cli-login/code"},
-		{http.MethodGet, "/api/v1/auth/cli-login/poll?code=ABCD-1234"},
-	} {
-		req := httptest.NewRequest(tc.method, tc.path, nil)
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-
-		if w.Code != http.StatusNotFound {
-			t.Fatalf("%s %s: expected 404 (route removed), got %d", tc.method, tc.path, w.Code)
-		}
-	}
-}
-
-// TestRemovedAuthRoutesAreGone checks that nebi no longer issues its own
-// tokens: password login, the gateway session cookie exchange, the auth-code
-// exchange, the device-token exchange and the server-side OIDC login are all
-// gone, in favor of IdP-issued access tokens.
-func TestRemovedAuthRoutesAreGone(t *testing.T) {
-	r, _ := buildTeamTestRouter(t, nil)
-
-	for _, tc := range []struct {
-		method string
-		path   string
-	}{
-		{http.MethodPost, "/api/v1/auth/login"},
-		{http.MethodGet, "/api/v1/auth/session"},
-		{http.MethodPost, "/api/v1/auth/code/exchange"},
-		{http.MethodGet, "/api/v1/auth/device-config"},
-		{http.MethodPost, "/api/v1/auth/device-token"},
-		{http.MethodGet, "/api/v1/auth/oidc/login"},
-		{http.MethodGet, "/api/v1/auth/oidc/callback"},
-	} {
-		req := httptest.NewRequest(tc.method, tc.path, nil)
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-		if w.Code != http.StatusNotFound {
-			t.Fatalf("%s %s: expected 404, got %d", tc.method, tc.path, w.Code)
-		}
-	}
-}
-
 func TestAuthConfigAdvertisesIdentityProvider(t *testing.T) {
 	idp := newTestIdP(t)
 	cfg := teamModeConfig(t, idp, "auth-config.db")
@@ -350,7 +294,7 @@ func TestAuthConfigAdvertisesIdentityProvider(t *testing.T) {
 func TestAuthTypeNoneRunsRequestsAsAdmin(t *testing.T) {
 	cfg := &config.Config{Mode: config.ModeTeam}
 	cfg.Auth.Type = config.AuthTypeNone
-	cfg.Auth.JWTSecret = "test-secret-for-auth-none-router-test"
+	cfg.EncryptionKey = "test-secret-for-auth-none-router-test"
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = filepath.Join(t.TempDir(), "auth-none.db")
 	cfg.Storage.ProjectsDir = t.TempDir()
@@ -385,7 +329,7 @@ func TestAuthTypeNoneRunsRequestsAsAdmin(t *testing.T) {
 // the real HTTP admin routes, not just the service layer.
 func TestAdminRegistryMutations_RejectConfigManaged(t *testing.T) {
 	cfg := &config.Config{Mode: config.ModeLocal}
-	cfg.Auth.JWTSecret = "test-secret-for-config-managed-registry-test"
+	cfg.EncryptionKey = "test-secret-for-config-managed-registry-test"
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = filepath.Join(t.TempDir(), "config-managed-registry-test.db")
 	cfg.Registries.SeedDefault = false

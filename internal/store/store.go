@@ -66,13 +66,6 @@ func Open(dataDir string) (*Store, error) {
 			return nil, fmt.Errorf("dropping projects.package_manager column: %w", err)
 		}
 	}
-	// Drop the legacy password_hash column (NOT NULL without a default) from
-	// the users table shared with the local-mode server.
-	if db.Migrator().HasColumn(&LocalUser{}, "password_hash") {
-		if err := db.Migrator().DropColumn(&LocalUser{}, "password_hash"); err != nil {
-			return nil, fmt.Errorf("dropping users.password_hash column: %w", err)
-		}
-	}
 
 	// Seed singleton rows
 	db.Exec("INSERT OR IGNORE INTO store_config (id) VALUES (1)")

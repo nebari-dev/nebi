@@ -104,7 +104,6 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 	err := db.AutoMigrate(
 		&models.User{},
 		&models.FederatedIdentity{},
-		&models.FederatedIdentityReview{},
 		&models.Role{},
 		&models.Project{},
 		&models.Job{},
@@ -121,7 +120,6 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 		&models.GroupPermission{},
 		&models.ResourceLock{},
 		&models.ResourceMetric{},
-		&models.AuthReconciliationStatus{},
 		&models.SystemSetting{},
 	)
 	if err != nil {

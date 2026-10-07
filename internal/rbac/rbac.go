@@ -286,37 +286,3 @@ func CanWriteRegistry(userID, regID uuid.UUID) (bool, error) {
 	}
 	return enforcer.Enforce(userID.String(), fmt.Sprintf("reg:%s", regID.String()), "write")
 }
-
-// MakeGroupAdmin grants admin privileges to every member of a group.
-func MakeGroupAdmin(groupID uuid.UUID) error {
-	if enforcer == nil {
-		return nil
-	}
-	_, err := enforcer.AddPolicy(groupID.String(), "admin", "admin")
-	return err
-}
-
-// RevokeGroupAdmin removes group-level admin privilege.
-func RevokeGroupAdmin(groupID uuid.UUID) error {
-	if enforcer == nil {
-		return nil
-	}
-	_, err := enforcer.RemovePolicy(groupID.String(), "admin", "admin")
-	return err
-}
-
-// RemoveAllGroupPolicies removes every Casbin rule that involves a group:
-//   - All `p` policies where the group is the subject (project, registry, admin grants).
-//   - All `g` grouping rules where the group is the role (memberships).
-//
-// Casbin doesn't honor GORM soft-delete, so this is a hard remove.
-func RemoveAllGroupPolicies(groupID uuid.UUID) error {
-	if enforcer == nil {
-		return nil
-	}
-	if _, err := enforcer.RemoveFilteredPolicy(0, groupID.String()); err != nil {
-		return err
-	}
-	_, err := enforcer.RemoveFilteredGroupingPolicy(1, groupID.String())
-	return err
-}

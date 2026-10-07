@@ -27,16 +27,15 @@ func TestMigrateAllowsLegacyFederatedUsersWithoutIssuerSubject(t *testing.T) {
 		t.Fatalf("initial migrate: %v", err)
 	}
 	legacyUser := models.User{
-		Username:     "legacy-oidc",
-		Email:        "legacy@example.com",
-		PasswordHash: "",
+		Username: "legacy-oidc",
+		Email:    "legacy@example.com",
 	}
 	if err := database.Create(&legacyUser).Error; err != nil {
 		t.Fatalf("create legacy user: %v", err)
 	}
 
 	if err := Migrate(database, false); err != nil {
-		t.Fatalf("expected migration to leave legacy users for review-flow migration: %v", err)
+		t.Fatalf("expected migration to leave legacy users in place: %v", err)
 	}
 }
 
@@ -46,9 +45,8 @@ func TestMigrateAllowsFederatedUsersWithIssuerSubjectBinding(t *testing.T) {
 		t.Fatalf("initial migrate: %v", err)
 	}
 	user := models.User{
-		Username:     "bound-oidc",
-		Email:        "bound@example.com",
-		PasswordHash: "",
+		Username: "bound-oidc",
+		Email:    "bound@example.com",
 	}
 	if err := database.Create(&user).Error; err != nil {
 		t.Fatalf("create user: %v", err)

@@ -206,7 +206,7 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 
 	// Initialize API router
 	logToFile("startEmbeddedServer: initializing router...")
-	router := api.NewRouter(cfg, database, jobQueue, exec, w.GetBroker(), slog.Default())
+	router := api.NewRouter(workerCtx, cfg, database, jobQueue, exec, w.GetBroker(), slog.Default())
 
 	// Create HTTP server on port 8460 (fallback for CLI access).
 	// The desktop app is a single-user, on-device setup, so bind loopback

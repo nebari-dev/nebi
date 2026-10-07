@@ -68,11 +68,9 @@ export const ShareDialog = ({
   // Admins can share with any group; non-admin owners can only share with groups they belong to.
   const { data: myGroups } = useMyGroups(showGroupPicker && !isAdmin);
   const { data: allGroups } = useGroups(showGroupPicker && isAdmin);
-  const pickableGroups: {
-    id: string;
-    name: string;
-    source: 'native' | 'oidc';
-  }[] = isAdmin ? (allGroups ?? []) : (myGroups ?? []);
+  const pickableGroups: { id: string; name: string }[] = isAdmin
+    ? (allGroups ?? [])
+    : (myGroups ?? []);
   const qc = useQueryClient();
   const shareMutation = useShareProject(environmentId);
   const unshareMutation = useUnshareProject(environmentId);
@@ -236,9 +234,7 @@ export const ShareDialog = ({
                       <div className="flex-1">
                         <div className="font-medium">{collab.name}</div>
                         <div className="text-sm text-muted-foreground">
-                          {collab.source === 'oidc'
-                            ? 'OIDC group'
-                            : 'Native group'}
+                          Group
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -396,7 +392,7 @@ export const ShareDialog = ({
                       <SelectContent>
                         {availableGroups.map((g) => (
                           <SelectItem key={g.id} value={g.id}>
-                            {g.name} ({g.source})
+                            {g.name}
                           </SelectItem>
                         ))}
                       </SelectContent>

@@ -1,0 +1,22 @@
+# Local override for docker-compose.yml: serve *.localhost with a throwaway
+# wildcard certificate instead of Let's Encrypt. Generate it first with
+# docker/gen-local-certs.sh and trust docker/certs/ca.crt in your browser.
+#
+# nebi does not need to trust the CA: it reaches Keycloak over plain HTTP
+# on the compose network.
+services:
+  traefik:
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.file.filename=/etc/traefik/dynamic/tls.yml
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls=true
+      - --accesslog=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/traefik/tls.yml:/etc/traefik/dynamic/tls.yml:ro
+      - ./docker/certs:/certs:ro

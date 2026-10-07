@@ -460,15 +460,7 @@ export const ProjectDetail = () => {
                   )}
                   <div className="flex flex-wrap gap-1.5">
                     {groupCollaborators?.slice(0, 3).map((g) => (
-                      <Badge
-                        key={g.group_id}
-                        variant="outline"
-                        className={
-                          g.source === 'oidc'
-                            ? 'border-blue-500/40 text-blue-500'
-                            : ''
-                        }
-                      >
+                      <Badge key={g.group_id} variant="outline">
                         {g.name}
                       </Badge>
                     ))}

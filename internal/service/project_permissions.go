@@ -195,7 +195,6 @@ func (s *ProjectService) ListCollaborators(projectID string) ([]CollaboratorResu
 			Kind:    CollaboratorKindGroup,
 			GroupID: &gp.GroupID,
 			Name:    gp.Group.Name,
-			Source:  string(gp.Group.Source),
 			Role:    gp.Role.Name,
 			IsOwner: false,
 		})

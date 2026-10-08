@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,8 +47,10 @@ type ImportFromRegistryRequest struct {
 //     bug where team-mode imports re-solved from pixi.toml alone.
 //
 // Network errors surface synchronously so the caller knows the import
-// did not start. On any failure after the staging dir is created, the
-// staging dir is removed before returning.
+// did not start. Failures the caller can act on come back typed (see
+// classifyBundlePullError) instead of as an opaque internal error. On
+// any failure after the staging dir is created, the staging dir is
+// removed before returning.
 func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID string, req ImportFromRegistryRequest, userID uuid.UUID) (*models.Workspace, error) {
 	regID, err := uuid.Parse(registryID)
 	if err != nil {
@@ -104,14 +108,14 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 		result, err := oci.ExtractBundle(pullCtx, repoRef, req.Tag, stagingDir, pullOpts)
 		if err != nil {
 			_ = os.RemoveAll(stagingDir)
-			return nil, fmt.Errorf("extract bundle: %w", err)
+			return nil, classifyBundlePullError("extract bundle", err, repoRef, req.Tag)
 		}
 		digest = result.Digest
 	} else {
 		result, err := oci.PullBundle(pullCtx, repoRef, req.Tag, pullOpts)
 		if err != nil {
 			_ = os.RemoveAll(stagingDir)
-			return nil, fmt.Errorf("pull bundle: %w", err)
+			return nil, classifyBundlePullError("pull bundle", err, repoRef, req.Tag)
 		}
 		// Stage just the two core files; asset layers stay in the
 		// registry until team mode opts in to bundle support.
@@ -144,4 +148,55 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 	})
 
 	return ws, nil
+}
+
+// classifyBundlePullError turns a failed bundle pull into a typed service
+// error when the caller can act on it, so API clients can tell a bad
+// artifact or a registry refusal from a broken server:
+//
+//   - the artifact is not a Nebi bundle, or is a malformed one →
+//     UnprocessableError carrying the reason;
+//   - the registry has no such repository or tag → NotFoundError;
+//   - the pull was refused with 401/403 by the registry or something
+//     it delegates to (its token service, a host it redirected to) →
+//     UpstreamError carrying that status.
+//
+// Anything else is wrapped with op and stays an internal error.
+//
+// The typed errors are built only from fixed text, the repository
+// reference the caller asked for, and the upstream status. Nothing the
+// registry sent (manifest fields, response bodies) and nothing from the
+// underlying client error (request URLs, credentials) is copied into
+// them, because the response body is downstream.
+//
+// A refusal is logged here, as a warning, with the registry's error
+// codes. Only codes the distribution spec defines are logged (see
+// oci.RegistryAccessError.Codes), so the line holds nothing else the
+// registry chose. The codes tell an operator a registry that answers 401
+// for a repository it does not have (NAME_UNKNOWN) from one that refused
+// the credentials (UNAUTHORIZED, DENIED).
+func classifyBundlePullError(op string, err error, repoRef, tag string) error {
+	if errors.Is(err, oci.ErrNotNebiArtifact) {
+		return &UnprocessableError{Message: "not a Nebi artifact"}
+	}
+	var invalid *oci.InvalidBundleError
+	if errors.As(err, &invalid) {
+		return &UnprocessableError{Message: "invalid bundle: " + invalid.Reason}
+	}
+	if errors.Is(err, oci.ErrReferenceNotFound) {
+		return &NotFoundError{Message: fmt.Sprintf("repository or tag not found: %s:%s", repoRef, tag)}
+	}
+	var refused *oci.RegistryAccessError
+	if errors.As(err, &refused) {
+		slog.Warn("registry refused a bundle pull",
+			"op", op,
+			"target", repoRef,
+			"upstream_status", refused.StatusCode,
+			"registry_error_codes", refused.Codes)
+		return &UpstreamError{
+			Message:        fmt.Sprintf("registry refused access to %s", repoRef),
+			UpstreamStatus: refused.StatusCode,
+		}
+	}
+	return fmt.Errorf("%s: %w", op, err)
 }

@@ -51,18 +51,14 @@ func (e *UnprocessableError) Error() string { return e.Message }
 // called on the caller's behalf, such as an OCI registry denying access
 // (HTTP 502).
 //
-// Every field is safe to return to the caller and to log. The upstream's
-// own error is deliberately not carried: it can hold request URLs with
-// signed query strings and response bodies that echo credentials.
+// Both fields are safe to return to the caller. The upstream's own error
+// is deliberately not carried: it can hold request URLs with signed query
+// strings and response bodies that echo credentials. Whoever builds an
+// UpstreamError logs the refusal.
 type UpstreamError struct {
 	Message string
 	// UpstreamStatus is the HTTP status the upstream answered with.
 	UpstreamStatus int
-	// Op is the server-side operation that was refused, for logs.
-	Op string
-	// Target names what was being accessed (for a registry,
-	// "host/repository"), for logs.
-	Target string
 }
 
 func (e *UpstreamError) Error() string { return e.Message }

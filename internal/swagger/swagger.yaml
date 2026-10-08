@@ -124,6 +124,20 @@ definitions:
       version:
         type: string
     type: object
+  handlers.ImportRequest:
+    properties:
+      name:
+        type: string
+      repository:
+        type: string
+      repository_path:
+        type: string
+      tag:
+        type: string
+    required:
+    - name
+    - tag
+    type: object
   handlers.InstallPackagesRequest:
     properties:
       packages:
@@ -2018,6 +2032,59 @@ paths:
       security:
       - BearerAuth: []
       summary: List available registries (public info only)
+      tags:
+      - registries
+  /registries/{id}/import:
+    post:
+      consumes:
+      - application/json
+      description: Pull a Nebi bundle from a configured OCI registry and create a
+        workspace from it. Name the repository with either repository (relative to
+        the registry's namespace) or repository_path (the full path), not both.
+      parameters:
+      - description: Registry ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: What to import and the workspace name
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.ImportRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Workspace'
+        "400":
+          description: The request is malformed
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: The registry is not configured, or it has no such repository
+            or tag
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: The artifact is not a Nebi bundle, or is a malformed one
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "502":
+          description: The registry refused access; upstream_status is the status
+            it answered with (401 or 403)
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Import a workspace from a registry
       tags:
       - registries
   /version:

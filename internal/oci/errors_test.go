@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -13,6 +14,7 @@ import (
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
+	"oras.land/oras-go/v2/registry/remote/errcode"
 )
 
 // TestClassifyBundleManifest_SafeReasons pins that every manifest
@@ -262,12 +264,12 @@ func TestBundlePull_AnonymousBasicChallenge(t *testing.T) {
 	})
 }
 
-// TestBundlePull_ZeroSizeLayer: with RejectUnverifiableLayers, a layer
-// declaring Size 0 with a non-empty digest is an invalid bundle from
-// both entry points, whether it is a core layer or an asset.
-func TestBundlePull_ZeroSizeLayer(t *testing.T) {
+// TestExtractBundle_ZeroSizeLayer: a layer declaring Size 0 with a
+// non-empty digest is an invalid bundle to ExtractBundle, whether it is
+// a core layer or an asset.
+func TestExtractBundle_ZeroSizeLayer(t *testing.T) {
 	const lying = "sha256:" + "1111111111111111111111111111111111111111111111111111111111111111"
-	opts := PullOptions{PlainHTTP: true, RejectUnverifiableLayers: true}
+	opts := PullOptions{PlainHTTP: true}
 	for name, m := range map[string]ocispec.Manifest{
 		"pixi.toml": zeroSizeManifest(MediaTypePixiToml, "pixi.toml", lying),
 		"pixi.lock": zeroSizeManifest(MediaTypePixiLock, "pixi.lock", lying),
@@ -275,14 +277,46 @@ func TestBundlePull_ZeroSizeLayer(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			host := startManifestRegistry(t, m)
-			_, pullErr := PullBundle(context.Background(), host+"/demo/zero", "v1", opts)
-			_, extractErr := ExtractBundle(context.Background(), host+"/demo/zero", "v1", t.TempDir(), opts)
-			for path, err := range map[string]error{"PullBundle": pullErr, "ExtractBundle": extractErr} {
-				var invalid *InvalidBundleError
-				if !errors.As(err, &invalid) || invalid.Reason != "zero-size layer has a non-empty digest" {
-					t.Errorf("%s: want InvalidBundleError for the zero-size layer, got %T: %v", path, err, err)
-				}
+			_, err := ExtractBundle(context.Background(), host+"/demo/zero", "v1", t.TempDir(), opts)
+			var invalid *InvalidBundleError
+			if !errors.As(err, &invalid) || invalid.Reason != "zero-size layer has a non-empty digest" {
+				t.Errorf("want InvalidBundleError for the zero-size layer, got %T: %v", err, err)
 			}
 		})
 	}
+}
+
+// TestClassifyAccess_Codes: a refusal keeps the registry's error codes,
+// but only the ones the distribution spec defines. Anything else in the
+// registry's answer, including a code it made up, is dropped.
+func TestClassifyAccess_Codes(t *testing.T) {
+	resp := &errcode.ErrorResponse{
+		StatusCode: http.StatusUnauthorized,
+		Errors: errcode.Errors{
+			{Code: errcode.ErrorCodeNameUnknown, Message: "PLANTED-MESSAGE", Detail: "PLANTED-DETAIL"},
+			{Code: "PLANTED-CODE\nlevel=ERROR"},
+			{Code: "name_unknown"},
+			{Code: errcode.ErrorCodeUnauthorized},
+			{Code: errcode.ErrorCodeNameUnknown},
+		},
+	}
+
+	var refused *RegistryAccessError
+	if err := classifyAccess(fmt.Errorf("failed to resolve tag v1: %w", resp)); !errors.As(err, &refused) {
+		t.Fatalf("want RegistryAccessError, got %T: %v", err, err)
+	}
+	want := []string{errcode.ErrorCodeNameUnknown, errcode.ErrorCodeUnauthorized}
+	if !slices.Equal(refused.Codes, want) {
+		t.Errorf("Codes: got %q want %q", refused.Codes, want)
+	}
+
+	t.Run("no codes", func(t *testing.T) {
+		var refused *RegistryAccessError
+		if err := classifyAccess(&errcode.ErrorResponse{StatusCode: http.StatusForbidden}); !errors.As(err, &refused) {
+			t.Fatalf("want RegistryAccessError, got %T: %v", err, err)
+		}
+		if len(refused.Codes) != 0 {
+			t.Errorf("Codes: got %q want none", refused.Codes)
+		}
+	})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,9 +89,6 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 		// is well above any reasonable Pixi environment but small
 		// enough that exhausting disk requires deliberate effort.
 		MaxBundleBytes: 5 * 1024 * 1024 * 1024,
-		// Team mode never downloads asset layers, so without this a
-		// layer that can never verify would be imported unnoticed.
-		RejectUnverifiableLayers: true,
 	}
 
 	// Cap the synchronous OCI pull so a slow or malicious registry
@@ -169,7 +167,14 @@ func (s *WorkspaceService) ImportFromRegistry(ctx context.Context, registryID st
 // reference the caller asked for, and the upstream status. Nothing the
 // registry sent (manifest fields, response bodies) and nothing from the
 // underlying client error (request URLs, credentials) is copied into
-// them, because both the response body and the log are downstream.
+// them, because the response body is downstream.
+//
+// A refusal is logged here, as a warning, with the registry's error
+// codes. Only codes the distribution spec defines are logged (see
+// oci.RegistryAccessError.Codes), so the line holds nothing else the
+// registry chose. The codes tell an operator a registry that answers 401
+// for a repository it does not have (NAME_UNKNOWN) from one that refused
+// the credentials (UNAUTHORIZED, DENIED).
 func classifyBundlePullError(op string, err error, repoRef, tag string) error {
 	if errors.Is(err, oci.ErrNotNebiArtifact) {
 		return &UnprocessableError{Message: "not a Nebi artifact"}
@@ -178,31 +183,20 @@ func classifyBundlePullError(op string, err error, repoRef, tag string) error {
 	if errors.As(err, &invalid) {
 		return &UnprocessableError{Message: "invalid bundle: " + invalid.Reason}
 	}
-	ref := displayRepoRef(repoRef)
 	if errors.Is(err, oci.ErrReferenceNotFound) {
-		return &NotFoundError{Message: fmt.Sprintf("repository or tag not found: %s:%s", ref, tag)}
+		return &NotFoundError{Message: fmt.Sprintf("repository or tag not found: %s:%s", repoRef, tag)}
 	}
 	var refused *oci.RegistryAccessError
 	if errors.As(err, &refused) {
+		slog.Warn("registry refused a bundle pull",
+			"op", op,
+			"target", repoRef,
+			"upstream_status", refused.StatusCode,
+			"registry_error_codes", refused.Codes)
 		return &UpstreamError{
-			Message:        fmt.Sprintf("registry refused access to %s", ref),
+			Message:        fmt.Sprintf("registry refused access to %s", repoRef),
 			UpstreamStatus: refused.StatusCode,
-			Op:             op,
-			Target:         ref,
 		}
 	}
 	return fmt.Errorf("%s: %w", op, err)
-}
-
-// displayRepoRef returns repoRef in a form safe to show to a caller: any
-// userinfo embedded in the host part ("user:secret@host/repo") is dropped.
-func displayRepoRef(repoRef string) string {
-	host, rest, hasPath := strings.Cut(repoRef, "/")
-	if i := strings.LastIndex(host, "@"); i >= 0 {
-		host = host[i+1:]
-	}
-	if !hasPath {
-		return host
-	}
-	return host + "/" + rest
 }

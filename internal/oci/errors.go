@@ -3,6 +3,7 @@ package oci
 import (
 	"errors"
 	"net/http"
+	"slices"
 
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/errcode"
@@ -59,6 +60,12 @@ func (e *InvalidBundleError) Is(target error) bool { return target == ErrInvalid
 type RegistryAccessError struct {
 	// StatusCode is the status the pull was refused with: 401 or 403.
 	StatusCode int
+	// Codes are the error codes the registry gave for the refusal,
+	// limited to the ones the distribution spec defines (see
+	// knownErrorCodes). A code the spec does not define is dropped, so
+	// every element is one of a fixed set of strings and safe to log.
+	// Empty when the registry sent none.
+	Codes []string
 
 	err error
 }
@@ -90,7 +97,37 @@ func classifyAccess(err error) error {
 	var resp *errcode.ErrorResponse
 	if errors.As(err, &resp) &&
 		(resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
-		return &RegistryAccessError{StatusCode: resp.StatusCode, err: err}
+		return &RegistryAccessError{StatusCode: resp.StatusCode, Codes: specErrorCodes(resp.Errors), err: err}
 	}
 	return err
+}
+
+// knownErrorCodes are the error codes the distribution spec defines.
+var knownErrorCodes = map[string]bool{
+	errcode.ErrorCodeBlobUnknown:         true,
+	errcode.ErrorCodeBlobUploadInvalid:   true,
+	errcode.ErrorCodeBlobUploadUnknown:   true,
+	errcode.ErrorCodeDigestInvalid:       true,
+	errcode.ErrorCodeManifestBlobUnknown: true,
+	errcode.ErrorCodeManifestInvalid:     true,
+	errcode.ErrorCodeManifestUnknown:     true,
+	errcode.ErrorCodeNameInvalid:         true,
+	errcode.ErrorCodeNameUnknown:         true,
+	errcode.ErrorCodeSizeInvalid:         true,
+	errcode.ErrorCodeUnauthorized:        true,
+	errcode.ErrorCodeDenied:              true,
+	errcode.ErrorCodeUnsupported:         true,
+}
+
+// specErrorCodes returns the codes in errs that the distribution spec
+// defines, in order and without repeats. The code is the only part of a
+// registry's error kept: its message and detail are free text.
+func specErrorCodes(errs errcode.Errors) []string {
+	var codes []string
+	for _, e := range errs {
+		if knownErrorCodes[e.Code] && !slices.Contains(codes, e.Code) {
+			codes = append(codes, e.Code)
+		}
+	}
+	return codes
 }

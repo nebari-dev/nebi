@@ -61,11 +61,6 @@ type PullOptions struct {
 	// registry cannot exhaust disk by streaming a multi-GB asset blob.
 	// Zero or negative = no cap.
 	MaxBundleBytes int64
-	// RejectUnverifiableLayers makes PullBundle reject, before fetching
-	// anything, a bundle with a layer that declares Size 0 but whose
-	// digest is not that of empty content. ExtractBundle always rejects
-	// such a layer as it copies, so the option has no effect there.
-	RejectUnverifiableLayers bool
 }
 
 // AssetBlob names a single asset layer in a bundle. It is a listing
@@ -456,14 +451,6 @@ func PullBundle(ctx context.Context, repoRef, tag string, opts PullOptions) (*Pu
 		return nil, err
 	}
 
-	if opts.RejectUnverifiableLayers {
-		for _, layer := range append([]ocispec.Descriptor{cm.pixiToml, cm.pixiLock}, cm.assets...) {
-			if err := zeroSizeLayerError(layer); err != nil {
-				return nil, err
-			}
-		}
-	}
-
 	tomlBytes, err := fetchLayerBytes(ctx, repo, cm.pixiToml)
 	if err != nil {
 		return nil, classifyAccess(fmt.Errorf("failed to fetch pixi.toml layer: %w", err))
@@ -540,6 +527,13 @@ func ExtractBundle(ctx context.Context, repoRef, tag, destDir string, opts PullO
 		// oras.Copy starts by fetching the manifest again. If it is gone
 		// by now, that is a missing reference; a layer that is not found
 		// fails under a different operation and is not.
+		//
+		// "FetchReference" is the op name oras gives that first fetch
+		// (copy.go, newCopyError("FetchReference", CopyErrorOriginSource,
+		// ...), line 427 in oras-go v2.6.2). It is not a documented
+		// constant. If a later oras renames it, this stops matching and
+		// the failure is reported as an internal error instead; recheck
+		// it when bumping the dependency.
 		var copyErr *oras.CopyError
 		if errors.As(err, &copyErr) && copyErr.Origin == oras.CopyErrorOriginSource &&
 			copyErr.Op == "FetchReference" && errors.Is(copyErr.Err, errdef.ErrNotFound) {

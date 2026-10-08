@@ -327,7 +327,7 @@ func TestImport_RegistryRefusal_DoesNotLeak(t *testing.T) {
 			secrets := append(seen.all(), importRegistryPassword, basicCreds, signedQuery, "SIGNED-URL-SECRET",
 				echoedBearer, "ECHOED-TOKEN-SECRET", tokenHost, "/token")
 			res.expectNoLeak(t, true, secrets...)
-			for _, want := range []string{"upstream_status=401", registryHost + "/demo/private"} {
+			for _, want := range []string{"upstream_status=401", registryHost + "/demo/private", "registry_error_codes=[UNAUTHORIZED]"} {
 				if !strings.Contains(res.logs, want) {
 					t.Errorf("log should record %q:\n%s", want, res.logs)
 				}
@@ -464,8 +464,8 @@ func TestImport_MalformedBundleContent(t *testing.T) {
 	})
 
 	// A layer that declares size 0 with the digest of non-empty content
-	// can never verify, whichever layer it is and whether or not the
-	// mode downloads it.
+	// can never verify, whichever layer it is. Local mode extracts every
+	// layer, so it rejects the bundle.
 	zeroSize := map[string][]layer{
 		"zero-size core layer with a non-empty digest": {
 			{mediaType: oci.MediaTypePixiToml, title: "pixi.toml", content: "[project]\n", lieAboutSize: true},
@@ -477,18 +477,16 @@ func TestImport_MalformedBundleContent(t *testing.T) {
 			{mediaType: oci.MediaTypeNebiAsset, title: "PLANTED-SECRET.bin", content: "not empty", lieAboutSize: true},
 		},
 	}
-	importModes(t, func(t *testing.T, isLocal bool) {
-		for name, layers := range zeroSize {
-			t.Run(name, func(t *testing.T) {
-				registryHost := startServer(t, artifactHandler(newArtifact(t, oci.MediaTypePixiConfig, layers...)))
+	for name, layers := range zeroSize {
+		t.Run(name, func(t *testing.T) {
+			registryHost := startServer(t, artifactHandler(newArtifact(t, oci.MediaTypePixiConfig, layers...)))
 
-				res := runImport(t, isLocal, registryHost, "zero-size", false)
+			res := runImport(t, true, registryHost, "zero-size", false)
 
-				res.expect(t, http.StatusUnprocessableEntity, `{"error":"invalid bundle: zero-size layer has a non-empty digest"}`)
-				res.expectNoLeak(t, false, "PLANTED-SECRET")
-			})
-		}
-	})
+			res.expect(t, http.StatusUnprocessableEntity, `{"error":"invalid bundle: zero-size layer has a non-empty digest"}`)
+			res.expectNoLeak(t, false, "PLANTED-SECRET")
+		})
+	}
 }
 
 // bearerRegistry wraps next so that it demands a bearer token from the

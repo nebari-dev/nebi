@@ -68,8 +68,6 @@ func TestHandleServiceError_StatusAndBody(t *testing.T) {
 			err: &service.UpstreamError{
 				Message:        "registry refused access to quay.io/org/repo",
 				UpstreamStatus: http.StatusUnauthorized,
-				Op:             "pull bundle",
-				Target:         "quay.io/org/repo",
 			},
 			wantStatus: http.StatusBadGateway,
 			wantBody:   `{"error":"registry refused access to quay.io/org/repo","upstream_status":401}`,

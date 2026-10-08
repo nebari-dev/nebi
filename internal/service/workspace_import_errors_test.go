@@ -306,9 +306,6 @@ func TestImportFromRegistry_RegistryRefused_Upstream(t *testing.T) {
 				if upstream.Message != want || err.Error() != want {
 					t.Errorf("message: got %q (Error() %q) want %q", upstream.Message, err.Error(), want)
 				}
-				if upstream.Op == "" || upstream.Target != host+"/demo/private" {
-					t.Errorf("log fields: got op %q target %q", upstream.Op, upstream.Target)
-				}
 				// The typed error is what reaches the response and the
 				// log. Nothing in it may carry the registry credentials
 				// or anything from the registry client's own error.
@@ -397,19 +394,4 @@ func TestImportFromRegistry_OtherFailuresStayInternal(t *testing.T) {
 			})
 		}
 	})
-}
-
-func TestDisplayRepoRef(t *testing.T) {
-	for in, want := range map[string]string{
-		"quay.io/org/repo":                  "quay.io/org/repo",
-		"localhost:5000/repo":               "localhost:5000/repo",
-		"user:secret@quay.io/org/repo":      "quay.io/org/repo",
-		"user:p@ss@localhost:5000/org/repo": "localhost:5000/org/repo",
-		"user:secret@quay.io":               "quay.io",
-		"quay.io/org/re@po":                 "quay.io/org/re@po",
-	} {
-		if got := displayRepoRef(in); got != want {
-			t.Errorf("displayRepoRef(%q) = %q, want %q", in, got, want)
-		}
-	}
 }

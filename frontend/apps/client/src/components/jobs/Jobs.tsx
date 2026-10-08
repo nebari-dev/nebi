@@ -1,0 +1,253 @@
+import { Badge } from '@nebi/ui/components/ui/badge';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@nebi/ui/components/ui/card';
+import { CodeBlock, CodeBlockBody } from '@nebi/ui/components/ui/code-block';
+import { ChevronDown, ChevronRight, Loader2, Radio } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
+import { useJobLogStream } from '@/hooks/useJobLogStream';
+import { useJobs } from '@/hooks/useJobs';
+import { useRemoteJobs, useRemoteView } from '@/hooks/useRemote';
+import { capitalize } from '@/lib/strings';
+import type { Job, JobType } from '@/types';
+
+const statusColors = {
+  pending: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  running: 'bg-blue-100 text-blue-800 border-blue-300',
+  completed: 'bg-green-100 text-green-800 border-green-300',
+  failed: 'bg-red-100 text-red-800 border-red-300',
+};
+
+const typeColors: Record<JobType, string> = {
+  create: 'bg-indigo-100 text-indigo-800 border-indigo-300',
+  delete: 'bg-red-100 text-red-800 border-red-300',
+  install: 'bg-blue-100 text-blue-800 border-blue-300',
+  remove: 'bg-orange-100 text-orange-800 border-orange-300',
+  update: 'bg-purple-100 text-purple-800 border-purple-300',
+  rollback: 'bg-purple-100 text-purple-800 border-purple-300',
+  env_install: 'bg-blue-100 text-blue-800 border-blue-300',
+  env_uninstall: 'bg-orange-100 text-orange-800 border-orange-300',
+};
+
+const JobCard = ({
+  job,
+  isFirst,
+  isRemote,
+}: {
+  job: Job;
+  isFirst: boolean;
+  isRemote: boolean;
+}) => {
+  const [expanded, setExpanded] = useState(isFirst);
+  // Initialize hook with existing logs from database so SSE appends instead of replacing
+  // Only use streaming for local jobs - remote jobs don't support SSE
+  const { logs: streamedLogs, isStreaming } = useJobLogStream(
+    isRemote ? '' : job.id, // Disable streaming for remote jobs
+    isRemote ? 'completed' : job.status,
+    job.logs || '',
+  );
+
+  // For remote jobs, just use static logs; for local jobs, use streamed logs
+  const displayLogs = isRemote ? job.logs || '' : streamedLogs;
+
+  return (
+    <Card>
+      <CardHeader
+        className="cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {expanded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+            <CardTitle className="text-lg">Job #{job.id}</CardTitle>
+            <Badge className={typeColors[job.type]}>
+              {capitalize(job.type)}
+            </Badge>
+            <Badge className={statusColors[job.status]}>
+              {capitalize(job.status)}
+              {isStreaming && (
+                <Radio className="h-3 w-3 ml-1 inline animate-pulse" />
+              )}
+            </Badge>
+          </div>
+          <span className="text-sm text-muted-foreground">
+            {new Date(job.created_at).toLocaleString()}
+          </span>
+        </div>
+      </CardHeader>
+      {expanded && (
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-muted-foreground">Project ID:</span>
+              <span className="ml-2 font-medium">{job.project_id}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Created:</span>
+              <span className="ml-2">
+                {new Date(job.created_at).toLocaleString()}
+              </span>
+            </div>
+            {job.started_at && (
+              <div>
+                <span className="text-muted-foreground">Started:</span>
+                <span className="ml-2">
+                  {new Date(job.started_at).toLocaleString()}
+                </span>
+              </div>
+            )}
+            {job.completed_at && (
+              <div>
+                <span className="text-muted-foreground">Completed:</span>
+                <span className="ml-2">
+                  {new Date(job.completed_at).toLocaleString()}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {(isStreaming || displayLogs) && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <h4 className="font-semibold">Logs</h4>
+                {isStreaming && (
+                  <Badge variant="outline" className="text-xs">
+                    <Radio className="h-2 w-2 mr-1 animate-pulse" />
+                    Live
+                  </Badge>
+                )}
+              </div>
+              <CodeBlock
+                code={displayLogs || 'Waiting for logs...'}
+                className="w-full"
+                showCopyButton={!!displayLogs}
+              >
+                <CodeBlockBody maxLines={16} aria-label="Job logs" />
+              </CodeBlock>
+            </div>
+          )}
+
+          {job.error && (
+            <div>
+              <h4 className="font-semibold text-destructive mb-2">Error</h4>
+              <CodeBlock
+                code={job.error}
+                className="w-full border-destructive-foreground/40"
+              >
+                <CodeBlockBody aria-label="Job error output" />
+              </CodeBlock>
+            </div>
+          )}
+
+          {job.metadata && Object.keys(job.metadata).length > 0 && (
+            <div className="space-y-3">
+              <h4 className="font-semibold">Metadata</h4>
+              {Object.entries(job.metadata).map(([key, value]) => {
+                const content =
+                  typeof value === 'string'
+                    ? value
+                    : JSON.stringify(value, null, 2);
+
+                return (
+                  <div key={key}>
+                    <div className="text-sm font-medium text-muted-foreground capitalize mb-1">
+                      {key.replace(/_/g, ' ')}
+                    </div>
+                    <CodeBlock code={content} className="w-full">
+                      <CodeBlockBody aria-label={`${key} metadata`} />
+                    </CodeBlock>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      )}
+    </Card>
+  );
+};
+
+export const Jobs = ({ projectId }: { projectId?: string } = {}) => {
+  const { data: jobs, isLoading: jobsLoading } = useJobs();
+
+  // View mode support for local desktop app
+  const { viewMode, isRemoteConnected, isRemoteView } = useRemoteView();
+  const {
+    data: remoteJobs,
+    isFirstLoad: remoteFirstLoad,
+    isUnreachable: remoteIsUnreachable,
+  } = useRemoteJobs(isRemoteConnected);
+
+  // Show jobs based on view mode when connected to remote
+  const { displayedJobs, isRemote } = useMemo(() => {
+    let base: typeof jobs;
+    let remote: boolean;
+    if (!isRemoteConnected) {
+      base = jobs || [];
+      remote = false;
+    } else if (viewMode === 'local') {
+      base = jobs || [];
+      remote = false;
+    } else {
+      base = remoteJobs || [];
+      remote = true;
+    }
+    return {
+      displayedJobs: projectId
+        ? (base || []).filter((j) => j.project_id === projectId)
+        : base || [],
+      isRemote: remote,
+    };
+  }, [jobs, remoteJobs, isRemoteConnected, viewMode, projectId]);
+
+  const remoteUnreachable = isRemoteView && remoteIsUnreachable;
+  // Full-page spinner only until the remote list first resolves or errors
+  // (see isFirstLoad in useRemote.ts).
+  const isLoading = jobsLoading || (isRemoteConnected && remoteFirstLoad);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 my-4">
+      <div className="space-y-4 mb-6">
+        <h2 className="text-2xl font-bold mb-0">Jobs</h2>
+        <p className="text-muted-foreground text-sm mt-2">
+          View all job executions and their status
+        </p>
+      </div>
+
+      {remoteUnreachable && <RemoteUnreachableBanner />}
+
+      <div className="space-y-4">
+        {displayedJobs.map((job, index) => (
+          <JobCard
+            key={job.id}
+            job={job}
+            isFirst={index === 0}
+            isRemote={isRemote}
+          />
+        ))}
+      </div>
+
+      {displayedJobs.length === 0 && !remoteUnreachable && (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">No jobs yet</p>
+        </div>
+      )}
+    </div>
+  );
+};

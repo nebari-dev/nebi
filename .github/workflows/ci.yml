@@ -94,7 +94,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: frontend-dist
-          path: internal/web/dist
+          path: internal/frontend/dist
           retention-days: 1
 
   backend-lint:
@@ -112,8 +112,8 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
-      - name: Create stub frontend/dist for embed
-        run: mkdir -p frontend/dist internal/web/dist && touch frontend/dist/.gitkeep internal/web/dist/.gitkeep
+      - name: Create stub frontend bundles for embed
+        run: make prepare-frontend-embed
 
       # The Release workflow regenerates these docs and GoReleaser refuses a
       # dirty tree, so stale committed docs break releases. Catch the drift on
@@ -151,7 +151,7 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: frontend-dist
-          path: internal/web/dist
+          path: internal/frontend/dist
 
       - name: Install swag
         run: |
@@ -187,6 +187,12 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
+
+      # Source analysis loads packages with go:embed. A clean checkout has no
+      # built UI, so satisfy both embed patterns without requiring a Node build.
+      # Shipped binaries still receive the real bundles in their build jobs.
+      - name: Create stub frontend bundles for embed
+        run: make prepare-frontend-embed
 
       # Reachability-aware scan: fails only on vulnerabilities whose
       # affected symbols the code actually calls.

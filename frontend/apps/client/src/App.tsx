@@ -1,0 +1,118 @@
+import { useTheme } from '@nebi/ui/hooks/theme-provider';
+import { QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
+import type { ReactElement } from 'react';
+import { useEffect } from 'react';
+import {
+  BrowserRouter,
+  Navigate,
+  Outlet,
+  Route,
+  Routes,
+} from 'react-router-dom';
+import { adminApi } from './api/admin';
+import { AdminLayout } from './components/layout/AdminLayout';
+import { Layout } from './components/layout/Layout';
+import { getBasePath } from './lib/basePath';
+import { queryClient } from './lib/queryClient';
+import { AdminDashboard } from './pages/admin/AdminDashboard';
+import { AuditLogs } from './pages/admin/AuditLogs';
+import { FederatedIdentityReviews } from './pages/admin/FederatedIdentityReviews';
+import { Groups } from './pages/admin/Groups';
+import { RegistryManagement } from './pages/admin/RegistryManagement';
+import { UserManagement } from './pages/admin/UserManagement';
+import { Login } from './pages/Login';
+import { ProjectDetail } from './pages/ProjectDetail';
+import { Projects } from './pages/Projects';
+import { Registries, RegistryRepositories } from './pages/Registries';
+import { RemoteProjectDetail } from './pages/RemoteProjectDetail';
+import { Settings } from './pages/Settings';
+import { useRuntimeConfigStore } from './store/runtimeConfigStore';
+
+// Load runtime configuration before rendering any routes
+const RuntimeConfigLoader = ({ children }: { children: ReactElement }) => {
+  const { loading, fetchConfig } = useRuntimeConfigStore();
+  useEffect(() => {
+    fetchConfig();
+  }, [fetchConfig]);
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  return children;
+};
+const AdminRoute = () => {
+  const { data: isAdmin, isLoading } = useQuery({
+    queryKey: ['user', 'is_admin'],
+    queryFn: async () => {
+      try {
+        await adminApi.getUsers();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    retry: false,
+  });
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  if (!isAdmin) {
+    return <Navigate to="/projects" replace />;
+  }
+  return <Outlet />;
+};
+function App() {
+  const { isDarkMode } = useTheme();
+  return (
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter basename={getBasePath()}>
+        <RuntimeConfigLoader>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/" element={<Layout isDarkMode={isDarkMode} />}>
+              <Route index element={<Navigate to="/projects" replace />} />
+              <Route path="projects" element={<Projects />} />
+              <Route path="projects/:id" element={<ProjectDetail />} />
+              <Route
+                path="remote/projects/:id"
+                element={<RemoteProjectDetail />}
+              />
+              <Route path="registries" element={<Registries />} />
+              <Route
+                path="registries/:registryId"
+                element={<RegistryRepositories />}
+              />
+              <Route path="settings" element={<Settings />} />
+
+              <Route element={<AdminRoute />}>
+                <Route element={<AdminLayout />}>
+                  <Route path="admin" element={<AdminDashboard />} />
+                  <Route path="admin/users" element={<UserManagement />} />
+                  <Route path="admin/groups" element={<Groups />} />
+                  <Route
+                    path="admin/identity-reviews"
+                    element={<FederatedIdentityReviews />}
+                  />
+                  <Route path="admin/audit-logs" element={<AuditLogs />} />
+                  <Route
+                    path="admin/registries"
+                    element={<RegistryManagement />}
+                  />
+                </Route>
+              </Route>
+            </Route>
+          </Routes>
+        </RuntimeConfigLoader>
+      </BrowserRouter>
+    </QueryClientProvider>
+  );
+}
+export default App;

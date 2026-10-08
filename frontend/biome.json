@@ -10,16 +10,18 @@
   "files": {
     "ignoreUnknown": false,
     "includes": [
-      "src/**",
+      "apps/**",
+      "packages/**",
+      "scripts/**",
       "biome.json",
       "package.json",
       "tsconfig*.json",
-      "vite.config.ts",
+      "vitest.config.ts",
       "!!**/dist",
       "!wailsjs",
-      "!src/components/ui",
-      "!src/hooks/use-theme-preference.ts",
-      "!src/hooks/theme-provider.tsx"
+      "!packages/ui/src/components/ui",
+      "!packages/ui/src/hooks/use-theme-preference.ts",
+      "!packages/ui/src/hooks/theme-provider.tsx"
     ]
   },
 

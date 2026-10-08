@@ -1,0 +1,213 @@
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { HttpResponse, http } from 'msw';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockPublishDefaults, mockRegistry, server } from '@/test/handlers';
+import { renderWithProviders } from '@/test/utils';
+import { PublishDialog } from './PublishDialog';
+
+const defaultProps = {
+  open: true,
+  onOpenChange: vi.fn(),
+  environmentId: 'ws-1',
+  environmentName: 'test-project',
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  // Suppress jsdom "Not implemented" noise from window.location.reload
+  vi.spyOn(window, 'location', 'get').mockReturnValue({
+    ...window.location,
+    reload: vi.fn(),
+  } as Location);
+});
+
+describe('PublishDialog', () => {
+  it('shows a loading spinner while fetching data', () => {
+    // Spinner is visible on initial render before the query resolves
+    renderWithProviders(<PublishDialog {...defaultProps} />);
+    expect(document.querySelector('.animate-spin')).toBeTruthy();
+  });
+
+  it('shows a warning when no registries are configured', async () => {
+    server.use(http.get('/api/v1/registries', () => HttpResponse.json([])));
+    renderWithProviders(<PublishDialog {...defaultProps} />);
+    await waitFor(() =>
+      expect(screen.getByText('No registries configured')).toBeInTheDocument(),
+    );
+  });
+
+  it('renders the form with registry options when registries exist', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PublishDialog {...defaultProps} />);
+    const registrySelect = await screen.findByRole('combobox', {
+      name: 'Registry',
+    });
+    await waitFor(() => expect(registrySelect).toHaveFocus());
+    await user.click(registrySelect);
+    expect(
+      await screen.findByRole('option', {
+        name: new RegExp(mockRegistry.name),
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/e\.g\., myenv/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/e\.g\., v1/)).toBeInTheDocument();
+  });
+
+  it('auto-populates form fields from publish defaults', async () => {
+    renderWithProviders(<PublishDialog {...defaultProps} />);
+    await waitFor(() =>
+      expect(
+        (screen.getByPlaceholderText(/e\.g\., myenv/) as HTMLInputElement)
+          .value,
+      ).toBe(mockPublishDefaults.repository),
+    );
+    expect(
+      (screen.getByPlaceholderText(/e\.g\., v1/) as HTMLInputElement).value,
+    ).toBe(mockPublishDefaults.tag);
+  });
+
+  it('refreshes defaults when a different registry is selected', async () => {
+    const user = userEvent.setup();
+    const secondRegistry = {
+      ...mockRegistry,
+      id: 'reg-2',
+      name: 'Second Registry',
+      url: 'https://second.registry.example.com',
+      namespace: 'secondorg',
+      is_default: false,
+    };
+    const requestedRegistryIds: Array<string | null> = [];
+
+    server.use(
+      http.get('/api/v1/registries', () =>
+        HttpResponse.json([mockRegistry, secondRegistry]),
+      ),
+      http.get('/api/v1/projects/:id/publish-defaults', ({ request }) => {
+        const registryId = new URL(request.url).searchParams.get('registry_id');
+        requestedRegistryIds.push(registryId);
+
+        if (registryId === 'reg-2') {
+          return HttpResponse.json({
+            ...mockPublishDefaults,
+            registry_id: 'reg-2',
+            registry_name: 'Second Registry',
+            namespace: 'secondorg',
+            repository: 'second-project',
+            tag: 'next',
+          });
+        }
+
+        return HttpResponse.json(mockPublishDefaults);
+      }),
+    );
+
+    renderWithProviders(<PublishDialog {...defaultProps} />);
+    await waitFor(() =>
+      expect(
+        (screen.getByPlaceholderText(/e\.g\., myenv/) as HTMLInputElement)
+          .value,
+      ).toBe(mockPublishDefaults.repository),
+    );
+
+    await user.click(screen.getByRole('combobox', { name: 'Registry' }));
+    await user.click(
+      await screen.findByRole('option', { name: /Second Registry/ }),
+    );
+
+    await waitFor(() =>
+      expect(
+        (screen.getByPlaceholderText(/e\.g\., myenv/) as HTMLInputElement)
+          .value,
+      ).toBe('second-project'),
+    );
+    expect(
+      (screen.getByPlaceholderText(/e\.g\., v1/) as HTMLInputElement).value,
+    ).toBe('next');
+    expect(screen.getByText('secondorg/')).toBeInTheDocument();
+    expect(requestedRegistryIds).toContain('reg-2');
+  });
+
+  it('uses the selected registry namespace for the repository prefix', async () => {
+    const user = userEvent.setup();
+    const harborRegistry = {
+      ...mockRegistry,
+      id: 'reg-2',
+      name: 'Harbor',
+      url: 'https://harbor.example.com',
+      is_default: false,
+      namespace: 'harbor-project',
+    };
+    server.use(
+      http.get('/api/v1/registries', () =>
+        HttpResponse.json([mockRegistry, harborRegistry]),
+      ),
+    );
+
+    renderWithProviders(<PublishDialog {...defaultProps} />);
+    await waitFor(() => expect(screen.getByText('myorg/')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('combobox', { name: 'Registry' }));
+    await user.click(
+      await screen.findByRole('option', {
+        name: /Harbor/,
+      }),
+    );
+
+    expect(screen.queryByText('myorg/')).not.toBeInTheDocument();
+    expect(screen.getByText('harbor-project/')).toBeInTheDocument();
+  });
+
+  it('disables the Publish button when required fields are empty', async () => {
+    server.use(
+      http.get('/api/v1/projects/:id/publish-defaults', () =>
+        HttpResponse.json({
+          registry_id: '',
+          namespace: '',
+          repository: '',
+          tag: '',
+          registry_name: '',
+        }),
+      ),
+    );
+    renderWithProviders(<PublishDialog {...defaultProps} />);
+    await screen.findByRole('combobox', { name: 'Registry' });
+
+    expect(screen.getByRole('button', { name: /Publish/ })).toBeDisabled();
+  });
+
+  it('shows success state after a successful publish', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<PublishDialog {...defaultProps} />);
+
+    const registrySelect = await screen.findByRole('combobox', {
+      name: 'Registry',
+    });
+    await user.click(registrySelect);
+    await user.click(
+      await screen.findByRole('option', {
+        name: new RegExp(mockRegistry.name),
+      }),
+    );
+
+    await user.click(screen.getByRole('button', { name: /Publish/ }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Published successfully!')).toBeInTheDocument(),
+    );
+  });
+
+  it('shows existing publication tags as hints', async () => {
+    renderWithProviders(<PublishDialog {...defaultProps} />);
+    await waitFor(() =>
+      expect(screen.getByText(/v1\.0\.0/)).toBeInTheDocument(),
+    );
+  });
+
+  it('does not render when open is false', () => {
+    renderWithProviders(<PublishDialog {...defaultProps} open={false} />);
+    expect(
+      screen.queryByText('Publish Project to OCI Registry'),
+    ).not.toBeInTheDocument();
+  });
+});

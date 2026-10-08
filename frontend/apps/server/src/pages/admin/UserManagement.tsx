@@ -1,0 +1,253 @@
+import { ConfirmDialog } from '@nebi/ui/components/confirm-dialog';
+import { Badge } from '@nebi/ui/components/ui/badge';
+import { Button } from '@nebi/ui/components/ui/button';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@nebi/ui/components/ui/table';
+import { Loader2, Shield, ShieldOff, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { CreateUserDialog } from '@/components/admin/CreateUserDialog';
+import {
+  useDeleteUser,
+  useToggleAdmin,
+  useUserGroups,
+  useUsers,
+} from '@/hooks/useAdmin';
+import { useAuthStore } from '@/store/authStore';
+
+interface UserGroupsCellProps {
+  userId: string;
+}
+
+const UserGroupsCell = ({ userId }: UserGroupsCellProps) => {
+  const { data: groups, isLoading } = useUserGroups(userId);
+  if (isLoading)
+    return <span className="text-xs text-muted-foreground">…</span>;
+  if (!groups || groups.length === 0)
+    return <span className="text-xs text-muted-foreground">—</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {groups.map((g) => (
+        <Badge
+          key={g.id}
+          variant="outline"
+          className={
+            g.source === 'oidc' ? 'border-blue-500/40 text-blue-500' : ''
+          }
+        >
+          {g.name}
+        </Badge>
+      ))}
+    </div>
+  );
+};
+
+export const UserManagement = () => {
+  const { data: users, isLoading: usersLoading } = useUsers();
+  const toggleAdminMutation = useToggleAdmin();
+  const deleteUserMutation = useDeleteUser();
+  const currentUser = useAuthStore((state) => state.user);
+
+  const displayedUsers = users || [];
+  const isLoading = usersLoading;
+
+  const [confirmAction, setConfirmAction] = useState<{
+    type: 'toggle' | 'delete';
+    userId: string;
+    username?: string;
+    currentIsAdmin?: boolean;
+  } | null>(null);
+  const [error, setError] = useState('');
+
+  const handleConfirmAction = async () => {
+    if (!confirmAction) return;
+
+    setError('');
+    try {
+      if (confirmAction.type === 'toggle') {
+        await toggleAdminMutation.mutateAsync(confirmAction.userId);
+      } else if (confirmAction.type === 'delete') {
+        await deleteUserMutation.mutateAsync(confirmAction.userId);
+      }
+      setConfirmAction(null);
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } };
+      const errorMessage =
+        error?.response?.data?.error || 'Operation failed. Please try again.';
+      setError(errorMessage);
+      setConfirmAction(null);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold">User Management</h1>
+          <p className="text-muted-foreground">
+            Manage user accounts and permissions
+          </p>
+        </div>
+        <CreateUserDialog />
+      </div>
+
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded">
+          {error}
+        </div>
+      )}
+
+      <Table aria-label="Users">
+        <TableHeader>
+          <TableRow
+            className={displayedUsers.length > 0 ? undefined : 'border-0'}
+          >
+            <TableHead>Username</TableHead>
+            <TableHead>Email</TableHead>
+            <TableHead>Role</TableHead>
+            <TableHead>Groups</TableHead>
+            <TableHead>Created</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {displayedUsers.map((user) => (
+            <TableRow key={user.id}>
+              <TableCell className="font-medium">
+                {user.username}
+                {user.id === currentUser?.id && (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    (you)
+                  </span>
+                )}
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {user.email}
+              </TableCell>
+              <TableCell>
+                {user.is_admin ? (
+                  <Badge className="bg-purple-100 text-purple-800 border-purple-300">
+                    <Shield className="h-3 w-3 mr-1" />
+                    Admin
+                  </Badge>
+                ) : (
+                  <Badge variant="outline">User</Badge>
+                )}
+              </TableCell>
+              <TableCell>
+                <UserGroupsCell userId={user.id} />
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {new Date(user.created_at).toLocaleDateString()}
+              </TableCell>
+              <TableCell>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setConfirmAction({
+                        type: 'toggle',
+                        userId: user.id,
+                        username: user.username,
+                        currentIsAdmin: user.is_admin,
+                      })
+                    }
+                    disabled={
+                      toggleAdminMutation.isPending ||
+                      user.id === currentUser?.id
+                    }
+                    title={
+                      user.id === currentUser?.id
+                        ? 'Cannot modify your own admin status'
+                        : user.is_admin
+                          ? 'Revoke Admin'
+                          : 'Grant Admin'
+                    }
+                    aria-label={
+                      user.is_admin
+                        ? `Revoke admin for ${user.username}`
+                        : `Grant admin to ${user.username}`
+                    }
+                  >
+                    {user.is_admin ? (
+                      <ShieldOff className="h-4 w-4" />
+                    ) : (
+                      <Shield className="h-4 w-4" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (user.id === currentUser?.id) return;
+                      setConfirmAction({
+                        type: 'delete',
+                        userId: user.id,
+                        username: user.username,
+                      });
+                    }}
+                    disabled={
+                      deleteUserMutation.isPending ||
+                      user.id === currentUser?.id
+                    }
+                    title={
+                      user.id === currentUser?.id
+                        ? 'Cannot delete yourself'
+                        : 'Delete User'
+                    }
+                    aria-label={`Delete ${user.username}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+
+      {displayedUsers.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">No users found</p>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+        onConfirm={handleConfirmAction}
+        title={
+          confirmAction?.type === 'toggle'
+            ? confirmAction.currentIsAdmin
+              ? 'Revoke Admin Access'
+              : 'Grant Admin Access'
+            : 'Delete User'
+        }
+        description={
+          confirmAction?.type === 'toggle'
+            ? confirmAction.currentIsAdmin
+              ? `Are you sure you want to revoke admin access for ${confirmAction.username}? They will lose all admin privileges.`
+              : `Are you sure you want to grant admin access to ${confirmAction.username}? They will have full system access.`
+            : `Are you sure you want to delete ${confirmAction?.username}? This action cannot be undone. All their projects and data will be permanently removed.`
+        }
+        confirmText={confirmAction?.type === 'delete' ? 'Delete' : 'Confirm'}
+        cancelText="Cancel"
+        variant={confirmAction?.type === 'delete' ? 'destructive' : 'default'}
+      />
+    </div>
+  );
+};

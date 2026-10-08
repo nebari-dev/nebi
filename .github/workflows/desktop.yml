@@ -119,8 +119,8 @@ jobs:
           npm ci
           npm run build
           cd ..
-          rm -rf internal/web/dist
-          cp -r frontend/dist internal/web/dist
+          rm -rf internal/frontend/dist
+          cp -r frontend/dist internal/frontend/dist
 
       # Pin to the wails version in go.mod; unpinned installs broke when wails v2.13.0
       # started requiring a newer Go than this workflow uses.

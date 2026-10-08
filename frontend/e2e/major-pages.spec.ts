@@ -48,13 +48,6 @@ const majorPages: Array<{
     },
   },
   {
-    path: '/settings',
-    assertReady: async (page) => {
-      await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
-      await expect(page.getByText('Remote Server Connection')).toBeVisible();
-    },
-  },
-  {
     path: '/admin',
     assertReady: async (page) => {
       await expect(page.getByText('Quick Actions')).toBeVisible();
@@ -95,15 +88,6 @@ const majorPages: Array<{
       await expect(
         page.getByRole('cell', { name: 'create user', exact: true }),
       ).toBeVisible();
-    },
-  },
-  {
-    path: '/remote/projects/remote-1',
-    assertReady: async (page) => {
-      await expect(
-        page.getByRole('heading', { name: 'remote-python' }),
-      ).toBeVisible();
-      await expect(page.getByText('Remote project details')).toBeVisible();
     },
   },
 ];

@@ -1,0 +1,50 @@
+import { HttpResponse, http } from 'msw';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { server } from '@/test/handlers';
+import { apiClient } from './client';
+
+beforeEach(() => {
+  localStorage.clear();
+  localStorage.setItem('auth_token', 'stale-token');
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('apiClient', () => {
+  it.each(['/projects', '/remote/projects'])(
+    'does not send a stored browser auth token to %s',
+    async (endpoint) => {
+      server.use(
+        http.get(`/api/v1${endpoint}`, ({ request }) =>
+          HttpResponse.json({
+            authorization: request.headers.get('authorization'),
+          }),
+        ),
+      );
+
+      const { data } = await apiClient.get(endpoint);
+
+      expect(data.authorization).toBeNull();
+    },
+  );
+
+  it('keeps client authentication state when a request fails', async () => {
+    const location = { ...window.location, href: window.location.href };
+    vi.spyOn(window, 'location', 'get').mockReturnValue(location as Location);
+    server.use(
+      http.get('/api/v1/protected-resource', () =>
+        HttpResponse.json(
+          { error: 'identity_review_pending' },
+          { status: 403 },
+        ),
+      ),
+    );
+
+    await expect(apiClient.get('/protected-resource')).rejects.toBeTruthy();
+
+    expect(localStorage.getItem('auth_token')).toBe('stale-token');
+    expect(location.href).toBe(window.location.href);
+  });
+});

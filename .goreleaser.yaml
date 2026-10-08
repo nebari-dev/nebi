@@ -5,8 +5,8 @@ before:
   hooks:
     # Build frontend before creating release
     - sh -c "cd frontend && npm ci && npm run build"
-    # Copy frontend dist to internal/web/dist for embedding
-    - sh -c "rm -rf internal/web/dist && cp -r frontend/dist internal/web/dist"
+    # Copy frontend dist to internal/frontend/dist for embedding
+    - sh -c "rm -rf internal/frontend/dist && cp -r frontend/dist internal/frontend/dist"
 
 builds:
   - id: nebi-cli

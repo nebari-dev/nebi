@@ -1,0 +1,261 @@
+import { HttpResponse, http } from 'msw';
+import { setupServer } from 'msw/node';
+import type {
+  Collaborator,
+  FederatedIdentity,
+  FederatedIdentityReview,
+  Job,
+  OCIRegistry,
+  Project,
+  Publication,
+  PublishDefaults,
+  User,
+} from '@/types';
+
+export const mockUser: User = {
+  id: 'user-1',
+  username: 'testuser',
+  email: 'test@example.com',
+  is_admin: false,
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+};
+
+export const mockAdminUser: User = {
+  ...mockUser,
+  id: 'admin-1',
+  username: 'admin',
+  email: 'admin@example.com',
+  is_admin: true,
+};
+
+export const mockProject: Project = {
+  id: 'ws-1',
+  name: 'test-project',
+  owner_id: 'user-1',
+  status: 'ready',
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+  size_bytes: 1024,
+  size_formatted: '1 KB',
+};
+
+export const mockJob: Job = {
+  id: 'job-1',
+  project_id: 'ws-1',
+  type: 'create',
+  status: 'completed',
+  logs: 'Job completed successfully',
+  created_at: '2024-01-01T00:00:00Z',
+};
+
+export const mockCollaborator: Extract<Collaborator, { kind: 'user' }> = {
+  kind: 'user',
+  user_id: 'user-2',
+  username: 'collaborator',
+  email: 'collab@example.com',
+  role: 'viewer',
+  is_owner: false,
+};
+
+export const mockOwnerCollaborator: Extract<Collaborator, { kind: 'user' }> = {
+  kind: 'user',
+  user_id: 'user-1',
+  username: 'testuser',
+  email: 'test@example.com',
+  role: 'owner',
+  is_owner: true,
+};
+
+export const mockGroupCollaborator: Extract<Collaborator, { kind: 'group' }> = {
+  kind: 'group',
+  group_id: 'g-1',
+  name: 'data-science',
+  source: 'native',
+  role: 'editor',
+  is_owner: false,
+};
+
+export const mockRegistry: OCIRegistry = {
+  id: 'reg-1',
+  name: 'My Registry',
+  url: 'https://registry.example.com',
+  username: 'reguser',
+  has_api_token: false,
+  is_default: true,
+  namespace: 'myorg',
+  config_managed: false,
+  restricted: false,
+  created_at: '2024-01-01T00:00:00Z',
+};
+
+export const mockPublishDefaults: PublishDefaults = {
+  registry_id: 'reg-1',
+  registry_name: 'My Registry',
+  namespace: 'myorg',
+  repository: 'test-project',
+  tag: 'latest',
+};
+
+export const mockPublication: Publication = {
+  id: 'pub-1',
+  registry_name: 'My Registry',
+  registry_url: 'https://registry.example.com',
+  registry_namespace: 'myorg',
+  repository: 'test-project',
+  tag: 'v1.0.0',
+  digest: 'sha256:abc123',
+  is_public: true,
+  published_by: 'user-1',
+  published_at: '2024-01-01T00:00:00Z',
+};
+
+export const mockFederatedIdentity: FederatedIdentity = {
+  id: 'identity-1',
+  user_id: 'user-1',
+  issuer: 'https://issuer.example.com',
+  subject: 'subject-1',
+  username: 'testuser',
+  email: 'test@example.com',
+  email_verified: true,
+  name: 'Test User',
+  avatar_url: '',
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+};
+
+export const mockFederatedIdentityReview: FederatedIdentityReview = {
+  id: 'review-1',
+  user_id: 'user-1',
+  user: mockUser,
+  issuer: 'https://issuer.example.com',
+  subject: 'subject-1',
+  collision_field: 'email',
+  username: 'testuser',
+  email: 'test@example.com',
+  email_verified: true,
+  name: 'Test User',
+  avatar_url: '',
+  status: 'pending',
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+};
+
+const BASE = '/api/v1';
+
+export const handlers = [
+  http.get(`${BASE}/version`, () =>
+    HttpResponse.json({ mode: 'team', features: {}, version: '0.0.1' }),
+  ),
+
+  // Auth
+  http.get(`${BASE}/auth/session`, () =>
+    HttpResponse.json({ message: 'no session' }, { status: 401 }),
+  ),
+
+  http.get(`${BASE}/auth/me`, () => HttpResponse.json(mockUser)),
+
+  http.post(`${BASE}/auth/login`, () =>
+    HttpResponse.json({ token: 'test-token', user: mockUser }),
+  ),
+
+  // Projects
+  http.get(`${BASE}/projects`, () => HttpResponse.json([mockProject])),
+
+  http.get(`${BASE}/projects/:id`, ({ params }) =>
+    HttpResponse.json({ ...mockProject, id: params.id as string }),
+  ),
+
+  http.post(`${BASE}/projects`, async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    return HttpResponse.json(
+      { ...mockProject, name: body.name as string },
+      { status: 201 },
+    );
+  }),
+
+  http.delete(
+    `${BASE}/projects/:id`,
+    () => new HttpResponse(null, { status: 204 }),
+  ),
+
+  http.get(`${BASE}/projects/:id/tags`, () => HttpResponse.json([])),
+
+  // Collaborators
+  http.get(`${BASE}/projects/:id/collaborators`, () =>
+    HttpResponse.json([mockOwnerCollaborator, mockCollaborator]),
+  ),
+
+  http.post(
+    `${BASE}/projects/:id/share`,
+    () => new HttpResponse(null, { status: 204 }),
+  ),
+
+  http.delete(
+    `${BASE}/projects/:id/share/:userId`,
+    () => new HttpResponse(null, { status: 204 }),
+  ),
+
+  // Publishing
+  http.get(`${BASE}/projects/:id/publish-defaults`, () =>
+    HttpResponse.json(mockPublishDefaults),
+  ),
+
+  http.get(`${BASE}/projects/:id/publications`, () =>
+    HttpResponse.json([mockPublication]),
+  ),
+
+  http.post(`${BASE}/projects/:id/publish`, () =>
+    HttpResponse.json(mockJob, { status: 201 }),
+  ),
+
+  // Jobs
+  http.get(`${BASE}/jobs`, () => HttpResponse.json([mockJob])),
+
+  http.get(`${BASE}/jobs/:id`, ({ params }) =>
+    HttpResponse.json({ ...mockJob, id: params.id as string }),
+  ),
+
+  // Admin
+  http.get(`${BASE}/admin/users`, () =>
+    HttpResponse.json([mockUser, mockAdminUser]),
+  ),
+
+  http.get(`${BASE}/admin/audit-logs`, () =>
+    HttpResponse.json({ logs: [], total: 0 }),
+  ),
+
+  http.get(`${BASE}/admin/dashboard/stats`, () =>
+    HttpResponse.json({
+      total_disk_usage_bytes: 0,
+      total_disk_usage_formatted: '0 B',
+    }),
+  ),
+
+  http.get(`${BASE}/admin/federated-identity-reviews`, () =>
+    HttpResponse.json([mockFederatedIdentityReview]),
+  ),
+
+  http.post(`${BASE}/admin/federated-identity-reviews/:id/approve`, () =>
+    HttpResponse.json(mockFederatedIdentity, { status: 201 }),
+  ),
+
+  http.post(
+    `${BASE}/admin/federated-identity-reviews/:id/reject`,
+    () => new HttpResponse(null, { status: 204 }),
+  ),
+
+  http.delete(
+    `${BASE}/admin/federated-identity-reviews/:id`,
+    () => new HttpResponse(null, { status: 204 }),
+  ),
+
+  // Registries
+  http.get(`${BASE}/registries`, () => HttpResponse.json([mockRegistry])),
+
+  // Groups
+  http.get(`${BASE}/groups/me`, () => HttpResponse.json([])),
+  http.get(`${BASE}/admin/groups`, () => HttpResponse.json([])),
+];
+
+export const server = setupServer(...handlers);

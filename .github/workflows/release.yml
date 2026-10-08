@@ -39,6 +39,12 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
+      # Source analysis loads packages with go:embed. A clean checkout has no
+      # built UI, so satisfy both embed patterns without requiring a Node build.
+      # Shipped binaries still receive the real bundles in their build jobs.
+      - name: Create stub frontend bundles for embed
+        run: make prepare-frontend-embed
+
       - name: govulncheck (source)
         run: |
           go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"

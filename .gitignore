@@ -54,7 +54,7 @@ create_user.go
 create_test_user.go
 
 # Embedded frontend (generated during build)
-internal/web/dist/
+internal/frontend/dist/
 
 # Frontend build output
 frontend/dist/

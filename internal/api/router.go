@@ -3,8 +3,6 @@ package api
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -18,12 +16,12 @@ import (
 	"github.com/nebari-dev/nebi/internal/config"
 	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/executor"
+	"github.com/nebari-dev/nebi/internal/frontend"
 	"github.com/nebari-dev/nebi/internal/logstream"
 	"github.com/nebari-dev/nebi/internal/netguard"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"github.com/nebari-dev/nebi/internal/service"
-	"github.com/nebari-dev/nebi/internal/web"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/gorm"
@@ -377,133 +375,22 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec execu
 	base.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Serve embedded frontend
-	embedFS, err := web.GetFileSystem()
+	appFiles := frontend.ServerApp
+	if cfg.IsLocalMode() {
+		appFiles = frontend.ClientApp
+	}
+	embedFS, err := appFiles()
 	if err != nil {
 		logger.Warn("Failed to load embedded frontend, frontend will not be served", "error", err)
 	} else {
 		runtimeBrandingConfigPath := resolveBrandingConfigPath()
 
-		// SPA fallback - serve files from embedded filesystem for all non-API, non-docs routes
-		router.NoRoute(func(c *gin.Context) {
-			path := c.Request.URL.Path
-
-			// Strip base path prefix to get the relative path
-			relPath := path
-			if basePath != "" {
-				if !strings.HasPrefix(path, basePath) {
-					c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
-					return
-				}
-				relPath = strings.TrimPrefix(path, basePath)
-				if relPath == "" {
-					relPath = "/"
-				}
-			}
-
-			// Runtime branding config override:
-			// if a Helm-mounted file exists on disk, serve it instead of embedded assets.
-			if relPath == "/public/config.json" {
-				content, err := os.ReadFile(runtimeBrandingConfigPath)
-				if err == nil {
-					c.Data(http.StatusOK, "application/json", content)
-					return
-				}
-				if !os.IsNotExist(err) {
-					logger.Warn("Failed to read runtime branding config", "path", runtimeBrandingConfigPath, "error", err)
-				}
-			}
-
-			// Don't serve HTML for API calls or docs
-			if strings.HasPrefix(relPath, "/api") {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
-				return
-			}
-			if strings.HasPrefix(relPath, "/docs") {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
-				return
-			}
-
-			// Remove leading slash for embedded FS
-			fsPath := strings.TrimPrefix(relPath, "/")
-			if fsPath == "" {
-				fsPath = "index.html"
-			}
-
-			// Try to open the file in the embedded FS
-			file, err := embedFS.Open(fsPath)
-			if err != nil {
-				// File doesn't exist, serve index.html for SPA routing
-				fsPath = "index.html"
-				file, err = embedFS.Open(fsPath)
-				if err != nil {
-					c.String(http.StatusInternalServerError, "Error loading frontend")
-					return
-				}
-			}
-			defer file.Close()
-
-			// Read file content
-			content, err := io.ReadAll(file)
-			if err != nil {
-				c.String(http.StatusInternalServerError, "Error reading file")
-				return
-			}
-
-			// Set content type based on file extension
-			contentType := "text/plain"
-			if strings.HasSuffix(fsPath, ".html") {
-				contentType = "text/html; charset=utf-8"
-			} else if strings.HasSuffix(fsPath, ".js") {
-				contentType = "application/javascript"
-			} else if strings.HasSuffix(fsPath, ".css") {
-				contentType = "text/css"
-			} else if strings.HasSuffix(fsPath, ".json") {
-				contentType = "application/json"
-			} else if strings.HasSuffix(fsPath, ".svg") {
-				contentType = "image/svg+xml"
-			} else if strings.HasSuffix(fsPath, ".png") {
-				contentType = "image/png"
-			} else if strings.HasSuffix(fsPath, ".jpg") || strings.HasSuffix(fsPath, ".jpeg") {
-				contentType = "image/jpeg"
-			} else if strings.HasSuffix(fsPath, ".woff2") {
-				contentType = "font/woff2"
-			} else if strings.HasSuffix(fsPath, ".woff") {
-				contentType = "font/woff"
-			} else if strings.HasSuffix(fsPath, ".ttf") {
-				contentType = "font/ttf"
-			}
-
-			// Rewrite absolute url(/...) references in bundled CSS (e.g. self-hosted
-			// fonts) to include the base path. Without this they resolve against the
-			// domain root and 404 when Nebi is served under a path prefix (proxy).
-			if strings.HasSuffix(fsPath, ".css") && basePath != "" {
-				content = []byte(strings.ReplaceAll(string(content), `url(/`, `url(`+basePath+`/`))
-			}
-
-			// For index.html, inject CSP nonce metadata and rewrite asset URLs
-			if fsPath == "index.html" {
-				html := string(content)
-				nonceAttr := ""
-				if styleNonce := c.GetString(cspStyleNonceKey); styleNonce != "" {
-					nonceMeta := fmt.Sprintf(`<meta name="csp-style-nonce" content="%s" />`, styleNonce)
-					html = strings.Replace(html, "<head>", "<head>\n    "+nonceMeta, 1)
-				}
-				if basePath != "" {
-					if scriptNonce := c.GetString(cspScriptNonceKey); scriptNonce != "" {
-						nonceAttr = fmt.Sprintf(` nonce="%s"`, scriptNonce)
-					}
-					// Inject base path script tag into <head>
-					injection := fmt.Sprintf(`<script%s>window.__NEBI_BASE_PATH__=%q;</script>`, nonceAttr, basePath)
-					html = strings.Replace(html, "<head>", "<head>\n    "+injection, 1)
-					// Rewrite absolute asset paths to include base path
-					html = strings.ReplaceAll(html, `href="/`, `href="`+basePath+`/`)
-					html = strings.ReplaceAll(html, `src="/`, `src="`+basePath+`/`)
-				}
-				content = []byte(html)
-			}
-
-			c.Data(http.StatusOK, contentType, content)
-		})
+		router.NoRoute(frontend.Handler(embedFS, frontend.HandlerOptions{
+			BasePath:           basePath,
+			BrandingConfigPath: runtimeBrandingConfigPath,
+			ScriptNonceKey:     cspScriptNonceKey,
+			StyleNonceKey:      cspStyleNonceKey,
+		}, logger))
 
 		logger.Info("Embedded frontend loaded and will be served")
 	}

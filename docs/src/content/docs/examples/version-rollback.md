@@ -149,11 +149,11 @@ nebi workspace tags ml-pipeline
 ```
 
 ```bash title="Output"
-TAG   VERSION  CREATED
-v4.0  5        2026-04-01 03:01
-v3.0  4        2026-04-01 03:01
-v2.0  3        2026-04-01 03:00
-v1.0  2        2026-04-01 03:00
+TAG   SNAPSHOT  CREATED
+v4.0  5         2026-04-01 03:01
+v3.0  4         2026-04-01 03:01
+v2.0  3         2026-04-01 03:00
+v1.0  2         2026-04-01 03:00
 ```
 
 To narrow it down, Alice compares each pair of consecutive versions:

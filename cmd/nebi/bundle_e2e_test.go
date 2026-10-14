@@ -114,6 +114,39 @@ func TestE2E_LocalBundlePublishImport(t *testing.T) {
 		t.Fatalf("import failed:\nstdout: %s\nstderr: %s", res.Stdout, res.Stderr)
 	}
 
+	// The same bundle must be reachable by registry name, which is the
+	// path that goes through parseWsRef -> StripScheme -> splitImportRef
+	// -> resolveImportRef rather than straight to the pull. The
+	// published ref is <host>/demo/<repo>:<tag>; strip the host and the
+	// registry's own namespace to get what a name-based reference
+	// carries.
+	bare := strings.TrimPrefix(strings.TrimPrefix(ref, "http://"), regHost+"/demo/")
+	if bare == ref {
+		t.Fatalf("could not derive a bare repository ref from %s", ref)
+	}
+	for _, tc := range []struct {
+		name string
+		ref  string
+	}{
+		{"alias prefix", "bundle-e2e:" + bare},
+		{"default registry", bare},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			nameOut := filepath.Join(t.TempDir(), "restored")
+			res := runCLI(t, outParent, "import", tc.ref, "-o", nameOut)
+			if res.ExitCode != 0 {
+				t.Fatalf("import %s failed:\nstdout: %s\nstderr: %s", tc.ref, res.Stdout, res.Stderr)
+			}
+			got, err := os.ReadFile(filepath.Join(nameOut, "README.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != readmeBody {
+				t.Errorf("import %s restored the wrong bundle", tc.ref)
+			}
+		})
+	}
+
 	// Asset layers must round-trip byte-identically.
 	wantAssets := map[string]string{
 		"README.md":       readmeBody,

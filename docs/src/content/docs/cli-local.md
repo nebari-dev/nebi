@@ -151,6 +151,45 @@ Imported quay.io/nebari/data-science:v1.0 -> /home/user/my-project (3 asset file
 
 Use `--concurrency N` to set how many files download at the same time (default 8).
 
+### Referring to a configured registry by name
+
+Prefix a reference with the name of a registry you added with
+`nebi registry add --local` to pull from it, or use a bare one-segment name to
+pull from the default registry. This is the same lookup `nebi publish --local`
+uses for its target:
+
+```bash
+# Pull from the registry named "myreg"
+nebi import myreg:my-env:v1
+
+# Reach a nested repository through that registry
+nebi import myreg:myorg/my-env:v1
+
+# Pull from the default registry
+nebi import my-env:v1
+```
+
+Everything else names its own host and is pulled directly, with no lookup, so
+`nebi import quay.io/nebari/data-science:v1.0` works on a machine that has no
+registries configured.
+
+:::caution A slash means a hostname
+`nebi import registry/my-env:v1` pulls from a host called `registry`, not from
+`my-env` inside the default registry. A namespace-relative path and a
+`host/repository` pair are written identically, so Nebi reads the first segment
+as a host whenever the reference contains a slash. Name the registry when you
+mean the other thing: `nebi import myreg:registry/my-env:v1`.
+
+The same applies to a port: `registry:5000/my-env:v1` is the host
+`registry:5000`, because the digits after the colon mark it as one.
+:::
+
+:::note The tag is still required
+`nebi import myreg:my-env` is read as repository `myreg`, tag `my-env`, because
+the reference parser splits on the last colon. Spell out all three parts:
+`myreg:my-env:v1`.
+:::
+
 :::note Imports do not overwrite existing files
 If the bundle includes asset files, `nebi import` refuses to write
 into a non-empty output directory. Use `-o ./some-new-dir` to land

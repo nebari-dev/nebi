@@ -173,17 +173,9 @@ func runPublishLocal(args []string) error {
 	}
 
 	// Resolve registry
-	var reg *store.LocalRegistry
-	if publishRegistry != "" {
-		reg, err = s.GetRegistryByName(publishRegistry)
-		if err != nil {
-			return fmt.Errorf("registry %q not found in local store", publishRegistry)
-		}
-	} else {
-		reg, err = s.GetDefaultRegistry()
-		if err != nil {
-			return err
-		}
+	reg, err := resolveLocalRegistry(s, publishRegistry)
+	if err != nil {
+		return err
 	}
 
 	// Get credentials from keyring
@@ -213,10 +205,7 @@ func runPublishLocal(args []string) error {
 		repo = publishRepo
 	}
 
-	host, ns, plainHTTP := oci.ParseRegistryURLFull(reg.URL)
-	if reg.Namespace != "" {
-		ns = reg.Namespace
-	}
+	host, ns, plainHTTP := registryTarget(reg)
 	regEndpoint := oci.Registry{
 		Host:      host,
 		Namespace: ns,

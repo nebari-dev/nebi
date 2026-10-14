@@ -62,7 +62,12 @@ Set a numeric limit to `0` to disable that specific guard. Delete jobs are exemp
 The main job limits are:
 
 - `request_body_bytes`: maximum HTTP request body size.
-- `manifest_bytes`, `lock_bytes`, `metadata_bytes`: maximum stored manifest, lockfile, and metadata sizes.
+- `manifest_bytes`, `lock_bytes`, `metadata_bytes`: maximum stored manifest,
+  lockfile, and metadata sizes. The lockfile cap also bounds OCI registry
+  import and publish of core environment files; imported `pixi.toml` files
+  are checked against the manifest cap before a workspace-create job is
+  enqueued. Setting `lock_bytes: 0` disables the OCI core-layer cap on
+  import and publish; `manifest_bytes` still applies to imported `pixi.toml`.
 - `package_string_bytes`: package-name size cap.
 - `active_jobs_per_user`, `active_jobs_per_workspace`, `active_jobs_global`: admission quotas for pending/running jobs.
 - `job_timeout_seconds`: wall-clock deadline for each job.

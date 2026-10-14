@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -173,6 +174,50 @@ func TestClassifyBundleManifest(t *testing.T) {
 	}
 }
 
+func TestReadAllBounded_RejectsMaxInt64Limit(t *testing.T) {
+	data, err := readAllBounded(strings.NewReader("payload"), math.MaxInt64, "layer body")
+	if err == nil {
+		t.Fatal("expected max int64 limit rejection, got nil")
+	}
+	if data != nil {
+		t.Fatalf("expected no data on invalid limit, got %q", string(data))
+	}
+	if !strings.Contains(err.Error(), "invalid too-large limit") {
+		t.Fatalf("expected too-large limit error, got %v", err)
+	}
+}
+
+func TestValidateCoreLayerSize_RejectsHugeDeclaredSizeWhenCapDisabled(t *testing.T) {
+	desc := layerDesc(MediaTypePixiLock, "pixi.lock")
+	desc.Size = math.MaxInt64 - 1
+
+	err := validateCoreLayerSize(desc, -1)
+	if err == nil {
+		t.Fatal("expected huge declared size rejection, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid too-large size") {
+		t.Fatalf("expected too-large size error, got %v", err)
+	}
+}
+
+func TestValidateBundleSize_RejectsOverflow(t *testing.T) {
+	cm := classifiedManifest{
+		pixiToml: ocispec.Descriptor{Size: math.MaxInt64 - 2},
+		pixiLock: ocispec.Descriptor{Size: 1},
+		assets: []ocispec.Descriptor{
+			{Size: 10},
+		},
+	}
+
+	err := validateBundleSize(cm, math.MaxInt64)
+	if err == nil {
+		t.Fatal("expected bundle size overflow rejection, got nil")
+	}
+	if !strings.Contains(err.Error(), "bundle size sum overflows int64") {
+		t.Fatalf("expected bundle size overflow error, got %v", err)
+	}
+}
+
 // TestListRepositoriesViaQuayAPI_FollowsPagination verifies that the
 // Quay REST client follows the `next_page` cursor. The old
 // implementation fetched one page and returned, so namespaces with
@@ -215,6 +260,42 @@ func TestListRepositoriesViaQuayAPI_FollowsPagination(t *testing.T) {
 	}
 	if !containsAll(names, "ns/r1", "ns/r2") {
 		t.Fatalf("expected both pages' repos, got %v", names)
+	}
+}
+
+func TestChangeRepositoryVisibility_CapsErrorBody(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method: got %s want POST", r.Method)
+		}
+		if r.URL.Path != "/api/v1/repository/ns/repo/changevisibility" {
+			t.Errorf("path: got %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = io.WriteString(w, "quay says no: "+strings.Repeat("X", int(maxQuayErrorBodyBytes)+1024))
+	}))
+	defer srv.Close()
+
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	err = ChangeRepositoryVisibilityWithClient(context.Background(), u.Host, "ns/repo", "token", true, srv.Client())
+	if err == nil {
+		t.Fatal("expected visibility API error, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "visibility API returned status 502") {
+		t.Fatalf("expected status in error, got: %v", err)
+	}
+	if !strings.Contains(msg, "quay says no: ") {
+		t.Fatalf("expected body snippet in error, got: %v", err)
+	}
+	if !strings.Contains(msg, "visibility API error body exceeds 65536 bytes") {
+		t.Fatalf("expected body cap error, got: %v", err)
+	}
+	if len(msg) > int(maxQuayErrorBodyBytes)+256 {
+		t.Fatalf("error body was not capped; message length %d", len(msg))
 	}
 }
 

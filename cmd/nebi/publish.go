@@ -230,6 +230,7 @@ func runPublishLocal(args []string) error {
 	res, err := oci.Publish(ctx, ws.Path, regEndpoint, repo, tag,
 		oci.WithExtraTags("latest"),
 		oci.WithConcurrency(publishConcurrency),
+		oci.WithMaxCoreLayerBytes(oci.DefaultMaxCoreLayerBytes),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to publish: %w", err)

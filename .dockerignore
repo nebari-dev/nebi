@@ -7,6 +7,7 @@ bin/
 tmp/
 internal/web/dist/
 output/
+**/node_modules/
 
 # Database
 *.db

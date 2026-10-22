@@ -1,4 +1,4 @@
-FROM ghcr.io/prefix-dev/pixi:0.76.2-noble@sha256:8b206ef57005a902cb53f50dbaa47893a4038ca269f0b00038b51f18b1313cd4
+FROM ghcr.io/prefix-dev/pixi:0.82.1-noble@sha256:f83a5fc6d1bb9a2ced27faf2b26c04c5eb618eed22fe13eb60f9225db4817ce0
 
 WORKDIR /workspace
 

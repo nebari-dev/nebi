@@ -1,0 +1,204 @@
+import { Badge } from '@nebi/ui/components/ui/badge';
+import { Button } from '@nebi/ui/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@nebi/ui/components/ui/card';
+import { Input } from '@nebi/ui/components/ui/input';
+import { Loader2, Wifi, WifiOff } from 'lucide-react';
+import { useId, useState } from 'react';
+import {
+  useConnectServer,
+  useDisconnectServer,
+  useRemoteServer,
+} from '@/hooks/useRemote';
+import { useViewModeStore } from '@/store/viewModeStore';
+
+export const Settings = () => {
+  const { data: serverStatus, isLoading } = useRemoteServer();
+  const connectMutation = useConnectServer();
+  const disconnectMutation = useDisconnectServer();
+  const setViewMode = useViewModeStore((s) => s.setViewMode);
+
+  const [url, setUrl] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const urlId = useId();
+  const usernameId = useId();
+  const passwordId = useId();
+
+  const handleConnect = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    try {
+      await connectMutation.mutateAsync({ url, username, password });
+      setViewMode('remote'); // Auto-switch to remote view on successful connection
+      setUrl('');
+      setUsername('');
+      setPassword('');
+    } catch (err: unknown) {
+      const apiError = err as { response?: { data?: { error?: string } } };
+      setError(apiError.response?.data?.error || 'Failed to connect to server');
+    }
+  };
+
+  const handleDisconnect = async () => {
+    setError('');
+    try {
+      await disconnectMutation.mutateAsync();
+      setViewMode('local'); // Switch back to local view on disconnect
+    } catch (err: unknown) {
+      const apiError = err as { response?: { data?: { error?: string } } };
+      setError(
+        apiError.response?.data?.error || 'Failed to disconnect from server',
+      );
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const isConnected = serverStatus?.status === 'connected';
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold flex items-center gap-3">Settings</h1>
+        <p className="text-muted-foreground">
+          Configure your local Nebi instance
+        </p>
+      </div>
+
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded">
+          {error}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Remote Server Connection</CardTitle>
+            <Badge
+              className={
+                isConnected
+                  ? 'bg-green-100 text-green-800 border-green-300'
+                  : 'bg-zinc-100 text-zinc-800 border-zinc-300'
+              }
+            >
+              {isConnected ? (
+                <Wifi className="h-3 w-3 mr-1" />
+              ) : (
+                <WifiOff className="h-3 w-3 mr-1" />
+              )}
+              {isConnected ? 'Connected' : 'Disconnected'}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isConnected ? (
+            <div className="space-y-4">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-muted-foreground w-24">
+                    Server URL
+                  </span>
+                  <span className="text-sm font-mono">{serverStatus?.url}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-muted-foreground w-24">
+                    Username
+                  </span>
+                  <span className="text-sm">{serverStatus?.username}</span>
+                </div>
+              </div>
+              <div className="pt-2">
+                <Button
+                  variant="destructive"
+                  onClick={handleDisconnect}
+                  disabled={disconnectMutation.isPending}
+                >
+                  {disconnectMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Disconnecting...
+                    </>
+                  ) : (
+                    'Disconnect'
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleConnect} className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Connect to a remote Nebi server to sync projects and access
+                shared resources.
+              </p>
+              <div className="space-y-2">
+                <label htmlFor={urlId} className="text-sm font-medium">
+                  Server URL
+                </label>
+                <Input
+                  id={urlId}
+                  type="url"
+                  placeholder="https://nebi.example.com"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor={usernameId} className="text-sm font-medium">
+                  Username
+                </label>
+                <Input
+                  id={usernameId}
+                  type="text"
+                  placeholder="Username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor={passwordId} className="text-sm font-medium">
+                  Password
+                </label>
+                <Input
+                  id={passwordId}
+                  type="password"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <Button
+                render={<button type="submit" />}
+                disabled={connectMutation.isPending}
+              >
+                {connectMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Connecting...
+                  </>
+                ) : (
+                  'Connect'
+                )}
+              </Button>
+            </form>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};

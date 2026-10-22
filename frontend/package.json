@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "npm run dev --workspace @nebi/client --",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && npm run build --workspaces --if-present",
     "check": "biome check",
     "check:fix": "biome check --write",
     "lint": "biome lint",
@@ -13,27 +13,14 @@
     "format": "biome format",
     "format:write": "biome format --write",
     "ci": "biome ci",
-    "preview": "vite preview",
-    "test": "vitest run",
+    "preview": "npm run preview --workspace @nebi/client --",
+    "test": "npm run test --workspaces --if-present",
     "test:e2e": "playwright test",
     "test:a11y": "playwright test --grep @a11y",
-    "test:watch": "vitest"
-  },
-  "dependencies": {
-    "@base-ui/react": "^1.8.0",
-    "@fontsource/fira-code": "^5.3.0",
-    "@fontsource/ibm-plex-sans": "^5.3.0",
-    "@tanstack/react-query": "^5.104.0",
-    "axios": "^1.20.0",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "lucide-react": "^1.48.0",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "react-hook-form": "^7.89.0",
-    "react-router-dom": "^7.18.4",
-    "tailwind-merge": "^3.7.0",
-    "zustand": "^5.0.15"
+    "test:watch": "vitest",
+    "dev:client": "npm run dev --workspace @nebi/client --",
+    "dev:server": "npm run dev --workspace @nebi/server --",
+    "build:embed": "npm run build && node scripts/copy-dist.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
@@ -55,5 +42,9 @@
     "typescript": "~6.0.3",
     "vite": "^8.3.1",
     "vitest": "^4.1.11"
-  }
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
 }

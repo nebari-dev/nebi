@@ -5,7 +5,7 @@
 # Build artifacts
 bin/
 tmp/
-internal/web/dist/
+internal/frontend/dist/
 output/
 
 # Database

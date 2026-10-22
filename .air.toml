@@ -4,6 +4,9 @@ tmp_dir = "tmp"
 
 [build]
   args_bin = []
+  # Default to nebi-server when running air directly.
+  # Override with Air's --build.cmd and --build.bin flags.
+  # make dev supplies these overrides to match FRONTEND_APP.
   bin = "./tmp/nebi-server"
   cmd = "swag init -g cmd/nebi-server/main.go -o internal/swagger --packageName swagger && go build -o ./tmp/nebi-server ./cmd/nebi-server"
   delay = 1000

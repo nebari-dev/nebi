@@ -1,8 +1,7 @@
 package main
 
 import (
-	"embed"
-
+	"github.com/nebari-dev/nebi/internal/frontend"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -12,15 +11,21 @@ import (
 var Version = "dev"
 var Commit = ""
 
-//go:embed all:frontend/dist
-var assets embed.FS
-
 func main() {
+	// ClientApp forwards fs.Sub's filesystem and error returns. With embed.FS
+	// and the fixed valid path "dist/client", this call cannot currently fail;
+	// we handle the error because it remains part of ClientApp's API.
+	assets, err := frontend.ClientApp()
+	if err != nil {
+		println("Error loading frontend:", err.Error())
+		return
+	}
+
 	// Create application instance
 	app := NewApp()
 
 	// Run Wails application
-	err := wails.Run(&options.App{
+	err = wails.Run(&options.App{
 		Title:  "Nebi - Environment Manager",
 		Width:  1440,
 		Height: 900,

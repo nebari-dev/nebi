@@ -1,5 +1,6 @@
 # Multi-stage Dockerfile
 # Stage 1: Build frontend
+# Keep the Node version in sync with NODE_VERSION in .github/tool-versions.env
 FROM node:22.23.4-alpine3.23@sha256:6abbcf5dd6b231da109bcde1181db1d92bf78015ae1a9514d9807c1f857869db AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./

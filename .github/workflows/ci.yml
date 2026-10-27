@@ -62,7 +62,9 @@ jobs:
       # Playwright version.
       - name: Resolve Playwright cache key
         id: playwright_key
-        run: echo "key=${ImageOS}-${RUNNER_ARCH}-playwright-$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "key=${ImageOS}-${RUNNER_ARCH}-playwright-$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageVersion}" >> "$GITHUB_OUTPUT"
         working-directory: frontend
 
       - name: Cache Playwright browsers
@@ -80,10 +82,37 @@ jobs:
           sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
           cat /etc/apt/apt-mirrors.txt
 
+      # Ubuntu's archive servers are also intermittently slow from GitHub
+      # runners, so keep the .debs for Playwright's system deps in the Actions
+      # cache and seed apt's archive dir with them. apt only reuses a cached
+      # .deb whose hash matches the signed package index, and downloads
+      # whatever is missing (e.g. after a runner image update), which the
+      # restore-keys fallback then saves under the new image's key.
+      - name: Cache Playwright system packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/playwright-debs
+          key: ${{ steps.playwright_key.outputs.key }}-debs-${{ steps.playwright_key.outputs.image }}
+          restore-keys: |
+            ${{ steps.playwright_key.outputs.key }}-debs-
+
+      - name: Seed apt with cached packages
+        run: |
+          echo 'APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99-keep-debs
+          sudo rm -f /etc/apt/apt.conf.d/docker-clean
+          mkdir -p ~/playwright-debs
+          find ~/playwright-debs -name '*.deb' -exec sudo cp -t /var/cache/apt/archives/ {} +
+          echo "Seeded $(find ~/playwright-debs -name '*.deb' | wc -l) cached packages"
+
       - name: Install Playwright browsers
         timeout-minutes: 5
         run: npx playwright install --with-deps
         working-directory: frontend
+
+      - name: Collect apt packages for cache
+        run: |
+          find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp -t ~/playwright-debs/ {} +
+          echo "Cached $(find ~/playwright-debs -name '*.deb' | wc -l) packages"
 
       - name: Run e2e and accessibility tests
         run: npm run test:e2e

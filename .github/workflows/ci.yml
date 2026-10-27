@@ -58,15 +58,32 @@ jobs:
         run: npm run test
         working-directory: frontend
 
+      # Playwright downloads a browser build per OS release, so the cache key
+      # carries the runner OS (ImageOS, e.g. ubuntu26) and the Playwright
+      # version. No restore-keys: a partial match can restore browsers built
+      # for another Ubuntu release, which then fail to load its libraries.
+      - name: Resolve Playwright cache key
+        id: playwright_key
+        run: echo "key=${ImageOS}-${RUNNER_ARCH}-playwright-$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        working-directory: frontend
+
       - name: Cache Playwright browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-
+          key: ${{ steps.playwright_key.outputs.key }}
+
+      # The runner's apt tries azure.archive.ubuntu.com first and only fails
+      # over on a full stall, not a slow transfer; some of its regional nodes
+      # serve at <100 kB/s (actions/runner-images#14823). Use the next mirror
+      # in the runner's list instead.
+      - name: Skip slow Azure apt mirror
+        run: |
+          sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+          cat /etc/apt/apt-mirrors.txt
 
       - name: Install Playwright browsers
+        timeout-minutes: 5
         run: npx playwright install --with-deps
         working-directory: frontend
 

@@ -56,8 +56,11 @@ jobs:
       APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-      WINDOWS_SIGNING_CERT_B64: ${{ secrets.WINDOWS_SIGNING_CERT_B64 }}
-      WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+      # Windows signing uses Azure Artifact Signing: the key never leaves
+      # Azure, so there is no .pfx. CI logs in via GitHub OIDC as an app
+      # registration that holds the Certificate Profile Signer role.
+      AZURE_SIGNING_CLIENT_ID: ${{ secrets.AZURE_SIGNING_CLIENT_ID }}
+      AZURE_SIGNING_TENANT_ID: ${{ secrets.AZURE_SIGNING_TENANT_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -99,7 +102,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          foreach ($name in "WINDOWS_SIGNING_CERT_B64", "WINDOWS_SIGNING_CERT_PASSWORD") {
+          foreach ($name in "AZURE_SIGNING_CLIENT_ID", "AZURE_SIGNING_TENANT_ID") {
             if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
               throw "Missing required Windows signing input: $name"
             }
@@ -218,33 +221,32 @@ jobs:
           xcrun stapler staple build/bin/Nebi.app
           xcrun stapler validate build/bin/Nebi.app
 
+      - name: Azure login for Windows signing
+        if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ env.AZURE_SIGNING_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_SIGNING_TENANT_ID }}
+          allow-no-subscriptions: true
+
       - name: Sign Windows app
+        if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: https://eus.codesigning.azure.net/
+          signing-account-name: apollo-internal
+          certificate-profile-name: openteams-win-signing
+          files: ${{ github.workspace }}\build\bin\Nebi.exe
+
+      - name: Verify Windows signature
         if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
-          $certPath = Join-Path $env:RUNNER_TEMP "windows-signing.pfx"
-          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERT_B64))
-
-          $kitsRoot = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
-          $signtoolPath = $null
-          if (Test-Path $kitsRoot) {
-            $signtoolPath = (Get-ChildItem $kitsRoot -Recurse -Filter signtool.exe |
-              Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
-              Select-Object -First 1).FullName
+          $sig = Get-AuthenticodeSignature build/bin/Nebi.exe
+          $sig | Format-List Status, StatusMessage, SignerCertificate, TimeStamperCertificate
+          if ($sig.Status -ne "Valid") {
+            throw "Nebi.exe signature is not valid: $($sig.Status)"
           }
-          if (-not $signtoolPath) {
-            $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
-            if ($signtool) {
-              $signtoolPath = $signtool.Source
-            }
-          }
-          if (-not $signtoolPath) {
-            throw "signtool.exe not found"
-          }
-
-          & $signtoolPath sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f $certPath /p $env:WINDOWS_SIGNING_CERT_PASSWORD build/bin/Nebi.exe
-          & $signtoolPath verify /pa /v build/bin/Nebi.exe
 
       # macOS .app bundles must be packaged into a single archive before they
       # leave the runner. Uploading the raw Nebi.app directory strips the

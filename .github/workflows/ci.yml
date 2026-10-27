@@ -58,10 +58,8 @@ jobs:
         run: npm run test
         working-directory: frontend
 
-      # Playwright downloads a browser build per OS release, so the cache key
-      # carries the runner OS (ImageOS, e.g. ubuntu26) and the Playwright
-      # version. No restore-keys: a partial match can restore browsers built
-      # for another Ubuntu release, which then fail to load its libraries.
+      # Browser builds are OS-specific, so key the cache on the runner OS and
+      # Playwright version.
       - name: Resolve Playwright cache key
         id: playwright_key
         run: echo "key=${ImageOS}-${RUNNER_ARCH}-playwright-$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"

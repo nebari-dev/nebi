@@ -1,0 +1,175 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { adminApi } from '@/api/admin';
+import type {
+  CreateUserRequest,
+  FederatedIdentityReviewStatusFilter,
+  ShareProjectRequest,
+} from '@/types/models';
+
+// Check if current user is admin
+export const useIsAdmin = () => {
+  return useQuery({
+    queryKey: ['user', 'is_admin'],
+    queryFn: async () => {
+      try {
+        await adminApi.getUsers();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    retry: false,
+  });
+};
+
+// User Management Hooks
+export const useUsers = () => {
+  return useQuery({
+    queryKey: ['admin', 'users'],
+    queryFn: adminApi.getUsers,
+  });
+};
+
+export const useCreateUser = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateUserRequest) => adminApi.createUser(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+  });
+};
+
+export const useToggleAdmin = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => adminApi.toggleAdmin(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+  });
+};
+
+export const useDeleteUser = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => adminApi.deleteUser(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+  });
+};
+
+export const useUserGroups = (userId: string | undefined) =>
+  useQuery({
+    queryKey: ['admin', 'users', userId, 'groups'],
+    queryFn: () => {
+      if (!userId) throw new Error('User ID is required');
+      return adminApi.getUserGroups(userId);
+    },
+    enabled: !!userId,
+  });
+
+// Audit Logs Hooks
+export const useAuditLogs = (filters?: {
+  user_id?: string;
+  action?: string;
+}) => {
+  return useQuery({
+    queryKey: ['admin', 'audit-logs', filters],
+    queryFn: () => adminApi.getAuditLogs(filters),
+  });
+};
+
+// Collaborators Hooks
+export const useCollaborators = (environmentId: string, enabled = true) => {
+  return useQuery({
+    queryKey: ['collaborators', environmentId],
+    queryFn: () => adminApi.getCollaborators(environmentId),
+    enabled,
+  });
+};
+
+export const useShareProject = (projectId: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: ShareProjectRequest) =>
+      adminApi.shareProject(projectId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['collaborators', projectId],
+      });
+    },
+  });
+};
+
+export const useUnshareProject = (projectId: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => adminApi.unshareProject(projectId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['collaborators', projectId],
+      });
+    },
+  });
+};
+
+// Dashboard Stats Hooks
+export const useDashboardStats = () => {
+  return useQuery({
+    queryKey: ['admin', 'dashboard', 'stats'],
+    queryFn: adminApi.getDashboardStats,
+  });
+};
+
+export const useFederatedIdentityReviews = (
+  status: FederatedIdentityReviewStatusFilter = 'pending',
+) => {
+  return useQuery({
+    queryKey: ['admin', 'federated-identity-reviews', status],
+    queryFn: () => adminApi.getFederatedIdentityReviews(status),
+  });
+};
+
+export const useApproveFederatedIdentityReview = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reviewId: string) =>
+      adminApi.approveFederatedIdentityReview(reviewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['admin', 'federated-identity-reviews'],
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'audit-logs'] });
+    },
+  });
+};
+
+export const useRejectFederatedIdentityReview = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reviewId: string) =>
+      adminApi.rejectFederatedIdentityReview(reviewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['admin', 'federated-identity-reviews'],
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'audit-logs'] });
+    },
+  });
+};
+
+export const useDiscardFederatedIdentityReview = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reviewId: string) =>
+      adminApi.discardFederatedIdentityReview(reviewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['admin', 'federated-identity-reviews'],
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'audit-logs'] });
+    },
+  });
+};

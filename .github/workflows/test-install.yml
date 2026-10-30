@@ -32,7 +32,7 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           go install "github.com/sigstore/cosign/v2/cmd/cosign@${COSIGN_VERSION}"
 
-      - name: Exercise install.sh failure paths
+      - name: Exercise install.sh with release fixtures
         shell: bash
         run: |
           set -euo pipefail
@@ -111,6 +111,29 @@ jobs:
             exit 1
           fi
 
+          fixture_bin="${test_dir}/fixture-bin"
+          mkdir -p "$fixture_bin"
+          for bin in nebi nebi-server nebi-web; do
+            printf '#!/bin/sh\nprintf "nebi fixture\\n"\n' > "${fixture_bin}/${bin}"
+            chmod +x "${fixture_bin}/${bin}"
+          done
+          printf '{}\n' > "${assets}/${archive}.sigstore.json"
+
+          for layout in legacy split; do
+            binaries="nebi"
+            if [ "$layout" = split ]; then
+              binaries="nebi nebi-server nebi-web"
+            fi
+            tar -czf "${assets}/${archive}" -C "$fixture_bin" $binaries
+            shasum -a 256 "${assets}/${archive}" | awk -v name="$archive" '{print $1 "  " name}' > "${assets}/checksums.txt"
+
+            FIXTURE_ASSETS="$assets" PATH="${stub_bin}:/usr/bin:/bin" ./install.sh --version v0.0.0 --install-dir "${test_dir}/${layout}"
+            for bin in $binaries; do
+              test -x "${test_dir}/${layout}/${bin}"
+              "${test_dir}/${layout}/${bin}" version
+            done
+          done
+
       - name: Check latest release verification assets
         id: release_assets
         env:
@@ -161,6 +184,11 @@ jobs:
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           nebi version
+          for bin in nebi-server nebi-web; do
+            if [ -x "$HOME/.local/bin/$bin" ]; then
+              "$HOME/.local/bin/$bin" version
+            fi
+          done
 
   test-windows:
     runs-on: windows-latest
@@ -184,7 +212,7 @@ jobs:
           $goBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           go install "github.com/sigstore/cosign/v2/cmd/cosign@$env:COSIGN_VERSION"
 
-      - name: Exercise install.ps1 failure paths
+      - name: Exercise install.ps1 with release fixtures
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
@@ -193,6 +221,7 @@ jobs:
           $stubBin = Join-Path $testDir "bin"
           $assets = Join-Path $testDir "assets"
           New-Item -ItemType Directory -Path $stubBin, $assets -Force | Out-Null
+          $originalUserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
 
           try {
             $archive = "nebi_0.0.0_windows_x86_64.zip"
@@ -263,13 +292,18 @@ jobs:
                 if (Test-Path $stdoutPath) { Get-Content -LiteralPath $stdoutPath -Raw }
                 if (Test-Path $stderrPath) { Get-Content -LiteralPath $stderrPath -Raw }
               ) -join [Environment]::NewLine
-              if ($code -eq 0) {
+              if ($Expected) {
+                if ($code -eq 0) {
+                  Write-Host $text
+                  throw "Expected install.ps1 to fail for case: $Label"
+                }
+                if ($text -notlike "*$Expected*") {
+                  Write-Host $text
+                  throw "Expected install.ps1 failure output to contain: $Expected"
+                }
+              } elseif ($code -ne 0) {
                 Write-Host $text
-                throw "Expected install.ps1 to fail for case: $Label"
-              }
-              if ($text -notlike "*$Expected*") {
-                Write-Host $text
-                throw "Expected install.ps1 failure output to contain: $Expected"
+                throw "Expected install.ps1 to succeed for case: $Label"
               }
             }
 
@@ -277,7 +311,39 @@ jobs:
 
             "@echo off`r`necho Verified OK 1>&2`r`nexit /b 0`r`n" | Set-Content -LiteralPath (Join-Path $stubBin "cosign.cmd") -Encoding ascii
             Invoke-InstallerCase -Label "bad-checksums" -Expected "Checksum verification failed"
+
+            $fixtureBin = Join-Path $testDir "fixture-bin"
+            New-Item -ItemType Directory -Path $fixtureBin -Force | Out-Null
+            $fixtureSource = Join-Path $testDir "fixture.go"
+            'package main; import "fmt"; func main() { fmt.Println("nebi fixture") }' | Set-Content -LiteralPath $fixtureSource -Encoding ascii
+            go build -o (Join-Path $fixtureBin "nebi.exe") $fixtureSource
+            if ($LASTEXITCODE -ne 0) { throw "Failed to build installer fixture" }
+            foreach ($name in @("nebi-server.exe", "nebi-web.exe")) {
+              Copy-Item -LiteralPath (Join-Path $fixtureBin "nebi.exe") -Destination (Join-Path $fixtureBin $name)
+            }
+            Set-Content -LiteralPath (Join-Path $assets "$archive.sigstore.json") -Value "{}" -Encoding ascii
+
+            foreach ($layout in @("legacy", "split")) {
+              $binaries = @("nebi.exe")
+              if ($layout -eq "split") {
+                $binaries += @("nebi-server.exe", "nebi-web.exe")
+              }
+              $archiveFiles = @($binaries | ForEach-Object { Join-Path $fixtureBin $_ })
+              $archivePath = Join-Path $assets $archive
+              Compress-Archive -LiteralPath $archiveFiles -DestinationPath $archivePath -Force
+              $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archivePath).Hash.ToLowerInvariant()
+              Set-Content -LiteralPath (Join-Path $assets "checksums.txt") -Value "$hash  $archive" -Encoding ascii
+
+              Invoke-InstallerCase -Label $layout
+              foreach ($name in $binaries) {
+                $binary = Join-Path (Join-Path $testDir $layout) $name
+                if (-not (Test-Path $binary)) { throw "Missing installed binary: $name" }
+                & $binary version
+                if ($LASTEXITCODE -ne 0) { throw "Installed binary failed: $name" }
+              }
+            }
           } finally {
+            [Environment]::SetEnvironmentVariable("PATH", $originalUserPath, "User")
             Remove-Item -LiteralPath $testDir -Recurse -Force -ErrorAction SilentlyContinue
           }
 
@@ -316,3 +382,9 @@ jobs:
         run: |
           $env:PATH = "$env:RUNNER_TEMP\nebi;$env:PATH"
           nebi version
+          foreach ($Name in @("nebi-server.exe", "nebi-web.exe")) {
+            $Binary = Join-Path "$env:RUNNER_TEMP\nebi" $Name
+            if (Test-Path $Binary) {
+              & $Binary version
+            }
+          }

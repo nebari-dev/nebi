@@ -346,8 +346,8 @@ func TestPublishBundle_ManyAssetsParallel(t *testing.T) {
 }
 
 // TestPublish_RejectsSymlinkedCoreFile covers the Lstat-on-core-files
-// fix. A workspace where pixi.toml is a symlink pointing outside the
-// workspace must be rejected — file.Store.Add follows symlinks when it
+// fix. A project where pixi.toml is a symlink pointing outside the
+// project must be rejected — file.Store.Add follows symlinks when it
 // reads the core file, so without an Lstat guard the target's contents
 // would be bundled under the innocent pixi.toml title.
 func TestPublish_RejectsSymlinkedCoreFile(t *testing.T) {

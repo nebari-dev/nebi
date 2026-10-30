@@ -5,13 +5,13 @@ import "github.com/google/uuid"
 // Provider abstracts RBAC operations so callers can use dependency injection
 // instead of the global enforcer. This enables per-test isolation and mocking.
 type Provider interface {
-	CanReadWorkspace(userID, wsID uuid.UUID) (bool, error)
-	CanWriteWorkspace(userID, wsID uuid.UUID) (bool, error)
+	CanReadProject(userID, projectID uuid.UUID) (bool, error)
+	CanWriteProject(userID, projectID uuid.UUID) (bool, error)
 	CanReadRegistry(userID, regID uuid.UUID) (bool, error)
 	CanWriteRegistry(userID, regID uuid.UUID) (bool, error)
 	IsAdmin(userID uuid.UUID) (bool, error)
-	GrantWorkspaceAccess(userID, wsID uuid.UUID, role string) error
-	RevokeWorkspaceAccess(userID, wsID uuid.UUID) error
+	GrantProjectAccess(userID, projectID uuid.UUID, role string) error
+	RevokeProjectAccess(userID, projectID uuid.UUID) error
 	MakeAdmin(userID uuid.UUID) error
 	RevokeAdmin(userID uuid.UUID) error
 	GetAllAdminUserIDs() (map[uuid.UUID]bool, error)
@@ -20,8 +20,8 @@ type Provider interface {
 	AddUserToGroup(userID, groupID uuid.UUID) error
 	RemoveUserFromGroup(userID, groupID uuid.UUID) error
 	GetUserGroups(userID uuid.UUID) ([]uuid.UUID, error)
-	GrantGroupWorkspaceAccess(groupID, wsID uuid.UUID, role string) error
-	RevokeGroupWorkspaceAccess(groupID, wsID uuid.UUID) error
+	GrantGroupProjectAccess(groupID, projectID uuid.UUID, role string) error
+	RevokeGroupProjectAccess(groupID, projectID uuid.UUID) error
 	GrantGroupRegistryAccess(groupID, regID uuid.UUID, action string) error
 	RevokeGroupRegistryAccess(groupID, regID uuid.UUID) error
 	MakeGroupAdmin(groupID uuid.UUID) error
@@ -34,11 +34,11 @@ type DefaultProvider struct{}
 
 func NewDefaultProvider() *DefaultProvider { return &DefaultProvider{} }
 
-func (DefaultProvider) CanReadWorkspace(userID, wsID uuid.UUID) (bool, error) {
-	return CanReadWorkspace(userID, wsID)
+func (DefaultProvider) CanReadProject(userID, projectID uuid.UUID) (bool, error) {
+	return CanReadProject(userID, projectID)
 }
-func (DefaultProvider) CanWriteWorkspace(userID, wsID uuid.UUID) (bool, error) {
-	return CanWriteWorkspace(userID, wsID)
+func (DefaultProvider) CanWriteProject(userID, projectID uuid.UUID) (bool, error) {
+	return CanWriteProject(userID, projectID)
 }
 func (DefaultProvider) CanReadRegistry(userID, regID uuid.UUID) (bool, error) {
 	return CanReadRegistry(userID, regID)
@@ -49,11 +49,11 @@ func (DefaultProvider) CanWriteRegistry(userID, regID uuid.UUID) (bool, error) {
 func (DefaultProvider) IsAdmin(userID uuid.UUID) (bool, error) {
 	return IsAdmin(userID)
 }
-func (DefaultProvider) GrantWorkspaceAccess(userID, wsID uuid.UUID, role string) error {
-	return GrantWorkspaceAccess(userID, wsID, role)
+func (DefaultProvider) GrantProjectAccess(userID, projectID uuid.UUID, role string) error {
+	return GrantProjectAccess(userID, projectID, role)
 }
-func (DefaultProvider) RevokeWorkspaceAccess(userID, wsID uuid.UUID) error {
-	return RevokeWorkspaceAccess(userID, wsID)
+func (DefaultProvider) RevokeProjectAccess(userID, projectID uuid.UUID) error {
+	return RevokeProjectAccess(userID, projectID)
 }
 func (DefaultProvider) MakeAdmin(userID uuid.UUID) error {
 	return MakeAdmin(userID)
@@ -73,11 +73,11 @@ func (DefaultProvider) RemoveUserFromGroup(userID, groupID uuid.UUID) error {
 func (DefaultProvider) GetUserGroups(userID uuid.UUID) ([]uuid.UUID, error) {
 	return GetUserGroups(userID)
 }
-func (DefaultProvider) GrantGroupWorkspaceAccess(groupID, wsID uuid.UUID, role string) error {
-	return GrantGroupWorkspaceAccess(groupID, wsID, role)
+func (DefaultProvider) GrantGroupProjectAccess(groupID, projectID uuid.UUID, role string) error {
+	return GrantGroupProjectAccess(groupID, projectID, role)
 }
-func (DefaultProvider) RevokeGroupWorkspaceAccess(groupID, wsID uuid.UUID) error {
-	return RevokeGroupWorkspaceAccess(groupID, wsID)
+func (DefaultProvider) RevokeGroupProjectAccess(groupID, projectID uuid.UUID) error {
+	return RevokeGroupProjectAccess(groupID, projectID)
 }
 func (DefaultProvider) GrantGroupRegistryAccess(groupID, regID uuid.UUID, action string) error {
 	return GrantGroupRegistryAccess(groupID, regID, action)

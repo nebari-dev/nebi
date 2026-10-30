@@ -21,7 +21,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func TestGroupGrantsWorkspaceAccessTransitively(t *testing.T) {
+func TestGroupGrantsProjectAccessTransitively(t *testing.T) {
 	db := newTestDB(t)
 	if err := InitEnforcer(db, slog.Default()); err != nil {
 		t.Fatalf("init enforcer: %v", err)
@@ -30,21 +30,21 @@ func TestGroupGrantsWorkspaceAccessTransitively(t *testing.T) {
 
 	user := uuid.New()
 	group := uuid.New()
-	ws := uuid.New()
+	project := uuid.New()
 
 	if err := AddUserToGroup(user, group); err != nil {
 		t.Fatalf("add user to group: %v", err)
 	}
-	if err := GrantGroupWorkspaceAccess(group, ws, "viewer"); err != nil {
+	if err := GrantGroupProjectAccess(group, project, "viewer"); err != nil {
 		t.Fatalf("grant group: %v", err)
 	}
 
-	canRead, err := CanReadWorkspace(user, ws)
+	canRead, err := CanReadProject(user, project)
 	if err != nil {
 		t.Fatalf("enforce: %v", err)
 	}
 	if !canRead {
-		t.Fatalf("expected user to read workspace via group, got false")
+		t.Fatalf("expected user to read project via group, got false")
 	}
 }
 
@@ -82,18 +82,32 @@ func TestDirectUserPolicyStillWorksAfterMatcherChange(t *testing.T) {
 	t.Cleanup(func() { enforcer = nil })
 
 	user := uuid.New()
-	ws := uuid.New()
+	project := uuid.New()
 
-	if err := GrantWorkspaceAccess(user, ws, "editor"); err != nil {
-		t.Fatalf("grant workspace: %v", err)
+	if err := GrantProjectAccess(user, project, "editor"); err != nil {
+		t.Fatalf("grant project: %v", err)
 	}
 
-	canWrite, err := CanWriteWorkspace(user, ws)
+	canWrite, err := CanWriteProject(user, project)
 	if err != nil {
 		t.Fatalf("enforce: %v", err)
 	}
 	if !canWrite {
 		t.Fatalf("expected direct write policy to still match, got false")
+	}
+	projects, err := GetUserProjects(user)
+	if err != nil {
+		t.Fatalf("list project grants: %v", err)
+	}
+	if len(projects) != 1 || projects[0] != project {
+		t.Fatalf("expected granted project in list, got %v", projects)
+	}
+	if err := RevokeProjectAccess(user, project); err != nil {
+		t.Fatalf("revoke project: %v", err)
+	}
+	projects, err = GetUserProjects(user)
+	if err != nil || len(projects) != 0 {
+		t.Fatalf("expected no projects after revocation, got %v, %v", projects, err)
 	}
 }
 
@@ -106,11 +120,11 @@ func TestRemoveAllGroupPoliciesCleansEverything(t *testing.T) {
 
 	user := uuid.New()
 	group := uuid.New()
-	ws := uuid.New()
+	project := uuid.New()
 	reg := uuid.New()
 
 	_ = AddUserToGroup(user, group)
-	_ = GrantGroupWorkspaceAccess(group, ws, "editor")
+	_ = GrantGroupProjectAccess(group, project, "editor")
 	_ = GrantGroupRegistryAccess(group, reg, "write")
 	_ = MakeGroupAdmin(group)
 
@@ -118,9 +132,9 @@ func TestRemoveAllGroupPoliciesCleansEverything(t *testing.T) {
 		t.Fatalf("remove all: %v", err)
 	}
 
-	canRead, _ := CanReadWorkspace(user, ws)
+	canRead, _ := CanReadProject(user, project)
 	if canRead {
-		t.Fatalf("expected workspace access to be revoked")
+		t.Fatalf("expected project access to be revoked")
 	}
 	isAdmin, _ := IsAdmin(user)
 	if isAdmin {

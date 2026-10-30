@@ -24,8 +24,8 @@ type User struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// Workspace represents a workspace.
-type Workspace struct {
+// Project represents a project.
+type Project struct {
 	ID            string    `json:"id"`
 	Name          string    `json:"name"`
 	Status        string    `json:"status"`
@@ -36,28 +36,28 @@ type Workspace struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
-// CreateWorkspaceRequest represents a request to create a workspace.
-type CreateWorkspaceRequest struct {
+// CreateProjectRequest represents a request to create a project.
+type CreateProjectRequest struct {
 	Name     string  `json:"name"`
 	PixiToml *string `json:"pixi_toml,omitempty"`
 }
 
-// Package represents a package in a workspace.
+// Package represents a package in a project.
 type Package struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Version   string `json:"version,omitempty"`
 	Channel   string `json:"channel,omitempty"`
 	Source    string `json:"source,omitempty"`
-	WsID      string `json:"workspace_id"`
+	ProjectID string `json:"project_id"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
 
-// Publication represents a published version of a workspace.
+// Publication represents a published version of a project.
 type Publication struct {
 	ID            string `json:"id"`
-	WsID          string `json:"workspace_id"`
+	ProjectID     string `json:"project_id"`
 	VersionNumber int    `json:"version_number"`
 	RegistryID    string `json:"registry_id"`
 	RegistryName  string `json:"registry_name"`
@@ -67,7 +67,7 @@ type Publication struct {
 	PublishedAt   string `json:"published_at"`
 }
 
-// PublishDefaults represents suggested defaults for publishing a workspace.
+// PublishDefaults represents suggested defaults for publishing a project.
 type PublishDefaults struct {
 	RegistryID   string `json:"registry_id"`
 	RegistryName string `json:"registry_name"`
@@ -76,24 +76,24 @@ type PublishDefaults struct {
 	Tag          string `json:"tag"`
 }
 
-// PublishRequest represents a request to publish a workspace.
+// PublishRequest represents a request to publish a project.
 type PublishRequest struct {
 	RegistryID string `json:"registry_id"`
 	Repository string `json:"repository"`
 	Tag        string `json:"tag"`
 }
 
-// PublishResponse represents the response from publishing a workspace.
+// PublishResponse represents the response from publishing a project.
 type PublishResponse struct {
 	Digest     string `json:"digest"`
 	Repository string `json:"repository"`
 	Tag        string `json:"tag"`
 }
 
-// WorkspaceVersion represents a version of a workspace.
-type WorkspaceVersion struct {
+// ProjectVersion represents a version of a project.
+type ProjectVersion struct {
 	ID              string `json:"id"`
-	WsID            string `json:"workspace_id"`
+	ProjectID       string `json:"project_id"`
 	VersionNumber   int32  `json:"version_number"`
 	ManifestVersion string `json:"manifest_version,omitempty"`
 	Description     string `json:"description,omitempty"`
@@ -139,7 +139,7 @@ type UpdateRegistryRequest struct {
 	Restricted *bool   `json:"restricted,omitempty"`
 }
 
-// RollbackRequest represents a request to rollback a workspace to a previous version.
+// RollbackRequest represents a request to rollback a project to a previous version.
 type RollbackRequest struct {
 	VersionNumber int `json:"version_number"`
 }
@@ -161,8 +161,8 @@ type PushResponse struct {
 	Tag           string   `json:"tag"`
 }
 
-// WorkspaceTag represents a server-side tag pointing to a version.
-type WorkspaceTag struct {
+// ProjectTag represents a server-side tag pointing to a version.
+type ProjectTag struct {
 	Tag           string `json:"tag"`
 	VersionNumber int    `json:"version_number"`
 	CreatedAt     string `json:"created_at"`
@@ -172,7 +172,7 @@ type WorkspaceTag struct {
 // Job represents a background job on the server.
 type Job struct {
 	ID          string                 `json:"id"`
-	WorkspaceID string                 `json:"workspace_id"`
+	ProjectID   string                 `json:"project_id"`
 	UserID      string                 `json:"user_id,omitempty"`
 	Type        string                 `json:"type"`
 	Status      string                 `json:"status"`

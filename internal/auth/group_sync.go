@@ -17,7 +17,7 @@ import (
 // syncOIDCGroups reconciles the user's OIDC group memberships with the names
 // in the latest ID token's `groups` claim. Idempotent: safe to call on every
 // login. Only affects groups with source=oidc; native memberships are
-// untouched. Zero-member OIDC groups are preserved so existing workspace
+// untouched. Zero-member OIDC groups are preserved so existing project
 // shares survive churn.
 //
 // Name collision with native groups: If an OIDC claim names a group that

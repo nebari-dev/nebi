@@ -3,11 +3,13 @@ package api
 import (
 	"bytes"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
+	"github.com/nebari-dev/nebi/internal/frontend"
 	"github.com/nebari-dev/nebi/internal/limits"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/queue"
@@ -29,7 +32,7 @@ import (
 func buildTestRouter(t *testing.T, basePath string, mutate ...func(*config.Config)) http.Handler {
 	t.Helper()
 
-	cfg := &config.Config{Mode: "local"}
+	cfg := &config.Config{Mode: config.ModeLocal}
 	cfg.Server.BasePath = basePath
 	cfg.Auth.JWTSecret = "test-secret-for-router-test"
 	cfg.Database.Driver = "sqlite"
@@ -53,7 +56,7 @@ func buildTestRouter(t *testing.T, basePath string, mutate ...func(*config.Confi
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, nil, logger)
+	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, logger)
 }
 
 func buildTeamTestRouter(t *testing.T, logger *slog.Logger) (http.Handler, string) {
@@ -65,7 +68,7 @@ func buildTeamTestRouter(t *testing.T, logger *slog.Logger) (http.Handler, strin
 		jwtSecret = "test-secret-for-team-router-test"
 	)
 
-	cfg := &config.Config{Mode: "team"}
+	cfg := &config.Config{Mode: config.ModeTeam}
 	cfg.Auth.Type = "basic"
 	cfg.Auth.JWTSecret = jwtSecret
 	cfg.Database.Driver = "sqlite"
@@ -110,17 +113,17 @@ func buildTeamTestRouter(t *testing.T, logger *slog.Logger) (http.Handler, strin
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 
-	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, nil, logger), login.Token
+	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, logger), login.Token
 }
 
 func buildLimitedLocalRouter(t *testing.T, limitCfg limits.Limits) http.Handler {
 	t.Helper()
 
-	cfg := &config.Config{Mode: "local", Limits: limitCfg}
+	cfg := &config.Config{Mode: config.ModeLocal, Limits: limitCfg}
 	cfg.Auth.JWTSecret = "test-secret-for-router-test"
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = filepath.Join(t.TempDir(), "limited-router-test.db")
-	cfg.Storage.WorkspacesDir = t.TempDir()
+	cfg.Storage.ProjectsDir = t.TempDir()
 	cfg.Registries.SeedDefault = true
 
 	database, err := db.New(cfg.Database)
@@ -136,7 +139,7 @@ func buildLimitedLocalRouter(t *testing.T, limitCfg limits.Limits) http.Handler 
 		t.Fatalf("NewLocalExecutor: %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, nil, logger)
+	return NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, logger)
 }
 
 func TestCORSMiddlewareNoInvalidCredentialedWildcard(t *testing.T) {
@@ -168,11 +171,11 @@ func TestCORSMiddlewareNoInvalidCredentialedWildcard(t *testing.T) {
 	}
 }
 
-func TestWorkspaceCreateRejectsOversizedRequestBody(t *testing.T) {
+func TestProjectCreateRejectsOversizedRequestBody(t *testing.T) {
 	r := buildLimitedLocalRouter(t, limits.Limits{RequestBodyBytes: 32})
 
 	body := `{"name":"big","pixi_toml":"` + strings.Repeat("x", 64) + `"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/projects", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -260,7 +263,7 @@ func TestLegacyCLILoginRoutesRemoved(t *testing.T) {
 // registry guards (see registry.go UpdateRegistry / DeleteRegistry) through
 // the real HTTP admin routes, not just the service layer.
 func TestAdminRegistryMutations_RejectConfigManaged(t *testing.T) {
-	cfg := &config.Config{Mode: "local"}
+	cfg := &config.Config{Mode: config.ModeLocal}
 	cfg.Auth.JWTSecret = "test-secret-for-config-managed-registry-test"
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = filepath.Join(t.TempDir(), "config-managed-registry-test.db")
@@ -280,7 +283,7 @@ func TestAdminRegistryMutations_RejectConfigManaged(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	r := NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, nil, logger)
+	r := NewRouter(cfg, database, queue.NewMemoryQueue(16), exec, nil, logger)
 
 	managed := models.OCIRegistry{ID: uuid.New(), Name: "managed", URL: "a.io", ConfigManaged: true}
 	if err := database.Create(&managed).Error; err != nil {
@@ -333,5 +336,43 @@ func TestCORSAllowsConfiguredOrigin(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
 		t.Errorf("expected no Access-Control-Allow-Origin for unlisted origin, got %q", got)
+	}
+}
+
+// Each runtime must serve its own entry bundle, including on SPA deep links.
+func TestRouterSelectsFrontendApp(t *testing.T) {
+	for _, local := range []bool{true, false} {
+		name := "server"
+		appFiles := frontend.ServerApp
+		var router http.Handler
+		if local {
+			name = "client"
+			appFiles = frontend.ClientApp
+			router = buildTestRouter(t, "")
+		} else {
+			router, _ = buildTeamTestRouter(t, nil)
+		}
+		t.Run(name, func(t *testing.T) {
+			files, err := appFiles()
+			if err != nil {
+				t.Fatal(err)
+			}
+			index, err := fs.ReadFile(files, "index.html")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(bytes.TrimSpace(index)) == 0 {
+				t.Skip("frontend embed placeholder; run make build-frontend to test bundle selection")
+			}
+			entry := regexp.MustCompile(`<script[^>]+src="([^"]+)"`).FindSubmatch(index)
+			if len(entry) != 2 {
+				t.Fatal("built frontend has no entry script")
+			}
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/projects/example", nil))
+			if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), string(entry[1])) {
+				t.Fatalf("%s runtime did not serve its own frontend: %d %s", name, response.Code, response.Body.String())
+			}
+		})
 	}
 }

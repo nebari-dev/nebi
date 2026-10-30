@@ -2,7 +2,7 @@
 title: "Nebi components"
 ---
 
-It has three components: a **CLI**, a **desktop app**, and a **team server**. All share the same core libraries but serve different use cases.
+It has four executables: **nebi**, **nebi-server**, **nebi-web**, and **nebi-desktop**. They share the same core libraries but serve different use cases.
 
 ## System overview
 
@@ -10,13 +10,13 @@ It has three components: a **CLI**, a **desktop app**, and a **team server**. Al
 
 ## CLI
 
-The CLI is a standalone tool for managing and tracking Pixi workspaces on your local machines, both for [solo use](/cli-local/) and for [team workflows](/cli-team/) backed by a Nebi server. Every command is documented in the [CLI reference](/cli-reference/).
+`nebi` is a standalone CLI tool for managing and tracking Pixi workspaces on your local machines, both for [solo use](/cli-local/) and for [team workflows](/cli-team/) backed by a Nebi server. Its source entry point lives in `cmd/nebi-cli`, and every command is documented in the [CLI reference](/cli-reference/).
 
-- **Local database**: Track workspace names, paths, and versions in a local database
-- **Pixi shell/run**: Open a pixi shell or run pixi tasks by workspace name
-- **Publish/import - OCI registries**: Push workspace bundles (specs plus optional asset layers) directly to OCI registries, and import them on another machine
+- **Local database**: Track project names, paths, and versions in a local database
+- **Pixi shell/run**: Open a pixi shell or run pixi tasks by project name
+- **Publish/import - OCI registries**: Push project bundles (specs plus optional asset layers) directly to OCI registries, and import them on another machine
 - **Push/pull - Nebi server**: Sync (push) versioned `pixi.toml` and `pixi.lock` specs to a Nebi server, and pull from a different machine
-- **Track state (diff)**: Compare specs between local directories, workspace names, or server versions
+- **Track state (diff)**: Compare specs between local directories, project names, or server versions
 
 ## Desktop application
 
@@ -24,7 +24,7 @@ The [desktop app](/ui/) is another tool for managing Pixi workspaces on your loc
 
 ## OCI Registries
 
-Nebi can publish **workspace bundles** to any [OCI-compliant registry](/registry-setup/) such as GitHub Container Registry, Quay.io, or self-hosted registries. A bundle always contains `pixi.toml` and `pixi.lock`, and may also include other project files (READMEs, source code, data).
+Nebi can publish **project bundles** to any [OCI-compliant registry](/registry-setup/) such as GitHub Container Registry, Quay.io, or self-hosted registries. A bundle always contains `pixi.toml` and `pixi.lock`, and may also include other project files (READMEs, source code, data).
 
 - Publishing can be done from the CLI (`nebi publish`) or triggered from the desktop app or server
 - The desktop app and server UI include a registry browser for discovering and pulling published bundles
@@ -33,13 +33,17 @@ Bundles are packed into an OCI Image Manifest with custom media types for the sp
 
 ## Nebi Server
 
-The [Nebi server](/server-setup/) is the team deployment of Nebi. It runs the desktop app interface but in a **server and team mode** with full multi-user support.
+`nebi-server` is the team deployment of Nebi. It serves the REST API, bundled React frontend, and worker stack with full multi-user support.
 
 - **Authentication**: JWT-based sessions with pluggable backends — basic auth, OIDC, or proxy auth
-- **Role-based AC**: Apache Casbin-based access control with per-workspace permissions (read, write, admin) for users
+- **Role-based AC**: Apache Casbin-based access control with per-project permissions (read, write, admin) for users
 - **API**: Git-based HTTP server serving the REST API and the bundled React frontend
-- **Central database**: SQLite (default) or PostgreSQL for workspace and user tracking
-- **Background worker**: Background processor for async operations like workspace creation and package installation
-- **Job queue**: In-memory queue (single instance) or Valkey (distributed deployments) to process workspace creation and updating requests.
+- **Central database**: SQLite (default) or PostgreSQL for project and user tracking
+- **Background worker**: Background processor for async operations like project creation and package installation
+- **Job queue**: In-memory queue with an in-process worker that handles project creation and updates concurrently, keeping the API responsive.
 
 Learn more: [Nebi server setup](/server-setup/).
+
+## Local web app
+
+`nebi-web` serves the bundled React frontend for a single-user local workflow. It uses local authentication bypass and binds to loopback by default.

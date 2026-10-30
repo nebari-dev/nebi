@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -18,13 +19,21 @@ const (
 const readTimeoutBytesPerSecond int64 = 256 * 1024
 const minReadTimeoutSeconds = 30
 
+// Mode identifies which Nebi runtime is using the shared server stack.
+type Mode string
+
+const (
+	ModeTeam  Mode = "team"
+	ModeLocal Mode = "local"
+)
+
 // Config holds all application configuration
 type Config struct {
-	Mode       string           `mapstructure:"mode"` // "local" or "team" (default: "team")
+	Mode       Mode             `mapstructure:"-"`
+	Worker     WorkerConfig     `mapstructure:"worker"`
 	Server     ServerConfig     `mapstructure:"server"`
 	Database   DatabaseConfig   `mapstructure:"database"`
 	Auth       AuthConfig       `mapstructure:"auth"`
-	Queue      QueueConfig      `mapstructure:"queue"`
 	Log        LogConfig        `mapstructure:"log"`
 	PixiPath   string           `mapstructure:"pixi_path"` // Custom pixi binary path (optional)
 	Storage    StorageConfig    `mapstructure:"storage"`
@@ -34,7 +43,7 @@ type Config struct {
 
 // IsLocalMode returns true when the server is running in local/desktop mode.
 func (c *Config) IsLocalMode() bool {
-	return c.Mode == "local"
+	return c.Mode == ModeLocal
 }
 
 // ServerConfig holds HTTP server configuration
@@ -83,6 +92,11 @@ func DefaultReadTimeoutSeconds(requestBodyBytes int64) int {
 	return seconds
 }
 
+// WorkerConfig holds background job concurrency configuration.
+type WorkerConfig struct {
+	MaxParallelJobs int `mapstructure:"max_parallel_jobs"`
+}
+
 // DatabaseConfig holds database configuration
 type DatabaseConfig struct {
 	Driver          string `mapstructure:"driver"`            // "sqlite" or "postgres"
@@ -107,12 +121,6 @@ type AuthConfig struct {
 	AuthorizationStaleAfterMins int    `mapstructure:"authorization_stale_after_mins"` // Reconciled bearer authorization freshness window in minutes (default: 1440)
 }
 
-// QueueConfig holds job queue configuration
-type QueueConfig struct {
-	Type       string `mapstructure:"type"`        // "memory" or "valkey"
-	ValkeyAddr string `mapstructure:"valkey_addr"` // Valkey address (if type=valkey), e.g., "localhost:6379"
-}
-
 // LogConfig holds logging configuration
 type LogConfig struct {
 	Format string `mapstructure:"format"` // "json" or "text"
@@ -121,7 +129,7 @@ type LogConfig struct {
 
 // StorageConfig holds storage configuration
 type StorageConfig struct {
-	WorkspacesDir string `mapstructure:"workspaces_dir"` // Directory where workspaces are stored
+	ProjectsDir string `mapstructure:"projects_dir"` // Directory where projects are stored
 }
 
 // RegistriesConfig holds admin-provisioned OCI registry configuration.
@@ -142,12 +150,34 @@ type RegistryEntryConfig struct {
 	Restricted bool   `mapstructure:"restricted"` // when true, only granted groups can use this registry
 }
 
-// Load reads configuration from file and environment variables
-func Load() (*Config, error) {
+type loadOptions struct {
+	mode Mode
+}
+
+// LoadOption customizes configuration loading.
+type LoadOption func(*loadOptions)
+
+// WithMode sets the explicit runtime mode for this process.
+func WithMode(mode Mode) LoadOption {
+	return func(opts *loadOptions) {
+		opts.mode = mode
+	}
+}
+
+// Load reads configuration from file and environment variables.
+func Load(options ...LoadOption) (*Config, error) {
+	opts := loadOptions{mode: ModeTeam}
+	for _, option := range options {
+		option(&opts)
+	}
+	if err := validateMode(opts.mode); err != nil {
+		return nil, err
+	}
+
 	v := viper.New()
 
 	// Set defaults for local development
-	v.SetDefault("mode", "team")
+	v.SetDefault("worker.max_parallel_jobs", max(1, runtime.NumCPU()/2))
 	v.SetDefault("server.host", "")
 	v.SetDefault("server.port", 8460)
 	v.SetDefault("server.mode", "development")
@@ -169,11 +199,9 @@ func Load() (*Config, error) {
 	v.SetDefault("auth.proxy_default_role", "editor")
 	v.SetDefault("auth.device_flow_client_id", "")
 	v.SetDefault("auth.authorization_stale_after_mins", 1440)
-	v.SetDefault("queue.type", "memory")
-	v.SetDefault("queue.valkey_addr", "localhost:6379")
 	v.SetDefault("log.format", "text")
 	v.SetDefault("log.level", "info")
-	v.SetDefault("storage.workspaces_dir", "./data/workspaces")
+	v.SetDefault("storage.projects_dir", "./data/projects")
 	defaultLimits := limits.Defaults()
 	v.SetDefault("limits.request_body_bytes", defaultLimits.RequestBodyBytes)
 	v.SetDefault("limits.manifest_bytes", defaultLimits.ManifestBytes)
@@ -181,7 +209,7 @@ func Load() (*Config, error) {
 	v.SetDefault("limits.metadata_bytes", defaultLimits.MetadataBytes)
 	v.SetDefault("limits.package_string_bytes", defaultLimits.PackageStringBytes)
 	v.SetDefault("limits.active_jobs_per_user", defaultLimits.ActiveJobsPerUser)
-	v.SetDefault("limits.active_jobs_per_workspace", defaultLimits.ActiveJobsPerWorkspace)
+	v.SetDefault("limits.active_jobs_per_project", defaultLimits.ActiveJobsPerProject)
 	v.SetDefault("limits.active_jobs_global", defaultLimits.ActiveJobsGlobal)
 	v.SetDefault("limits.job_timeout_seconds", defaultLimits.JobTimeoutSeconds)
 	v.SetDefault("limits.job_cpu_seconds", defaultLimits.JobCPUSeconds)
@@ -213,8 +241,9 @@ func Load() (*Config, error) {
 
 	// viper's AutomaticEnv + Unmarshal does not propagate env vars into
 	// nested structs without explicit BindEnv. Bind each nested key so that
-	// e.g. NEBI_STORAGE_WORKSPACES_DIR overrides the workspaces_dir field.
-	_ = v.BindEnv("storage.workspaces_dir", "NEBI_STORAGE_WORKSPACES_DIR")
+	// e.g. NEBI_STORAGE_PROJECTS_DIR overrides the projects_dir field.
+	_ = v.BindEnv("worker.max_parallel_jobs", "NEBI_WORKER_MAX_PARALLEL_JOBS")
+	_ = v.BindEnv("storage.projects_dir", "NEBI_STORAGE_PROJECTS_DIR")
 	_ = v.BindEnv("server.host", "NEBI_SERVER_HOST")
 	_ = v.BindEnv("server.port", "NEBI_SERVER_PORT")
 	_ = v.BindEnv("server.mode", "NEBI_SERVER_MODE")
@@ -231,8 +260,6 @@ func Load() (*Config, error) {
 	_ = v.BindEnv("auth.oidc_client_secret", "NEBI_AUTH_OIDC_CLIENT_SECRET")
 	_ = v.BindEnv("auth.oidc_redirect_url", "NEBI_AUTH_OIDC_REDIRECT_URL")
 	_ = v.BindEnv("auth.authorization_stale_after_mins", "NEBI_AUTH_AUTHORIZATION_STALE_AFTER_MINS")
-	_ = v.BindEnv("queue.type", "NEBI_QUEUE_TYPE")
-	_ = v.BindEnv("queue.valkey_addr", "NEBI_QUEUE_VALKEY_ADDR")
 	_ = v.BindEnv("log.format", "NEBI_LOG_FORMAT")
 	_ = v.BindEnv("log.level", "NEBI_LOG_LEVEL")
 	_ = v.BindEnv("limits.request_body_bytes", "NEBI_LIMITS_REQUEST_BODY_BYTES")
@@ -241,7 +268,7 @@ func Load() (*Config, error) {
 	_ = v.BindEnv("limits.metadata_bytes", "NEBI_LIMITS_METADATA_BYTES")
 	_ = v.BindEnv("limits.package_string_bytes", "NEBI_LIMITS_PACKAGE_STRING_BYTES")
 	_ = v.BindEnv("limits.active_jobs_per_user", "NEBI_LIMITS_ACTIVE_JOBS_PER_USER")
-	_ = v.BindEnv("limits.active_jobs_per_workspace", "NEBI_LIMITS_ACTIVE_JOBS_PER_WORKSPACE")
+	_ = v.BindEnv("limits.active_jobs_per_project", "NEBI_LIMITS_ACTIVE_JOBS_PER_PROJECT")
 	_ = v.BindEnv("limits.active_jobs_global", "NEBI_LIMITS_ACTIVE_JOBS_GLOBAL")
 	_ = v.BindEnv("limits.job_timeout_seconds", "NEBI_LIMITS_JOB_TIMEOUT_SECONDS")
 	_ = v.BindEnv("limits.job_cpu_seconds", "NEBI_LIMITS_JOB_CPU_SECONDS")
@@ -252,6 +279,10 @@ func Load() (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
+	}
+	cfg.Mode = opts.mode
+	if cfg.Worker.MaxParallelJobs < 1 {
+		return nil, fmt.Errorf("worker.max_parallel_jobs must be at least 1")
 	}
 	if err := cfg.Limits.Validate(); err != nil {
 		return nil, err
@@ -266,14 +297,6 @@ func Load() (*Config, error) {
 	// Normalize base path: ensure leading slash, strip trailing slash
 	if cfg.Server.BasePath != "" {
 		cfg.Server.BasePath = "/" + strings.Trim(cfg.Server.BasePath, "/")
-	}
-
-	// Validate mode
-	switch cfg.Mode {
-	case "", "team", "local":
-		// valid — empty defaults to "team" via IsLocalMode()
-	default:
-		return nil, fmt.Errorf("invalid mode %q: must be \"local\" or \"team\"", cfg.Mode)
 	}
 
 	if err := normalizeRegistries(&cfg.Registries); err != nil {
@@ -291,6 +314,15 @@ func Load() (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+func validateMode(mode Mode) error {
+	switch mode {
+	case ModeTeam, ModeLocal:
+		return nil
+	default:
+		return fmt.Errorf("invalid mode %q: must be %q or %q", mode, ModeLocal, ModeTeam)
+	}
 }
 
 const (

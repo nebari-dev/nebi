@@ -8,18 +8,18 @@ import (
 
 // Limits captures resource caps for request payloads and asynchronous jobs.
 type Limits struct {
-	RequestBodyBytes       int64 `mapstructure:"request_body_bytes" json:"request_body_bytes"`
-	ManifestBytes          int   `mapstructure:"manifest_bytes" json:"manifest_bytes"`
-	LockBytes              int   `mapstructure:"lock_bytes" json:"lock_bytes"`
-	MetadataBytes          int   `mapstructure:"metadata_bytes" json:"metadata_bytes"`
-	PackageStringBytes     int   `mapstructure:"package_string_bytes" json:"package_string_bytes"`
-	ActiveJobsPerUser      int   `mapstructure:"active_jobs_per_user" json:"active_jobs_per_user"`
-	ActiveJobsPerWorkspace int   `mapstructure:"active_jobs_per_workspace" json:"active_jobs_per_workspace"`
-	ActiveJobsGlobal       int   `mapstructure:"active_jobs_global" json:"active_jobs_global"`
-	JobTimeoutSeconds      int   `mapstructure:"job_timeout_seconds" json:"job_timeout_seconds"`
-	JobCPUSeconds          int   `mapstructure:"job_cpu_seconds" json:"job_cpu_seconds"`
-	JobStorageBytes        int64 `mapstructure:"job_storage_bytes" json:"job_storage_bytes"`
-	JobLogBytes            int   `mapstructure:"job_log_bytes" json:"job_log_bytes"`
+	RequestBodyBytes     int64 `mapstructure:"request_body_bytes" json:"request_body_bytes"`
+	ManifestBytes        int   `mapstructure:"manifest_bytes" json:"manifest_bytes"`
+	LockBytes            int   `mapstructure:"lock_bytes" json:"lock_bytes"`
+	MetadataBytes        int   `mapstructure:"metadata_bytes" json:"metadata_bytes"`
+	PackageStringBytes   int   `mapstructure:"package_string_bytes" json:"package_string_bytes"`
+	ActiveJobsPerUser    int   `mapstructure:"active_jobs_per_user" json:"active_jobs_per_user"`
+	ActiveJobsPerProject int   `mapstructure:"active_jobs_per_project" json:"active_jobs_per_project"`
+	ActiveJobsGlobal     int   `mapstructure:"active_jobs_global" json:"active_jobs_global"`
+	JobTimeoutSeconds    int   `mapstructure:"job_timeout_seconds" json:"job_timeout_seconds"`
+	JobCPUSeconds        int   `mapstructure:"job_cpu_seconds" json:"job_cpu_seconds"`
+	JobStorageBytes      int64 `mapstructure:"job_storage_bytes" json:"job_storage_bytes"`
+	JobLogBytes          int   `mapstructure:"job_log_bytes" json:"job_log_bytes"`
 }
 
 // ProcessLimits captures OS-level limits for child processes.
@@ -31,18 +31,18 @@ type ProcessLimits struct {
 // Defaults returns the documented resource caps used when config omits a value.
 func Defaults() Limits {
 	return Limits{
-		RequestBodyBytes:       20 * 1024 * 1024,
-		ManifestBytes:          1 * 1024 * 1024,
-		LockBytes:              16 * 1024 * 1024,
-		MetadataBytes:          64 * 1024,
-		PackageStringBytes:     256,
-		ActiveJobsPerUser:      4,
-		ActiveJobsPerWorkspace: 2,
-		ActiveJobsGlobal:       100,
-		JobTimeoutSeconds:      2 * 60 * 60,
-		JobCPUSeconds:          defaultCPUSeconds(),
-		JobStorageBytes:        20 * 1024 * 1024 * 1024,
-		JobLogBytes:            4 * 1024 * 1024,
+		RequestBodyBytes:     20 * 1024 * 1024,
+		ManifestBytes:        1 * 1024 * 1024,
+		LockBytes:            16 * 1024 * 1024,
+		MetadataBytes:        64 * 1024,
+		PackageStringBytes:   256,
+		ActiveJobsPerUser:    4,
+		ActiveJobsPerProject: 2,
+		ActiveJobsGlobal:     100,
+		JobTimeoutSeconds:    2 * 60 * 60,
+		JobCPUSeconds:        defaultCPUSeconds(),
+		JobStorageBytes:      20 * 1024 * 1024 * 1024,
+		JobLogBytes:          4 * 1024 * 1024,
 	}
 }
 
@@ -64,7 +64,7 @@ func (l Limits) Validate() error {
 		{"metadata_bytes", int64(l.MetadataBytes)},
 		{"package_string_bytes", int64(l.PackageStringBytes)},
 		{"active_jobs_per_user", int64(l.ActiveJobsPerUser)},
-		{"active_jobs_per_workspace", int64(l.ActiveJobsPerWorkspace)},
+		{"active_jobs_per_project", int64(l.ActiveJobsPerProject)},
 		{"active_jobs_global", int64(l.ActiveJobsGlobal)},
 		{"job_timeout_seconds", int64(l.JobTimeoutSeconds)},
 		{"job_cpu_seconds", int64(l.JobCPUSeconds)},

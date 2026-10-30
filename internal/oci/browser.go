@@ -430,7 +430,7 @@ func PullBundle(ctx context.Context, repoRef, tag string, opts PullOptions) (*Pu
 // blob straight from the network to disk — no asset ever lands fully
 // in RAM. Honors the layer's AnnotationTitle as the on-disk relative
 // path. destDir is created if missing; caller is responsible for the
-// "empty destination" policy (see cmd/nebi/import.go).
+// "empty destination" policy (see cmd/nebi-cli/import.go).
 //
 // Implementation delegates blob transfer to oras.Copy over a file.Store
 // rooted at destDir. That gives us streamed I/O, parallel fetches

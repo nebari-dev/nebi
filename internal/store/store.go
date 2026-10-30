@@ -45,17 +45,17 @@ func Open(dataDir string) (*Store, error) {
 	// Enable WAL mode
 	db.Exec("PRAGMA journal_mode=WAL")
 
-	// AutoMigrate workspace + config/credentials tables
-	if err := db.AutoMigrate(&LocalUser{}, &LocalWorkspace{}, &LocalWorkspaceVersion{}, &Config{}, &Credentials{}, &LocalRegistry{}, &LocalPublication{}); err != nil {
+	// AutoMigrate project + config/credentials tables
+	if err := db.AutoMigrate(&LocalUser{}, &LocalProject{}, &LocalProjectVersion{}, &Config{}, &Credentials{}, &LocalRegistry{}, &LocalPublication{}); err != nil {
 		return nil, fmt.Errorf("migrating schema: %w", err)
 	}
 
 	// Drop the legacy package_manager column: pixi is the only package
 	// manager, and the column was NOT NULL so leaving it would break inserts
 	// in databases created before its removal.
-	if db.Migrator().HasColumn(&LocalWorkspace{}, "package_manager") {
-		if err := db.Migrator().DropColumn(&LocalWorkspace{}, "package_manager"); err != nil {
-			return nil, fmt.Errorf("dropping workspaces.package_manager column: %w", err)
+	if db.Migrator().HasColumn(&LocalProject{}, "package_manager") {
+		if err := db.Migrator().DropColumn(&LocalProject{}, "package_manager"); err != nil {
+			return nil, fmt.Errorf("dropping projects.package_manager column: %w", err)
 		}
 	}
 
@@ -64,7 +64,7 @@ func Open(dataDir string) (*Store, error) {
 	db.Exec("INSERT OR IGNORE INTO store_credentials (id) VALUES (1)")
 
 	// Ensure the well-known local-user row exists so that FK constraints
-	// added later by the server migration (workspace_versions.created_by
+	// added later by the server migration (project_versions.created_by
 	// -> users.id) are satisfied by records the CLI creates.
 	localUserID, err := ensureLocalUser(db)
 	if err != nil {

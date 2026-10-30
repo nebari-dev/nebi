@@ -42,7 +42,7 @@ func (e *registryEndpoint) RepositoryPathRef(repository string) string {
 // URL into host/plainHTTP. Returns ErrNotFound if the registry row
 // does not exist. id may be a uuid.UUID, a uuid string, or any value
 // gorm can compare to the OCIRegistry primary key.
-func (s *WorkspaceService) loadRegistryEndpoint(id any) (*registryEndpoint, error) {
+func (s *ProjectService) loadRegistryEndpoint(id any) (*registryEndpoint, error) {
 	var reg models.OCIRegistry
 	if err := s.db.Where("id = ?", id).First(&reg).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {

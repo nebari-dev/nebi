@@ -26,6 +26,7 @@ type subscriber struct {
 type LogBroker struct {
 	subscribers map[uuid.UUID]map[chan string]*subscriber // jobID -> set of subscribers
 	mu          sync.RWMutex
+	closed      bool
 }
 
 // NewBroker creates a new log broker
@@ -41,6 +42,10 @@ func (b *LogBroker) Subscribe(jobID uuid.UUID) chan string {
 	defer b.mu.Unlock()
 
 	ch := make(chan string, subscriberBufferSize)
+	if b.closed {
+		close(ch)
+		return ch
+	}
 
 	if b.subscribers[jobID] == nil {
 		b.subscribers[jobID] = make(map[chan string]*subscriber)
@@ -132,6 +137,20 @@ func (b *LogBroker) Close(jobID uuid.UUID) {
 		}
 		delete(b.subscribers, jobID)
 	}
+}
+
+// Shutdown ends every stream, including pending jobs that will not run. New
+// subscriptions are closed immediately so in-flight HTTP requests can finish.
+func (b *LogBroker) Shutdown() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.closed = true
+	for _, subs := range b.subscribers {
+		for ch := range subs {
+			close(ch)
+		}
+	}
+	clear(b.subscribers)
 }
 
 // HasSubscribers returns true if there are active subscribers for a job

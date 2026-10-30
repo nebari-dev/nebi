@@ -110,7 +110,7 @@ nebi import quay.io/nebari/data-science:v1.0 -o ./my-project
 
 Role-based access control and OIDC authentication let you enforce who can push, pull, or modify shared environments. Every change is tracked, so you always know who modified what and when.
 
-### Use workspaces by name from anywhere
+### Use projects by name from anywhere
 
 In data science, it's common to reuse the same environment across multiple projects. With both uv and pixi, environments are tied to project directories, so you'd have to `cd` into the source project each time:
 
@@ -119,7 +119,7 @@ cd ~/projects/geo-ml && pixi shell   # must cd into the source project
 cd ~/projects/analysis && pixi shell # must cd back again for a different project
 ```
 
-Nebi lets you activate any tracked workspace by name from anywhere:
+Nebi lets you activate any tracked project by name from anywhere:
 
 ```bash
 cd ~/projects/analysis
@@ -143,5 +143,5 @@ nebi shell geo-ml       # same environment, any directory
 
 ## Next Steps
 
-- [Installation](/installation/): Install nebi and set up your first workspace
+- [Installation](/installation/): Install nebi and set up your first project
 - [Nebi Components](/nebi-components/): How the CLI, server, and OCI registries fit together

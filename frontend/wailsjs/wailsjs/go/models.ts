@@ -1,13 +1,13 @@
 export namespace main {
 	
-	export class WailsWorkspace {
+	export class WailsProject {
 	    id: string;
 	    name: string;
 	    status: string;
 	    createdAt: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new WailsWorkspace(source);
+	        return new WailsProject(source);
 	    }
 	
 	    constructor(source: any = {}) {

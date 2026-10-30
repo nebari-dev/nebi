@@ -20,7 +20,7 @@ func testExecutor(t *testing.T) *LocalExecutor {
 	t.Helper()
 	dir := t.TempDir()
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: dir},
+		Storage: config.StorageConfig{ProjectsDir: dir},
 	}
 	exec, err := NewLocalExecutor(cfg)
 	if err != nil {
@@ -31,7 +31,7 @@ func testExecutor(t *testing.T) *LocalExecutor {
 
 func TestNewLocalExecutorUsesResolvedConfigLimits(t *testing.T) {
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
+		Storage: config.StorageConfig{ProjectsDir: t.TempDir()},
 	}
 	exec, err := NewLocalExecutor(cfg)
 	if err != nil {
@@ -42,36 +42,36 @@ func TestNewLocalExecutorUsesResolvedConfigLimits(t *testing.T) {
 	}
 }
 
-func TestDeleteWorkspace_ManagedRemovesDir(t *testing.T) {
+func TestDeleteProject_ManagedRemovesDir(t *testing.T) {
 	exec := testExecutor(t)
 
-	ws := &models.Workspace{
+	project := &models.Project{
 		ID:     uuid.New(),
 		Name:   "managed-ws",
 		Source: "managed",
 	}
 
 	// Create the directory that the executor would manage
-	wsPath := exec.GetWorkspacePath(ws)
-	if err := os.MkdirAll(wsPath, 0755); err != nil {
+	projectPath := exec.GetProjectPath(project)
+	if err := os.MkdirAll(projectPath, 0755); err != nil {
 		t.Fatal(err)
 	}
 	// Put a marker file inside
-	if err := os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte("test"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(projectPath, "pixi.toml"), []byte("test"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
 	var buf bytes.Buffer
-	if err := exec.DeleteWorkspace(context.Background(), ws, &buf); err != nil {
-		t.Fatalf("DeleteWorkspace: %v", err)
+	if err := exec.DeleteProject(context.Background(), project, &buf); err != nil {
+		t.Fatalf("DeleteProject: %v", err)
 	}
 
-	if _, err := os.Stat(wsPath); !os.IsNotExist(err) {
-		t.Fatalf("expected managed workspace directory to be removed, but it still exists")
+	if _, err := os.Stat(projectPath); !os.IsNotExist(err) {
+		t.Fatalf("expected managed project directory to be removed, but it still exists")
 	}
 }
 
-func TestDeleteWorkspace_LocalPreservesDir(t *testing.T) {
+func TestDeleteProject_LocalPreservesDir(t *testing.T) {
 	exec := testExecutor(t)
 
 	// Simulate a user's project directory
@@ -81,7 +81,7 @@ func TestDeleteWorkspace_LocalPreservesDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ws := &models.Workspace{
+	project := &models.Project{
 		ID:     uuid.New(),
 		Name:   "local-ws",
 		Source: "local",
@@ -89,13 +89,13 @@ func TestDeleteWorkspace_LocalPreservesDir(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := exec.DeleteWorkspace(context.Background(), ws, &buf); err != nil {
-		t.Fatalf("DeleteWorkspace: %v", err)
+	if err := exec.DeleteProject(context.Background(), project, &buf); err != nil {
+		t.Fatalf("DeleteProject: %v", err)
 	}
 
 	// The user's directory and files must still exist
 	if _, err := os.Stat(userProjectDir); err != nil {
-		t.Fatalf("expected local workspace directory to be preserved, got: %v", err)
+		t.Fatalf("expected local project directory to be preserved, got: %v", err)
 	}
 	if _, err := os.Stat(markerFile); err != nil {
 		t.Fatalf("expected pixi.toml to be preserved, got: %v", err)
@@ -107,101 +107,101 @@ func TestDeleteWorkspace_LocalPreservesDir(t *testing.T) {
 	}
 }
 
-func TestGetWorkspacePath_LocalReturnsUserPath(t *testing.T) {
+func TestGetProjectPath_LocalReturnsUserPath(t *testing.T) {
 	exec := testExecutor(t)
 
 	userPath := "/home/user/my-project"
-	ws := &models.Workspace{
+	project := &models.Project{
 		ID:     uuid.New(),
 		Name:   "test",
 		Source: "local",
 		Path:   userPath,
 	}
 
-	got := exec.GetWorkspacePath(ws)
+	got := exec.GetProjectPath(project)
 	if got != userPath {
 		t.Errorf("expected %q, got %q", userPath, got)
 	}
 }
 
-func TestGetWorkspacePath_ManagedReturnsDerivedPath(t *testing.T) {
+func TestGetProjectPath_ManagedReturnsDerivedPath(t *testing.T) {
 	exec := testExecutor(t)
 
-	ws := &models.Workspace{
+	project := &models.Project{
 		ID:     uuid.New(),
-		Name:   "My Workspace",
+		Name:   "My Project",
 		Source: "managed",
 	}
 
-	got := exec.GetWorkspacePath(ws)
-	expected := filepath.Join(exec.baseDir, "my-workspace-"+ws.ID.String())
+	got := exec.GetProjectPath(project)
+	expected := filepath.Join(exec.baseDir, "my-project-"+project.ID.String())
 	if got != expected {
 		t.Errorf("expected %q, got %q", expected, got)
 	}
 }
 
-func TestGetWorkspacePath_ManagedWithPersistedPathUsesPath(t *testing.T) {
+func TestGetProjectPath_ManagedWithPersistedPathUsesPath(t *testing.T) {
 	exec := testExecutor(t)
 
 	persisted := filepath.Join(t.TempDir(), "existing-managed")
-	ws := &models.Workspace{
+	project := &models.Project{
 		ID:     uuid.New(),
 		Name:   "managed",
 		Source: "managed",
 		Path:   persisted,
 	}
 
-	got := exec.GetWorkspacePath(ws)
+	got := exec.GetProjectPath(project)
 	if got != persisted {
 		t.Errorf("expected persisted path %q, got %q", persisted, got)
 	}
 }
 
-func TestGetWorkspacePath_LocalEmptyPathFallsBackToManaged(t *testing.T) {
+func TestGetProjectPath_LocalEmptyPathFallsBackToManaged(t *testing.T) {
 	exec := testExecutor(t)
 
-	ws := &models.Workspace{
+	project := &models.Project{
 		ID:     uuid.New(),
 		Name:   "edge-case",
 		Source: "local",
 		Path:   "", // empty path should fall back to managed derivation
 	}
 
-	got := exec.GetWorkspacePath(ws)
-	expected := filepath.Join(exec.baseDir, "edge-case-"+ws.ID.String())
+	got := exec.GetProjectPath(project)
+	expected := filepath.Join(exec.baseDir, "edge-case-"+project.ID.String())
 	if got != expected {
 		t.Errorf("expected managed fallback %q, got %q", expected, got)
 	}
 }
 
-func TestDeleteWorkspace_EmptySourceRemovesDir(t *testing.T) {
+func TestDeleteProject_EmptySourceRemovesDir(t *testing.T) {
 	exec := testExecutor(t)
 
-	ws := &models.Workspace{
+	project := &models.Project{
 		ID:     uuid.New(),
 		Name:   "default-source",
 		Source: "", // unset source should behave like managed
 	}
 
-	wsPath := exec.GetWorkspacePath(ws)
-	if err := os.MkdirAll(wsPath, 0755); err != nil {
+	projectPath := exec.GetProjectPath(project)
+	if err := os.MkdirAll(projectPath, 0755); err != nil {
 		t.Fatal(err)
 	}
 
 	var buf bytes.Buffer
-	if err := exec.DeleteWorkspace(context.Background(), ws, &buf); err != nil {
-		t.Fatalf("DeleteWorkspace: %v", err)
+	if err := exec.DeleteProject(context.Background(), project, &buf); err != nil {
+		t.Fatalf("DeleteProject: %v", err)
 	}
 
-	if _, err := os.Stat(wsPath); !os.IsNotExist(err) {
-		t.Fatalf("expected directory to be removed for empty-source workspace")
+	if _, err := os.Stat(projectPath); !os.IsNotExist(err) {
+		t.Fatalf("expected directory to be removed for empty-source project")
 	}
 }
 
-func TestDeleteWorkspace_ManagedDirAlreadyGone(t *testing.T) {
+func TestDeleteProject_ManagedDirAlreadyGone(t *testing.T) {
 	exec := testExecutor(t)
 
-	ws := &models.Workspace{
+	project := &models.Project{
 		ID:     uuid.New(),
 		Name:   "already-gone",
 		Source: "managed",
@@ -209,14 +209,14 @@ func TestDeleteWorkspace_ManagedDirAlreadyGone(t *testing.T) {
 
 	// Don't create the directory — it's already missing
 	var buf bytes.Buffer
-	if err := exec.DeleteWorkspace(context.Background(), ws, &buf); err != nil {
-		t.Fatalf("DeleteWorkspace on missing dir should not error, got: %v", err)
+	if err := exec.DeleteProject(context.Background(), project, &buf); err != nil {
+		t.Fatalf("DeleteProject on missing dir should not error, got: %v", err)
 	}
 }
 
-func TestLocalExecutor_CreateWorkspace_SeedDirPopulatesWorkspace(t *testing.T) {
+func TestLocalExecutor_CreateProject_SeedDirPopulatesProject(t *testing.T) {
 	cfg := &config.Config{
-		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		Storage:  config.StorageConfig{ProjectsDir: t.TempDir()},
 		PixiPath: "/usr/bin/true", // no-op pixi install
 	}
 	exec, err := NewLocalExecutor(cfg)
@@ -230,20 +230,20 @@ func TestLocalExecutor_CreateWorkspace_SeedDirPopulatesWorkspace(t *testing.T) {
 	writeSeedFile(t, stagingDir, "pixi.lock", "version: 6\n")
 	writeSeedFile(t, stagingDir, "data/sample.csv", "a,b\n1,2\n")
 
-	ws := &models.Workspace{
+	project := &models.Project{
 		ID:   uuid.New(),
 		Name: "seeded",
 	}
 
 	var log bytes.Buffer
-	err = exec.CreateWorkspace(context.Background(), ws, &log, CreateWorkspaceOptions{
+	err = exec.CreateProject(context.Background(), project, &log, CreateProjectOptions{
 		SeedDir: stagingDir,
 	})
 	if err != nil {
-		t.Fatalf("CreateWorkspace: %v\nlog: %s", err, log.String())
+		t.Fatalf("CreateProject: %v\nlog: %s", err, log.String())
 	}
 
-	envPath := exec.GetWorkspacePath(ws)
+	envPath := exec.GetProjectPath(project)
 	for rel, want := range map[string]string{
 		"pixi.toml":       "[project]\nname = \"seed\"\n",
 		"pixi.lock":       "version: 6\n",
@@ -261,15 +261,15 @@ func TestLocalExecutor_CreateWorkspace_SeedDirPopulatesWorkspace(t *testing.T) {
 
 	// Staging dir should be gone after successful seed.
 	if _, err := os.Stat(stagingDir); !os.IsNotExist(err) {
-		t.Errorf("staging dir still exists after CreateWorkspace")
+		t.Errorf("staging dir still exists after CreateProject")
 	}
 }
 
-func TestLocalExecutor_CreateWorkspaceRejectsStorageLimit(t *testing.T) {
+func TestLocalExecutor_CreateProjectRejectsStorageLimit(t *testing.T) {
 	limitCfg := limits.Defaults()
 	limitCfg.JobStorageBytes = 4
 	cfg := &config.Config{
-		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		Storage:  config.StorageConfig{ProjectsDir: t.TempDir()},
 		PixiPath: "/usr/bin/true",
 		Limits:   limitCfg,
 	}
@@ -278,15 +278,15 @@ func TestLocalExecutor_CreateWorkspaceRejectsStorageLimit(t *testing.T) {
 		t.Fatalf("NewLocalExecutor: %v", err)
 	}
 
-	ws := &models.Workspace{ID: uuid.New(), Name: "storage-limit"}
+	project := &models.Project{ID: uuid.New(), Name: "storage-limit"}
 	var log bytes.Buffer
-	err = exec.CreateWorkspace(context.Background(), ws, &log, CreateWorkspaceOptions{
+	err = exec.CreateProject(context.Background(), project, &log, CreateProjectOptions{
 		PixiToml: "[project]\nname = \"storage-limit\"\n",
 	})
 	if err == nil {
 		t.Fatal("expected storage limit error")
 	}
-	if !strings.Contains(err.Error(), "workspace storage limit exceeded") {
+	if !strings.Contains(err.Error(), "project storage limit exceeded") {
 		t.Fatalf("expected storage limit error, got %v", err)
 	}
 }
@@ -302,7 +302,7 @@ func TestLocalExecutor_StorageLimitCheckErrorsFailClosed(t *testing.T) {
 	limitCfg := limits.Defaults()
 	limitCfg.JobStorageBytes = 1 << 20
 	cfg := &config.Config{
-		Storage: config.StorageConfig{WorkspacesDir: t.TempDir()},
+		Storage: config.StorageConfig{ProjectsDir: t.TempDir()},
 		Limits:  limitCfg,
 	}
 	exec, err := NewLocalExecutor(cfg)
@@ -310,8 +310,8 @@ func TestLocalExecutor_StorageLimitCheckErrorsFailClosed(t *testing.T) {
 		t.Fatalf("NewLocalExecutor: %v", err)
 	}
 
-	workspacePath := filepath.Join(exec.baseDir, "unreadable-workspace")
-	blockedPath := filepath.Join(workspacePath, "blocked")
+	projectPath := filepath.Join(exec.baseDir, "unreadable-project")
+	blockedPath := filepath.Join(projectPath, "blocked")
 	if err := os.MkdirAll(blockedPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -326,16 +326,16 @@ func TestLocalExecutor_StorageLimitCheckErrorsFailClosed(t *testing.T) {
 	})
 
 	var log bytes.Buffer
-	err = exec.withStorageLimit(context.Background(), workspacePath, &log, func(ctx context.Context) error {
+	err = exec.withStorageLimit(context.Background(), projectPath, &log, func(ctx context.Context) error {
 		return nil
 	})
 	if err == nil {
 		t.Fatal("expected storage limit check error")
 	}
-	if !strings.Contains(err.Error(), "workspace storage limit check failed") {
+	if !strings.Contains(err.Error(), "project storage limit check failed") {
 		t.Fatalf("expected storage check failure, got %v", err)
 	}
-	if !strings.Contains(log.String(), "Workspace storage limit check failed") {
+	if !strings.Contains(log.String(), "Project storage limit check failed") {
 		t.Fatalf("expected storage check failure log, got %q", log.String())
 	}
 }
@@ -366,30 +366,30 @@ func TestDirectorySizeCountsHardLinksOnce(t *testing.T) {
 	}
 }
 
-func TestLocalExecutor_CleanupJobArtifactsManagedCreateRemovesPartialWorkspace(t *testing.T) {
+func TestLocalExecutor_CleanupJobArtifactsManagedCreateRemovesPartialProject(t *testing.T) {
 	exec := testExecutor(t)
-	ws := &models.Workspace{ID: uuid.New(), Name: "cleanup-create", Source: "managed"}
-	wsPath := exec.GetWorkspacePath(ws)
-	if err := os.MkdirAll(filepath.Join(wsPath, ".nebi", "pixi-cache"), 0o755); err != nil {
+	project := &models.Project{ID: uuid.New(), Name: "cleanup-create", Source: "managed"}
+	projectPath := exec.GetProjectPath(project)
+	if err := os.MkdirAll(filepath.Join(projectPath, ".nebi", "pixi-cache"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(wsPath, "pixi.toml"), []byte("partial"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(projectPath, "pixi.toml"), []byte("partial"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	var log bytes.Buffer
-	if err := exec.CleanupJobArtifacts(context.Background(), ws, models.JobTypeCreate, &log); err != nil {
+	if err := exec.CleanupJobArtifacts(context.Background(), project, models.JobTypeCreate, &log); err != nil {
 		t.Fatalf("CleanupJobArtifacts: %v", err)
 	}
-	if _, err := os.Stat(wsPath); !os.IsNotExist(err) {
-		t.Fatalf("expected partial managed workspace removed, stat err=%v", err)
+	if _, err := os.Stat(projectPath); !os.IsNotExist(err) {
+		t.Fatalf("expected partial managed project removed, stat err=%v", err)
 	}
 }
 
-func TestLocalExecutor_CleanupJobArtifactsLocalPreservesWorkspace(t *testing.T) {
+func TestLocalExecutor_CleanupJobArtifactsLocalPreservesProject(t *testing.T) {
 	exec := testExecutor(t)
 	userDir := t.TempDir()
-	ws := &models.Workspace{ID: uuid.New(), Name: "cleanup-local", Source: "local", Path: userDir}
+	project := &models.Project{ID: uuid.New(), Name: "cleanup-local", Source: "local", Path: userDir}
 	for _, dir := range process.WorkspaceTransientDirs(userDir) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
@@ -400,7 +400,7 @@ func TestLocalExecutor_CleanupJobArtifactsLocalPreservesWorkspace(t *testing.T) 
 	}
 
 	var log bytes.Buffer
-	if err := exec.CleanupJobArtifacts(context.Background(), ws, models.JobTypeCreate, &log); err != nil {
+	if err := exec.CleanupJobArtifacts(context.Background(), project, models.JobTypeCreate, &log); err != nil {
 		t.Fatalf("CleanupJobArtifacts: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(userDir, "pixi.toml")); err != nil {
@@ -415,8 +415,8 @@ func TestLocalExecutor_CleanupJobArtifactsLocalPreservesWorkspace(t *testing.T) 
 
 func TestLocalExecutor_CleanupJobArtifactsEnvInstallRemovesPartialEnv(t *testing.T) {
 	exec := testExecutor(t)
-	ws := &models.Workspace{ID: uuid.New(), Name: "cleanup-env", Source: "managed"}
-	envPath := exec.GetWorkspacePath(ws)
+	project := &models.Project{ID: uuid.New(), Name: "cleanup-env", Source: "managed"}
+	envPath := exec.GetProjectPath(project)
 	if err := os.MkdirAll(filepath.Join(envPath, ".pixi", "envs", "default"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -425,7 +425,7 @@ func TestLocalExecutor_CleanupJobArtifactsEnvInstallRemovesPartialEnv(t *testing
 	}
 
 	var log bytes.Buffer
-	if err := exec.CleanupJobArtifacts(context.Background(), ws, models.JobTypeEnvInstall, &log); err != nil {
+	if err := exec.CleanupJobArtifacts(context.Background(), project, models.JobTypeEnvInstall, &log); err != nil {
 		t.Fatalf("CleanupJobArtifacts: %v", err)
 	}
 	for _, path := range []string{
@@ -438,10 +438,10 @@ func TestLocalExecutor_CleanupJobArtifactsEnvInstallRemovesPartialEnv(t *testing
 	}
 }
 
-// TestLocalExecutor_CreateWorkspace_SeedDirCleanedOnInstallFailure proves
+// TestLocalExecutor_CreateProject_SeedDirCleanedOnInstallFailure proves
 // the staging dir is removed even when pixi install errors out — otherwise
 // long-lived servers leak staging dirs on every failed import.
-func TestLocalExecutor_CreateWorkspace_SeedDirCleanedOnInstallFailure(t *testing.T) {
+func TestLocalExecutor_CreateProject_SeedDirCleanedOnInstallFailure(t *testing.T) {
 	// Stub pixi: succeeds on `--version` (NewWithPath gate) but fails
 	// on every other invocation (i.e. `install`).
 	pixiBin := writeStubBinary(t, `#!/bin/sh
@@ -452,7 +452,7 @@ esac
 `)
 
 	cfg := &config.Config{
-		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		Storage:  config.StorageConfig{ProjectsDir: t.TempDir()},
 		PixiPath: pixiBin,
 	}
 	exec, err := NewLocalExecutor(cfg)
@@ -464,9 +464,9 @@ esac
 	writeSeedFile(t, stagingDir, "pixi.toml", "[project]\nname = \"x\"\n")
 	writeSeedFile(t, stagingDir, "pixi.lock", "version: 6\n")
 
-	ws := &models.Workspace{ID: uuid.New(), Name: "fail-seed"}
+	project := &models.Project{ID: uuid.New(), Name: "fail-seed"}
 	var log bytes.Buffer
-	err = exec.CreateWorkspace(context.Background(), ws, &log, CreateWorkspaceOptions{SeedDir: stagingDir})
+	err = exec.CreateProject(context.Background(), project, &log, CreateProjectOptions{SeedDir: stagingDir})
 	if err == nil {
 		t.Fatalf("expected pixi install failure, got nil; log: %s", log.String())
 	}
@@ -476,14 +476,14 @@ esac
 	}
 }
 
-// TestLocalExecutor_CreateWorkspace_PixiTomlRunsLockNotInstall proves the
+// TestLocalExecutor_CreateProject_PixiTomlRunsLockNotInstall proves the
 // server-side create path only resolves the lockfile (pixi lock) and never
 // downloads packages (pixi install).
-func TestLocalExecutor_CreateWorkspace_PixiTomlRunsLockNotInstall(t *testing.T) {
+func TestLocalExecutor_CreateProject_PixiTomlRunsLockNotInstall(t *testing.T) {
 	pixiBin, argsLog := writeRecordingStub(t)
 
 	cfg := &config.Config{
-		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		Storage:  config.StorageConfig{ProjectsDir: t.TempDir()},
 		PixiPath: pixiBin,
 	}
 	exec, err := NewLocalExecutor(cfg)
@@ -491,13 +491,13 @@ func TestLocalExecutor_CreateWorkspace_PixiTomlRunsLockNotInstall(t *testing.T) 
 		t.Fatalf("NewLocalExecutor: %v", err)
 	}
 
-	ws := &models.Workspace{ID: uuid.New(), Name: "lock-only"}
+	project := &models.Project{ID: uuid.New(), Name: "lock-only"}
 	var log bytes.Buffer
-	err = exec.CreateWorkspace(context.Background(), ws, &log, CreateWorkspaceOptions{
+	err = exec.CreateProject(context.Background(), project, &log, CreateProjectOptions{
 		PixiToml: "[project]\nname = \"lock-only\"\n",
 	})
 	if err != nil {
-		t.Fatalf("CreateWorkspace: %v\nlog: %s", err, log.String())
+		t.Fatalf("CreateProject: %v\nlog: %s", err, log.String())
 	}
 
 	calls := readStubCalls(t, argsLog)
@@ -515,7 +515,7 @@ func TestLocalExecutor_SolveEnvironment_RunsLockNotInstall(t *testing.T) {
 	pixiBin, argsLog := writeRecordingStub(t)
 
 	cfg := &config.Config{
-		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		Storage:  config.StorageConfig{ProjectsDir: t.TempDir()},
 		PixiPath: pixiBin,
 	}
 	exec, err := NewLocalExecutor(cfg)
@@ -523,13 +523,13 @@ func TestLocalExecutor_SolveEnvironment_RunsLockNotInstall(t *testing.T) {
 		t.Fatalf("NewLocalExecutor: %v", err)
 	}
 
-	ws := &models.Workspace{ID: uuid.New(), Name: "solve-lock"}
-	if err := os.MkdirAll(exec.GetWorkspacePath(ws), 0o755); err != nil {
+	project := &models.Project{ID: uuid.New(), Name: "solve-lock"}
+	if err := os.MkdirAll(exec.GetProjectPath(project), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
 	var log bytes.Buffer
-	if err := exec.SolveEnvironment(context.Background(), ws, &log); err != nil {
+	if err := exec.SolveEnvironment(context.Background(), project, &log); err != nil {
 		t.Fatalf("SolveEnvironment: %v\nlog: %s", err, log.String())
 	}
 
@@ -548,7 +548,7 @@ func TestLocalExecutor_InstallEnvironment_RunsPixiInstall(t *testing.T) {
 	pixiBin, argsLog := writeRecordingStub(t)
 
 	cfg := &config.Config{
-		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		Storage:  config.StorageConfig{ProjectsDir: t.TempDir()},
 		PixiPath: pixiBin,
 	}
 	exec, err := NewLocalExecutor(cfg)
@@ -556,13 +556,13 @@ func TestLocalExecutor_InstallEnvironment_RunsPixiInstall(t *testing.T) {
 		t.Fatalf("NewLocalExecutor: %v", err)
 	}
 
-	ws := &models.Workspace{ID: uuid.New(), Name: "install-env"}
-	if err := os.MkdirAll(exec.GetWorkspacePath(ws), 0o755); err != nil {
+	project := &models.Project{ID: uuid.New(), Name: "install-env"}
+	if err := os.MkdirAll(exec.GetProjectPath(project), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
 	var log bytes.Buffer
-	if err := exec.InstallEnvironment(context.Background(), ws, &log); err != nil {
+	if err := exec.InstallEnvironment(context.Background(), project, &log); err != nil {
 		t.Fatalf("InstallEnvironment: %v\nlog: %s", err, log.String())
 	}
 
@@ -578,8 +578,8 @@ func TestLocalExecutor_InstallEnvironment_RunsPixiInstall(t *testing.T) {
 func TestLocalExecutor_UninstallEnvironment_RemovesEnvsDir(t *testing.T) {
 	exec := testExecutor(t)
 
-	ws := &models.Workspace{ID: uuid.New(), Name: "uninstall-env"}
-	envPath := exec.GetWorkspacePath(ws)
+	project := &models.Project{ID: uuid.New(), Name: "uninstall-env"}
+	envPath := exec.GetProjectPath(project)
 	if err := os.MkdirAll(filepath.Join(envPath, ".pixi", "envs", "default"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -589,16 +589,16 @@ func TestLocalExecutor_UninstallEnvironment_RemovesEnvsDir(t *testing.T) {
 		}
 	}
 
-	if !exec.IsEnvInstalled(ws) {
+	if !exec.IsEnvInstalled(project) {
 		t.Fatalf("expected IsEnvInstalled=true with .pixi/envs present")
 	}
 
 	var log bytes.Buffer
-	if err := exec.UninstallEnvironment(context.Background(), ws, &log); err != nil {
+	if err := exec.UninstallEnvironment(context.Background(), project, &log); err != nil {
 		t.Fatalf("UninstallEnvironment: %v", err)
 	}
 
-	if exec.IsEnvInstalled(ws) {
+	if exec.IsEnvInstalled(project) {
 		t.Errorf("expected IsEnvInstalled=false after uninstall")
 	}
 	if _, err := os.Stat(filepath.Join(envPath, ".pixi", "envs")); !os.IsNotExist(err) {
@@ -613,11 +613,11 @@ func TestLocalExecutor_UninstallEnvironment_RemovesEnvsDir(t *testing.T) {
 
 func TestLocalExecutor_IsEnvInstalled_FalseWithoutEnvs(t *testing.T) {
 	exec := testExecutor(t)
-	ws := &models.Workspace{ID: uuid.New(), Name: "no-envs"}
-	if err := os.MkdirAll(exec.GetWorkspacePath(ws), 0o755); err != nil {
+	project := &models.Project{ID: uuid.New(), Name: "no-envs"}
+	if err := os.MkdirAll(exec.GetProjectPath(project), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if exec.IsEnvInstalled(ws) {
+	if exec.IsEnvInstalled(project) {
 		t.Errorf("expected IsEnvInstalled=false when .pixi/envs is absent")
 	}
 }
@@ -629,7 +629,7 @@ func TestLocalExecutor_PackageOps_UseNoInstall(t *testing.T) {
 	pixiBin, argsLog := writeRecordingStub(t)
 
 	cfg := &config.Config{
-		Storage:  config.StorageConfig{WorkspacesDir: t.TempDir()},
+		Storage:  config.StorageConfig{ProjectsDir: t.TempDir()},
 		PixiPath: pixiBin,
 	}
 	exec, err := NewLocalExecutor(cfg)
@@ -637,16 +637,16 @@ func TestLocalExecutor_PackageOps_UseNoInstall(t *testing.T) {
 		t.Fatalf("NewLocalExecutor: %v", err)
 	}
 
-	ws := &models.Workspace{ID: uuid.New(), Name: "pkg-ops"}
-	if err := os.MkdirAll(exec.GetWorkspacePath(ws), 0o755); err != nil {
+	project := &models.Project{ID: uuid.New(), Name: "pkg-ops"}
+	if err := os.MkdirAll(exec.GetProjectPath(project), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
 	var log bytes.Buffer
-	if err := exec.InstallPackages(context.Background(), ws, []string{"numpy"}, &log); err != nil {
+	if err := exec.InstallPackages(context.Background(), project, []string{"numpy"}, &log); err != nil {
 		t.Fatalf("InstallPackages: %v\nlog: %s", err, log.String())
 	}
-	if err := exec.RemovePackages(context.Background(), ws, []string{"numpy"}, &log); err != nil {
+	if err := exec.RemovePackages(context.Background(), project, []string{"numpy"}, &log); err != nil {
 		t.Fatalf("RemovePackages: %v\nlog: %s", err, log.String())
 	}
 
@@ -743,7 +743,7 @@ func TestNormalizeEnvName(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"My Workspace", "my-workspace"},
+		{"My Project", "my-project"},
 		{"hello_world", "hello-world"},
 		{"---leading---trailing---", "leading-trailing"},
 		{"ALLCAPS", "allcaps"},

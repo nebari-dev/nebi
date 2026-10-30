@@ -106,16 +106,16 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 		&models.FederatedIdentity{},
 		&models.FederatedIdentityReview{},
 		&models.Role{},
-		&models.Workspace{},
+		&models.Project{},
 		&models.Job{},
 		&models.Permission{},
 		&models.Template{},
 		&models.Package{},
 		&models.AuditLog{},
-		&models.WorkspaceVersion{},
+		&models.ProjectVersion{},
 		&models.OCIRegistry{},
 		&models.Publication{},
-		&models.WorkspaceTag{},
+		&models.ProjectTag{},
 		&models.Group{},
 		&models.GroupMember{},
 		&models.GroupPermission{},
@@ -131,9 +131,9 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 	// Drop the legacy package_manager column: pixi is the only package
 	// manager, and the column was NOT NULL so leaving it would break inserts
 	// on databases created before its removal.
-	if db.Migrator().HasColumn(&models.Workspace{}, "package_manager") {
+	if db.Migrator().HasColumn(&models.Project{}, "package_manager") {
 		if err := dropLegacyPackageManagerColumn(db); err != nil {
-			return fmt.Errorf("failed to drop workspaces.package_manager column: %w", err)
+			return fmt.Errorf("failed to drop projects.package_manager column: %w", err)
 		}
 	}
 
@@ -160,9 +160,9 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 	return nil
 }
 
-// dropLegacyPackageManagerColumn removes the legacy workspaces.package_manager
+// dropLegacyPackageManagerColumn removes the legacy projects.package_manager
 // column. On SQLite the driver emulates DropColumn by rebuilding the table
-// (create workspaces__temp, copy rows, drop workspaces, rename), and dropping
+// (create projects__temp, copy rows, drop projects, rename), and dropping
 // the old table violates the foreign keys that jobs/publications rows hold on
 // it, so enforcement is suspended for the duration. The foreign_keys pragma is
 // connection-scoped (the DSN pragma re-enables it on every new pooled
@@ -171,13 +171,13 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 // transaction.
 func dropLegacyPackageManagerColumn(db *gorm.DB) error {
 	if db.Dialector.Name() != "sqlite" {
-		return db.Migrator().DropColumn(&models.Workspace{}, "package_manager")
+		return db.Migrator().DropColumn(&models.Project{}, "package_manager")
 	}
 	return db.Connection(func(conn *gorm.DB) error {
 		if err := conn.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
 			return err
 		}
-		dropErr := conn.Migrator().DropColumn(&models.Workspace{}, "package_manager")
+		dropErr := conn.Migrator().DropColumn(&models.Project{}, "package_manager")
 		if err := conn.Exec("PRAGMA foreign_keys = ON").Error; err != nil && dropErr == nil {
 			dropErr = err
 		}
@@ -196,11 +196,11 @@ func backfillJobUserIDs(db *gorm.DB) error {
 		UPDATE jobs
 		SET user_id = (
 			SELECT owner_id
-			FROM workspaces
-			WHERE workspaces.id = jobs.workspace_id
+			FROM projects
+			WHERE projects.id = jobs.project_id
 		)
 		WHERE (user_id IS NULL OR user_id = '' OR user_id = ?)
-			AND workspace_id IN (SELECT id FROM workspaces)
+			AND project_id IN (SELECT id FROM projects)
 	`, uuid.Nil.String()).Error
 }
 
@@ -208,9 +208,9 @@ func backfillJobUserIDs(db *gorm.DB) error {
 func seedDefaultRoles(db *gorm.DB) error {
 	defaultRoles := []models.Role{
 		{Name: "admin", Description: "Full system access including user management"},
-		{Name: "owner", Description: "Full access to owned workspaces"},
-		{Name: "editor", Description: "Can modify workspaces but not delete"},
-		{Name: "viewer", Description: "Read-only access to workspaces"},
+		{Name: "owner", Description: "Full access to owned projects"},
+		{Name: "editor", Description: "Can modify projects but not delete"},
+		{Name: "viewer", Description: "Read-only access to projects"},
 	}
 
 	for _, role := range defaultRoles {

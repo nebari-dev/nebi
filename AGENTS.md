@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## What Nebi is
 
-Nebi is environment management for teams, built on top of [Pixi](https://pixi.sh). It versions, shares, and access-controls Pixi/uv environments, syncing them between machines and OCI registries (Quay, GHCR, etc.). It ships as a **single Go binary** that is simultaneously a CLI, an HTTP server, and (via Wails) a desktop app — all from one codebase.
+Nebi is environment management for teams, built on top of [Pixi](https://pixi.sh). It versions, shares, and access-controls Pixi/uv environments, syncing them between machines and OCI registries (Quay, GHCR, etc.). It ships separate CLI, server, local web, and Wails desktop executables from one codebase.
 
 ## Commands
 
@@ -17,10 +17,10 @@ ADMIN_USERNAME=admin ADMIN_PASSWORD=<pw> make dev   # frontend :8461, backend :8
 make install-tools   # installs swag, air, golangci-lint v2.12.2
 
 # Build
-make build           # full single binary: frontend build → embed → backend (bin/nebi)
-make build-frontend  # just the React app, copies dist into internal/web/dist
-make build-backend   # regenerates swagger, then go build (needs frontend/dist to exist)
-make build-desktop   # Wails desktop app → build/bin/Nebi.app
+make build           # CLI + server + local web binaries
+make build-frontend  # both React apps, copies dist into internal/frontend/dist
+make build-backend   # regenerates swagger, then go build (needs internal/frontend/dist/{client,server} to exist)
+make build-desktop   # Wails desktop app → build/bin/Nebi.app (executable: nebi-desktop)
 
 # Lint / format (match CI)
 make lint                          # go fmt + golangci-lint
@@ -30,26 +30,28 @@ cd frontend && npm run check:fix   # biome autofix
 # Tests
 make test                                    # go test -tags=e2e -v ./...
 go test -tags=e2e ./internal/service/...     # one package
-go test -tags=e2e -run TestName ./cmd/nebi   # one test
+go test -tags=e2e -run TestName ./cmd/nebi-cli   # one test
 make test-pixi                               # pixi integration tests
 cd frontend && npm test                      # vitest run (single run)
 cd frontend && npm run test:watch
 
-make swagger         # regenerate API docs from serve.go annotations into internal/swagger
+make swagger         # regenerate API docs from server annotations into internal/swagger
 ```
 
-> **Build ordering matters.** The backend embeds `frontend/dist` via `go:embed`, so the frontend must be built (or stubbed with an empty `internal/web/dist`) before the Go binary will compile. `make build` handles this; CI builds the frontend as a separate job and downloads the artifact before the backend job.
+> **Build ordering matters.** The backend embeds `internal/frontend/dist/client` and `internal/frontend/dist/server` via `go:embed`, so the frontend must be built (or stubbed with an `index.html` in each embedded app directory) before the Go binary will compile. `make build` handles this; CI builds the frontend as a separate job and downloads the artifact before the backend job.
 
 > **Go tests require `-tags=e2e`.** End-to-end tests live behind that build tag and CI always passes it. A plain `go test ./...` skips them.
 
 ## Architecture
 
-### One binary, two entry points
-- `cmd/nebi/main.go` — the **CLI + server** binary. Uses cobra; subcommands (`init`, `push`, `pull`, `diff`, `serve`, `login`, …) are one file each in `cmd/nebi/`. `serve.go` boots the HTTP server.
-- `main.go` + `app.go` (repo root, `package main`) — the **Wails desktop app**. It runs the same API router in-process on a goroutine, embedding `frontend/dist` directly. The desktop app always forces `NEBI_MODE=local`.
+### Separate Binaries
+- `cmd/nebi-cli/main.go` — the **CLI client** binary. Uses cobra; subcommands (`init`, `push`, `pull`, `diff`, `login`, …) are one file each in `cmd/nebi-cli/`.
+- `cmd/nebi-server/main.go` — the **team server** binary. It boots the HTTP API server and worker in team mode.
+- `cmd/nebi-web/main.go` — the **local web** binary. It boots the same embedded React frontend, API router, and worker in local mode.
+- `main.go` + `app.go` (repo root, `package main`) — the **Wails desktop app**. It runs the same API router in-process on a goroutine, using `internal/frontend.ClientApp()`.
 
 ### Local mode vs. team mode
-This is the single most important architectural distinction. `config.IsLocalMode()` (`NEBI_MODE`, default `team`) switches behavior throughout:
+This is the single most important architectural distinction. `config.IsLocalMode()` reflects the explicit runtime mode selected by the binary entry point:
 - **local** (desktop / single user): authentication is bypassed, casbin RBAC checks are skipped, all workspaces are visible, no encryption key needed.
 - **team** (multi-user server): real auth (basic / JWT / OIDC-via-Keycloak), casbin RBAC enforcement, owner + permission/group-based workspace filtering, encrypted credentials.
 
@@ -62,18 +64,25 @@ When changing auth, visibility, or permissions, check both branches — see `int
 - `store/` — the **CLI-side** local index, config, and credentials (keyring). Distinct from the server's `db`; this is what the CLI reads/writes on the user's machine.
 - `cliclient/` — HTTP client the CLI commands use to talk to a remote server (mirrors the handler endpoints).
 - `auth/`, `rbac/` — authenticators (local/basic/OIDC) and casbin enforcer/provider. Every externally-authenticated login path must resolve users through `auth.findOrCreateFederatedUser`, matching existing external identities only by `(issuer, subject)` and never by mutable username/email claims. If that flow returns a review-gated error, clients should check `auth.FederatedIdentityReviewErrorCode` before falling through to a generic 401.
-- `queue/` (memory or valkey) + `worker/` + `executor/` (local or docker) — async job pipeline. Long operations (env builds, installs) are enqueued, run by the worker through an executor, with output streamed via `logstream/`.
+- `queue/` (in-memory) + `worker/` + `executor/` (local or docker) — async job pipeline. Long operations (env builds, installs) are enqueued, run by the worker through an executor, with output streamed via `logstream/`.
 - `pixi/` — pixi integration (`PixiManager`). This is where pixi commands are shelled out.
 - `oci/` — push/pull of environments to OCI registries.
 - `swagger/` — generated; do not hand-edit (run `make swagger`).
 
-### Frontend (`frontend/`, embedded into the binary)
-React 19 + TypeScript + Vite, **shadcn/ui + Tailwind v4**, tooled with **Biome** (not ESLint/Prettier) and **Vitest** (jsdom + MSW). Note state management here is **Zustand** (`src/store/`, e.g. `authStore`, `modeStore`) plus **TanStack Query** for server data — `src/api/*.ts` are the typed API clients (axios), one per backend resource. Pages in `src/pages/`, feature components grouped under `src/components/`. The `modeStore`/`viewModeStore` mirror the backend local-vs-team distinction in the UI.
+### Frontend (`frontend/`, npm workspaces embedded into the binary)
+- `apps/client/` — local browser and desktop app, built to `dist/client`.
+- `apps/server/` — team server app, built to `dist/server`.
+- `packages/ui/` — shared presentational components and theme; no application API calls or stores.
+- `internal/frontend/` — embeds both builds and provides static serving and SPA fallback.
+
+Application `src/` paths below are relative to each app. `npm run dev` runs the client; `npm run dev:server` runs the server. `make dev` defaults to the server frontend (`FRONTEND_APP=client` selects the client frontend and local web backend).
+`make dev` prepares empty embed files on a clean checkout; Vite serves the UI.
+React 19 + TypeScript + Vite, **shadcn/ui + Tailwind v4**, tooled with **Biome** (not ESLint/Prettier) and **Vitest** (jsdom + MSW). Note state management here is **Zustand** (`src/store/`, e.g. `authStore`, `modeStore`) plus **TanStack Query** for server data — `src/api/*.ts` are the typed API clients (axios), one per backend resource. Pages in `src/pages/`, feature components grouped under `src/components/`. The Go entry point selects the client/server bundle; both apps retain `modeStore`, which loads runtime mode, features, and logout configuration from `/version`, and `viewModeStore` for local or remote data. Mode-dependent branches remain intact in this structural split.
 
 In dev the Vite server (`:8461`) proxies to the backend (`:8460`); in production the built `dist` is served by the Go binary itself.
 
 Two frontend invariants worth knowing (see issue #217):
-- **TanStack Query `networkMode` is per app mode**, set in `src/lib/queryClient.ts` + `src/store/modeStore.ts`: `'always'` in local (desktop) mode because the loopback backend stays reachable even when the OS reports offline, `'online'` in team mode where the API is a real network hop. Every query and mutation inherits this default — don't pin `'online'` in a code path that can run in the desktop app, or offline events will wedge loopback queries in `paused`.
+- **TanStack Query `networkMode` follows runtime mode.** Initial defaults in each app’s `src/lib/queryClient.ts` are `'always'` for the client and `'online'` for the server; the retained `modeStore` also applies the mode resolved from `/version`. Local (desktop) mode uses `'always'` because the loopback backend stays reachable even when the OS reports offline; team mode uses `'online'` because the API is a real network hop. Every query and mutation inherits this default — don't pin `'online'` in a code path that can run in the desktop app, or offline events will wedge loopback queries in `paused`.
 - **`GET /remote/server` reporting `status: 'connected'` means a server URL + token are stored** (a local DB read), not that the remote is reachable. Reachability surfaces as errors on the remote data queries; pages gate remote data and the unreachable banner with `useRemoteView()` from `src/hooks/useRemote.ts`, and consume the `isFirstLoad` / `isUnreachable` flags the remote query hooks return rather than re-deriving them from TanStack internals. Any query whose `isUnreachable` flag a page renders must keep retrying on its own — `pollWithErrorBackoff` if it polls anyway, `retryWhileUnreachable` if it shouldn't poll while healthy — because an errored query without an interval only refetches on remount (`refetchOnWindowFocus` is `false` app-wide, so focus is not a recovery path), so the banner would stick after the server recovered. Queries wrapped in `withRemoteFlags` must also pin `notifyOnChangeProps` (the wrapper spreads the result, which otherwise marks every field tracked and re-renders consumers on every poll tick). The remote workspace *detail* page (`RemoteWorkspaceDetail.tsx`) and the per-workspace hooks predate this pattern and are not yet migrated (tracked in https://github.com/nebari-dev/nebi/issues/507). If that status ever becomes a real liveness probe, revisit the banner logic, which assumes it never flips on remote outages.
 
 ## Conventions

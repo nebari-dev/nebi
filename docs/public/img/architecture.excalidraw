@@ -688,7 +688,7 @@
       "lineHeight": 1.25
     },
     {
-      "id": "valkey-chip",
+      "id": "queue-chip",
       "type": "rectangle",
       "x": 640,
       "y": 133,
@@ -709,14 +709,14 @@
       "versionNonce": 2012,
       "isDeleted": false,
       "boundElements": [
-        { "id": "valkey-text", "type": "text" }
+        { "id": "queue-text", "type": "text" }
       ],
       "updated": 1,
       "link": null,
       "locked": false
     },
     {
-      "id": "valkey-text",
+      "id": "queue-text",
       "type": "text",
       "x": 640,
       "y": 136,
@@ -740,13 +740,13 @@
       "updated": 1,
       "link": null,
       "locked": false,
-      "text": "Valkey / Memory Queue",
+      "text": "In-Memory Queue",
       "fontSize": 13,
       "fontFamily": 2,
       "textAlign": "center",
       "verticalAlign": "middle",
-      "containerId": "valkey-chip",
-      "originalText": "Valkey / Memory Queue",
+      "containerId": "queue-chip",
+      "originalText": "In-Memory Queue",
       "lineHeight": 1.25
     },
     {

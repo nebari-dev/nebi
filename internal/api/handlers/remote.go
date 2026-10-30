@@ -117,73 +117,73 @@ func (h *RemoteHandler) DisconnectServer(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "disconnected"})
 }
 
-// ListWorkspaces proxies workspace listing to the remote server.
-func (h *RemoteHandler) ListWorkspaces(c *gin.Context) {
+// ListProjects proxies project listing to the remote server.
+func (h *RemoteHandler) ListProjects(c *gin.Context) {
 	client, err := h.getClient()
 	if err != nil {
 		h.notConnected(c, err)
 		return
 	}
-	workspaces, err := client.ListWorkspaces(c.Request.Context())
+	projects, err := client.ListProjects(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
 		return
 	}
-	c.JSON(http.StatusOK, workspaces)
+	c.JSON(http.StatusOK, projects)
 }
 
-// GetWorkspace proxies a single workspace fetch to the remote server.
-func (h *RemoteHandler) GetWorkspace(c *gin.Context) {
+// GetProject proxies a single project fetch to the remote server.
+func (h *RemoteHandler) GetProject(c *gin.Context) {
 	client, err := h.getClient()
 	if err != nil {
 		h.notConnected(c, err)
 		return
 	}
 	id := c.Param("id")
-	ws, err := client.GetWorkspace(c.Request.Context(), id)
+	project, err := client.GetProject(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
 		return
 	}
-	c.JSON(http.StatusOK, ws)
+	c.JSON(http.StatusOK, project)
 }
 
-// CreateWorkspace proxies workspace creation to the remote server.
-func (h *RemoteHandler) CreateWorkspace(c *gin.Context) {
+// CreateProject proxies project creation to the remote server.
+func (h *RemoteHandler) CreateProject(c *gin.Context) {
 	client, err := h.getClient()
 	if err != nil {
 		h.notConnected(c, err)
 		return
 	}
-	var req cliclient.CreateWorkspaceRequest
+	var req cliclient.CreateProjectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		handleBindError(c, err)
 		return
 	}
-	ws, err := client.CreateWorkspace(c.Request.Context(), req)
+	project, err := client.CreateProject(c.Request.Context(), req)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
 		return
 	}
-	c.JSON(http.StatusCreated, ws)
+	c.JSON(http.StatusCreated, project)
 }
 
-// DeleteWorkspace proxies workspace deletion to the remote server.
-func (h *RemoteHandler) DeleteWorkspace(c *gin.Context) {
+// DeleteProject proxies project deletion to the remote server.
+func (h *RemoteHandler) DeleteProject(c *gin.Context) {
 	client, err := h.getClient()
 	if err != nil {
 		h.notConnected(c, err)
 		return
 	}
 	id := c.Param("id")
-	if err := client.DeleteWorkspace(c.Request.Context(), id); err != nil {
+	if err := client.DeleteProject(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
 		return
 	}
 	c.Status(http.StatusNoContent)
 }
 
-// ListVersions proxies version listing for a remote workspace.
+// ListVersions proxies version listing for a remote project.
 func (h *RemoteHandler) ListVersions(c *gin.Context) {
 	client, err := h.getClient()
 	if err != nil {
@@ -191,7 +191,7 @@ func (h *RemoteHandler) ListVersions(c *gin.Context) {
 		return
 	}
 	id := c.Param("id")
-	versions, err := client.GetWorkspaceVersions(c.Request.Context(), id)
+	versions, err := client.GetProjectVersions(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
 		return
@@ -199,7 +199,7 @@ func (h *RemoteHandler) ListVersions(c *gin.Context) {
 	c.JSON(http.StatusOK, versions)
 }
 
-// ListTags proxies tag listing for a remote workspace.
+// ListTags proxies tag listing for a remote project.
 func (h *RemoteHandler) ListTags(c *gin.Context) {
 	client, err := h.getClient()
 	if err != nil {
@@ -207,7 +207,7 @@ func (h *RemoteHandler) ListTags(c *gin.Context) {
 		return
 	}
 	id := c.Param("id")
-	tags, err := client.GetWorkspaceTags(c.Request.Context(), id)
+	tags, err := client.GetProjectTags(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
 		return
@@ -215,7 +215,7 @@ func (h *RemoteHandler) ListTags(c *gin.Context) {
 	c.JSON(http.StatusOK, tags)
 }
 
-// GetPixiToml proxies pixi.toml fetch for a remote workspace.
+// GetPixiToml proxies pixi.toml fetch for a remote project.
 // Returns JSON {"content": "..."} for uniform frontend consumption.
 func (h *RemoteHandler) GetPixiToml(c *gin.Context) {
 	client, err := h.getClient()
@@ -227,7 +227,7 @@ func (h *RemoteHandler) GetPixiToml(c *gin.Context) {
 	var result struct {
 		Content string `json:"content"`
 	}
-	if _, err := client.Get(c.Request.Context(), "/workspaces/"+id+"/pixi-toml", &result); err != nil {
+	if _, err := client.Get(c.Request.Context(), "/projects/"+id+"/pixi-toml", &result); err != nil {
 		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("Remote error: %v", err)})
 		return
 	}

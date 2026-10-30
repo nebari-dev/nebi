@@ -7,37 +7,37 @@ import (
 )
 
 // In local mode the router skips InitEnforcer because middleware bypasses
-// RBAC anyway. But WorkspaceService.Create still calls
-// rbac.GrantWorkspaceAccess unconditionally, so the data-layer functions
+// RBAC anyway. But ProjectService.Create still calls
+// rbac.GrantProjectAccess unconditionally, so the data-layer functions
 // must tolerate a nil enforcer instead of nil-deref panicking. These
 // tests pin that contract.
 
-func TestGrantWorkspaceAccess_NilEnforcer_NoPanic(t *testing.T) {
+func TestGrantProjectAccess_NilEnforcer_NoPanic(t *testing.T) {
 	saved := enforcer
 	enforcer = nil
 	t.Cleanup(func() { enforcer = saved })
 
-	if err := GrantWorkspaceAccess(uuid.New(), uuid.New(), "owner"); err != nil {
+	if err := GrantProjectAccess(uuid.New(), uuid.New(), "owner"); err != nil {
 		t.Fatalf("expected nil-safe no-op, got error: %v", err)
 	}
 }
 
-func TestRevokeWorkspaceAccess_NilEnforcer_NoPanic(t *testing.T) {
+func TestRevokeProjectAccess_NilEnforcer_NoPanic(t *testing.T) {
 	saved := enforcer
 	enforcer = nil
 	t.Cleanup(func() { enforcer = saved })
 
-	if err := RevokeWorkspaceAccess(uuid.New(), uuid.New()); err != nil {
+	if err := RevokeProjectAccess(uuid.New(), uuid.New()); err != nil {
 		t.Fatalf("expected nil-safe no-op, got error: %v", err)
 	}
 }
 
-func TestCanReadWorkspace_NilEnforcer_AllowsAll(t *testing.T) {
+func TestCanReadProject_NilEnforcer_AllowsAll(t *testing.T) {
 	saved := enforcer
 	enforcer = nil
 	t.Cleanup(func() { enforcer = saved })
 
-	allowed, err := CanReadWorkspace(uuid.New(), uuid.New())
+	allowed, err := CanReadProject(uuid.New(), uuid.New())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -46,12 +46,12 @@ func TestCanReadWorkspace_NilEnforcer_AllowsAll(t *testing.T) {
 	}
 }
 
-func TestCanWriteWorkspace_NilEnforcer_AllowsAll(t *testing.T) {
+func TestCanWriteProject_NilEnforcer_AllowsAll(t *testing.T) {
 	saved := enforcer
 	enforcer = nil
 	t.Cleanup(func() { enforcer = saved })
 
-	allowed, err := CanWriteWorkspace(uuid.New(), uuid.New())
+	allowed, err := CanWriteProject(uuid.New(), uuid.New())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -39,6 +39,11 @@ func testSetup(t *testing.T, isLocal bool) (*ProjectService, *gorm.DB) {
 	if err != nil {
 		t.Fatalf("db handle: %v", err)
 	}
+	t.Cleanup(func() {
+		if err := sqlDB.Close(); err != nil {
+			t.Errorf("close db: %v", err)
+		}
+	})
 	sqlDB.SetMaxOpenConns(30)
 	sqlDB.SetMaxIdleConns(5)
 

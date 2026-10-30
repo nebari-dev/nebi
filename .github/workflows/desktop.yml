@@ -56,12 +56,11 @@ jobs:
       APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-      WINDOWS_SIGNING_CERT_B64: ${{ secrets.WINDOWS_SIGNING_CERT_B64 }}
-      WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Load pinned tool versions
+        id: tool_versions
         run: bash .github/scripts/load-tool-versions.sh
 
       - name: Set up Go
@@ -72,7 +71,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20'
+          node-version: ${{ steps.tool_versions.outputs.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
@@ -96,9 +95,13 @@ jobs:
       - name: Validate Windows release signing inputs
         if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
         shell: pwsh
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         run: |
           $ErrorActionPreference = "Stop"
-          foreach ($name in "WINDOWS_SIGNING_CERT_B64", "WINDOWS_SIGNING_CERT_PASSWORD") {
+          foreach ($name in "AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET") {
             if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
               throw "Missing required Windows signing input: $name"
             }
@@ -119,8 +122,8 @@ jobs:
           npm ci
           npm run build
           cd ..
-          rm -rf internal/web/dist
-          cp -r frontend/dist internal/web/dist
+          rm -rf internal/frontend/dist
+          cp -r frontend/dist internal/frontend/dist
 
       # Pin to the wails version in go.mod; unpinned installs broke when wails v2.13.0
       # started requiring a newer Go than this workflow uses.
@@ -217,33 +220,29 @@ jobs:
           xcrun stapler staple build/bin/Nebi.app
           xcrun stapler validate build/bin/Nebi.app
 
+      # Azure Artifact Signing keeps the private key in Azure; the action
+      # sends nebi-desktop.exe's digest there to be signed.
       - name: Sign Windows app
+        if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://eus.codesigning.azure.net/
+          signing-account-name: apollo-internal
+          certificate-profile-name: openteams-win-signing
+          files: ${{ github.workspace }}\build\bin\nebi-desktop.exe
+
+      - name: Verify Windows signature
         if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
-          $certPath = Join-Path $env:RUNNER_TEMP "windows-signing.pfx"
-          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERT_B64))
-
-          $kitsRoot = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
-          $signtoolPath = $null
-          if (Test-Path $kitsRoot) {
-            $signtoolPath = (Get-ChildItem $kitsRoot -Recurse -Filter signtool.exe |
-              Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
-              Select-Object -First 1).FullName
+          $sig = Get-AuthenticodeSignature build/bin/nebi-desktop.exe
+          $sig | Format-List Status, StatusMessage, SignerCertificate, TimeStamperCertificate
+          if ($sig.Status -ne "Valid") {
+            throw "nebi-desktop.exe signature is not valid: $($sig.Status)"
           }
-          if (-not $signtoolPath) {
-            $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
-            if ($signtool) {
-              $signtoolPath = $signtool.Source
-            }
-          }
-          if (-not $signtoolPath) {
-            throw "signtool.exe not found"
-          }
-
-          & $signtoolPath sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f $certPath /p $env:WINDOWS_SIGNING_CERT_PASSWORD build/bin/nebi-desktop.exe
-          & $signtoolPath verify /pa /v build/bin/nebi-desktop.exe
 
       # macOS .app bundles must be packaged into a single archive before they
       # leave the runner. Uploading the raw app directory strips the

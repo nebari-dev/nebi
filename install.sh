@@ -251,9 +251,11 @@ fi
 install_binary "${NEBI_TMPDIR}/nebi" "nebi"
 info "nebi installed to ${INSTALL_DIR}/nebi"
 
+# Releases before the binary split only contain nebi.
 for bin in nebi-server nebi-web; do
     if [ ! -x "${NEBI_TMPDIR}/${bin}" ]; then
-        error "${bin} not found in ${ARCHIVE_NAME}."
+        info "${bin} is not included in this release; skipping."
+        continue
     fi
     install_binary "${NEBI_TMPDIR}/${bin}" "$bin"
     info "${bin} installed to ${INSTALL_DIR}/${bin}"

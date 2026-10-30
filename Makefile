@@ -1,4 +1,4 @@
-.PHONY: help build build-frontend build-cli build-server build-web build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker test-pixi build-all build-platforms build-desktop
+.PHONY: help build build-frontend prepare-frontend-embed build-cli build-server build-web build-backend run swagger migrate test clean install-tools dev build-docker-pixi build-docker test-pixi build-all build-platforms build-desktop
 
 # Variables
 include .github/tool-versions.env
@@ -7,6 +7,15 @@ CLI_BINARY=nebi
 SERVER_BINARY=nebi-server
 WEB_BINARY=nebi-web
 FRONTEND_DIR=frontend
+FRONTEND_APP?=server
+# Each frontend needs the backend entry point with the same runtime mode.
+ifeq ($(FRONTEND_APP),server)
+DEV_BACKEND=nebi-server
+else ifeq ($(FRONTEND_APP),client)
+DEV_BACKEND=nebi-web
+else
+$(error FRONTEND_APP must be server or client)
+endif
 BUILD_DIR=bin
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -34,12 +43,9 @@ swagger: ## Generate Swagger documentation
 	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g main.go -d cmd/nebi-server,internal/api,internal/service,internal/models,internal/limits,internal/metrics,internal/auth -o internal/swagger --packageName swagger --exclude output,cross-platform-example
 	@echo "Swagger docs generated at /internal/swagger"
 
-build-frontend: ## Build frontend and copy to internal/web/dist
+build-frontend: ## Build frontend and copy to internal/frontend/dist
 	@echo "Building frontend..."
-	@cd $(FRONTEND_DIR) && npm ci && npm run build
-	@echo "Copying frontend build to internal/web/dist..."
-	@rm -rf internal/web/dist
-	@cp -r $(FRONTEND_DIR)/dist internal/web/dist
+	@cd $(FRONTEND_DIR) && npm ci && npm run build:embed
 	@echo "Frontend build complete"
 
 build-cli: ## Build CLI client binary
@@ -72,7 +78,13 @@ run: build-server ## Run the team server (without hot reload)
 	fi
 	@bash -c 'set -a; [ -f .env ] && source .env; set +a; $(BUILD_DIR)/$(SERVER_BINARY)'
 
-dev: swagger ## Run with hot reload (frontend + backend)
+# Vite serves the UI during development. Go still needs a file in each embed
+# directory to compile; touch preserves real bundles if they already exist.
+prepare-frontend-embed: ## Prepare empty frontend assets for dev and Go analysis
+	@mkdir -p internal/frontend/dist/client internal/frontend/dist/server
+	@touch internal/frontend/dist/client/index.html internal/frontend/dist/server/index.html
+
+dev: prepare-frontend-embed swagger ## Run with hot reload (frontend + backend)
 	@echo "Starting nebi in development mode with hot reload..."
 	@if [ ! -d "frontend/node_modules" ]; then \
 		echo "Frontend dependencies not found. Installing..."; \
@@ -92,7 +104,9 @@ dev: swagger ## Run with hot reload (frontend + backend)
 	@echo "Press Ctrl+C to stop all services"
 	@echo ""
 	@command -v air >/dev/null 2>&1 || { echo "air not found, installing..."; go install github.com/air-verse/air@$(AIR_VERSION); }
-	@bash -c 'export PATH="$$PATH:$$(go env GOPATH)/bin"; set -a; [ -f .env ] && source .env; set +a; trap "kill 0" EXIT; (cd frontend && npm run dev) & air'
+# .air.toml always builds and runs nebi-server. Override both settings so the
+# client frontend uses nebi-web, while preserving Swagger generation on rebuild.
+	@bash -c 'export PATH="$$PATH:$$(go env GOPATH)/bin"; set -a; [ -f .env ] && source .env; set +a; trap "kill 0" EXIT; (cd frontend && npm run dev:$(FRONTEND_APP)) & air --build.cmd "make swagger && go build -o ./tmp/$(DEV_BACKEND) ./cmd/$(DEV_BACKEND)" --build.bin "./tmp/$(DEV_BACKEND)"'
 
 migrate: ## Run database migrations
 	@echo "Running migrations..."
@@ -106,7 +120,7 @@ clean: ## Clean build artifacts
 	@echo "Cleaning..."
 	@rm -rf bin/
 	@rm -rf internal/swagger/
-	@rm -rf internal/web/dist
+	@rm -rf internal/frontend/dist
 	@rm -rf $(FRONTEND_DIR)/dist
 	@rm -f nebi.db
 	@echo "Clean complete"

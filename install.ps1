@@ -188,10 +188,12 @@ try {
     Copy-Item -Path $CliSource -Destination (Join-Path $InstallDir "nebi.exe") -Force
     Write-Info "nebi installed to $(Join-Path $InstallDir 'nebi.exe')"
 
+    # Releases before the binary split only contain nebi.exe.
     foreach ($Name in @("nebi-server.exe", "nebi-web.exe")) {
         $Source = Join-Path $ExtractDir $Name
         if (-not (Test-Path $Source)) {
-            Write-Err "$Name not found in $ArchiveName."
+            Write-Info "$Name is not included in this release; skipping."
+            continue
         }
         Copy-Item -Path $Source -Destination (Join-Path $InstallDir $Name) -Force
         Write-Info "$Name installed to $(Join-Path $InstallDir $Name)"

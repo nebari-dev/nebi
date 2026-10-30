@@ -5,8 +5,9 @@
 # Build artifacts
 bin/
 tmp/
-internal/web/dist/
+internal/frontend/dist/
 output/
+**/node_modules/
 
 # Database
 *.db

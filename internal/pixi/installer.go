@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	pixiVersion     = "v0.58.0"
+	pixiVersion     = "v0.82.1"
 	pixiDownloadURL = "https://github.com/prefix-dev/pixi/releases/download/%s/pixi-%s.tar.gz"
 )
 

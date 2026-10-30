@@ -1,0 +1,43 @@
+import { Button } from '@nebi/ui/components/ui/button';
+import { Upload } from 'lucide-react';
+import { useState } from 'react';
+import { PublishDialog } from './PublishDialog';
+
+interface PublishButtonProps {
+  environmentId: string;
+  environmentName: string;
+  environmentStatus: string;
+}
+
+export const PublishButton = ({
+  environmentId,
+  environmentName,
+  environmentStatus,
+}: PublishButtonProps) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen(true)}
+        disabled={environmentStatus !== 'ready'}
+        title={
+          environmentStatus !== 'ready'
+            ? 'Project must be ready to publish'
+            : 'Publish to OCI Registry'
+        }
+      >
+        <Upload className="h-4 w-4 mr-2" />
+        Publish
+      </Button>
+      <PublishDialog
+        open={open}
+        onOpenChange={setOpen}
+        environmentId={environmentId}
+        environmentName={environmentName}
+      />
+    </>
+  );
+};

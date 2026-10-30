@@ -29,6 +29,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Load pinned tool versions
+        id: tool_versions
         run: bash .github/scripts/load-tool-versions.sh
 
       - name: Check Go toolchain is current (strict)
@@ -38,6 +39,12 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
+
+      # Source analysis loads packages with go:embed. A clean checkout has no
+      # built UI, so satisfy both embed patterns without requiring a Node build.
+      # Shipped binaries still receive the real bundles in their build jobs.
+      - name: Create stub frontend bundles for embed
+        run: make prepare-frontend-embed
 
       - name: govulncheck (source)
         run: |
@@ -76,7 +83,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20'
+          node-version: ${{ steps.tool_versions.outputs.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 

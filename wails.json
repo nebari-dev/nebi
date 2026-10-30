@@ -3,7 +3,7 @@
   "name": "Nebi",
   "outputfilename": "nebi-desktop",
   "frontend:install": "npm ci",
-  "frontend:build": "npm run build",
+  "frontend:build": "npm run build:embed",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "wailsjsdir": "./frontend/wailsjs",

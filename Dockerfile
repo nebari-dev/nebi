@@ -49,7 +49,10 @@ FROM ghcr.io/prefix-dev/pixi:0.82.1-noble@sha256:f83a5fc6d1bb9a2ced27faf2b26c04c
 WORKDIR /app
 
 # Pull in security updates for packages from the pinned base image (e.g.
-# openssl), then install CA certificates (required for OIDC/HTTPS connections)
+# openssl), then install CA certificates (required for OIDC/HTTPS connections).
+# CI passes the build date so a cached copy of this layer can't pin stale
+# packages for more than a day.
+ARG APT_REFRESH_DATE=unset
 RUN apt-get update \
     && apt-get upgrade -y \
     && apt-get install -y ca-certificates git \

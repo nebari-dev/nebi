@@ -68,6 +68,14 @@ jobs:
         # UI shows "vdev".
         run: echo "version=$(git describe --tags --always --dirty)" >> "$GITHUB_OUTPUT"
 
+      # The apt upgrade layer's cache key otherwise never changes, so the GHA
+      # layer cache would keep serving packages from whenever it was first
+      # built and miss Ubuntu security fixes. Computed once so the build and
+      # push steps share the layer that was scanned.
+      - name: Compute apt refresh date
+        id: apt_refresh
+        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
@@ -133,6 +141,7 @@ jobs:
           file: ./Dockerfile
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
+            APT_REFRESH_DATE=${{ steps.apt_refresh.outputs.date }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: ${{ matrix.platform }}
@@ -210,6 +219,7 @@ jobs:
           file: ./Dockerfile
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
+            APT_REFRESH_DATE=${{ steps.apt_refresh.outputs.date }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true

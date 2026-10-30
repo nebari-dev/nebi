@@ -8,10 +8,8 @@ import {
 import { CodeBlock, CodeBlockBody } from '@nebi/ui/components/ui/code-block';
 import { ChevronDown, ChevronRight, Loader2, Radio } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { useJobLogStream } from '@/hooks/useJobLogStream';
 import { useJobs } from '@/hooks/useJobs';
-import { useRemoteJobs, useRemoteView } from '@/hooks/useRemote';
 import { capitalize } from '@/lib/strings';
 import type { Job, JobType } from '@/types';
 
@@ -33,26 +31,16 @@ const typeColors: Record<JobType, string> = {
   env_uninstall: 'bg-orange-100 text-orange-800 border-orange-300',
 };
 
-const JobCard = ({
-  job,
-  isFirst,
-  isRemote,
-}: {
-  job: Job;
-  isFirst: boolean;
-  isRemote: boolean;
-}) => {
+const JobCard = ({ job, isFirst }: { job: Job; isFirst: boolean }) => {
   const [expanded, setExpanded] = useState(isFirst);
   // Initialize hook with existing logs from database so SSE appends instead of replacing
-  // Only use streaming for local jobs - remote jobs don't support SSE
   const { logs: streamedLogs, isStreaming } = useJobLogStream(
-    isRemote ? '' : job.id, // Disable streaming for remote jobs
-    isRemote ? 'completed' : job.status,
+    job.id,
+    job.status,
     job.logs || '',
   );
 
-  // For remote jobs, just use static logs; for local jobs, use streamed logs
-  const displayLogs = isRemote ? job.logs || '' : streamedLogs;
+  const displayLogs = streamedLogs;
 
   return (
     <Card>
@@ -178,40 +166,14 @@ const JobCard = ({
 export const Jobs = ({ projectId }: { projectId?: string } = {}) => {
   const { data: jobs, isLoading: jobsLoading } = useJobs();
 
-  // View mode support for local desktop app
-  const { viewMode, isRemoteConnected, isRemoteView } = useRemoteView();
-  const {
-    data: remoteJobs,
-    isFirstLoad: remoteFirstLoad,
-    isUnreachable: remoteIsUnreachable,
-  } = useRemoteJobs(isRemoteConnected);
-
-  // Show jobs based on view mode when connected to remote
-  const { displayedJobs, isRemote } = useMemo(() => {
-    let base: typeof jobs;
-    let remote: boolean;
-    if (!isRemoteConnected) {
-      base = jobs || [];
-      remote = false;
-    } else if (viewMode === 'local') {
-      base = jobs || [];
-      remote = false;
-    } else {
-      base = remoteJobs || [];
-      remote = true;
-    }
-    return {
-      displayedJobs: projectId
-        ? (base || []).filter((j) => j.project_id === projectId)
-        : base || [],
-      isRemote: remote,
-    };
-  }, [jobs, remoteJobs, isRemoteConnected, viewMode, projectId]);
-
-  const remoteUnreachable = isRemoteView && remoteIsUnreachable;
-  // Full-page spinner only until the remote list first resolves or errors
-  // (see isFirstLoad in useRemote.ts).
-  const isLoading = jobsLoading || (isRemoteConnected && remoteFirstLoad);
+  const displayedJobs = useMemo(
+    () =>
+      projectId
+        ? (jobs || []).filter((job) => job.project_id === projectId)
+        : jobs || [],
+    [jobs, projectId],
+  );
+  const isLoading = jobsLoading;
 
   if (isLoading) {
     return (
@@ -230,20 +192,13 @@ export const Jobs = ({ projectId }: { projectId?: string } = {}) => {
         </p>
       </div>
 
-      {remoteUnreachable && <RemoteUnreachableBanner />}
-
       <div className="space-y-4">
         {displayedJobs.map((job, index) => (
-          <JobCard
-            key={job.id}
-            job={job}
-            isFirst={index === 0}
-            isRemote={isRemote}
-          />
+          <JobCard key={job.id} job={job} isFirst={index === 0} />
         ))}
       </div>
 
-      {displayedJobs.length === 0 && !remoteUnreachable && (
+      {displayedJobs.length === 0 && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">No jobs yet</p>
         </div>

@@ -17,7 +17,6 @@ vi.mock('@/hooks/useProjects', () => ({
 
 vi.mock('@/hooks/useRemote', () => ({
   useRemoteView: () => ({
-    isLocalMode: true,
     viewMode: 'local',
     isRemoteConnected: false,
     isRemoteView: false,

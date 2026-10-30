@@ -28,6 +28,18 @@ test('client bypasses login and exposes local settings', async ({ page }) => {
   await expect(page.getByText('Remote Server Connection')).toBeVisible();
 });
 
+test('client stays local when runtime configuration fails', async ({ page }) => {
+  await page.route('**/api/v1/version', (route) =>
+    fulfillJson(route, { error: 'Backend starting' }, 503),
+  );
+  await page.goto('/login');
+  await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
+  await expect(page.getByPlaceholder('Password')).toHaveCount(0);
+  await expect(
+    page.getByRole('link', { name: 'Settings', exact: true }),
+  ).toBeVisible();
+});
+
 test('client keeps its remote view and unreachable banner', async ({
   page,
 }) => {

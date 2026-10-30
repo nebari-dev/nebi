@@ -1,7 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { useModeStore } from '@/store/modeStore';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { useViewModeStore } from '@/store/viewModeStore';
 import {
   mockFederatedIdentity,
@@ -80,7 +79,6 @@ describe('retryWhileUnreachable', () => {
 
 describe('useRemoteView', () => {
   it('reports the remote view when local mode, connected, and viewMode is remote', async () => {
-    useModeStore.setState({ mode: 'local', features: {}, loading: false });
     useViewModeStore.setState({ viewMode: 'remote' });
     server.use(
       http.get('/api/v1/remote/server', () =>
@@ -101,7 +99,6 @@ describe('useRemoteView', () => {
   });
 
   it('is not connected when no remote server is configured', async () => {
-    useModeStore.setState({ mode: 'local', features: {}, loading: false });
     useViewModeStore.setState({ viewMode: 'remote' });
     server.use(
       http.get('/api/v1/remote/server', () =>
@@ -118,7 +115,6 @@ describe('useRemoteView', () => {
   });
 
   it('is not the remote view when viewMode is local', async () => {
-    useModeStore.setState({ mode: 'local', features: {}, loading: false });
     useViewModeStore.setState({ viewMode: 'local' });
     server.use(
       http.get('/api/v1/remote/server', () =>
@@ -141,25 +137,11 @@ describe('useRemoteView', () => {
 
 describe('useRemoteServer', () => {
   beforeEach(() => {
-    useModeStore.setState({ mode: 'local', features: {}, loading: false });
     server.use(
       http.get('/api/v1/remote/server', () =>
         HttpResponse.json(mockRemoteServer),
       ),
     );
-  });
-
-  afterEach(() => {
-    useModeStore.setState({ mode: null, features: {}, loading: true });
-  });
-
-  it('does not fetch in team mode', async () => {
-    useModeStore.setState({ mode: 'team', features: {}, loading: false });
-    const { result } = renderHook(() => useRemoteServer(), {
-      wrapper: createWrapper(),
-    });
-    expect(result.current.fetchStatus).toBe('idle');
-    expect(result.current.isPending).toBe(true);
   });
 
   it('fetches remote server info', async () => {

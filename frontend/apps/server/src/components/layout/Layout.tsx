@@ -7,7 +7,7 @@ import {
   NavLink,
 } from '@nebi/ui/components/ui/navigation-menu';
 import type { ThemeMode } from '@nebi/ui/hooks/use-theme-preference';
-import { Boxes, ExternalLink, Settings, Shield } from 'lucide-react';
+import { Boxes, ExternalLink, Shield } from 'lucide-react';
 import {
   Outlet,
   NavLink as RouterNavLink,
@@ -15,14 +15,11 @@ import {
   useNavigate,
 } from 'react-router-dom';
 import { useIsAdmin } from '@/hooks/useAdmin';
-import { useHostJobNotifications } from '@/hooks/useHostJobNotifications';
-import { useRemoteView } from '@/hooks/useRemote';
 import { useVersion } from '@/hooks/useVersion';
 import { getBrandingLogoUrl } from '@/lib/brandingConfig';
 import { openExternal } from '@/lib/openExternal';
 import { useAuthStore } from '@/store/authStore';
-import { useModeStore } from '@/store/modeStore';
-import { useViewModeStore } from '@/store/viewModeStore';
+import { useRuntimeConfigStore } from '@/store/runtimeConfigStore';
 import { ProfileMenu } from './ProfileMenu';
 
 type LayoutProps = {
@@ -60,19 +57,10 @@ export const Layout = ({
   const { user, clearAuth } = useAuthStore();
   const navigate = useNavigate();
   const { data: isAdmin } = useIsAdmin();
-  const { setViewMode } = useViewModeStore();
   const { data: versionInfo } = useVersion();
-  // Layout never unmounts, so this call keeps a permanent observer on the
-  // remote/server query — the app's only connection-status self-heal (see the
-  // useRemoteServer comment in hooks/useRemote.ts).
-  const { isLocalMode, viewMode, isRemoteConnected } = useRemoteView();
-  useHostJobNotifications();
-
   const location = useLocation();
   const isAdminPage = location.pathname.startsWith('/admin');
-
-  const logoutUrl = useModeStore((s) => s.logoutUrl);
-
+  const logoutUrl = useRuntimeConfigStore((s) => s.logoutUrl);
   const handleLogout = () => {
     clearAuth();
     if (logoutUrl) {
@@ -118,58 +106,8 @@ export const Layout = ({
           >
             Registries
           </NavLink>
-          {isLocalMode && (
-            <NavLink
-              render={<RouterNavLink to="/settings" />}
-              active={location.pathname === '/settings'}
-              icon={<Settings className="h-4 w-4" />}
-            >
-              Settings
-            </NavLink>
-          )}
         </MenuBarNav>
         <MenuBarActions className="gap-2">
-          {/* View Mode Toggle - only show when remote is connected */}
-          {isRemoteConnected && (
-            <div className="flex items-center gap-0.5 p-[3px] bg-muted rounded-lg border border-border">
-              <button
-                type="button"
-                onClick={() => setViewMode('local')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                  viewMode === 'local'
-                    ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground-strong hover:text-foreground'
-                }`}
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full transition-all ${
-                    viewMode === 'local'
-                      ? 'bg-primary shadow-[0_0_6px] shadow-primary/40'
-                      : 'bg-muted-foreground/50'
-                  }`}
-                />
-                Local
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('remote')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                  viewMode === 'remote'
-                    ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground-strong hover:text-foreground'
-                }`}
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full transition-all ${
-                    viewMode === 'remote'
-                      ? 'bg-primary shadow-[0_0_6px] shadow-primary/40'
-                      : 'bg-muted-foreground/50'
-                  }`}
-                />
-                Remote
-              </button>
-            </div>
-          )}
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -193,14 +131,12 @@ export const Layout = ({
                 <Shield className="h-4 w-4" />
               </Button>
             )}
-            {!isLocalMode && (
-              <ProfileMenu
-                user={user}
-                themeMode={themeMode}
-                onThemeChange={onThemeChange}
-                onLogout={handleLogout}
-              />
-            )}
+            <ProfileMenu
+              user={user}
+              themeMode={themeMode}
+              onThemeChange={onThemeChange}
+              onLogout={handleLogout}
+            />
           </div>
         </MenuBarActions>
       </NavigationMenu>

@@ -10,16 +10,8 @@ import { Input } from '@nebi/ui/components/ui/input';
 import { Loader2, Plus } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useCreateRegistry } from '@/hooks/useRegistries';
-import { useCreateRemoteRegistry } from '@/hooks/useRemote';
 
-interface CreateRegistryDialogProps {
-  /** Create the registry on the connected remote server instead of locally. */
-  isRemote?: boolean;
-}
-
-export const CreateRegistryDialog = ({
-  isRemote = false,
-}: CreateRegistryDialogProps) => {
+export const CreateRegistryDialog = () => {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
@@ -40,9 +32,7 @@ export const CreateRegistryDialog = ({
   const apiTokenId = useId();
   const nameInputRef = useRef<HTMLInputElement>(null);
 
-  const createLocalMutation = useCreateRegistry();
-  const createRemoteMutation = useCreateRemoteRegistry();
-  const createMutation = isRemote ? createRemoteMutation : createLocalMutation;
+  const createMutation = useCreateRegistry();
 
   useEffect(() => {
     if (open) {

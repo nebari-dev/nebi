@@ -277,55 +277,6 @@ export interface PublishRequest {
   tag: string;
 }
 
-// Remote server types
-export interface RemoteServer {
-  id?: string;
-  url: string;
-  username: string;
-  status: 'connected' | 'disconnected';
-}
-
-export interface ConnectServerRequest {
-  url: string;
-  username: string;
-  password: string;
-}
-
-export interface RemoteProject {
-  id: string;
-  name: string;
-  status: string;
-  size_bytes: number;
-  owner?: {
-    id: string;
-    username: string;
-    email: string;
-  };
-  created_at: string;
-  updated_at: string;
-}
-
-export interface RemoteProjectVersion {
-  id: string;
-  project_id: string;
-  version_number: number;
-  manifest_version?: string;
-  created_at: string;
-  description?: string;
-}
-
-export interface RemoteProjectTag {
-  tag: string;
-  version_number: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CreateRemoteProjectRequest {
-  name: string;
-  pixi_toml?: string;
-}
-
 // Registry browse types
 export interface RegistryRepository {
   name: string;

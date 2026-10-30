@@ -2,7 +2,6 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HttpResponse, http } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
 import {
   mockFederatedIdentity,
@@ -14,7 +13,6 @@ import { FederatedIdentityReviews } from './FederatedIdentityReviews';
 
 describe('FederatedIdentityReviews', () => {
   beforeEach(() => {
-    useModeStore.setState({ mode: 'team', loading: false });
     useViewModeStore.setState({ viewMode: 'local' });
     server.use(
       http.get('/api/v1/remote/server', () =>
@@ -210,7 +208,6 @@ describe('FederatedIdentityReviews', () => {
   });
 
   it('shows the remote unreachable banner when remote reviews fail', async () => {
-    useModeStore.setState({ mode: 'local', loading: false });
     useViewModeStore.setState({ viewMode: 'remote' });
     server.use(
       http.get('/api/v1/remote/server', () =>

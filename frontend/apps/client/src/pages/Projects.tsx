@@ -78,8 +78,7 @@ export const Projects = () => {
   const deleteMutation = useDeleteProject();
   const createRemoteMutation = useCreateRemoteProject();
   const deleteRemoteMutation = useDeleteRemoteProject();
-  const { isLocalMode, viewMode, isRemoteConnected, isRemoteView } =
-    useRemoteView();
+  const { viewMode, isRemoteConnected, isRemoteView } = useRemoteView();
   const {
     data: remoteProjects,
     isFirstLoad: remoteFirstLoad,
@@ -356,8 +355,8 @@ export const Projects = () => {
                 projectName={getTomlName(pixiToml) || ''}
               />
 
-              {/* Path field — only for local target in local mode */}
-              {createTarget === 'local' && isLocalMode && (
+              {/* Path field — only for the local target */}
+              {createTarget === 'local' && (
                 <div className="space-y-2">
                   <label htmlFor={localPathId} className="text-sm font-medium">
                     Path (optional)

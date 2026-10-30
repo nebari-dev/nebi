@@ -40,23 +40,6 @@ vi.mock('@/hooks/useRegistries', () => ({
   useUpdateRegistry: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
-vi.mock('@/hooks/useRemote', () => ({
-  useRemoteView: () => ({
-    isLocalMode: false,
-    viewMode: 'local',
-    isRemoteConnected: false,
-    isRemoteView: false,
-  }),
-  useRemoteAdminRegistries: () => ({
-    data: undefined,
-    isFirstLoad: false,
-    isUnreachable: false,
-  }),
-  useCreateRemoteRegistry: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useUpdateRemoteRegistry: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useDeleteRemoteRegistry: () => ({ mutateAsync: vi.fn(), isPending: false }),
-}));
-
 describe('RegistryManagement', () => {
   it('shows a Managed badge for config-managed registries', () => {
     renderWithProviders(<RegistryManagement />);

@@ -1,13 +1,11 @@
 import { HttpResponse, http } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useModeStore } from '@/store/modeStore';
 import { server } from '@/test/handlers';
 import { apiClient } from './client';
 
 beforeEach(() => {
   localStorage.clear();
   localStorage.setItem('auth_token', 'stale-token');
-  useModeStore.setState({ mode: 'team', features: {}, loading: false });
 });
 
 afterEach(() => {

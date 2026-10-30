@@ -9,7 +9,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@nebi/ui/components/ui/card';
-import { Input } from '@nebi/ui/components/ui/input';
 import {
   Table,
   TableBody,
@@ -19,40 +18,17 @@ import {
   TableRow,
 } from '@nebi/ui/components/ui/table';
 import { Check, Copy, Download, Loader2, Plus, Trash2, X } from 'lucide-react';
-import { useId, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { InstallControls } from '@/components/project/InstallControls';
-import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import {
   useCreateProject,
   useDeleteProject,
   useProjects,
 } from '@/hooks/useProjects';
-import {
-  useCreateRemoteProject,
-  useDeleteRemoteProject,
-  useRemoteProjects,
-  useRemoteView,
-} from '@/hooks/useRemote';
 import { getInstallStatusColor, getProjectStatusColor } from '@/lib/status';
 import { capitalize } from '@/lib/strings';
 import { useProjectNavStore } from '@/store/projectNavStore';
-import type { InstallStatus } from '@/types';
-
-type UnifiedProject = {
-  id: string;
-  name: string;
-  status: string;
-  created_at: string;
-  location: 'local' | 'remote';
-  // Local-only fields
-  source?: 'local' | 'managed';
-  path?: string;
-  owner_id?: string;
-  owner?: { id: string; username: string; email: string };
-  size_formatted?: string;
-  install_status?: InstallStatus;
-};
 
 const DEFAULT_PIXI_TOML = `[workspace]
 name = ""
@@ -76,25 +52,12 @@ export const Projects = () => {
   const { data: projects, isLoading } = useProjects();
   const createMutation = useCreateProject();
   const deleteMutation = useDeleteProject();
-  const createRemoteMutation = useCreateRemoteProject();
-  const deleteRemoteMutation = useDeleteRemoteProject();
-  const { isLocalMode, viewMode, isRemoteConnected, isRemoteView } =
-    useRemoteView();
-  const {
-    data: remoteProjects,
-    isFirstLoad: remoteFirstLoad,
-    isUnreachable: remoteIsUnreachable,
-  } = useRemoteProjects(isRemoteConnected);
-
   const [showCreate, setShowCreate] = useState(false);
-  const [createTarget, setCreateTarget] = useState<'local' | 'server'>('local');
-  const [localPath, setLocalPath] = useState('');
   const [pixiToml, setPixiToml] = useState(DEFAULT_PIXI_TOML);
 
   const [confirmDelete, setConfirmDelete] = useState<{
     id: string;
     name: string;
-    location: 'local' | 'remote';
   } | null>(null);
   const [error, setError] = useState('');
   const [envJobNotice, setEnvJobNotice] = useState<{
@@ -104,57 +67,7 @@ export const Projects = () => {
     type: string;
   } | null>(null);
   const [copiedPullId, setCopiedPullId] = useState<string | null>(null);
-  const localPathId = useId();
-
-  // Filter projects based on view mode (when remote connected) or show all local (when not)
-  const displayedProjects = useMemo<UnifiedProject[]>(() => {
-    // If not connected to remote, always show local projects
-    if (!isRemoteConnected) {
-      if (!projects) return [];
-      return projects.map((project) => ({
-        id: project.id,
-        name: project.name,
-        status: project.status,
-        created_at: project.created_at,
-        location: 'local' as const,
-        source: project.source,
-        path: project.path,
-        owner_id: project.owner_id,
-        owner: project.owner,
-        size_formatted: project.size_formatted,
-        install_status: project.install_status,
-      }));
-    }
-
-    // When connected, show based on viewMode
-    if (viewMode === 'local') {
-      if (!projects) return [];
-      return projects.map((project) => ({
-        id: project.id,
-        name: project.name,
-        status: project.status,
-        created_at: project.created_at,
-        location: 'local' as const,
-        source: project.source,
-        path: project.path,
-        owner_id: project.owner_id,
-        owner: project.owner,
-        size_formatted: project.size_formatted,
-        install_status: project.install_status,
-      }));
-    } else {
-      if (!remoteProjects) return [];
-      return remoteProjects.map((project) => ({
-        id: project.id,
-        name: project.name,
-        status: project.status,
-        created_at: project.created_at,
-        location: 'remote' as const,
-        owner: project.owner,
-      }));
-    }
-  }, [projects, remoteProjects, isRemoteConnected, viewMode]);
-
+  const displayedProjects = projects || [];
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     const projectName = getTomlName(pixiToml);
@@ -168,35 +81,15 @@ export const Projects = () => {
     setError('');
     try {
       const tomlContent = pixiToml;
-
-      if (createTarget === 'server' && isRemoteConnected) {
-        await createRemoteMutation.mutateAsync({
-          name: projectName,
-          pixi_toml: tomlContent,
-        });
-      } else {
-        const project = await createMutation.mutateAsync({
-          name: projectName,
-          pixi_toml: tomlContent,
-          ...(localPath.trim()
-            ? { path: localPath.trim(), source: 'local' as const }
-            : {}),
-        });
-
-        // Reset form
-        setLocalPath('');
-        setPixiToml(DEFAULT_PIXI_TOML);
-        setShowCreate(false);
-
-        setPendingTab('jobs');
-        navigate(`/projects/${project.id}`);
-        return;
-      }
-
-      // Reset form
-      setLocalPath('');
+      const project = await createMutation.mutateAsync({
+        name: projectName,
+        pixi_toml: tomlContent,
+      });
       setPixiToml(DEFAULT_PIXI_TOML);
       setShowCreate(false);
+
+      setPendingTab('jobs');
+      navigate(`/projects/${project.id}`);
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
       const errorMessage =
@@ -211,11 +104,7 @@ export const Projects = () => {
 
     setError('');
     try {
-      if (confirmDelete.location === 'remote') {
-        await deleteRemoteMutation.mutateAsync(confirmDelete.id);
-      } else {
-        await deleteMutation.mutateAsync(confirmDelete.id);
-      }
+      await deleteMutation.mutateAsync(confirmDelete.id);
       setConfirmDelete(null);
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
@@ -239,17 +128,9 @@ export const Projects = () => {
     setCopiedPullId(projectId);
     setTimeout(() => setCopiedPullId(null), 2000);
   };
-
-  const isCreatePending =
-    createMutation.isPending || createRemoteMutation.isPending;
-  const isDeletePending =
-    deleteMutation.isPending || deleteRemoteMutation.isPending;
-
-  const remoteUnreachable = isRemoteView && remoteIsUnreachable;
-
-  // Full-page spinner only until the remote list first resolves or errors
-  // (see isFirstLoad in useRemote.ts).
-  if (isLoading || (isRemoteConnected && remoteFirstLoad)) {
+  const isCreatePending = createMutation.isPending;
+  const isDeletePending = deleteMutation.isPending;
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -270,7 +151,6 @@ export const Projects = () => {
           <SplitButton
             onPrimary={() => {
               setShowCreate(true);
-              setCreateTarget(isRemoteView ? 'server' : 'local');
               setError('');
             }}
             primaryLabel={
@@ -296,8 +176,6 @@ export const Projects = () => {
           {error}
         </div>
       )}
-
-      {remoteUnreachable && <RemoteUnreachableBanner />}
 
       {envJobNotice && (
         <div className="rounded-md border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-700">
@@ -356,24 +234,6 @@ export const Projects = () => {
                 projectName={getTomlName(pixiToml) || ''}
               />
 
-              {/* Path field — only for local target in local mode */}
-              {createTarget === 'local' && isLocalMode && (
-                <div className="space-y-2">
-                  <label htmlFor={localPathId} className="text-sm font-medium">
-                    Path (optional)
-                  </label>
-                  <Input
-                    id={localPathId}
-                    placeholder="e.g., /home/user/projects/my-project"
-                    value={localPath}
-                    onChange={(e) => setLocalPath(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Specify a local directory path for this project.
-                  </p>
-                </div>
-              )}
-
               <div className="flex gap-2 justify-end">
                 <Button
                   type="button"
@@ -416,17 +276,13 @@ export const Projects = () => {
         <TableBody>
           {displayedProjects.map((project) => (
             <TableRow
-              key={`${project.location}-${project.id}`}
+              key={project.id}
               className="cursor-pointer"
-              onClick={() =>
-                project.location === 'remote'
-                  ? navigate(`/remote/projects/${project.id}`)
-                  : navigate(`/projects/${project.id}`)
-              }
+              onClick={() => navigate(`/projects/${project.id}`)}
             >
               <TableCell className="font-medium">
                 <div className="flex items-center gap-2">{project.name}</div>
-                {project.location === 'local' && project.path && (
+                {project.path && (
                   <div
                     className="text-xs text-muted-foreground font-normal mt-0.5 font-mono truncate max-w-sm"
                     title={project.path}
@@ -450,48 +306,43 @@ export const Projects = () => {
                 </div>
               </TableCell>
               <TableCell className="text-muted-foreground">
-                {project.location === 'local'
-                  ? project.size_formatted || '-'
-                  : '-'}
+                {project.size_formatted || '-'}
               </TableCell>
               <TableCell className="text-muted-foreground">
                 {new Date(project.created_at).toLocaleDateString()}
               </TableCell>
               <TableCell>
                 <div className="flex justify-end gap-2">
-                  {project.location === 'local' && (
-                    <InstallControls
-                      projectId={project.id}
-                      installStatus={project.install_status}
-                      appearance="icon"
-                      onStarted={(job) =>
-                        setEnvJobNotice({
-                          projectId: project.id,
-                          projectName: project.name,
-                          jobId: job.id,
-                          type: job.type,
-                        })
+                  <InstallControls
+                    projectId={project.id}
+                    installStatus={project.install_status}
+                    appearance="icon"
+                    onStarted={(job) =>
+                      setEnvJobNotice({
+                        projectId: project.id,
+                        projectName: project.name,
+                        jobId: job.id,
+                        type: job.type,
+                      })
+                    }
+                  />
+                  {project.source !== 'local' && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) =>
+                        handleCopyPull(e, project.name, project.id)
                       }
-                    />
+                      aria-label={`Copy pull command for ${project.name}`}
+                      title="Copy nebi pull command"
+                    >
+                      {copiedPullId === project.id ? (
+                        <Check className="h-4 w-4" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
                   )}
-                  {project.location === 'local' &&
-                    project.source !== 'local' && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) =>
-                          handleCopyPull(e, project.name, project.id)
-                        }
-                        aria-label={`Copy pull command for ${project.name}`}
-                        title="Copy nebi pull command"
-                      >
-                        {copiedPullId === project.id ? (
-                          <Check className="h-4 w-4" />
-                        ) : (
-                          <Copy className="h-4 w-4" />
-                        )}
-                      </Button>
-                    )}
 
                   <Button
                     variant="ghost"
@@ -501,7 +352,6 @@ export const Projects = () => {
                       setConfirmDelete({
                         id: project.id,
                         name: project.name,
-                        location: project.location,
                       });
                     }}
                     disabled={isDeletePending}
@@ -517,7 +367,7 @@ export const Projects = () => {
         </TableBody>
       </Table>
 
-      {displayedProjects.length === 0 && !showCreate && !remoteUnreachable && (
+      {displayedProjects.length === 0 && !showCreate && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">
             No projects yet. Create your first one!
@@ -530,7 +380,7 @@ export const Projects = () => {
         onOpenChange={(open) => !open && setConfirmDelete(null)}
         onConfirm={handleDelete}
         title="Delete Project"
-        description={`Are you sure you want to delete "${confirmDelete?.name}"${confirmDelete?.location === 'remote' ? ' from the remote server' : ''}? This action cannot be undone. All data associated with this project will be permanently removed.`}
+        description={`Are you sure you want to delete "${confirmDelete?.name}"? This action cannot be undone. All data associated with this project will be permanently removed.`}
         confirmText="Delete"
         cancelText="Cancel"
         variant="destructive"

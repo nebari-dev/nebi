@@ -6,12 +6,10 @@ import {
   NEBI_JOB_COMPLETED_MESSAGE,
   postToHost,
 } from '@/lib/hostBridge';
-import { useModeStore } from '@/store/modeStore';
 import type { JobStatus } from '@/types';
 
 export function useHostJobNotifications(): void {
-  const isLocalMode = useModeStore((s) => s.isLocalMode());
-  const enabled = isEmbedded() && isLocalMode;
+  const enabled = isEmbedded();
   const previousStatuses = useRef<Record<string, JobStatus>>({});
   const initialized = useRef(false);
 

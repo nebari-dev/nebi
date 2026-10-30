@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import {
   expectNoCriticalOrSeriousA11yViolations,
   expectResolvedTheme,
+  fulfillJson,
   mockApi,
   selectTheme,
   signIn,
@@ -48,13 +49,6 @@ const majorPages: Array<{
     },
   },
   {
-    path: '/settings',
-    assertReady: async (page) => {
-      await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
-      await expect(page.getByText('Remote Server Connection')).toBeVisible();
-    },
-  },
-  {
     path: '/admin',
     assertReady: async (page) => {
       await expect(page.getByText('Quick Actions')).toBeVisible();
@@ -97,19 +91,42 @@ const majorPages: Array<{
       ).toBeVisible();
     },
   },
-  {
-    path: '/remote/projects/remote-1',
-    assertReady: async (page) => {
-      await expect(
-        page.getByRole('heading', { name: 'remote-python' }),
-      ).toBeVisible();
-      await expect(page.getByText('Remote project details')).toBeVisible();
-    },
-  },
 ];
 
 test.beforeEach(async ({ page }) => {
   await mockApi(page);
+});
+
+for (const versionState of ['unavailable', 'local'] as const) {
+  test(`server still requires login when version configuration is ${versionState}`, async ({
+    page,
+  }) => {
+    await page.route('**/api/v1/version', (route) =>
+      versionState === 'unavailable'
+        ? fulfillJson(route, { error: 'Backend starting' }, 503)
+        : fulfillJson(route, { mode: 'local', features: {} }),
+    );
+    await page.goto('/projects');
+    await expect(page.getByPlaceholder('Password')).toBeVisible();
+    await expect(page).toHaveURL(/\/login$/);
+  });
+}
+
+test('server pages use team APIs without local-only remote requests', async ({
+  page,
+}) => {
+  const remoteRequests: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.startsWith('/api/v1/remote/')) {
+      remoteRequests.push(request.url());
+    }
+  });
+  await signIn(page);
+  for (const { path, assertReady } of majorPages) {
+    await page.goto(path);
+    await assertReady(page);
+  }
+  expect(remoteRequests).toEqual([]);
 });
 
 test('honors system dark mode and theme menu choices with a11y checks @a11y', async ({

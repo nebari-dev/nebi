@@ -250,24 +250,6 @@ export const handlers = [
     () => new HttpResponse(null, { status: 204 }),
   ),
 
-  http.get(`${BASE}/remote/admin/federated-identity-reviews`, () =>
-    HttpResponse.json([mockFederatedIdentityReview]),
-  ),
-
-  http.post(`${BASE}/remote/admin/federated-identity-reviews/:id/approve`, () =>
-    HttpResponse.json(mockFederatedIdentity, { status: 201 }),
-  ),
-
-  http.post(
-    `${BASE}/remote/admin/federated-identity-reviews/:id/reject`,
-    () => new HttpResponse(null, { status: 204 }),
-  ),
-
-  http.delete(
-    `${BASE}/remote/admin/federated-identity-reviews/:id`,
-    () => new HttpResponse(null, { status: 204 }),
-  ),
-
   // Registries
   http.get(`${BASE}/registries`, () => HttpResponse.json([mockRegistry])),
 

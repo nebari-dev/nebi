@@ -10,52 +10,17 @@ import {
   TableRow,
 } from '@nebi/ui/components/ui/table';
 import { Loader2, Pencil, Star, Trash2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { CreateRegistryDialog } from '@/components/admin/CreateRegistryDialog';
 import { EditRegistryDialog } from '@/components/admin/EditRegistryDialog';
-import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import { useDeleteRegistry, useRegistries } from '@/hooks/useRegistries';
-import {
-  useDeleteRemoteRegistry,
-  useRemoteAdminRegistries,
-  useRemoteView,
-} from '@/hooks/useRemote';
 import type { OCIRegistry } from '@/types';
 
 export const RegistryManagement = () => {
   const { data: registries, isLoading: registriesLoading } = useRegistries();
-  const deleteLocalMutation = useDeleteRegistry();
-  const deleteRemoteMutation = useDeleteRemoteRegistry();
-
-  // View mode support
-  const { viewMode, isRemoteConnected, isRemoteView } = useRemoteView();
-
-  // Delete/edit must target the same server the displayed rows came from.
-  const deleteRegistryMutation = isRemoteView
-    ? deleteRemoteMutation
-    : deleteLocalMutation;
-  const {
-    data: remoteRegistries,
-    isFirstLoad: remoteFirstLoad,
-    isUnreachable: remoteIsUnreachable,
-  } = useRemoteAdminRegistries(isRemoteView);
-
-  // Show registries based on view mode
-  const displayedRegistries = useMemo(() => {
-    if (!isRemoteConnected) {
-      return registries || [];
-    }
-    if (viewMode === 'local') {
-      return registries || [];
-    } else {
-      return remoteRegistries || [];
-    }
-  }, [registries, remoteRegistries, isRemoteConnected, viewMode]);
-
-  const remoteUnreachable = isRemoteView && remoteIsUnreachable;
-  // Full-page spinner only until the remote list first resolves or errors
-  // (see isFirstLoad in useRemote.ts).
-  const isLoading = registriesLoading || (isRemoteView && remoteFirstLoad);
+  const deleteRegistryMutation = useDeleteRegistry();
+  const displayedRegistries = registries || [];
+  const isLoading = registriesLoading;
 
   const [editingRegistry, setEditingRegistry] = useState<OCIRegistry | null>(
     null,
@@ -100,7 +65,7 @@ export const RegistryManagement = () => {
             Manage OCI registries for project publishing
           </p>
         </div>
-        <CreateRegistryDialog isRemote={isRemoteView} />
+        <CreateRegistryDialog />
       </div>
 
       {error && (
@@ -108,8 +73,6 @@ export const RegistryManagement = () => {
           {error}
         </div>
       )}
-
-      {remoteUnreachable && <RemoteUnreachableBanner />}
 
       <Table aria-label="OCI registries">
         <TableHeader>
@@ -216,7 +179,7 @@ export const RegistryManagement = () => {
         </TableBody>
       </Table>
 
-      {displayedRegistries.length === 0 && !remoteUnreachable && (
+      {displayedRegistries.length === 0 && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">
             No registries configured. Add your first registry to start
@@ -230,7 +193,6 @@ export const RegistryManagement = () => {
           registry={editingRegistry}
           open={!!editingRegistry}
           onOpenChange={(open) => !open && setEditingRegistry(null)}
-          isRemote={isRemoteView}
         />
       )}
 

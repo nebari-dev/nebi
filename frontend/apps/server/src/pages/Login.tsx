@@ -7,7 +7,7 @@ import { apiClient } from '@/api/client';
 import { getApiBaseUrl, getBasePath } from '@/lib/basePath';
 import { getBrandingLogoUrl } from '@/lib/brandingConfig';
 import { useAuthStore } from '@/store/authStore';
-import { useModeStore } from '@/store/modeStore';
+import { useRuntimeConfigStore } from '@/store/runtimeConfigStore';
 
 type LoginProps = {
   isDarkMode: boolean;
@@ -42,29 +42,20 @@ export const Login = ({ isDarkMode }: LoginProps) => {
   const [searchParams] = useSearchParams();
 
   const setAuth = useAuthStore((state) => state.setAuth);
-  const isLocalMode = useModeStore((s) => s.isLocalMode());
   const navigate = useNavigate();
-
-  // In local mode, redirect straight to projects
-  useEffect(() => {
-    if (isLocalMode) {
-      navigate('/projects');
-    }
-  }, [isLocalMode, navigate]);
 
   // Auto-login via OIDC gateway proxy (RFC 6749 §4.1 authorization code pattern):
   // 1. Redirect to /auth/session (outside /api/, so gateway preserves cookies)
   // 2. Backend reads IdToken cookie → generates single-use code → redirects to /login?code=xxx
   // 3. Frontend exchanges code for JWT via POST /api/v1/auth/code/exchange
   useEffect(() => {
-    if (isLocalMode) return;
     if (searchParams.get('code') || searchParams.get('error')) return;
     if (sessionStorage.getItem('nebi_logout')) {
       sessionStorage.removeItem('nebi_logout');
       setSessionChecked(true);
       return;
     }
-    const logoutUrl = useModeStore.getState().logoutUrl;
+    const logoutUrl = useRuntimeConfigStore.getState().logoutUrl;
     if (logoutUrl) {
       // Use the non-API redirect endpoint so gateway proxies preserve OIDC
       // cookies before Nebi exchanges the resulting single-use code.
@@ -73,14 +64,12 @@ export const Login = ({ isDarkMode }: LoginProps) => {
     }
     // No gateway detected — show login form
     setSessionChecked(true);
-  }, [isLocalMode, searchParams]);
+  }, [searchParams]);
 
   // Exchange single-use authorization code for JWT.
   // Used by both gateway auto-login (/auth/session) and direct OIDC callback
   // (/api/v1/auth/oidc/callback). Both redirect here with ?code=<single-use-code>.
   useEffect(() => {
-    if (isLocalMode) return;
-
     const code = searchParams.get('code');
     const oauthError = searchParams.get('error');
 
@@ -108,7 +97,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
       };
       exchangeCode();
     }
-  }, [isLocalMode, searchParams, setAuth, navigate]);
+  }, [searchParams, setAuth, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,9 +116,6 @@ export const Login = ({ isDarkMode }: LoginProps) => {
       setLoading(false);
     }
   };
-
-  // Don't render login form in local mode
-  if (isLocalMode) return null;
 
   // Wait for session check before showing the form
   if (!sessionChecked) return null;

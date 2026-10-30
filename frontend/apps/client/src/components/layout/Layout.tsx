@@ -6,7 +6,6 @@ import {
   NavigationMenu,
   NavLink,
 } from '@nebi/ui/components/ui/navigation-menu';
-import type { ThemeMode } from '@nebi/ui/hooks/use-theme-preference';
 import { Boxes, ExternalLink, Settings, Shield } from 'lucide-react';
 import {
   Outlet,
@@ -20,15 +19,10 @@ import { useRemoteView } from '@/hooks/useRemote';
 import { useVersion } from '@/hooks/useVersion';
 import { getBrandingLogoUrl } from '@/lib/brandingConfig';
 import { openExternal } from '@/lib/openExternal';
-import { useAuthStore } from '@/store/authStore';
-import { useModeStore } from '@/store/modeStore';
 import { useViewModeStore } from '@/store/viewModeStore';
-import { ProfileMenu } from './ProfileMenu';
 
 type LayoutProps = {
-  themeMode: ThemeMode;
   isDarkMode: boolean;
-  onThemeChange: (themeMode: ThemeMode) => void;
 };
 
 const registriesIcon = (
@@ -51,13 +45,7 @@ const registriesIcon = (
     <path d="M20.2 20.2l1.8 1.8" />
   </svg>
 );
-
-export const Layout = ({
-  themeMode,
-  isDarkMode,
-  onThemeChange,
-}: LayoutProps) => {
-  const { user, clearAuth } = useAuthStore();
+export const Layout = ({ isDarkMode }: LayoutProps) => {
   const navigate = useNavigate();
   const { data: isAdmin } = useIsAdmin();
   const { setViewMode } = useViewModeStore();
@@ -65,27 +53,11 @@ export const Layout = ({
   // Layout never unmounts, so this call keeps a permanent observer on the
   // remote/server query — the app's only connection-status self-heal (see the
   // useRemoteServer comment in hooks/useRemote.ts).
-  const { isLocalMode, viewMode, isRemoteConnected } = useRemoteView();
+  const { viewMode, isRemoteConnected } = useRemoteView();
   useHostJobNotifications();
 
   const location = useLocation();
   const isAdminPage = location.pathname.startsWith('/admin');
-
-  const logoutUrl = useModeStore((s) => s.logoutUrl);
-
-  const handleLogout = () => {
-    clearAuth();
-    if (logoutUrl) {
-      // Signal Login.tsx to NOT auto-redirect back to /auth/session
-      sessionStorage.setItem('nebi_logout', '1');
-      // Redirect to the gateway's OIDC logout path (e.g. Envoy's /logout)
-      // to clear IdToken cookies and terminate the Keycloak session.
-      window.location.href = logoutUrl;
-    } else {
-      navigate('/login');
-    }
-  };
-
   return (
     <div className="min-h-screen bg-canvas flex flex-col">
       <NavigationMenu className="h-14 shrink-0 justify-between border-border bg-header pl-4 text-header-foreground">
@@ -118,15 +90,13 @@ export const Layout = ({
           >
             Registries
           </NavLink>
-          {isLocalMode && (
-            <NavLink
-              render={<RouterNavLink to="/settings" />}
-              active={location.pathname === '/settings'}
-              icon={<Settings className="h-4 w-4" />}
-            >
-              Settings
-            </NavLink>
-          )}
+          <NavLink
+            render={<RouterNavLink to="/settings" />}
+            active={location.pathname === '/settings'}
+            icon={<Settings className="h-4 w-4" />}
+          >
+            Settings
+          </NavLink>
         </MenuBarNav>
         <MenuBarActions className="gap-2">
           {/* View Mode Toggle - only show when remote is connected */}
@@ -192,14 +162,6 @@ export const Layout = ({
               >
                 <Shield className="h-4 w-4" />
               </Button>
-            )}
-            {!isLocalMode && (
-              <ProfileMenu
-                user={user}
-                themeMode={themeMode}
-                onThemeChange={onThemeChange}
-                onLogout={handleLogout}
-              />
             )}
           </div>
         </MenuBarActions>

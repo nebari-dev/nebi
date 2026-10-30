@@ -15,22 +15,6 @@ vi.mock('@/hooks/useProjects', () => ({
   useDeleteProject: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
-vi.mock('@/hooks/useRemote', () => ({
-  useRemoteView: () => ({
-    isLocalMode: true,
-    viewMode: 'local',
-    isRemoteConnected: false,
-    isRemoteView: false,
-  }),
-  useRemoteProjects: () => ({
-    data: undefined,
-    isFirstLoad: false,
-    isUnreachable: false,
-  }),
-  useCreateRemoteProject: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useDeleteRemoteProject: () => ({ mutateAsync: vi.fn(), isPending: false }),
-}));
-
 // The page tests only care about the toml value flowing in and out, not the
 // editor's TOML/UI mode behavior (covered in PixiTomlEditor.test.tsx).
 vi.mock('@nebi/ui/components/project/PixiTomlEditor', () => ({

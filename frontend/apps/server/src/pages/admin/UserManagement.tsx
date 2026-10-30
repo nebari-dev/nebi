@@ -10,16 +10,14 @@ import {
   TableRow,
 } from '@nebi/ui/components/ui/table';
 import { Loader2, Shield, ShieldOff, Trash2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { CreateUserDialog } from '@/components/admin/CreateUserDialog';
-import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
 import {
   useDeleteUser,
   useToggleAdmin,
   useUserGroups,
   useUsers,
 } from '@/hooks/useAdmin';
-import { useRemoteUsers, useRemoteView } from '@/hooks/useRemote';
 import { useAuthStore } from '@/store/authStore';
 
 interface UserGroupsCellProps {
@@ -55,30 +53,8 @@ export const UserManagement = () => {
   const deleteUserMutation = useDeleteUser();
   const currentUser = useAuthStore((state) => state.user);
 
-  // View mode support
-  const { viewMode, isRemoteConnected, isRemoteView } = useRemoteView();
-  const {
-    data: remoteUsers,
-    isFirstLoad: remoteFirstLoad,
-    isUnreachable: remoteIsUnreachable,
-  } = useRemoteUsers(isRemoteView);
-
-  // Show users based on view mode
-  const displayedUsers = useMemo(() => {
-    if (!isRemoteConnected) {
-      return users || [];
-    }
-    if (viewMode === 'local') {
-      return users || [];
-    } else {
-      return remoteUsers || [];
-    }
-  }, [users, remoteUsers, isRemoteConnected, viewMode]);
-
-  const remoteUnreachable = isRemoteView && remoteIsUnreachable;
-  // Full-page spinner only until the remote list first resolves or errors
-  // (see isFirstLoad in useRemote.ts).
-  const isLoading = usersLoading || (isRemoteView && remoteFirstLoad);
+  const displayedUsers = users || [];
+  const isLoading = usersLoading;
 
   const [confirmAction, setConfirmAction] = useState<{
     type: 'toggle' | 'delete';
@@ -133,8 +109,6 @@ export const UserManagement = () => {
           {error}
         </div>
       )}
-
-      {remoteUnreachable && <RemoteUnreachableBanner />}
 
       <Table aria-label="Users">
         <TableHeader>
@@ -246,7 +220,7 @@ export const UserManagement = () => {
         </TableBody>
       </Table>
 
-      {displayedUsers.length === 0 && !remoteUnreachable && (
+      {displayedUsers.length === 0 && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">No users found</p>
         </div>

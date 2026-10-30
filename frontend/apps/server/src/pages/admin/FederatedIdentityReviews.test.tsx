@@ -1,9 +1,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HttpResponse, http } from 'msw';
-import { beforeEach, describe, expect, it } from 'vitest';
-import { useModeStore } from '@/store/modeStore';
-import { useViewModeStore } from '@/store/viewModeStore';
+import { describe, expect, it } from 'vitest';
 import {
   mockFederatedIdentity,
   mockFederatedIdentityReview,
@@ -13,16 +11,6 @@ import { renderWithProviders } from '@/test/utils';
 import { FederatedIdentityReviews } from './FederatedIdentityReviews';
 
 describe('FederatedIdentityReviews', () => {
-  beforeEach(() => {
-    useModeStore.setState({ mode: 'team', loading: false });
-    useViewModeStore.setState({ viewMode: 'local' });
-    server.use(
-      http.get('/api/v1/remote/server', () =>
-        HttpResponse.json({ status: 'disconnected', url: '', username: '' }),
-      ),
-    );
-  });
-
   it('shows pending identity review details', async () => {
     renderWithProviders(<FederatedIdentityReviews />);
 
@@ -207,31 +195,5 @@ describe('FederatedIdentityReviews', () => {
     await user.click(screen.getByRole('button', { name: 'Discard Review' }));
 
     await waitFor(() => expect(discardedReviewID).toBe('review-1'));
-  });
-
-  it('shows the remote unreachable banner when remote reviews fail', async () => {
-    useModeStore.setState({ mode: 'local', loading: false });
-    useViewModeStore.setState({ viewMode: 'remote' });
-    server.use(
-      http.get('/api/v1/remote/server', () =>
-        HttpResponse.json({
-          status: 'connected',
-          url: 'https://remote.example.com',
-          username: 'admin',
-        }),
-      ),
-      http.get('/api/v1/remote/admin/federated-identity-reviews', () =>
-        HttpResponse.json({ error: 'Remote error' }, { status: 502 }),
-      ),
-    );
-
-    renderWithProviders(<FederatedIdentityReviews />);
-
-    expect(
-      await screen.findByText(/can't reach the remote server/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText('No pending identity reviews'),
-    ).not.toBeInTheDocument();
   });
 });

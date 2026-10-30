@@ -27,9 +27,6 @@ describe('useJobLogStream', () => {
     fetchMock = vi.fn(() => new Promise<Response>(() => {}));
     vi.stubGlobal('fetch', fetchMock);
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    act(() => {
-      useAuthStore.setState({ token: 'test-token', user: mockUser });
-    });
   });
 
   afterEach(() => {
@@ -63,17 +60,19 @@ describe('useJobLogStream', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
   });
 
-  it('sends the auth token in a header instead of the stream URL', async () => {
+  it('does not send a stored browser token to the local stream', async () => {
+    act(() => {
+      useAuthStore.setState({ token: 'stale-token', user: mockUser });
+    });
     renderHook(() => useJobLogStream('job-1', 'running'));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
 
     expect(url).not.toContain('token=');
-    expect(options.headers).toMatchObject({
-      Accept: 'text/event-stream',
-      Authorization: 'Bearer test-token',
-    });
+    const headers = new Headers(options.headers);
+    expect(headers.get('Accept')).toBe('text/event-stream');
+    expect(headers.has('Authorization')).toBe(false);
   });
 
   it('appends incoming messages to logs', async () => {
@@ -134,11 +133,8 @@ describe('useJobLogStream', () => {
     expect(signal.aborted).toBe(true);
   });
 
-  it('does not open a stream when there is no auth token', () => {
-    act(() => {
-      useAuthStore.setState({ token: null, user: null });
-    });
+  it('streams logs in a fresh local session without an auth token', async () => {
     renderHook(() => useJobLogStream('job-1', 'running'));
-    expect(fetchMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
   });
 });

@@ -50,7 +50,6 @@ import { Jobs } from '@/components/jobs/Jobs';
 import { InstallControls } from '@/components/project/InstallControls';
 import { UseLocallyButton } from '@/components/project/UseLocallyButton';
 import { PublishButton } from '@/components/publishing/PublishButton';
-import { CollaboratorsList } from '@/components/sharing/CollaboratorsList';
 import { ShareButton } from '@/components/sharing/ShareButton';
 import { VersionHistory } from '@/components/versions/VersionHistory';
 import { useCollaborators } from '@/hooks/useAdmin';
@@ -61,7 +60,6 @@ import { buildImportCommand } from '@/lib/registry';
 import { getInstallStatusColor, getProjectStatusColor } from '@/lib/status';
 import { capitalize } from '@/lib/strings';
 import { useAuthStore } from '@/store/authStore';
-import { useModeStore } from '@/store/modeStore';
 import { useProjectNavStore } from '@/store/projectNavStore';
 import type { Collaborator } from '@/types/models';
 
@@ -105,8 +103,7 @@ export const ProjectDetail = () => {
 
   // Determine if this is a local project
   const isLocalProject = project?.source === 'local';
-  // Determine if server is in local mode
-  const isLocalMode = useModeStore((s) => s.isLocalMode());
+
   // User can only share if it's not a local project and they are the owner
   const isOwner = project?.owner_id === currentUser?.id;
   const canWrite = project?.can_write === true;
@@ -296,11 +293,6 @@ export const ProjectDetail = () => {
           <TabsTab value="publications">
             Publications ({publications?.length || 0})
           </TabsTab>
-          {!isLocalProject && !isLocalMode && (
-            <TabsTab value="collaborators">
-              Collaborators ({collaborators?.length || 0})
-            </TabsTab>
-          )}
         </TabsList>
 
         <TabsPanel value="overview" className="px-1">
@@ -406,28 +398,15 @@ export const ProjectDetail = () => {
                 </span>
               </div>
 
-              {/* Collaborators — links to collaborators tab (non-local, non-local-mode projects) */}
+              {/* Collaborators for managed projects */}
               {!isLocalProject && (
                 <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
-                  {!isLocalMode ? (
-                    <button
-                      type="button"
-                      className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-left"
-                      onClick={() => setActiveTab('collaborators')}
-                    >
-                      <Users className="h-3 w-3 shrink-0" />
-                      <span className="text-sm font-medium underline decoration-dotted underline-offset-2">
-                        Collaborators ({userCollaborators?.length || 0})
-                      </span>
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <Users className="h-3 w-3 shrink-0" />
-                      <span className="text-sm font-medium">
-                        Collaborators ({userCollaborators?.length || 0})
-                      </span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Users className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium">
+                      Collaborators ({userCollaborators?.length || 0})
+                    </span>
+                  </div>
                   <div className="flex flex-wrap gap-1.5">
                     {userCollaborators?.slice(0, 3).map((c) => (
                       <UserBadge key={c.user_id} username={c.username} />
@@ -444,25 +423,12 @@ export const ProjectDetail = () => {
               {/* Groups — only shown when the project has any group shares */}
               {!isLocalProject && (groupCollaborators?.length || 0) > 0 && (
                 <div className="grid grid-cols-[220px_1fr] items-center gap-4 py-2.5">
-                  {!isLocalMode ? (
-                    <button
-                      type="button"
-                      className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-left"
-                      onClick={() => setActiveTab('collaborators')}
-                    >
-                      <Users2 className="h-3 w-3 shrink-0" />
-                      <span className="text-sm font-medium underline decoration-dotted underline-offset-2">
-                        Groups ({groupCollaborators?.length || 0})
-                      </span>
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <Users2 className="h-3 w-3 shrink-0" />
-                      <span className="text-sm font-medium">
-                        Groups ({groupCollaborators?.length || 0})
-                      </span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Users2 className="h-3 w-3 shrink-0" />
+                    <span className="text-sm font-medium">
+                      Groups ({groupCollaborators?.length || 0})
+                    </span>
+                  </div>
                   <div className="flex flex-wrap gap-1.5">
                     {groupCollaborators?.slice(0, 3).map((g) => (
                       <Badge
@@ -881,18 +847,6 @@ export const ProjectDetail = () => {
             </p>
           )}
         </TabsPanel>
-
-        {!isLocalProject && !isLocalMode && (
-          <TabsPanel value="collaborators" className="px-1">
-            <div className="space-y-4 my-4">
-              <h2 className="text-2xl font-bold mb-0">Collaborators</h2>
-              <p className="text-muted-foreground text-sm mt-2">
-                View all collaborators for this project
-              </p>
-            </div>
-            <CollaboratorsList collaborators={collaborators || []} />
-          </TabsPanel>
-        )}
       </Tabs>
     </div>
   );

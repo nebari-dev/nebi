@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { getApiBaseUrl, getBasePath } from '@/lib/basePath';
 import { queryClient } from '@/lib/queryClient';
-import { useModeStore } from '@/store/modeStore';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || getApiBaseUrl();
 
@@ -18,11 +17,6 @@ const FEDERATED_IDENTITY_REVIEW_ERRORS = new Set([
 ]);
 
 const redirectToLogin = (errorCode?: string) => {
-  const { mode } = useModeStore.getState();
-  if (mode === 'local') {
-    return;
-  }
-
   localStorage.removeItem('auth_token');
   // Clear all query cache to prevent stale data
   queryClient.clear();

@@ -19,21 +19,13 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
+import { useState } from 'react';
 import {
   useApproveFederatedIdentityReview,
   useDiscardFederatedIdentityReview,
   useFederatedIdentityReviews,
   useRejectFederatedIdentityReview,
 } from '@/hooks/useAdmin';
-import {
-  useApproveRemoteFederatedIdentityReview,
-  useDiscardRemoteFederatedIdentityReview,
-  useRejectRemoteFederatedIdentityReview,
-  useRemoteFederatedIdentityReviews,
-  useRemoteView,
-} from '@/hooks/useRemote';
 import {
   type FederatedIdentityReview,
   type FederatedIdentityReviewStatusFilter,
@@ -134,26 +126,8 @@ export const FederatedIdentityReviews = () => {
   const rejectReview = useRejectFederatedIdentityReview();
   const discardReview = useDiscardFederatedIdentityReview();
 
-  const { isRemoteView } = useRemoteView();
-
-  const {
-    data: remoteReviews,
-    isFirstLoad: remoteFirstLoad,
-    isUnreachable: remoteReviewsUnreachable,
-  } = useRemoteFederatedIdentityReviews(isRemoteView, statusFilter);
-  const approveRemoteReview = useApproveRemoteFederatedIdentityReview();
-  const rejectRemoteReview = useRejectRemoteFederatedIdentityReview();
-  const discardRemoteReview = useDiscardRemoteFederatedIdentityReview();
-
-  const displayedReviews = useMemo(() => {
-    if (!isRemoteView) {
-      return reviews || [];
-    }
-    return remoteReviews || [];
-  }, [reviews, remoteReviews, isRemoteView]);
-
-  const isLoading = isRemoteView ? remoteFirstLoad : reviewsLoading;
-  const remoteUnreachable = isRemoteView && remoteReviewsUnreachable;
+  const displayedReviews = reviews || [];
+  const isLoading = reviewsLoading;
   const [reviewToApprove, setReviewToApprove] =
     useState<FederatedIdentityReview | null>(null);
   const [reviewToReject, setReviewToReject] =
@@ -167,11 +141,7 @@ export const FederatedIdentityReviews = () => {
 
     setError('');
     try {
-      if (isRemoteView) {
-        await approveRemoteReview.mutateAsync(reviewToApprove.id);
-      } else {
-        await approveReview.mutateAsync(reviewToApprove.id);
-      }
+      await approveReview.mutateAsync(reviewToApprove.id);
       setReviewToApprove(null);
     } catch (err) {
       setError(mutationErrorMessage(err));
@@ -183,11 +153,7 @@ export const FederatedIdentityReviews = () => {
 
     setError('');
     try {
-      if (isRemoteView) {
-        await rejectRemoteReview.mutateAsync(reviewToReject.id);
-      } else {
-        await rejectReview.mutateAsync(reviewToReject.id);
-      }
+      await rejectReview.mutateAsync(reviewToReject.id);
       setReviewToReject(null);
     } catch (err) {
       setError(mutationErrorMessage(err));
@@ -199,11 +165,7 @@ export const FederatedIdentityReviews = () => {
 
     setError('');
     try {
-      if (isRemoteView) {
-        await discardRemoteReview.mutateAsync(reviewToDiscard.id);
-      } else {
-        await discardReview.mutateAsync(reviewToDiscard.id);
-      }
+      await discardReview.mutateAsync(reviewToDiscard.id);
       setReviewToDiscard(null);
     } catch (err) {
       setError(mutationErrorMessage(err));
@@ -240,179 +202,160 @@ export const FederatedIdentityReviews = () => {
         </div>
       </div>
 
-      {remoteUnreachable && <RemoteUnreachableBanner />}
-
       {error && (
         <div className="rounded border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-500">
           {error}
         </div>
       )}
 
-      {!remoteUnreachable && (
-        <Table aria-label="Federated identity reviews">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Status</TableHead>
-              <TableHead>Existing User</TableHead>
-              <TableHead>Incoming Identity</TableHead>
-              <TableHead>Collision</TableHead>
-              <TableHead>Issuer</TableHead>
-              <TableHead>Requested</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {displayedReviews.map((review) => {
-              const isPending = isPendingFederatedIdentityReview(review);
-              const isAmbiguous = hasAmbiguousCollision(review);
-              const isApproving =
-                (isRemoteView
-                  ? approveRemoteReview.variables
-                  : approveReview.variables) === review.id &&
-                (isRemoteView
-                  ? approveRemoteReview.isPending
-                  : approveReview.isPending);
-              const isRejecting =
-                (isRemoteView
-                  ? rejectRemoteReview.variables
-                  : rejectReview.variables) === review.id &&
-                (isRemoteView
-                  ? rejectRemoteReview.isPending
-                  : rejectReview.isPending);
-              const isDiscarding =
-                (isRemoteView
-                  ? discardRemoteReview.variables
-                  : discardReview.variables) === review.id &&
-                (isRemoteView
-                  ? discardRemoteReview.isPending
-                  : discardReview.isPending);
-              const isRowMutating = isApproving || isRejecting || isDiscarding;
+      <Table aria-label="Federated identity reviews">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Status</TableHead>
+            <TableHead>Existing User</TableHead>
+            <TableHead>Incoming Identity</TableHead>
+            <TableHead>Collision</TableHead>
+            <TableHead>Issuer</TableHead>
+            <TableHead>Requested</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {displayedReviews.map((review) => {
+            const isPending = isPendingFederatedIdentityReview(review);
+            const isAmbiguous = hasAmbiguousCollision(review);
+            const isApproving =
+              approveReview.variables === review.id && approveReview.isPending;
+            const isRejecting =
+              rejectReview.variables === review.id && rejectReview.isPending;
+            const isDiscarding =
+              discardReview.variables === review.id && discardReview.isPending;
+            const isRowMutating = isApproving || isRejecting || isDiscarding;
 
-              return (
-                <TableRow key={review.id}>
-                  <TableCell>
-                    {isPending ? (
-                      <Badge className="border-amber-300 bg-amber-100 text-amber-800">
-                        <ShieldAlert className="mr-1 h-3 w-3" />
-                        Pending
+            return (
+              <TableRow key={review.id}>
+                <TableCell>
+                  {isPending ? (
+                    <Badge className="border-amber-300 bg-amber-100 text-amber-800">
+                      <ShieldAlert className="mr-1 h-3 w-3" />
+                      Pending
+                    </Badge>
+                  ) : (
+                    <Badge className="border-red-300 bg-red-100 text-red-800">
+                      <X className="mr-1 h-3 w-3" />
+                      Rejected
+                    </Badge>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-start gap-2">
+                    <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <ExistingCollisionUsers review={review} />
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="max-w-[18rem]">
+                    <p className="font-medium">{reviewDisplayName(review)}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      {review.email && (
+                        <span className="text-sm text-muted-foreground">
+                          {review.email}
+                        </span>
+                      )}
+                      <Badge
+                        variant="outline"
+                        className={
+                          review.email_verified
+                            ? 'border-green-300 text-green-700'
+                            : 'border-zinc-300 text-zinc-700'
+                        }
+                      >
+                        {review.email_verified
+                          ? 'Email verified'
+                          : 'Email unverified'}
                       </Badge>
-                    ) : (
-                      <Badge className="border-red-300 bg-red-100 text-red-800">
-                        <X className="mr-1 h-3 w-3" />
-                        Rejected
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-start gap-2">
-                      <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <ExistingCollisionUsers review={review} />
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="max-w-[18rem]">
-                      <p className="font-medium">{reviewDisplayName(review)}</p>
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        {review.email && (
-                          <span className="text-sm text-muted-foreground">
-                            {review.email}
-                          </span>
+                    <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
+                      sub: {review.subject}
+                    </p>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline">{collisionLabel(review)}</Badge>
+                </TableCell>
+                <TableCell>
+                  <div className="flex max-w-[20rem] items-start gap-2">
+                    <Fingerprint className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="break-all font-mono text-xs text-muted-foreground">
+                      {review.issuer}
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">
+                  {formatDate(review.created_at)}
+                </TableCell>
+                <TableCell>
+                  {isPending ? (
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setReviewToReject(review)}
+                        disabled={isRowMutating}
+                        aria-label={`Reject identity review for ${reviewDisplayName(review)}`}
+                      >
+                        {isRejecting ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <X className="h-4 w-4" />
                         )}
-                        <Badge
-                          variant="outline"
-                          className={
-                            review.email_verified
-                              ? 'border-green-300 text-green-700'
-                              : 'border-zinc-300 text-zinc-700'
-                          }
-                        >
-                          {review.email_verified
-                            ? 'Email verified'
-                            : 'Email unverified'}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
-                        sub: {review.subject}
-                      </p>
+                        Reject
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => setReviewToApprove(review)}
+                        disabled={isRowMutating || isAmbiguous}
+                        title={
+                          isAmbiguous
+                            ? 'Resolve conflicting users before approving'
+                            : undefined
+                        }
+                        aria-label={`Approve identity review for ${reviewDisplayName(review)}`}
+                      >
+                        {isApproving ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Check className="h-4 w-4" />
+                        )}
+                        Approve
+                      </Button>
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{collisionLabel(review)}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex max-w-[20rem] items-start gap-2">
-                      <Fingerprint className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <span className="break-all font-mono text-xs text-muted-foreground">
-                        {review.issuer}
-                      </span>
+                  ) : (
+                    <div className="flex justify-end">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setReviewToDiscard(review)}
+                        disabled={isRowMutating}
+                        aria-label={`Discard identity review for ${reviewDisplayName(review)}`}
+                      >
+                        {isDiscarding ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                        Discard
+                      </Button>
                     </div>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">
-                    {formatDate(review.created_at)}
-                  </TableCell>
-                  <TableCell>
-                    {isPending ? (
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setReviewToReject(review)}
-                          disabled={isRowMutating}
-                          aria-label={`Reject identity review for ${reviewDisplayName(review)}`}
-                        >
-                          {isRejecting ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <X className="h-4 w-4" />
-                          )}
-                          Reject
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => setReviewToApprove(review)}
-                          disabled={isRowMutating || isAmbiguous}
-                          title={
-                            isAmbiguous
-                              ? 'Resolve conflicting users before approving'
-                              : undefined
-                          }
-                          aria-label={`Approve identity review for ${reviewDisplayName(review)}`}
-                        >
-                          {isApproving ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Check className="h-4 w-4" />
-                          )}
-                          Approve
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex justify-end">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setReviewToDiscard(review)}
-                          disabled={isRowMutating}
-                          aria-label={`Discard identity review for ${reviewDisplayName(review)}`}
-                        >
-                          {isDiscarding ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                          Discard
-                        </Button>
-                      </div>
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      )}
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
 
-      {!remoteUnreachable && displayedReviews.length === 0 && (
+      {displayedReviews.length === 0 && (
         <div className="py-12 text-center">
           <p className="text-muted-foreground">
             No {statusFilter} identity reviews

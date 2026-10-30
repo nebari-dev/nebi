@@ -25,16 +25,13 @@ async function submit(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('EditRegistryDialog', () => {
-  it('updates the local registry when isRemote is not set', async () => {
+  it('updates a registry through the team API', async () => {
     let hitLocal = false;
     server.use(
       http.put('/api/v1/admin/registries/reg-1', () => {
         hitLocal = true;
         return HttpResponse.json({ id: 'reg-1' }, { status: 200 });
       }),
-      http.put('/api/v1/remote/admin/registries/reg-1', () =>
-        HttpResponse.json({ error: 'should not be called' }, { status: 500 }),
-      ),
     );
     const user = userEvent.setup();
     renderWithProviders(
@@ -44,31 +41,5 @@ describe('EditRegistryDialog', () => {
     await submit(user);
 
     await waitFor(() => expect(hitLocal).toBe(true));
-  });
-
-  it('updates the remote registry when isRemote is true', async () => {
-    let hitRemote = false;
-    server.use(
-      http.put('/api/v1/remote/admin/registries/reg-1', () => {
-        hitRemote = true;
-        return HttpResponse.json({ id: 'reg-1' }, { status: 200 });
-      }),
-      http.put('/api/v1/admin/registries/reg-1', () =>
-        HttpResponse.json({ error: 'should not be called' }, { status: 500 }),
-      ),
-    );
-    const user = userEvent.setup();
-    renderWithProviders(
-      <EditRegistryDialog
-        registry={registry}
-        open
-        onOpenChange={() => {}}
-        isRemote
-      />,
-    );
-
-    await submit(user);
-
-    await waitFor(() => expect(hitRemote).toBe(true));
   });
 });

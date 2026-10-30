@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { getApiBaseUrl } from '@/lib/basePath';
-import { useAuthStore } from '@/store/authStore';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || getApiBaseUrl();
 
@@ -11,17 +10,10 @@ export const useJobLogStream = (
 ) => {
   const [logs, setLogs] = useState<string>(initialLogs);
   const [isStreaming, setIsStreaming] = useState(false);
-  const token = useAuthStore((state) => state.token);
 
   useEffect(() => {
     // Only stream for jobs that may still emit logs.
     if (jobStatus !== 'running' && jobStatus !== 'pending') {
-      setIsStreaming(false);
-      return;
-    }
-
-    if (!token) {
-      console.error('No auth token available for log streaming');
       setIsStreaming(false);
       return;
     }
@@ -86,7 +78,6 @@ export const useJobLogStream = (
           {
             headers: {
               Accept: 'text/event-stream',
-              Authorization: `Bearer ${token}`,
             },
             signal: abortController.signal,
           },
@@ -147,7 +138,7 @@ export const useJobLogStream = (
     return () => {
       abortController.abort();
     };
-  }, [jobId, jobStatus, token]);
+  }, [jobId, jobStatus]);
 
   return { logs, isStreaming };
 };

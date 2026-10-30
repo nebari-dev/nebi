@@ -1,37 +1,20 @@
 basePath: /api/v1
 definitions:
-  auth.LoginRequest:
+  handlers.AuthConfigResponse:
     properties:
-      password:
+      client_id:
+        example: nebi
         type: string
-      username:
+      issuer_url:
+        example: https://auth.example.com/realms/nebi
         type: string
-    required:
-    - password
-    - username
-    type: object
-  auth.LoginResponse:
-    properties:
-      token:
+      scopes:
+        items:
+          type: string
+        type: array
+      type:
+        example: oidc
         type: string
-      user:
-        $ref: '#/definitions/models.User'
-    type: object
-  handlers.AddMemberRequest:
-    properties:
-      user_id:
-        type: string
-    required:
-    - user_id
-    type: object
-  handlers.CreateGroupRequest:
-    properties:
-      description:
-        type: string
-      name:
-        type: string
-    required:
-    - name
     type: object
   handlers.CreateProjectRequest:
     properties:
@@ -65,21 +48,6 @@ definitions:
     required:
     - name
     - url
-    type: object
-  handlers.CreateUserRequest:
-    properties:
-      email:
-        type: string
-      is_admin:
-        type: boolean
-      password:
-        type: string
-      username:
-        type: string
-    required:
-    - email
-    - password
-    - username
     type: object
   handlers.ErrorResponse:
     properties:
@@ -223,13 +191,6 @@ definitions:
     - group_id
     - role
     type: object
-  handlers.UpdateGroupRequest:
-    properties:
-      description:
-        type: string
-      name:
-        type: string
-    type: object
   handlers.UpdatePublicationRequest:
     properties:
       is_public:
@@ -314,88 +275,14 @@ definitions:
       user_id:
         type: string
     type: object
-  models.FederatedIdentity:
-    properties:
-      avatar_url:
-        type: string
-      created_at:
-        type: string
-      email:
-        type: string
-      email_verified:
-        type: boolean
-      id:
-        type: string
-      issuer:
-        type: string
-      name:
-        type: string
-      subject:
-        type: string
-      updated_at:
-        type: string
-      user_id:
-        type: string
-      username:
-        type: string
-    type: object
-  models.FederatedIdentityReview:
-    properties:
-      avatar_url:
-        type: string
-      collision_email_user:
-        $ref: '#/definitions/models.User'
-      collision_email_user_id:
-        description: User matched by the incoming verified email claim, when present.
-        type: string
-      collision_field:
-        type: string
-      collision_username_user:
-        $ref: '#/definitions/models.User'
-      collision_username_user_id:
-        description: User matched by the incoming username claim, when present.
-        type: string
-      created_at:
-        type: string
-      email:
-        type: string
-      email_verified:
-        type: boolean
-      id:
-        type: string
-      issuer:
-        type: string
-      name:
-        type: string
-      reviewed_at:
-        type: string
-      reviewed_by:
-        type: string
-      status:
-        type: string
-      subject:
-        type: string
-      updated_at:
-        type: string
-      user:
-        $ref: '#/definitions/models.User'
-      user_id:
-        type: string
-      username:
-        type: string
-    type: object
   models.Group:
     properties:
       created_at:
         type: string
-      description:
-        type: string
       id:
         type: string
       name:
         type: string
-      source:
-        $ref: '#/definitions/models.GroupSource'
       updated_at:
         type: string
     type: object
@@ -433,14 +320,6 @@ definitions:
       updated_at:
         type: string
     type: object
-  models.GroupSource:
-    enum:
-    - native
-    - oidc
-    type: string
-    x-enum-varnames:
-    - GroupSourceNative
-    - GroupSourceOIDC
   models.InstallStatus:
     enum:
     - not_installed
@@ -697,9 +576,6 @@ definitions:
         type: string
       role:
         type: string
-      source:
-        description: '"" for users, "native"/"oidc" for groups'
-        type: string
       user_id:
         type: string
       username:
@@ -716,16 +592,12 @@ definitions:
     properties:
       created_at:
         type: string
-      description:
-        type: string
       id:
         type: string
       member_count:
         type: integer
       name:
         type: string
-      source:
-        $ref: '#/definitions/models.GroupSource'
       updated_at:
         type: string
     type: object
@@ -917,79 +789,6 @@ paths:
       summary: Get admin dashboard statistics
       tags:
       - admin
-  /admin/federated-identity-reviews:
-    get:
-      parameters:
-      - description: 'Review status: pending, rejected, or all'
-        in: query
-        name: status
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/models.FederatedIdentityReview'
-            type: array
-      security:
-      - BearerAuth: []
-      summary: List federated identity reviews
-      tags:
-      - admin
-  /admin/federated-identity-reviews/{id}:
-    delete:
-      parameters:
-      - description: Review UUID
-        in: path
-        name: id
-        required: true
-        type: string
-      responses:
-        "204":
-          description: No Content
-      security:
-      - BearerAuth: []
-      summary: Discard a federated identity review
-      tags:
-      - admin
-  /admin/federated-identity-reviews/{id}/approve:
-    post:
-      parameters:
-      - description: Review UUID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/models.FederatedIdentity'
-      security:
-      - BearerAuth: []
-      summary: Approve a pending federated identity review
-      tags:
-      - admin
-  /admin/federated-identity-reviews/{id}/reject:
-    post:
-      parameters:
-      - description: Review UUID
-        in: path
-        name: id
-        required: true
-        type: string
-      responses:
-        "204":
-          description: No Content
-      security:
-      - BearerAuth: []
-      summary: Reject a pending federated identity review
-      tags:
-      - admin
   /admin/groups:
     get:
       produces:
@@ -1018,82 +817,7 @@ paths:
       summary: List all groups with member counts (admin only)
       tags:
       - admin
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Group details
-        in: body
-        name: group
-        required: true
-        schema:
-          $ref: '#/definitions/handlers.CreateGroupRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/models.Group'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Create a native group (admin only)
-      tags:
-      - admin
   /admin/groups/{id}:
-    delete:
-      description: Removes all Casbin role bindings and group permissions. OIDC-sourced
-        groups cannot be deleted and return 409.
-      parameters:
-      - description: Group ID
-        in: path
-        name: id
-        required: true
-        type: string
-      responses:
-        "204":
-          description: No Content
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Soft-delete a native group (admin only)
-      tags:
-      - admin
     get:
       parameters:
       - description: Group ID
@@ -1127,119 +851,6 @@ paths:
       security:
       - BearerAuth: []
       summary: Get a group by ID with member count (admin only)
-      tags:
-      - admin
-    patch:
-      consumes:
-      - application/json
-      description: OIDC-sourced groups cannot be edited and return 409.
-      parameters:
-      - description: Group ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Fields to update
-        in: body
-        name: group
-        required: true
-        schema:
-          $ref: '#/definitions/handlers.UpdateGroupRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.Group'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Update a native group's name or description (admin only)
-      tags:
-      - admin
-  /admin/groups/{id}/grant-admin:
-    delete:
-      parameters:
-      - description: Group ID
-        in: path
-        name: id
-        required: true
-        type: string
-      responses:
-        "204":
-          description: No Content
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Revoke admin from a group (admin only)
-      tags:
-      - admin
-    post:
-      description: Every current and future member of the group gains effective admin
-        via Casbin role inheritance.
-      parameters:
-      - description: Group ID
-        in: path
-        name: id
-        required: true
-        type: string
-      responses:
-        "201":
-          description: Created
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Promote a group to admin (admin only)
       tags:
       - admin
   /admin/groups/{id}/members:
@@ -1278,92 +889,6 @@ paths:
       security:
       - BearerAuth: []
       summary: List all members of a group (admin only)
-      tags:
-      - admin
-    post:
-      consumes:
-      - application/json
-      description: OIDC-sourced groups are managed via login claims and reject manual
-        membership edits.
-      parameters:
-      - description: Group ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: User to add
-        in: body
-        name: member
-        required: true
-        schema:
-          $ref: '#/definitions/handlers.AddMemberRequest'
-      responses:
-        "201":
-          description: Created
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Add a user to a native group (admin only)
-      tags:
-      - admin
-  /admin/groups/{id}/members/{user_id}:
-    delete:
-      parameters:
-      - description: Group ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: User ID to remove
-        in: path
-        name: user_id
-        required: true
-        type: string
-      responses:
-        "204":
-          description: No Content
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Remove a user from a native group (admin only)
       tags:
       - admin
   /admin/permissions:
@@ -1688,44 +1213,7 @@ paths:
       summary: List all users (admin only)
       tags:
       - admin
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: User details
-        in: body
-        name: user
-        required: true
-        schema:
-          $ref: '#/definitions/handlers.CreateUserRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/models.User'
-      security:
-      - BearerAuth: []
-      summary: Create a new user (admin only)
-      tags:
-      - admin
   /admin/users/{id}:
-    delete:
-      parameters:
-      - description: User UUID
-        in: path
-        name: id
-        required: true
-        type: string
-      responses:
-        "204":
-          description: No Content
-      security:
-      - BearerAuth: []
-      summary: Delete a user (admin only)
-      tags:
-      - admin
     get:
       parameters:
       - description: User UUID
@@ -1781,56 +1269,18 @@ paths:
       summary: List the groups a user belongs to (admin only)
       tags:
       - admin
-  /admin/users/{id}/toggle-admin:
-    post:
-      parameters:
-      - description: User UUID
-        in: path
-        name: id
-        required: true
-        type: string
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/service.UserWithAdmin'
-      security:
-      - BearerAuth: []
-      summary: Toggle admin status for a user
-      tags:
-      - admin
-  /auth/login:
-    post:
-      consumes:
-      - application/json
-      description: Authenticate user and return JWT token
-      parameters:
-      - description: Login credentials
-        in: body
-        name: credentials
-        required: true
-        schema:
-          $ref: '#/definitions/auth.LoginRequest'
+  /auth/config:
+    get:
+      description: Returns the OIDC provider and client that issue access tokens for
+        this server, or type "none" when authentication is disabled
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/auth.LoginResponse'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: User login
+            $ref: '#/definitions/handlers.AuthConfigResponse'
+      summary: Get authentication configuration
       tags:
       - auth
   /auth/me:
@@ -1849,78 +1299,9 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Get current user
-      tags:
-      - auth
-  /auth/oidc/callback:
-    get:
-      consumes:
-      - application/json
-      description: Process OIDC callback and authenticate user
-      parameters:
-      - description: Authorization code
-        in: query
-        name: code
-        required: true
-        type: string
-      - description: State parameter
-        in: query
-        name: state
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/auth.LoginResponse'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Handle OIDC callback
-      tags:
-      - auth
-  /auth/oidc/login:
-    get:
-      description: Redirects user to OIDC provider for authentication
-      produces:
-      - application/json
-      responses:
-        "302":
-          description: Redirect to OIDC provider
-          schema:
-            type: string
-      summary: Initiate OIDC login
-      tags:
-      - auth
-  /auth/session:
-    get:
-      description: Check for an IdToken cookie (set by an authenticating proxy) and
-        return a Nebi JWT
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/auth.LoginResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Check proxy session
       tags:
       - auth
   /groups/me:

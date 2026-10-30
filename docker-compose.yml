@@ -1,119 +1,157 @@
+# Nebi team server with Keycloak as its identity provider, behind Traefik.
+#
+#   https://${NEBI_DOMAIN}      -> nebi
+#   https://${KEYCLOAK_DOMAIN}  -> keycloak (realm "nebi")
+#
+# nebi has no user management of its own: people, groups and admins are
+# managed in Keycloak. One Postgres server holds the "keycloak" and "nebi"
+# databases.
+#
+# Public host (DNS for both domains, Let's Encrypt certificates):
+#   cp docker/compose.env.example .env.compose   # then edit
+#   docker compose --env-file .env.compose up -d
+#
+# Laptop (*.nebi.localhost with a throwaway CA, see docker/gen-local-certs.sh):
+#   docker/gen-local-certs.sh
+#   docker compose -f docker-compose.yml -f docker/local.override.yml \
+#     --env-file .env.compose up -d
+#
+# Then create users in the Keycloak admin console at
+# https://${KEYCLOAK_DOMAIN}/admin/ (realm "nebi"), and put admins in the
+# "nebi-admin" group.
+
 services:
-  # Traefik - Reverse Proxy with automatic HTTPS
   traefik:
-    image: docker.io/library/traefik@sha256:e561a37f8710d9cf41c78bdf421d822b2c0b48267ec0552e644565fb55466ea9
-    container_name: nebi-traefik
+    image: docker.io/library/traefik@sha256:c5bd185c41ba3dbb42cf8a1b9fbdc368bdc96f90c8e598134879935f64e7a7f1
     command:
-      # API and dashboard
-      - "--api.dashboard=true"
-      - "--api.insecure=true"
-
-      # Docker provider
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-
-      # Entrypoints
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-
-      # HTTP to HTTPS redirect
-      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
-
-      # Let's Encrypt
-      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@example.com}"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-
-      # Logging
-      - "--log.level=INFO"
-      - "--accesslog=true"
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls=true
+      - --entrypoints.websecure.http.tls.certresolver=letsencrypt
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?ACME_EMAIL is required}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --accesslog=true
     ports:
       - "80:80"
       - "443:443"
-      - "8080:8080"  # Traefik dashboard
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik_certs:/letsencrypt
-    networks:
-      - nebi-network
+      - letsencrypt-data:/letsencrypt
     restart: unless-stopped
 
-  # PostgreSQL 18
   postgres:
     image: docker.io/library/postgres@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a
-    container_name: nebi-postgres
     environment:
-      POSTGRES_DB: nebi
-      POSTGRES_USER: nebi
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       PGDATA: /var/lib/postgresql/data/pgdata
-    ports:
-      - "5432:5432"
+      # Consumed by docker/postgres-init.sh on first boot only.
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?KEYCLOAK_DB_PASSWORD is required}
+      NEBI_DB_PASSWORD: ${NEBI_DB_PASSWORD:?NEBI_DB_PASSWORD is required}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres-init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nebi"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak@sha256:9409c59bdfb65dbffa20b11e6f18b8abb9281d480c7ca402f51ed3d5977e6007 # 26.4
+    command: ["start", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      # Browsers see the public URL; containers talking to http://keycloak:8080
+      # get back-channel URLs (jwks) for that internal host instead.
+      KC_HOSTNAME: https://${KEYCLOAK_DOMAIN:?KEYCLOAK_DOMAIN is required}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}
+      # Substituted into nebi-realm.json at import time (first boot only).
+      NEBI_DOMAIN: ${NEBI_DOMAIN:?NEBI_DOMAIN is required}
+    volumes:
+      - ./docker/keycloak/nebi-realm.json:/opt/keycloak/data/import/nebi-realm.json:ro
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.keycloak.rule=Host(`${KEYCLOAK_DOMAIN}`)
+      - traefik.http.routers.keycloak.entrypoints=websecure
+      - traefik.http.services.keycloak.loadbalancer.server.port=8080
+    healthcheck:
+      # The image has no curl/wget; probe the management port with bash.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"status": "UP"' <&3
       interval: 10s
       timeout: 5s
-      retries: 5
-    networks:
-      - nebi-network
+      retries: 30
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
-  # Nebi API with an in-process worker
-  nebi-api:
+  nebi:
+    # Built from this checkout by default; set NEBI_IMAGE to run a published
+    # nebi-server image instead.
+    image: ${NEBI_IMAGE:-nebi-server:local}
     build:
       context: .
       dockerfile: Dockerfile
       target: nebi-server
-    container_name: nebi-api
     stop_grace_period: 45s
-    labels:
-      - "traefik.enable=true"
-      # HTTP router
-      - "traefik.http.routers.nebi.rule=Host(`${NEBI_DOMAIN:-nebi.localhost}`)"
-      - "traefik.http.routers.nebi.entrypoints=websecure"
-      - "traefik.http.routers.nebi.tls.certresolver=letsencrypt"
-      # Service
-      - "traefik.http.services.nebi.loadbalancer.server.port=8460"
     environment:
-      # Database configuration
       NEBI_DATABASE_DRIVER: postgres
-      NEBI_DATABASE_DSN: "postgres://nebi:${POSTGRES_PASSWORD}@postgres:5432/nebi?sslmode=disable"
-      NEBI_DATABASE_MAX_IDLE_CONNS: 10
-      NEBI_DATABASE_MAX_OPEN_CONNS: 100
-      NEBI_DATABASE_CONN_MAX_LIFETIME: 60
-
-      # Logging
-      NEBI_LOG_LEVEL: debug
-      NEBI_LOG_FORMAT: text
-      NEBI_AUTH_JWT_SECRET: ${NEBI_AUTH_JWT_SECRET:?NEBI_AUTH_JWT_SECRET is required}
-      NEBI_STORAGE_PROJECTS_DIR: /app/data/projects
-
-      # Server configuration
+      NEBI_DATABASE_DSN: postgres://nebi:${NEBI_DB_PASSWORD}@postgres:5432/nebi?sslmode=disable
       NEBI_SERVER_PORT: 8460
-      NEBI_SERVER_MODE: development
+      NEBI_SERVER_MODE: production
+      NEBI_STORAGE_PROJECTS_DIR: /app/data/projects
+      NEBI_LOG_LEVEL: ${NEBI_LOG_LEVEL:-info}
+      NEBI_LOG_FORMAT: text
+      # Encrypts stored registry credentials.
+      NEBI_ENCRYPTION_KEY: ${NEBI_ENCRYPTION_KEY:?NEBI_ENCRYPTION_KEY is required (32+ chars)}
 
-      # Admin user (created on first startup)
-      ADMIN_USERNAME: ${ADMIN_USERNAME:?ADMIN_USERNAME is required}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@nebi.local}
+      # nebi accepts access tokens issued by Keycloak for the "nebi" client.
+      # The issuer is the public URL (it must match the tokens' "iss"), while
+      # discovery and signing keys are fetched over the compose network so
+      # nebi never hairpins through the public hostname or needs to trust
+      # its certificate.
+      NEBI_AUTH_TYPE: oidc
+      NEBI_AUTH_OIDC_ISSUER_URL: https://${KEYCLOAK_DOMAIN}/realms/nebi
+      NEBI_AUTH_OIDC_DISCOVERY_URL: http://keycloak:8080/realms/nebi
+      NEBI_AUTH_OIDC_CLIENT_ID: nebi
+      # Members of this Keycloak group are nebi admins.
+      NEBI_AUTH_OIDC_ADMIN_GROUPS: nebi-admin
+    volumes:
+      - nebi-data:/app/data
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.nebi.rule=Host(`${NEBI_DOMAIN}`)
+      - traefik.http.routers.nebi.entrypoints=websecure
+      - traefik.http.services.nebi.loadbalancer.server.port=8460
     depends_on:
       postgres:
         condition: service_healthy
-      traefik:
-        condition: service_started
-    volumes:
-      - ./data/projects:/app/data/projects
-    networks:
-      - nebi-network
+      keycloak:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
-  postgres_data:
-    driver: local
-  traefik_certs:
-    driver: local
-
-networks:
-  nebi-network:
-    driver: bridge
+  letsencrypt-data:
+  postgres-data:
+  nebi-data:

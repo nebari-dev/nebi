@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -37,8 +36,7 @@ func setupGroupTestRouter(t *testing.T) (*gin.Engine, *gorm.DB, uuid.UUID) {
 		t.Fatalf("rbac: %v", err)
 	}
 
-	groupSvc := service.NewGroupService(db, rbac.NewDefaultProvider())
-	h := NewGroupHandler(groupSvc)
+	h := NewGroupHandler(service.NewGroupService(db))
 
 	user := models.User{Username: "admin", Email: "admin@test"}
 	db.Create(&user)
@@ -51,60 +49,62 @@ func setupGroupTestRouter(t *testing.T) (*gin.Engine, *gorm.DB, uuid.UUID) {
 	})
 	admin := r.Group("/api/v1/admin")
 	{
-		admin.POST("/groups", h.CreateGroup)
 		admin.GET("/groups", h.ListGroups)
 		admin.GET("/groups/:id", h.GetGroup)
-		admin.PATCH("/groups/:id", h.UpdateGroup)
-		admin.DELETE("/groups/:id", h.DeleteGroup)
-		admin.POST("/groups/:id/members", h.AddMember)
-		admin.DELETE("/groups/:id/members/:user_id", h.RemoveMember)
+		admin.GET("/groups/:id/members", h.ListMembers)
 	}
 	r.GET("/api/v1/groups/me", h.MyGroups)
 	return r, db, user.ID
 }
 
-func TestCreateGroup_Handler201(t *testing.T) {
-	r, _, _ := setupGroupTestRouter(t)
-	body, _ := json.Marshal(map[string]string{"name": "team-a"})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/groups", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d body=%s", w.Code, w.Body.String())
-	}
-	var out models.Group
-	json.Unmarshal(w.Body.Bytes(), &out)
-	if out.Name != "team-a" {
-		t.Errorf("expected name 'team-a', got %q", out.Name)
-	}
-}
-
-func TestPatchGroup_OIDCReturns409(t *testing.T) {
-	r, db, _ := setupGroupTestRouter(t)
-	g := models.Group{Name: "synced", Source: models.GroupSourceOIDC}
+func TestGroupHandlers_ReadIdentityProviderGroups(t *testing.T) {
+	r, db, callerID := setupGroupTestRouter(t)
+	g := models.Group{Name: "synced"}
 	db.Create(&g)
+	db.Create(&models.GroupMember{GroupID: g.ID, UserID: callerID})
 
-	body, _ := json.Marshal(map[string]string{"description": "x"})
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/groups/"+g.ID.String(), bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	get := func(path string, out any) {
+		t.Helper()
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET %s: expected 200, got %d body=%s", path, w.Code, w.Body.String())
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), out); err != nil {
+			t.Fatalf("GET %s: decode: %v", path, err)
+		}
+	}
+
+	var list []service.GroupWithMemberCount
+	get("/api/v1/admin/groups", &list)
+	if len(list) != 1 || list[0].Name != "synced" || list[0].MemberCount != 1 {
+		t.Fatalf("unexpected group list %+v", list)
+	}
+	var one service.GroupWithMemberCount
+	get("/api/v1/admin/groups/"+g.ID.String(), &one)
+	if one.ID != g.ID {
+		t.Fatalf("unexpected group %+v", one)
+	}
+	var members []models.GroupMember
+	get("/api/v1/admin/groups/"+g.ID.String()+"/members", &members)
+	if len(members) != 1 || members[0].UserID != callerID {
+		t.Fatalf("unexpected members %+v", members)
+	}
+
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusConflict {
-		t.Fatalf("expected 409, got %d", w.Code)
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/admin/groups/"+uuid.NewString(), nil))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown group, got %d", w.Code)
 	}
 }
 
 func TestMyGroups_ReturnsOnlyCallersGroups(t *testing.T) {
 	r, db, callerID := setupGroupTestRouter(t)
-	groupSvc := service.NewGroupService(db, rbac.NewDefaultProvider())
 
-	mine, _ := groupSvc.CreateGroup(service.CreateGroupRequest{Name: "mine"}, callerID)
-	_ = groupSvc.AddMember(mine.ID, callerID, callerID)
-	_, _ = groupSvc.CreateGroup(service.CreateGroupRequest{Name: "theirs"}, callerID)
-
+	mine := models.Group{Name: "mine"}
+	db.Create(&mine)
+	db.Create(&models.GroupMember{GroupID: mine.ID, UserID: callerID})
+	db.Create(&models.Group{Name: "theirs"})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/groups/me", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)

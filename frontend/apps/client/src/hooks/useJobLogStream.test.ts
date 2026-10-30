@@ -1,8 +1,11 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useAuthStore } from '@/store/authStore';
-import { mockUser } from '@/test/handlers';
 import { useJobLogStream } from './useJobLogStream';
+
+const { getAccessToken } = vi.hoisted(() => ({
+  getAccessToken: vi.fn<() => Promise<string | null>>(),
+}));
+vi.mock('@/lib/oidc', () => ({ getAccessToken }));
 
 const encoder = new TextEncoder();
 
@@ -27,17 +30,13 @@ describe('useJobLogStream', () => {
     fetchMock = vi.fn(() => new Promise<Response>(() => {}));
     vi.stubGlobal('fetch', fetchMock);
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    act(() => {
-      useAuthStore.setState({ token: 'test-token', user: mockUser });
-    });
+    getAccessToken.mockResolvedValue('test-token');
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    act(() => {
-      useAuthStore.setState({ token: null, user: null });
-    });
     vi.restoreAllMocks();
+    getAccessToken.mockReset();
   });
 
   it('does not open a stream for a completed job', () => {
@@ -134,11 +133,13 @@ describe('useJobLogStream', () => {
     expect(signal.aborted).toBe(true);
   });
 
-  it('does not open a stream when there is no auth token', () => {
-    act(() => {
-      useAuthStore.setState({ token: null, user: null });
-    });
+  it('streams without an Authorization header when there is no access token', async () => {
+    // Local mode and auth-disabled team servers send no credentials.
+    getAccessToken.mockResolvedValue(null);
     renderHook(() => useJobLogStream('job-1', 'running'));
-    expect(fetchMock).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const options = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(options.headers).toEqual({ Accept: 'text/event-stream' });
   });
 });

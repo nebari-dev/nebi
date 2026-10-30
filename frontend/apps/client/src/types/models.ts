@@ -92,22 +92,18 @@ export interface InstallPackagesRequest {
   packages: string[];
 }
 
-export interface LoginRequest {
-  username: string;
-  password: string;
+// GET /auth/config. 'oidc' means the SPA signs in directly against the
+// identity provider (authorization code + PKCE) and sends the IdP access token
+// as a bearer token; 'none' means requests need no credentials (local mode, or
+// a team server running with auth disabled).
+export interface OidcAuthConfig {
+  type: 'oidc';
+  issuer_url: string;
+  client_id: string;
+  scopes: string[];
 }
 
-export interface LoginResponse {
-  token: string;
-  user: User;
-}
-
-export interface CreateUserRequest {
-  username: string;
-  email: string;
-  password: string;
-  is_admin?: boolean;
-}
+export type AuthConfig = OidcAuthConfig | { type: 'none' };
 
 export interface AuditLog {
   id: string;
@@ -158,52 +154,6 @@ export interface DashboardStats {
   total_disk_usage_bytes: number;
   total_disk_usage_formatted: string;
 }
-
-export interface FederatedIdentity {
-  id: string;
-  user_id: string;
-  issuer: string;
-  subject: string;
-  username: string;
-  email: string;
-  email_verified: boolean;
-  name: string;
-  avatar_url: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface FederatedIdentityReview {
-  id: string;
-  user_id: string;
-  user?: User;
-  issuer: string;
-  subject: string;
-  collision_field: string;
-  collision_username_user_id?: string;
-  collision_username_user?: User;
-  collision_email_user_id?: string;
-  collision_email_user?: User;
-  username: string;
-  email: string;
-  email_verified: boolean;
-  name: string;
-  avatar_url: string;
-  status: 'pending' | 'rejected' | '';
-  reviewed_by?: string;
-  reviewed_at?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export type FederatedIdentityReviewStatusFilter =
-  | 'pending'
-  | 'rejected'
-  | 'all';
-
-export const isPendingFederatedIdentityReview = (
-  review: FederatedIdentityReview,
-) => !review.status || review.status === 'pending';
 
 // OCI Registry types
 export interface OCIRegistry {
@@ -287,9 +237,38 @@ export interface RemoteServer {
 
 export interface ConnectServerRequest {
   url: string;
-  username: string;
-  password: string;
 }
+
+// An OAuth device authorization started by the local backend against the
+// remote server's identity provider.
+export interface DeviceAuthorization {
+  user_code: string;
+  verification_uri: string;
+  verification_uri_complete?: string;
+  expires_in: number;
+  interval: number;
+}
+
+export interface RemoteConnected {
+  status: 'connected';
+  url: string;
+  username: string;
+}
+
+// POST /remote/connect: a device authorization to approve, or an immediate
+// connection when the remote server has auth disabled.
+export type RemoteConnectStartResponse = DeviceAuthorization | RemoteConnected;
+
+// POST /remote/connect/poll. Terminal failures (expired or denied: 400, no
+// connection in progress: 409) are returned as 4xx errors instead.
+export type RemoteConnectPollResponse =
+  | { status: 'pending'; interval?: number }
+  | RemoteConnected;
+
+export const isRemoteConnected = (
+  response: RemoteConnectStartResponse | RemoteConnectPollResponse,
+): response is RemoteConnected =>
+  'status' in response && response.status === 'connected';
 
 export interface RemoteProject {
   id: string;
@@ -343,14 +322,10 @@ export interface ImportEnvironmentRequest {
   name: string;
 }
 
-// Group types
-export type GroupSource = 'native' | 'oidc';
-
+// Group types. Groups come from the identity provider's groups claim.
 export interface Group {
   id: string;
   name: string;
-  description: string;
-  source: GroupSource;
   created_at: string;
   updated_at: string;
 }
@@ -370,19 +345,8 @@ export interface GroupCollaborator {
   kind: 'group';
   group_id: string;
   name: string;
-  source: GroupSource;
   role: 'editor' | 'viewer';
   is_owner: false;
-}
-
-export interface CreateGroupRequest {
-  name: string;
-  description?: string;
-}
-
-export interface UpdateGroupRequest {
-  name?: string;
-  description?: string;
 }
 
 export interface ShareProjectWithGroupRequest {

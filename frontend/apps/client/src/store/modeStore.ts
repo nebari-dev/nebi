@@ -5,7 +5,6 @@ import { setQueryNetworkMode } from '@/lib/queryClient';
 interface ModeState {
   mode: 'local' | 'team' | null;
   features: Record<string, boolean>;
-  logoutUrl: string | null;
   loading: boolean;
   fetchMode: () => Promise<void>;
   isLocalMode: () => boolean;
@@ -21,7 +20,6 @@ const VERSION_RETRY_DELAY_MS = 300;
 export const useModeStore = create<ModeState>()((set, get) => ({
   mode: null,
   features: {},
-  logoutUrl: null,
   loading: true,
   fetchMode: async () => {
     // The desktop app starts its embedded server asynchronously, so the first
@@ -38,7 +36,6 @@ export const useModeStore = create<ModeState>()((set, get) => ({
         set({
           mode: data.mode,
           features: data.features || {},
-          logoutUrl: data.logout_url || null,
           loading: false,
         });
         return;
@@ -61,7 +58,6 @@ export const useModeStore = create<ModeState>()((set, get) => ({
     set({
       mode: desktop ? 'local' : 'team',
       features: {},
-      logoutUrl: null,
       loading: false,
     });
   },

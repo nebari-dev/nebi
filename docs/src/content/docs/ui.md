@@ -29,17 +29,7 @@ nebi import quay.io/nebari_environments/data-science-demo:0.1.0
 
 ## Groups (Admin)
 
-Admins can manage **groups** to grant project, registry, and admin access to multiple users at once. Open the **Admin → Groups** page in the sidebar.
+Groups come from your identity provider: every group in a user's `groups` claim appears in Nebi when they sign in. Open **Admin → Groups** in the sidebar to see them and their members. Membership is managed in the identity provider, not in Nebi.
 
-- **Create a native group**: click **Create Group**, give it a name + optional description. The group appears in the table with a "native" source badge.
-- **Manage members**: click the *people* icon on a row to open the members dialog. Add or remove users.
-- **Delete a group**: click the *trash* icon. OIDC-synced groups cannot be deleted from the UI — they're managed by the IdP.
-- **Grant access**: share a project with a group via the project's Share dialog (User/Group toggle). Registry and admin grants for groups are admin-only operations.
-
-OIDC groups (where the `groups` claim in the user's ID token creates them automatically) display with a blue "oidc" badge and are read-only in the UI.
-
-## Identity Reviews (Admin)
-
-Admins can review blocked external identity links from **Admin -> Identity Reviews**. A review appears when an OIDC, proxy-auth, or device-flow login presents an issuer/subject pair that is not yet bound to a Nebi user but its username or verified email claim collides with an existing account.
-
-Each row shows the target user, issuer, subject, collision field, profile claims, status, and review time. **Approve** permanently binds that issuer/subject to the shown account and future logins use that binding even if username or email claims later change. **Reject** blocks that issuer/subject from linking to the account. Rejected reviews appear on the **Rejected** tab, where admins can **Discard** a rejected review so the same external identity can create a fresh pending review on its next login if a collision still exists.
+- **Grant access**: share a project with a group via the project's Share dialog (User/Group toggle). Registry grants for groups are admin-only operations.
+- **Admins**: members of the groups configured in `oidc_admin_groups` are admins (see [Authentication](/server-setup/#authentication)).

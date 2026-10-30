@@ -8,7 +8,8 @@ type ProfileMenuProps = {
   user: User | null;
   themeMode: ThemeMode;
   onThemeChange: (themeMode: ThemeMode) => void;
-  onLogout: () => void;
+  // Omitted when there is no session to end (team server with auth disabled).
+  onLogout?: () => void;
 };
 
 const getInitial = (user: User | null) =>
@@ -31,7 +32,7 @@ export const ProfileMenu = ({
 
   const handleLogout = () => {
     setOpen(false);
-    onLogout();
+    onLogout?.();
   };
 
   const handleAvatarError = () => {
@@ -161,16 +162,20 @@ export const ProfileMenu = ({
               </ThemeOption>
             </fieldset>
           </div>
-          <hr className="my-1 border-border" />
-          <button
-            type="button"
-            role="menuitem"
-            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm font-medium leading-5 text-sign-out-foreground transition-colors hover:bg-muted focus:bg-muted focus:outline-none"
-            onClick={handleLogout}
-          >
-            <LogOut className="h-4 w-4" />
-            Sign out
-          </button>
+          {onLogout && (
+            <>
+              <hr className="my-1 border-border" />
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm font-medium leading-5 text-sign-out-foreground transition-colors hover:bg-muted focus:bg-muted focus:outline-none"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-4 w-4" />
+                Sign out
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

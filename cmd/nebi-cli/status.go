@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -162,11 +161,11 @@ func runStatusJSON(s *store.Store, project *store.LocalProject, serverURL, cwd s
 
 func checkServerOriginStatus(s *store.Store, serverURL string, project *store.LocalProject) string {
 	creds, err := s.LoadCredentials()
-	if err != nil || creds.Token == "" {
+	if err != nil || !creds.LoggedIn() {
 		return "not_logged_in"
 	}
 
-	client := cliclient.New(serverURL, creds.Token)
+	client := storedCredentialsClient(serverURL, creds)
 	ctx := context.Background()
 
 	serverProject, err := findProjectByName(client, ctx, project.OriginName)
@@ -200,11 +199,11 @@ func checkServerOriginStatus(s *store.Store, serverURL string, project *store.Lo
 
 func checkServerOrigin(s *store.Store, serverURL string, project *store.LocalProject) string {
 	creds, err := s.LoadCredentials()
-	if err != nil || creds.Token == "" {
+	if err != nil || !creds.LoggedIn() {
 		return "Not logged in"
 	}
 
-	client := cliclient.New(serverURL, creds.Token)
+	client := storedCredentialsClient(serverURL, creds)
 	ctx := context.Background()
 
 	serverProject, err := findProjectByName(client, ctx, project.OriginName)

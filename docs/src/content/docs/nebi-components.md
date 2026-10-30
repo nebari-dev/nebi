@@ -35,10 +35,10 @@ Bundles are packed into an OCI Image Manifest with custom media types for the sp
 
 `nebi-server` is the team deployment of Nebi. It serves the REST API, bundled React frontend, and worker stack with full multi-user support.
 
-- **Authentication**: JWT-based sessions with pluggable backends — basic auth, OIDC, or proxy auth
+- **Authentication**: standard OIDC. Users sign in with your identity provider (for example Keycloak) and Nebi only validates the access tokens it issues; authentication can also be turned off entirely for trusted networks
 - **Role-based AC**: Apache Casbin-based access control with per-project permissions (read, write, admin) for users
 - **API**: Git-based HTTP server serving the REST API and the bundled React frontend
-- **Central database**: SQLite (default) or PostgreSQL for project and user tracking
+- **Central database**: SQLite (default) or PostgreSQL for project tracking
 - **Background worker**: Background processor for async operations like project creation and package installation
 - **Job queue**: In-memory queue with an in-process worker that handles project creation and updates concurrently, keeping the API responsive.
 

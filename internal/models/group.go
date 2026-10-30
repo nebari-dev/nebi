@@ -7,23 +7,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// GroupSource identifies how a group entered the system.
-type GroupSource string
-
-const (
-	GroupSourceNative GroupSource = "native"
-	GroupSourceOIDC   GroupSource = "oidc"
-)
-
-// Group represents a named collection of users for permission grants.
+// Group is an identity-provider group, synced from the "groups" claim of
+// access tokens. Projects and registries can be granted to groups.
 type Group struct {
-	ID          uuid.UUID      `gorm:"type:text;primary_key" json:"id"`
-	Name        string         `gorm:"uniqueIndex;not null" json:"name"`
-	Description string         `json:"description"`
-	Source      GroupSource    `gorm:"type:text;not null;default:native;index" json:"source"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	ID        uuid.UUID      `gorm:"type:text;primary_key" json:"id"`
+	Name      string         `gorm:"uniqueIndex;not null" json:"name"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 // BeforeCreate hook to generate UUID

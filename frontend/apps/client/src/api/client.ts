@@ -1,5 +1,11 @@
-import axios from 'axios';
+import axios, { type InternalAxiosRequestConfig } from 'axios';
 import { getApiBaseUrl, getBasePath } from '@/lib/basePath';
+import {
+  getAccessToken,
+  getUserManager,
+  renewAccessToken,
+  safeReturnTo,
+} from '@/lib/oidc';
 import { queryClient } from '@/lib/queryClient';
 import { useModeStore } from '@/store/modeStore';
 
@@ -12,30 +18,37 @@ export const apiClient = axios.create({
   },
 });
 
-const FEDERATED_IDENTITY_REVIEW_ERRORS = new Set([
-  'identity_review_pending',
-  'identity_review_rejected',
-]);
-
-const redirectToLogin = (errorCode?: string) => {
-  const { mode } = useModeStore.getState();
-  if (mode === 'local') {
-    return;
-  }
-
-  localStorage.removeItem('auth_token');
-  // Clear all query cache to prevent stale data
-  queryClient.clear();
-  const errorQuery = errorCode ? `?error=${encodeURIComponent(errorCode)}` : '';
-  window.location.href = `${getBasePath()}/login${errorQuery}`;
+type RetriableRequestConfig = InternalAxiosRequestConfig & {
+  _authRetried?: boolean;
 };
 
-// Request interceptor to add auth token
+// The UserManager only exists once a team server reports OIDC auth; local
+// mode and auth-disabled team servers send no credentials at all.
+const usesOidc = () =>
+  useModeStore.getState().mode !== 'local' && getUserManager() !== null;
+
+const redirectToLogin = () => {
+  const basePath = getBasePath();
+  const { pathname, search } = window.location;
+  const current = pathname.startsWith(basePath)
+    ? pathname.slice(basePath.length)
+    : pathname;
+  if (current.startsWith('/login') || current.startsWith('/auth/callback')) {
+    return;
+  }
+  const returnTo = safeReturnTo(current + search);
+  const query = returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : '';
+  window.location.href = `${basePath}/login${query}`;
+};
+
+// Request interceptor to attach the identity provider's access token
 apiClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+  async (config) => {
+    if (usesOidc()) {
+      const token = await getAccessToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
     return config;
   },
@@ -45,23 +58,28 @@ apiClient.interceptors.request.use(
 // Response interceptor for error handling
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
-    const errorCode = error.response?.data?.error;
-    if (
-      error.response?.status === 403 &&
-      FEDERATED_IDENTITY_REVIEW_ERRORS.has(errorCode)
-    ) {
-      redirectToLogin(errorCode);
+  async (error) => {
+    if (error.response?.status !== 401 || !usesOidc()) {
       return Promise.reject(error);
     }
 
-    if (error.response?.status === 401) {
-      // Don't redirect for /auth/session — it's expected to return 401 when no proxy
-      if (error.config?.url === '/auth/session') {
-        return Promise.reject(error);
+    // The access token was rejected: renew it once and replay the request.
+    const config = error.config as RetriableRequestConfig | undefined;
+    if (config && !config._authRetried) {
+      config._authRetried = true;
+      const token = await renewAccessToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+        return apiClient.request(config);
       }
-      redirectToLogin();
     }
+
+    // Renewal failed: drop the session and its cached data, then sign in again.
+    await getUserManager()
+      ?.removeUser()
+      .catch(() => undefined);
+    queryClient.clear();
+    redirectToLogin();
     return Promise.reject(error);
   },
 );

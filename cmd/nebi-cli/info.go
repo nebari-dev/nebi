@@ -82,9 +82,9 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	}
 
 	// Resolve server URL, token, username from local sources (no API calls)
-	serverURL, token, username, authSource := resolveInfoAuth()
+	serverURL, loggedIn, username, authSource := resolveInfoAuth()
 	result.AuthSource = authSource
-	if token != "" {
+	if loggedIn {
 		result.LoggedIn = true
 		result.Username = username
 	}
@@ -126,29 +126,26 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func resolveInfoAuth() (serverURL, token, username, source string) {
+func resolveInfoAuth() (serverURL string, loggedIn bool, username, source string) {
 	if envToken := os.Getenv("NEBI_AUTH_TOKEN"); envToken != "" {
 		if envURL := os.Getenv("NEBI_REMOTE_URL"); envURL != "" {
-			return envURL, envToken, "", "environment variable"
+			return envURL, true, "", "environment variable"
 		}
 	}
 
 	s, err := store.New()
 	if err != nil {
-		return "", "", "", "none"
+		return "", false, "", "none"
 	}
 	defer s.Close()
 
 	url, _ := s.LoadServerURL()
 	creds, _ := s.LoadCredentials()
 
-	if url == "" && (creds == nil || creds.Token == "") {
-		return "", "", "", "none"
+	if creds != nil && creds.LoggedIn() {
+		return url, true, creds.Username, "stored credentials"
 	}
-	if creds != nil && creds.Token != "" {
-		return url, creds.Token, creds.Username, "stored credentials"
-	}
-	return url, "", "", "none"
+	return url, false, "", "none"
 }
 
 func fillProjectInfo(result *infoResult) {

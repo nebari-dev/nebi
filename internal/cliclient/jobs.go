@@ -38,8 +38,8 @@ func (c *Client) StreamJobLogs(ctx context.Context, jobID string, w io.Writer) e
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Accept", "text/event-stream")
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
+	if err := c.authorize(req); err != nil {
+		return err
 	}
 
 	// A dedicated client without a timeout: the stream stays open for as

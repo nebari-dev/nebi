@@ -8,26 +8,52 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
+
+	"golang.org/x/oauth2"
 )
 
 // Client is a lightweight HTTP client for the Nebi API.
 type Client struct {
 	baseURL    string
-	token      string
+	tokens     oauth2.TokenSource // nil: unauthenticated
 	httpClient *http.Client
 }
 
-// New creates a new API client.
+// New creates a new API client that sends a fixed bearer token.
 func New(baseURL, token string) *Client {
+	var tokens oauth2.TokenSource
+	if token != "" {
+		tokens = oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+	}
+	return NewWithTokenSource(baseURL, tokens)
+}
+
+// NewWithTokenSource creates a new API client that asks tokens for a bearer
+// token before every request, so an expiring login can be refreshed.
+func NewWithTokenSource(baseURL string, tokens oauth2.TokenSource) *Client {
 	return &Client{
 		baseURL: baseURL + "/api/v1",
-		token:   token,
+		tokens:  tokens,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+// authorize sets the Authorization header when the client has credentials.
+func (c *Client) authorize(req *http.Request) error {
+	if c.tokens == nil {
+		return nil
+	}
+	tok, err := c.tokens.Token()
+	if err != nil {
+		return err
+	}
+	if tok.AccessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
+	}
+	return nil
 }
 
 // NewWithoutAuth creates a new API client without authentication (for login).
@@ -57,8 +83,8 @@ func (c *Client) request(ctx context.Context, method, path string, body, result 
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
+	if err := c.authorize(req); err != nil {
+		return nil, err
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -115,8 +141,8 @@ func (c *Client) GetText(ctx context.Context, path string) (string, *http.Respon
 		return "", nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
+	if err := c.authorize(req); err != nil {
+		return "", nil, err
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -172,17 +198,4 @@ func IsUnauthorized(err error) bool {
 		return apiErr.StatusCode == 401
 	}
 	return false
-}
-
-// IsOIDCRedirect returns true if the error indicates the server is behind an
-// OIDC proxy that redirected to a login page instead of returning JSON.
-// This typically manifests as a JSON decode error when the response body
-// starts with '<' (HTML) instead of '{' (JSON).
-func IsOIDCRedirect(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "invalid character '<'") ||
-		strings.Contains(msg, "invalid character '&lt;'")
 }

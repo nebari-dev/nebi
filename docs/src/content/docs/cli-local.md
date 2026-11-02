@@ -144,6 +144,16 @@ extracted to the output directory at their original relative paths.
 nebi import quay.io/nebari/data-science:v1.0 -o ./my-project
 ```
 
+Use a manifest digest when the workspace must match an immutable, reviewed
+artifact. Nebi also records the resolved digest when you import by tag.
+
+```bash
+nebi import quay.io/nebari/data-science@sha256:<64-hex-digest> -o ./my-project
+```
+
+References may include both a tag and digest. In that form, Nebi pulls by
+digest and retains the tag as descriptive import metadata.
+
 ```bash title="Output"
 Tracking workspace 'data-science' at /home/user/my-project
 Imported quay.io/nebari/data-science:v1.0 -> /home/user/my-project (3 asset file(s))

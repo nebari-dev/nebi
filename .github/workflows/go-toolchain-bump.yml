@@ -1,0 +1,122 @@
+name: Go Toolchain Bump
+
+# Every Go patch release closes standard library vulnerabilities, so the day
+# one ships, the govulncheck gates and the Trivy image scan start failing on
+# main and on every open PR at once (nebari-dev/nebi#510). Nothing in the repo
+# noticed on its own: check-go-toolchain.sh only warns on a stale patch outside
+# the release gate, so the first visible symptom was an unrelated PR going red.
+#
+# This turns that into a two-line PR waiting for review instead.
+
+on:
+  schedule:
+    # Daily. Go patch releases are far rarer than this, but the cost of a run
+    # that finds nothing is one API call.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: go-toolchain-bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Bump pinned Go toolchain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # A PR opened with the default GITHUB_TOKEN does not trigger other
+          # workflows, so the bump PR would sit there with no checks. Set the
+          # BOT_TOKEN secret (PAT or GitHub App token) to get CI on it; without
+          # one the PR is still opened, but needs a close/reopen to run checks.
+          token: ${{ secrets.BOT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      # Exits 2 when the pinned line has fallen out of support, which needs a
+      # human (language version + go directive), so let that fail the run.
+      - name: Resolve newest patch and rewrite pins
+        id: bump
+        run: scripts/bump-go-toolchain.sh
+
+      - name: Verify the rewritten pin
+        if: steps.bump.outputs.changed == 'true'
+        run: scripts/check-go-toolchain.sh --strict
+
+      - name: Open bump PR
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.bump.outputs.version }}
+          TOOLCHAIN: ${{ steps.bump.outputs.toolchain }}
+          PREVIOUS: ${{ steps.bump.outputs.previous }}
+          DIGEST: ${{ steps.bump.outputs.digest }}
+        run: |
+          set -euo pipefail
+          BRANCH="chore/go-toolchain-${VERSION}"
+
+          # Version-keyed branch name doubles as the idempotency check: a run
+          # that finds last run's PR still open has nothing to add.
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "$BRANCH already exists upstream; leaving the open PR alone"
+            exit 0
+          fi
+
+          WORKFLOW_URL="https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/.github/workflows/go-toolchain-bump.yml"
+
+          cat >"${RUNNER_TEMP}/commit-msg.txt" <<MSG
+          security: bump Go toolchain to ${VERSION}
+
+          Automated by .github/workflows/go-toolchain-bump.yml.
+
+          ${PREVIOUS} is no longer the newest patch of its line. Go patch releases
+          carry standard library security fixes, so leaving the pin stale fails
+          the govulncheck gates and the Trivy image scan on main and on every
+          open PR.
+          MSG
+
+          cat >"${RUNNER_TEMP}/pr-body.md" <<BODY
+          Automated by [\`go-toolchain-bump.yml\`](${WORKFLOW_URL}).
+
+          \`${PREVIOUS}\` is no longer the newest patch of its release line. Go patch
+          releases carry standard library security fixes, so a stale pin fails the
+          govulncheck gates and the Trivy image scan on \`main\` and on every open PR.
+
+          ## Changes
+
+          - \`go.mod\`: \`toolchain ${PREVIOUS}\` -> \`${TOOLCHAIN}\`. Every workflow resolves
+            Go via \`go-version-file: go.mod\`, so this covers all the govulncheck jobs.
+          - \`Dockerfile\`: builder image -> \`golang:${VERSION}-alpine@${DIGEST}\`,
+            covering the Trivy image scan.
+
+          The digest was verified against the registry before pinning: the image
+          config reports \`GOLANG_VERSION=${VERSION}\` rather than being trusted from
+          the tag.
+
+          ## Review notes
+
+          - Release notes: https://go.dev/doc/devel/release#go${VERSION}
+          - Fixed vulnerabilities: https://pkg.go.dev/vuln/
+          - Patch bump only. A major-line move is never automated; the workflow
+            fails loudly instead so the language version and \`go\` directive get a
+            human.
+
+          If this PR has no checks, the repo has no \`BOT_TOKEN\` secret and it was
+          opened with \`GITHUB_TOKEN\`, which cannot trigger workflows. Close and
+          reopen it to run CI.
+          BODY
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -b "$BRANCH"
+          git commit -F "${RUNNER_TEMP}/commit-msg.txt" -- go.mod Dockerfile
+          git push -u origin "$BRANCH"
+
+          gh pr create \
+            --base "${GITHUB_REF_NAME}" \
+            --head "$BRANCH" \
+            --title "security: bump Go toolchain to ${VERSION}" \
+            --body-file "${RUNNER_TEMP}/pr-body.md"

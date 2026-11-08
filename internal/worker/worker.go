@@ -434,7 +434,9 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return err
 		}
 
-		w.svc.SaveInstalledPackages(project.ID, packages)
+		if err := w.svc.SyncPackagesFromProject(ctx, project); err != nil {
+			return fmt.Errorf("failed to sync packages after install: %w", err)
+		}
 
 		if err := w.maybeReinstallEnv(ctx, project, wasInstalled, logWriter); err != nil {
 			return err

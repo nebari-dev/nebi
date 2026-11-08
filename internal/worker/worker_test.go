@@ -570,6 +570,142 @@ func TestProcessJob_DoesNotSavePackagesWhenInstallSnapshotExceedsLimit(t *testin
 	}
 }
 
+func TestProcessJob_InstallSyncsResolvedPackages(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		isLocal   bool
+		installed bool
+	}{
+		{name: "local installed", isLocal: true, installed: true},
+		{name: "local uninstalled", isLocal: true},
+		{name: "team"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, svc, jobSvc, exec := setupWorkerTestMode(t, tc.isLocal)
+			project, job := newTestProject(t, db, exec, "install-sync", models.JobTypeInstall,
+				map[string]interface{}{"packages": []string{"zlib=1.3.2"}})
+			if tc.installed {
+				if err := os.MkdirAll(filepath.Join(exec.GetProjectPath(project), ".pixi", "envs"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, pkg := range []models.Package{
+				{ProjectID: project.ID, Name: "zlib", Version: "1.2.13"},
+				{ProjectID: project.ID, Name: "obsolete-dependency", Version: "1.0"},
+			} {
+				if err := db.Create(&pkg).Error; err != nil {
+					t.Fatalf("seed package: %v", err)
+				}
+			}
+			restore := service.SetPixiListPackagesForTests(func(context.Context, pixi.ListOptions) ([]pixi.Package, error) {
+				return []pixi.Package{
+					{Name: "zlib", Version: "1.3.2"},
+					{Name: "libzlib", Version: "1.3.2"},
+				}, nil
+			})
+			t.Cleanup(restore)
+
+			w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
+			w.processJob(context.Background(), job)
+
+			var stored models.Job
+			if err := db.First(&stored, "id = ?", job.ID).Error; err != nil {
+				t.Fatalf("reload job: %v", err)
+			}
+			if stored.Status != models.JobStatusCompleted {
+				t.Fatalf("expected completed install, got %q: %s", stored.Status, stored.Error)
+			}
+			packages, err := svc.ListPackages(project.ID.String())
+			if err != nil {
+				t.Fatalf("list packages: %v", err)
+			}
+			if len(packages) != 2 {
+				t.Fatalf("expected exactly the resolved packages, got %+v", packages)
+			}
+			versions := make(map[string]string)
+			for _, pkg := range packages {
+				versions[pkg.Name] = pkg.Version
+			}
+			if versions["zlib"] != "1.3.2" || versions["libzlib"] != "1.3.2" {
+				t.Fatalf("expected resolved names and versions, got %v", versions)
+			}
+			wantInstalls := 0
+			if tc.installed {
+				wantInstalls = 1
+			}
+			if exec.installCalls != wantInstalls {
+				t.Errorf("expected %d environment installs, got %d", wantInstalls, exec.installCalls)
+			}
+		})
+	}
+}
+
+func TestProcessJob_InstallFailsWhenPackageSyncFails(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		listErr bool
+		trigger string
+	}{
+		{name: "list", listErr: true},
+		{
+			name: "delete",
+			trigger: `CREATE TRIGGER reject_package_delete BEFORE UPDATE OF deleted_at ON packages
+				BEGIN SELECT RAISE(ABORT, 'package sync failure'); END;`,
+		},
+		{
+			name: "insert",
+			trigger: `CREATE TRIGGER reject_package_insert BEFORE INSERT ON packages
+				WHEN NEW.name = 'libzlib' BEGIN SELECT RAISE(ABORT, 'package sync failure'); END;`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, svc, jobSvc, exec := setupWorkerTest(t)
+			project, job := newTestProject(t, db, exec, "install-sync-failure", models.JobTypeInstall,
+				map[string]interface{}{"packages": []string{"zlib"}})
+			original := models.Package{ProjectID: project.ID, Name: "zlib", Version: "1.2.13"}
+			if err := db.Create(&original).Error; err != nil {
+				t.Fatalf("seed package: %v", err)
+			}
+			if tc.trigger != "" {
+				if err := db.Exec(tc.trigger).Error; err != nil {
+					t.Fatalf("create trigger: %v", err)
+				}
+			}
+			calls := 0
+			restore := service.SetPixiListPackagesForTests(func(context.Context, pixi.ListOptions) ([]pixi.Package, error) {
+				calls++
+				// The snapshot succeeds; only the subsequent package sync fails.
+				if tc.listErr && calls > 1 {
+					return nil, errors.New("package sync failure")
+				}
+				return []pixi.Package{
+					{Name: "zlib", Version: "1.3.2"},
+					{Name: "libzlib", Version: "1.3.2"},
+				}, nil
+			})
+			t.Cleanup(restore)
+
+			w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
+			w.processJob(context.Background(), job)
+
+			var stored models.Job
+			if err := db.First(&stored, "id = ?", job.ID).Error; err != nil {
+				t.Fatalf("reload job: %v", err)
+			}
+			if stored.Status != models.JobStatusFailed || !strings.Contains(stored.Error, "package sync failure") {
+				t.Fatalf("expected failed install with sync error, got %q: %s", stored.Status, stored.Error)
+			}
+			packages, err := svc.ListPackages(project.ID.String())
+			if err != nil {
+				t.Fatalf("list packages: %v", err)
+			}
+			if len(packages) != 1 || packages[0].ID != original.ID || packages[0].Version != original.Version {
+				t.Fatalf("failed sync must preserve the previous package records, got %+v", packages)
+			}
+		})
+	}
+}
+
 func TestProcessJob_FailsCreateAndCleansUpWhenPackageListHitsResourceLimit(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
 	project, job := newTestProject(t, db, exec, "list-resource-limit", models.JobTypeCreate, nil)

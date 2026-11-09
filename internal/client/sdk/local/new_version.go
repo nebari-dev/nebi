@@ -125,21 +125,24 @@ func (s *Service) GetVersionDraft(ctx context.Context, projectID uuid.UUID, base
 	}, nil
 }
 
-// DraftManifest returns the pixi.toml of a draft. With a form, the form is
-// written onto the base version's pixi.toml (artifact.ApplyForm), so
-// tables and keys the form cannot show survive, the same round-trip rule
-// as create project. Otherwise pixiToml is returned as is. The form name
-// defaults to the base workspace name (the new version page hides it).
+// DraftManifest returns the pixi.toml of a draft. Without a form,
+// pixiToml is returned as is. With a form, the form is written onto
+// pixiToml when it is given (the text the user last had in the pixi.toml
+// editor before switching to the form) or else onto the base version's
+// pixi.toml (artifact.ApplyForm), so tables and keys the form cannot show
+// survive: the same round-trip rule as create project. The form name
+// defaults to the workspace name (the new version page hides it).
 func (s *Service) DraftManifest(ctx context.Context, projectID uuid.UUID, base int, pixiToml string, form *shared.ManifestForm) (string, error) {
 	if form == nil {
 		return pixiToml, nil
 	}
-	if strings.TrimSpace(pixiToml) != "" {
-		return "", &shared.ValidationError{Field: artifact.FieldManifest, Message: "Send either pixi_toml or form, not both."}
-	}
-	bv, err := s.LoadVersion(ctx, projectID, base)
-	if err != nil {
-		return "", s.nvBaseVersionError(base, err)
+	target := pixiToml
+	if strings.TrimSpace(target) == "" {
+		bv, err := s.LoadVersion(ctx, projectID, base)
+		if err != nil {
+			return "", s.nvBaseVersionError(base, err)
+		}
+		target = bv.ManifestContent
 	}
 	f := *form
 	// ApplyForm writes dependencies as TOML keys, which would silently merge
@@ -148,11 +151,11 @@ func (s *Service) DraftManifest(ctx context.Context, projectID uuid.UUID, base i
 		return "", err
 	}
 	if strings.TrimSpace(f.Name) == "" {
-		if bm, perr := artifact.ParseManifest([]byte(bv.ManifestContent)); perr == nil {
-			f.Name = bm.Form.Name
+		if tm, perr := artifact.ParseManifest([]byte(target)); perr == nil {
+			f.Name = tm.Form.Name
 		}
 	}
-	out, err := artifact.ApplyForm([]byte(bv.ManifestContent), f)
+	out, err := artifact.ApplyForm([]byte(target), f)
 	if err != nil {
 		return "", &shared.ValidationError{Field: artifact.FieldManifest, Message: err.Error()}
 	}
@@ -177,6 +180,7 @@ func (s *Service) CreateVersion(ctx context.Context, projectID uuid.UUID, req sh
 		return nil, s.nvBaseVersionError(req.BaseVersion, err)
 	}
 
+	// A form (optionally with the pixi.toml it applies onto) or a pixi.toml.
 	tomlMode := req.Form == nil
 	if tomlMode && strings.TrimSpace(req.PixiToml) == "" {
 		return nil, &shared.ValidationError{Field: artifact.FieldManifest, Message: "pixi.toml needs a [workspace] table."}

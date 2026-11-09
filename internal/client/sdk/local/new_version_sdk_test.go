@@ -476,8 +476,15 @@ rich = "*"
 	if strings.Contains(toml, "numpy") || !strings.Contains(toml, "[tasks]") {
 		t.Fatalf("form draft = %s", toml)
 	}
-	if _, err := l.DraftManifest(ctx, id, 1, "x", &form); err == nil {
-		t.Fatal("pixi_toml and form together must fail")
+	// A form with a pixi.toml applies onto that text (edits made in the
+	// pixi.toml editor before switching to the form survive).
+	edited2 := nvBaseToml + "\n[feature.dev.dependencies]\npytest = \"*\"\n"
+	toml, err = l.DraftManifest(ctx, id, 1, edited2, &form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(toml, "numpy") || !strings.Contains(toml, "[feature.dev.dependencies]") {
+		t.Fatalf("form onto pixi.toml = %s", toml)
 	}
 }
 

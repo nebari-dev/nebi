@@ -36,9 +36,9 @@ func (a *API) createVersion(c *gin.Context) {
 	c.JSON(http.StatusAccepted, job)
 }
 
-// previewRequest is the body of POST /versions/preview. Exactly one of
-// PixiToml (pixi.toml editor) or Form (GUI form, applied onto the base
-// version's pixi.toml) is set.
+// previewRequest is the body of POST /versions/preview: PixiToml
+// (pixi.toml editor), or Form (GUI form) applied onto PixiToml when given,
+// else onto the base version's pixi.toml (local.Service.DraftManifest).
 type previewRequest struct {
 	BaseVersion int                  `json:"base_version"`
 	PixiToml    string               `json:"pixi_toml"`

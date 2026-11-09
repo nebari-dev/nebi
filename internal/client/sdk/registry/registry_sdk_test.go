@@ -493,4 +493,3 @@ func TestPublishReportsToLinkedServer(t *testing.T) {
 		t.Fatalf("calls = %+v", calls)
 	}
 }
-

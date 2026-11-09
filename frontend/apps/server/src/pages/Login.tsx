@@ -48,7 +48,7 @@ export const Login = ({ isDarkMode }: LoginProps) => {
   // In local mode, redirect straight to projects
   useEffect(() => {
     if (isLocalMode) {
-      navigate('/projects');
+      navigate('/');
     }
   }, [isLocalMode, navigate]);
 

@@ -7,7 +7,6 @@ import {
   Users2,
 } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { useVersion } from '@/hooks/useVersion';
 
 const navItems = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
@@ -24,13 +23,8 @@ const navItems = [
 ];
 
 export const AdminLayout = () => {
-  const { data: versionInfo } = useVersion();
-  const hasVersion = !!versionInfo?.version;
-
   return (
-    <div
-      className={`flex ${hasVersion ? 'h-[calc(100vh-110px)]' : 'h-[calc(100vh-57px)]'}`}
-    >
+    <div className="flex h-[calc(100vh-56px)]">
       <aside className="w-[253px] shrink-0 border-r bg-sidebar py-6 text-sidebar-foreground">
         <div className="mb-6 px-4">
           <h2 className="text-lg font-semibold">Admin Dashboard</h2>

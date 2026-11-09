@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	resourcemetrics "github.com/nebari-dev/nebi/internal/metrics"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/oci"
 	"github.com/nebari-dev/nebi/internal/pixi"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -124,6 +125,13 @@ func (s *WorkspaceService) mapPixiListError(err error) error {
 	var outputLimitErr *pixi.OutputLimitError
 	if errors.As(err, &outputLimitErr) {
 		return &ValidationError{Message: outputLimitErr.Error()}
+	}
+	return err
+}
+
+func mapOCILimitError(err error) error {
+	if oci.IsLimitError(err) {
+		return &ValidationError{Message: err.Error()}
 	}
 	return err
 }

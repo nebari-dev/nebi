@@ -59,8 +59,9 @@ func runImport(cmd *cobra.Command, args []string) error {
 	// policy before any bytes land on disk. This is cheap (one small
 	// GET) and avoids partial-extract state on a rejected destination.
 	peek, err := oci.PullBundle(ctx, repoRef, tag, oci.PullOptions{
-		Concurrency: importConcurrency,
-		PlainHTTP:   plainHTTP,
+		Concurrency:       importConcurrency,
+		PlainHTTP:         plainHTTP,
+		MaxCoreLayerBytes: oci.DefaultMaxCoreLayerBytes,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to pull from registry: %w", err)
@@ -93,8 +94,9 @@ func runImport(cmd *cobra.Command, args []string) error {
 	// Stream every layer straight to disk via oras.Copy + file.Store.
 	// Asset blobs never land fully in RAM regardless of size.
 	result, err := oci.ExtractBundle(ctx, repoRef, tag, outputDir, oci.PullOptions{
-		Concurrency: importConcurrency,
-		PlainHTTP:   plainHTTP,
+		Concurrency:       importConcurrency,
+		PlainHTTP:         plainHTTP,
+		MaxCoreLayerBytes: oci.DefaultMaxCoreLayerBytes,
 	})
 	if err != nil {
 		return fmt.Errorf("import failed: %w; partial files at %s", err, absDir)

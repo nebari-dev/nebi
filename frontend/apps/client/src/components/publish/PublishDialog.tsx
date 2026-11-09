@@ -295,7 +295,7 @@ export const PublishDialog = ({
         open={open && !addOpen}
         onOpenChange={(o) => !saving && onOpenChange(o)}
       >
-        <DialogContent className="max-w-[520px]">
+        <DialogContent className="max-w-[520px] overflow-auto">
           <DialogHeader>
             <DialogTitle>Publish version {version.number}</DialogTitle>
             {results && (

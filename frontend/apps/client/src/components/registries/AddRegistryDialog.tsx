@@ -163,7 +163,7 @@ export const AddRegistryDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[520px]">
+      <DialogContent className="max-w-[520px] overflow-auto">
         <form onSubmit={submit} className="grid gap-4" noValidate>
           <DialogHeader>
             <DialogTitle>

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -15,7 +16,9 @@ import (
 	"time"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
-	"github.com/nebari-dev/nebi/internal/store"
+	"github.com/nebari-dev/nebi/internal/client"
+	"github.com/nebari-dev/nebi/internal/client/sdk/local"
+	"github.com/nebari-dev/nebi/internal/client/sdk/remote"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -98,17 +101,20 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		username = u
 	}
 
-	s, err := store.New()
+	// Store the connection through the client SDK so the desktop app,
+	// nebi-web and `nebi server status` see the same server.
+	stack, closeStack, err := client.OpenCLI(io.Discard)
 	if err != nil {
 		return err
 	}
-	defer s.Close()
-
-	if err := s.SaveServerURL(serverURL); err != nil {
-		return err
-	}
-
-	if err := s.SaveCredentials(&store.Credentials{Token: token, Username: username}); err != nil {
+	defer closeStack()
+	if err := stack.SDK.Local.SaveServerCredentials(cmd.Context(), local.ServerCredentials{
+		URL:      serverURL,
+		Name:     remote.ServerName(serverURL),
+		Token:    token,
+		Username: username,
+		AuthMode: local.AuthModeToken,
+	}); err != nil {
 		return err
 	}
 

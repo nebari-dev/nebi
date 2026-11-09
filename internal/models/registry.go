@@ -27,21 +27,25 @@ type OCIRegistry struct {
 
 // Publication tracks when and where a project was published
 type Publication struct {
-	ID              uuid.UUID   `gorm:"type:uuid;primary_key" json:"id"`
-	ProjectID       uuid.UUID   `gorm:"type:uuid;index;not null" json:"project_id"`
-	Project         Project     `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
-	VersionNumber   int         `gorm:"not null" json:"version_number"` // Which version was published
-	RegistryID      uuid.UUID   `gorm:"type:uuid;index;not null" json:"registry_id"`
-	Registry        OCIRegistry `gorm:"foreignKey:RegistryID" json:"registry,omitempty"`
-	Repository      string      `gorm:"not null" json:"repository"` // e.g., "myorg/myenv"
-	Tag             string      `gorm:"not null" json:"tag"`        // e.g., "v1.0.0"
-	Digest          string      `json:"digest"`                     // OCI manifest digest
-	IsPublic        bool        `gorm:"default:false" json:"is_public"`
-	PublishedBy     uuid.UUID   `gorm:"type:uuid;not null" json:"published_by"`
-	PublishedByUser User        `gorm:"foreignKey:PublishedBy" json:"published_by_user,omitempty"`
-	CreatedAt       time.Time   `json:"created_at"`
-	UpdatedAt       time.Time   `json:"updated_at"`
-	DeletedAt       *time.Time  `gorm:"index" json:"-"`
+	ID            uuid.UUID   `gorm:"type:uuid;primary_key" json:"id"`
+	ProjectID     uuid.UUID   `gorm:"type:uuid;index;not null" json:"project_id"`
+	Project       Project     `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
+	VersionNumber int         `gorm:"not null" json:"version_number"` // Which version was published
+	RegistryID    uuid.UUID   `gorm:"type:uuid;index;not null" json:"registry_id"`
+	Registry      OCIRegistry `gorm:"foreignKey:RegistryID" json:"registry,omitempty"`
+	Repository    string      `gorm:"not null" json:"repository"` // e.g., "myorg/myenv"
+	Tag           string      `gorm:"not null" json:"tag"`        // e.g., "v1.0.0"
+	Digest        string      `json:"digest"`                     // OCI manifest digest
+	// RegistryHost is a denormalized copy of the registry host (e.g. ghcr.io)
+	// captured at publish time so the "Published" badge can render
+	// registry/repository:tag after the registry row is renamed or removed.
+	RegistryHost    string     `json:"registry_host,omitempty"`
+	IsPublic        bool       `gorm:"default:false" json:"is_public"`
+	PublishedBy     uuid.UUID  `gorm:"type:uuid;not null" json:"published_by"`
+	PublishedByUser User       `gorm:"foreignKey:PublishedBy" json:"published_by_user,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	DeletedAt       *time.Time `gorm:"index" json:"-"`
 }
 
 // TableName specifies the table name for OCIRegistry

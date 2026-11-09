@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -22,6 +23,7 @@ import (
 	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
+	"github.com/nebari-dev/nebi/internal/localext"
 	"github.com/nebari-dev/nebi/internal/logger"
 	"github.com/nebari-dev/nebi/internal/netguard"
 	"github.com/nebari-dev/nebi/internal/queue"
@@ -38,6 +40,10 @@ type Config struct {
 	RuntimeMode config.Mode // Runtime mode: team or local
 	Version     string      // Version string to report
 	Commit      string      // Git commit hash
+	// Local is the local-mode client stack (issue #649), built by the
+	// executable (cmd/nebi-web) so this package never imports
+	// internal/client. Ignored in team mode.
+	Local localext.Extension
 }
 
 // Run starts the server with the given configuration and blocks until the context is canceled.
@@ -68,6 +74,11 @@ func Run(ctx context.Context, cfg Config) error {
 		appCfg.Server.Port = cfg.Port
 	}
 	appCfg.Server.Host = resolveBindHost(appCfg.IsLocalMode(), appCfg.Server.Host)
+	if appCfg.IsLocalMode() {
+		if err := useLocalDataDirDefaults(appCfg); err != nil {
+			return err
+		}
+	}
 
 	// Initialize logger
 	logger.Init(appCfg.Log.Format, appCfg.Log.Level)
@@ -146,8 +157,29 @@ func Run(ctx context.Context, cfg Config) error {
 		return err
 	}
 
+	// Local mode: build the client stack before the worker so the worker
+	// can dispatch client jobs to it.
+	var localExt localext.Extension
+	var workerOpts []worker.Option
+	if appCfg.IsLocalMode() && cfg.Local != nil {
+		if err := cfg.Local.Init(localext.Deps{
+			Config:   appCfg,
+			DB:       database,
+			Queue:    jobQueue,
+			Executor: exec,
+			Logger:   slog.Default(),
+		}); err != nil {
+			return fmt.Errorf("failed to initialize client stack: %w", err)
+		}
+		localExt = cfg.Local
+		workerOpts = append(workerOpts, worker.WithDispatcher(localExt.Dispatcher()))
+	}
+
 	// Run jobs in the background while the HTTP API remains responsive.
-	w := worker.New(jobQueue, exec, workerSvc, workerJobSvc, slog.Default(), limitCfg, appCfg.Worker.MaxParallelJobs)
+	w := worker.New(jobQueue, exec, workerSvc, workerJobSvc, slog.Default(), limitCfg, appCfg.Worker.MaxParallelJobs, workerOpts...)
+	if localExt != nil {
+		localExt.BindWorker(w)
+	}
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	defer workerCancel()
 	workerDone := make(chan struct{})
@@ -158,7 +190,7 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 	}()
 
-	router := api.NewRouter(appCfg, database, jobQueue, exec, w.GetBroker(), slog.Default())
+	router := api.NewRouterWithOptions(appCfg, database, jobQueue, exec, w.GetBroker(), slog.Default(), api.RouterOptions{Local: localExt})
 	if !appCfg.IsLocalMode() {
 		auth.StartAuthReconciliationMonitor(ctx, database, rbac.NewDefaultProvider(), slog.Default())
 	}
@@ -226,6 +258,29 @@ func shutdown(ctx context.Context, srv *http.Server, cancelWorker context.Cancel
 	case <-ctx.Done():
 		return errors.Join(serverErr, fmt.Errorf("waiting for worker shutdown: %w", ctx.Err()))
 	}
+}
+
+// useLocalDataDirDefaults points local mode at the shared local database
+// (issue #649): when neither NEBI_DATABASE_DSN nor a config file changed the
+// SQLite DSN from its "./nebi.db" default, nebi-web uses
+// <data dir>/nebi.db, the same file as the CLI and the desktop app, and
+// keeps projects in <data dir>/projects unless the projects dir was set.
+func useLocalDataDirDefaults(cfg *config.Config) error {
+	if cfg.Database.Driver != "sqlite" || os.Getenv("NEBI_DATABASE_DSN") != "" || cfg.Database.DSN != "./nebi.db" {
+		return nil
+	}
+	dataDir, err := store.DefaultDataDir()
+	if err != nil {
+		return fmt.Errorf("determining data directory: %w", err)
+	}
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return fmt.Errorf("creating data directory: %w", err)
+	}
+	cfg.Database.DSN = filepath.Join(dataDir, "nebi.db")
+	if os.Getenv("NEBI_STORAGE_PROJECTS_DIR") == "" && cfg.Storage.ProjectsDir == "./data/projects" {
+		cfg.Storage.ProjectsDir = filepath.Join(dataDir, "projects")
+	}
+	return nil
 }
 
 // resolveBindHost returns the effective bind host. Local mode is a

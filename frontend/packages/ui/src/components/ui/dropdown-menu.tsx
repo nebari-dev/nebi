@@ -241,6 +241,44 @@ function DropdownMenuCheckboxItem({
   );
 }
 
+type DropdownMenuRadioItemProps = React.ComponentProps<
+  typeof MenuPrimitive.RadioItem
+> &
+  VariantProps<typeof dropdownMenuItemVariants>;
+
+/** Single-choice group (e.g. the Light / Dark / System theme menu). */
+function DropdownMenuRadioGroup(
+  props: React.ComponentProps<typeof MenuPrimitive.RadioGroup>,
+) {
+  return (
+    <MenuPrimitive.RadioGroup data-slot="dropdown-menu-radio-group" {...props} />
+  );
+}
+
+function DropdownMenuRadioItem({
+  className,
+  children,
+  variant,
+  ...props
+}: DropdownMenuRadioItemProps) {
+  return (
+    <MenuPrimitive.RadioItem
+      data-slot="dropdown-menu-radio-item"
+      data-variant={variant ?? 'default'}
+      className={cn(dropdownMenuItemVariants({ variant }), 'pr-7', className)}
+      {...props}
+    >
+      <span className="flex flex-1 items-center gap-2">{children}</span>
+      <MenuPrimitive.RadioItemIndicator
+        className="pointer-events-none absolute right-1.5 inline-flex size-4 items-center justify-center"
+        data-slot="dropdown-menu-radio-item-indicator"
+      >
+        <CheckIcon className="size-4" />
+      </MenuPrimitive.RadioItemIndicator>
+    </MenuPrimitive.RadioItem>
+  );
+}
+
 /** Nested submenu with its own popup and right-chevron trigger. */
 function DropdownMenuSubmenu({
   children,
@@ -282,6 +320,7 @@ export type {
   DropdownMenuContentProps,
   DropdownMenuItemProps,
   DropdownMenuProps,
+  DropdownMenuRadioItemProps,
   DropdownMenuSubmenuProps,
   DropdownMenuTriggerProps,
 };
@@ -293,6 +332,8 @@ export {
   DropdownMenuGroupLabel,
   DropdownMenuItem,
   DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuSubmenu,
   DropdownMenuTrigger,

@@ -41,17 +41,24 @@ const (
 
 // Project represents a Nebi project backed by a Pixi workspace.
 type Project struct {
-	ID        uuid.UUID      `gorm:"type:text;primary_key" json:"id"`
-	Name      string         `gorm:"not null" json:"name"`
-	OwnerID   uuid.UUID      `gorm:"type:text;index" json:"owner_id"`
-	Owner     User           `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
-	Status    ProjectStatus  `gorm:"not null;default:'pending'" json:"status"`
-	Source    string         `gorm:"default:'managed'" json:"source"` // "managed", "local"
-	Path      string         `json:"path,omitempty"`                  // filesystem path (local-mode)
-	SizeBytes int64          `gorm:"default:0" json:"size_bytes,omitempty"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	ID        uuid.UUID     `gorm:"type:text;primary_key" json:"id"`
+	Name      string        `gorm:"not null" json:"name"`
+	OwnerID   uuid.UUID     `gorm:"type:text;index" json:"owner_id"`
+	Owner     User          `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
+	Status    ProjectStatus `gorm:"not null;default:'pending'" json:"status"`
+	Source    string        `gorm:"default:'managed'" json:"source"` // "managed", "local"
+	Path      string        `json:"path,omitempty"`                  // filesystem path (local-mode)
+	SizeBytes int64         `gorm:"default:0" json:"size_bytes,omitempty"`
+	// InstalledVersion is the version number whose environment is currently
+	// materialized on disk (one installed version at a time). Nil when the
+	// project is not installed. LastInstalledVersion keeps the most recent
+	// installed version after an uninstall so "Install" from the projects
+	// list can restore it. Both are local mode only (issue #649).
+	InstalledVersion     *int           `json:"installed_version"`
+	LastInstalledVersion *int           `json:"last_installed_version"`
+	CreatedAt            time.Time      `json:"created_at"`
+	UpdatedAt            time.Time      `json:"updated_at"`
+	DeletedAt            gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 // TableName ensures GORM uses the "projects" table

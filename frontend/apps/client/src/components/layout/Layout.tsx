@@ -1,3 +1,10 @@
+// App shell for the client (issue #649), matching the prototype header:
+// logo + "Nebi", nav Projects / Server / Registries / Jobs, then the
+// connected-server badge, notifications bell, help menu and theme menu.
+// Frozen: the slot components live in unit-owned files
+// (ConnectedServerBadge: U5, NotificationsBell: U8, HelpMenu: U2).
+// Pages render their own <main>.
+import { ThemeMenu } from '@nebi/ui/components/theme-menu';
 import { Button } from '@nebi/ui/components/ui/button';
 import {
   MenuBarActions,
@@ -6,8 +13,9 @@ import {
   NavigationMenu,
   NavLink,
 } from '@nebi/ui/components/ui/navigation-menu';
-import type { ThemeMode } from '@nebi/ui/hooks/use-theme-preference';
-import { Boxes, ExternalLink, Settings, Shield } from 'lucide-react';
+import { useTheme } from '@nebi/ui/hooks/theme-provider';
+import { cn } from '@nebi/ui/lib/utils';
+import { BookOpen, Boxes, RotateCcwClock, Server, Shield } from 'lucide-react';
 import {
   Outlet,
   NavLink as RouterNavLink,
@@ -16,70 +24,35 @@ import {
 } from 'react-router-dom';
 import { useIsAdmin } from '@/hooks/useAdmin';
 import { useHostJobNotifications } from '@/hooks/useHostJobNotifications';
-import { useRemoteView } from '@/hooks/useRemote';
-import { useVersion } from '@/hooks/useVersion';
 import { getBrandingLogoUrl } from '@/lib/brandingConfig';
-import { openExternal } from '@/lib/openExternal';
 import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
-import { useViewModeStore } from '@/store/viewModeStore';
+import { ConnectedServerBadge } from './ConnectedServerBadge';
+import { HelpMenu } from './HelpMenu';
+import { NotificationsBell } from './NotificationsBell';
 import { ProfileMenu } from './ProfileMenu';
 
-type LayoutProps = {
-  themeMode: ThemeMode;
-  isDarkMode: boolean;
-  onThemeChange: (themeMode: ThemeMode) => void;
-};
+const navItemClass = 'h-full rounded-none';
+const activeUnderline =
+  "after:absolute after:right-2 after:bottom-0 after:left-2 after:h-0.5 after:bg-primary after:content-['']";
 
-const registriesIcon = (
-  <svg
-    aria-hidden="true"
-    xmlns="http://www.w3.org/2000/svg"
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className="h-4 w-4"
-  >
-    <path d="M11.5 20h-6.5a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v5.5" />
-    <path d="M9 17h2" />
-    <path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
-    <path d="M20.2 20.2l1.8 1.8" />
-  </svg>
-);
-
-export const Layout = ({
-  themeMode,
-  isDarkMode,
-  onThemeChange,
-}: LayoutProps) => {
-  const { user, clearAuth } = useAuthStore();
+export const Layout = () => {
+  const { pathname } = useLocation();
   const navigate = useNavigate();
+  const { themeMode, isDarkMode, setThemeMode } = useTheme();
+  const { user, clearAuth } = useAuthStore();
+  const isLocalMode = useModeStore((s) => s.isLocalMode());
+  const logoutUrl = useModeStore((s) => s.logoutUrl);
   const { data: isAdmin } = useIsAdmin();
-  const { setViewMode } = useViewModeStore();
-  const { data: versionInfo } = useVersion();
-  // Layout never unmounts, so this call keeps a permanent observer on the
-  // remote/server query — the app's only connection-status self-heal (see the
-  // useRemoteServer comment in hooks/useRemote.ts).
-  const { isLocalMode, viewMode, isRemoteConnected } = useRemoteView();
   useHostJobNotifications();
 
-  const location = useLocation();
-  const isAdminPage = location.pathname.startsWith('/admin');
-
-  const logoutUrl = useModeStore((s) => s.logoutUrl);
+  const inProjects = pathname === '/' || pathname.startsWith('/projects');
+  const isAdminPage = pathname.startsWith('/admin');
 
   const handleLogout = () => {
     clearAuth();
     if (logoutUrl) {
-      // Signal Login.tsx to NOT auto-redirect back to /auth/session
       sessionStorage.setItem('nebi_logout', '1');
-      // Redirect to the gateway's OIDC logout path (e.g. Envoy's /logout)
-      // to clear IdToken cookies and terminate the Keycloak session.
       window.location.href = logoutUrl;
     } else {
       navigate('/login');
@@ -87,145 +60,96 @@ export const Layout = ({
   };
 
   return (
-    <div className="min-h-screen bg-canvas flex flex-col">
-      <NavigationMenu className="h-14 shrink-0 justify-between border-border bg-header pl-4 text-header-foreground">
+    <div className="flex min-h-screen flex-col bg-canvas">
+      <NavigationMenu className="h-14 shrink-0 gap-3 border-border bg-header pl-4 text-header-foreground">
         <MenuBarBrand
-          href="/projects"
-          aria-label="Go to homepage"
+          href="/"
+          aria-label="Nebi home"
           onClick={(event) => {
             event.preventDefault();
-            navigate('/projects');
+            navigate('/');
           }}
         >
           <img
             src={getBrandingLogoUrl(isDarkMode)}
-            alt="Nebi"
+            alt=""
             className="h-8 w-auto"
           />
+          <span className="font-bold text-[21px] text-foreground tracking-tight">
+            Nebi
+          </span>
         </MenuBarBrand>
-        <MenuBarNav aria-label="Primary" className="ml-4">
+        <MenuBarNav aria-label="Primary" className="self-stretch">
           <NavLink
-            render={<RouterNavLink to="/projects" />}
-            active={location.pathname === '/projects'}
-            icon={<Boxes className="h-4 w-4" />}
+            icon={<Boxes />}
+            active={pathname === '/'}
+            render={<RouterNavLink to="/" end />}
+            className={cn(
+              navItemClass,
+              inProjects && pathname !== '/' && activeUnderline,
+            )}
           >
             Projects
           </NavLink>
           <NavLink
+            icon={<Server />}
+            active={pathname === '/server'}
+            render={<RouterNavLink to="/server" />}
+            className={navItemClass}
+          >
+            Server
+          </NavLink>
+          <NavLink
+            icon={<BookOpen />}
+            active={pathname === '/registries'}
             render={<RouterNavLink to="/registries" />}
-            active={location.pathname === '/registries'}
-            icon={registriesIcon}
+            className={navItemClass}
           >
             Registries
           </NavLink>
-          {isLocalMode && (
-            <NavLink
-              render={<RouterNavLink to="/settings" />}
-              active={location.pathname === '/settings'}
-              icon={<Settings className="h-4 w-4" />}
-            >
-              Settings
-            </NavLink>
-          )}
+          <NavLink
+            icon={<RotateCcwClock />}
+            active={pathname === '/jobs'}
+            render={<RouterNavLink to="/jobs" />}
+            className={cn(
+              navItemClass,
+              pathname.startsWith('/jobs/') && activeUnderline,
+            )}
+          >
+            Jobs
+          </NavLink>
         </MenuBarNav>
         <MenuBarActions className="gap-2">
-          {/* View Mode Toggle - only show when remote is connected */}
-          {isRemoteConnected && (
-            <div className="flex items-center gap-0.5 p-[3px] bg-muted rounded-lg border border-border">
-              <button
-                type="button"
-                onClick={() => setViewMode('local')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                  viewMode === 'local'
-                    ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground-strong hover:text-foreground'
-                }`}
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full transition-all ${
-                    viewMode === 'local'
-                      ? 'bg-primary shadow-[0_0_6px] shadow-primary/40'
-                      : 'bg-muted-foreground/50'
-                  }`}
-                />
-                Local
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('remote')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                  viewMode === 'remote'
-                    ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground-strong hover:text-foreground'
-                }`}
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full transition-all ${
-                    viewMode === 'remote'
-                      ? 'bg-primary shadow-[0_0_6px] shadow-primary/40'
-                      : 'bg-muted-foreground/50'
-                  }`}
-                />
-                Remote
-              </button>
-            </div>
-          )}
-          <div className="flex items-center gap-1">
+          <ConnectedServerBadge />
+          <NotificationsBell />
+          <HelpMenu />
+          {isAdmin && (
             <Button
-              variant="ghost"
+              render={<RouterNavLink to="/admin" />}
+              variant={isAdminPage ? 'secondary' : 'ghost'}
               size="icon"
-              aria-label="Docs"
-              title="Docs"
+              aria-label="Admin"
+              title="Admin"
               className="hover:bg-header-action-hover hover:no-underline active:bg-header-action-hover"
-              onClick={() => openExternal('https://nebi.nebari.dev/')}
             >
-              <ExternalLink className="h-4 w-4" />
+              <Shield className="h-4 w-4" />
             </Button>
-            {isAdmin && (
-              <Button
-                render={<RouterNavLink to="/admin" />}
-                variant={isAdminPage ? 'secondary' : 'ghost'}
-                size="icon"
-                aria-label="Admin"
-                title="Admin"
-                className="hover:bg-header-action-hover hover:no-underline active:bg-header-action-hover"
-              >
-                <Shield className="h-4 w-4" />
-              </Button>
-            )}
-            {!isLocalMode && (
-              <ProfileMenu
-                user={user}
-                themeMode={themeMode}
-                onThemeChange={onThemeChange}
-                onLogout={handleLogout}
-              />
-            )}
-          </div>
+          )}
+          {isLocalMode ? (
+            <ThemeMenu />
+          ) : (
+            <ProfileMenu
+              user={user}
+              themeMode={themeMode}
+              onThemeChange={setThemeMode}
+              onLogout={handleLogout}
+            />
+          )}
         </MenuBarActions>
       </NavigationMenu>
-      <main
-        aria-label={isAdminPage ? 'Admin content' : 'Main content'}
-        className={isAdminPage ? 'flex-1 overflow-hidden' : 'flex-1 px-12 py-6'}
-      >
+      <div className="flex flex-1 flex-col">
         <Outlet />
-      </main>
-      {versionInfo?.version && (
-        <footer className="border-t border-border/60 py-4 px-8">
-          <a
-            href={
-              versionInfo.commit
-                ? `https://github.com/nebari-dev/nebi/commit/${versionInfo.commit}`
-                : `https://github.com/nebari-dev/nebi/releases/tag/v${versionInfo.version}`
-            }
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-muted-foreground hover:text-muted-foreground transition-colors"
-          >
-            v{versionInfo.version}
-          </a>
-        </footer>
-      )}
+      </div>
     </div>
   );
 };

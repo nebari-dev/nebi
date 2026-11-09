@@ -123,6 +123,11 @@ func Migrate(db *gorm.DB, seedRegistry bool) error {
 		&models.ResourceMetric{},
 		&models.AuthReconciliationStatus{},
 		&models.SystemSetting{},
+		// Issue #649 version model. project_remotes is only written in
+		// local mode and version_publications only in team mode, but both
+		// are migrated everywhere so one schema serves every binary.
+		&models.ProjectRemote{},
+		&models.VersionPublication{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)

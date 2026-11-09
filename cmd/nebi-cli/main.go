@@ -53,6 +53,8 @@ func init() {
 	loginCmd.GroupID = "connection"
 	logoutCmd.GroupID = "connection"
 	registryCmd.GroupID = "connection"
+	serverCmd.GroupID = "connection"
+	jobCmd.GroupID = "project"
 
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(statusCmd)
@@ -70,6 +72,11 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(completionCmd)
 	rootCmd.AddCommand(infoCmd)
+	rootCmd.AddCommand(serverCmd)
+	rootCmd.AddCommand(jobCmd)
+
+	// SDK-backed commands, one file per unit (issue #649); see sdk_commands.go.
+	registerUnitCommands(rootCmd)
 }
 
 func main() {

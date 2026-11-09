@@ -3,12 +3,14 @@
 package main
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/registry"
@@ -225,6 +227,81 @@ func TestE2E_LocalBundleImportAndDiffByDigest(t *testing.T) {
 	}
 	if !strings.Contains(res.Stdout, digestRef) || !strings.Contains(res.Stdout, "requests") {
 		t.Fatalf("digest diff did not compare against the OCI artifact: stdout=%q stderr=%q", res.Stdout, res.Stderr)
+	}
+}
+
+// TestE2E_LocalBundleImportPinsPreflightDigest moves the imported tag to
+// another bundle right after the CLI's preflight resolves it. Extraction must
+// use the preflight digest instead of resolving the tag again.
+func TestE2E_LocalBundleImportPinsPreflightDigest(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("NEBI_DATA_DIR", dataDir)
+
+	// Once armed, serve one v1 request as usual, then point v1 at the "next" manifest.
+	const manifests = "/v2/demo/pinned/manifests/"
+	inner := registry.New()
+	var moveTag atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		inner.ServeHTTP(w, r)
+		if r.URL.Path == manifests+"v1" && moveTag.CompareAndSwap(true, false) {
+			next := httptest.NewRecorder()
+			inner.ServeHTTP(next, httptest.NewRequest(http.MethodGet, manifests+"next", nil))
+			retag := httptest.NewRequest(http.MethodPut, manifests+"v1", next.Body)
+			retag.Header.Set("Content-Type", next.Header().Get("Content-Type"))
+			moved := httptest.NewRecorder()
+			inner.ServeHTTP(moved, retag)
+			if next.Code != http.StatusOK || moved.Code != http.StatusCreated {
+				t.Errorf("move tag v1: GET next = %d, PUT v1 = %d", next.Code, moved.Code)
+			}
+		}
+	}))
+	t.Cleanup(srv.Close)
+	reg := oci.Registry{Host: srv.Listener.Addr().String(), Namespace: "demo", PlainHTTP: true}
+
+	publish := func(name, tag string) oci.PublishResult {
+		dir := t.TempDir()
+		writePixiFiles(t, dir,
+			"[project]\nname = \""+name+"\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n",
+			"version: 6\n",
+		)
+		published, err := oci.Publish(t.Context(), dir, reg, "pinned", tag)
+		if err != nil {
+			t.Fatalf("publish %s bundle: %v", name, err)
+		}
+		return published
+	}
+	reviewed := publish("reviewed", "v1")
+	publish("moved", "next")
+	moveTag.Store(true)
+
+	outParent := t.TempDir()
+	outDir := filepath.Join(outParent, "restored")
+	res := runCLI(t, outParent, "import", "http://"+reviewed.Repository+":v1", "--output", outDir)
+	if res.ExitCode != 0 {
+		t.Fatalf("tag import failed:\nstdout: %s\nstderr: %s", res.Stdout, res.Stderr)
+	}
+	if moveTag.Load() {
+		t.Fatal("import never requested the v1 tag, so the tag was not moved")
+	}
+
+	gotToml, err := os.ReadFile(filepath.Join(outDir, "pixi.toml"))
+	if err != nil {
+		t.Fatalf("read pixi.toml: %v", err)
+	}
+	if !strings.Contains(string(gotToml), `name = "reviewed"`) {
+		t.Fatalf("import extracted the moved tag instead of the preflight digest:\n%s", gotToml)
+	}
+	s, err := store.Open(dataDir)
+	if err != nil {
+		t.Fatalf("open local store: %v", err)
+	}
+	defer s.Close()
+	ws, err := s.FindWorkspaceByPath(outDir)
+	if err != nil || ws == nil {
+		t.Fatalf("find imported workspace: ws=%v err=%v", ws, err)
+	}
+	if ws.ImportTag != "v1" || ws.ImportDigest != reviewed.Digest {
+		t.Fatalf("unexpected import metadata: tag=%q digest=%q, want v1 and %s", ws.ImportTag, ws.ImportDigest, reviewed.Digest)
 	}
 }
 

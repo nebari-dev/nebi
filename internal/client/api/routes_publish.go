@@ -6,12 +6,14 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nebari-dev/nebi/internal/client/sdk/registry"
 	"github.com/nebari-dev/nebi/internal/client/sdk/shared"
 )
 
 func (a *API) registerPublishRoutes(g *gin.RouterGroup) {
 	g.GET("/registries", a.listRegistries)
 	g.POST("/registries", a.addRegistry)
+	g.PUT("/registries/:registryId", a.updateRegistry)
 	g.DELETE("/registries/:registryId", a.removeRegistry)
 	g.GET("/registries/:registryId/repositories", a.listRegistryRepositories)
 	g.GET("/registries/:registryId/tags", a.listRegistryTags)
@@ -46,6 +48,25 @@ func (a *API) addRegistry(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, res)
+}
+
+// updateRegistry: PUT /client/registries/:registryId
+// registry.UpdateRegistryRequest -> shared.RegistryItem
+func (a *API) updateRegistry(c *gin.Context) {
+	id, ok := uuidParam(c, "registryId")
+	if !ok {
+		return
+	}
+	var req registry.UpdateRegistryRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+	res, err := a.SDK.Registry.UpdateRegistry(c.Request.Context(), id, req)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, res)
 }
 
 // removeRegistry: DELETE /client/registries/:registryId -> 204

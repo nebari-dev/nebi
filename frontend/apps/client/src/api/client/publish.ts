@@ -1,4 +1,6 @@
 // Owner: U7 (publish).
+
+import type { UpdateRegistryRequest } from '@/types/client/publish';
 import type {
   AddRegistryRequest,
   PublishDefault,
@@ -15,6 +17,11 @@ export const publishApi = {
     (await apiClient.get(`${CLIENT}/registries`)).data,
   addRegistry: async (req: AddRegistryRequest): Promise<RegistryItem> =>
     (await apiClient.post(`${CLIENT}/registries`, req)).data,
+  updateRegistry: async (
+    id: string,
+    req: UpdateRegistryRequest,
+  ): Promise<RegistryItem> =>
+    (await apiClient.put(`${CLIENT}/registries/${id}`, req)).data,
   removeRegistry: async (id: string): Promise<void> => {
     await apiClient.delete(`${CLIENT}/registries/${id}`);
   },

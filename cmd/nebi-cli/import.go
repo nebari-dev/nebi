@@ -7,7 +7,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/nebari-dev/nebi/internal/client"
+	"github.com/nebari-dev/nebi/internal/client/sdk/shared"
 	"github.com/nebari-dev/nebi/internal/oci"
 	"github.com/spf13/cobra"
 )
@@ -32,14 +35,23 @@ directory. Works entirely locally — no server connection needed.
 The local project name is derived from the [workspace] name field
 in the imported pixi.toml.
 
+With --project the artifact becomes a new local project instead (the same
+as "Pull from registry" in the app): it goes to Nebi's projects folder as
+version 1. The reference's host must be one of this machine's registries
+('nebi registry list --local'), so its credentials are used.
+
 Examples:
   nebi import quay.io/nebari/my-env:v1
-  nebi import ghcr.io/myorg/data-science:latest -o ./my-project`,
+  nebi import ghcr.io/myorg/data-science:latest -o ./my-project
+  nebi import quay.io/nebari/my-env:5 --project --name my-env --install`,
 	Args: cobra.ExactArgs(1),
 	RunE: runImport,
 }
 
 func init() {
+	importCmd.Flags().Bool("project", false, "Create a local project from the artifact (uses this machine's registries)")
+	importCmd.Flags().String("name", "", "Local project name with --project (defaults to the repository name)")
+	importCmd.Flags().Bool("install", false, "Install the new project's version 1 with --project")
 	importCmd.Flags().StringVarP(&importOutput, "output", "o", ".", "Output directory")
 	importCmd.Flags().BoolVar(&importForce, "force", false, "Overwrite existing files without prompting (only when the bundle contains no asset layers)")
 	importCmd.Flags().IntVar(&importConcurrency, "concurrency", 8, "Parallel blob fetch workers")
@@ -49,6 +61,11 @@ func runImport(cmd *cobra.Command, args []string) error {
 	repoRef, tag := parseProjectRef(args[0])
 	if tag == "" {
 		return fmt.Errorf("tag is required; use format registry/repository:tag (e.g., quay.io/nebari/my-env:v1)")
+	}
+
+	if asProject, _ := cmd.Flags().GetBool("project"); asProject {
+		defer resetFlagsByName(cmd, "project", "name", "install")
+		return runImportAsProject(cmd, repoRef, tag)
 	}
 
 	repoRef, plainHTTP := oci.StripScheme(repoRef)
@@ -133,4 +150,44 @@ func dirIsNonEmpty(path string) (bool, error) {
 		return false, fmt.Errorf("reading %s: %w", path, err)
 	}
 	return true, nil
+}
+
+// runImportAsProject pulls host/repository:tag into a new local project
+// through the client SDK, using the configured registry for host.
+func runImportAsProject(cmd *cobra.Command, repoRef, tag string) error {
+	stripped, plainHTTP := oci.StripScheme(repoRef)
+	host, repository, ok := strings.Cut(stripped, "/")
+	if !ok || repository == "" {
+		return fmt.Errorf("use registry/repository:tag, e.g. quay.io/nebari/my-env:5")
+	}
+	name, _ := cmd.Flags().GetString("name")
+	install, _ := cmd.Flags().GetBool("install")
+	return withStack(cmd, func(ctx context.Context, st *client.Stack) error {
+		regs, err := st.SDK.Registry.ListRegistries(ctx)
+		if err != nil {
+			return err
+		}
+		var match *shared.RegistryItem
+		for i := range regs {
+			h, _, plain := oci.ParseRegistryURLFull(regs[i].URL)
+			if strings.EqualFold(h, host) && plain == plainHTTP {
+				match = &regs[i]
+				break
+			}
+		}
+		if match == nil {
+			return fmt.Errorf("%s is not one of this machine's registries; add it with 'nebi registry add --local --name <name> --url %s --namespace <namespace>'", host, host)
+		}
+		res, err := st.SDK.Registry.Pull(ctx, match.ID, shared.RegistryPullRequest{
+			Repository: repository,
+			Tag:        tag,
+			LocalName:  name,
+			Install:    install,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Imported %s:%s as project %s (%s)\n", stripped, tag, res.Job.ProjectName, res.ProjectID)
+		return nil
+	})
 }

@@ -2,6 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { publishApi } from '@/api/client/publish';
 import { queryKeys } from '@/lib/queryKeys';
+import type { UpdateRegistryRequest } from '@/types/client/publish';
 import type {
   AddRegistryRequest,
   PublishRequest,
@@ -19,11 +20,28 @@ export const useAddRegistry = () => {
   });
 };
 
+export const useUpdateRegistry = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...req }: UpdateRegistryRequest & { id: string }) =>
+      publishApi.updateRegistry(id, req),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.registries });
+      // Registry names show in version badges and publish defaults.
+      qc.invalidateQueries({ queryKey: queryKeys.projects });
+    },
+  });
+};
+
 export const useRemoveRegistry = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => publishApi.removeRegistry(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.registries }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.registries });
+      // Removing a registry drops this machine's publication records on it.
+      qc.invalidateQueries({ queryKey: queryKeys.projects });
+    },
   });
 };
 
@@ -32,6 +50,7 @@ export const useRegistryRepositories = (id: string, search: string) =>
     queryKey: queryKeys.registryRepositories(id, search),
     queryFn: () => publishApi.repositories(id, search),
     enabled: !!id,
+    retry: false,
   });
 
 export const useRegistryTags = (id: string, repository: string) =>
@@ -39,6 +58,7 @@ export const useRegistryTags = (id: string, repository: string) =>
     queryKey: queryKeys.registryTags(id, repository),
     queryFn: () => publishApi.tags(id, repository),
     enabled: !!id && !!repository,
+    retry: false,
   });
 
 export const useRegistryPull = () => {
@@ -65,8 +85,8 @@ export const usePublish = (projectId: string) => {
   return useMutation({
     mutationFn: ({ n, ...req }: PublishRequest & { n: number }) =>
       publishApi.publish(projectId, n, req),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: queryKeys.versions(projectId) }),
+    // Versions (Published badge) and the project row (connected remotes).
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.projects }),
   });
 };
 
@@ -75,7 +95,6 @@ export const useUnpublish = (projectId: string) => {
   return useMutation({
     mutationFn: (publicationId: string) =>
       publishApi.unpublish(projectId, publicationId),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: queryKeys.versions(projectId) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.projects }),
   });
 };

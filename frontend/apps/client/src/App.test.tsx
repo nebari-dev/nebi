@@ -76,7 +76,7 @@ describe('client routes (issue #649)', () => {
     expect(screen.getByRole('button', { name: 'Theme' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Help/ })).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'Notifications' }),
+      screen.getByRole('button', { name: 'Notifications' }),
     ).toBeInTheDocument();
   });
 

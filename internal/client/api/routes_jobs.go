@@ -3,6 +3,8 @@ package api
 // Owner: U8 (jobs).
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -88,8 +90,55 @@ func (a *API) cancelJob(c *gin.Context) {
 // streamJobLogs: GET /client/jobs/:jobId/logs/stream -> text/event-stream.
 // Same wire format as the legacy /jobs/:id/logs/stream: "data:" lines with
 // log chunks, then an "event: done" when the job ends.
+//
+// The first chunk is the log so far; chunks follow as the job writes them,
+// for jobs run by this app's worker and for CLI jobs alike. The done event
+// carries the job's final status. A finished job gets its stored log and
+// the done event at once.
 func (a *API) streamJobLogs(c *gin.Context) {
-	writeError(c, shared.NotImplemented("jobs log stream"))
+	id, ok := uuidParam(c, "jobId")
+	if !ok {
+		return
+	}
+	// Fail fast with a JSON error before switching to SSE.
+	if _, err := a.Jobs.Get(c.Request.Context(), id); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+	c.Writer.Flush()
+
+	final, err := a.Jobs.FollowLogs(c.Request.Context(), id, func(chunk string) error {
+		writeSSE(c.Writer, "", chunk)
+		c.Writer.Flush()
+		return nil
+	})
+	if err != nil {
+		if c.Request.Context().Err() == nil {
+			writeSSE(c.Writer, "error", err.Error())
+			c.Writer.Flush()
+		}
+		return
+	}
+	writeSSE(c.Writer, "done", string(final.Status))
+	c.Writer.Flush()
+}
+
+// writeSSE writes one server-sent event; multi-line data becomes several
+// "data:" lines (the legacy stream's format).
+func writeSSE(w io.Writer, event, data string) {
+	if event != "" {
+		fmt.Fprintf(w, "event: %s\n", event)
+	}
+	normalized := strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(data)
+	for _, line := range strings.Split(normalized, "\n") {
+		fmt.Fprintf(w, "data: %s\n", line)
+	}
+	fmt.Fprint(w, "\n")
 }
 
 func splitCSV(v string) []string {

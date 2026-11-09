@@ -40,14 +40,26 @@ func WithDispatcher(d Dispatcher) Option {
 	return func(w *Worker) { w.dispatcher = d }
 }
 
+// WithCancelPollInterval sets how often a running job's row is checked for
+// a cancellation recorded by another process (e.g. "nebi job cancel" in a
+// terminal while the desktop app runs the job). Zero or negative disables
+// the check.
+func WithCancelPollInterval(d time.Duration) Option {
+	return func(w *Worker) { w.cancelPollInterval = d }
+}
+
+// defaultCancelPollInterval matches the log flush cadence.
+const defaultCancelPollInterval = 2 * time.Second
+
 // ErrJobCancelled is the context cause for a job cancelled through CancelJob.
 var ErrJobCancelled = errors.New("job cancelled")
 
 // Worker processes jobs from the queue
 type Worker struct {
-	dispatcher Dispatcher
-	runningMu  sync.Mutex
-	running    map[uuid.UUID]context.CancelCauseFunc
+	dispatcher         Dispatcher
+	runningMu          sync.Mutex
+	running            map[uuid.UUID]context.CancelCauseFunc
+	cancelPollInterval time.Duration
 
 	queue           *queue.MemoryQueue
 	executor        executor.Executor
@@ -71,16 +83,17 @@ func (e *autoReinstallFailureError) Error() string {
 // New creates a new worker instance
 func New(q *queue.MemoryQueue, exec executor.Executor, svc *service.ProjectService, jobSvc *service.JobService, logger *slog.Logger, limitCfg limits.Limits, maxParallelJobs int, opts ...Option) *Worker {
 	w := &Worker{
-		running:         make(map[uuid.UUID]context.CancelCauseFunc),
-		queue:           q,
-		executor:        exec,
-		svc:             svc,
-		jobSvc:          jobSvc,
-		logger:          logger,
-		broker:          logstream.NewBroker(),
-		maxParallelJobs: max(1, maxParallelJobs),
-		jobTimeout:      limitCfg.JobTimeout(),
-		maxLogBytes:     limitCfg.JobLogBytes,
+		running:            make(map[uuid.UUID]context.CancelCauseFunc),
+		cancelPollInterval: defaultCancelPollInterval,
+		queue:              q,
+		executor:           exec,
+		svc:                svc,
+		jobSvc:             jobSvc,
+		logger:             logger,
+		broker:             logstream.NewBroker(),
+		maxParallelJobs:    max(1, maxParallelJobs),
+		jobTimeout:         limitCfg.JobTimeout(),
+		maxLogBytes:        limitCfg.JobLogBytes,
 	}
 	for _, opt := range opts {
 		opt(w)
@@ -142,13 +155,12 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 
 	w.logger.Info("Processing job", "job_id", job.ID, "type", job.Type)
 
-	if w.jobSvc.IsCancelled(job.ID) {
+	// Move the job to running unless it was cancelled while queued. The
+	// conditional update closes the race between a cancel and the start.
+	if !w.jobSvc.StartJob(job) {
 		w.logger.Info("Skipping job cancelled before it started", "job_id", job.ID)
 		return
 	}
-
-	// Update job status to running
-	w.jobSvc.MarkRunning(job)
 
 	// Create thread-safe log buffer. Log writes are capped before they reach
 	// this buffer or any streaming backend.
@@ -168,7 +180,9 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 		w.flushLogsToDatabase(job.ID, &logBuf, &logMutex, stopFlushing)
 	}()
 
-	// Close broker subscriptions when job finishes
+	// Record the log history for late subscribers (client log stream) and
+	// close broker subscriptions when the job finishes.
+	w.broker.Open(job.ID)
 	defer w.broker.Close(job.ID)
 
 	// Thread-safe writer wrapper
@@ -191,6 +205,9 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 		w.runningMu.Unlock()
 		cancelJob(nil)
 	}()
+	if w.cancelPollInterval > 0 {
+		go w.watchExternalCancel(cancelCtx, job.ID, cancelJob)
+	}
 	jobCtx := cancelCtx
 	cancel := func() {}
 	if w.jobTimeout > 0 {
@@ -248,6 +265,27 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 		// Publish completion to subscribers
 		completionMsg := "\n[COMPLETED] Job finished successfully\n"
 		w.broker.Publish(job.ID, completionMsg)
+	}
+}
+
+// watchExternalCancel cancels a running job when its row is marked
+// cancelled by another process (the CLI, or another app instance on the
+// same database). In-process cancels go through CancelJob directly. It
+// returns when ctx ends, which processJob guarantees once the job returns.
+func (w *Worker) watchExternalCancel(ctx context.Context, jobID uuid.UUID, cancel context.CancelCauseFunc) {
+	ticker := time.NewTicker(w.cancelPollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if w.jobSvc.IsCancelled(jobID) {
+				w.logger.Info("Job cancelled from another process", "job_id", jobID)
+				cancel(ErrJobCancelled)
+				return
+			}
+		}
 	}
 }
 

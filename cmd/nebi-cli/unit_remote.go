@@ -28,15 +28,31 @@ import (
 )
 
 func registerRemoteCommands(root *cobra.Command) {
-	serverCmd.AddCommand(
+	serverCmds := []*cobra.Command{
 		newServerConnectCmd(),
 		newServerStatusCmd(),
 		newServerDisconnectCmd(),
 		newServerProjectsCmd(),
 		newServerShowCmd(),
 		newServerPullCmd(),
-	)
-	projectCmd.AddCommand(newProjectPushCmd(), newProjectPullVersionCmd())
+	}
+	projectCmds := []*cobra.Command{newProjectPushCmd(), newProjectPullVersionCmd()}
+	for _, c := range append(append([]*cobra.Command{}, serverCmds...), projectCmds...) {
+		silenceUsageOnRunErrors(c)
+	}
+	serverCmd.AddCommand(serverCmds...)
+	projectCmd.AddCommand(projectCmds...)
+}
+
+// silenceUsageOnRunErrors keeps cobra from printing the usage text when
+// the command itself fails (server unreachable, name taken, ...); argument
+// errors still show it.
+func silenceUsageOnRunErrors(c *cobra.Command) {
+	run := c.RunE
+	c.RunE = func(cmd *cobra.Command, args []string) error {
+		cmd.SilenceUsage = true
+		return run(cmd, args)
+	}
 }
 
 func newServerConnectCmd() *cobra.Command {

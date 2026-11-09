@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nebari-dev/nebi/internal/api/handlers"
 	"github.com/nebari-dev/nebi/internal/auth"
 	"github.com/nebari-dev/nebi/internal/client/sdk/local"
 	"github.com/nebari-dev/nebi/internal/models"
@@ -48,7 +49,18 @@ func seedLocalProject(t *testing.T, name string, tomls ...string) {
 	}
 }
 
+// asTeamServer makes GET /version report team mode again: building any
+// local-mode router in this test binary (other tests do) flips the
+// process-wide handlers.Mode that the in-process e2e server reports.
+func asTeamServer(t *testing.T) {
+	t.Helper()
+	prev := handlers.Mode
+	handlers.Mode = "team"
+	t.Cleanup(func() { handlers.Mode = prev })
+}
+
 func TestE2E_ServerConnectPushPull(t *testing.T) {
+	asTeamServer(t)
 	setupLocalStore(t)
 	dir := t.TempDir()
 
@@ -123,6 +135,7 @@ func TestE2E_ServerConnectPushPull(t *testing.T) {
 }
 
 func TestE2E_LoginStoresSDKConnection(t *testing.T) {
+	asTeamServer(t)
 	setupLocalStore(t)
 	dir := t.TempDir()
 	res := runCLI(t, dir, "login", e2eEnv.serverURL, "--token", e2eEnv.token)

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/nebari-dev/nebi/internal/artifact"
 	"github.com/nebari-dev/nebi/internal/process"
 	"github.com/pelletier/go-toml/v2"
 )
@@ -679,17 +680,10 @@ type pixiManifestWithWorkspace struct {
 // ValidateProjectName checks that a project name is valid for use with nebi.
 // Names must not be empty, contain path separators or colons (which are ambiguous
 // with filesystem paths and server refs), or be reserved names like "." or "..".
+// It delegates to artifact.ValidateWorkspaceName; new code should call that
+// (or artifact.ValidateProjectName for the stricter new-project rule).
 func ValidateProjectName(name string) error {
-	if name == "" {
-		return fmt.Errorf("project name must not be empty")
-	}
-	if strings.ContainsAny(name, `/\:`) {
-		return fmt.Errorf("project name %q must not contain '/', '\\', or ':'", name)
-	}
-	if name == "." || name == ".." {
-		return fmt.Errorf("project name %q is reserved and cannot be used", name)
-	}
-	return nil
+	return artifact.ValidateWorkspaceName(name)
 }
 
 // ExtractWorkspaceName reads the workspace name from pixi.toml content.

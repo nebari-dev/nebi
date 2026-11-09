@@ -2,11 +2,12 @@ package diff
 
 import (
 	"fmt"
-	"path"
 	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/nebari-dev/nebi/internal/artifact"
 )
 
 // LockSummary represents a summary of lock file changes.
@@ -117,37 +118,9 @@ func extractV6Package(entry map[string]interface{}) (name, version string) {
 }
 
 // parseCondaFilename extracts package name and version from a conda URL.
+// The parsing lives in internal/artifact so client and server share it.
 func parseCondaFilename(url string) (name, version string) {
-	filename := path.Base(url)
-
-	if strings.HasSuffix(filename, ".tar.bz2") {
-		filename = strings.TrimSuffix(filename, ".tar.bz2")
-	} else if strings.HasSuffix(filename, ".conda") {
-		filename = strings.TrimSuffix(filename, ".conda")
-	} else {
-		return "", ""
-	}
-
-	parts := strings.Split(filename, "-")
-	if len(parts) < 3 {
-		return "", ""
-	}
-
-	buildIdx := len(parts) - 1
-	versionIdx := -1
-	for i := buildIdx - 1; i >= 1; i-- {
-		if len(parts[i]) > 0 && parts[i][0] >= '0' && parts[i][0] <= '9' {
-			versionIdx = i
-			break
-		}
-	}
-
-	if versionIdx < 1 {
-		return "", ""
-	}
-
-	name = strings.Join(parts[:versionIdx], "-")
-	version = parts[versionIdx]
+	name, version, _ = artifact.ParseCondaFilename(url)
 	return name, version
 }
 

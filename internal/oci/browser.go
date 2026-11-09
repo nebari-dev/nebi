@@ -32,6 +32,9 @@ type BrowseOptions struct {
 	RegistryHost string
 	Username     string
 	Password     string
+	// PlainHTTP talks to the registry over HTTP. Test/local registries
+	// only.
+	PlainHTTP bool
 }
 
 // RepositoryInfo contains information about a repository
@@ -142,6 +145,7 @@ func ListRepositories(ctx context.Context, opts BrowseOptions) ([]RepositoryInfo
 	if err != nil {
 		return nil, fmt.Errorf("failed to create registry client: %w", err)
 	}
+	reg.PlainHTTP = opts.PlainHTTP
 
 	if c := newAuthClient(opts.Username, opts.Password); c != nil {
 		reg.Client = c
@@ -250,6 +254,7 @@ func ListTags(ctx context.Context, repoRef string, opts BrowseOptions) ([]TagInf
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository client: %w", err)
 	}
+	repo.PlainHTTP = opts.PlainHTTP
 
 	if c := newAuthClient(opts.Username, opts.Password); c != nil {
 		repo.Client = c

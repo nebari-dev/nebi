@@ -222,10 +222,11 @@ func printJobTable(w io.Writer, jobs []shared.JobSummary, now time.Time) {
 	_ = tw.Flush()
 }
 
-// jobTitle is the type label plus the version it acted on, if any.
+// jobTitle is the type label, numbered for jobs that act on one version,
+// as on the Jobs page: "Install version 7", "Create version 8".
 func jobTitle(j shared.JobSummary) string {
-	if j.VersionNumber != nil {
-		return fmt.Sprintf("%s (v%d)", j.TypeLabel, *j.VersionNumber)
+	if j.VersionNumber != nil && (j.Type == models.JobTypeInstallVersion || j.Type == models.JobTypeCreateVersion) {
+		return fmt.Sprintf("%s %d", j.TypeLabel, *j.VersionNumber)
 	}
 	return j.TypeLabel
 }
@@ -236,6 +237,9 @@ func printJobDetail(w io.Writer, j *shared.JobDetail, now time.Time) {
 	fmt.Fprintf(tw, "ID:\t%s\n", j.ID)
 	fmt.Fprintf(tw, "Status:\t%s\n", jobStatusLabel(j.Status))
 	fmt.Fprintf(tw, "Project:\t%s\n", projectLabel(j.JobSummary))
+	if j.VersionNumber != nil {
+		fmt.Fprintf(tw, "Version:\t%d\n", *j.VersionNumber)
+	}
 	fmt.Fprintf(tw, "Started:\t%s\n", fmtJobTime(j.StartedAt))
 	fmt.Fprintf(tw, "Ended:\t%s\n", fmtJobTime(j.CompletedAt))
 	fmt.Fprintf(tw, "Duration:\t%s\n", jobDuration(j.JobSummary, now))

@@ -88,7 +88,7 @@ func TestJobCommands(t *testing.T) {
 	if res.ExitCode != 0 {
 		t.Fatalf("job list table: %s %s", res.Stdout, res.Stderr)
 	}
-	for _, want := range []string{"Install version (v3)", "Failed", "Queued", "1m 00s", failed.String()[:8]} {
+	for _, want := range []string{"Install version 3", "Failed", "Queued", "1m 00s", failed.String()[:8]} {
 		if !strings.Contains(res.Stdout, want) {
 			t.Errorf("table missing %q:\n%s", want, res.Stdout)
 		}

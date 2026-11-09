@@ -146,6 +146,13 @@ func (f *compareFixture) connect(t *testing.T, url string) {
 	if err := db.Save(&store.Credentials{ID: 1, Token: "t", Username: "sam", AuthMode: "token"}).Error; err != nil {
 		t.Fatal(err)
 	}
+	// The project's server remote points at the server it was linked to;
+	// sdk/remote only syncs with that server.
+	if err := db.Model(&models.ProjectRemote{}).
+		Where("project_id = ? AND kind = ?", f.project.ID, models.RemoteKindServer).
+		Update("server_url", url).Error; err != nil {
+		t.Fatal(err)
+	}
 }
 
 func pinMachinePlatform(t *testing.T, p string) {

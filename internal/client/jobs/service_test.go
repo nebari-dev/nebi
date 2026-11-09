@@ -468,9 +468,25 @@ func TestFailedInstallLinkage(t *testing.T) {
 	createOnly := h.project(t, "create-only")
 	h.job(t, createOnly, models.JobTypeCreate, models.JobStatusFailed, base, map[string]any{"install": false})
 
-	items := []shared.ProjectListItem{{ID: failedLast.ID}, {ID: recovered.ID}, {ID: createInstall.ID}, {ID: createOnly.ID}}
+	// A create that failed before any version existed: sdk/local reports
+	// not_installed, so the link stays null even though the job counts.
+	createEarly := h.project(t, "create-early")
+	h.job(t, createEarly, models.JobTypeCreate, models.JobStatusFailed, base, map[string]any{"install": true})
+
+	// InstallStatus as sdk/local computes it before the decorators run.
+	failed := models.InstallStatusFailed
+	items := []shared.ProjectListItem{
+		{ID: failedLast.ID, InstallStatus: failed},
+		{ID: recovered.ID, InstallStatus: models.InstallStatusNotInstalled},
+		{ID: createInstall.ID, InstallStatus: failed},
+		{ID: createOnly.ID, InstallStatus: models.InstallStatusNotInstalled},
+		{ID: createEarly.ID, InstallStatus: models.InstallStatusNotInstalled},
+	}
 	if err := h.svc.DecorateProjects(ctx, items); err != nil {
 		t.Fatal(err)
+	}
+	if items[4].FailedInstallJobID != nil {
+		t.Fatalf("create failed before a version = %v, want nil", items[4].FailedInstallJobID)
 	}
 	if items[0].FailedInstallJobID == nil || *items[0].FailedInstallJobID != want.ID {
 		t.Fatalf("failed-last = %v, want %s", items[0].FailedInstallJobID, want.ID)

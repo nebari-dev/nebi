@@ -385,9 +385,17 @@ func TestListRegistryRemotesAndDecorators(t *testing.T) {
 	if !called || !items[0].UpdateAvailable {
 		t.Fatal("decorators must run on the list")
 	}
-	if len(items[0].Remotes) != 1 || items[0].Remotes[0].Name != "ghcr.io/example-org" ||
-		items[0].Remotes[0].URL != "ghcr.io/example-org/remotes" || items[0].Remotes[0].Kind != models.RemoteKindRegistry {
-		t.Fatalf("registry remotes (server remote is the remote decorator's): %+v", items[0].Remotes)
+	// sdk/local emits the registry remotes; the server remote, when present,
+	// is added by the remote decorator registered in the stack.
+	var registryRefs []shared.RemoteRef
+	for _, ref := range items[0].Remotes {
+		if ref.Kind == models.RemoteKindRegistry {
+			registryRefs = append(registryRefs, ref)
+		}
+	}
+	if len(registryRefs) != 1 || registryRefs[0].Name != "ghcr.io/example-org" ||
+		registryRefs[0].URL != "ghcr.io/example-org/remotes" {
+		t.Fatalf("registry remotes: %+v", items[0].Remotes)
 	}
 	got, err := stack.SDK.Local.GetProject(ctx, res.Project.ID)
 	if err != nil || !got.UpdateAvailable {
@@ -468,15 +476,10 @@ func TestCreateAndInstallChainsInstall(t *testing.T) {
 		t.Fatalf("version 1: %v", verr)
 	}
 	if err != nil {
-		// Until the exec SDK's install body lands the chained step reports
-		// not implemented; any other failure is a bug in the chaining.
-		if !errors.Is(err, shared.ErrNotImplemented) && !strings.Contains(err.Error(), "couldn’t be installed") {
-			t.Fatalf("create and install: %v", err)
-		}
-		if !strings.Contains(res.Job.Error, "couldn’t be installed") {
-			t.Fatalf("job error should name the install step: %q", res.Job.Error)
-		}
-		return
+		t.Fatalf("create and install: %v (job error %q)", err, res.Job.Error)
+	}
+	if res.Job.VersionNumber == nil || *res.Job.VersionNumber != 1 {
+		t.Fatalf("job version = %v, want 1", res.Job.VersionNumber)
 	}
 	item, _ := stack.SDK.Local.GetProject(ctx, res.Project.ID)
 	if item.InstallStatus != models.InstallStatusInstalled {

@@ -318,7 +318,9 @@ func (s *Service) RunCreateProject(ctx context.Context, job *models.Job, log io.
 		return fmt.Errorf("reading pixi.lock: %w", err)
 	}
 
-	author := s.localAuthorName(ctx)
+	// Same rule as new versions: the connected server's username, else the
+	// OS user's name.
+	author := s.nvAuthorName(ctx)
 	one := 1
 	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		v := models.ProjectVersion{
@@ -772,14 +774,6 @@ func cleanTags(in []string) []string {
 		out = append(out, t)
 	}
 	return out
-}
-
-func (s *Service) localAuthorName(ctx context.Context) string {
-	var u models.User
-	if err := s.deps.DB.WithContext(ctx).Where("id = ?", s.deps.LocalUserID).First(&u).Error; err == nil {
-		return u.Username
-	}
-	return ""
 }
 
 func containsType(types []models.JobType, t models.JobType) bool {

@@ -74,7 +74,10 @@ func (s *Service) FailedInstallJobs(ctx context.Context, projectIDs []uuid.UUID)
 }
 
 // DecorateProjects fills FailedInstallJobID. It never fails the list: on a
-// database error the field stays null.
+// database error the field stays null. The link is only set when sdk/local
+// reports install_status=install_failed, so the badge and its link follow
+// one rule (a create or pull that failed before any version existed is a
+// create failure, not an install failure).
 func (s *Service) DecorateProjects(ctx context.Context, items []shared.ProjectListItem) error {
 	ids := make([]uuid.UUID, 0, len(items))
 	for _, it := range items {
@@ -86,7 +89,7 @@ func (s *Service) DecorateProjects(ctx context.Context, items []shared.ProjectLi
 		return nil
 	}
 	for i := range items {
-		if jobID, ok := failed[items[i].ID]; ok {
+		if jobID, ok := failed[items[i].ID]; ok && items[i].InstallStatus == models.InstallStatusFailed {
 			id := jobID
 			items[i].FailedInstallJobID = &id
 		} else {

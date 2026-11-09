@@ -154,7 +154,22 @@ func (h *RegistryBrowseHandler) ListTags(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"tags": tags})
 }
 
-// ImportEnvironment pulls an environment from a registry and creates a workspace
+// ImportEnvironment godoc
+// @Summary Import a workspace from a registry
+// @Description Pull a Nebi bundle from a configured OCI registry and create a workspace from it. Name the repository with either repository (relative to the registry's namespace) or repository_path (the full path), not both.
+// @Tags registries
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param id path string true "Registry ID"
+// @Param request body ImportRequest true "What to import and the workspace name"
+// @Success 201 {object} models.Workspace
+// @Failure 400 {object} ErrorResponse "The request is malformed"
+// @Failure 404 {object} ErrorResponse "The registry is not configured, or it has no such repository or tag"
+// @Failure 422 {object} ErrorResponse "The artifact is not a Nebi bundle, or is a malformed one"
+// @Failure 502 {object} ErrorResponse "The registry refused access; upstream_status is the status it answered with (401 or 403)"
+// @Failure 500 {object} ErrorResponse
+// @Router /registries/{id}/import [post]
 func (h *RegistryBrowseHandler) ImportEnvironment(c *gin.Context) {
 	registryID := c.Param("id")
 	userID := getUserID(c)

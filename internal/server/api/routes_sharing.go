@@ -1,7 +1,8 @@
 package api
 
-// Owner: U6 (sharing). Owner checks happen in core (like the legacy
-// /share routes); reading the list needs read access.
+// Owner: U6 (sharing). Owner/admin checks happen in core (like the legacy
+// /share routes). Reading the list needs read access, ownership or admin;
+// core checks that too because admins have no per-project RBAC policy.
 
 import (
 	"net/http"
@@ -12,15 +13,18 @@ import (
 
 func (r *routes) registerSharingRoutes(g *gin.RouterGroup) {
 	g.GET("/principals", r.searchPrincipals)
-	g.GET("/projects/:id/access", r.read(), r.listAccess)
+	g.GET("/projects/:id/access", r.listAccess)
 	g.POST("/projects/:id/access", r.grantAccess)
 	g.PUT("/projects/:id/access/:kind/:principalId", r.updateAccess)
 	g.DELETE("/projects/:id/access/:kind/:principalId", r.revokeAccess)
+	// Delete from the server UI (owner/admin only, unlike the legacy
+	// DELETE /projects/:id which any editor may call).
+	g.DELETE("/catalog/projects/:id", r.deleteServerProject)
 }
 
 // searchPrincipals: GET /api/v1/principals?q= -> []core.Principal
 func (r *routes) searchPrincipals(c *gin.Context) {
-	res, err := r.deps.Core.SearchPrincipals(c.Request.Context(), c.Query("q"))
+	res, err := r.deps.Core.SearchPrincipals(c.Request.Context(), userID(c), c.Query("q"))
 	if err != nil {
 		writeError(c, err)
 		return
@@ -96,4 +100,18 @@ func (r *routes) revokeAccess(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, res)
+}
+
+// deleteServerProject: DELETE /api/v1/catalog/projects/:id -> 202 (a server
+// job removes the project); 403 unless owner or admin.
+func (r *routes) deleteServerProject(c *gin.Context) {
+	id, ok := uuidParam(c, "id")
+	if !ok {
+		return
+	}
+	if err := r.deps.Core.DeleteProject(c.Request.Context(), userID(c), id); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.Status(http.StatusAccepted)
 }

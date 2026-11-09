@@ -421,6 +421,30 @@ describe('ServerPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows remote details', async () => {
+    const user = userEvent.setup();
+    server.use(...remoteConnectedHandlers);
+    renderServer();
+    const row = (await screen.findByText('ml-baseline')).closest(
+      'tr',
+    ) as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', {
+        name: 'More actions for ml-baseline',
+      }),
+    );
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Remote details' }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      await within(dialog).findByText('Versions on the server'),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText('Not pulled yet')).toBeInTheDocument();
+    expect(within(dialog).getByText('Server only')).toBeInTheDocument();
+    expect(within(dialog).getByText('Can edit')).toBeInTheDocument();
+  });
+
   it('opens the pull dialog from a deep link', async () => {
     server.use(...remoteConnectedHandlers);
     renderServer(`/server?dialog=pull-install&project=${SERVER_PROJECT_ID}`);

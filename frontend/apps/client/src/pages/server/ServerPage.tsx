@@ -16,6 +16,7 @@ import { ConnectServerDialog } from '@/components/server/ConnectServerDialog';
 import { displayServerUrl, syncedAgo } from '@/components/server/format';
 import { PullDialog } from '@/components/server/PullDialog';
 import { trackPullToast } from '@/components/server/pullToast';
+import { RemoteDetailsDialog } from '@/components/server/RemoteDetailsDialog';
 import { ServerProjectActions } from '@/components/server/ServerProjectActions';
 import { ServerProjectsTable } from '@/components/server/ServerProjectsTable';
 import { ShareDialog } from '@/components/share/ShareDialog';
@@ -117,6 +118,13 @@ export const ServerPage = () => {
         <ShareDialog
           serverProjectId={dialog.project.id}
           projectName={dialog.project.name}
+          open
+          onOpenChange={close}
+        />
+      )}
+      {dialog?.kind === 'details' && (
+        <RemoteDetailsDialog
+          serverProjectId={dialog.project.id}
           open
           onOpenChange={close}
         />
@@ -294,6 +302,7 @@ const ConnectedView = ({
                 onOpen({ kind: 'pull', project: p, andInstall })
               }
               onManageAccess={() => onOpen({ kind: 'share', project: p })}
+              onDetails={() => onOpen({ kind: 'details', project: p })}
             />
           )}
         />

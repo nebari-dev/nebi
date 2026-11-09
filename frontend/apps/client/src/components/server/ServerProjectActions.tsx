@@ -23,6 +23,7 @@ export interface ServerProjectActionsProps {
   pulling: PullingState | null;
   onPull: (andInstall: boolean) => void;
   onManageAccess: () => void;
+  onDetails?: () => void;
 }
 
 export const ServerProjectActions = ({
@@ -30,6 +31,7 @@ export const ServerProjectActions = ({
   pulling,
   onPull,
   onManageAccess,
+  onDetails,
 }: ServerProjectActionsProps) => {
   const navigate = useNavigate();
   const isPulling = pulling?.serverProjectId === project.id;
@@ -84,6 +86,11 @@ export const ServerProjectActions = ({
             <DropdownMenuItem onClick={onManageAccess}>
               Manage access
             </DropdownMenuItem>
+            {onDetails && (
+              <DropdownMenuItem onClick={onDetails}>
+                Remote details
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenuPortal>
       </DropdownMenu>

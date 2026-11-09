@@ -19,7 +19,8 @@ export type ServerDialog =
   | { kind: 'connect' }
   | { kind: 'manage' }
   | { kind: 'pull'; project: ServerProjectItem; andInstall: boolean }
-  | { kind: 'share'; project: ServerProjectItem };
+  | { kind: 'share'; project: ServerProjectItem }
+  | { kind: 'details'; project: ServerProjectItem };
 
 /** A pull in progress, shown as a loading row action on the Server page. */
 export interface PullingState {

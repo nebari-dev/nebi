@@ -5,9 +5,14 @@ package api
 
 import (
 	"bytes"
+	"errors"
+	"mime"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/artifact"
+	"github.com/nebari-dev/nebi/internal/client/sdk/local"
 	"github.com/nebari-dev/nebi/internal/client/sdk/shared"
 )
 
@@ -47,7 +52,16 @@ func (a *API) getVersion(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, err := a.SDK.Local.GetVersion(c.Request.Context(), id, n)
+	ctx := c.Request.Context()
+	v, err := a.SDK.Local.GetVersion(ctx, id, n)
+	if errors.Is(err, shared.ErrNotFound) && a.projectExists(c, id) {
+		// A server-only version (listed by the remote decorator).
+		if sv, serr := a.SDK.Remote.ServerVersion(ctx, id, n); serr == nil {
+			v, err = sv, nil
+		} else if remoteMatters(serr) {
+			err = serr
+		}
+	}
 	if err != nil {
 		writeError(c, err)
 		return
@@ -66,7 +80,20 @@ func (a *API) getVersionFile(c *gin.Context) {
 	if !ok {
 		return
 	}
-	f, err := a.SDK.Local.GetVersionFile(c.Request.Context(), id, n, c.Param("name"))
+	ctx := c.Request.Context()
+	name := c.Param("name")
+	f, err := a.SDK.Local.GetVersionFile(ctx, id, n, name)
+	if errors.Is(err, shared.ErrNotFound) && a.projectExists(c, id) {
+		if toml, lock, serr := a.SDK.Remote.ServerVersionFiles(ctx, id, n); serr == nil {
+			content := toml
+			if name == artifact.LockFile {
+				content = lock
+			}
+			f, err = &shared.FileContent{Name: name, Content: content}, nil
+		} else if remoteMatters(serr) {
+			err = serr
+		}
+	}
 	if err != nil {
 		writeError(c, err)
 		return
@@ -84,7 +111,15 @@ func (a *API) getResolvedPackages(c *gin.Context) {
 	if !ok {
 		return
 	}
-	p, err := a.SDK.Local.ResolvedPackages(c.Request.Context(), id, n)
+	ctx := c.Request.Context()
+	p, err := a.SDK.Local.ResolvedPackages(ctx, id, n)
+	if errors.Is(err, shared.ErrNotFound) && a.projectExists(c, id) {
+		if toml, lock, serr := a.SDK.Remote.ServerVersionFiles(ctx, id, n); serr == nil {
+			p, err = local.ResolvedPackagesFromFiles([]byte(toml), []byte(lock))
+		} else if remoteMatters(serr) {
+			err = serr
+		}
+	}
 	if err != nil {
 		writeError(c, err)
 		return
@@ -109,6 +144,28 @@ func (a *API) downloadArchive(c *gin.Context) {
 		writeError(c, err)
 		return
 	}
-	c.Header("Content-Disposition", `attachment; filename="`+name+`"`)
-	c.Data(http.StatusOK, "application/gzip", buf.Bytes())
+	c.Header("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
+	c.Data(http.StatusOK, artifact.ArchiveContentType, buf.Bytes())
+}
+
+// projectExists reports whether the local project exists, so a missing
+// version can be looked up on the linked server (a missing project stays
+// a plain 404).
+func (a *API) projectExists(c *gin.Context, id uuid.UUID) bool {
+	_, err := a.SDK.Local.ResolveProject(c.Request.Context(), id.String())
+	return err == nil
+}
+
+// remoteMatters reports whether a failed server lookup should replace the
+// local "not found": the server answered with an error or did not answer.
+// Not connected, not implemented and "not on the server" keep the 404.
+func remoteMatters(err error) bool {
+	if errors.Is(err, shared.ErrNotConnected) || errors.Is(err, shared.ErrNotImplemented) || errors.Is(err, shared.ErrNotFound) {
+		return false
+	}
+	var rerr *shared.RemoteError
+	if errors.As(err, &rerr) {
+		return rerr.Status != http.StatusNotFound
+	}
+	return false
 }

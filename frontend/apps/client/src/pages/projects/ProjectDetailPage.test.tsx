@@ -22,6 +22,7 @@ import {
   mockDetailVersions,
   mockServerOnlyVersion,
 } from '@/test/handlers/detail';
+import { remoteConnectedHandlers } from '@/test/handlers/remote';
 import type { JobDetail, ProjectListItem } from '@/types/contracts';
 import { ProjectDetailPage } from './ProjectDetailPage';
 
@@ -82,6 +83,7 @@ describe('ProjectDetailPage', () => {
   });
 
   it('shows the header, the rail grouped by age and the installed version', async () => {
+    server.use(...remoteConnectedHandlers);
     renderDetail();
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Project_1' }),
@@ -106,9 +108,10 @@ describe('ProjectDetailPage', () => {
       within(panel).getByRole('button', { name: /Uninstall/ }),
     ).toBeInTheDocument();
     expect(within(panel).getByText('1.2 GB on disk')).toBeInTheDocument();
-    // Linked project with v7 newer than the server's v6.
+    // Linked project with v7 newer than the server's v6 (the button needs
+    // the connected server set up at the start of the test).
     expect(
-      within(panel).getByRole('button', { name: /Push to server/ }),
+      await within(panel).findByRole('button', { name: /Push to server/ }),
     ).toBeInTheDocument();
     expect(
       await within(panel).findByText('Environment specification'),
@@ -330,6 +333,7 @@ describe('ProjectDetailPage', () => {
   it('pushes versions the server lacks', async () => {
     const user = userEvent.setup();
     server.use(
+      ...remoteConnectedHandlers,
       http.post(`${C}/projects/:id/push`, () =>
         HttpResponse.json({
           pushed_versions: [7],
@@ -341,7 +345,7 @@ describe('ProjectDetailPage', () => {
     renderDetail();
     const panel = await screen.findByRole('region', { name: 'Version 7' });
     await user.click(
-      within(panel).getByRole('button', { name: /Push to server/ }),
+      await within(panel).findByRole('button', { name: /Push to server/ }),
     );
     expect(await screen.findByText('Version 7 pushed')).toBeInTheDocument();
     expect(
@@ -471,5 +475,15 @@ describe('ProjectDetailPage', () => {
     expect(
       within(panel).queryByRole('button', { name: /Push to server/ }),
     ).toBeNull();
+  });
+
+  it('offers the first push of an unlinked project when connected', async () => {
+    useProjectMock({ remotes: [], server_latest_version: null });
+    server.use(...remoteConnectedHandlers);
+    renderDetail();
+    const panel = await screen.findByRole('region', { name: 'Version 7' });
+    expect(
+      await within(panel).findByRole('button', { name: /Push to server/ }),
+    ).toBeInTheDocument();
   });
 });

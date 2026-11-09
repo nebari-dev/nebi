@@ -23,6 +23,7 @@ import { Check, GitCompare, Package, Plus, Server, Upload } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PublishDialog } from '@/components/publish/PublishDialog';
+import { PushToServerButton } from '@/components/server/PushToServerButton';
 import type { ProjectInstallState } from '@/hooks/client/detail';
 import type { ProjectListItem, VersionItem } from '@/types/contracts';
 import { EnvironmentSpec } from './EnvironmentSpec';
@@ -38,7 +39,6 @@ import {
   InstallControls,
   InstallFailedAlert,
 } from './InstallStatus';
-import { PushButton } from './RemoteActions';
 
 export interface VersionPanelProps {
   project: ProjectListItem;
@@ -148,7 +148,11 @@ export const VersionPanel = ({
                 : `Creates a new version based on version ${n}`}
             </TooltipContent>
           </Tooltip>
-          <PushButton project={project} version={version} versions={versions} />
+          <PushToServerButton
+            project={project}
+            version={version}
+            versions={versions}
+          />
           <Button
             variant="secondary"
             size="sm"

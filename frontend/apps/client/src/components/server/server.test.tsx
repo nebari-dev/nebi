@@ -12,7 +12,6 @@ import {
   mockProjectItem,
   mockServerConnection,
   mockVersionItem,
-  PROJECT_ID,
 } from '@/test/fixtures/contracts';
 import { server } from '@/test/handlers';
 import { mockPullJob } from '@/test/handlers/remote';
@@ -24,11 +23,9 @@ import {
   syncedAgo,
   versionList,
 } from './format';
-import { PullVersionButton } from './PullVersionButton';
 import { PushToServerButton } from './PushToServerButton';
 import { trackPullToast } from './pullToast';
 import { canPush, versionsToPush } from './pushPlan';
-import { SyncMarkerLabel } from './SyncMarkerLabel';
 
 const C = '/api/v1/client';
 
@@ -185,40 +182,6 @@ describe('PushToServerButton', () => {
       />,
     );
     await waitFor(() => expect(container.querySelector('button')).toBeNull());
-  });
-});
-
-describe('PullVersionButton', () => {
-  it('pulls a server-only version', async () => {
-    const user = userEvent.setup();
-    const onPulled = vi.fn();
-    wrap(
-      <PullVersionButton
-        projectId={PROJECT_ID}
-        version={v(8, { server_only: true })}
-        onPulled={onPulled}
-      />,
-    );
-    await user.click(screen.getByRole('button', { name: 'Pull version 8' }));
-    expect(await screen.findByText('Version 8 pulled')).toBeInTheDocument();
-    expect(
-      screen.getByText('It is on this machine now. Install it to use it.'),
-    ).toBeInTheDocument();
-    expect(onPulled).toHaveBeenCalled();
-  });
-
-  it('renders nothing for local versions', () => {
-    const { container } = wrap(
-      <PullVersionButton projectId={PROJECT_ID} version={v(8)} />,
-    );
-    expect(container.querySelector('button')).toBeNull();
-  });
-});
-
-describe('SyncMarkerLabel', () => {
-  it('shows the marker label', () => {
-    wrap(<SyncMarkerLabel marker="newest_on_server" />);
-    expect(screen.getByText('Newest on server')).toBeInTheDocument();
   });
 });
 

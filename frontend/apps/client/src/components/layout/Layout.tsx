@@ -70,14 +70,12 @@ export const Layout = () => {
             navigate('/');
           }}
         >
+          {/* The default logo already contains the "Nebi" wordmark. */}
           <img
             src={getBrandingLogoUrl(isDarkMode)}
-            alt=""
+            alt="Nebi"
             className="h-8 w-auto"
           />
-          <span className="font-bold text-[21px] text-foreground tracking-tight">
-            Nebi
-          </span>
         </MenuBarBrand>
         <MenuBarNav aria-label="Primary" className="self-stretch">
           <NavLink

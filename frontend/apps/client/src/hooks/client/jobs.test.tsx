@@ -78,6 +78,30 @@ describe('trackJobToast', () => {
     );
   });
 
+  it('offers a success action', async () => {
+    render(<Toaster />);
+    serveJob({ status: 'completed', version_number: 8 });
+    const onPush = vi.fn();
+    trackJobToast(
+      { ...running, id: '77777777-7777-4777-8777-777777777777' },
+      {
+        successTitle: (j) => `Version ${j.version_number} created`,
+        intervalMs: 5,
+        successAction: (j) => ({
+          label: 'Push to server',
+          onClick: () => onPush(j.version_number),
+        }),
+      },
+    );
+    expect(
+      (await screen.findAllByText('Version 8 created')).length,
+    ).toBeGreaterThan(0);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Push to server', hidden: true }),
+    );
+    expect(onPush).toHaveBeenCalledWith(8);
+  });
+
   it('offers View job on failure', async () => {
     render(<Toaster />);
     serveJob({ status: 'failed', error: 'pixi exploded' });

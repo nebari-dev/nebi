@@ -36,6 +36,7 @@ import {
 } from 'react-router-dom';
 import { clientApiError } from '@/api/client/base';
 import { detailApi } from '@/api/client/detail';
+import { remoteApi } from '@/api/client/remote';
 import {
   ManifestEditor,
   type ManifestEditorErrors,
@@ -53,12 +54,14 @@ import { DiscardNewVersionDialog } from '@/components/newversion/DiscardNewVersi
 import { FormSection, PAGE_COLUMN } from '@/components/newversion/FormSection';
 import { TagsInput } from '@/components/newversion/TagsInput';
 import { useUnsavedChangesGuard } from '@/components/newversion/useUnsavedChangesGuard';
+import { capitalize, versionList } from '@/components/server/format';
 import { trackJobToast } from '@/hooks/client/jobs';
 import {
   useChangesSummary,
   useCreateVersion,
   useVersionDraft,
 } from '@/hooks/client/newversion';
+import { useProject } from '@/hooks/client/projects';
 import type {
   PreviewChangesRequest,
   VersionDraft,
@@ -169,6 +172,8 @@ function NewVersionForm({
   const [submitting, setSubmitting] = useState<boolean | null>(null);
   const descriptionRef = useRef<HTMLInputElement>(null);
   const create = useCreateVersion(projectId);
+  const { data: project } = useProject(projectId);
+  const linked = !!project?.remotes.some((r) => r.kind === 'server');
 
   // Keep ?mode=toml in the URL in step with the editor mode.
   useEffect(() => {
@@ -256,6 +261,29 @@ function NewVersionForm({
       );
   };
 
+  // "Push to server" on the "Version N created" toast (linked projects).
+  const pushUpTo = (n: number) => {
+    remoteApi
+      .push(projectId, n)
+      .then((res) =>
+        toast.add({
+          type: 'success',
+          title:
+            res.pushed_versions.length > 0
+              ? `${capitalize(versionList(res.pushed_versions))} pushed`
+              : 'Already on the server',
+          description: 'This machine and the server are in sync.',
+        }),
+      )
+      .catch((err) =>
+        toast.add({
+          type: 'error',
+          title: 'Couldn’t push to the server',
+          description: clientApiError(err)?.error ?? 'Try again in a moment.',
+        }),
+      );
+  };
+
   const submit = async (install: boolean) => {
     if (create.isPending) return;
     setSubmitted(true);
@@ -283,6 +311,13 @@ function NewVersionForm({
         ),
         cancellable: true,
         onViewJob: (j) => navigate(`/jobs/${j.id}`),
+        successAction: (j) =>
+          linked && !install && j.version_number != null
+            ? {
+                label: 'Push to server',
+                onClick: () => pushUpTo(j.version_number as number),
+              }
+            : null,
         onSettled: (final) => {
           const n = final.version_number;
           if (final.status !== 'completed' || n == null) return;

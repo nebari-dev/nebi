@@ -241,6 +241,13 @@ export interface JobToastOptions {
   onViewJob?: (job: JobSummary) => void;
   /** Show a "Cancel" action while the job runs (cancellable toast). */
   cancellable?: boolean;
+  /**
+   * An action on the success toast, e.g. "Push to server" after "Version 8
+   * created". Return null to show no action for this job.
+   */
+  successAction?: (
+    job: JobSummary,
+  ) => { label: string; onClick: () => void } | null;
   /** Poll interval in ms (default 1000). */
   intervalMs?: number;
 }
@@ -308,12 +315,21 @@ export function trackJobToast(job: JobSummary, opts: JobToastOptions = {}) {
     queryClient.invalidateQueries({ queryKey: queryKeys.projects });
     queryClient.invalidateQueries({ queryKey: queryKeys.jobs });
     if (final.status === 'completed') {
+      const action = opts.successAction?.(final) ?? null;
       toast.update(id, {
         type: 'success',
         title: resolve(opts.successTitle, final) ?? `${title} finished`,
         description: resolve(opts.successDescription, final),
         timeout: 5000,
-        actionProps: undefined,
+        actionProps: action
+          ? {
+              children: action.label,
+              onClick: () => {
+                toast.close(id);
+                action.onClick();
+              },
+            }
+          : undefined,
       });
     } else if (final.status === 'cancelled') {
       toast.update(id, {

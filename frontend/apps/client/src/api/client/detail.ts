@@ -43,4 +43,33 @@ export const detailApi = {
     (await apiClient.post(`${CLIENT}/projects/${projectId}/install`, req)).data,
   uninstall: async (projectId: string): Promise<JobSummary> =>
     (await apiClient.post(`${CLIENT}/projects/${projectId}/uninstall`)).data,
+  /**
+   * Fetches the version archive as a blob (through apiClient, so it works
+   * wherever the API needs headers) with the server's suggested file name.
+   */
+  downloadArchive: async (
+    projectId: string,
+    n: number,
+  ): Promise<{ blob: Blob; fileName: string }> => {
+    const res = await apiClient.get(
+      `${CLIENT}/projects/${projectId}/versions/${n}/archive`,
+      { responseType: 'blob' },
+    );
+    const disposition = String(res.headers?.['content-disposition'] ?? '');
+    return {
+      blob: res.data as Blob,
+      fileName: archiveFileName(disposition) ?? `version-${n}.tar.gz`,
+    };
+  },
 };
+
+/** File name from a Content-Disposition header (quoted or bare). */
+export function archiveFileName(disposition: string): string | null {
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+  if (!match?.[1]) return null;
+  try {
+    return decodeURIComponent(match[1].trim());
+  } catch {
+    return match[1].trim();
+  }
+}

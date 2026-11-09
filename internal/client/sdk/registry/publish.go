@@ -216,6 +216,35 @@ func (s *Service) Publish(ctx context.Context, projectID uuid.UUID, version int,
 	return &shared.PublishResult{Results: results}, nil
 }
 
+// RecordPublication records that a version was published outside
+// Publish (the CLI's directory publish, which bundles extra project files)
+// so the version shows the Published badge. repository is the path after
+// the registry host.
+func (s *Service) RecordPublication(ctx context.Context, projectID uuid.UUID, version int, registryID uuid.UUID, repository, tag, digest string) (*models.Publication, error) {
+	project, err := s.loadProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	v, err := s.local.LoadVersion(ctx, projectID, version)
+	if err != nil {
+		return nil, err
+	}
+	reg, err := s.loadRegistry(ctx, registryID)
+	if err != nil {
+		return nil, err
+	}
+	if !ValidReference(repository, tag) {
+		return nil, &shared.ValidationError{Field: "targets", Message: ReferenceHint}
+	}
+	host, _, _ := endpoint(*reg)
+	pub, err := s.recordPublication(ctx, project, version, *reg, host, repository, tag, digest)
+	if err != nil {
+		return nil, err
+	}
+	s.reportPublication(ctx, project.ID, v, pub)
+	return pub, nil
+}
+
 // recordPublication stores the publication, retires publications that the
 // same registry tag pointed at before (the tag now points at this
 // version), and records the repository as a registry remote of the

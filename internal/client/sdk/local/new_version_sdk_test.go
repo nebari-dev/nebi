@@ -163,7 +163,7 @@ func (e *nvEnv) tags(t *testing.T) map[string]int {
 	return out
 }
 
-func wantValidation(t *testing.T, err error, field, msgPart string) {
+func nvWantValidation(t *testing.T, err error, field, msgPart string) {
 	t.Helper()
 	var verr *shared.ValidationError
 	if !errors.As(err, &verr) {
@@ -288,45 +288,45 @@ func TestCreateVersionValidation(t *testing.T) {
 	}
 
 	_, err = l.CreateVersion(ctx, id, shared.CreateVersionRequest{BaseVersion: 1, PixiToml: edited, Description: "  "})
-	wantValidation(t, err, "description", "Enter a description.")
+	nvWantValidation(t, err, "description", "Enter a description.")
 
 	_, err = l.CreateVersion(ctx, id, shared.CreateVersionRequest{BaseVersion: 1, PixiToml: edited, Description: "x", Tags: []string{"1x"}})
-	wantValidation(t, err, "tags", "tags must start with a letter")
+	nvWantValidation(t, err, "tags", "tags must start with a letter")
 
 	_, err = l.CreateVersion(ctx, id, shared.CreateVersionRequest{BaseVersion: 1, PixiToml: edited, Description: "x", Tags: []string{"sha-0123456789ab"}})
-	wantValidation(t, err, "tags", "content hashes")
+	nvWantValidation(t, err, "tags", "content hashes")
 
 	noPlatforms := strings.Replace(edited, `platforms = ["linux-64", "osx-arm64"]`, `platforms = []`, 1)
 	_, err = l.CreateVersion(ctx, id, shared.CreateVersionRequest{BaseVersion: 1, PixiToml: noPlatforms, Description: "x"})
-	wantValidation(t, err, "manifest", "List at least one platform in platforms = [ ].")
+	nvWantValidation(t, err, "manifest", "List at least one platform in platforms = [ ].")
 
 	_, err = l.CreateVersion(ctx, id, shared.CreateVersionRequest{BaseVersion: 1, PixiToml: "[dependencies]\nnumpy = \"*\"\n", Description: "x"})
-	wantValidation(t, err, "manifest", "pixi.toml needs a [workspace] table.")
+	nvWantValidation(t, err, "manifest", "pixi.toml needs a [workspace] table.")
 
 	_, err = l.CreateVersion(ctx, id, shared.CreateVersionRequest{BaseVersion: 1, PixiToml: "[workspace\n", Description: "x"})
-	wantValidation(t, err, "manifest", "pixi.toml can’t be read")
+	nvWantValidation(t, err, "manifest", "pixi.toml can’t be read")
 
 	draft, _ := l.GetVersionDraft(ctx, id, 1)
 	form := draft.Form
 	form.Platforms = nil
 	_, err = l.CreateVersion(ctx, id, shared.CreateVersionRequest{BaseVersion: 1, Form: &form, Description: "x"})
-	wantValidation(t, err, "platforms", "Add at least one platform.")
+	nvWantValidation(t, err, "platforms", "Add at least one platform.")
 
 	form = draft.Form
 	form.Platforms = []string{"linux-65"}
 	_, err = l.CreateVersion(ctx, id, shared.CreateVersionRequest{BaseVersion: 1, Form: &form, Description: "x"})
-	wantValidation(t, err, "platforms", "linux-65")
+	nvWantValidation(t, err, "platforms", "linux-65")
 
 	form = draft.Form
 	form.Requested = append(form.Requested, artifact.RequestedPackage{Name: "numpy", Constraint: "*"})
 	_, err = l.CreateVersion(ctx, id, shared.CreateVersionRequest{BaseVersion: 1, Form: &form, Description: "x"})
-	wantValidation(t, err, "packages", "numpy is listed twice.")
+	nvWantValidation(t, err, "packages", "numpy is listed twice.")
 
 	_, err = l.CreateVersion(ctx, id, shared.CreateVersionRequest{BaseVersion: 9, PixiToml: edited, Description: "x"})
-	wantValidation(t, err, "base_version", "Pull version 9 first.")
+	nvWantValidation(t, err, "base_version", "Pull version 9 first.")
 
 	_, err = l.CreateVersion(ctx, id, shared.CreateVersionRequest{BaseVersion: 1, Description: "x"})
-	wantValidation(t, err, "manifest", "[workspace]")
+	nvWantValidation(t, err, "manifest", "[workspace]")
 
 	_, err = l.CreateVersion(ctx, uuid.New(), shared.CreateVersionRequest{BaseVersion: 1, PixiToml: edited, Description: "x"})
 	if !errors.Is(err, shared.ErrNotFound) {
@@ -458,7 +458,7 @@ rich = "*"
 		t.Fatalf("same = %+v, %v", same, err)
 	}
 	_, err = l.PreviewChanges(ctx, id, 1, "[workspace")
-	wantValidation(t, err, "manifest", "pixi.toml can’t be read")
+	nvWantValidation(t, err, "manifest", "pixi.toml can’t be read")
 
 	if got := local.SuggestDescription(nvBaseToml, edited); got != "Added pandas and rich, removed numpy, changed python" {
 		t.Fatalf("suggestion = %q", got)

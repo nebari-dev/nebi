@@ -366,6 +366,9 @@ func newProjectPullVersionCmd() *cobra.Command {
 
 // versionList is the prototype wording: "version 3" or "versions 3, 4 and 5".
 func versionList(ns []int) string {
+	if len(ns) == 0 {
+		return "no versions"
+	}
 	if len(ns) == 1 {
 		return fmt.Sprintf("version %d", ns[0])
 	}

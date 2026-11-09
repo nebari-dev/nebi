@@ -88,7 +88,7 @@ func connect(t *testing.T, ext *client.Extension, url string) {
 	}
 }
 
-func call(h http.Handler, method, path, body string) *httptest.ResponseRecorder {
+func sharingCall(h http.Handler, method, path, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
@@ -113,7 +113,7 @@ func TestClientSharingRoutesProxyToServer(t *testing.T) {
 	h, ext := newSharingLocalRouter(t)
 	const base = "/api/v1/client/remote"
 
-	rec := call(h, http.MethodGet, base+"/projects/sp1/access", "")
+	rec := sharingCall(h, http.MethodGet, base+"/projects/sp1/access", "")
 	if rec.Code != http.StatusConflict || errorCode(t, rec) != "not_connected" {
 		t.Fatalf("not connected: %d %s", rec.Code, rec.Body)
 	}
@@ -121,7 +121,7 @@ func TestClientSharingRoutesProxyToServer(t *testing.T) {
 	srv, calls := stubServer(t, http.StatusOK, accessBody)
 	connect(t, ext, srv.URL)
 
-	rec = call(h, http.MethodGet, base+"/projects/sp1/access", "")
+	rec = sharingCall(h, http.MethodGet, base+"/projects/sp1/access", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body)
 	}
@@ -130,23 +130,23 @@ func TestClientSharingRoutesProxyToServer(t *testing.T) {
 		t.Fatalf("list body: %v %s", err, rec.Body)
 	}
 
-	if rec := call(h, http.MethodPost, base+"/projects/sp1/access", `{"principals":[{"kind":"group","id":"g1"}],"role":"edit"}`); rec.Code != http.StatusOK {
+	if rec := sharingCall(h, http.MethodPost, base+"/projects/sp1/access", `{"principals":[{"kind":"group","id":"g1"}],"role":"edit"}`); rec.Code != http.StatusOK {
 		t.Fatalf("grant: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(h, http.MethodPut, base+"/projects/sp1/access/user/u2", `{"role":"view"}`); rec.Code != http.StatusOK {
+	if rec := sharingCall(h, http.MethodPut, base+"/projects/sp1/access/user/u2", `{"role":"view"}`); rec.Code != http.StatusOK {
 		t.Fatalf("update: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(h, http.MethodDelete, base+"/projects/sp1/access/user/u2", ""); rec.Code != http.StatusOK {
+	if rec := sharingCall(h, http.MethodDelete, base+"/projects/sp1/access/user/u2", ""); rec.Code != http.StatusOK {
 		t.Fatalf("revoke: %d %s", rec.Code, rec.Body)
 	}
 	srvPrincipals, pcalls := stubServer(t, http.StatusOK, `[{"kind":"user","id":"u2","name":"alex","email":"alex@example.com"}]`)
 	connect(t, ext, srvPrincipals.URL)
-	rec = call(h, http.MethodGet, base+"/principals?q=al%20ex", "")
+	rec = sharingCall(h, http.MethodGet, base+"/principals?q=al%20ex", "")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"alex"`) {
 		t.Fatalf("principals: %d %s", rec.Code, rec.Body)
 	}
 	// An empty query never reaches the server.
-	rec = call(h, http.MethodGet, base+"/principals?q=", "")
+	rec = sharingCall(h, http.MethodGet, base+"/principals?q=", "")
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "[]" {
 		t.Fatalf("empty principals: %d %s", rec.Code, rec.Body)
 	}
@@ -185,7 +185,7 @@ func TestClientSharingRoutesMapServerErrors(t *testing.T) {
 	for _, tc := range cases {
 		srv, _ := stubServer(t, tc.status, `{"error":"nope","code":"x"}`)
 		connect(t, ext, srv.URL)
-		rec := call(h, http.MethodDelete, "/api/v1/client/remote/projects/sp1/access/user/u1", "")
+		rec := sharingCall(h, http.MethodDelete, "/api/v1/client/remote/projects/sp1/access/user/u1", "")
 		if rec.Code != tc.wantCode || errorCode(t, rec) != tc.code || !strings.Contains(rec.Body.String(), "nope") {
 			t.Errorf("server %d: got %d %s", tc.status, rec.Code, rec.Body)
 		}
@@ -194,7 +194,7 @@ func TestClientSharingRoutesMapServerErrors(t *testing.T) {
 	// Input the server would reject never leaves the machine.
 	srv, calls := stubServer(t, http.StatusOK, accessBody)
 	connect(t, ext, srv.URL)
-	rec := call(h, http.MethodPost, "/api/v1/client/remote/projects/sp1/access", `{"principals":[{"kind":"user","id":"u1"}],"role":"owner"}`)
+	rec := sharingCall(h, http.MethodPost, "/api/v1/client/remote/projects/sp1/access", `{"principals":[{"kind":"user","id":"u1"}],"role":"owner"}`)
 	if rec.Code != http.StatusUnprocessableEntity || errorCode(t, rec) != "invalid" {
 		t.Fatalf("bad role: %d %s", rec.Code, rec.Body)
 	}
@@ -204,7 +204,7 @@ func TestClientSharingRoutesMapServerErrors(t *testing.T) {
 
 	// An unreachable server is a 502.
 	srv.Close()
-	rec = call(h, http.MethodGet, "/api/v1/client/remote/projects/sp1/access", "")
+	rec = sharingCall(h, http.MethodGet, "/api/v1/client/remote/projects/sp1/access", "")
 	if rec.Code != http.StatusBadGateway || errorCode(t, rec) != "server_unreachable" {
 		t.Fatalf("unreachable: %d %s", rec.Code, rec.Body)
 	}

@@ -17,7 +17,7 @@ import (
 
 // seedLocalProject stores a ready local project with one version per
 // pixi.toml in the CLI's local database (NEBI_DATA_DIR).
-func seedLocalProject(t *testing.T, name string, tomls ...string) {
+func remoteSeedLocalProject(t *testing.T, name string, tomls ...string) {
 	t.Helper()
 	dataDir := os.Getenv("NEBI_DATA_DIR")
 	gdb, err := local.OpenDB(dataDir)
@@ -75,7 +75,7 @@ func TestE2E_ServerConnectPushPull(t *testing.T) {
 
 	toml1 := "[workspace]\nname = \"u5-sync\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n"
 	toml2 := toml1 + "\n[dependencies]\npython = \"3.12.*\"\n"
-	seedLocalProject(t, "u5-sync", toml1, toml2)
+	remoteSeedLocalProject(t, "u5-sync", toml1, toml2)
 
 	res = runCLI(t, dir, "project", "push", "u5-sync")
 	if res.ExitCode != 0 || !strings.Contains(res.Stdout, "Versions 1 and 2 pushed") {

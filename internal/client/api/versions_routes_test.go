@@ -138,7 +138,7 @@ func (e *detailEnv) do(t *testing.T, method, path, body string) *httptest.Respon
 	return rec
 }
 
-func decode[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
+func versionsDecode[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
 	t.Helper()
 	var v T
 	if err := json.Unmarshal(rec.Body.Bytes(), &v); err != nil {
@@ -155,7 +155,7 @@ func TestVersionsRoutes(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body)
 	}
-	items := decode[[]shared.VersionItem](t, rec)
+	items := versionsDecode[[]shared.VersionItem](t, rec)
 	if len(items) != 2 || items[0].Number != 2 || items[0].Tags[0] != "latest" {
 		t.Fatalf("items = %+v", items)
 	}
@@ -167,13 +167,13 @@ func TestVersionsRoutes(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("detail: %d %s", rec.Code, rec.Body)
 	}
-	detail := decode[shared.VersionDetail](t, rec)
+	detail := versionsDecode[shared.VersionDetail](t, rec)
 	if detail.Number != 1 || len(detail.Spec.Platforms) != 2 {
 		t.Fatalf("detail = %+v", detail)
 	}
 
 	rec = env.do(t, http.MethodGet, base+"/versions/1/files/pixi.lock", "")
-	if rec.Code != http.StatusOK || decode[shared.FileContent](t, rec).Content != env.lock {
+	if rec.Code != http.StatusOK || versionsDecode[shared.FileContent](t, rec).Content != env.lock {
 		t.Fatalf("lock: %d", rec.Code)
 	}
 	if rec := env.do(t, http.MethodGet, base+"/versions/1/files/other.txt", ""); rec.Code != http.StatusUnprocessableEntity {
@@ -184,7 +184,7 @@ func TestVersionsRoutes(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("packages: %d %s", rec.Code, rec.Body)
 	}
-	pkgs := decode[shared.ResolvedPackages](t, rec)
+	pkgs := versionsDecode[shared.ResolvedPackages](t, rec)
 	if len(pkgs.Platforms) != 2 || len(pkgs.Packages["osx-arm64"]) == 0 || pkgs.TotalSize["osx-arm64"] == 0 {
 		t.Fatalf("packages = %+v", pkgs.Platforms)
 	}
@@ -223,21 +223,21 @@ func TestInstallAndUninstallRoutes(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("install: %d %s", rec.Code, rec.Body)
 	}
-	job := decode[shared.JobSummary](t, rec)
+	job := versionsDecode[shared.JobSummary](t, rec)
 	if job.Type != models.JobTypeInstallVersion || job.VersionNumber == nil || *job.VersionNumber != 1 || job.Status != models.JobStatusCompleted {
 		t.Fatalf("job = %+v", job)
 	}
 	if env.exec.frozen != 1 {
 		t.Fatal("install is frozen")
 	}
-	items := decode[[]shared.VersionItem](t, env.do(t, http.MethodGet, base+"/versions", ""))
+	items := versionsDecode[[]shared.VersionItem](t, env.do(t, http.MethodGet, base+"/versions", ""))
 	if !items[1].Installed || items[0].Installed {
 		t.Fatalf("v1 installed: %+v", items)
 	}
 
 	// Empty body: last installed (v1).
 	rec = env.do(t, http.MethodPost, base+"/install", "")
-	if rec.Code != http.StatusAccepted || *decode[shared.JobSummary](t, rec).VersionNumber != 1 {
+	if rec.Code != http.StatusAccepted || *versionsDecode[shared.JobSummary](t, rec).VersionNumber != 1 {
 		t.Fatalf("install default: %d %s", rec.Code, rec.Body)
 	}
 
@@ -252,7 +252,7 @@ func TestInstallAndUninstallRoutes(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("uninstall: %d %s", rec.Code, rec.Body)
 	}
-	if job := decode[shared.JobSummary](t, rec); job.Type != models.JobTypeUninstall || *job.VersionNumber != 1 {
+	if job := versionsDecode[shared.JobSummary](t, rec); job.Type != models.JobTypeUninstall || *job.VersionNumber != 1 {
 		t.Fatalf("uninstall job = %+v", job)
 	}
 	rec = env.do(t, http.MethodPost, base+"/uninstall", "")

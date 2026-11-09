@@ -60,7 +60,7 @@ func newPublishAPI(t *testing.T) (http.Handler, *client.Stack) {
 	return r, stack
 }
 
-func call(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
+func publishCall(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	if body != "" {
@@ -75,7 +75,7 @@ func TestRegistryRoutes(t *testing.T) {
 	h, _ := newPublishAPI(t)
 	const C = "/api/v1/client"
 
-	rec := call(t, h, http.MethodPost, C+"/registries", `{"name":"Quay","url":"quay.io","namespace":"nebari","username":"sam","password":"pw"}`)
+	rec := publishCall(t, h, http.MethodPost, C+"/registries", `{"name":"Quay","url":"quay.io","namespace":"nebari","username":"sam","password":"pw"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}
@@ -88,27 +88,27 @@ func TestRegistryRoutes(t *testing.T) {
 		t.Fatalf("added = %+v", added)
 	}
 
-	rec = call(t, h, http.MethodPost, C+"/registries", `{"name":"","url":"quay.io"}`)
+	rec = publishCall(t, h, http.MethodPost, C+"/registries", `{"name":"","url":"quay.io"}`)
 	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), `"field":"name"`) {
 		t.Fatalf("validation: %d %s", rec.Code, rec.Body)
 	}
 
-	rec = call(t, h, http.MethodPut, C+"/registries/"+added.ID.String(), `{"name":"Quay.io","is_default":true}`)
+	rec = publishCall(t, h, http.MethodPut, C+"/registries/"+added.ID.String(), `{"name":"Quay.io","is_default":true}`)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"name":"Quay.io"`) || !strings.Contains(rec.Body.String(), `"is_default":true`) {
 		t.Fatalf("update: %d %s", rec.Code, rec.Body)
 	}
 
-	rec = call(t, h, http.MethodGet, C+"/registries", "")
+	rec = publishCall(t, h, http.MethodGet, C+"/registries", "")
 	var items []shared.RegistryItem
 	_ = json.Unmarshal(rec.Body.Bytes(), &items)
 	if rec.Code != http.StatusOK || len(items) != 2 || items[0].ID != added.ID {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body)
 	}
 
-	if rec := call(t, h, http.MethodDelete, C+"/registries/"+added.ID.String(), ""); rec.Code != http.StatusNoContent {
+	if rec := publishCall(t, h, http.MethodDelete, C+"/registries/"+added.ID.String(), ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, h, http.MethodDelete, C+"/registries/"+added.ID.String(), ""); rec.Code != http.StatusNotFound {
+	if rec := publishCall(t, h, http.MethodDelete, C+"/registries/"+added.ID.String(), ""); rec.Code != http.StatusNotFound {
 		t.Fatalf("delete again: %d %s", rec.Code, rec.Body)
 	}
 }
@@ -120,10 +120,10 @@ func TestPublishRoutes(t *testing.T) {
 	t.Cleanup(srv.Close)
 	u, _ := url.Parse(srv.URL)
 
-	rec := call(t, h, http.MethodPost, C+"/registries", `{"name":"Local","url":"http://`+u.Host+`","namespace":"team"}`)
+	rec := publishCall(t, h, http.MethodPost, C+"/registries", `{"name":"Local","url":"http://`+u.Host+`","namespace":"team"}`)
 	var reg shared.RegistryItem
 	_ = json.Unmarshal(rec.Body.Bytes(), &reg)
-	rec = call(t, h, http.MethodPost, C+"/registries", `{"name":"GitHub","url":"ghcr.io","namespace":"org"}`)
+	rec = publishCall(t, h, http.MethodPost, C+"/registries", `{"name":"GitHub","url":"ghcr.io","namespace":"org"}`)
 	var gh shared.RegistryItem
 	_ = json.Unmarshal(rec.Body.Bytes(), &gh)
 	if gh.CanUnpublish || gh.UnpublishReason == "" {
@@ -138,30 +138,30 @@ func TestPublishRoutes(t *testing.T) {
 	gdb.Omit("Project", "Job", "CreatedByUser").Create(&models.ProjectVersion{ProjectID: p.ID, VersionNumber: 1, ManifestContent: toml, LockFileContent: "version: 6\n", PackageMetadata: "[]", CreatedBy: user})
 	base := C + "/projects/" + p.ID.String()
 
-	rec = call(t, h, http.MethodGet, base+"/versions/1/publish-defaults", "")
+	rec = publishCall(t, h, http.MethodGet, base+"/versions/1/publish-defaults", "")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"repository":"team/demo","tag":"1"`) {
 		t.Fatalf("defaults: %d %s", rec.Code, rec.Body)
 	}
 
-	rec = call(t, h, http.MethodPost, base+"/versions/1/publish", `{"targets":[{"registry_id":"`+reg.ID.String()+`","repository":"team/demo","tag":"bad tag"}]}`)
+	rec = publishCall(t, h, http.MethodPost, base+"/versions/1/publish", `{"targets":[{"registry_id":"`+reg.ID.String()+`","repository":"team/demo","tag":"bad tag"}]}`)
 	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "Use repository:tag, e.g. nebari/project_1:5.") {
 		t.Fatalf("invalid ref: %d %s", rec.Code, rec.Body)
 	}
 
-	rec = call(t, h, http.MethodPost, base+"/versions/1/publish", `{"targets":[{"registry_id":"`+reg.ID.String()+`","repository":"team/demo","tag":"1"}]}`)
+	rec = publishCall(t, h, http.MethodPost, base+"/versions/1/publish", `{"targets":[{"registry_id":"`+reg.ID.String()+`","repository":"team/demo","tag":"1"}]}`)
 	var res shared.PublishResult
 	_ = json.Unmarshal(rec.Body.Bytes(), &res)
 	if rec.Code != http.StatusOK || len(res.Results) != 1 || res.Results[0].Status != "published" {
 		t.Fatalf("publish: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, h, http.MethodDelete, base+"/publications/"+res.Results[0].PublicationID.String(), ""); rec.Code != http.StatusNoContent {
+	if rec := publishCall(t, h, http.MethodDelete, base+"/publications/"+res.Results[0].PublicationID.String(), ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("unpublish: %d %s", rec.Code, rec.Body)
 	}
 
 	// Unpublish on a registry that cannot delete tags answers 501 unavailable.
 	pub := models.Publication{ProjectID: p.ID, VersionNumber: 1, RegistryID: gh.ID, Repository: "org/demo", Tag: "1", RegistryHost: "ghcr.io", PublishedBy: user}
 	gdb.Omit("Project", "Registry", "PublishedByUser").Create(&pub)
-	rec = call(t, h, http.MethodDelete, base+"/publications/"+pub.ID.String(), "")
+	rec = publishCall(t, h, http.MethodDelete, base+"/publications/"+pub.ID.String(), "")
 	if rec.Code != http.StatusNotImplemented || !strings.Contains(rec.Body.String(), `"code":"unavailable"`) {
 		t.Fatalf("unpublish ghcr: %d %s", rec.Code, rec.Body)
 	}
@@ -170,19 +170,19 @@ func TestPublishRoutes(t *testing.T) {
 	if _, err := oci.PublishFiles(t.Context(), []byte(toml), []byte("version: 6\n"), oci.Registry{Host: u.Host, PlainHTTP: true}, "team/pulled", "3"); err != nil {
 		t.Fatal(err)
 	}
-	rec = call(t, h, http.MethodGet, C+"/registries/"+reg.ID.String()+"/repositories?search=pull", "")
+	rec = publishCall(t, h, http.MethodGet, C+"/registries/"+reg.ID.String()+"/repositories?search=pull", "")
 	if rec.Code != http.StatusOK || rec.Body.String() != `["team/pulled"]` {
 		t.Fatalf("repositories: %d %s", rec.Code, rec.Body)
 	}
-	rec = call(t, h, http.MethodGet, C+"/registries/"+reg.ID.String()+"/tags?repository=team/pulled", "")
+	rec = publishCall(t, h, http.MethodGet, C+"/registries/"+reg.ID.String()+"/tags?repository=team/pulled", "")
 	if rec.Code != http.StatusOK || rec.Body.String() != `["3"]` {
 		t.Fatalf("tags: %d %s", rec.Code, rec.Body)
 	}
-	rec = call(t, h, http.MethodPost, C+"/registries/"+reg.ID.String()+"/pull", `{"repository":"team/pulled","tag":"3","local_name":"pulled","install":false}`)
+	rec = publishCall(t, h, http.MethodPost, C+"/registries/"+reg.ID.String()+"/pull", `{"repository":"team/pulled","tag":"3","local_name":"pulled","install":false}`)
 	if rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"type":"pull_registry"`) {
 		t.Fatalf("pull: %d %s", rec.Code, rec.Body)
 	}
-	rec = call(t, h, http.MethodPost, C+"/registries/"+reg.ID.String()+"/pull", `{"repository":"team/pulled","tag":"3","local_name":"pulled"}`)
+	rec = publishCall(t, h, http.MethodPost, C+"/registries/"+reg.ID.String()+"/pull", `{"repository":"team/pulled","tag":"3","local_name":"pulled"}`)
 	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"code":"name_taken"`) {
 		t.Fatalf("pull name taken: %d %s", rec.Code, rec.Body)
 	}

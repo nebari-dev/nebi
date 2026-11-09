@@ -327,13 +327,4 @@ func constraintOf(r *artifact.PackageRef) string {
 	return r.Version
 }
 
-func versionList(ns []int) string {
-	s := make([]string, len(ns))
-	for i, n := range ns {
-		s[i] = fmt.Sprint(n)
-	}
-	if len(s) == 1 {
-		return "version " + s[0]
-	}
-	return "versions " + strings.Join(s[:len(s)-1], ", ") + " and " + s[len(s)-1]
-}
+// versionList is defined in unit_remote.go.

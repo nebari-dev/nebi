@@ -1,4 +1,6 @@
 // Owner: U5 (remote).
+
+import type { PushRequest } from '@/types/client/remote';
 import type {
   ConnectRequest,
   PullRequest,
@@ -40,8 +42,14 @@ export const remoteApi = {
         req,
       )
     ).data,
-  push: async (projectId: string): Promise<PushResult> =>
-    (await apiClient.post(`${CLIENT}/projects/${projectId}/push`)).data,
+  /** Pushes versions not yet on the server; upTo limits it to versions <= N. */
+  push: async (projectId: string, upTo?: number): Promise<PushResult> =>
+    (
+      await apiClient.post(
+        `${CLIENT}/projects/${projectId}/push`,
+        upTo ? ({ up_to: upTo } satisfies PushRequest) : undefined,
+      )
+    ).data,
   pullVersion: async (projectId: string, n: number): Promise<VersionItem> =>
     (await apiClient.post(`${CLIENT}/projects/${projectId}/versions/${n}/pull`))
       .data,

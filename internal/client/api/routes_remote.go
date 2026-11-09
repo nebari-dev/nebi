@@ -4,6 +4,8 @@ package api
 // pull a server-only version.
 
 import (
+	"errors"
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -101,13 +103,31 @@ func (a *API) pullServerProject(c *gin.Context) {
 	c.JSON(http.StatusAccepted, res)
 }
 
-// pushProject: POST /client/projects/:id/push -> shared.PushResult
+// pushRequest is the optional body of POST /client/projects/:id/push:
+// up_to limits the push to versions numbered up to N ("Push to server" on
+// version N). An empty body pushes every version not yet on the server.
+type pushRequest struct {
+	UpTo int `json:"up_to"`
+}
+
+// pushProject: POST /client/projects/:id/push [pushRequest] -> shared.PushResult
 func (a *API) pushProject(c *gin.Context) {
 	id, ok := uuidParam(c, "id")
 	if !ok {
 		return
 	}
-	res, err := a.SDK.Remote.Push(c.Request.Context(), id)
+	var req pushRequest
+	if c.Request.Body != nil && c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error(), Code: "bad_request"})
+			return
+		}
+	}
+	if req.UpTo < 0 {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid up_to", Code: "bad_request", Field: "up_to"})
+		return
+	}
+	res, err := a.SDK.Remote.PushUpTo(c.Request.Context(), id, req.UpTo)
 	if err != nil {
 		writeError(c, err)
 		return

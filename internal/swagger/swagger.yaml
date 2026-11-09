@@ -584,6 +584,16 @@ definitions:
         type: string
       id:
         type: string
+      import_digest:
+        type: string
+      import_repository:
+        description: |-
+          ImportRepository, ImportTag, and ImportDigest identify the OCI artifact
+          that seeded this workspace. ImportDigest is always the resolved manifest
+          digest, including when the request selected a mutable tag.
+        type: string
+      import_tag:
+        type: string
       name:
         type: string
       owner:

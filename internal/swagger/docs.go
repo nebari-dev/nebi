@@ -4238,6 +4238,16 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "import_digest": {
+                    "type": "string"
+                },
+                "import_repository": {
+                    "description": "ImportRepository, ImportTag, and ImportDigest identify the OCI artifact\nthat seeded this workspace. ImportDigest is always the resolved manifest\ndigest, including when the request selected a mutable tag.",
+                    "type": "string"
+                },
+                "import_tag": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },

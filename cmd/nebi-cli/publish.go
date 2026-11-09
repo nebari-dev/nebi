@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/nebari-dev/nebi/internal/client"
 	"github.com/nebari-dev/nebi/internal/client/sdk/shared"
-	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/nebari-dev/nebi/internal/contenthash"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/oci"

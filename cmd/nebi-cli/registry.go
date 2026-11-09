@@ -8,10 +8,10 @@ import (
 	"os"
 	"text/tabwriter"
 
+	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/nebari-dev/nebi/internal/client"
 	"github.com/nebari-dev/nebi/internal/client/sdk/registry"
 	"github.com/nebari-dev/nebi/internal/client/sdk/shared"
-	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )

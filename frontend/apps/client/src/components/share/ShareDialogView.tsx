@@ -171,15 +171,17 @@ export const ShareDialogView = ({
                   <ComboboxList>
                     {(p: Principal) => (
                       <ComboboxItem key={`${p.kind}:${p.id}`} value={p}>
-                        <PrincipalAvatar
-                          principal={p}
-                          className="size-5 text-[10px]"
-                        />
-                        <span className="font-medium text-foreground">
-                          {p.name}
-                        </span>
-                        <span className="truncate text-muted-foreground">
-                          {principalDetail(p)}
+                        <span className="flex min-w-0 items-center gap-2">
+                          <PrincipalAvatar
+                            principal={p}
+                            className="size-5 shrink-0 text-[10px]"
+                          />
+                          <span className="font-medium text-foreground">
+                            {p.name}
+                          </span>
+                          <span className="truncate text-muted-foreground">
+                            {principalDetail(p)}
+                          </span>
                         </span>
                       </ComboboxItem>
                     )}

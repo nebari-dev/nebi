@@ -11,6 +11,7 @@ import type {
   PublishDefaults,
   User,
 } from '@/types';
+import { sharingHandlers } from './sharingHandlers';
 
 export const mockUser: User = {
   id: 'user-1',
@@ -144,6 +145,8 @@ export const mockFederatedIdentityReview: FederatedIdentityReview = {
 const BASE = '/api/v1';
 
 export const handlers = [
+  // Server projects, sharing and delete-from-server (issue #649).
+  ...sharingHandlers,
   http.get(`${BASE}/version`, () =>
     HttpResponse.json({ mode: 'team', features: {}, version: '0.0.1' }),
   ),

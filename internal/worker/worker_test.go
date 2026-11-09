@@ -199,30 +199,7 @@ func TestExecuteJob_CreatePersistsProjectPath(t *testing.T) {
 
 func TestExecuteJob_UpdateSetsProjectReady(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
-
-	user := models.User{Username: "alice", Email: "alice@test.com"}
-	if err := db.Create(&user).Error; err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-
-	project := &models.Project{
-		Name:    "update-ready",
-		OwnerID: user.ID,
-		Status:  models.ProjectStatusPending,
-	}
-	if err := db.Create(project).Error; err != nil {
-		t.Fatalf("create ws: %v", err)
-	}
-
-	job := &models.Job{
-		ProjectID: project.ID,
-		Type:      models.JobTypeUpdate,
-		Status:    models.JobStatusPending,
-		Metadata:  map[string]interface{}{},
-	}
-	if err := db.Create(job).Error; err != nil {
-		t.Fatalf("create job: %v", err)
-	}
+	project, job := newTestProject(t, db, exec, "update-ready", models.JobTypeUpdate, nil)
 
 	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
 
@@ -570,6 +547,220 @@ func TestProcessJob_DoesNotSavePackagesWhenInstallSnapshotExceedsLimit(t *testin
 	}
 }
 
+func TestProcessJob_FailsWhenPostprocessingFails(t *testing.T) {
+	for _, isLocal := range []bool{true, false} {
+		for _, stage := range []string{"snapshot", "package sync"} {
+			for _, jobType := range []models.JobType{
+				models.JobTypeCreate, models.JobTypeInstall, models.JobTypeRemove,
+				models.JobTypeUpdate, models.JobTypeRollback,
+			} {
+				if stage == "package sync" && (jobType == models.JobTypeInstall || jobType == models.JobTypeRemove) {
+					continue // These jobs do not call syncPackagesFromProject.
+				}
+				t.Run(fmt.Sprintf("local=%t/%s/%s", isLocal, stage, jobType), func(t *testing.T) {
+					db, svc, jobSvc, exec := setupWorkerTestMode(t, isLocal)
+					project, job := newTestProject(t, db, exec, "postprocessing-failure", jobType,
+						map[string]interface{}{"packages": []string{"zlib"}})
+					version := models.ProjectVersion{
+						ProjectID: project.ID,
+						CreatedBy: project.OwnerID,
+					}
+					if err := db.Create(&version).Error; err != nil {
+						t.Fatalf("create initial snapshot: %v", err)
+					}
+					if jobType == models.JobTypeRollback {
+						job.Metadata["version_id"] = version.ID.String()
+					}
+
+					var wantError string
+					wantVersions := int64(1)
+					if stage == "snapshot" {
+						wantError = "injected snapshot insert failure"
+						if err := db.Exec(`CREATE TRIGGER reject_snapshot BEFORE INSERT ON project_versions
+							BEGIN SELECT RAISE(FAIL, 'injected snapshot insert failure'); END`).Error; err != nil {
+							t.Fatalf("inject snapshot failure: %v", err)
+						}
+					} else {
+						wantError = "injected package list failure"
+						wantVersions = 2
+						listCalls := 0
+						restore := service.SetPixiListPackagesForTests(func(context.Context, pixi.ListOptions) ([]pixi.Package, error) {
+							listCalls++
+							if listCalls == 2 {
+								return nil, errors.New(wantError)
+							}
+							return nil, nil
+						})
+						t.Cleanup(restore)
+					}
+
+					w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
+					w.processJob(context.Background(), job)
+
+					var stored models.Job
+					if err := db.First(&stored, "id = ?", job.ID).Error; err != nil {
+						t.Fatalf("reload job: %v", err)
+					}
+					if stored.Status != models.JobStatusFailed {
+						t.Fatalf("expected failed job after %s failure, got %q", stage, stored.Status)
+					}
+					if !strings.Contains(stored.Error, wantError) {
+						t.Fatalf("expected underlying error %q, got %q", wantError, stored.Error)
+					}
+					if stored.CompletedAt == nil {
+						t.Fatal("expected failed job to have a completion timestamp")
+					}
+					if exec.cleanupCalls != 1 {
+						t.Fatalf("expected cleanup after %s failure, got %d", stage, exec.cleanupCalls)
+					}
+					var versions int64
+					if err := db.Model(&models.ProjectVersion{}).Where("project_id = ?", project.ID).Count(&versions).Error; err != nil {
+						t.Fatalf("count versions: %v", err)
+					}
+					if versions != wantVersions {
+						t.Fatalf("expected %d snapshots, got %d", wantVersions, versions)
+					}
+					if jobType == models.JobTypeCreate || jobType == models.JobTypeUpdate {
+						var storedProject models.Project
+						if err := db.First(&storedProject, "id = ?", project.ID).Error; err != nil {
+							t.Fatalf("reload project: %v", err)
+						}
+						if storedProject.Status != models.ProjectStatusFailed {
+							t.Fatalf("expected failed project, got %q", storedProject.Status)
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestProcessJob_PostprocessingFailureRequiresReinstall(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		jobType       models.JobType
+		syncFailure   bool
+		isLocal       bool
+		installed     bool
+		explicitRetry bool
+	}{
+		{name: "install snapshot", jobType: models.JobTypeInstall, isLocal: true, installed: true},
+		{name: "remove snapshot", jobType: models.JobTypeRemove, isLocal: true, installed: true},
+		{name: "update snapshot", jobType: models.JobTypeUpdate, isLocal: true, installed: true},
+		{name: "rollback snapshot", jobType: models.JobTypeRollback, isLocal: true, installed: true},
+		{name: "update sync", jobType: models.JobTypeUpdate, syncFailure: true, isLocal: true, installed: true},
+		{name: "rollback sync", jobType: models.JobTypeRollback, syncFailure: true, isLocal: true, installed: true},
+		{name: "explicit retry", jobType: models.JobTypeInstall, isLocal: true, installed: true, explicitRetry: true},
+		{name: "not installed", jobType: models.JobTypeInstall, isLocal: true},
+		{name: "team", jobType: models.JobTypeInstall, installed: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, svc, jobSvc, exec := setupWorkerTestMode(t, tc.isLocal)
+			project, job := newTestProject(t, db, exec, "reinstall-after-failure", tc.jobType,
+				map[string]interface{}{"packages": []string{"zlib"}})
+			version := models.ProjectVersion{ProjectID: project.ID, CreatedBy: project.OwnerID}
+			if err := db.Create(&version).Error; err != nil {
+				t.Fatal(err)
+			}
+			if tc.jobType == models.JobTypeRollback {
+				job.Metadata["version_id"] = version.ID.String()
+			}
+			if tc.installed {
+				if err := os.MkdirAll(filepath.Join(exec.GetProjectPath(project), ".pixi", "envs"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			listFailure := tc.syncFailure
+			if tc.syncFailure {
+				calls := 0
+				restore := service.SetPixiListPackagesForTests(func(context.Context, pixi.ListOptions) ([]pixi.Package, error) {
+					calls++
+					if listFailure && calls == 2 {
+						return nil, errors.New("injected sync failure")
+					}
+					return nil, nil
+				})
+				t.Cleanup(restore)
+			} else if err := db.Exec(`CREATE TRIGGER reject_snapshot BEFORE INSERT ON project_versions
+				BEGIN SELECT RAISE(FAIL, 'injected snapshot failure'); END`).Error; err != nil {
+				t.Fatal(err)
+			}
+
+			w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1)
+			w.processJob(context.Background(), job)
+			if job.Status != models.JobStatusFailed || !strings.Contains(job.Error, "injected") {
+				t.Fatalf("expected original job to retain its failure: %+v", job)
+			}
+			if exec.installCalls != 0 || exec.IsEnvInstalled(project) != tc.installed {
+				t.Fatal("postprocessing failure must preserve the existing runtime without reinstalling")
+			}
+			response, err := svc.Get(project.ID.String(), project.OwnerID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantStatus := models.InstallStatus("")
+			if tc.isLocal {
+				wantStatus = models.InstallStatusNotInstalled
+				if tc.installed {
+					wantStatus = models.InstallStatusFailed
+				}
+			}
+			if response.InstallStatus != wantStatus {
+				t.Fatalf("expected install status %q after failure, got %q", wantStatus, response.InstallStatus)
+			}
+			var envJobs int64
+			if err := db.Model(&models.Job{}).Where("project_id = ? AND type = ?", project.ID, models.JobTypeEnvInstall).Count(&envJobs).Error; err != nil {
+				t.Fatal(err)
+			}
+			if !tc.isLocal || !tc.installed {
+				if envJobs != 0 {
+					t.Fatalf("expected no environment install records, got %d", envJobs)
+				}
+				return
+			}
+			if envJobs != 1 {
+				t.Fatalf("expected one skipped reinstall failure, got %d", envJobs)
+			}
+
+			listFailure = false
+			if !tc.syncFailure && !tc.explicitRetry {
+				if err := db.Exec("DROP TRIGGER reject_snapshot").Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			retryType := tc.jobType
+			if tc.explicitRetry {
+				retryType = models.JobTypeEnvInstall
+			}
+			retry := &models.Job{ProjectID: project.ID, Type: retryType, Status: models.JobStatusPending, Metadata: job.Metadata}
+			if err := db.Create(retry).Error; err != nil {
+				t.Fatal(err)
+			}
+			w.processJob(context.Background(), retry)
+			if retry.Status != models.JobStatusCompleted || exec.installCalls != 1 {
+				t.Fatalf("retry did not reinstall successfully: status=%q error=%q installs=%d", retry.Status, retry.Error, exec.installCalls)
+			}
+			response, err = svc.Get(project.ID.String(), project.OwnerID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if response.InstallStatus != models.InstallStatusInstalled {
+				t.Fatalf("expected recovered install status, got %q", response.InstallStatus)
+			}
+			if tc.jobType == models.JobTypeUpdate && response.Status != models.ProjectStatusReady {
+				t.Fatalf("successful save must restore project readiness, got %q", response.Status)
+			}
+			var original models.Job
+			if err := db.First(&original, "id = ?", job.ID).Error; err != nil {
+				t.Fatal(err)
+			}
+			if original.Status != models.JobStatusFailed || original.Error != job.Error {
+				t.Fatal("recovery must preserve the original failed job")
+			}
+		})
+	}
+}
+
 func TestProcessJob_FailsCreateAndCleansUpWhenPackageListHitsResourceLimit(t *testing.T) {
 	db, svc, jobSvc, exec := setupWorkerTest(t)
 	project, job := newTestProject(t, db, exec, "list-resource-limit", models.JobTypeCreate, nil)
@@ -778,6 +969,13 @@ func TestExecuteJob_UpdateAutoInstallsWhenPreviouslyInstalled(t *testing.T) {
 
 	if exec.installCalls != 1 {
 		t.Errorf("expected auto-install after update of installed project, got %d install calls", exec.installCalls)
+	}
+	var envJobs int64
+	if err := db.Model(&models.Job{}).Where("project_id = ? AND type = ?", project.ID, models.JobTypeEnvInstall).Count(&envJobs).Error; err != nil {
+		t.Fatal(err)
+	}
+	if envJobs != 0 {
+		t.Fatalf("healthy automatic reinstall should not add environment job records, got %d", envJobs)
 	}
 }
 

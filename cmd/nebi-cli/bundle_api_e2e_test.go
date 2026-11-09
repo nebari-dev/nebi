@@ -20,7 +20,9 @@ import (
 	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/oci"
+	"github.com/nebari-dev/nebi/internal/pixi"
 	"github.com/nebari-dev/nebi/internal/server"
+	"github.com/nebari-dev/nebi/internal/service"
 )
 
 // localModeEnv holds everything a local-mode HTTP test needs.
@@ -38,6 +40,12 @@ type localModeEnv struct {
 // shared server is unaffected.
 func startLocalModeServer(t *testing.T) *localModeEnv {
 	t.Helper()
+	// Package listing must use the same empty results as the fake Pixi below,
+	// rather than running a host Pixi binary against these synthetic lockfiles.
+	restore := service.SetPixiListPackagesForTests(func(context.Context, pixi.ListOptions) ([]pixi.Package, error) {
+		return nil, nil
+	})
+	t.Cleanup(restore)
 	envVars := []string{
 		"NEBI_DATABASE_DSN",
 		"NEBI_STORAGE_PROJECTS_DIR",

@@ -1,6 +1,6 @@
 import { ChevronDown, LogOut, Monitor, Moon, Sun } from 'lucide-react';
 import { type ReactNode, useId, useRef, useState } from 'react';
-import type { ThemeMode } from '@/hooks/useThemePreference';
+import type { ThemeMode } from '@/hooks/use-theme-preference';
 import { cn } from '@/lib/utils';
 import type { User } from '@/types';
 
@@ -97,7 +97,7 @@ export const ProfileMenu = ({
           id={menuId}
           role="menu"
           aria-label="Profile menu"
-          className="absolute right-0 top-full z-50 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-md border bg-popover p-2 text-popover-foreground shadow-lg"
+          className="absolute right-0 top-full z-50 mt-2 w-[248px] max-w-[calc(100vw-2rem)] rounded-md border bg-popover p-2 text-popover-foreground shadow-lg"
         >
           <div
             role="presentation"
@@ -130,7 +130,7 @@ export const ProfileMenu = ({
             </div>
           </div>
           <hr className="my-1 border-border" />
-          <div className="px-2 py-2">
+          <div className="py-2">
             <fieldset
               aria-label="Theme"
               className="flex h-[34px] min-w-0 items-center gap-1 rounded-md border-0 bg-muted p-1"
@@ -201,7 +201,7 @@ const ThemeOption = ({
     className={cn(
       'flex h-auto flex-1 items-center justify-center gap-1 rounded-sm border border-transparent px-1.5 py-0.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
       selected
-        ? 'border-border-strong bg-card text-foreground shadow-[0_1px_3px_0_rgba(0,0,0,0.10)]'
+        ? 'border-border-strong bg-card text-foreground shadow-sm'
         : 'text-muted-foreground-strong hover:text-foreground',
     )}
     onClick={onSelect}

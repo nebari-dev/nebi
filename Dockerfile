@@ -1,6 +1,7 @@
 # Multi-stage Dockerfile
 # Stage 1: Build frontend
-FROM node:20-alpine AS frontend-builder
+# Keep the Node version in sync with NODE_VERSION in .github/tool-versions.env
+FROM node:22.23.4-alpine3.23@sha256:6abbcf5dd6b231da109bcde1181db1d92bf78015ae1a9514d9807c1f857869db AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci --prefer-offline --no-audit
@@ -10,7 +11,7 @@ RUN npm run build
 # Stage 2: Build Go binary
 # Pinned by exact version + digest; keep in sync with the toolchain directive
 # in go.mod (scripts/check-go-toolchain.sh gates supported lines in CI).
-FROM golang:1.26.7-alpine@sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468 AS backend-builder
+FROM golang:1.26.10-alpine@sha256:27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba AS backend-builder
 WORKDIR /app
 
 # Copy go mod files and download dependencies (cached layer)
@@ -18,7 +19,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Install build tools for API docs generation
-RUN apk add --no-cache make && go install github.com/swaggo/swag/cmd/swag@latest
+COPY .github/tool-versions.env .github/tool-versions.env
+RUN apk add --no-cache make && \
+    . .github/tool-versions.env && \
+    go install github.com/swaggo/swag/cmd/swag@${SWAG_VERSION}
 
 # Copy source code
 COPY . .
@@ -41,11 +45,18 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     -o /nebi ./cmd/nebi
 
 # Stage 3: Final image with pixi
-FROM ghcr.io/prefix-dev/pixi:latest
+FROM ghcr.io/prefix-dev/pixi:0.82.1-noble@sha256:f83a5fc6d1bb9a2ced27faf2b26c04c5eb618eed22fe13eb60f9225db4817ce0
 WORKDIR /app
 
-# Install CA certificates (required for OIDC/HTTPS connections)
-RUN apt-get update && apt-get install -y ca-certificates git && rm -rf /var/lib/apt/lists/*
+# Pull in security updates for packages from the pinned base image (e.g.
+# openssl), then install CA certificates (required for OIDC/HTTPS connections).
+# CI passes the build date so a cached copy of this layer can't pin stale
+# packages for more than a day.
+ARG APT_REFRESH_DATE=unset
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y ca-certificates git \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the static binary
 COPY --from=backend-builder /nebi /app/nebi

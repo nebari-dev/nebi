@@ -2,9 +2,9 @@ import { Trash2, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { CreateGroupDialog } from '@/components/admin/CreateGroupDialog';
 import { GroupMembersDialog } from '@/components/admin/GroupMembersDialog';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Table,
   TableBody,

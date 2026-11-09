@@ -1,7 +1,7 @@
 import { HardDriveDownload, Loader2, PackageMinus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { Button } from '@/components/ui/button';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   useInstallWorkspace,
   useUninstallWorkspace,

@@ -12,7 +12,7 @@ import {
 import { adminApi } from './api/admin';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { Layout } from './components/layout/Layout';
-import { useThemePreference } from './hooks/useThemePreference';
+import { useTheme } from './hooks/theme-provider';
 import { getBasePath } from './lib/basePath';
 import { queryClient } from './lib/queryClient';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
@@ -88,7 +88,7 @@ const AdminRoute = () => {
 };
 
 function App() {
-  const { themeMode, isDarkMode, setThemeMode } = useThemePreference();
+  const { themeMode, isDarkMode, setThemeMode } = useTheme();
 
   return (
     <QueryClientProvider client={queryClient}>

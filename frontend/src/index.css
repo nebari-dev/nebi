@@ -117,6 +117,10 @@
   --color-canvas-foreground: var(--canvas-foreground);
 
   --color-canvas: var(--canvas);
+
+  --color-info-foreground: var(--info-foreground);
+
+  --color-info: var(--info);
   @keyframes nebari-skeleton-pulse {
     0%,
     100% {
@@ -176,6 +180,8 @@
   /* App-defined header interaction tokens (Nebari app-header recipe) */
   --header-action-hover: #d9d9dc;
   --sign-out-foreground: #d2161c;
+  --info: oklch(95.08% 0.0232 264.46);
+  --info-foreground: oklch(55.04% 0.2158 264.34);
 }
 
 .dark {
@@ -226,6 +232,8 @@
   /* App-defined header interaction tokens (Nebari app-header recipe) */
   --header-action-hover: #4a4a50;
   --sign-out-foreground: #ff9b9b;
+  --info: oklch(33.01% 0.1387 264.4);
+  --info-foreground: oklch(69.95% 0.1433 264.44);
 }
 
 /* Tailwind v4 defaults unspecified border colors to currentColor; restore the

@@ -1,13 +1,13 @@
 import { Check, Copy, Download, Loader2, Plus, Trash2, X } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
+import { SplitButton } from '@/components/split-button';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
-import { SplitButton } from '@/components/ui/split-button';
 import {
   Table,
   TableBody,
@@ -29,11 +29,8 @@ import {
   useDeleteWorkspace,
   useWorkspaces,
 } from '@/hooks/useWorkspaces';
-import {
-  capitalize,
-  getInstallStatusColor,
-  getWorkspaceStatusColor,
-} from '@/lib/utils';
+import { getInstallStatusColor, getWorkspaceStatusColor } from '@/lib/status';
+import { capitalize } from '@/lib/strings';
 import { useWorkspaceNavStore } from '@/store/workspaceNavStore';
 import type { InstallStatus } from '@/types';
 

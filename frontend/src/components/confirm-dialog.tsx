@@ -40,11 +40,7 @@ export const ConfirmDialog = ({
   };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      disablePointerDismissal
-    >
+    <Dialog open={open} onOpenChange={onOpenChange} disablePointerDismissal>
       <DialogContent role="alertdialog" showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

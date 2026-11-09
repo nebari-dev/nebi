@@ -1,7 +1,7 @@
 services:
   # Traefik - Reverse Proxy with automatic HTTPS via Let's Encrypt
   traefik:
-    image: traefik:v3.6.4
+    image: docker.io/library/traefik@sha256:c5bd185c41ba3dbb42cf8a1b9fbdc368bdc96f90c8e598134879935f64e7a7f1
     container_name: nebi-traefik
     command:
       # API and dashboard (disable in production)
@@ -36,7 +36,7 @@ services:
 
   # PostgreSQL 18 - Database
   postgres:
-    image: postgres:18
+    image: docker.io/library/postgres@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a
     container_name: nebi-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-nebi}
@@ -56,7 +56,7 @@ services:
 
   # Valkey 9.0 - Queue backend (Redis replacement)
   valkey:
-    image: valkey/valkey:9.0.0
+    image: docker.io/valkey/valkey@sha256:00e026f877bbbed33d13241e5e701142e8842f94e1124ce1d5ddbbf6d0cee4fb
     container_name: nebi-valkey
     volumes:
       - valkey_data:/data
@@ -73,8 +73,9 @@ services:
   # NOTE: Before first deployment, set permissions:
   #   mkdir -p ./data/environments
   #   chown -R 65532:65532 ./data/environments
+  # Override NEBI_IMAGE with an immutable digest reference for newer releases.
   nebi-api:
-    image: ${NEBI_IMAGE:-quay.io/nebari/nebi:latest}
+    image: ${NEBI_IMAGE:-quay.io/nebari/nebi@sha256:56f384dfca063c37feb2fd0310afad8b9cd16baed7c6e63b541caf62db60678b}
     container_name: nebi-api
     command: ["/app/nebi", "--mode=both"]
     env_file:
@@ -121,7 +122,7 @@ services:
 
   # Nebi Worker 1 - Additional worker for job processing
   nebi-worker-1:
-    image: ${NEBI_IMAGE:-quay.io/nebari/nebi:latest}
+    image: ${NEBI_IMAGE:-quay.io/nebari/nebi@sha256:56f384dfca063c37feb2fd0310afad8b9cd16baed7c6e63b541caf62db60678b}
     container_name: nebi-worker-1
     command: ["/app/nebi", "--mode=worker"]
     env_file:
@@ -154,7 +155,7 @@ services:
 
   # Nebi Worker 2 - Additional worker for job processing
   nebi-worker-2:
-    image: ${NEBI_IMAGE:-quay.io/nebari/nebi:latest}
+    image: ${NEBI_IMAGE:-quay.io/nebari/nebi@sha256:56f384dfca063c37feb2fd0310afad8b9cd16baed7c6e63b541caf62db60678b}
     container_name: nebi-worker-2
     command: ["/app/nebi", "--mode=worker"]
     env_file:

@@ -1,6 +1,5 @@
 import starlight from '@astrojs/starlight';
 import { nebari } from '@nebari/starlight';
-import mermaid from 'astro-mermaid';
 import { defineConfig } from 'astro/config';
 import starlightLinksValidator from 'starlight-links-validator';
 
@@ -11,15 +10,12 @@ export default defineConfig({
   site,
   base,
   integrations: [
-    mermaid({
-      autoTheme: true,
-      enableLog: false,
-    }),
     starlight({
       title: 'Nebi',
       description: 'Environment management for teams',
       favicon: '/img/nebi-icon.svg',
       customCss: ['./src/styles/home.css'],
+      lastUpdated: true,
       components: {
         Head: './src/starlight/Head.astro',
       },

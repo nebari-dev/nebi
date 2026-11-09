@@ -14,7 +14,9 @@ export const UserBadge = ({ username }: { username: string }) => {
   const initial = username[0]?.toUpperCase() || '?';
   return (
     <div className="inline-flex items-center gap-1.5 bg-muted border border-border rounded-full pl-[3px] pr-2.5 py-[3px]">
-      <div className={`h-4 w-4 rounded-full flex items-center justify-center text-[10px] font-semibold shrink-0 ${colorClass}`}>
+      <div
+        className={`h-4 w-4 rounded-full flex items-center justify-center text-[10px] font-semibold shrink-0 ${colorClass}`}
+      >
         {initial}
       </div>
       <span className="text-xs font-semibold text-foreground">{username}</span>

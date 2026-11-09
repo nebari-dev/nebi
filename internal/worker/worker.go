@@ -205,7 +205,9 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 		w.runningMu.Unlock()
 		cancelJob(nil)
 	}()
-	if w.cancelPollInterval > 0 {
+	// Only local mode shares its database with another process that can
+	// cancel (the CLI); team mode never pays for the extra reads.
+	if w.cancelPollInterval > 0 && w.svc != nil && w.svc.IsLocal() {
 		go w.watchExternalCancel(cancelCtx, job.ID, cancelJob)
 	}
 	jobCtx := cancelCtx

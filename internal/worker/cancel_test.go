@@ -67,6 +67,32 @@ func TestExternalCancelStopsRunningJob(t *testing.T) {
 	}
 }
 
+// TestTeamModeDoesNotWatchRows: the team server never polls job rows for
+// external cancels.
+func TestTeamModeDoesNotWatchRows(t *testing.T) {
+	db, svc, jobSvc, exec := setupWorkerTestMode(t, false)
+	_, job := newTestProject(t, db, exec, "team-no-watch", models.JobTypeCreateVersion, nil)
+	d := &loggingDispatcher{started: make(chan struct{}), release: make(chan struct{})}
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1,
+		WithDispatcher(d), WithCancelPollInterval(5*time.Millisecond))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		w.processJob(context.Background(), job)
+	}()
+	<-d.started
+	if _, err := jobSvc.CancelActive(job.ID); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+		t.Fatal("team-mode job was stopped by a row change")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(d.release)
+	<-done
+}
+
 // TestCancelBeforeStartWins: StartJob never overwrites a cancel that
 // landed while the job was queued.
 func TestCancelBeforeStartWins(t *testing.T) {

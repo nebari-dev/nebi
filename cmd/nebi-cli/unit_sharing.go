@@ -79,7 +79,7 @@ func registerSharingCommands(root *cobra.Command) {
 				if shareJSON {
 					return writeJSON(res)
 				}
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Shared with %s: %s.\n", p.Name, strings.ToLower(shareRoleLabels[role]))
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Shared with %s: %s.\n", principalName(res, p), strings.ToLower(shareRoleLabels[role]))
 				return printAccess(cmd.OutOrStdout(), res, false)
 			})
 		},
@@ -113,7 +113,7 @@ func registerSharingCommands(root *cobra.Command) {
 				if setRoleJSON {
 					return writeJSON(res)
 				}
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Access updated: %s %s.\n", p.Name, strings.ToLower(shareRoleLabels[newRole]))
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Access updated: %s %s.\n", principalName(res, p), strings.ToLower(shareRoleLabels[newRole]))
 				return printAccess(cmd.OutOrStdout(), res, false)
 			})
 		},
@@ -136,6 +136,12 @@ func registerSharingCommands(root *cobra.Command) {
 				p, err := resolvePrincipal(ctx, s, args[1], args[2])
 				if err != nil {
 					return err
+				}
+				if p.Name == p.ID {
+					// Given by ID: name it from the list before it leaves.
+					if before, err := s.SDK.Remote.ListAccess(ctx, id); err == nil {
+						p.Name = principalName(before, p)
+					}
 				}
 				res, err := s.SDK.Remote.RevokeAccess(ctx, id, shared.PrincipalRef{Kind: p.Kind, ID: p.ID})
 				if err != nil {
@@ -181,7 +187,11 @@ func registerSharingCommands(root *cobra.Command) {
 	}
 	principals.Flags().BoolVar(&principalsJSON, "json", false, "Output as JSON")
 
-	serverCmd.AddCommand(access, share, setRole, unshare, principals)
+	cmds := []*cobra.Command{access, share, setRole, unshare, principals}
+	for _, c := range cmds {
+		silenceUsageOnRunErrors(c)
+	}
+	serverCmd.AddCommand(cmds...)
 }
 
 func validateRoleFlag(role string) error {
@@ -197,6 +207,19 @@ func principalDetail(p shared.Principal) string {
 		return fmt.Sprintf("Team, %d members", p.Members)
 	}
 	return p.Email
+}
+
+// principalName is the principal's display name from an access list, for
+// principals given by ID on the command line.
+func principalName(list *shared.AccessList, p shared.Principal) string {
+	if list != nil {
+		for _, e := range list.Entries {
+			if e.Principal.Kind == p.Kind && e.Principal.ID == p.ID && e.Principal.Name != "" {
+				return e.Principal.Name
+			}
+		}
+	}
+	return p.Name
 }
 
 func printAccess(out io.Writer, list *shared.AccessList, asJSON bool) error {
@@ -216,7 +239,7 @@ func printAccess(out io.Writer, list *shared.AccessList, asJSON bool) error {
 		return err
 	}
 	if !list.CanManage {
-		_, _ = fmt.Fprintln(out, "Only the owner or an admin can change access.")
+		_, _ = fmt.Fprintln(out, "Only the project owner or an admin can change who has access.")
 	}
 	return nil
 }

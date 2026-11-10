@@ -19,4 +19,15 @@ describe('Toaster', () => {
     expect(undo).toHaveBeenCalledOnce();
     expect(screen.getByRole('button', { name: 'Dismiss' })).toBeInTheDocument();
   });
+
+  it('stacks above dialogs so an Undo stays clickable while one is open', async () => {
+    render(<Toaster />);
+    act(() => {
+      toast.add({ type: 'success', title: 'Access updated' });
+    });
+    await screen.findByText('Access updated');
+    const viewport = document.querySelector('[data-slot="toast-viewport"]');
+    // Dialog viewports and backdrops use z-50.
+    expect(viewport?.className).toContain('z-[60]');
+  });
 });

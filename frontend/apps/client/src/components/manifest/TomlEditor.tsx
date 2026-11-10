@@ -36,7 +36,7 @@ export const TomlEditor = ({
       )}
     >
       <div className="flex items-center justify-between py-0.5 pr-0.5 pl-1.5">
-        <span className="font-mono text-muted-foreground text-xs leading-4">
+        <span className="font-mono text-muted-foreground text-xs! leading-4">
           pixi.toml
         </span>
         <Button
@@ -58,7 +58,9 @@ export const TomlEditor = ({
           {copied ? <Check /> : <Copy />}
         </Button>
       </div>
-      <div className="flex gap-2.5 border-border border-t bg-card p-1.5 font-mono text-xs leading-4">
+      {/* text-xs! beats the theme's unlayered .font-mono size (14px), and
+          ligatures stay off so ">=" is shown as typed, not as a glyph. */}
+      <div className="flex gap-2.5 border-border border-t bg-card p-1.5 font-mono text-xs! leading-4 [font-variant-ligatures:none]">
         <div
           aria-hidden
           className="select-none text-right text-muted-foreground tabular-nums"

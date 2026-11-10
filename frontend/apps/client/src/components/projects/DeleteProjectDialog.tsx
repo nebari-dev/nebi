@@ -18,6 +18,17 @@ import { trackJobToast } from '@/hooks/client/jobs';
 import { useDeleteProject } from '@/hooks/client/projects';
 import type { ProjectListItem } from '@/types/contracts';
 
+/** What the delete removes; the environment is named only when installed. */
+const removedText = (versions: number, installed: boolean) => {
+  const parts = ['The project'];
+  if (versions === 1) parts.push('its version');
+  if (versions > 1) parts.push(`all ${versions} versions`);
+  if (installed) parts.push('its installed environment');
+  if (parts.length === 1) return 'The project is removed from this machine.';
+  const last = parts.pop();
+  return `${parts.join(', ')} and ${last} are removed from this machine.`;
+};
+
 export interface DeleteProjectDialogProps {
   project: ProjectListItem;
   open: boolean;
@@ -71,12 +82,8 @@ export const DeleteProjectDialog = ({
           )}
         </DialogHeader>
         <p className="text-foreground text-sm">
-          {versions === 1
-            ? 'The project, its version and its installed environment are removed from this machine.'
-            : versions > 1
-              ? `The project, all ${versions} versions and its installed environment are removed from this machine.`
-              : 'The project is removed from this machine.'}{' '}
-          Copies on your server or in a registry stay.
+          {removedText(versions, project.installed_version != null)} Copies on
+          your server or in a registry stay.
         </p>
         <DialogFooter>
           <DialogClose render={<Button variant="secondary" />}>

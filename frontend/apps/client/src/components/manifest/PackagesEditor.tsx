@@ -37,7 +37,13 @@ const ACTIONS_COL = 'w-[138px]';
 const OperatorItems = () =>
   VERSION_OPERATORS.map(([op, label]) => (
     <SelectItem key={op} value={op}>
-      <span className={op === 'none' ? 'shrink-0' : 'w-6 shrink-0 font-mono'}>
+      <span
+        className={
+          op === 'none'
+            ? 'shrink-0'
+            : 'w-6 shrink-0 font-mono [font-variant-ligatures:none]'
+        }
+      >
         {operatorLabel(op)}
       </span>
       <span className="text-muted-foreground">{label}</span>

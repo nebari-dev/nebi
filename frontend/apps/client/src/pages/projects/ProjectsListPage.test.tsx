@@ -228,6 +228,12 @@ describe('ProjectsListPage', () => {
     );
     const dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByText('Delete sandbox?')).toBeInTheDocument();
+    // Not installed: the copy does not mention an environment.
+    expect(
+      within(dialog).getByText(
+        /^The project and its version are removed from this machine\./,
+      ),
+    ).toBeInTheDocument();
     await userEvent.click(
       within(dialog).getByRole('button', { name: 'Delete project' }),
     );

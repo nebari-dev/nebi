@@ -1,5 +1,5 @@
 import { Combobox as ComboboxPrimitive } from '@base-ui/react/combobox';
-import { CheckIcon, ChevronDownIcon, XIcon } from 'lucide-react';
+import { CheckIcon, ChevronsUpDownIcon, XIcon } from 'lucide-react';
 import type * as React from 'react';
 import { createContext, useContext } from 'react';
 import { badgeVariants } from '@nebi/ui/components/ui/badge';
@@ -52,7 +52,7 @@ function ComboboxTrigger({
           data-slot="combobox-icon"
           className="flex items-center justify-center"
         >
-          <ChevronDownIcon />
+          <ChevronsUpDownIcon />
         </ComboboxPrimitive.Icon>
       )}
     </ComboboxPrimitive.Trigger>

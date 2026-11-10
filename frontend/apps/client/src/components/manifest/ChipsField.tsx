@@ -1,6 +1,8 @@
 // Owner: U1 (projects). A labelled multi-value combobox with chips
 // (prototype: Platforms, Tags; also Channels). Typing a value that is not in
 // the suggestions offers "Add “value”"; Tab also adds the typed value.
+// Escape closes the popup and clears what was typed, but never drops the
+// chips (Base UI clears the whole selection on Escape otherwise).
 import {
   Combobox,
   ComboboxChip,
@@ -27,6 +29,8 @@ export interface ChipsFieldProps {
   /** Offered before anything is typed (selected values are always listed). */
   suggestions?: string[];
   placeholder?: string;
+  /** Keep the placeholder after chips are added (prototype Tags field). */
+  keepPlaceholder?: boolean;
   description?: ReactNode;
   /** Field-level error (replaces the description). */
   error?: string | null;
@@ -49,6 +53,7 @@ export const ChipsField = ({
   onChange,
   suggestions = [],
   placeholder,
+  keepPlaceholder = false,
   description,
   error,
   invalid,
@@ -84,9 +89,10 @@ export const ChipsField = ({
         filter={null}
         autoHighlight
         value={value}
-        onValueChange={(next) => {
-          onChange(next as string[]);
+        onValueChange={(next, details) => {
           setInput('');
+          if (details.reason === 'escape-key') return;
+          onChange(next as string[]);
         }}
         inputValue={input}
         onInputValueChange={setInput}
@@ -108,7 +114,7 @@ export const ChipsField = ({
           ))}
           <ComboboxInput
             aria-invalid={hasError || undefined}
-            placeholder={value.length ? '' : placeholder}
+            placeholder={value.length && !keepPlaceholder ? '' : placeholder}
             onKeyDown={(event) => {
               if (event.key === 'Tab' && !event.shiftKey && custom.length) {
                 event.preventDefault();

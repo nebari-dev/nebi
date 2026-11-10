@@ -216,15 +216,22 @@ func runLocalEnvJob(cmd *cobra.Command, ref string, fn func(context.Context, *cl
 		handled = true
 		job, err := fn(ctx, s, p.ID)
 		if job != nil {
-			version := ""
-			if job.VersionNumber != nil {
-				version = fmt.Sprintf(" version %d", *job.VersionNumber)
-			}
-			fmt.Fprintf(os.Stderr, "%s%s of %s: %s\n", job.TypeLabel, version, p.Name, projectJobStatusLabel(job.Status))
+			fmt.Fprintln(os.Stderr, envJobStatusLine(job, p.Name))
 		}
 		return err
 	})
 	return handled, err
+}
+
+// envJobStatusLine is the summary printed after an install or uninstall
+// job, e.g. "Install version (my-data, version 2): Succeeded". The type
+// label already reads "Install version", so the number goes in brackets.
+func envJobStatusLine(job *shared.JobSummary, projectName string) string {
+	target := projectName
+	if job.VersionNumber != nil {
+		target = fmt.Sprintf("%s, version %d", projectName, *job.VersionNumber)
+	}
+	return fmt.Sprintf("%s (%s): %s", job.TypeLabel, target, projectJobStatusLabel(job.Status))
 }
 
 // projectJobStatusLabel is the UI label of a job status (Queued, Running, ...).

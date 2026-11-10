@@ -62,6 +62,24 @@ func TestE2E_ServerShareCommands(t *testing.T) {
 		t.Fatalf("unshare: %q %q", res.Stdout, res.Stderr)
 	}
 
+	// A principal given by ID is reported by name.
+	shareeID := list.Entries[1].Principal.ID
+	res = runCLI(t, dir, "server", "share", project.ID, "user", shareeID, "--role", "view", "--json=false")
+	if res.ExitCode != 0 || !strings.Contains(res.Stdout, "Shared with sharee: can view.") {
+		t.Fatalf("share by ID: %d %q %q", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	res = runCLI(t, dir, "server", "unshare", project.ID, "user", shareeID, "--json=false")
+	if res.ExitCode != 0 || !strings.Contains(res.Stdout, "Access removed: sharee can no longer open this project.") {
+		t.Fatalf("unshare by ID: %d %q %q", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
+	// A server refusal is an error without the usage text.
+	ownerID := list.Entries[0].Principal.ID
+	res = runCLI(t, dir, "server", "unshare", project.ID, "user", ownerID)
+	if res.ExitCode == 0 || !strings.Contains(res.Stderr, "owner") || strings.Contains(res.Stdout+res.Stderr, "Usage:") {
+		t.Fatalf("unshare owner: %d %q %q", res.ExitCode, res.Stdout, res.Stderr)
+	}
+
 	// Input errors are explained without a server round trip.
 	if res := runCLI(t, dir, "server", "share", project.ID, "user", "sharee", "--role", "owner"); res.ExitCode == 0 {
 		t.Fatal("share with --role owner must fail")

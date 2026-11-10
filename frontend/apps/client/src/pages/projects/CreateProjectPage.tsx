@@ -455,6 +455,7 @@ export const CreateProjectPage = () => {
               }}
               suggestions={DEFAULT_TAGS}
               placeholder="Add a tag"
+              keepPlaceholder
               description="A tag stays with this version until a newer version uses the same tag. latest does this automatically."
               invalid={tagError}
               error={errors.tags}

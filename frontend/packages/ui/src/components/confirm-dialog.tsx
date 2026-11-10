@@ -16,12 +16,18 @@ interface ConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
-  title: string;
-  description: string;
-  confirmText?: string;
-  cancelText?: string;
+  title: ReactNode;
+  description?: ReactNode;
+  confirmText?: ReactNode;
+  cancelText?: ReactNode;
   variant?: 'default' | 'destructive';
+  /** Extra body content rendered between the header and the buttons. */
   children?: ReactNode;
+  /** Shows a spinner on the confirm button and keeps the dialog open. */
+  confirmLoading?: boolean;
+  /** Keep the dialog open after confirming (caller closes it). */
+  keepOpenOnConfirm?: boolean;
+  className?: string;
 }
 
 export const ConfirmDialog = ({
@@ -33,19 +39,30 @@ export const ConfirmDialog = ({
   confirmText = 'Continue',
   cancelText = 'Cancel',
   variant = 'default',
+  children,
+  confirmLoading = false,
+  keepOpenOnConfirm = false,
+  className,
 }: ConfirmDialogProps) => {
   const handleConfirm = () => {
     onConfirm();
-    onOpenChange(false);
+    if (!keepOpenOnConfirm) onOpenChange(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange} disablePointerDismissal>
-      <DialogContent role="alertdialog" showCloseButton={false}>
+      <DialogContent
+        role="alertdialog"
+        showCloseButton={false}
+        className={className}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          {description !== undefined && (
+            <DialogDescription>{description}</DialogDescription>
+          )}
         </DialogHeader>
+        {children}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {cancelText}
@@ -53,6 +70,7 @@ export const ConfirmDialog = ({
           <Button
             variant={variant === 'destructive' ? 'destructive' : 'default'}
             onClick={handleConfirm}
+            loading={confirmLoading}
           >
             {confirmText}
           </Button>

@@ -121,17 +121,24 @@ func TestPublishIsolatesSlowSubscriberFromFastOne(t *testing.T) {
 	fast := b.Subscribe(jobID)
 
 	const n = subscriberBufferSize + 5
+	// The fast reader acknowledges every line and the publisher waits for
+	// the ack, so the fast buffer never fills no matter how the scheduler
+	// runs the goroutines (a free-running reader made this test flaky on a
+	// busy machine).
+	received := make(chan struct{})
 	fastGot := make(chan int)
 	go func() {
 		count := 0
 		for range fast {
 			count++
+			received <- struct{}{}
 		}
 		fastGot <- count
 	}()
 
 	for i := 0; i < n; i++ {
 		b.Publish(jobID, "x")
+		<-received
 	}
 	b.Close(jobID)
 

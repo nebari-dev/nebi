@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/nebari-dev/nebi/internal/client"
+	"github.com/nebari-dev/nebi/internal/client/desktop"
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/server"
 	"github.com/spf13/cobra"
@@ -58,6 +60,9 @@ func run(cmd *cobra.Command, args []string) {
 		RuntimeMode: config.ModeLocal,
 		Version:     Version,
 		Commit:      Commit,
+		// The client stack (issue #649). nebi-web has no native folder
+		// picker, so it registers no desktop capabilities.
+		Local: client.NewExtension(desktop.Capabilities{}),
 	}
 
 	if err := server.RunWithSignalHandling(cfg); err != nil {

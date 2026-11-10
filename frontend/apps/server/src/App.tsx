@@ -1,3 +1,5 @@
+import { Toaster } from '@nebi/ui/components/ui/toast';
+import { TooltipProvider } from '@nebi/ui/components/ui/tooltip';
 import { useTheme } from '@nebi/ui/hooks/theme-provider';
 import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
@@ -22,11 +24,7 @@ import { Groups } from './pages/admin/Groups';
 import { RegistryManagement } from './pages/admin/RegistryManagement';
 import { UserManagement } from './pages/admin/UserManagement';
 import { Login } from './pages/Login';
-import { ProjectDetail } from './pages/ProjectDetail';
-import { Projects } from './pages/Projects';
-import { Registries, RegistryRepositories } from './pages/Registries';
-import { RemoteProjectDetail } from './pages/RemoteProjectDetail';
-import { Settings } from './pages/Settings';
+import { ServerProjects } from './pages/ServerProjects';
 import { useAuthStore } from './store/authStore';
 import { useModeStore } from './store/modeStore';
 
@@ -81,7 +79,7 @@ const AdminRoute = () => {
   }
 
   if (!isAdmin) {
-    return <Navigate to="/projects" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return <Outlet />;
@@ -92,56 +90,56 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter basename={getBasePath()}>
-        <ModeLoader>
-          <Routes>
-            <Route path="/login" element={<Login isDarkMode={isDarkMode} />} />
-            <Route
-              path="/"
-              element={
-                <PrivateRoute>
-                  <Layout
-                    themeMode={themeMode}
-                    isDarkMode={isDarkMode}
-                    onThemeChange={setThemeMode}
+      <TooltipProvider>
+        <Toaster>
+          <BrowserRouter basename={getBasePath()}>
+            <ModeLoader>
+              <Routes>
+                <Route
+                  path="/login"
+                  element={<Login isDarkMode={isDarkMode} />}
+                />
+                <Route
+                  path="/"
+                  element={
+                    <PrivateRoute>
+                      <Layout
+                        themeMode={themeMode}
+                        isDarkMode={isDarkMode}
+                        onThemeChange={setThemeMode}
+                      />
+                    </PrivateRoute>
+                  }
+                >
+                  <Route index element={<ServerProjects />} />
+                  <Route
+                    path="projects"
+                    element={<Navigate to="/" replace />}
                   />
-                </PrivateRoute>
-              }
-            >
-              <Route index element={<Navigate to="/projects" replace />} />
-              <Route path="projects" element={<Projects />} />
-              <Route path="projects/:id" element={<ProjectDetail />} />
-              <Route
-                path="remote/projects/:id"
-                element={<RemoteProjectDetail />}
-              />
-              <Route path="registries" element={<Registries />} />
-              <Route
-                path="registries/:registryId"
-                element={<RegistryRepositories />}
-              />
-              <Route path="settings" element={<Settings />} />
 
-              <Route element={<AdminRoute />}>
-                <Route element={<AdminLayout />}>
-                  <Route path="admin" element={<AdminDashboard />} />
-                  <Route path="admin/users" element={<UserManagement />} />
-                  <Route path="admin/groups" element={<Groups />} />
-                  <Route
-                    path="admin/identity-reviews"
-                    element={<FederatedIdentityReviews />}
-                  />
-                  <Route path="admin/audit-logs" element={<AuditLogs />} />
-                  <Route
-                    path="admin/registries"
-                    element={<RegistryManagement />}
-                  />
+                  <Route element={<AdminRoute />}>
+                    <Route element={<AdminLayout />}>
+                      <Route path="admin" element={<AdminDashboard />} />
+                      <Route path="admin/users" element={<UserManagement />} />
+                      <Route path="admin/groups" element={<Groups />} />
+                      <Route
+                        path="admin/identity-reviews"
+                        element={<FederatedIdentityReviews />}
+                      />
+                      <Route path="admin/audit-logs" element={<AuditLogs />} />
+                      <Route
+                        path="admin/registries"
+                        element={<RegistryManagement />}
+                      />
+                    </Route>
+                  </Route>
+                  <Route path="*" element={<Navigate to="/" replace />} />
                 </Route>
-              </Route>
-            </Route>
-          </Routes>
-        </ModeLoader>
-      </BrowserRouter>
+              </Routes>
+            </ModeLoader>
+          </BrowserRouter>
+        </Toaster>
+      </TooltipProvider>
     </QueryClientProvider>
   );
 }

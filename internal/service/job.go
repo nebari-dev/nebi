@@ -124,6 +124,47 @@ func (s *JobService) MarkRunning(job *models.Job) {
 	s.db.Save(job)
 }
 
+// StartJob moves a job to running unless it was cancelled while it waited
+// in the queue, and reports whether the job should run. The status change
+// is conditional so a cancel that lands between the queue and the start is
+// never overwritten. Rows in any other state (e.g. a job object that was
+// never persisted as pending) fall back to MarkRunning.
+func (s *JobService) StartJob(job *models.Job) bool {
+	now := time.Now()
+	res := s.db.Model(&models.Job{}).
+		Where("id = ? AND status = ?", job.ID, models.JobStatusPending).
+		Updates(map[string]interface{}{"status": models.JobStatusRunning, "started_at": now})
+	if res.Error == nil && res.RowsAffected == 1 {
+		job.Status = models.JobStatusRunning
+		job.StartedAt = &now
+		return true
+	}
+	if s.IsCancelled(job.ID) {
+		return false
+	}
+	s.MarkRunning(job)
+	return true
+}
+
+// CancelActive marks a pending or running job cancelled in the database
+// and reports whether a row changed. A pending job is then skipped by the
+// worker; a running job is stopped by whichever process runs it (the
+// worker and the CLI inline runner watch their job's row). Finished jobs
+// are left as they are.
+func (s *JobService) CancelActive(jobID uuid.UUID) (bool, error) {
+	res := s.db.Model(&models.Job{}).
+		Where("id = ? AND status IN ?", jobID, activeJobStatuses).
+		Updates(map[string]interface{}{
+			"status":       models.JobStatusCancelled,
+			"error":        "Cancelled",
+			"completed_at": time.Now(),
+		})
+	if res.Error != nil {
+		return false, fmt.Errorf("cancel job: %w", res.Error)
+	}
+	return res.RowsAffected > 0, nil
+}
+
 // MarkCompleted sets a job's status to completed with final logs.
 func (s *JobService) MarkCompleted(job *models.Job, logs string) {
 	completedAt := time.Now()
@@ -141,6 +182,27 @@ func (s *JobService) MarkFailed(job *models.Job, logs string, errMsg string) {
 	job.Error = errMsg
 	job.Logs = logs
 	s.db.Save(job)
+}
+
+// MarkCancelled sets a job's status to cancelled with final logs. Used when a
+// user cancels a running job (issue #649) or a pending one before it starts.
+func (s *JobService) MarkCancelled(job *models.Job, logs string) {
+	completedAt := time.Now()
+	job.CompletedAt = &completedAt
+	job.Status = models.JobStatusCancelled
+	job.Error = "Cancelled"
+	job.Logs = logs
+	s.db.Save(job)
+}
+
+// IsCancelled reports whether the job row was already marked cancelled,
+// e.g. a pending job cancelled while it waited in the queue.
+func (s *JobService) IsCancelled(jobID uuid.UUID) bool {
+	var status models.JobStatus
+	if err := s.db.Model(&models.Job{}).Where("id = ?", jobID).Select("status").Scan(&status).Error; err != nil {
+		return false
+	}
+	return status == models.JobStatusCancelled
 }
 
 // MarkPanicked sets a job as failed after a panic recovery.

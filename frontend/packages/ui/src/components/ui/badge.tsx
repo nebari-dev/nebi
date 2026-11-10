@@ -17,6 +17,11 @@ const badgeVariants = cva(
         destructive: 'bg-destructive text-destructive-foreground',
         outline: 'border-border-strong bg-background text-foreground',
         ghost: 'text-foreground',
+        // Status chips used by the client (issue #649): "Update available"
+        // (info), "Installed" (success), "Installing" (warning).
+        info: 'border-transparent bg-info text-info-foreground',
+        success: 'border-transparent bg-success text-success-foreground',
+        warning: 'border-transparent bg-warning text-warning-foreground',
       },
     },
     defaultVariants: {

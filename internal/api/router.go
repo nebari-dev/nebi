@@ -17,18 +17,34 @@ import (
 	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/frontend"
+	"github.com/nebari-dev/nebi/internal/localext"
 	"github.com/nebari-dev/nebi/internal/logstream"
 	"github.com/nebari-dev/nebi/internal/netguard"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/rbac"
+	serverapi "github.com/nebari-dev/nebi/internal/server/api"
+	servercore "github.com/nebari-dev/nebi/internal/server/core"
 	"github.com/nebari-dev/nebi/internal/service"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/gorm"
 )
 
+// RouterOptions are optional router extensions.
+type RouterOptions struct {
+	// Local is the local-mode client stack (issue #649). When set in local
+	// mode its routes are mounted under /api/v1/client. Ignored in team
+	// mode.
+	Local localext.Extension
+}
+
 // NewRouter creates and configures the Gin router
 func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec executor.Executor, logBroker *logstream.LogBroker, logger *slog.Logger) *gin.Engine {
+	return NewRouterWithOptions(cfg, db, q, exec, logBroker, logger, RouterOptions{})
+}
+
+// NewRouterWithOptions is NewRouter with optional extensions.
+func NewRouterWithOptions(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec executor.Executor, logBroker *logstream.LogBroker, logger *slog.Logger, opts RouterOptions) *gin.Engine {
 	auth.ConfigureAuthReconciliationStaleAfter(time.Duration(cfg.Auth.AuthorizationStaleAfterMins) * time.Minute)
 
 	// Initialize RBAC enforcer and provider.
@@ -325,6 +341,26 @@ func NewRouter(cfg *config.Config, db *gorm.DB, q *queue.MemoryQueue, exec execu
 			admin.DELETE("/groups/:id/grant-admin", adminHandler.RevokeGroupAdmin)
 			admin.POST("/registries/:id/grant-group", registryHandler.GrantRegistryToGroup)
 			admin.DELETE("/registries/:id/grant-group/:group_id", registryHandler.RevokeRegistryFromGroup)
+		}
+
+		// Issue #649 endpoints: the client REST API in local mode
+		// (internal/client/api via the local extension) and the new team
+		// server endpoints in team mode (internal/server/api).
+		if localMode {
+			if opts.Local != nil {
+				opts.Local.RegisterRoutes(protected)
+			}
+		} else {
+			serverapi.Register(protected, serverapi.Deps{
+				Core: servercore.New(servercore.Deps{
+					DB:       db,
+					RBAC:     rbacProvider,
+					Projects: svc,
+					Logger:   logger,
+				}),
+				RBAC:      rbacProvider,
+				LocalMode: localMode,
+			})
 		}
 
 		// Remote proxy endpoints (local mode only)

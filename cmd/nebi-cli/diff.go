@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var diffLock bool
+var diffLock, diffPackages bool
 
 var diffCmd = &cobra.Command{
 	Use:   "diff <ref-a> [ref-b] [--lock]",
@@ -38,7 +38,11 @@ Examples:
   nebi diff myproject:v1 myproject:v2      # two server versions
   nebi diff myproject:v1 ./local-dir         # server vs local dir
 
-Use --lock to also compare pixi.lock files.`,
+Use --lock to also compare pixi.lock files.
+
+Use --packages for the Compare versions view: the requested packages of both
+sides with their resolved versions, marked added (+), removed (-) or changed
+(~). With --lock it also lists every resolved package.`,
 	Args:              cobra.RangeArgs(0, 2),
 	RunE:              runDiff,
 	ValidArgsFunction: completeProjectNamesOrPaths,
@@ -46,6 +50,7 @@ Use --lock to also compare pixi.lock files.`,
 
 func init() {
 	diffCmd.Flags().BoolVar(&diffLock, "lock", false, "Also diff pixi.lock files")
+	diffCmd.Flags().BoolVar(&diffPackages, "packages", false, "Show the requested-package comparison (Compare versions view)")
 }
 
 // diffSource represents a resolved source of pixi files for diffing.
@@ -86,6 +91,10 @@ func runDiff(cmd *cobra.Command, args []string) error {
 	srcB, err := resolveSource(refB, "")
 	if err != nil {
 		return fmt.Errorf("resolving %s: %w", refB, err)
+	}
+
+	if diffPackages {
+		return printPackageComparison(cmd.OutOrStdout(), srcA, srcB, diffLock)
 	}
 
 	hasOutput := false

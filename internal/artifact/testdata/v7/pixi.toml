@@ -1,0 +1,11 @@
+[workspace]
+name = "artlock"
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64"]
+
+[dependencies]
+python = "3.12.*"
+zlib = "*"
+
+[pypi-dependencies]
+six = ">=1.16"

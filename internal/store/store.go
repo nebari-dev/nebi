@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
@@ -45,23 +46,9 @@ func Open(dataDir string) (*Store, error) {
 	// Enable WAL mode
 	db.Exec("PRAGMA journal_mode=WAL")
 
-	// AutoMigrate project + config/credentials tables
-	if err := db.AutoMigrate(&LocalUser{}, &LocalProject{}, &LocalProjectVersion{}, &Config{}, &Credentials{}, &LocalRegistry{}, &LocalPublication{}); err != nil {
-		return nil, fmt.Errorf("migrating schema: %w", err)
+	if err := MigrateLocalTables(db); err != nil {
+		return nil, err
 	}
-
-	// Drop the legacy package_manager column: pixi is the only package
-	// manager, and the column was NOT NULL so leaving it would break inserts
-	// in databases created before its removal.
-	if db.Migrator().HasColumn(&LocalProject{}, "package_manager") {
-		if err := db.Migrator().DropColumn(&LocalProject{}, "package_manager"); err != nil {
-			return nil, fmt.Errorf("dropping projects.package_manager column: %w", err)
-		}
-	}
-
-	// Seed singleton rows
-	db.Exec("INSERT OR IGNORE INTO store_config (id) VALUES (1)")
-	db.Exec("INSERT OR IGNORE INTO store_credentials (id) VALUES (1)")
 
 	// Ensure the well-known local-user row exists so that FK constraints
 	// added later by the server migration (project_versions.created_by
@@ -72,6 +59,31 @@ func Open(dataDir string) (*Store, error) {
 	}
 
 	return &Store{db: db, dataDir: dataDir, localUserID: localUserID}, nil
+}
+
+// MigrateLocalTables creates the CLI store tables (legacy Local* mirrors,
+// store_config, store_credentials) on db and seeds the singleton rows. It is
+// called by Open and by internal/client/sdk/local.Migrate, which owns the
+// local database schema for the CLI, nebi-web and the desktop app.
+func MigrateLocalTables(db *gorm.DB) error {
+	// AutoMigrate project + config/credentials tables
+	if err := db.AutoMigrate(&LocalUser{}, &LocalProject{}, &LocalProjectVersion{}, &Config{}, &Credentials{}, &LocalRegistry{}, &LocalPublication{}); err != nil {
+		return fmt.Errorf("migrating schema: %w", err)
+	}
+
+	// Drop the legacy package_manager column: pixi is the only package
+	// manager, and the column was NOT NULL so leaving it would break inserts
+	// in databases created before its removal.
+	if db.Migrator().HasColumn(&LocalProject{}, "package_manager") {
+		if err := db.Migrator().DropColumn(&LocalProject{}, "package_manager"); err != nil {
+			return fmt.Errorf("dropping projects.package_manager column: %w", err)
+		}
+	}
+
+	// Seed singleton rows
+	db.Where(Config{ID: 1}).FirstOrCreate(&Config{ID: 1})
+	db.Where(Credentials{ID: 1}).FirstOrCreate(&Credentials{ID: 1})
+	return nil
 }
 
 // DB returns the underlying GORM DB for advanced queries.
@@ -118,18 +130,25 @@ func DefaultDataDir() (string, error) {
 }
 
 // Config is a singleton table for store configuration (server URL).
+// ServerName and LastSyncedAt back the client Server page (issue #649):
+// the display name of the connected server and when its project list was
+// last refreshed.
 type Config struct {
-	ID        int    `gorm:"primarykey"`
-	ServerURL string `gorm:"not null;default:''"`
+	ID           int    `gorm:"primarykey"`
+	ServerURL    string `gorm:"not null;default:''"`
+	ServerName   string `gorm:"not null;default:''"`
+	LastSyncedAt *time.Time
 }
 
 func (Config) TableName() string { return "store_config" }
 
-// Credentials stores auth info for the configured nebi server.
+// Credentials stores auth info for the configured nebi server. AuthMode is
+// "none" or "token" ("" is treated as "token" when Token is set).
 type Credentials struct {
 	ID       int    `gorm:"primarykey"`
 	Token    string `gorm:"not null;default:''"`
 	Username string `gorm:"not null;default:''"`
+	AuthMode string `gorm:"not null;default:''"`
 }
 
 func (Credentials) TableName() string { return "store_credentials" }

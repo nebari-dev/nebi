@@ -306,6 +306,18 @@ func (e *LocalExecutor) SolveEnvironment(ctx context.Context, project *models.Pr
 // InstallEnvironment runs `pixi install -v` in the project directory,
 // materializing .pixi/envs/ from the already-resolved pixi.lock.
 func (e *LocalExecutor) InstallEnvironment(ctx context.Context, project *models.Project, logWriter io.Writer) error {
+	return e.installEnvironment(ctx, project, logWriter, "install", "-v")
+}
+
+// InstallEnvironmentFrozen runs `pixi install --frozen -v`: it installs
+// exactly what pixi.lock records and never re-solves or rewrites the lock.
+// The version-model install (issue #649) uses it so the installed
+// environment is the stored version, byte for byte.
+func (e *LocalExecutor) InstallEnvironmentFrozen(ctx context.Context, project *models.Project, logWriter io.Writer) error {
+	return e.installEnvironment(ctx, project, logWriter, "install", "--frozen", "-v")
+}
+
+func (e *LocalExecutor) installEnvironment(ctx context.Context, project *models.Project, logWriter io.Writer, args ...string) error {
 	envPath := e.GetProjectPath(project)
 	return e.withStorageLimit(ctx, envPath, logWriter, func(ctx context.Context) error {
 
@@ -316,7 +328,7 @@ func (e *LocalExecutor) InstallEnvironment(ctx context.Context, project *models.
 
 		pixiBinary := pm.BinaryPath()
 		processLimits := e.limits.ProcessLimits()
-		cmd := process.CommandContext(ctx, pixiBinary, []string{"install", "-v"}, processLimits)
+		cmd := process.CommandContext(ctx, pixiBinary, args, processLimits)
 		cmd.Dir = envPath
 		env, err := process.PreparedWorkspaceEnv(envPath)
 		if err != nil {
@@ -326,7 +338,7 @@ func (e *LocalExecutor) InstallEnvironment(ctx context.Context, project *models.
 		limitLogWriter := &processLimitLogWriter{target: logWriter, limits: processLimits}
 		cmd.Stdout = limitLogWriter
 		cmd.Stderr = limitLogWriter
-		fmt.Fprintf(logWriter, "Running: %s install -v\n", pixiBinary)
+		fmt.Fprintf(logWriter, "Running: %s %s\n", pixiBinary, strings.Join(args, " "))
 		if err := cmd.Run(); err != nil {
 			installErr := fmt.Errorf("pixi install failed: %w", err)
 			if limitLogWriter.SeenResourceLimitOutput() || process.IsResourceLimitExit(ctx, err, processLimits, "") {

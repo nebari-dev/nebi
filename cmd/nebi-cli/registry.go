@@ -3,19 +3,25 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"text/tabwriter"
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
-	"github.com/nebari-dev/nebi/internal/store"
+	"github.com/nebari-dev/nebi/internal/client"
+	"github.com/nebari-dev/nebi/internal/client/sdk/registry"
+	"github.com/nebari-dev/nebi/internal/client/sdk/shared"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
 
 var registryCmd = &cobra.Command{
 	Use:   "registry",
-	Short: "Manage OCI registries on the server",
+	Short: "Manage OCI registries",
+	Long: `Manage OCI registries. With --local, or when no server is logged in, the
+commands work on the registries of this machine (the ones the desktop app
+and nebi-web use; passwords are kept in the OS keyring).`,
 }
 
 var (
@@ -117,45 +123,35 @@ func init() {
 
 func runRegistryList(cmd *cobra.Command, args []string) error {
 	if isLocalMode(cmd) {
-		return runRegistryListLocal()
+		return runRegistryListLocal(cmd)
 	}
 	return runRegistryListServer()
 }
 
-func runRegistryListLocal() error {
-	s, err := store.New()
-	if err != nil {
-		return err
-	}
-	defer s.Close()
-
-	registries, err := s.ListRegistries()
-	if err != nil {
-		return err
-	}
-
-	if len(registries) == 0 {
+func runRegistryListLocal(cmd *cobra.Command) error {
+	return withStack(cmd, func(ctx context.Context, st *client.Stack) error {
+		registries, err := st.SDK.Registry.ListRegistries(ctx)
+		if err != nil {
+			return err
+		}
 		if registryListJSON {
-			return writeJSON([]store.LocalRegistry{})
+			return writeJSON(registries)
 		}
-		fmt.Fprintln(os.Stderr, "No local registries configured.")
-		return nil
-	}
-
-	if registryListJSON {
-		return writeJSON(registries)
-	}
-
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tURL\tDEFAULT")
-	for _, r := range registries {
-		def := ""
-		if r.IsDefault {
-			def = "*"
+		if len(registries) == 0 {
+			fmt.Fprintln(os.Stderr, "No local registries configured.")
+			return nil
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\n", r.Name, r.URL, def)
-	}
-	return w.Flush()
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "NAME\tURL\tNAMESPACE\tDEFAULT")
+		for _, r := range registries {
+			def := ""
+			if r.IsDefault {
+				def = "*"
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", r.Name, r.URL, r.Namespace, def)
+		}
+		return w.Flush()
+	})
 }
 
 func runRegistryListServer() error {
@@ -220,38 +216,27 @@ func runRegistryAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	if isLocalMode(cmd) {
-		return runRegistryAddLocal(password)
+		return runRegistryAddLocal(cmd, password)
 	}
 	return runRegistryAddServer(password)
 }
 
-func runRegistryAddLocal(password string) error {
-	s, err := store.New()
-	if err != nil {
-		return err
-	}
-	defer s.Close()
-
-	reg := &store.LocalRegistry{
-		Name:      registryAddName,
-		URL:       registryAddURL,
-		Username:  registryAddUsername,
-		IsDefault: registryAddDefault,
-		Namespace: registryAddNamespace,
-	}
-	if err := s.CreateRegistry(reg); err != nil {
-		return fmt.Errorf("creating local registry: %w", err)
-	}
-
-	if password != "" {
-		cs := store.NewCredentialStore(s.DataDir())
-		if err := cs.SetPassword(registryAddName, password); err != nil {
-			return fmt.Errorf("storing credentials: %w", err)
+func runRegistryAddLocal(cmd *cobra.Command, password string) error {
+	return withStack(cmd, func(ctx context.Context, st *client.Stack) error {
+		reg, err := st.SDK.Registry.AddRegistry(ctx, shared.AddRegistryRequest{
+			Name:      registryAddName,
+			URL:       registryAddURL,
+			Namespace: registryAddNamespace,
+			Username:  registryAddUsername,
+			Password:  password,
+			IsDefault: registryAddDefault,
+		})
+		if err != nil {
+			return fmt.Errorf("creating local registry: %w", explainSDKError(err))
 		}
-	}
-
-	fmt.Fprintf(os.Stderr, "Added local registry '%s' (%s)\n", reg.Name, reg.URL)
-	return nil
+		fmt.Fprintf(os.Stderr, "Added local registry '%s' (%s)\n", reg.Name, reg.URL)
+		return nil
+	})
 }
 
 func runRegistryAddServer(password string) error {
@@ -290,24 +275,25 @@ func runRegistryAddServer(password string) error {
 func runRegistrySetDefault(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	if isLocalMode(cmd) {
-		return runRegistrySetDefaultLocal(name)
+		return runRegistrySetDefaultLocal(cmd, name)
 	}
 	return runRegistrySetDefaultServer(name)
 }
 
-func runRegistrySetDefaultLocal(name string) error {
-	s, err := store.New()
-	if err != nil {
-		return err
-	}
-	defer s.Close()
-
-	reg, err := s.SetDefaultRegistry(name)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(os.Stderr, "Default registry set to '%s' (%s)\n", reg.Name, reg.URL)
-	return nil
+func runRegistrySetDefaultLocal(cmd *cobra.Command, name string) error {
+	return withStack(cmd, func(ctx context.Context, st *client.Stack) error {
+		reg, err := resolveLocalRegistry(ctx, st, name)
+		if err != nil {
+			return err
+		}
+		yes := true
+		updated, err := st.SDK.Registry.UpdateRegistry(ctx, reg.ID, registry.UpdateRegistryRequest{IsDefault: &yes})
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Default registry set to '%s' (%s)\n", updated.Name, updated.URL)
+		return nil
+	})
 }
 
 func runRegistrySetDefaultServer(name string) error {
@@ -336,42 +322,115 @@ func runRegistryRemove(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
 	if isLocalMode(cmd) {
-		return runRegistryRemoveLocal(name)
+		return runRegistryRemoveLocal(cmd, name)
 	}
 	return runRegistryRemoveServer(name)
 }
 
-func runRegistryRemoveLocal(name string) error {
-	s, err := store.New()
-	if err != nil {
-		return err
-	}
-	defer s.Close()
-
-	reg, err := s.GetRegistryByName(name)
-	if err != nil {
-		return err
-	}
-
-	if !registryRemoveForce {
-		fmt.Fprintf(os.Stderr, "Remove local registry '%s'? [y/N] ", name)
-		var response string
-		fmt.Scanln(&response)
-		if response != "y" && response != "Y" {
-			fmt.Fprintln(os.Stderr, "Aborted.")
-			return nil
+func runRegistryRemoveLocal(cmd *cobra.Command, name string) error {
+	return withStack(cmd, func(ctx context.Context, st *client.Stack) error {
+		reg, err := resolveLocalRegistry(ctx, st, name)
+		if err != nil {
+			return err
 		}
+		if !registryRemoveForce {
+			fmt.Fprintf(os.Stderr, "Remove local registry '%s'? [y/N] ", reg.Name)
+			var response string
+			fmt.Scanln(&response)
+			if response != "y" && response != "Y" {
+				fmt.Fprintln(os.Stderr, "Aborted.")
+				return nil
+			}
+		}
+		if err := st.SDK.Registry.RemoveRegistry(ctx, reg.ID); err != nil {
+			return fmt.Errorf("deleting registry: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "Removed registry '%s'\n", reg.Name)
+		return nil
+	})
+}
+
+// resolveLocalRegistry finds a registry of this machine by name or ID.
+func resolveLocalRegistry(ctx context.Context, st *client.Stack, ref string) (*shared.RegistryItem, error) {
+	reg, err := st.SDK.Registry.ResolveRegistry(ctx, ref)
+	if errors.Is(err, shared.ErrNotFound) {
+		return nil, fmt.Errorf("registry '%s' not found", ref)
 	}
+	return reg, err
+}
 
-	if err := s.DeleteRegistry(reg.ID); err != nil {
-		return fmt.Errorf("deleting registry: %w", err)
+// newRegistryUpdateCmd edits a registry of this machine.
+func newRegistryUpdateCmd() *cobra.Command {
+	var (
+		newName, url, namespace, username string
+		passwordStdin, clearPassword      bool
+		makeDefault                       bool
+	)
+	cmd := &cobra.Command{
+		Use:   "update <name>",
+		Short: "Edit a registry on this machine",
+		Long: `Edit a registry on this machine. Only the flags you pass change.
+
+Examples:
+  nebi registry update quay --namespace nebari
+  echo "$TOKEN" | nebi registry update ghcr --username me --password-stdin
+  nebi registry update ghcr --name github`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			defer resetLocalFlags(cmd)
+			var req registry.UpdateRegistryRequest
+			flags := cmd.Flags()
+			if flags.Changed("name") {
+				req.Name = &newName
+			}
+			if flags.Changed("url") {
+				req.URL = &url
+			}
+			if flags.Changed("namespace") {
+				req.Namespace = &namespace
+			}
+			if flags.Changed("username") {
+				req.Username = &username
+			}
+			if makeDefault {
+				req.IsDefault = &makeDefault
+			}
+			if clearPassword {
+				empty := ""
+				req.Password = &empty
+			} else if passwordStdin {
+				scanner := bufio.NewScanner(os.Stdin)
+				pw := ""
+				if scanner.Scan() {
+					pw = scanner.Text()
+				}
+				if err := scanner.Err(); err != nil {
+					return fmt.Errorf("reading password from stdin: %w", err)
+				}
+				req.Password = &pw
+			}
+			return withStack(cmd, func(ctx context.Context, st *client.Stack) error {
+				reg, err := resolveLocalRegistry(ctx, st, args[0])
+				if err != nil {
+					return err
+				}
+				updated, err := st.SDK.Registry.UpdateRegistry(ctx, reg.ID, req)
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(os.Stderr, "Updated registry '%s' (%s)\n", updated.Name, updated.URL)
+				return nil
+			})
+		},
 	}
-
-	cs := store.NewCredentialStore(s.DataDir())
-	cs.DeletePassword(name) // Ignore error — credential may not exist
-
-	fmt.Fprintf(os.Stderr, "Removed registry '%s'\n", name)
-	return nil
+	cmd.Flags().StringVar(&newName, "name", "", "New registry name")
+	cmd.Flags().StringVar(&url, "url", "", "Registry URL")
+	cmd.Flags().StringVar(&namespace, "namespace", "", "Organization or namespace on the registry")
+	cmd.Flags().StringVar(&username, "username", "", "Username for authentication")
+	cmd.Flags().BoolVar(&passwordStdin, "password-stdin", false, "Read the new password from stdin")
+	cmd.Flags().BoolVar(&clearPassword, "clear-password", false, "Remove the stored password")
+	cmd.Flags().BoolVar(&makeDefault, "default", false, "Make this the default registry")
+	return cmd
 }
 
 func runRegistryRemoveServer(name string) error {

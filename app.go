@@ -15,9 +15,12 @@ import (
 
 	"github.com/nebari-dev/nebi/internal/api"
 	"github.com/nebari-dev/nebi/internal/api/handlers"
+	"github.com/nebari-dev/nebi/internal/client"
+	"github.com/nebari-dev/nebi/internal/client/desktop"
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
+	"github.com/nebari-dev/nebi/internal/localext"
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/netguard"
 	"github.com/nebari-dev/nebi/internal/pixi"
@@ -26,8 +29,27 @@ import (
 	"github.com/nebari-dev/nebi/internal/service"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/nebari-dev/nebi/internal/worker"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"gorm.io/gorm"
 )
+
+// wailsFolderPicker implements desktop.FolderPicker with the native Wails
+// directory dialog (issue #649, gap 1). The UI reaches it through
+// POST /api/v1/client/desktop/pick-folder, never through Wails bindings.
+type wailsFolderPicker struct {
+	app *App
+}
+
+func (p *wailsFolderPicker) PickFolder(_ context.Context, title, defaultPath string) (string, error) {
+	if title == "" {
+		title = "Choose a folder"
+	}
+	return wailsruntime.OpenDirectoryDialog(p.app.ctx, wailsruntime.OpenDialogOptions{
+		Title:                title,
+		DefaultDirectory:     defaultPath,
+		CanCreateDirectories: true,
+	})
+}
 
 // getAppDataDir returns the appropriate data directory for the desktop app
 func getAppDataDir() (string, error) {
@@ -195,7 +217,20 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 		logToFile(fmt.Sprintf("startEmbeddedServer: job recovery error: %v", err))
 		return
 	}
-	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), limitCfg, cfg.Worker.MaxParallelJobs)
+	// Client stack (issue #649) with the native folder picker capability.
+	localExt := client.NewExtension(desktop.Capabilities{FolderPicker: &wailsFolderPicker{app: a}})
+	if err := localExt.Init(localext.Deps{
+		Config:   cfg,
+		DB:       database,
+		Queue:    jobQueue,
+		Executor: exec,
+		Logger:   slog.Default(),
+	}); err != nil {
+		logToFile(fmt.Sprintf("startEmbeddedServer: client stack error: %v", err))
+		return
+	}
+	w := worker.New(jobQueue, exec, svc, jobSvc, slog.Default(), limitCfg, cfg.Worker.MaxParallelJobs, worker.WithDispatcher(localExt.Dispatcher()))
+	localExt.BindWorker(w)
 	workerCtx, workerCancel := context.WithCancel(a.ctx)
 	workerDone := make(chan struct{})
 	logToFile("startEmbeddedServer: worker created")
@@ -206,7 +241,7 @@ func (a *App) startEmbeddedServer(cfg *config.Config, database *gorm.DB) {
 
 	// Initialize API router
 	logToFile("startEmbeddedServer: initializing router...")
-	router := api.NewRouter(cfg, database, jobQueue, exec, w.GetBroker(), slog.Default())
+	router := api.NewRouterWithOptions(cfg, database, jobQueue, exec, w.GetBroker(), slog.Default(), api.RouterOptions{Local: localExt})
 
 	// Create HTTP server on port 8460 (fallback for CLI access).
 	// The desktop app is a single-user, on-device setup, so bind loopback

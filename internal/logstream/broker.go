@@ -2,6 +2,7 @@ package logstream
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -22,9 +23,17 @@ type subscriber struct {
 	dropped int
 }
 
+// jobHistory is everything published for a tracked job so far, so a late
+// subscriber can catch up without a gap or duplicate lines.
+type jobHistory struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
 // LogBroker manages log streams for jobs
 type LogBroker struct {
 	subscribers map[uuid.UUID]map[chan string]*subscriber // jobID -> set of subscribers
+	history     map[uuid.UUID]*jobHistory                 // jobs opened with Open
 	mu          sync.RWMutex
 	closed      bool
 }
@@ -33,7 +42,44 @@ type LogBroker struct {
 func NewBroker() *LogBroker {
 	return &LogBroker{
 		subscribers: make(map[uuid.UUID]map[chan string]*subscriber),
+		history:     make(map[uuid.UUID]*jobHistory),
 	}
+}
+
+// Open starts recording the log history of a job that is about to run in
+// this process. SubscribeWithHistory only succeeds for opened jobs; Close
+// drops the history. The worker opens every job it runs.
+func (b *LogBroker) Open(jobID uuid.UUID) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closed {
+		return
+	}
+	if _, ok := b.history[jobID]; !ok {
+		b.history[jobID] = &jobHistory{}
+	}
+}
+
+// SubscribeWithHistory atomically returns everything published so far for
+// an opened job and a channel for what follows, so the caller sees every
+// byte exactly once. ok is false (and ch nil) when the job is not running
+// in this process: it was never opened, or it already finished.
+func (b *LogBroker) SubscribeWithHistory(jobID uuid.UUID) (history string, ch chan string, ok bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	h, tracked := b.history[jobID]
+	if !tracked || b.closed {
+		return "", nil, false
+	}
+	h.mu.Lock()
+	history = h.buf.String()
+	h.mu.Unlock()
+	ch = make(chan string, subscriberBufferSize)
+	if b.subscribers[jobID] == nil {
+		b.subscribers[jobID] = make(map[chan string]*subscriber)
+	}
+	b.subscribers[jobID][ch] = &subscriber{ch: ch}
+	return history, ch, true
 }
 
 // Subscribe creates a new subscription for a job's logs
@@ -85,6 +131,12 @@ func (b *LogBroker) Publish(jobID uuid.UUID, line string) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
+	if h, tracked := b.history[jobID]; tracked {
+		h.mu.Lock()
+		h.buf.WriteString(line)
+		h.mu.Unlock()
+	}
+
 	subs, exists := b.subscribers[jobID]
 	if !exists {
 		return
@@ -126,10 +178,12 @@ func trySend(ch chan string, line string) bool {
 	}
 }
 
-// Close closes all subscriptions for a job
+// Close closes all subscriptions for a job and drops its history.
 func (b *LogBroker) Close(jobID uuid.UUID) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	delete(b.history, jobID)
 
 	if subs, exists := b.subscribers[jobID]; exists {
 		for ch := range subs {
@@ -145,6 +199,7 @@ func (b *LogBroker) Shutdown() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.closed = true
+	clear(b.history)
 	for _, subs := range b.subscribers {
 		for ch := range subs {
 			close(ch)

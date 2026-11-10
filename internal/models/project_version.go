@@ -33,6 +33,18 @@ type ProjectVersion struct {
 	CreatedByUser *User      `gorm:"foreignKey:CreatedBy" json:"created_by_user,omitempty"`
 	Description   string     `gorm:"type:text" json:"description,omitempty"` // Optional description of changes
 
+	// BaseVersion is the version this one was created from ("Started from
+	// version N"). Nil for version 1 and for versions created before #649.
+	BaseVersion *int `json:"base_version,omitempty"`
+	// AuthorName is a display snapshot of the author. Versions pulled from
+	// a server keep the server-side author even though that user does not
+	// exist in the local users table.
+	AuthorName string `json:"author_name,omitempty"`
+	// SyncedAt is set (local mode only) when this version is known to exist
+	// with identical content on the project's linked server, either because
+	// it was pushed or because it was pulled from there.
+	SyncedAt *time.Time `json:"synced_at,omitempty"`
+
 	// Timestamps
 	CreatedAt time.Time      `json:"created_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`

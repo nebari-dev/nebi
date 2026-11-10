@@ -156,6 +156,9 @@ func dirIsNonEmpty(path string) (bool, error) {
 // through the client SDK, using the configured registry for host.
 func runImportAsProject(cmd *cobra.Command, repoRef, tag string) error {
 	stripped, plainHTTP := oci.StripScheme(repoRef)
+	// OCI references normally carry no scheme; only an explicit http:// or
+	// https:// has to agree with the registry's transport.
+	explicitScheme := stripped != repoRef
 	host, repository, ok := strings.Cut(stripped, "/")
 	if !ok || repository == "" {
 		return fmt.Errorf("use registry/repository:tag, e.g. quay.io/nebari/my-env:5")
@@ -170,7 +173,7 @@ func runImportAsProject(cmd *cobra.Command, repoRef, tag string) error {
 		var match *shared.RegistryItem
 		for i := range regs {
 			h, _, plain := oci.ParseRegistryURLFull(regs[i].URL)
-			if strings.EqualFold(h, host) && plain == plainHTTP {
+			if strings.EqualFold(h, host) && (!explicitScheme || plain == plainHTTP) {
 				match = &regs[i]
 				break
 			}

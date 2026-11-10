@@ -136,10 +136,12 @@ function buildRows(
   // (server records) or on a registry that is no longer configured.
   for (const p of published) {
     if (p.publication_id && claimed.has(p.publication_id)) continue;
+    // Name the row after a registry of this machine on the same host.
+    const known = registries.find((r) => registryHost(r.url) === p.registry);
     rows.push({
       key: p.publication_id ?? `${p.source}:${p.reference}`,
       registry: null,
-      name: p.registry,
+      name: known?.name ?? p.registry,
       host: p.registry,
       ref: { repository: p.repository, tag: p.tag },
       published: p,
@@ -172,6 +174,8 @@ export const PublishDialog = ({
   const unpublish = useUnpublish(projectId);
   const [overrides, setOverrides] = useState<Record<string, RowState>>({});
   const [editing, setEditing] = useState<string | null>(null);
+  // The open editor holds text that is not a valid repository:tag.
+  const [draftInvalid, setDraftInvalid] = useState(false);
   const [saving, setSaving] = useState(false);
   const [results, setResults] = useState<SaveResult[] | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -356,16 +360,18 @@ export const PublishDialog = ({
                       </span>
                       {editing === row.key ? (
                         <ReferenceEditor
+                          onValidityChange={(valid) => setDraftInvalid(!valid)}
                           host={row.host}
                           value={st.ref}
                           onDone={(ref) => {
+                            setDraftInvalid(false);
                             if (ref) update(row, { ref });
                             setEditing(null);
                           }}
                         />
                       ) : (
                         <span className="flex items-center gap-3">
-                          <code className="truncate font-mono text-muted-foreground text-xs">
+                          <code className="truncate font-mono text-muted-foreground text-xs!">
                             {formatReference(row.host, st.ref)}
                           </code>
                           {st.on && !row.published && (
@@ -430,7 +436,7 @@ export const PublishDialog = ({
                   Cancel
                 </DialogClose>
                 <Button
-                  disabled={!changed || editing !== null}
+                  disabled={!changed || (editing !== null && draftInvalid)}
                   loading={saving}
                   loadingText="Saving…"
                   onClick={save}
@@ -507,7 +513,7 @@ const ResultsList = ({ results }: { results: SaveResult[] }) => (
         )}
         <div className="flex min-w-0 flex-col gap-1">
           <span className="font-medium text-foreground text-sm">{r.name}</span>
-          <code className="truncate font-mono text-muted-foreground text-xs">
+          <code className="truncate font-mono text-muted-foreground text-xs!">
             {r.reference}
           </code>
           <p
@@ -534,18 +540,24 @@ const ReferenceEditor = ({
   host,
   value,
   onDone,
+  onValidityChange,
 }: {
   host: string;
   value: RepositoryTag;
   onDone: (ref: RepositoryTag | null) => void;
+  onValidityChange: (valid: boolean) => void;
 }) => {
   const [text, setText] = useState(`${value.repository}:${value.tag}`);
   const parsed = parseReference(text);
+  const valid = parsed !== null;
+  useEffect(() => onValidityChange(valid), [valid, onValidityChange]);
   const commit = () => onDone(parsed);
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1">
-        <span className="font-mono text-muted-foreground text-xs">{host}/</span>
+        <span className="font-mono text-muted-foreground text-xs!">
+          {host}/
+        </span>
         <Input
           autoFocus
           value={text}
@@ -563,7 +575,7 @@ const ReferenceEditor = ({
           }}
           aria-label="Repository and tag"
           aria-invalid={!parsed}
-          className="h-7 w-64 font-mono text-xs"
+          className="h-7 w-64 font-mono text-xs!"
           spellCheck={false}
         />
       </div>

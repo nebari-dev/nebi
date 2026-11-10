@@ -493,3 +493,125 @@ func TestPublishReportsToLinkedServer(t *testing.T) {
 		t.Fatalf("calls = %+v", calls)
 	}
 }
+
+// Registry rejections and unreachable registries get plain messages.
+func TestPublishFailureMessages(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	reg := s.SDK.Registry
+	inner := ggcr.New(ggcr.Logger(stdlog.New(io.Discard, "", 0)))
+	locked := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if u, p, ok := req.BasicAuth(); !ok || u != "sam" || p != "right" {
+			w.Header().Set("WWW-Authenticate", `Basic realm="test"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		inner.ServeHTTP(w, req)
+	}))
+	t.Cleanup(locked.Close)
+	lockedHost := strings.TrimPrefix(locked.URL, "http://")
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closedHost := strings.TrimPrefix(closed.URL, "http://")
+	closed.Close()
+
+	anon, err := reg.AddRegistry(ctx, shared.AddRegistryRequest{Name: "Locked", URL: "http://" + lockedHost})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrong, err := reg.AddRegistry(ctx, shared.AddRegistryRequest{Name: "Wrong", URL: "http://" + lockedHost, Username: "sam", Password: "wrong"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := reg.AddRegistry(ctx, shared.AddRegistryRequest{Name: "Right", URL: "http://" + lockedHost, Username: "sam", Password: "right"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone, err := reg.AddRegistry(ctx, shared.AddRegistryRequest{Name: "Gone", URL: "http://" + closedHost})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := createProject(t, s, "msgs", 1)
+	res, err := reg.Publish(ctx, p.ID, 1, shared.PublishRequest{Targets: []shared.PublishTarget{
+		{RegistryID: anon.ID, Repository: "msgs", Tag: "1"},
+		{RegistryID: wrong.ID, Repository: "msgs", Tag: "1"},
+		{RegistryID: right.ID, Repository: "msgs", Tag: "1"},
+		{RegistryID: gone.ID, Repository: "msgs", Tag: "1"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []struct{ status, msg string }{
+		{registry.StatusFailed, "Locked needs a username and password to publish. Add them on the Registries page."},
+		{registry.StatusFailed, "Wrong didn’t accept the username and password. Check them on the Registries page."},
+		{registry.StatusPublished, ""},
+		{registry.StatusFailed, "Couldn’t reach " + closedHost + ". Check the registry URL and your connection."},
+	}
+	for i, w := range want {
+		got := res.Results[i]
+		if got.Status != w.status || got.Error != w.msg {
+			t.Errorf("result %d = %s %q, want %s %q", i, got.Status, got.Error, w.status, w.msg)
+		}
+	}
+}
+
+// A publication that reached the server with a pushed version has a server
+// ID; unpublishing it removes the server record with the same reference.
+func TestUnpublishRemovesPushedServerRecord(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	reg := s.SDK.Registry
+	host := startRegistry(t)
+	r, err := reg.AddRegistry(ctx, shared.AddRegistryRequest{Name: "Local", URL: "http://" + host})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := createProject(t, s, "pushed", 1)
+	res, err := reg.Publish(ctx, p.ID, 1, shared.PublishRequest{Targets: []shared.PublishTarget{{RegistryID: r.ID, Repository: "pushed", Tag: "stable"}}})
+	if err != nil || res.Results[0].Status != registry.StatusPublished {
+		t.Fatalf("publish: %v %+v", err, res)
+	}
+
+	serverID := uuid.New().String()
+	otherID := uuid.New().String()
+	var mu sync.Mutex
+	var deleted []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		const prefix = "/api/v1/projects/srv-1/sync/versions/1"
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == prefix:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number": 1,
+				"publications": []map[string]any{
+					{"id": serverID, "registry_host": host, "repository": "pushed", "tag": "stable"},
+					{"id": otherID, "registry_host": host, "repository": "pushed", "tag": "1"},
+				},
+			})
+		case req.Method == http.MethodDelete && strings.HasPrefix(req.URL.Path, prefix+"/publications/"):
+			id := strings.TrimPrefix(req.URL.Path, prefix+"/publications/")
+			if id != serverID {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			deleted = append(deleted, id)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.WriteHeader(http.StatusTeapot)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	gdb := s.SDK.Deps().DB
+	gdb.Save(&store.Config{ID: 1, ServerURL: srv.URL})
+	gdb.Save(&store.Credentials{ID: 1, Token: "tok"})
+	gdb.Create(&models.ProjectRemote{ProjectID: p.ID, Kind: models.RemoteKindServer, Name: "team", ServerURL: srv.URL, ServerProjectID: "srv-1"})
+
+	if err := reg.Unpublish(ctx, p.ID, *res.Results[0].PublicationID); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(deleted) != 1 || deleted[0] != serverID {
+		t.Fatalf("deleted server records = %v, want only %s", deleted, serverID)
+	}
+}

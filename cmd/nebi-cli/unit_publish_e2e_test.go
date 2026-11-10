@@ -116,6 +116,11 @@ func TestE2E_PublishVersionUnpublishAndPull(t *testing.T) {
 	if res.ExitCode != 0 || !strings.Contains(res.Stderr, "as project imported") {
 		t.Fatalf("import --project: %s %s", res.Stdout, res.Stderr)
 	}
+	// A plain OCI reference (no scheme) matches the plain-HTTP registry.
+	res = runCLI(t, dataDir, "import", regHost+"/team/project_1:stable", "--project", "--name", "imported_noscheme")
+	if res.ExitCode != 0 || !strings.Contains(res.Stderr, "as project imported_noscheme") {
+		t.Fatalf("import --project without scheme: %s %s", res.Stdout, res.Stderr)
+	}
 
 	res = runCLI(t, dataDir, "registry", "update", "lab", "--name", "lab2")
 	if res.ExitCode != 0 {

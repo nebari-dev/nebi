@@ -482,6 +482,11 @@ definitions:
         $ref: '#/definitions/models.JobType'
       user_id:
         type: string
+      version_number:
+        description: |-
+          VersionNumber links the job to the project version it created,
+          installed, pulled or published (nil when not applicable).
+        type: integer
     type: object
   models.JobStatus:
     enum:
@@ -507,9 +512,21 @@ definitions:
     - rollback
     - env_install
     - env_uninstall
+    - create_version
+    - install_version
+    - uninstall
+    - pull
+    - pull_install
+    - pull_registry
     type: string
     x-enum-comments:
+      JobTypeCreateVersion: solve a new version from a base version + edited pixi.toml
       JobTypeInstall: add packages to the manifest
+      JobTypeInstallVersion: install a specific version, replacing the installed one
+      JobTypePull: pull a server project without installing
+      JobTypePullInstall: pull a server project and install its latest version
+      JobTypePullRegistry: pull a project from an OCI registry
+      JobTypeUninstall: remove the installed environment
     x-enum-descriptions:
     - ""
     - ""
@@ -519,6 +536,12 @@ definitions:
     - ""
     - ""
     - ""
+    - solve a new version from a base version + edited pixi.toml
+    - install a specific version, replacing the installed one
+    - remove the installed environment
+    - pull a server project without installing
+    - pull a server project and install its latest version
+    - pull a project from an OCI registry
     x-enum-varnames:
     - JobTypeCreate
     - JobTypeDelete
@@ -528,6 +551,12 @@ definitions:
     - JobTypeRollback
     - JobTypeEnvInstall
     - JobTypeEnvUninstall
+    - JobTypeCreateVersion
+    - JobTypeInstallVersion
+    - JobTypeUninstall
+    - JobTypePull
+    - JobTypePullInstall
+    - JobTypePullRegistry
   models.Package:
     properties:
       id:
@@ -570,6 +599,16 @@ definitions:
         type: string
       id:
         type: string
+      installed_version:
+        description: |-
+          InstalledVersion is the version number whose environment is currently
+          materialized on disk (one installed version at a time). Nil when the
+          project is not installed. LastInstalledVersion keeps the most recent
+          installed version after an uninstall so "Install" from the projects
+          list can restore it. Both are local mode only (issue #649).
+        type: integer
+      last_installed_version:
+        type: integer
       name:
         type: string
       owner:
@@ -605,6 +644,17 @@ definitions:
     - ProjectStatusDeleting
   models.ProjectVersion:
     properties:
+      author_name:
+        description: |-
+          AuthorName is a display snapshot of the author. Versions pulled from
+          a server keep the server-side author even though that user does not
+          exist in the local users table.
+        type: string
+      base_version:
+        description: |-
+          BaseVersion is the version this one was created from ("Started from
+          version N"). Nil for version 1 and for versions created before #649.
+        type: integer
       content_hash:
         description: Content hash for deduplication
         type: string
@@ -642,6 +692,12 @@ definitions:
       project:
         $ref: '#/definitions/models.Project'
       project_id:
+        type: string
+      synced_at:
+        description: |-
+          SyncedAt is set (local mode only) when this version is known to exist
+          with identical content on the project's linked server, either because
+          it was pushed or because it was pulled from there.
         type: string
       version_number:
         description: Version tracking
@@ -746,6 +802,16 @@ definitions:
         type: string
       install_status:
         $ref: '#/definitions/models.InstallStatus'
+      installed_version:
+        description: |-
+          InstalledVersion is the version number whose environment is currently
+          materialized on disk (one installed version at a time). Nil when the
+          project is not installed. LastInstalledVersion keeps the most recent
+          installed version after an uninstall so "Install" from the projects
+          list can restore it. Both are local mode only (issue #649).
+        type: integer
+      last_installed_version:
+        type: integer
       name:
         type: string
       owner:

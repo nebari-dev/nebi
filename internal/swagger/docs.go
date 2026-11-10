@@ -4092,6 +4092,10 @@ const docTemplate = `{
                 },
                 "user_id": {
                     "type": "string"
+                },
+                "version_number": {
+                    "description": "VersionNumber links the job to the project version it created,\ninstalled, pulled or published (nil when not applicable).",
+                    "type": "integer"
                 }
             }
         },
@@ -4122,10 +4126,22 @@ const docTemplate = `{
                 "update",
                 "rollback",
                 "env_install",
-                "env_uninstall"
+                "env_uninstall",
+                "create_version",
+                "install_version",
+                "uninstall",
+                "pull",
+                "pull_install",
+                "pull_registry"
             ],
             "x-enum-comments": {
-                "JobTypeInstall": "add packages to the manifest"
+                "JobTypeCreateVersion": "solve a new version from a base version + edited pixi.toml",
+                "JobTypeInstall": "add packages to the manifest",
+                "JobTypeInstallVersion": "install a specific version, replacing the installed one",
+                "JobTypePull": "pull a server project without installing",
+                "JobTypePullInstall": "pull a server project and install its latest version",
+                "JobTypePullRegistry": "pull a project from an OCI registry",
+                "JobTypeUninstall": "remove the installed environment"
             },
             "x-enum-descriptions": [
                 "",
@@ -4135,7 +4151,13 @@ const docTemplate = `{
                 "",
                 "",
                 "",
-                ""
+                "",
+                "solve a new version from a base version + edited pixi.toml",
+                "install a specific version, replacing the installed one",
+                "remove the installed environment",
+                "pull a server project without installing",
+                "pull a server project and install its latest version",
+                "pull a project from an OCI registry"
             ],
             "x-enum-varnames": [
                 "JobTypeCreate",
@@ -4145,7 +4167,13 @@ const docTemplate = `{
                 "JobTypeUpdate",
                 "JobTypeRollback",
                 "JobTypeEnvInstall",
-                "JobTypeEnvUninstall"
+                "JobTypeEnvUninstall",
+                "JobTypeCreateVersion",
+                "JobTypeInstallVersion",
+                "JobTypeUninstall",
+                "JobTypePull",
+                "JobTypePullInstall",
+                "JobTypePullRegistry"
             ]
         },
         "models.Package": {
@@ -4212,6 +4240,13 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "installed_version": {
+                    "description": "InstalledVersion is the version number whose environment is currently\nmaterialized on disk (one installed version at a time). Nil when the\nproject is not installed. LastInstalledVersion keeps the most recent\ninstalled version after an uninstall so \"Install\" from the projects\nlist can restore it. Both are local mode only (issue #649).",
+                    "type": "integer"
+                },
+                "last_installed_version": {
+                    "type": "integer"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -4260,6 +4295,14 @@ const docTemplate = `{
         "models.ProjectVersion": {
             "type": "object",
             "properties": {
+                "author_name": {
+                    "description": "AuthorName is a display snapshot of the author. Versions pulled from\na server keep the server-side author even though that user does not\nexist in the local users table.",
+                    "type": "string"
+                },
+                "base_version": {
+                    "description": "BaseVersion is the version this one was created from (\"Started from\nversion N\"). Nil for version 1 and for versions created before #649.",
+                    "type": "integer"
+                },
                 "content_hash": {
                     "description": "Content hash for deduplication",
                     "type": "string"
@@ -4309,6 +4352,10 @@ const docTemplate = `{
                     "$ref": "#/definitions/models.Project"
                 },
                 "project_id": {
+                    "type": "string"
+                },
+                "synced_at": {
+                    "description": "SyncedAt is set (local mode only) when this version is known to exist\nwith identical content on the project's linked server, either because\nit was pushed or because it was pulled from there.",
                     "type": "string"
                 },
                 "version_number": {
@@ -4466,6 +4513,13 @@ const docTemplate = `{
                 },
                 "install_status": {
                     "$ref": "#/definitions/models.InstallStatus"
+                },
+                "installed_version": {
+                    "description": "InstalledVersion is the version number whose environment is currently\nmaterialized on disk (one installed version at a time). Nil when the\nproject is not installed. LastInstalledVersion keeps the most recent\ninstalled version after an uninstall so \"Install\" from the projects\nlist can restore it. Both are local mode only (issue #649).",
+                    "type": "integer"
+                },
+                "last_installed_version": {
+                    "type": "integer"
                 },
                 "name": {
                     "type": "string"

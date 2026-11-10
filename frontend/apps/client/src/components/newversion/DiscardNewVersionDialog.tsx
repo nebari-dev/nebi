@@ -23,11 +23,7 @@ export function DiscardNewVersionDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        role="alertdialog"
-        className="max-w-[520px]"
-        showCloseButton={false}
-      >
+      <DialogContent role="alertdialog" className="max-w-[520px]">
         <DialogHeader>
           <DialogTitle>Discard new version?</DialogTitle>
         </DialogHeader>

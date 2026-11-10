@@ -11,6 +11,8 @@ import {
 } from '@nebi/ui/components/ui/tooltip';
 import { cn } from '@nebi/ui/lib/utils';
 import { Check, Package } from 'lucide-react';
+import { useParams } from 'react-router-dom';
+import { useJustCreated } from '@/components/newversion/justCreated';
 import type { VersionItem } from '@/types/contracts';
 import { publishedReferences } from './format';
 import { SyncMarkerLabel } from './SyncMarker';
@@ -40,6 +42,12 @@ export const VersionRow = ({
     firstTag != null &&
     moreTags.length > 0;
   const refs = publishedReferences(version);
+  const { id } = useParams();
+  // "Version N created": the new row lights up, then fades (U3).
+  const lit = useJustCreated(
+    version.server_only ? undefined : id,
+    version.number,
+  );
   return (
     <button
       type="button"
@@ -48,6 +56,9 @@ export const VersionRow = ({
       className={cn(
         versionRowClass,
         selected && 'border-border-strong bg-muted',
+        lit === 'lit' && 'border-primary/40 bg-primary/10 hover:bg-primary/10',
+        lit === 'fading' &&
+          'motion-safe:duration-[1200ms] motion-safe:ease-out',
       )}
     >
       <span className="flex min-h-5 w-full items-center gap-1.5">

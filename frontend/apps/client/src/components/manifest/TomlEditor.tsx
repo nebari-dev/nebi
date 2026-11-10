@@ -58,7 +58,7 @@ export const TomlEditor = ({
           {copied ? <Check /> : <Copy />}
         </Button>
       </div>
-      <div className="flex gap-2.5 border-border border-t bg-card p-1.5 font-mono text-xs leading-4">
+      <div className="flex gap-2.5 border-border border-t bg-card p-1.5 font-mono text-xs leading-4 [font-variant-ligatures:none]">
         <div
           aria-hidden
           className="select-none text-right text-muted-foreground tabular-nums"

@@ -41,6 +41,8 @@ import {
   ManifestEditor,
   type ManifestEditorErrors,
 } from '@/components/manifest/ManifestEditor';
+import { ManifestModeSwitch } from '@/components/manifest/ManifestModeSwitch';
+import type { ManifestEditorCopy } from '@/components/manifest/manifestCopy';
 import type { ManifestEditorValue } from '@/components/manifest/manifestValue';
 import { ChangesSummary } from '@/components/newversion/ChangesSummary';
 import {
@@ -52,6 +54,7 @@ import {
 } from '@/components/newversion/changes';
 import { DiscardNewVersionDialog } from '@/components/newversion/DiscardNewVersionDialog';
 import { FormSection, PAGE_COLUMN } from '@/components/newversion/FormSection';
+import { markJustCreated } from '@/components/newversion/justCreated';
 import { TagsInput } from '@/components/newversion/TagsInput';
 import { useUnsavedChangesGuard } from '@/components/newversion/useUnsavedChangesGuard';
 import { capitalize, versionList } from '@/components/server/format';
@@ -94,6 +97,16 @@ function manifestPart(
     ? { form: value.form, pixi_toml: value.pixiToml }
     : { form: value.form };
 }
+
+/** Section copy of the editor for a version that starts from `base`. */
+const newVersionCopy = (base: number): ManifestEditorCopy => ({
+  environmentIntro: 'The platforms pixi solves this version for.',
+  platformsDescription: `Starts with version ${base}’s platforms. For uncommon platforms, type pixi’s name (e.g. linux-ppc64le).`,
+  packagesIntro: `Starts with version ${base}’s packages. Leave the version blank to allow any version.`,
+  packagesEmptyText:
+    'No packages. The new version would be an empty environment.',
+  tomlIntro: `Starts with version ${base}’s pixi.toml. Tags and the description aren’t part of pixi.toml, so they’re set below.`,
+});
 
 /** Server field names to ManifestEditor error keys. */
 const EDITOR_FIELDS: Record<string, keyof ManifestEditorErrors> = {
@@ -305,6 +318,10 @@ function NewVersionForm({
       });
       setCreated(true);
       trackJobToast(job, {
+        title: `Creating a new version of ${name}`,
+        description: `Started from version ${base}`,
+        cancelledTitle: 'New version cancelled',
+        errorTitle: 'Couldn’t create the new version',
         successTitle: (j) => `Version ${j.version_number ?? ''} created`,
         successDescription: [`Started from version ${base}`, ...changes].join(
           ' · ',
@@ -321,6 +338,7 @@ function NewVersionForm({
         onSettled: (final) => {
           const n = final.version_number;
           if (final.status !== 'completed' || n == null) return;
+          markJustCreated(projectId, n);
           // Show the new version if the user is still on the project.
           if (window.location.pathname.endsWith(`/projects/${projectId}`)) {
             navigate(`/projects/${projectId}?v=${n}`, { replace: true });
@@ -348,7 +366,7 @@ function NewVersionForm({
       } else {
         toast.add({
           type: 'error',
-          title: 'Create version failed',
+          title: 'Couldn’t create the new version',
           description: e?.error ?? (err as Error).message,
         });
       }
@@ -382,14 +400,21 @@ function NewVersionForm({
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-          <div className="flex flex-col gap-1.5">
-            <h1 className="font-bold text-3xl text-foreground">
-              New version of {name}
-            </h1>
-            <p className="text-muted-foreground-strong text-sm">
-              Starts from version {base}’s environment. Version {base} stays as
-              it is.
-            </p>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex flex-col gap-1.5">
+              <h1 className="font-bold text-3xl text-foreground">
+                New version of {name}
+              </h1>
+              <p className="text-muted-foreground-strong text-sm">
+                Starts from version {base}’s environment. Version {base} stays
+                as it is.
+              </p>
+            </div>
+            <ManifestModeSwitch
+              value={value}
+              onChange={onEditorChange}
+              disabled={create.isPending}
+            />
           </div>
         </div>
 
@@ -400,6 +425,8 @@ function NewVersionForm({
             showName={false}
             disabled={create.isPending}
             errors={editorErrors}
+            hideModeSwitch
+            copy={newVersionCopy(base)}
           />
           <FormSection
             id="changes"

@@ -165,6 +165,38 @@ describe('buildCompareRows', () => {
   });
 });
 
+describe('buildCompareRows constraints', () => {
+  it('shows the constraint only when the two sides request different ones', () => {
+    const rows = buildCompareRows([
+      {
+        name: 'numpy',
+        source: 'conda',
+        change: 'changed',
+        base: { constraint: '>=2.0', version: '2.5.4' },
+        compare: { constraint: '>=2.1', version: '2.5.4' },
+      },
+      {
+        name: 'python',
+        source: 'conda',
+        change: 'changed',
+        base: { constraint: '3.12.*', version: '3.12.16' },
+        compare: { constraint: '3.12.*', version: '3.12.17' },
+      },
+      {
+        name: 'rich',
+        source: 'conda',
+        change: 'added',
+        base: null,
+        compare: { constraint: '>=13', version: '13.9.4' },
+      },
+    ]);
+    expect(rows[0].base?.showConstraint).toBe(true);
+    expect(rows[0].compare?.showConstraint).toBe(true);
+    expect(rows[1].base?.showConstraint).toBeUndefined();
+    expect(rows[2].compare?.showConstraint).toBeUndefined();
+  });
+});
+
 describe('describeListDiff', () => {
   it('describes added and removed entries', () => {
     expect(

@@ -2,8 +2,19 @@
 import type { DiffCounts } from '@/types/contracts';
 import { CHANGE_TEXT } from './changeStyles';
 
-export const CompareSummary = ({ counts }: { counts: DiffCounts }) => {
-  const changed = counts.added + counts.removed + counts.changed > 0;
+/**
+ * specChanged: channels or platforms differ, so the versions are not the
+ * same even when no requested package changed (the counts are shown then).
+ */
+export const CompareSummary = ({
+  counts,
+  specChanged = false,
+}: {
+  counts: DiffCounts;
+  specChanged?: boolean;
+}) => {
+  const changed =
+    specChanged || counts.added + counts.removed + counts.changed > 0;
   return (
     <output
       className="ml-auto flex items-center gap-2 font-medium text-sm leading-5"

@@ -9,6 +9,12 @@ export interface CompareCell {
   version: string;
   /** Requested constraint, shown as a tooltip when it differs from version. */
   constraint?: string;
+  /**
+   * The two sides request different constraints: the cell shows its
+   * constraint next to the version, so a row marked changed whose resolved
+   * versions match still shows what changed.
+   */
+  showConstraint?: boolean;
   source: PackageSource;
 }
 

@@ -121,16 +121,22 @@ const cell = (
   ref: PackageRef | null,
   entry: PackageDiffEntry,
   line: number,
-): CompareCell | null =>
-  ref
-    ? {
-        line,
-        name: entry.name,
-        version: ref.version,
-        constraint: ref.constraint,
-        source: entry.source,
-      }
-    : null;
+): CompareCell | null => {
+  if (!ref) return null;
+  const showConstraint =
+    entry.change === 'changed' &&
+    (entry.base?.constraint ?? '') !== (entry.compare?.constraint ?? '') &&
+    !!ref.constraint &&
+    ref.constraint !== ref.version;
+  return {
+    line,
+    name: entry.name,
+    version: ref.version,
+    constraint: ref.constraint,
+    source: entry.source,
+    ...(showConstraint ? { showConstraint } : {}),
+  };
+};
 
 /** Table rows with per-side line numbers (a side counts only its packages). */
 export function buildCompareRows(entries: PackageDiffEntry[]): CompareRow[] {

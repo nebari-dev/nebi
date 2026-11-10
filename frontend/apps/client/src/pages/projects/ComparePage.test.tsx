@@ -160,6 +160,31 @@ describe('ComparePage', () => {
     expect(screen.queryByLabelText('removed')).not.toBeInTheDocument();
   });
 
+  it('does not say "No changes" when only channels or platforms changed', async () => {
+    server.use(
+      http.get(`${C}/projects/:id/compare`, () =>
+        HttpResponse.json({
+          ...mockCompareResult(6, 6),
+          base: mockCompareResult(7, 6).base,
+          channels: { added: ['bioconda'], removed: [] },
+        }),
+      ),
+    );
+    renderCompare();
+    const summary = await screen.findByRole('status', {
+      name: 'Summary of changes',
+    });
+    await waitFor(() => expect(summary).toHaveTextContent('+0−0~0'));
+    expect(summary).not.toHaveTextContent('No changes');
+  });
+
+  it('shows the requested constraints of a package whose constraint changed', async () => {
+    renderCompare();
+    const table = await screen.findByRole('table');
+    expect(await within(table).findByText('(>=2.1)')).toBeInTheDocument();
+    expect(within(table).getByText('(>=2.0)')).toBeInTheDocument();
+  });
+
   it('lists channel and platform changes', async () => {
     server.use(
       http.get(`${C}/projects/:id/compare`, () =>

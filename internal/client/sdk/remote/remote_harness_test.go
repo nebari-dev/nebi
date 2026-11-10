@@ -210,9 +210,18 @@ func (m *machine) baseItems(t *testing.T, projectID uuid.UUID) []shared.VersionI
 	if err := m.DB.Where("project_id = ?", projectID).Order("version_number DESC").Find(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
+	var tags []models.ProjectTag
+	if err := m.DB.Where("project_id = ?", projectID).Order("tag ASC").Find(&tags).Error; err != nil {
+		t.Fatal(err)
+	}
 	out := make([]shared.VersionItem, len(rows))
 	for i, r := range rows {
 		out[i] = shared.VersionItem{Number: r.VersionNumber, Description: r.Description, Tags: []string{}, Published: []shared.PublishedRef{}}
+		for _, tag := range tags {
+			if tag.VersionNumber == r.VersionNumber && !local.IsContentHashTag(tag.Tag) {
+				out[i].Tags = append(out[i].Tags, tag.Tag)
+			}
+		}
 	}
 	return out
 }

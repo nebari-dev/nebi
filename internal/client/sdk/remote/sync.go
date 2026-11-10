@@ -131,6 +131,12 @@ func (s *Service) PushUpTo(ctx context.Context, projectID uuid.UUID, upTo int) (
 		if errors.As(err, &rerr) && rerr.Status == http.StatusConflict && attempt < maxPushAttempts {
 			continue // someone pushed meanwhile: look again
 		}
+		if errors.As(err, &rerr) && rerr.Status == http.StatusForbidden {
+			return nil, &shared.RemoteError{
+				Status:  http.StatusForbidden,
+				Message: "You can view this project on the server but not push to it. Ask its owner for edit access.",
+			}
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -512,12 +518,14 @@ func (s *Service) decorateWithState(ctx context.Context, projectID uuid.UUID, it
 	}
 
 	out := make([]shared.VersionItem, 0, len(items)+len(st.versions))
+	onServer := map[int]bool{}
 	for _, it := range items {
 		if it.ServerOnly {
 			continue // rebuilt below
 		}
 		it.Sync = nil
 		if lv, ok := byNumber[it.Number]; ok && st.onServer(lv) {
+			onServer[it.Number] = true
 			it.Published = serverPublished(st.byNumber[it.Number].Publications, it.Published)
 		}
 		out = append(out, it)
@@ -529,6 +537,7 @@ func (s *Service) decorateWithState(ctx context.Context, projectID uuid.UUID, it
 		}
 		out = append(out, serverOnlyItem(sv))
 	}
+	reconcileTags(out, onServer, st)
 
 	if st.max > 0 {
 		mark := func(n int, m shared.SyncMarker) {
@@ -540,19 +549,102 @@ func (s *Service) decorateWithState(ctx context.Context, projectID uuid.UUID, it
 				}
 			}
 		}
+		// Prototype rule (InSync, ServerAhead): when both sides have the
+		// same newest version it is "In sync"; otherwise the newest version
+		// on this machine is "Newest here" and the server's newest version
+		// (local or server-only) is "Newest on server".
 		newestLocal, hasLocal := byNumber[localMax]
 		switch {
 		case hasLocal && localMax == st.max && st.onServer(newestLocal):
 			mark(localMax, shared.SyncInSync)
 		default:
-			if hasLocal && !st.onServer(newestLocal) {
+			if hasLocal {
 				mark(localMax, shared.SyncNewestHere)
 			}
-			if _, ok := byNumber[st.max]; !ok {
+			if !hasLocal || localMax != st.max {
 				mark(st.max, shared.SyncNewestOnServer)
 			}
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Number > out[j].Number })
 	return out, nil
+}
+
+// reconcileTags makes the tags shown on a linked project's merged version
+// list consistent (a tag names one version):
+//   - "latest" is shown only on the newest version, local or server-only
+//     (prototype ServerAhead: the pulled version loses "latest" to the
+//     newer server-only one).
+//   - A tag on a version that is not on the server yet is this machine's
+//     newest intent; it stays and is hidden elsewhere.
+//   - Otherwise the server's tags are authoritative for shared versions: a
+//     tag the server put on another version is hidden here, and the
+//     server's tags of a shared version are shown on it.
+//
+// items are local items (onServer says which are on the server with the
+// same content) plus server-only items.
+func reconcileTags(items []shared.VersionItem, onServer map[int]bool, st *serverState) {
+	newest := 0
+	for _, it := range items {
+		newest = max(newest, it.Number)
+	}
+	serverTagAt := map[string]int{}
+	for _, sv := range st.versions {
+		for _, t := range visibleTags(sv.Tags) {
+			if t != local.LatestTag {
+				serverTagAt[t] = sv.Number
+			}
+		}
+	}
+	localOnlyTagAt := map[string]int{}
+	for _, it := range items {
+		if it.ServerOnly || onServer[it.Number] {
+			continue
+		}
+		for _, t := range it.Tags {
+			if t != local.LatestTag {
+				localOnlyTagAt[t] = it.Number
+			}
+		}
+	}
+	owner := func(t string) (int, bool) {
+		if n, ok := localOnlyTagAt[t]; ok {
+			return n, true
+		}
+		n, ok := serverTagAt[t]
+		return n, ok
+	}
+	for i := range items {
+		it := &items[i]
+		onBoth := it.ServerOnly || onServer[it.Number]
+		tags := make([]string, 0, len(it.Tags)+1)
+		seen := map[string]bool{}
+		add := func(t string) {
+			if !seen[t] {
+				seen[t] = true
+				tags = append(tags, t)
+			}
+		}
+		for _, t := range it.Tags {
+			if t == local.LatestTag {
+				continue // placed below
+			}
+			if n, ok := owner(t); ok && n != it.Number {
+				continue
+			}
+			add(t)
+		}
+		if onBoth {
+			for t, n := range serverTagAt {
+				if o, _ := owner(t); n == it.Number && o == it.Number {
+					add(t)
+				}
+			}
+		}
+		if it.Number == newest {
+			add(local.LatestTag)
+		}
+		sortTagsLatestFirst(tags)
+		it.Tags = tags
+	}
 }

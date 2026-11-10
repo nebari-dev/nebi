@@ -19,7 +19,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@nebi/ui/components/ui/tooltip';
-import { CircleAlert, Copy, Share2 } from 'lucide-react';
+import { Copy, Share2, TriangleAlert } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   Link,
@@ -163,17 +163,18 @@ const ProjectDetail = ({
             </h1>
             {installFailed && (
               <Badge variant="destructive">
-                <CircleAlert />
+                <TriangleAlert />
                 Install failed
               </Badge>
             )}
           </div>
+          {/* The tour's Share step only shows for a linked project. */}
           <Tooltip>
             <TooltipTrigger render={<span className="inline-flex" />}>
               <Button
                 variant="secondary"
                 size="sm"
-                data-tour="share"
+                data-tour={remote?.server_project_id ? 'share' : undefined}
                 disabled={!remote?.server_project_id}
                 onClick={() => setShareOpen(true)}
               >

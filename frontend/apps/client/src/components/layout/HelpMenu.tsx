@@ -10,7 +10,7 @@ import {
 } from '@nebi/ui/components/ui/dropdown-menu';
 import { headerActionClass } from '@nebi/ui/lib/header';
 import { cn } from '@nebi/ui/lib/utils';
-import { BookOpen, CircleQuestionMark, Route } from 'lucide-react';
+import { CircleQuestionMark, ExternalLink, Route } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { useTourStore } from '@/components/tour/tourStore';
 
@@ -47,7 +47,7 @@ export const HelpMenu = () => {
               />
             }
           >
-            <BookOpen />
+            <ExternalLink />
             Docs
             <span className="sr-only">(opens in a new tab)</span>
           </DropdownMenuItem>

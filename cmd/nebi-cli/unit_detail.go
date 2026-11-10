@@ -13,8 +13,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -24,8 +26,8 @@ import (
 
 	"github.com/nebari-dev/nebi/internal/artifact"
 	"github.com/nebari-dev/nebi/internal/client"
+	"github.com/nebari-dev/nebi/internal/client/sdk/local"
 	"github.com/nebari-dev/nebi/internal/client/sdk/shared"
-	"github.com/nebari-dev/nebi/internal/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -43,6 +45,7 @@ Examples:
   nebi project versions my-project --json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
 			return withStack(cmd, func(ctx context.Context, s *client.Stack) error {
 				id, err := resolveProjectID(ctx, s, args[0])
 				if err != nil {
@@ -70,12 +73,26 @@ Examples:
 			if err != nil {
 				return err
 			}
+			cmd.SilenceUsage = true
 			return withStack(cmd, func(ctx context.Context, s *client.Stack) error {
 				id, err := resolveProjectID(ctx, s, args[0])
 				if err != nil {
 					return err
 				}
 				f, err := s.SDK.Local.GetVersionFile(ctx, id, n, args[2])
+				if errors.Is(err, shared.ErrNotFound) && isVersionFileName(args[2]) {
+					// A server-only version: read it from the linked server,
+					// like the client API does.
+					if toml, lock, serr := s.SDK.Remote.ServerVersionFiles(ctx, id, n); serr == nil {
+						content := toml
+						if args[2] == artifact.LockFile {
+							content = lock
+						}
+						f, err = &shared.FileContent{Name: args[2], Content: content}, nil
+					} else if remoteFailed(serr) {
+						err = serr
+					}
+				}
 				if err != nil {
 					return err
 				}
@@ -108,12 +125,20 @@ Examples:
 			if err != nil {
 				return err
 			}
+			cmd.SilenceUsage = true
 			return withStack(cmd, func(ctx context.Context, s *client.Stack) error {
 				id, err := resolveProjectID(ctx, s, args[0])
 				if err != nil {
 					return err
 				}
 				p, err := s.SDK.Local.ResolvedPackages(ctx, id, n)
+				if errors.Is(err, shared.ErrNotFound) {
+					if toml, lock, serr := s.SDK.Remote.ServerVersionFiles(ctx, id, n); serr == nil {
+						p, err = local.ResolvedPackagesFromFiles([]byte(toml), []byte(lock))
+					} else if remoteFailed(serr) {
+						err = serr
+					}
+				}
 				if err != nil {
 					return err
 				}
@@ -137,6 +162,7 @@ Examples:
 			if err != nil {
 				return err
 			}
+			cmd.SilenceUsage = true
 			return withStack(cmd, func(ctx context.Context, s *client.Stack) error {
 				id, err := resolveProjectID(ctx, s, args[0])
 				if err != nil {
@@ -195,6 +221,7 @@ Example:
 			if err != nil {
 				return err
 			}
+			cmd.SilenceUsage = true
 			return withStack(cmd, func(ctx context.Context, s *client.Stack) error {
 				id, err := resolveProjectID(ctx, s, args[0])
 				if err != nil {
@@ -203,7 +230,7 @@ Example:
 				job, err := s.SDK.Exec.InstallVersion(ctx, id, shared.InstallRequest{Version: &n})
 				if err != nil {
 					if job != nil {
-						return fmt.Errorf("version %d couldn't install (job %s): %w", n, job.ID, err)
+						return fmt.Errorf("%w (job %s)", err, job.ID)
 					}
 					return err
 				}
@@ -223,6 +250,7 @@ Example:
   nebi project version uninstall my-project`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
 			return withStack(cmd, func(ctx context.Context, s *client.Stack) error {
 				id, err := resolveProjectID(ctx, s, args[0])
 				if err != nil {
@@ -320,15 +348,53 @@ func printResolvedPackages(w io.Writer, p *shared.ResolvedPackages, platform str
 	pkgs := p.Packages[platform]
 	fmt.Fprintf(w, "Platform: %s (%d packages, %s to download)\n\n",
 		artifact.PlatformDisplayName(platform, artifact.DefaultPlatform(runtime.GOOS, runtime.GOARCH)),
-		len(pkgs), utils.FormatBytes(p.TotalSize[platform]))
+		len(pkgs), formatDownloadSize(p.TotalSize[platform]))
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "NAME\tVERSION\tCHANNEL\tDOWNLOAD SIZE")
 	for _, pkg := range pkgs {
 		size := "-"
 		if pkg.Size > 0 {
-			size = utils.FormatBytes(pkg.Size)
+			size = formatDownloadSize(pkg.Size)
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", pkg.Name, pkg.Version, pkg.Channel, size)
 	}
 	return tw.Flush()
+}
+
+func isVersionFileName(name string) bool {
+	return name == artifact.ManifestFile || name == artifact.LockFile
+}
+
+// remoteFailed reports whether a failed server lookup should replace the
+// local "not found": the server answered with an error or did not answer.
+// Not connected, not implemented and "not on the server" keep the local
+// error (same rule as the client API).
+func remoteFailed(err error) bool {
+	if errors.Is(err, shared.ErrNotConnected) || errors.Is(err, shared.ErrNotImplemented) || errors.Is(err, shared.ErrNotFound) {
+		return false
+	}
+	var rerr *shared.RemoteError
+	if errors.As(err, &rerr) {
+		return rerr.Status != http.StatusNotFound
+	}
+	return false
+}
+
+// formatDownloadSize matches the app's download sizes (decimal units,
+// "12.3 MB"), so the CLI and the UI show the same numbers.
+func formatDownloadSize(bytes int64) string {
+	if bytes <= 0 {
+		return "0 B"
+	}
+	units := []string{"B", "KB", "MB", "GB", "TB"}
+	value := float64(bytes)
+	i := 0
+	for value >= 1000 && i < len(units)-1 {
+		value /= 1000
+		i++
+	}
+	if i == 0 || value >= 100 {
+		return fmt.Sprintf("%.0f %s", value, units[i])
+	}
+	return fmt.Sprintf("%.1f %s", value, units[i])
 }

@@ -23,6 +23,7 @@ import { ChevronDown, ChevronsLeft, ChevronsRight, Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { VersionItem } from '@/types/contracts';
 import { groupVersionsByAge } from './format';
+import { useInSyncAnimation, useNewVersionKeys } from './syncAnimation';
 import { VersionRow } from './VersionRow';
 import {
   availableFilters,
@@ -70,6 +71,13 @@ export const VersionRail = ({
         filterVersions(versions, query, activeFilters, filterContext),
       ),
     [versions, query, activeFilters, filterContext],
+  );
+
+  const rowKey = (v: VersionItem) => `${v.number}-${v.server_only}`;
+  const fresh = useNewVersionKeys(versions.map(rowKey));
+  useInSyncAnimation(
+    listRef,
+    versions.some((v) => v.sync === 'in_sync'),
   );
 
   // Keep the selected version in view and the toggle focused after toggling.
@@ -248,9 +256,10 @@ export const VersionRail = ({
             </h3>
             <ul className="flex flex-col gap-1.5">
               {g.versions.map((v) => (
-                <li key={`${v.number}-${v.server_only}`}>
+                <li key={rowKey(v)}>
                   <VersionRow
                     version={v}
+                    justCreated={fresh.has(rowKey(v))}
                     selected={v.number === selected}
                     installing={
                       !v.server_only && v.number === installingVersion

@@ -2,7 +2,16 @@
 // project detail page and the projects list (U1). Props are a cross-unit
 // contract (CONTRACTS.md). Submits the uninstall job and follows it with
 // the shared job toast.
-import { ConfirmDialog } from '@nebi/ui/components/confirm-dialog';
+import { Button } from '@nebi/ui/components/ui/button';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@nebi/ui/components/ui/dialog';
 import { toast } from '@nebi/ui/components/ui/toast';
 import { useNavigate } from 'react-router-dom';
 import { clientApiError } from '@/api/client/base';
@@ -53,27 +62,43 @@ export const UninstallDialog = ({
     });
   };
 
+  // Prototype dialog: close button, secondary Cancel, primary Uninstall.
+  // It stays open (with a spinner) until the job is accepted.
   return (
-    <ConfirmDialog
+    <Dialog
       open={open}
-      onOpenChange={onOpenChange}
-      onConfirm={confirm}
-      keepOpenOnConfirm
-      confirmLoading={uninstall.isPending}
-      className="max-w-[520px]"
-      title={`Uninstall ${versionLabel}?`}
-      description={
-        project.size ? `Frees ${project.size} on this machine.` : undefined
-      }
-      confirmText="Uninstall"
+      onOpenChange={(next) => {
+        if (!uninstall.isPending) onOpenChange(next);
+      }}
     >
-      <p className="text-foreground text-sm">
-        The environment is removed from disk. The project and all its versions
-        stay
-        {version != null
-          ? `, and Nebi remembers version ${version} so you can install it again.`
-          : '.'}
-      </p>
-    </ConfirmDialog>
+      <DialogContent role="alertdialog" className="max-w-[520px]">
+        <DialogHeader>
+          <DialogTitle>Uninstall {versionLabel}?</DialogTitle>
+          {project.size && (
+            <DialogDescription>
+              Frees {project.size} on this machine.
+            </DialogDescription>
+          )}
+        </DialogHeader>
+        <p className="text-foreground text-sm">
+          The environment is removed from disk. The project and all its versions
+          stay
+          {version != null
+            ? `, and Nebi remembers version ${version} so you can install it again.`
+            : '.'}
+        </p>
+        <DialogFooter>
+          <DialogClose
+            render={<Button variant="secondary" />}
+            disabled={uninstall.isPending}
+          >
+            Cancel
+          </DialogClose>
+          <Button onClick={confirm} loading={uninstall.isPending}>
+            Uninstall
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };

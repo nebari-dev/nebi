@@ -184,7 +184,6 @@ export const EnvironmentSpec = ({ project, version }: EnvironmentSpecProps) => {
         <Tabs
           value={tab}
           onValueChange={(v) => setTab(v as 'requested' | 'resolved')}
-          className="gap-0"
         >
           <div className="flex flex-wrap items-end justify-between gap-2 border-border border-b pb-1.5">
             <TabsList variant="underline" className="border-0">
@@ -217,9 +216,22 @@ export const EnvironmentSpec = ({ project, version }: EnvironmentSpecProps) => {
                   onValueChange={(v) => v && setChosenPlatform(String(v))}
                 >
                   <SelectTrigger className="w-auto" aria-label="Platform">
-                    <SelectValue>
-                      {(v: string) => platformLabel(v, machine)}
-                    </SelectValue>
+                    {/* Every label is laid out invisibly in the same cell so
+                        the trigger keeps its width when the platform changes. */}
+                    <span className="grid text-left">
+                      {platforms.map((p) => (
+                        <span
+                          key={p}
+                          aria-hidden
+                          className="invisible col-start-1 row-start-1 whitespace-nowrap"
+                        >
+                          {platformLabel(p, machine)}
+                        </span>
+                      ))}
+                      <SelectValue className="col-start-1 row-start-1 whitespace-nowrap">
+                        {(v: string) => platformLabel(v, machine)}
+                      </SelectValue>
+                    </span>
                   </SelectTrigger>
                   <SelectContent className="w-auto min-w-(--anchor-width)">
                     {platforms.map((p) => (

@@ -171,3 +171,22 @@ export function pickVersion(
     versions[0]
   );
 }
+
+/**
+ * The reason an install failed, for the alert and toast under the title
+ * "Version N couldn't install": drops the job error's own "version N
+ * couldn't install:" prefix and ends it as a sentence.
+ */
+export function installErrorText(
+  error: string | null | undefined,
+  version: number,
+): string {
+  const prefix = new RegExp(
+    `^version ${version} couldn[’']t install:\\s*`,
+    'i',
+  );
+  const text = (error ?? '').trim().replace(prefix, '').trim();
+  if (!text) return 'The install job failed. View the job for its log.';
+  const sentence = text.charAt(0).toUpperCase() + text.slice(1);
+  return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
+}

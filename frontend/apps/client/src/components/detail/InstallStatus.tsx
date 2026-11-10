@@ -9,11 +9,11 @@ import {
 import { Button } from '@nebi/ui/components/ui/button';
 import { Spinner } from '@nebi/ui/components/ui/spinner';
 import {
-  CircleAlert,
   CircleCheck,
-  PackageCheck,
+  Import,
   PackageX,
   RotateCw,
+  TriangleAlert,
   X,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -23,6 +23,7 @@ import {
   useInstallProgressStore,
 } from '@/hooks/client/detail';
 import type { ProjectListItem, VersionItem } from '@/types/contracts';
+import { installErrorText } from './format';
 import { PullVersionButton } from './RemoteActions';
 import { UninstallDialog } from './UninstallDialog';
 
@@ -86,7 +87,7 @@ export const InstallControls = ({
         onClick={() => onInstall(version.number)}
         data-tour="install"
       >
-        <PackageCheck />
+        <Import />
         Install
       </Button>
       {installed != null && (
@@ -188,10 +189,10 @@ export const InstallFailedAlert = ({
   if (!failed || failed.version !== version.number) return null;
   return (
     <Alert variant="destructive">
-      <CircleAlert aria-hidden />
+      <TriangleAlert aria-hidden />
       <AlertTitle>Version {version.number} couldn’t install</AlertTitle>
       <AlertDescription>
-        {failed.error?.trim() || 'The install job failed.'}
+        {installErrorText(failed.error, version.number)}
       </AlertDescription>
       <AlertAction className="flex items-center gap-2">
         <Button

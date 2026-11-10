@@ -28,6 +28,7 @@ type fakeExecutor struct {
 	frozen   []string // version markers installed with --frozen
 	plain    []string // version markers installed without --frozen
 	failOn   map[string]error
+	failLog  map[string]string // written to the job log when that install fails
 	noFrozen bool
 }
 
@@ -44,7 +45,7 @@ func (f *fakeExecutor) marker(p *models.Project) string {
 	return strings.TrimPrefix(first, "# ")
 }
 
-func (f *fakeExecutor) install(ctx context.Context, p *models.Project, frozen bool) error {
+func (f *fakeExecutor) install(ctx context.Context, p *models.Project, frozen bool, w io.Writer) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -55,6 +56,9 @@ func (f *fakeExecutor) install(ctx context.Context, p *models.Project, frozen bo
 		f.plain = append(f.plain, m)
 	}
 	if err := f.failOn[m]; err != nil {
+		if msg := f.failLog[m]; msg != "" && w != nil {
+			io.WriteString(w, msg)
+		}
 		return err
 	}
 	envs := filepath.Join(f.GetProjectPath(p), ".pixi", "envs", "default")
@@ -64,8 +68,8 @@ func (f *fakeExecutor) install(ctx context.Context, p *models.Project, frozen bo
 	return os.WriteFile(filepath.Join(envs, "marker"), []byte(m), 0o644)
 }
 
-func (f *fakeExecutor) InstallEnvironment(ctx context.Context, p *models.Project, _ io.Writer) error {
-	return f.install(ctx, p, false)
+func (f *fakeExecutor) InstallEnvironment(ctx context.Context, p *models.Project, w io.Writer) error {
+	return f.install(ctx, p, false, w)
 }
 
 func (f *fakeExecutor) UninstallEnvironment(_ context.Context, p *models.Project, _ io.Writer) error {
@@ -98,8 +102,8 @@ func (f *fakeExecutor) StagingRoot() string { return f.root }
 // frozenExecutor adds `pixi install --frozen`.
 type frozenExecutor struct{ *fakeExecutor }
 
-func (f frozenExecutor) InstallEnvironmentFrozen(ctx context.Context, p *models.Project, _ io.Writer) error {
-	return f.install(ctx, p, true)
+func (f frozenExecutor) InstallEnvironmentFrozen(ctx context.Context, p *models.Project, w io.Writer) error {
+	return f.install(ctx, p, true, w)
 }
 
 // recordingJobs stores submitted jobs as pending rows.
@@ -221,7 +225,7 @@ func TestInstallVersionResolvesAndSubmits(t *testing.T) {
 	f.db.Model(&models.Job{}).Where("project_id = ?", f.project.ID).Update("status", models.JobStatusCompleted)
 
 	var verr *shared.ValidationError
-	if _, err := f.svc.InstallVersion(ctx, f.project.ID, shared.InstallRequest{Version: intp(9)}); !errors.As(err, &verr) || !strings.Contains(verr.Message, "Pull version 9 first") {
+	if _, err := f.svc.InstallVersion(ctx, f.project.ID, shared.InstallRequest{Version: intp(9)}); !errors.As(err, &verr) || !strings.Contains(verr.Message, "Version 9 is not on this machine") {
 		t.Fatalf("missing version: %v", err)
 	}
 	if _, err := f.svc.InstallVersion(ctx, uuid.New(), shared.InstallRequest{}); !errors.Is(err, shared.ErrNotFound) {
@@ -412,5 +416,31 @@ func TestUninstall(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(f.exec.GetProjectPath(&f.project), "pixi.toml")); err != nil {
 		t.Fatal("project files stay")
+	}
+}
+
+func TestRunInstallVersionFailureReportsPixiReason(t *testing.T) {
+	f := newInstallFixture(t, 2, true)
+	exitErr := errors.New("pixi install failed: exit status 1")
+	f.exec.failOn["v2"] = exitErr
+	f.exec.failLog = map[string]string{"v2": " INFO pixi_core::lock_file::update: skipping check\n" +
+		"Error:   \u00d7 failed to fetch bzip2-1.0.8-h4e30115_10.conda\n" +
+		"  \u251c\u2500\u25b6 failed to interact with the package cache layer.\n"}
+	_, err := f.run(t, intp(2))
+	if err == nil {
+		t.Fatal("install must fail")
+	}
+	if got, want := err.Error(), "version 2 couldn't install: failed to fetch bzip2-1.0.8-h4e30115_10.conda"; got != want {
+		t.Fatalf("err = %q, want %q", got, want)
+	}
+	if !errors.Is(err, exitErr) {
+		t.Fatal("the executor error stays wrapped")
+	}
+
+	// Without an "Error:" line the executor's error is reported.
+	g := newInstallFixture(t, 2, true)
+	g.exec.failOn["v2"] = exitErr
+	if _, err := g.run(t, intp(2)); err == nil || err.Error() != "version 2 couldn't install: pixi install failed: exit status 1" {
+		t.Fatalf("err = %v", err)
 	}
 }

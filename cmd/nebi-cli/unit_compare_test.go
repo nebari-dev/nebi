@@ -97,6 +97,21 @@ func TestWriteVersionDiff(t *testing.T) {
 	if !strings.Contains(buf.String(), "Summary of changes: No changes") || strings.Contains(buf.String(), "Resolved packages") {
 		t.Errorf("same-version output:\n%s", buf.String())
 	}
+
+	// Only a channel differs: not "No changes".
+	specOnly, err := artifact.DiffVersions(
+		artifact.VersionContent{Toml: []byte(cliCompareToml1)},
+		artifact.VersionContent{Toml: []byte(strings.Replace(cliCompareToml1, `channels = ["conda-forge"]`, `channels = ["conda-forge", "bioconda"]`, 1))},
+		artifact.DiffOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf.Reset()
+	writeVersionDiff(&buf, "v1", "v2", specOnly, false)
+	if !strings.Contains(buf.String(), "Summary of changes: +0 -0 ~0") || !strings.Contains(buf.String(), "Channels: +bioconda") {
+		t.Errorf("channel-only output:\n%s", buf.String())
+	}
 }
 
 // assertRow finds the table row of name and checks its marker and sides.

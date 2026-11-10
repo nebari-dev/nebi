@@ -233,7 +233,7 @@ export const ServerProjects = () => {
                       <DropdownMenuPortal>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => setSharing(p)}>
-                            <Users aria-hidden className="size-4" />
+                            <Users aria-hidden />
                             Manage access
                           </DropdownMenuItem>
                           {canDelete(p) && (
@@ -241,7 +241,7 @@ export const ServerProjects = () => {
                               variant="destructive"
                               onClick={() => setDeleting(p)}
                             >
-                              <Trash2 aria-hidden className="size-4" />
+                              <Trash2 aria-hidden />
                               Delete from server…
                             </DropdownMenuItem>
                           )}

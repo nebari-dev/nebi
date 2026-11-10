@@ -129,6 +129,11 @@ describe('ServerProjects', () => {
     expect(
       await within(dialog).findByText('testuser (you)'),
     ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        within(dialog).getByPlaceholderText('Name, email or team'),
+      ).toHaveFocus(),
+    );
 
     await user.type(
       within(dialog).getByPlaceholderText('Name, email or team'),

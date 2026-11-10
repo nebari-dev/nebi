@@ -23,7 +23,7 @@ import {
 } from '@nebi/ui/components/ui/dialog';
 import { Spinner } from '@nebi/ui/components/ui/spinner';
 import { cn } from '@nebi/ui/lib/utils';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AccessEntry, AccessList, Principal } from '@/types/sharing';
 import { ShareRoleMenu } from './ShareRoleMenu';
 import {
@@ -109,6 +109,24 @@ export const ShareDialogView = ({
 
   const entries = access?.entries ?? [];
   const canManage = access?.can_manage ?? false;
+
+  // Like the prototype, the search field has focus once the dialog opens.
+  // It only renders after the access list loads (owners and admins), so
+  // focus it then, once per opening.
+  const inputRef = useRef<HTMLInputElement>(null);
+  const focusedOnOpen = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      focusedOnOpen.current = false;
+      return;
+    }
+    if (!canManage || focusedOnOpen.current) return;
+    const frame = requestAnimationFrame(() => {
+      focusedOnOpen.current = true;
+      inputRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, canManage]);
   const items = query.trim() ? withoutExisting(candidates, entries) : [];
 
   const share = () => {
@@ -154,6 +172,7 @@ export const ShareDialogView = ({
                 }
               >
                 <ComboboxInput
+                  ref={inputRef}
                   id="share-with"
                   placeholder="Name, email or team"
                   disabled={busy}

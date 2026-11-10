@@ -73,6 +73,12 @@ describe('ShareDialog', () => {
     expect(screen.getByRole('button', { name: 'Share' })).toBeDisabled();
   });
 
+  it('focuses the search field once the access list loads', async () => {
+    renderDialog();
+    const input = await screen.findByPlaceholderText('Name, email or team');
+    await waitFor(() => expect(input).toHaveFocus());
+  });
+
   it('adds a person by search with the chosen role, and Undo removes them', async () => {
     const user = userEvent.setup();
     renderDialog();

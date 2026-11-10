@@ -40,7 +40,7 @@ export const ShareRoleMenu = ({
       aria-label={`${label}: ${ROLE_LABELS[value]}`}
       className={cn(
         'shrink-0 justify-between gap-2',
-        variant === 'ghost' && 'h-7 gap-1.5 px-2.5 text-xs',
+        variant === 'ghost' && 'h-7 px-2.5 text-xs',
       )}
     >
       {ROLE_LABELS[value]}

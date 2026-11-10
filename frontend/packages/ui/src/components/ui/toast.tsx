@@ -235,7 +235,9 @@ function Toaster({
         <ToastPrimitive.Viewport
           data-slot="toast-viewport"
           className={cn(
-            'pointer-events-none fixed inset-x-4 bottom-4 z-50 mx-auto w-auto max-w-[400px] outline-none sm:right-4 sm:left-auto sm:mx-0 sm:w-full',
+            // z-[60] keeps toasts (and their Undo actions) above an open
+            // dialog's z-50 viewport, which would otherwise swallow clicks.
+            'pointer-events-none fixed inset-x-4 bottom-4 z-[60] mx-auto w-auto max-w-[400px] outline-none sm:right-4 sm:left-auto sm:mx-0 sm:w-full',
             className,
           )}
         >

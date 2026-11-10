@@ -115,6 +115,11 @@ func TestDetailCLICommands(t *testing.T) {
 	}
 	if res := runCLI(t, work, "project", "version", "install", "artlock", "7"); res.ExitCode == 0 {
 		t.Fatal("installing a missing version must fail")
+	} else if strings.Contains(res.Stdout+res.Stderr, "Usage:") {
+		t.Fatalf("a runtime error must not print the usage:\n%s", res.Stderr)
+	}
+	if res := runCLI(t, work, "project", "file", "artlock", "7", "pixi.toml"); res.ExitCode == 0 {
+		t.Fatal("a version that is neither local nor on a server must fail")
 	}
 
 	res = runCLI(t, work, "project", "versions", "artlock", "--json")

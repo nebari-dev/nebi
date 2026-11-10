@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -49,7 +50,7 @@ func (s *Service) InstallVersion(ctx context.Context, projectID uuid.UUID, req s
 	}
 	if _, err := s.local.LoadVersion(ctx, projectID, n); err != nil {
 		if errors.Is(err, shared.ErrNotFound) {
-			return nil, &shared.ValidationError{Field: "version", Message: fmt.Sprintf("Version %d is not on this machine. Pull version %d first.", n, n)}
+			return nil, &shared.ValidationError{Field: "version", Message: fmt.Sprintf("Version %d is not on this machine. If it is on the server, pull it first.", n)}
 		}
 		return nil, err
 	}
@@ -125,13 +126,14 @@ func (s *Service) RunInstallVersion(ctx context.Context, job *models.Job, log io
 	}
 	fmt.Fprintf(log, "Project directory: %s\n", dir)
 
-	installErr := s.writeAndInstall(ctx, project, dir, version, log)
+	reason := &pixiErrorCapture{}
+	installErr := s.writeAndInstall(ctx, project, dir, version, io.MultiWriter(log, reason))
 	if installErr != nil {
 		s.rollbackInstall(ctx, project, dir, n, previous, before, envExisted, log)
 		if errors.Is(installErr, context.Canceled) || ctx.Err() != nil {
 			return installErr
 		}
-		return fmt.Errorf("version %d couldn't install: %w", n, installErr)
+		return fmt.Errorf("version %d couldn't install: %w", n, withReason(installErr, reason.Reason()))
 	}
 
 	size := s.envSize(project)
@@ -415,4 +417,73 @@ func (f fileSnapshot) restore(dir string) error {
 		return err
 	}
 	return put(artifact.LockFile, f.lock)
+}
+
+// pixiErrorCapture watches an install log for pixi's error report
+// ("Error:   x failed to fetch foo-1.0.conda") so a failed install can say
+// why it failed instead of only "pixi install failed: exit status 1".
+type pixiErrorCapture struct {
+	partial []byte
+	reason  string
+}
+
+// maxCapturedLine bounds the partial line kept between writes.
+const maxCapturedLine = 4096
+
+func (c *pixiErrorCapture) Write(p []byte) (int, error) {
+	if c.reason != "" {
+		return len(p), nil
+	}
+	c.partial = append(c.partial, p...)
+	for c.reason == "" {
+		i := bytes.IndexByte(c.partial, '\n')
+		if i < 0 {
+			break
+		}
+		c.take(string(c.partial[:i]))
+		c.partial = c.partial[i+1:]
+	}
+	if c.reason != "" {
+		c.partial = nil
+	} else if len(c.partial) > maxCapturedLine {
+		c.partial = c.partial[len(c.partial)-maxCapturedLine:]
+	}
+	return len(p), nil
+}
+
+// Reason is pixi's first error line, or "" when none was seen.
+func (c *pixiErrorCapture) Reason() string {
+	if c.reason == "" && len(c.partial) > 0 {
+		c.take(string(c.partial))
+	}
+	return c.reason
+}
+
+// take records the text of an "Error:" line, without pixi's cross mark.
+func (c *pixiErrorCapture) take(line string) {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(line), "Error:")
+	if !ok {
+		return
+	}
+	rest = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(rest), "\u00d7"))
+	if rest != "" {
+		c.reason = rest
+	}
+}
+
+// reasonError reads as pixi's reason while keeping the executor's error
+// for errors.Is / errors.As.
+type reasonError struct {
+	reason string
+	err    error
+}
+
+func (e *reasonError) Error() string { return e.reason }
+func (e *reasonError) Unwrap() error { return e.err }
+
+func withReason(err error, reason string) error {
+	if reason == "" {
+		return err
+	}
+	return &reasonError{reason: reason, err: err}
 }

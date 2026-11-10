@@ -367,6 +367,11 @@ rich = "*"
 	if res.RequestedCounts.Added != 1 || res.RequestedCounts.Changed < 1 {
 		t.Errorf("requested counts = %+v", res.RequestedCounts)
 	}
+	// A version neither this machine nor the server has is a plain
+	// not-found, not a server error.
+	if _, err := f.c.Compare(context.Background(), f.project.ID, 2, 9); !errors.Is(err, shared.ErrNotFound) {
+		t.Errorf("version on neither side: want ErrNotFound, got %v", err)
+	}
 	// rich comes from the server version, which has no lock: the row shows
 	// the constraint.
 	if rich := entry(t, res.Requested, "rich"); rich.Compare == nil || rich.Compare.Version != "*" {

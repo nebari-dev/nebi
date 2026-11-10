@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"runtime"
 	"time"
 
@@ -34,8 +35,9 @@ var machinePlatform = func() string {
 // A side that is not on this machine is fetched from the linked server
 // (c.Remote.ServerVersionFiles). When the project has no server remote, no
 // server is connected, or the remote SDK cannot serve version files, that
-// side is reported as shared.ErrNotFound; server failures (unreachable,
-// forbidden, missing) are returned as the remote SDK reports them.
+// side is reported as shared.ErrNotFound, as is a version the server does
+// not have either; other server failures (unreachable, forbidden) are
+// returned as the remote SDK reports them.
 //
 // Resolved versions come from this machine's platform when either lock has
 // it, else from the platform artifact.DiffVersions picks.
@@ -108,6 +110,7 @@ func (c *Client) compareSide(ctx context.Context, projectID uuid.UUID, n int, li
 		return artifact.VersionContent{}, false, fmt.Errorf("version %d: %w", n, shared.ErrNotFound)
 	}
 	toml, lock, err := c.Remote.ServerVersionFiles(ctx, projectID, n)
+	var rerr *shared.RemoteError
 	switch {
 	case err == nil:
 		return artifact.VersionContent{Toml: []byte(toml), Lock: []byte(lock)}, true, nil
@@ -115,6 +118,10 @@ func (c *Client) compareSide(ctx context.Context, projectID uuid.UUID, n int, li
 		return artifact.VersionContent{}, false, fmt.Errorf("version %d is not on this machine and no server is connected: %w", n, shared.ErrNotFound)
 	case errors.Is(err, shared.ErrNotImplemented):
 		return artifact.VersionContent{}, false, fmt.Errorf("version %d is not on this machine: %w", n, shared.ErrNotFound)
+	case errors.As(err, &rerr) && rerr.Status == http.StatusNotFound:
+		// The server answered and does not have it either: a plain "not
+		// found" instead of "server error (404): ...".
+		return artifact.VersionContent{}, false, fmt.Errorf("version %d is not on this machine or on the server: %w", n, shared.ErrNotFound)
 	default:
 		return artifact.VersionContent{}, false, err
 	}

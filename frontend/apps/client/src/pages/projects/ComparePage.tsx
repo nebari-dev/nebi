@@ -30,6 +30,7 @@ import {
   buildCompareRows,
   describeListDiff,
   formatVersionLabel,
+  hasSpecChanges,
   resolveSelection,
   versionMarks,
   versionNumbers,
@@ -259,7 +260,10 @@ export const ComparePage = () => {
             onChange={(n) => choose('to', n)}
           />
           {result && fresh && (
-            <CompareSummary counts={result.requested_counts} />
+            <CompareSummary
+              counts={result.requested_counts}
+              specChanged={hasSpecChanges(result)}
+            />
           )}
         </div>
         {table}

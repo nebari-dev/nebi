@@ -45,6 +45,9 @@ Examples:
 			if err != nil {
 				return err
 			}
+			// The arguments are valid: a failure from here on (unknown
+			// version, server unreachable) is not a usage problem.
+			cmd.SilenceUsage = true
 			return withStack(cmd, func(ctx context.Context, s *client.Stack) error {
 				id, err := resolveProjectID(ctx, s, args[0])
 				if err != nil {
@@ -131,12 +134,18 @@ func writeCompareResult(w io.Writer, res *shared.CompareResult, resolved bool) {
 // "nebi diff --packages".
 func writeVersionDiff(w io.Writer, baseLabel, targetLabel string, d *artifact.VersionDiff, resolved bool) {
 	fmt.Fprintf(w, "Compare versions: %s -> %s\n", baseLabel, targetLabel)
-	fmt.Fprintf(w, "Summary of changes: %s\n", formatDiffCounts(d.RequestedCounts))
-	if line := formatListDiff(d.Channels); line != "" {
-		fmt.Fprintf(w, "Channels: %s\n", line)
+	channels, platforms := formatListDiff(d.Channels), formatListDiff(d.Platforms)
+	summary := formatDiffCounts(d.RequestedCounts)
+	if !d.RequestedCounts.HasChanges() && (channels != "" || platforms != "") {
+		// Only channels or platforms differ: the versions are not the same.
+		summary = "+0 -0 ~0"
 	}
-	if line := formatListDiff(d.Platforms); line != "" {
-		fmt.Fprintf(w, "Platforms: %s\n", line)
+	fmt.Fprintf(w, "Summary of changes: %s\n", summary)
+	if channels != "" {
+		fmt.Fprintf(w, "Channels: %s\n", channels)
+	}
+	if platforms != "" {
+		fmt.Fprintf(w, "Platforms: %s\n", platforms)
 	}
 
 	fmt.Fprintln(w)

@@ -57,6 +57,12 @@ const Side = ({
               }
             >
               {cell.version}
+              {cell.showConstraint && (
+                <span className="text-muted-foreground">
+                  {' '}
+                  ({cell.constraint})
+                </span>
+              )}
             </span>
           </span>
         ) : (

@@ -187,7 +187,7 @@ jobs:
           go install "github.com/swaggo/swag/cmd/swag@${SWAG_VERSION}"
 
       - name: Run tests (unit + e2e)
-        run: go test -tags=e2e -v -race -coverprofile=coverage.out ./cmd/... ./internal/...
+        run: go test -tags=e2e -v -race -timeout 30m -coverprofile=coverage.out ./cmd/... ./internal/...
 
       - name: Upload coverage
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0

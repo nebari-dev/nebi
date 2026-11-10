@@ -149,9 +149,7 @@ describe('JobDetailPage', () => {
       await screen.findByRole('heading', { level: 1, name: 'Create version' }),
     ).toBeInTheDocument();
     expect(screen.getByText('Running')).toBeInTheDocument();
-    expect(
-      screen.getByText('Streaming live while the job runs'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Streaming: job in progress')).toBeInTheDocument();
     expect(screen.getByRole('log')).toHaveTextContent('Solving environment');
     expect(screen.getAllByText('-').length).toBeGreaterThan(0); // Ended
 

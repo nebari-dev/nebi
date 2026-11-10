@@ -96,6 +96,7 @@ Examples:
 	f.StringArrayVar(&o.removeChannels, "remove-channel", nil, "Remove a channel (repeatable)")
 	f.BoolVar(&o.install, "install", false, "Install the new version once it is created")
 	f.BoolVar(&o.dryRun, "dry-run", false, "Show the summary of changes without creating the version")
+	silenceUsageOnRunErrors(cmd)
 	projectVersionCmd.AddCommand(cmd)
 }
 

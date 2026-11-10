@@ -229,7 +229,9 @@ export const AddRegistryDialog = ({
             </Tabs>
           </div>
           {form.auth === 'password' && (
-            <>
+            // Side by side so the dialog fits a laptop screen without
+            // scrolling to the footer.
+            <div className="grid grid-cols-2 items-start gap-3">
               <RegistryField label="Username" error={errors.username}>
                 <Input
                   value={form.username}
@@ -254,7 +256,7 @@ export const AddRegistryDialog = ({
                   autoComplete="off"
                 />
               </RegistryField>
-            </>
+            </div>
           )}
           <div className="flex items-center justify-between gap-4">
             <div className="flex flex-col gap-0.5">

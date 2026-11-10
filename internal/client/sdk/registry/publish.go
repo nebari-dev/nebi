@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"regexp"
 	"strings"
@@ -20,6 +21,8 @@ import (
 	"github.com/nebari-dev/nebi/internal/oci"
 	"github.com/nebari-dev/nebi/internal/store"
 	"gorm.io/gorm"
+	"oras.land/oras-go/v2/registry/remote/auth"
+	"oras.land/oras-go/v2/registry/remote/errcode"
 )
 
 // ReferenceHint is the validation copy for a malformed repository:tag.
@@ -209,11 +212,37 @@ func (s *Service) Publish(ctx context.Context, projectID uuid.UUID, version int,
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
-			item.Error = err.Error()
+			item.Error = publishErrorMessage(t.reg, ep.Host, err)
 		}
 		results = append(results, item)
 	}
 	return &shared.PublishResult{Results: results}, nil
+}
+
+// publishErrorMessage turns a push failure into a message for the publish
+// results: registry rejections (missing or wrong credentials) and
+// unreachable registries get plain wording, anything else keeps the
+// underlying error.
+func publishErrorMessage(reg models.OCIRegistry, host string, err error) string {
+	if errors.Is(err, auth.ErrBasicCredentialNotFound) {
+		return fmt.Sprintf("%s needs a username and password to publish. Add them on the Registries page.", reg.Name)
+	}
+	var resp *errcode.ErrorResponse
+	if errors.As(err, &resp) {
+		switch resp.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			if reg.Username == "" {
+				return fmt.Sprintf("%s needs a username and password to publish. Add them on the Registries page.", reg.Name)
+			}
+			return fmt.Sprintf("%s didn’t accept the username and password. Check them on the Registries page.", reg.Name)
+		}
+	}
+	var netErr *net.OpError
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) || errors.As(err, &netErr) {
+		return fmt.Sprintf("Couldn’t reach %s. Check the registry URL and your connection.", host)
+	}
+	return err.Error()
 }
 
 // RecordPublication records that a version was published outside
@@ -337,6 +366,9 @@ func (s *Service) Unpublish(ctx context.Context, projectID uuid.UUID, publicatio
 	now := time.Now()
 	if err := s.db(ctx).Model(&models.Publication{}).Where("id = ?", pub.ID).Update("deleted_at", now).Error; err != nil {
 		return fmt.Errorf("recording unpublish: %w", err)
+	}
+	if pub.RegistryHost == "" {
+		pub.RegistryHost = ep.Host
 	}
 	s.reportUnpublish(ctx, projectID, pub)
 	return nil
@@ -496,19 +528,57 @@ func (s *Service) reportPublication(ctx context.Context, projectID uuid.UUID, v 
 	}
 }
 
-// reportUnpublish tells the linked server a publication was removed.
+// reportUnpublish tells the linked server a publication was removed. The
+// server may know the publication under its own ID (records sent with a
+// pushed version get server IDs), so when the local ID is unknown there the
+// active server records of that version with the same registry host,
+// repository and tag are removed instead.
 func (s *Service) reportUnpublish(ctx context.Context, projectID uuid.UUID, pub models.Publication) {
 	base, token, sid, ok := s.linkedServerProject(ctx, projectID, nil)
 	if !ok {
 		return
 	}
-	path := fmt.Sprintf("/projects/%s/sync/versions/%d/publications/%s", sid, pub.VersionNumber, pub.ID)
-	if err := s.serverCall(ctx, base, token, http.MethodDelete, path, nil); err != nil {
+	versionPath := fmt.Sprintf("/projects/%s/sync/versions/%d", sid, pub.VersionNumber)
+	err := s.serverCall(ctx, base, token, http.MethodDelete, fmt.Sprintf("%s/publications/%s", versionPath, pub.ID), nil)
+	var status *serverStatusError
+	if err == nil || !errors.As(err, &status) || status.code != http.StatusNotFound {
+		if err != nil {
+			s.logWarn("reporting unpublish to the server", err)
+		}
+		return
+	}
+	var version struct {
+		Publications []ServerPublication `json:"publications"`
+	}
+	if err := s.serverGet(ctx, base, token, versionPath, &version); err != nil {
 		s.logWarn("reporting unpublish to the server", err)
+		return
+	}
+	host := pub.RegistryHost
+	for _, rec := range version.Publications {
+		if rec.ID == nil || rec.RegistryHost != host || rec.Repository != pub.Repository || rec.Tag != pub.Tag {
+			continue
+		}
+		if err := s.serverCall(ctx, base, token, http.MethodDelete, fmt.Sprintf("%s/publications/%s", versionPath, *rec.ID), nil); err != nil {
+			s.logWarn("reporting unpublish to the server", err)
+		}
 	}
 }
 
+// serverStatusError is a non-2xx response from the linked server.
+type serverStatusError struct{ code int }
+
+func (e *serverStatusError) Error() string { return fmt.Sprintf("server returned %d", e.code) }
+
 func (s *Service) serverCall(ctx context.Context, base, token, method, path string, body any) error {
+	return s.serverDo(ctx, base, token, method, path, body, nil)
+}
+
+func (s *Service) serverGet(ctx context.Context, base, token, path string, out any) error {
+	return s.serverDo(ctx, base, token, http.MethodGet, path, nil, out)
+}
+
+func (s *Service) serverDo(ctx context.Context, base, token, method, path string, body, out any) error {
 	var reader io.Reader
 	if body != nil {
 		buf, err := json.Marshal(body)
@@ -538,10 +608,15 @@ func (s *Service) serverCall(ctx context.Context, base, token, method, path stri
 		return err
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	limited := io.LimitReader(resp.Body, 4<<20)
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return fmt.Errorf("server returned %d", resp.StatusCode)
+		_, _ = io.Copy(io.Discard, limited)
+		return &serverStatusError{code: resp.StatusCode}
 	}
+	if out != nil {
+		return json.NewDecoder(limited).Decode(out)
+	}
+	_, _ = io.Copy(io.Discard, limited)
 	return nil
 }
 

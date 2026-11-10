@@ -99,7 +99,10 @@ describe('PublishDialog', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
 
     await userEvent.clear(input);
-    await userEvent.type(input, 'nebari/project_1:stable{Enter}');
+    await userEvent.type(input, 'nebari/project_1:stable');
+    // A valid edit keeps Save available (prototype); it commits on blur.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+    await userEvent.type(input, '{Enter}');
     expect(
       screen.getByText('quay.io/nebari/project_1:stable'),
     ).toBeInTheDocument();
@@ -181,6 +184,36 @@ describe('PublishDialog', () => {
     ).toHaveAttribute('aria-disabled', 'true');
     expect(
       within(ghcr).getByText(mockRegistryItem.unpublish_reason as string),
+    ).toBeInTheDocument();
+  });
+
+  it('locks publications made on another machine, named after the matching registry', async () => {
+    renderDialog({
+      ...mockVersionItem,
+      published: [
+        {
+          publication_id: '99999999-9999-4999-8999-999999999999',
+          registry_id: null,
+          registry: 'quay.io',
+          repository: 'nebari/project_1',
+          tag: 'stable',
+          reference: 'quay.io/nebari/project_1:stable',
+          source: 'server',
+          can_unpublish: false,
+        },
+      ],
+    });
+    const ref = await screen.findByText('quay.io/nebari/project_1:stable');
+    const li = ref.closest('li') as HTMLElement;
+    expect(within(li).getByText('Quay', { selector: 'span' })).toBeVisible();
+    expect(within(li).getByRole('switch')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(
+      within(li).getByText(
+        'Published from another machine. Unpublish it there.',
+      ),
     ).toBeInTheDocument();
   });
 

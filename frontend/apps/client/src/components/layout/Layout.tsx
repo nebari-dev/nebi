@@ -15,7 +15,7 @@ import {
 } from '@nebi/ui/components/ui/navigation-menu';
 import { useTheme } from '@nebi/ui/hooks/theme-provider';
 import { cn } from '@nebi/ui/lib/utils';
-import { BookOpen, Boxes, RotateCcwClock, Server, Shield } from 'lucide-react';
+import { Boxes, Package, RotateCcwClock, Server, Shield } from 'lucide-react';
 import {
   Outlet,
   NavLink as RouterNavLink,
@@ -98,7 +98,7 @@ export const Layout = () => {
             Server
           </NavLink>
           <NavLink
-            icon={<BookOpen />}
+            icon={<Package />}
             active={pathname === '/registries'}
             render={<RouterNavLink to="/registries" />}
             className={navItemClass}

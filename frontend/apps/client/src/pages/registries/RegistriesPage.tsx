@@ -258,7 +258,7 @@ export const RegistriesPage = () => {
                   {r.is_default && <Badge variant="secondary">Default</Badge>}
                 </span>
               </TableCell>
-              <TableCell className="h-10 py-2 font-mono text-xs">
+              <TableCell className="h-10 py-2 font-mono text-xs!">
                 {r.url}
               </TableCell>
               <TableCell className="h-10 py-2">

@@ -175,7 +175,11 @@ describe('ServerPage', () => {
     await user.click(
       screen.getByRole('button', { name: 'Refresh the server’s project list' }),
     );
-    expect(await screen.findByText('Just now')).toBeInTheDocument();
+    // "Syncing…" stays up for a moment even when the refresh is instant.
+    expect(screen.getByText('Syncing…')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Just now', undefined, { timeout: 3000 }),
+    ).toBeInTheDocument();
   });
 
   it('opens a project that is already on this machine', async () => {
@@ -418,6 +422,40 @@ describe('ServerPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Try again' }),
+    ).toBeInTheDocument();
+  });
+
+  it('asks for a token when a server rejects a connection without one', async () => {
+    server.use(
+      http.get(`${C}/remote/server`, () =>
+        HttpResponse.json({
+          ...mockServerConnection,
+          auth: 'none',
+          username: 'anonymous',
+        }),
+      ),
+      http.get(`${C}/remote/projects`, () =>
+        HttpResponse.json(
+          { error: 'missing authorization', code: 'server_auth' },
+          { status: 502 },
+        ),
+      ),
+    );
+    renderServer();
+    expect(
+      await screen.findByRole('heading', {
+        name: 'nebi.example.com didn’t accept your sign-in',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'This server needs a token. Add one in Manage connection.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('alert')).getByRole('button', {
+        name: 'Manage connection',
+      }),
     ).toBeInTheDocument();
   });
 

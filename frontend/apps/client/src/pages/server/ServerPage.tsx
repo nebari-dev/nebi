@@ -201,6 +201,9 @@ const usePulling = () => {
   return value;
 };
 
+/** Shortest time "Syncing…" shows after a refresh click (prototype: 900 ms). */
+const MIN_SYNCING_MS = 900;
+
 /** Re-renders every 30 s so "Last synced" stays current. */
 const useNow = () => {
   const [now, setNow] = useState(() => Date.now());
@@ -223,7 +226,16 @@ const ConnectedView = ({
   const pulling = usePulling();
   const now = useNow();
   const shownUrl = displayServerUrl(connection.url);
-  const syncing = refresh.isPending || (projects.isFetching && !projects.data);
+  // Like the prototype, "Syncing…" stays up for a moment even when the
+  // refresh is instant, so the click visibly does something.
+  const [settling, setSettling] = useState(false);
+  useEffect(() => {
+    if (!settling) return;
+    const t = window.setTimeout(() => setSettling(false), MIN_SYNCING_MS);
+    return () => window.clearTimeout(t);
+  }, [settling]);
+  const syncing =
+    settling || refresh.isPending || (projects.isFetching && !projects.data);
   const lastSynced =
     projects.data?.last_synced_at ?? connection.last_synced_at ?? null;
   const errorKind = projects.isError ? remoteErrorKind(projects.error) : null;
@@ -263,7 +275,10 @@ const ConnectedView = ({
                   <Button
                     variant="secondary"
                     size="icon-xs"
-                    onClick={() => refresh.mutate('')}
+                    onClick={() => {
+                      setSettling(true);
+                      refresh.mutate('');
+                    }}
                     disabled={syncing}
                     aria-label="Refresh the server’s project list"
                   />
@@ -285,6 +300,7 @@ const ConnectedView = ({
         <ServerProblem
           kind={errorKind}
           url={shownUrl}
+          withToken={connection.auth === 'token'}
           message={clientApiError(refresh.error ?? projects.error)?.error}
           retrying={projects.isFetching}
           onRetry={() => projects.refetch()}
@@ -314,6 +330,7 @@ const ConnectedView = ({
 const ServerProblem = ({
   kind,
   url,
+  withToken,
   message,
   retrying,
   onRetry,
@@ -321,6 +338,8 @@ const ServerProblem = ({
 }: {
   kind: ReturnType<typeof remoteErrorKind>;
   url: string;
+  /** The connection uses a token (else auth None). */
+  withToken: boolean;
   message?: string;
   retrying: boolean;
   onRetry: () => void;
@@ -338,7 +357,9 @@ const ServerProblem = ({
       </h2>
       <p className="max-w-xl text-muted-foreground-strong text-sm">
         {auth
-          ? 'Your token may have expired. Update it in Manage connection.'
+          ? withToken
+            ? 'Your token may have expired. Update it in Manage connection.'
+            : 'This server needs a token. Add one in Manage connection.'
           : 'Check your network or the server address. Your projects on this machine keep working, and Nebi keeps trying in the background.'}
       </p>
       {message && kind === 'other' && (

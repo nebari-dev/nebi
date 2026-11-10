@@ -12,6 +12,8 @@ import {
 import { cn } from '@nebi/ui/lib/utils';
 import { Check, PackageCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { useJustCreated } from '@/components/newversion/justCreated';
 import type { VersionItem } from '@/types/contracts';
 import { publishedReferences } from './format';
 import { SyncMarkerLabel } from './SyncMarker';
@@ -59,17 +61,26 @@ export const VersionRow = ({
     firstTag != null &&
     moreTags.length > 0;
   const refs = publishedReferences(version);
+  const { id } = useParams();
+  // "Version N created": the new row lights up, then fades (U3).
+  const created = useJustCreated(
+    version.server_only ? undefined : id,
+    version.number,
+  );
+  // A row that appears while the rail is mounted (glow) or that the new
+  // version page just created before navigating here (created) lights up.
+  const lit = glow ?? created;
   return (
     <button
       type="button"
       onClick={onSelect}
       aria-current={selected ? 'true' : undefined}
-      data-just-created={glow ? '' : undefined}
+      data-just-created={lit ? '' : undefined}
       className={cn(
         versionRowClass,
         selected && 'border-border-strong bg-muted',
-        glow === 'lit' && 'border-primary/40 bg-primary/10 hover:bg-primary/10',
-        glow === 'fading' &&
+        lit === 'lit' && 'border-primary/40 bg-primary/10 hover:bg-primary/10',
+        lit === 'fading' &&
           'motion-safe:duration-[1200ms] motion-safe:ease-out',
       )}
     >

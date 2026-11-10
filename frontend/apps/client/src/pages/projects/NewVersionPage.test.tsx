@@ -18,9 +18,23 @@ import { NewVersionPage } from './NewVersionPage';
 // The shared ManifestEditor belongs to the projects unit; these tests pin
 // the page's behaviour through its props contract, not its rendering.
 vi.mock('@/components/manifest/ManifestEditor', () => ({
-  ManifestEditor: ({ value, onChange, errors }: ManifestEditorProps) => (
+  ManifestEditor: ({
+    value,
+    onChange,
+    errors,
+    copy,
+    hideModeSwitch,
+  }: ManifestEditorProps) => (
     <div>
       <span>Editor mode: {value.mode}</span>
+      {hideModeSwitch && <span>Editor switch hidden</span>}
+      {copy && (
+        <ul aria-label="Editor copy">
+          {Object.values(copy).map((text) => (
+            <li key={String(text)}>{text}</li>
+          ))}
+        </ul>
+      )}
       <textarea
         aria-label="pixi.toml"
         value={value.pixiToml}
@@ -115,6 +129,21 @@ describe('NewVersionPage', () => {
     ).toHaveAttribute('href', `/projects/${PROJECT_ID}?v=7`);
     expect(screen.getByLabelText('pixi.toml')).toHaveValue(mockDraftToml);
     expect(screen.getByText('Editor mode: form')).toBeInTheDocument();
+    // The mode switch sits in the page header, next to the title.
+    expect(screen.getByText('Editor switch hidden')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Open in TOML editor' }),
+    ).toBeInTheDocument();
+    const copy = within(screen.getByRole('list', { name: 'Editor copy' }));
+    for (const text of [
+      'The platforms pixi solves this version for.',
+      'Starts with version 7’s platforms. For uncommon platforms, type pixi’s name (e.g. linux-ppc64le).',
+      'Starts with version 7’s packages. Leave the version blank to allow any version.',
+      'No packages. The new version would be an empty environment.',
+      'Starts with version 7’s pixi.toml. Tags and the description aren’t part of pixi.toml, so they’re set below.',
+    ]) {
+      expect(copy.getByText(text)).toBeInTheDocument();
+    }
     expect(
       screen.getByRole('heading', { name: 'About this version' }),
     ).toBeInTheDocument();
@@ -317,6 +346,9 @@ describe('NewVersionPage', () => {
     );
 
     await waitFor(() => expect(location()).toBe(`/projects/${PROJECT_ID}`));
+    expect(
+      screen.getByText('Creating a new version of Project_1'),
+    ).toBeInTheDocument();
     expect(body).toMatchObject({
       base_version: 7,
       pixi_toml: `${mockDraftToml}\n# edited`,
@@ -353,6 +385,15 @@ describe('NewVersionPage', () => {
       ),
     ).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Go back' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    );
+    expect(location()).toBe(PAGE);
+
+    // The dialog's close button also stays on the page.
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    const closable = await screen.findByRole('alertdialog');
+    await user.click(within(closable).getByRole('button', { name: 'Close' }));
     await waitFor(() =>
       expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
     );

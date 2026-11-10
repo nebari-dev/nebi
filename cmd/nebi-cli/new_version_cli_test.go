@@ -181,3 +181,18 @@ func TestRunNewVersion(t *testing.T) {
 		t.Fatalf("no-change run: err=%v out=%s", err, out.String())
 	}
 }
+
+func TestNewVersionCommandSilencesUsageOnRunErrors(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"project", "version", "new"})
+	if err != nil || cmd.Name() != "new" {
+		t.Fatalf("find command: %v (%v)", cmd, err)
+	}
+	t.Cleanup(func() { cmd.SilenceUsage = false })
+	// No --pixi-toml and no edits: the command fails before opening a stack.
+	if err := cmd.RunE(cmd, []string{"demo"}); err == nil {
+		t.Fatal("expected an error without changes")
+	}
+	if !cmd.SilenceUsage {
+		t.Error("a failing run must not print the usage text")
+	}
+}

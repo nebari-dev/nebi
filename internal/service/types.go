@@ -13,6 +13,9 @@ type CreateRequest struct {
 	Source           string
 	Path             string
 	ImportStagingDir string // absolute path to a pre-extracted bundle directory; worker hands it to the executor as SeedDir
+	ImportRepository string
+	ImportTag        string
+	ImportDigest     string
 }
 
 // PushRequest holds parameters for pushing a new version.

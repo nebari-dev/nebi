@@ -9,6 +9,7 @@ import (
 
 	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/nebari-dev/nebi/internal/diff"
+	"github.com/nebari-dev/nebi/internal/oci"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -23,6 +24,7 @@ Each reference can be:
   - A path (contains a slash): ./dir, /tmp/project, foo/bar
   - A tracked workspace name (bare word): data-science
   - A server ref (contains a colon): myworkspace:v1
+  - An OCI ref: quay.io/nebari/my-env:v1 or quay.io/nebari/my-env@sha256:<digest>
 
 If no refs are given, compares the current directory against the last
 pushed/pulled origin.
@@ -37,6 +39,7 @@ Examples:
   nebi diff myworkspace:v1                     # server version vs cwd
   nebi diff myworkspace:v1 myworkspace:v2      # two server versions
   nebi diff myworkspace:v1 ./local-dir         # server vs local dir
+  nebi diff quay.io/nebari/my-env@sha256:<digest>
 
 Use --lock to also compare pixi.lock files.`,
 	Args:              cobra.RangeArgs(0, 2),
@@ -140,12 +143,36 @@ func runDiff(cmd *cobra.Command, args []string) error {
 
 // resolveSource resolves a ref (directory, workspace name, or workspace:tag) into a diffSource.
 func resolveSource(ref, defaultLabel string) (*diffSource, error) {
-	// 1. Local directory path (must contain a slash, e.g. ./foo, /tmp/foo, foo/bar)
+	// 1. Explicit local directory path.
+	if isExplicitLocalPath(ref) {
+		return resolveLocalSource(ref, defaultLabel)
+	}
+
+	// Preserve the existing path semantics when a registry-looking relative
+	// path exists on disk. Prefix a non-existent path with ./ to force it to
+	// remain local.
+	if isPath(ref) {
+		if _, err := os.Stat(ref); err == nil || !os.IsNotExist(err) {
+			return resolveLocalSource(ref, defaultLabel)
+		}
+	}
+
+	// 2. Fully-qualified OCI reference. Registry-like tag references and all
+	// digest references are unambiguous; simple foo/bar remains a local path.
+	if looksLikeOCIReference(ref) {
+		artifact, err := oci.ParseArtifactReference(ref)
+		if err != nil {
+			return nil, err
+		}
+		return resolveOCISource(ref, artifact)
+	}
+
+	// 3. Local directory path (must contain a slash, e.g. foo/bar).
 	if isPath(ref) {
 		return resolveLocalSource(ref, defaultLabel)
 	}
 
-	// 2. Local workspace name (check store before assuming server ref)
+	// 4. Local workspace name (check store before assuming server ref)
 	if !strings.Contains(ref, ":") {
 		s, err := store.New()
 		if err == nil {
@@ -166,8 +193,47 @@ func resolveSource(ref, defaultLabel string) (*diffSource, error) {
 		}
 	}
 
-	// 3. Server ref (workspace:tag)
+	// 5. Server ref (workspace:tag)
 	return resolveServerSource(ref)
+}
+
+func isExplicitLocalPath(ref string) bool {
+	return ref == "." ||
+		ref == ".." ||
+		filepath.IsAbs(ref) ||
+		strings.HasPrefix(ref, "./") ||
+		strings.HasPrefix(ref, "../")
+}
+
+func looksLikeOCIReference(ref string) bool {
+	if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") || strings.Contains(ref, "@") {
+		return true
+	}
+
+	slash := strings.IndexByte(ref, '/')
+	if slash <= 0 {
+		return false
+	}
+	registryHost := ref[:slash]
+	return registryHost == "localhost" || strings.ContainsAny(registryHost, ".:")
+}
+
+func resolveOCISource(label string, artifact oci.ArtifactReference) (*diffSource, error) {
+	result, err := oci.PullBundle(context.Background(), artifact.Repository, artifact.Selector(), oci.PullOptions{
+		PlainHTTP: artifact.PlainHTTP,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("pulling OCI bundle: %w", err)
+	}
+	if err := oci.VerifyManifestDigest(result.Digest, artifact.Digest); err != nil {
+		return nil, err
+	}
+
+	return &diffSource{
+		label: label,
+		toml:  result.PixiToml,
+		lock:  result.PixiLock,
+	}, nil
 }
 
 func resolveLocalSource(dir, defaultLabel string) (*diffSource, error) {

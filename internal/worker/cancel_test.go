@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -145,5 +146,61 @@ func TestBrokerHistoryForLateSubscriber(t *testing.T) {
 	}
 	if _, _, ok := w.GetBroker().SubscribeWithHistory(job.ID); ok {
 		t.Fatal("finished job still tracked by the broker")
+	}
+}
+
+// failingDispatcher writes a line and fails.
+type failingDispatcher struct{}
+
+func (failingDispatcher) Handles(job *models.Job) bool {
+	return job.Type == models.JobTypeCreateVersion
+}
+
+func (failingDispatcher) Run(_ context.Context, _ *models.Job, w io.Writer) error {
+	_, _ = io.WriteString(w, "solving\n")
+	return errors.New("writing pixi.toml: permission denied")
+}
+
+// TestStoredLogEndsWithFailureReason: the stored log of a failed job ends
+// with the error, so the job page ("Please see logs for details") shows
+// why it failed after the live stream is gone.
+func TestStoredLogEndsWithFailureReason(t *testing.T) {
+	db, svc, jobSvc, exec := setupWorkerTest(t)
+	_, job := newTestProject(t, db, exec, "failure-reason", models.JobTypeCreateVersion, nil)
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1,
+		WithDispatcher(failingDispatcher{}))
+	w.processJob(context.Background(), job)
+
+	var stored models.Job
+	db.First(&stored, "id = ?", job.ID)
+	if stored.Status != models.JobStatusFailed {
+		t.Fatalf("status = %s", stored.Status)
+	}
+	if !strings.HasSuffix(stored.Logs, "\n[ERROR] Job failed: writing pixi.toml: permission denied\n") {
+		t.Fatalf("stored log = %q", stored.Logs)
+	}
+}
+
+// TestStoredLogEndsWithCancelMarker: a job cancelled through the worker
+// keeps the "[CANCELLED]" line in its stored log.
+func TestStoredLogEndsWithCancelMarker(t *testing.T) {
+	db, svc, jobSvc, exec := setupWorkerTest(t)
+	_, job := newTestProject(t, db, exec, "cancel-marker", models.JobTypeCreateVersion, nil)
+	d := &loggingDispatcher{started: make(chan struct{}), release: make(chan struct{})}
+	w := New(queue.NewMemoryQueue(10), exec, svc, jobSvc, slog.Default(), limits.Defaults(), 1, WithDispatcher(d))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		w.processJob(context.Background(), job)
+	}()
+	<-d.started
+	if !w.CancelJob(job.ID) {
+		t.Fatal("CancelJob = false for a running job")
+	}
+	<-done
+	var stored models.Job
+	db.First(&stored, "id = ?", job.ID)
+	if stored.Status != models.JobStatusCancelled || !strings.HasSuffix(stored.Logs, "[CANCELLED] Job cancelled\n") {
+		t.Fatalf("stored = %s %q", stored.Status, stored.Logs)
 	}
 }

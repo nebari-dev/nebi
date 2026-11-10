@@ -15,7 +15,7 @@ import { mockJobSummary, PROJECT_ID } from '@/test/fixtures/contracts';
 import { server } from '@/test/handlers';
 import { RUNNING_JOB_ID } from '@/test/handlers/jobs';
 import type { JobSummary } from '@/types/contracts';
-import { trackJobToast, useJobLogStream, useJobs } from './jobs';
+import { isStoppingJob, trackJobToast, useJobLogStream, useJobs } from './jobs';
 
 const C = '/api/v1/client';
 
@@ -226,5 +226,36 @@ describe('useJobs', () => {
     await waitFor(() => expect(result.current.data).toHaveLength(1));
     expect(result.current.data?.[0].status).toBe('failed');
     await act(async () => {});
+  });
+});
+
+describe('isStoppingJob', () => {
+  const now = Date.parse('2026-11-09T12:00:00Z');
+  const base = {
+    status: 'cancelled' as const,
+    started_at: '2026-11-09T11:59:00Z',
+    completed_at: '2026-11-09T11:59:55Z',
+    logs: 'downloading\n',
+  };
+
+  it('is true while the runner has not saved its final cancel line', () => {
+    expect(isStoppingJob(base, now)).toBe(true);
+  });
+
+  it('is false once the log ends with the cancel line', () => {
+    expect(
+      isStoppingJob(
+        { ...base, logs: 'downloading\n\n[CANCELLED] Job cancelled\n' },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it('is false for queued cancels, other statuses and old rows', () => {
+    expect(isStoppingJob({ ...base, started_at: null }, now)).toBe(false);
+    expect(isStoppingJob({ ...base, status: 'failed' }, now)).toBe(false);
+    expect(
+      isStoppingJob({ ...base, completed_at: '2026-11-09T11:00:00Z' }, now),
+    ).toBe(false);
   });
 });

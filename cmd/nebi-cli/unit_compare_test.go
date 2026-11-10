@@ -163,8 +163,12 @@ func TestProjectCompareCommand(t *testing.T) {
 		t.Errorf("output:\n%s", out)
 	}
 
-	if _, err := runCompareCLI(t, "project", "compare", "cli-compare", "1", "9"); err == nil || !strings.Contains(err.Error(), "not found") {
+	out, err = runCompareCLI(t, "project", "compare", "cli-compare", "1", "9")
+	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("missing version: %v", err)
+	}
+	if strings.Contains(out, "Usage:") {
+		t.Errorf("missing version is not a usage error; output:\n%s", out)
 	}
 	if _, err := runCompareCLI(t, "project", "compare", "no-such-project", "1", "2"); err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("missing project: %v", err)

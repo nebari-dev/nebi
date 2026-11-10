@@ -45,6 +45,9 @@ Examples:
 			if err != nil {
 				return err
 			}
+			// The arguments are valid: a failure from here on (unknown
+			// version, server unreachable) is not a usage problem.
+			cmd.SilenceUsage = true
 			return withStack(cmd, func(ctx context.Context, s *client.Stack) error {
 				id, err := resolveProjectID(ctx, s, args[0])
 				if err != nil {

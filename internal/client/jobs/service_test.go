@@ -28,6 +28,7 @@ import (
 const (
 	testLinesJob models.JobType = "test_lines" // writes numbered lines with pauses
 	testBlockJob models.JobType = "test_block" // blocks until ctx ends
+	testFailJob  models.JobType = "test_fail"  // writes a line and fails
 )
 
 func init() {
@@ -46,6 +47,10 @@ func init() {
 		fmt.Fprintln(rc.Log, "waiting")
 		<-ctx.Done()
 		return ctx.Err()
+	})
+	register(testFailJob, func(ctx context.Context, rc RunContext) error {
+		fmt.Fprintln(rc.Log, "solving")
+		return errors.New("no candidates for nope")
 	})
 }
 
@@ -375,6 +380,62 @@ func TestFollowLogsPollsOtherProcess(t *testing.T) {
 	}
 }
 
+// TestFollowLogsWaitsForStoppingJob: a job cancelled from another process
+// gets its row marked cancelled before its runner saved the cleanup log;
+// the follower keeps going until the runner wrote the final cancel line.
+func TestFollowLogsWaitsForStoppingJob(t *testing.T) {
+	h := newHarness(t, true)
+	ctx := context.Background()
+	p := h.project(t, "p")
+	j := h.job(t, p, models.JobTypeInstallVersion, models.JobStatusRunning, time.Now(), nil)
+	h.db.Model(&models.Job{}).Where("id = ?", j.ID).Update("logs", "downloading\n")
+	if _, err := service.NewJobService(h.db, true).CancelActive(j.ID); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		h.db.Model(&models.Job{}).Where("id = ?", j.ID).Updates(map[string]any{
+			"completed_at": time.Now(),
+			"logs":         "downloading\nRemoving the partly installed environment\n\n" + worker.CancelledLogLine + "\n",
+		})
+	}()
+	var got strings.Builder
+	final, err := h.svc.FollowLogs(ctx, j.ID, func(chunk string) error {
+		got.WriteString(chunk)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(got.String(), "partly installed environment\n\n"+worker.CancelledLogLine+"\n") || final.Status != models.JobStatusCancelled {
+		t.Fatalf("followed %q (%s)", got.String(), final.Status)
+	}
+}
+
+func TestStillStopping(t *testing.T) {
+	now := time.Now()
+	started := now.Add(-time.Minute)
+	recent := now.Add(-time.Second)
+	old := now.Add(-time.Hour)
+	cases := []struct {
+		name string
+		job  models.Job
+		want bool
+	}{
+		{"running", models.Job{Status: models.JobStatusRunning, StartedAt: &started}, false},
+		{"cancelled while queued", models.Job{Status: models.JobStatusCancelled, CompletedAt: &recent}, false},
+		{"cancel requested, runner stopping", models.Job{Status: models.JobStatusCancelled, StartedAt: &started, CompletedAt: &recent, Logs: "x\n"}, true},
+		{"runner finished", models.Job{Status: models.JobStatusCancelled, StartedAt: &started, CompletedAt: &recent, Logs: "x\n\n" + worker.CancelledLogLine + "\n"}, false},
+		{"runner gone", models.Job{Status: models.JobStatusCancelled, StartedAt: &started, CompletedAt: &old, Logs: "x\n"}, false},
+		{"failed", models.Job{Status: models.JobStatusFailed, StartedAt: &started, CompletedAt: &recent}, false},
+	}
+	for _, c := range cases {
+		if got := stillStopping(c.job, now); got != c.want {
+			t.Errorf("%s: stillStopping = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 // TestInlineJobCancelledFromAnotherProcess: a CLI inline job flushes its
 // log while running and stops when its row is cancelled (Jobs page or
 // "nebi job cancel" in another terminal).
@@ -441,8 +502,19 @@ func TestInlineJobOutcomes(t *testing.T) {
 	}
 	var stored models.Job
 	h.db.First(&stored, "id = ?", j.ID)
-	if stored.Status != models.JobStatusCancelled {
-		t.Fatalf("stored status %q", stored.Status)
+	if stored.Status != models.JobStatusCancelled || !strings.HasSuffix(stored.Logs, "[CANCELLED] Job cancelled\n") {
+		t.Fatalf("stored = %q %q", stored.Status, stored.Logs)
+	}
+
+	// A failed inline job keeps the reason at the end of its stored log.
+	j, err = h.svc.Submit(ctx, shared.JobRequest{ProjectID: p.ID, Type: testFailJob})
+	if err == nil || j.Status != models.JobStatusFailed {
+		t.Fatalf("inline failure = %+v, %v", j, err)
+	}
+	var failed models.Job
+	h.db.First(&failed, "id = ?", j.ID)
+	if !strings.HasSuffix(failed.Logs, "solving\n\n[ERROR] Job failed: no candidates for nope\n") {
+		t.Fatalf("stored failure log %q", failed.Logs)
 	}
 }
 

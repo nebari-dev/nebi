@@ -14,6 +14,7 @@ import { queryClient } from '@/lib/queryClient';
 import { queryKeys } from '@/lib/queryKeys';
 import {
   isActiveJob,
+  type JobDetail,
   type JobListFilter,
   type JobSummary,
 } from '@/types/contracts';
@@ -43,15 +44,42 @@ export const useJobs = (
       query.state.data?.some(isActiveJob) ? 2000 : (idlePollMs ?? false),
   });
 
-/** One job with its stored log. Polls every 2s while it is active. */
+/** Last line of a cancelled job's log once its runner stopped it. */
+const CANCELLED_LOG_LINE = '[CANCELLED] Job cancelled';
+/** How long a cancelled job may still be stopping (matches the backend). */
+const STOP_GRACE_MS = 120_000;
+
+/**
+ * True while a job cancelled from another process (e.g. "nebi job cancel"
+ * for an app job, or the Jobs page for a CLI job) is still stopping: the
+ * row already says cancelled but the runner has not saved its cleanup log
+ * and final line yet.
+ */
+export function isStoppingJob(
+  job: Pick<JobDetail, 'status' | 'started_at' | 'completed_at' | 'logs'>,
+  now = Date.now(),
+): boolean {
+  if (job.status !== 'cancelled' || !job.started_at || !job.completed_at) {
+    return false;
+  }
+  if (job.logs.trimEnd().endsWith(CANCELLED_LOG_LINE)) return false;
+  return now - Date.parse(job.completed_at) < STOP_GRACE_MS;
+}
+
+/**
+ * One job with its stored log. Polls every 2s while it is active, or while
+ * a cancelled job is still stopping (so its cleanup log shows up).
+ */
 export const useJob = (id: string) =>
   useQuery({
     queryKey: queryKeys.job(id),
     queryFn: () => jobsApi.get(id),
     enabled: !!id,
     retry: (count, err) => httpStatus(err) !== 404 && count < 1,
-    refetchInterval: (query) =>
-      query.state.data && isActiveJob(query.state.data) ? 2000 : false,
+    refetchInterval: (query) => {
+      const job = query.state.data;
+      return job && (isActiveJob(job) || isStoppingJob(job)) ? 2000 : false;
+    },
   });
 
 /** "Install version cancelled" (the toast after Cancel job). */

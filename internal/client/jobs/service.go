@@ -22,6 +22,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/queue"
 	"github.com/nebari-dev/nebi/internal/service"
+	"github.com/nebari-dev/nebi/internal/worker"
 	"gorm.io/gorm"
 )
 
@@ -297,6 +298,25 @@ func isActive(st models.JobStatus) bool {
 	return st == models.JobStatusPending || st == models.JobStatusRunning
 }
 
+// stopGrace bounds how long a cancelled job counts as still stopping.
+const stopGrace = 2 * time.Minute
+
+// stillStopping reports whether a started job was marked cancelled by
+// another process (the row says cancelled) while the process running it
+// is still stopping: its stored log does not end with the cancel line
+// yet. FollowLogs keeps following such a job so the cleanup output and
+// the final line are not lost. Bounded by stopGrace after the last status
+// write, in case the runner died.
+func stillStopping(job models.Job, now time.Time) bool {
+	if job.Status != models.JobStatusCancelled || job.StartedAt == nil || job.CompletedAt == nil {
+		return false
+	}
+	if strings.HasSuffix(strings.TrimRight(job.Logs, "\n"), worker.CancelledLogLine) {
+		return false
+	}
+	return now.Sub(*job.CompletedAt) < stopGrace
+}
+
 // ErrStreamClosed is returned by FollowLogs when emit fails (the reader
 // went away).
 var ErrStreamClosed = errors.New("log stream closed")
@@ -326,7 +346,7 @@ func (s *Service) FollowLogs(ctx context.Context, id uuid.UUID, emit func(chunk 
 	}
 
 	for {
-		if !isActive(row.Status) {
+		if !isActive(row.Status) && !stillStopping(row.Job, time.Now()) {
 			if err := send(row.Logs); err != nil {
 				return nil, err
 			}

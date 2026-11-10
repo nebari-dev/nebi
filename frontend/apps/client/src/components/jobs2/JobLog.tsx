@@ -143,7 +143,7 @@ export const JobLog = ({ job, log }: JobLogProps) => {
               className="size-1.5 rounded-full bg-success-foreground motion-safe:animate-pulse"
               aria-hidden
             />
-            Streaming live while the job runs
+            Streaming: job in progress
           </p>
         )}
       </div>

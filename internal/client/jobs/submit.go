@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/client/sdk/shared"
 	"github.com/nebari-dev/nebi/internal/models"
+	"github.com/nebari-dev/nebi/internal/worker"
 )
 
 // Submit records the job (origin=client) and enqueues it on the worker
@@ -95,7 +96,8 @@ func (s *Service) runInline(ctx context.Context, job *models.Job) (*models.Job, 
 
 	done := time.Now()
 	job.CompletedAt = &done
-	job.Logs = snapshot()
+	// The stored log ends with the outcome like the worker's jobs do (the
+	// terminal already shows the error, so only the row gets it).
 	switch {
 	case cancelled:
 		job.Status = models.JobStatusCancelled
@@ -103,11 +105,14 @@ func (s *Service) runInline(ctx context.Context, job *models.Job) (*models.Job, 
 		if runErr == nil {
 			runErr = context.Canceled
 		}
+		job.Logs = snapshot() + "\n" + worker.CancelledLogLine + "\n"
 	case runErr == nil:
 		job.Status = models.JobStatusCompleted
+		job.Logs = snapshot()
 	default:
 		job.Status = models.JobStatusFailed
 		job.Error = runErr.Error()
+		job.Logs = snapshot() + fmt.Sprintf("\n[ERROR] Job failed: %v\n", runErr)
 	}
 	// Persist even when ctx was cancelled.
 	db.WithContext(context.WithoutCancel(ctx)).Save(job)

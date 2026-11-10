@@ -54,6 +54,12 @@ const defaultCancelPollInterval = 2 * time.Second
 // ErrJobCancelled is the context cause for a job cancelled through CancelJob.
 var ErrJobCancelled = errors.New("job cancelled")
 
+// CancelledLogLine is the last line of a cancelled job's stored log once
+// the process that ran it has finished stopping it. A cancelled row whose
+// log does not end with it is still stopping (cancelled from another
+// process, which wrote the status before the runner saved its log).
+const CancelledLogLine = "[CANCELLED] Job cancelled"
+
 // Worker processes jobs from the queue
 type Worker struct {
 	dispatcher         Dispatcher
@@ -224,12 +230,14 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 		if !dispatched {
 			w.cleanupFailedJobArtifacts(job, ErrJobCancelled, logWriter)
 		}
+		// Through the log writer so the stored log (Jobs page, after a
+		// reload) ends with the same marker live viewers see.
+		fmt.Fprint(logWriter, "\n"+CancelledLogLine+"\n")
 		logMutex.Lock()
 		finalLogs := logBuf.String()
 		logMutex.Unlock()
 		w.logger.Info("Job cancelled", "job_id", job.ID)
 		w.jobSvc.MarkCancelled(job, finalLogs)
-		w.broker.Publish(job.ID, "\n[CANCELLED] Job cancelled\n")
 		return
 	}
 	cleanupCause := err
@@ -249,6 +257,14 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 		w.cleanupFailedJobArtifacts(job, cleanupCause, logWriter)
 	}
 
+	// The failure reason goes through the log writer (stored and
+	// streamed; the capped writer keeps room for it) so the stored log
+	// explains the failure: the job page says "Please see logs for
+	// details".
+	if err != nil {
+		fmt.Fprintf(logWriter, "\n[ERROR] Job failed: %v\n", err)
+	}
+
 	// Get final logs (thread-safe)
 	logMutex.Lock()
 	finalLogs := logBuf.String()
@@ -258,9 +274,6 @@ func (w *Worker) processJob(ctx context.Context, job *models.Job) {
 	if err != nil {
 		w.logger.Error("Job failed", "job_id", job.ID, "error", err)
 		w.jobSvc.MarkFailed(job, finalLogs, err.Error())
-		// Publish error to subscribers
-		errorMsg := fmt.Sprintf("\n[ERROR] Job failed: %v\n", err)
-		w.broker.Publish(job.ID, errorMsg)
 	} else {
 		w.logger.Info("Job completed", "job_id", job.ID)
 		w.jobSvc.MarkCompleted(job, finalLogs)

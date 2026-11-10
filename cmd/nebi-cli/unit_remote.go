@@ -13,17 +13,23 @@ package main
 //	nebi server pull <server-project-id> [--name N] [--path P] [--install]
 //	nebi project push <project> [--up-to N] [--json]
 //	nebi project pull-version <project> <version> [--json]
+//
+// `nebi status` (legacy status.go) also prints the SDK's version sync for
+// the tracked project in the current directory (projectVersionSync).
 
 import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"text/tabwriter"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/client"
 	"github.com/nebari-dev/nebi/internal/client/sdk/shared"
+	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/spf13/cobra"
 )
 
@@ -416,4 +422,107 @@ func plural(n int) string {
 		return ""
 	}
 	return "s"
+}
+
+// versionSync is a tracked project's version sync with the connected server,
+// computed by the client SDK (what the desktop app's project page shows).
+type versionSync struct {
+	InstalledVersion    *int   `json:"installed_version"`
+	LatestVersion       *int   `json:"latest_version"`
+	ServerURL           string `json:"server_url,omitempty"`
+	ServerLatestVersion *int   `json:"server_latest_version"`
+	UpdateAvailable     bool   `json:"update_available"`
+	// NotPushed are local versions the server does not have yet.
+	NotPushed []int `json:"not_pushed"`
+	// ServerOnly are server versions this machine does not have yet.
+	ServerOnly []int `json:"server_only"`
+}
+
+// projectVersionSync reads a project's version sync through the SDK. The
+// server part stays empty when no server is connected, the project is not
+// on it, or it cannot be reached.
+func projectVersionSync(ctx context.Context, projectID uuid.UUID) (*versionSync, error) {
+	stack, closeStack, err := client.OpenCLI(io.Discard)
+	if err != nil {
+		return nil, err
+	}
+	defer closeStack()
+	item, err := stack.SDK.Local.GetProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	out := &versionSync{
+		InstalledVersion:    item.InstalledVersion,
+		LatestVersion:       item.LatestVersion,
+		ServerLatestVersion: item.ServerLatestVersion,
+		UpdateAvailable:     item.UpdateAvailable,
+		NotPushed:           []int{},
+		ServerOnly:          []int{},
+	}
+	for _, r := range item.Remotes {
+		if r.Kind == models.RemoteKindServer {
+			out.ServerURL = r.URL
+		}
+	}
+	if out.LatestVersion == nil && out.ServerURL == "" {
+		// A folder tracked with 'nebi init' that has no versions yet.
+		return nil, nil
+	}
+	if out.ServerLatestVersion == nil {
+		return out, nil
+	}
+	versions, err := stack.SDK.Local.ListVersions(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range versions {
+		switch {
+		case v.ServerOnly:
+			out.ServerOnly = append(out.ServerOnly, v.Number)
+		case v.Number > *out.ServerLatestVersion:
+			out.NotPushed = append(out.NotPushed, v.Number)
+		}
+	}
+	slices.Sort(out.NotPushed)
+	slices.Sort(out.ServerOnly)
+	return out, nil
+}
+
+// printVersionSync writes the version part of `nebi status`.
+func printVersionSync(w io.Writer, name string, v *versionSync) {
+	installed := "not installed"
+	if v.InstalledVersion != nil {
+		installed = fmt.Sprintf("version %d installed", *v.InstalledVersion)
+	}
+	if v.LatestVersion != nil {
+		fmt.Fprintf(w, "Versions:  newest here is %d, %s\n", *v.LatestVersion, installed)
+	} else {
+		fmt.Fprintf(w, "Versions:  none yet, %s\n", installed)
+	}
+	if v.ServerURL == "" {
+		return
+	}
+	if v.ServerLatestVersion == nil {
+		fmt.Fprintf(w, "Sync:      %s (server versions unavailable: not connected or not reachable)\n", displayServerURL(v.ServerURL))
+		return
+	}
+	fmt.Fprintf(w, "Sync:      %s, newest on server is %d\n", displayServerURL(v.ServerURL), *v.ServerLatestVersion)
+	if len(v.NotPushed) == 0 && len(v.ServerOnly) == 0 {
+		fmt.Fprintln(w, "           This machine and the server are in sync.")
+	}
+	if len(v.NotPushed) > 0 {
+		fmt.Fprintf(w, "           %s only on this machine. Push with 'nebi project push %s'.\n",
+			capitalize(versionList(v.NotPushed))+isAre(v.NotPushed), name)
+	}
+	if len(v.ServerOnly) > 0 {
+		fmt.Fprintf(w, "           Update available: %s only on the server. Pull with 'nebi project pull-version %s %d'.\n",
+			versionList(v.ServerOnly)+isAre(v.ServerOnly), name, v.ServerOnly[len(v.ServerOnly)-1])
+	}
+}
+
+func isAre(ns []int) string {
+	if len(ns) == 1 {
+		return " is"
+	}
+	return " are"
 }

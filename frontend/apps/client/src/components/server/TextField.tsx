@@ -23,7 +23,7 @@ export const TextField = ({ label, error, ...input }: TextFieldProps) => {
         {...input}
       />
       {error && (
-        <p id={errorId} className="text-destructive-foreground text-sm">
+        <p id={errorId} className="text-destructive-foreground text-xs">
           {error}
         </p>
       )}

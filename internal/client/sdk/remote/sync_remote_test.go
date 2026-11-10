@@ -127,8 +127,15 @@ func TestPushPullAndSyncMarkers(t *testing.T) {
 		t.Fatalf("push up to 1: %+v", res)
 	}
 	items, _ = a.SDK.Remote.DecorateVersions(ctx, p.ID, a.baseItems(t, p.ID))
-	if marker(items, 2) != "newest_here" || marker(items, 1) != "" {
+	// Prototype InSync (before the push): the newest local version is
+	// "Newest here" and the server's newest one "Newest on server".
+	if marker(items, 2) != "newest_here" || marker(items, 1) != "newest_on_server" {
 		t.Fatalf("after partial push: %+v", items)
+	}
+	// The server has "latest" on 1, but the newer local-only 2 keeps it
+	// (and its own tags) until it is pushed.
+	if !slices.Equal(tagsOf(items, 2), []string{"latest", "stable"}) || len(tagsOf(items, 1)) != 0 {
+		t.Fatalf("local-only tags after partial push: v2 %v, v1 %v", tagsOf(items, 2), tagsOf(items, 1))
 	}
 	res, err = a.SDK.Remote.Push(ctx, p.ID)
 	if err != nil || !slices.Equal(res.PushedVersions, []int{2}) || res.ServerLatestVersion != 2 {
@@ -271,8 +278,17 @@ func TestPushPullAndSyncMarkers(t *testing.T) {
 
 	// A now sees version 4 as server-only and an update.
 	items, _ = a.SDK.Remote.DecorateVersions(ctx, p.ID, a.baseItems(t, p.ID))
-	if marker(items, 4) != "newest_on_server" || marker(items, 3) != "" {
+	// Prototype ServerAhead: the server-only version is "Newest on server"
+	// and carries "latest"; the newest local one is "Newest here" and no
+	// longer shows "latest".
+	if marker(items, 4) != "newest_on_server" || marker(items, 3) != "newest_here" {
 		t.Fatalf("a sees server ahead: %+v", items)
+	}
+	if !slices.Contains(tagsOf(items, 4), "latest") || slices.Contains(tagsOf(items, 3), "latest") {
+		t.Fatalf("server tags are authoritative: v4 %v, v3 %v", tagsOf(items, 4), tagsOf(items, 3))
+	}
+	if !slices.Contains(tagsOf(items, 2), "stable") {
+		t.Fatalf("tags the server keeps on a shared version stay: %v", tagsOf(items, 2))
 	}
 
 	details, err := a.SDK.Remote.GetRemoteDetails(ctx, serverID)
@@ -315,4 +331,14 @@ func TestPullCancelledBeforeVersionsArriveIsDiscarded(t *testing.T) {
 	if _, err := os.Stat(proj.Path); !os.IsNotExist(err) {
 		t.Fatalf("no folder should be left behind: %v", err)
 	}
+}
+
+// tagsOf returns the tags of version n in items.
+func tagsOf(items []shared.VersionItem, n int) []string {
+	for _, it := range items {
+		if it.Number == n {
+			return it.Tags
+		}
+	}
+	return nil
 }

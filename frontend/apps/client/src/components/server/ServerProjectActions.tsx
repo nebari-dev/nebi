@@ -74,7 +74,7 @@ export const ServerProjectActions = ({
           <ChevronDown aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuPortal>
-          <DropdownMenuContent align="end" className="min-w-44">
+          <DropdownMenuContent align="end">
             {!localId && !isPulling && (
               <DropdownMenuItem
                 disabled={busy || project.latest_version == null}

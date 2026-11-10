@@ -28,6 +28,9 @@ type statusResult struct {
 	TomlModified bool   `json:"toml_modified"`
 	LockModified bool   `json:"lock_modified"`
 	ServerSync   string `json:"server_sync,omitempty"`
+	// Versions is the version sync from the client SDK (installed and
+	// newest version, versions only here or only on the server).
+	Versions *versionSync `json:"versions,omitempty"`
 }
 
 var statusCmd = &cobra.Command{
@@ -35,8 +38,9 @@ var statusCmd = &cobra.Command{
 	Short: "Show project sync status",
 	Long: `Show the current project's tracking info and sync status with the server.
 
-Displays the project name, path, and origin info for the
-last push/pull operation.
+Displays the project name, path, its versions (installed, newest, and which
+versions are only on this machine or only on the connected server), and
+origin info for the last 'nebi push' / 'nebi pull'.
 
 If the server is reachable, checks whether the local files or server version
 have changed since the last sync.
@@ -78,8 +82,15 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	serverURL, _ := s.LoadServerURL()
 
+	// Version sync through the client SDK (best effort: legacy tracked
+	// folders without versions still get the origin status below).
+	versions, verr := projectVersionSync(cmd.Context(), project.ID)
+	if verr != nil {
+		versions = nil
+	}
+
 	if statusJSON {
-		return runStatusJSON(s, project, serverURL, cwd)
+		return runStatusJSON(s, project, serverURL, cwd, versions)
 	}
 
 	fmt.Fprintf(os.Stdout, "Project: %s\n", project.Name)
@@ -90,9 +101,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Fprintln(os.Stdout, "Server:    (not configured)")
 	}
+	if versions != nil {
+		printVersionSync(os.Stdout, project.Name, versions)
+	}
 
 	if project.OriginName == "" {
-		fmt.Fprintln(os.Stdout, "\nNo origin. Push or pull to set an origin.")
+		if versions == nil || versions.ServerURL == "" {
+			fmt.Fprintln(os.Stdout, "\nNo origin. Push or pull to set an origin.")
+		}
 		return nil
 	}
 
@@ -127,7 +143,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runStatusJSON(s *store.Store, project *store.LocalProject, serverURL, cwd string) error {
+func runStatusJSON(s *store.Store, project *store.LocalProject, serverURL, cwd string, versions *versionSync) error {
 	result := statusResult{
 		Project:      project.Name,
 		Path:         project.Path,
@@ -135,6 +151,7 @@ func runStatusJSON(s *store.Store, project *store.LocalProject, serverURL, cwd s
 		OriginName:   project.OriginName,
 		OriginTag:    project.OriginTag,
 		OriginAction: project.OriginAction,
+		Versions:     versions,
 	}
 
 	if project.OriginName == "" {

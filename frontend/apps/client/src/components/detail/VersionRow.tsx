@@ -10,7 +10,8 @@ import {
   TooltipTrigger,
 } from '@nebi/ui/components/ui/tooltip';
 import { cn } from '@nebi/ui/lib/utils';
-import { Check, Package } from 'lucide-react';
+import { Check, PackageCheck } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import type { VersionItem } from '@/types/contracts';
 import { publishedReferences } from './format';
 import { SyncMarkerLabel } from './SyncMarker';
@@ -21,8 +22,14 @@ const versionRowClass = cn(
   'motion-safe:transition-[background-color,border-color] motion-safe:duration-(--duration-fast) motion-safe:ease-(--ease-standard)',
 );
 
+/** How long a just-created row stays lit, then how long it fades. */
+const LIT_MS = 600;
+const FADE_MS = 1200;
+
 export interface VersionRowProps {
   version: VersionItem;
+  /** The version just appeared (e.g. created): the row lights up briefly. */
+  justCreated?: boolean;
   selected: boolean;
   installing: boolean;
   onSelect: () => void;
@@ -30,10 +37,22 @@ export interface VersionRowProps {
 
 export const VersionRow = ({
   version,
+  justCreated = false,
   selected,
   installing,
   onSelect,
 }: VersionRowProps) => {
+  const [glow, setGlow] = useState<'lit' | 'fading' | null>(() =>
+    justCreated ? 'lit' : null,
+  );
+  useEffect(() => {
+    if (!glow) return;
+    const t = window.setTimeout(
+      () => setGlow(glow === 'lit' ? 'fading' : null),
+      glow === 'lit' ? LIT_MS : FADE_MS,
+    );
+    return () => window.clearTimeout(t);
+  }, [glow]);
   const [firstTag, ...moreTags] = version.tags;
   const crowded =
     (version.installed || installing) &&
@@ -45,9 +64,13 @@ export const VersionRow = ({
       type="button"
       onClick={onSelect}
       aria-current={selected ? 'true' : undefined}
+      data-just-created={glow ? '' : undefined}
       className={cn(
         versionRowClass,
         selected && 'border-border-strong bg-muted',
+        glow === 'lit' && 'border-primary/40 bg-primary/10 hover:bg-primary/10',
+        glow === 'fading' &&
+          'motion-safe:duration-[1200ms] motion-safe:ease-out',
       )}
     >
       <span className="flex min-h-5 w-full items-center gap-1.5">
@@ -87,7 +110,7 @@ export const VersionRow = ({
           {refs.length > 0 && (
             <Tooltip>
               <TooltipTrigger render={<Badge variant="secondary" />}>
-                <Package />
+                <PackageCheck />
                 Published
               </TooltipTrigger>
               <TooltipContent>Published to {refs.join(', ')}</TooltipContent>

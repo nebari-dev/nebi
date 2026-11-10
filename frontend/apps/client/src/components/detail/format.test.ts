@@ -11,6 +11,7 @@ import {
   formatBytes,
   formatVersionDate,
   groupVersionsByAge,
+  installErrorText,
   pickVersion,
   pixiPlatformFor,
   platformLabel,
@@ -140,5 +141,22 @@ describe('version filters', () => {
       'not_pushed',
       'server_only',
     ]);
+  });
+});
+
+describe('installErrorText', () => {
+  it('drops the job error prefix and ends with a full stop', () => {
+    expect(
+      installErrorText(
+        "version 3 couldn't install: failed to fetch numpy-2.1.3.conda",
+        3,
+      ),
+    ).toBe('Failed to fetch numpy-2.1.3.conda.');
+    expect(installErrorText('A package download failed.', 3)).toBe(
+      'A package download failed.',
+    );
+    expect(installErrorText(undefined, 3)).toBe(
+      'The install job failed. View the job for its log.',
+    );
   });
 });

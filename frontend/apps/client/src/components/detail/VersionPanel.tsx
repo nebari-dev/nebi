@@ -19,7 +19,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@nebi/ui/components/ui/tooltip';
-import { Check, GitCompare, Package, Plus, Server, Upload } from 'lucide-react';
+import {
+  Check,
+  GitCompare,
+  PackageCheck,
+  Plus,
+  Server,
+  Upload,
+} from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PublishDialog } from '@/components/publish/PublishDialog';
@@ -97,7 +104,7 @@ export const VersionPanel = ({
             ))}
             {version.published.length > 0 && (
               <Badge variant="secondary">
-                <Package />
+                <PackageCheck />
                 Published
               </Badge>
             )}
@@ -269,7 +276,7 @@ const VersionMeta = ({
           <Dot />
           {refs.length === 1 ? (
             <span className="flex items-center gap-1.5">
-              <Package className="size-3.5" aria-hidden />
+              <PackageCheck className="size-3.5" aria-hidden />
               Published to {refs[0]}
             </span>
           ) : (
@@ -282,7 +289,7 @@ const VersionMeta = ({
                   />
                 }
               >
-                <Package className="size-3.5" aria-hidden />
+                <PackageCheck className="size-3.5" aria-hidden />
                 Published to {refs.length} registries
               </TooltipTrigger>
               <TooltipContent>{refs.join(', ')}</TooltipContent>

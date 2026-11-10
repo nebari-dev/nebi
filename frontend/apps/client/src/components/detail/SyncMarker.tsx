@@ -42,14 +42,14 @@ export const SyncMarkerLabel = ({
         )}
         {marker === 'in_sync' && (
           <span className="flex items-center" aria-hidden>
-            <Laptop className="size-3.5 shrink-0" />
-            <Server className="size-3.5 shrink-0" />
+            <Laptop data-sync-part="laptop" className="size-3.5 shrink-0" />
+            <Server data-sync-part="server" className="size-3.5 shrink-0" />
           </span>
         )}
         {compact ? (
           <span className="sr-only">{label}</span>
         ) : (
-          <span>{label}</span>
+          <span data-sync-part="label">{label}</span>
         )}
       </TooltipTrigger>
       <TooltipContent>{SYNC_MARKER_TIPS[marker]}</TooltipContent>

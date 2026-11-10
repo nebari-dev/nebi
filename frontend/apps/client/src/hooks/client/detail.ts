@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { create } from 'zustand';
 import { clientApiError } from '@/api/client/base';
 import { detailApi } from '@/api/client/detail';
+import { installErrorText } from '@/components/detail/format';
 import { useJob } from '@/hooks/client/jobs';
 import { queryKeys } from '@/lib/queryKeys';
 import {
@@ -202,7 +203,7 @@ export function useProjectInstallState(
       toast.add({
         type: 'error',
         title: `Version ${version} couldn’t install`,
-        description: followed.error || undefined,
+        description: installErrorText(followed.error, version),
         actionProps: {
           children: 'View job',
           onClick: () => onViewJobRef.current?.(followed.id),

@@ -193,7 +193,8 @@ describe('ProjectDetailPage', () => {
           ...mockJobDetail,
           version_number: 5,
           status: 'failed',
-          error: 'A package download failed while installing.',
+          error:
+            "version 5 couldn't install: failed to fetch numpy-2.1.3.conda",
         }),
       ),
     );
@@ -202,9 +203,8 @@ describe('ProjectDetailPage', () => {
     await user.click(within(panel).getByRole('button', { name: /Install/ }));
     const alert = await within(panel).findByRole('alert');
     expect(alert).toHaveTextContent('Version 5 couldn’t install');
-    expect(alert).toHaveTextContent(
-      'A package download failed while installing.',
-    );
+    expect(alert).toHaveTextContent('Failed to fetch numpy-2.1.3.conda.');
+    expect(alert).not.toHaveTextContent('version 5 couldn');
     // The alert plus the error toast.
     await waitFor(() =>
       expect(
@@ -262,6 +262,12 @@ describe('ProjectDetailPage', () => {
     expect(dialog).toHaveTextContent(
       'Nebi remembers version 7 so you can install it again.',
     );
+    expect(
+      within(dialog).getByRole('button', { name: 'Close' }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: 'Cancel' }),
+    ).toHaveAttribute('data-variant', 'secondary');
     await user.click(within(dialog).getByRole('button', { name: 'Uninstall' }));
     await waitFor(() => expect(uninstalled).toBe(true));
     expect(
@@ -471,6 +477,8 @@ describe('ProjectDetailPage', () => {
     renderDetail();
     const share = await screen.findByRole('button', { name: /Share/ });
     expect(share).toBeDisabled();
+    // The tour skips Share when there is no server to share on.
+    expect(share).not.toHaveAttribute('data-tour');
     const panel = await screen.findByRole('region', { name: 'Version 7' });
     expect(
       within(panel).queryByRole('button', { name: /Push to server/ }),

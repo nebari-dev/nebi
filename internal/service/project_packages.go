@@ -184,22 +184,22 @@ func (s *ProjectService) SyncPackagesFromProject(ctx context.Context, project *m
 		return err
 	}
 
-	// Clear existing packages
-	s.db.Where("project_id = ?", project.ID).Delete(&models.Package{})
-
-	// Insert new packages
-	for _, pkg := range pkgs {
-		dbPkg := models.Package{
-			ProjectID: project.ID,
-			Name:      pkg.Name,
-			Version:   pkg.Version,
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("project_id = ?", project.ID).Delete(&models.Package{}).Error; err != nil {
+			return fmt.Errorf("clear packages: %w", err)
 		}
-		if err := s.db.Create(&dbPkg).Error; err != nil {
-			slog.Error("Failed to save package", "package", pkg.Name, "error", err)
+		for _, pkg := range pkgs {
+			dbPkg := models.Package{
+				ProjectID: project.ID,
+				Name:      pkg.Name,
+				Version:   pkg.Version,
+			}
+			if err := tx.Create(&dbPkg).Error; err != nil {
+				return fmt.Errorf("save package %q: %w", pkg.Name, err)
+			}
 		}
-	}
-
-	return nil
+		return nil
+	})
 }
 
 // SaveInstalledPackages records newly installed packages in the DB.

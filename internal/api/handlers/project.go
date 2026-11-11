@@ -376,6 +376,7 @@ func (h *ProjectHandler) ListTags(c *gin.Context) {
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /projects/{id}/packages [post]
 func (h *ProjectHandler) InstallPackages(c *gin.Context) {
@@ -405,6 +406,7 @@ func (h *ProjectHandler) InstallPackages(c *gin.Context) {
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /projects/{id}/packages/{package} [delete]
 func (h *ProjectHandler) RemovePackages(c *gin.Context) {

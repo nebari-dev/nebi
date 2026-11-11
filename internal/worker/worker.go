@@ -483,6 +483,9 @@ func (w *Worker) executeJob(ctx context.Context, job *models.Job, logWriter io.W
 			return err
 		}
 
+		// Auto-reinstall measures size with this struct; keep its later save
+		// from restoring the failed status loaded before a successful retry.
+		project.Status = models.ProjectStatusReady
 		w.svc.SetProjectStatus(project.ID, models.ProjectStatusReady)
 
 		if err := w.maybeReinstallEnv(ctx, project, wasInstalled, logWriter); err != nil {
@@ -571,15 +574,8 @@ func (w *Worker) createVersionSnapshot(ctx context.Context, project *models.Proj
 		return nil
 	}
 	w.logger.Error("Failed to create version snapshot", "project_id", project.ID, "job_id", jobID, "error", err)
-
-	var validationErr *service.ValidationError
-	if errors.As(err, &validationErr) {
-		return err
-	}
-	if isFatalResourceFailure(ctx, err) {
-		return err
-	}
-	return nil
+	w.recordSkippedReinstall(project, err)
+	return err
 }
 
 func (w *Worker) syncPackagesFromProject(ctx context.Context, project *models.Project, logMessage string) error {
@@ -588,15 +584,20 @@ func (w *Worker) syncPackagesFromProject(ctx context.Context, project *models.Pr
 		return nil
 	}
 	w.logger.Error(logMessage, "error", err)
+	w.recordSkippedReinstall(project, err)
+	return err
+}
 
-	var validationErr *service.ValidationError
-	if errors.As(err, &validationErr) {
-		return err
+// recordSkippedReinstall exposes a retry when postprocessing stops a job after
+// its lockfile changed but before an existing local runtime could be updated.
+func (w *Worker) recordSkippedReinstall(project *models.Project, cause error) {
+	if !w.svc.IsLocal() || !w.executor.IsEnvInstalled(project) {
+		return
 	}
-	if isFatalResourceFailure(ctx, err) {
-		return err
+	message := fmt.Sprintf("Environment needs reinstallation because the project change could not finish: %v", cause)
+	if err := w.jobSvc.RecordFailedEnvInstall(project.ID, message); err != nil {
+		w.logger.Error("Failed to record skipped environment reinstall", "project_id", project.ID, "error", err)
 	}
-	return nil
 }
 
 // maybeReinstallEnv reinstalls the environment after a lockfile-changing
@@ -624,6 +625,9 @@ func (w *Worker) maybeReinstallEnv(ctx context.Context, project *models.Project,
 			return &autoReinstallFailureError{err: err}
 		}
 		return nil
+	}
+	if err := w.jobSvc.RecordEnvInstallRecovery(project.ID); err != nil {
+		w.logger.Error("Failed to record successful environment reinstall", "project_id", project.ID, "error", err)
 	}
 	w.svc.UpdateProjectSize(project)
 	return nil

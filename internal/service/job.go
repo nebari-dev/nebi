@@ -153,11 +153,9 @@ func (s *JobService) MarkPanicked(job *models.Job, panicMsg string) {
 }
 
 // RecordFailedEnvInstall writes an already-failed env-install job for a
-// project whose environment was reinstalled outside the explicit
-// install flow (e.g. the worker's auto-reinstall after an update or
-// rollback). It exists so that failure surfaces through the same
-// install_status derivation an explicit `nebi project install` failure
-// would, without ever failing the job that triggered the reinstall.
+// project whose automatic reinstall failed or was skipped after a lockfile
+// change. It surfaces the need for a retry through install_status, including
+// when the old environment is still present on disk.
 func (s *JobService) RecordFailedEnvInstall(projectID uuid.UUID, errMsg string) error {
 	now := time.Now()
 	job := &models.Job{
@@ -168,6 +166,30 @@ func (s *JobService) RecordFailedEnvInstall(projectID uuid.UUID, errMsg string) 
 		CompletedAt: &now,
 	}
 	return s.db.Create(job).Error
+}
+
+// RecordEnvInstallRecovery records completion when an automatic reinstall
+// recovers a previous failed or skipped reinstall.
+func (s *JobService) RecordEnvInstallRecovery(projectID uuid.UUID) error {
+	var latest models.Job
+	if err := s.db.Where("project_id = ? AND type IN ?", projectID,
+		[]models.JobType{models.JobTypeEnvInstall, models.JobTypeEnvUninstall}).
+		Order("created_at DESC").First(&latest).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil
+		}
+		return err
+	}
+	if latest.Type != models.JobTypeEnvInstall || latest.Status != models.JobStatusFailed {
+		return nil
+	}
+	now := time.Now()
+	return s.db.Create(&models.Job{
+		ProjectID:   projectID,
+		Type:        models.JobTypeEnvInstall,
+		Status:      models.JobStatusCompleted,
+		CompletedAt: &now,
+	}).Error
 }
 
 func (s *JobService) RecordJobTimeout() error {

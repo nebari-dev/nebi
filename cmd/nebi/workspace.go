@@ -309,7 +309,7 @@ func runWorkspaceTags(cmd *cobra.Command, args []string) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "TAG\tVERSION\tCREATED\tUPDATED")
+	fmt.Fprintln(w, "TAG\tSNAPSHOT\tCREATED\tUPDATED")
 	for _, t := range tags {
 		created := formatTimestamp(t.CreatedAt)
 		updated := ""

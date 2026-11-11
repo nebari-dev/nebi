@@ -195,7 +195,7 @@ func runWorkspaceVersionListLocal(name string) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "VERSION\tCREATED\tHASH\tDESCRIPTION")
+	fmt.Fprintln(w, "SNAPSHOT\tCREATED\tHASH\tDESCRIPTION")
 	for _, v := range versions {
 		hash := v.ContentHash
 		if len(hash) > 12 {
@@ -243,7 +243,7 @@ func runWorkspaceVersionListRemote(name string) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "VERSION\tCREATED")
+	fmt.Fprintln(w, "SNAPSHOT\tCREATED")
 	for _, v := range versions {
 		fmt.Fprintf(w, "%d\t%s\n", v.VersionNumber, formatTimestamp(v.CreatedAt))
 	}
@@ -440,7 +440,7 @@ func runWorkspaceVersionRollbackLocal(name string, versionNum int) error {
 	}
 
 	fmt.Fprintf(os.Stderr,
-		"Rolled back %s to version %d (now version %d). Run 'pixi install' to apply.\n",
+		"Rolled back %s to snapshot %d (now snapshot %d). Run 'pixi install' to apply.\n",
 		ws.Name, versionNum, v.VersionNumber,
 	)
 	return nil

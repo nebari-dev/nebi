@@ -6,7 +6,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/audit"
 	"github.com/nebari-dev/nebi/internal/models"
-	"gorm.io/gorm"
 )
 
 // InstallProjectEnv enqueues a job that materializes the project
@@ -57,22 +56,10 @@ func (s *ProjectService) submitEnvJob(ctx context.Context, projectID string, use
 		return nil, &ValidationError{Message: "environment install is only available in local mode"}
 	}
 
-	validations := []lockedJobValidation{func(tx *gorm.DB, project *models.Project) error {
-		var active int64
-		err := tx.Model(&models.Job{}).
-			Where("project_id = ? AND type IN ? AND status IN ?",
-				project.ID,
-				[]models.JobType{models.JobTypeEnvInstall, models.JobTypeEnvUninstall},
-				[]models.JobStatus{models.JobStatusPending, models.JobStatusRunning}).
-			Count(&active).Error
-		if err != nil {
-			return err
-		}
-		if active > 0 {
-			return &ConflictError{Message: "an install or uninstall is already in progress for this project"}
-		}
-		return nil
-	}}
+	validations := []lockedJobValidation{
+		rejectActiveProjectJobs("an install or uninstall is already in progress for this project",
+			models.JobTypeEnvInstall, models.JobTypeEnvUninstall),
+	}
 	if jobType == models.JobTypeEnvInstall {
 		validations = append(validations, s.validateProjectManifestAndLockForJob)
 	}

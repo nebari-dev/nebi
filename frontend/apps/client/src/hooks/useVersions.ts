@@ -7,6 +7,7 @@ export const useVersions = (environmentId: string) => {
     queryKey: ['projects', environmentId, 'versions'],
     queryFn: () => projectsApi.listVersions(environmentId),
     enabled: !!environmentId,
+    refetchInterval: 30_000,
   });
 };
 

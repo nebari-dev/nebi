@@ -81,6 +81,8 @@ type legacyRow struct {
 	ID             string
 	Name           string
 	Path           string
+	Status         string
+	Source         string
 	CreatedAt      *time.Time
 	Deleted        bool
 	OriginID       string
@@ -100,8 +102,9 @@ func (r legacyRow) hasOrigin() bool {
 // table into client_projects, once. It runs in one transaction and records
 // itself in client_migrations, so running it again does nothing.
 //
-//   - Soft-deleted rows are dropped. Status, Source, SizeBytes and the other
-//     server columns are not copied.
+//   - Soft-deleted rows, rows whose status is "deleting" and rows with an
+//     invalid ID are dropped; the last two are reported. Status, Source,
+//     SizeBytes and the other server columns are not copied.
 //   - IDs and creation times are kept.
 //   - Rows are taken oldest first. A name already used (ignoring case) gets
 //     a "-2", "-3", ... suffix; each rename is logged and reported.
@@ -109,7 +112,8 @@ func (r legacyRow) hasOrigin() bool {
 //     renamed before they can be pushed or published.
 //   - A row whose directory is already used by an earlier row is dropped
 //     and reported, since Path is unique.
-//   - ManagedDir is true only for paths under OldProjectsDir.
+//   - ManagedDir is true only for paths under OldProjectsDir whose source
+//     is not "local" (a directory the user chose).
 //   - Origin* values are kept in legacy_project_origins.
 //
 // Versions and tags are migrated by the version CRUD issue, after this. The
@@ -170,7 +174,7 @@ func readLegacyRows(tx *gorm.DB) ([]legacyRow, error) {
 		}
 		return fmt.Sprintf("'' AS %s", name)
 	}
-	cols := []string{"id", "COALESCE(name, '') AS name", col("path")}
+	cols := []string{"id", "COALESCE(name, '') AS name", col("path"), col("status"), col("source")}
 	order := "rowid ASC"
 	if m.HasColumn("projects", "created_at") {
 		cols = append(cols, "created_at")
@@ -214,11 +218,20 @@ func copyLegacyRows(tx *gorm.DB, rows []legacyRow, oldDir string, report *Legacy
 	for _, r := range rows {
 		id, err := uuid.Parse(r.ID)
 		if err != nil {
-			return fmt.Errorf("old project %q has an invalid id %q: %w", r.Name, r.ID, err)
+			reason := fmt.Sprintf("invalid id %q", r.ID)
+			report.Dropped = append(report.Dropped, LegacyDrop{Name: r.Name, Path: r.Path, Reason: reason})
+			logf("dropped project %q: %s", r.Name, reason)
+			continue
 		}
 		if r.Deleted {
 			report.SkippedDeleted++
 			logf("skipped deleted project %s %q", id, r.Name)
+			continue
+		}
+		if r.Status == legacyStatusDeleting {
+			// A delete that never finished: the user asked for it to go.
+			report.Dropped = append(report.Dropped, LegacyDrop{ProjectID: id, Name: r.Name, Path: r.Path, Reason: "was being deleted"})
+			logf("dropped project %s %q: it was being deleted", id, r.Name)
 			continue
 		}
 		if ids[id] {
@@ -248,7 +261,7 @@ func copyLegacyRows(tx *gorm.DB, rows []legacyRow, oldDir string, report *Legacy
 			ID:         id,
 			Name:       name,
 			Path:       dir,
-			ManagedDir: oldDir != "" && isWithin(oldDir, dir),
+			ManagedDir: oldDir != "" && isWithin(oldDir, dir) && r.Source != legacySourceLocal,
 		}
 		if r.CreatedAt != nil {
 			p.CreatedAt = *r.CreatedAt
@@ -279,6 +292,14 @@ func copyLegacyRows(tx *gorm.DB, rows []legacyRow, oldDir string, report *Legacy
 	}
 	return nil
 }
+
+// Old column values the migration acts on.
+const (
+	// legacyStatusDeleting marks a row whose delete was started.
+	legacyStatusDeleting = "deleting"
+	// legacySourceLocal marks a project in a directory the user chose.
+	legacySourceLocal = "local"
+)
 
 // legacyPath returns the clean, symlink-resolved directory of an old row.
 // Rows without an absolute path live where the old local executor put them:

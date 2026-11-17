@@ -35,6 +35,7 @@ type legacyFixture struct {
 	created time.Time
 	deleted bool
 	origin  string // origin_name; empty for none
+	managed bool   // source "managed" (nebi placed it); else "local"
 }
 
 func insertLegacy(t *testing.T, db *gorm.DB, withOrigins bool, rows ...legacyFixture) {
@@ -45,9 +46,13 @@ func insertLegacy(t *testing.T, db *gorm.DB, withOrigins bool, rows ...legacyFix
 			deleted = r.created.Add(time.Hour)
 		}
 		var err error
+		source := "local"
+		if r.managed {
+			source = "managed"
+		}
 		if withOrigins {
-			err = db.Exec("INSERT INTO projects (id, name, status, path, source, size_bytes, origin_name, origin_tag, created_at, updated_at, deleted_at) VALUES (?, ?, 'ready', ?, 'local', 123, ?, ?, ?, ?, ?)",
-				r.id.String(), r.name, r.path, r.origin, originTag(r.origin), r.created, r.created, deleted).Error
+			err = db.Exec("INSERT INTO projects (id, name, status, path, source, size_bytes, origin_name, origin_tag, created_at, updated_at, deleted_at) VALUES (?, ?, 'ready', ?, ?, 123, ?, ?, ?, ?, ?)",
+				r.id.String(), r.name, r.path, source, r.origin, originTag(r.origin), r.created, r.created, deleted).Error
 		} else {
 			err = db.Exec("INSERT INTO projects (id, name, status, path, created_at, updated_at, deleted_at) VALUES (?, ?, 'ready', ?, ?, ?, ?)",
 				r.id.String(), r.name, r.path, r.created, r.created, deleted).Error
@@ -87,15 +92,15 @@ func TestMigrateLegacyProjects(t *testing.T) {
 	userDir := t.TempDir()
 	t0 := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
 
-	a := legacyFixture{id: uuid.New(), name: "demo", created: t0}
+	a := legacyFixture{id: uuid.New(), name: "demo", created: t0, managed: true}
 	a.path = filepath.Join(oldDir, "demo-"+a.id.String())
 	b := legacyFixture{id: uuid.New(), name: "demo", path: filepath.Join(userDir, "demo"), created: t0.Add(1 * time.Hour)}
 	c := legacyFixture{id: uuid.New(), name: "Demo", path: filepath.Join(userDir, "demo-upper"), created: t0.Add(2 * time.Hour)}
 	d := legacyFixture{id: uuid.New(), name: "old", path: filepath.Join(userDir, "old"), created: t0.Add(3 * time.Hour), deleted: true}
-	e := legacyFixture{id: uuid.New(), name: "My Env", path: "", created: t0.Add(4 * time.Hour)}
+	e := legacyFixture{id: uuid.New(), name: "My Env", path: "", created: t0.Add(4 * time.Hour), managed: true}
 	f := legacyFixture{id: uuid.New(), name: "copy", path: b.path, created: t0.Add(5 * time.Hour)}
 	g := legacyFixture{id: uuid.New(), name: "synced", path: filepath.Join(userDir, "synced"), created: t0.Add(6 * time.Hour), origin: "team/synced"}
-	h := legacyFixture{id: uuid.New(), name: "Rel Path!", path: "rel/dir", created: t0.Add(7 * time.Hour)}
+	h := legacyFixture{id: uuid.New(), name: "Rel Path!", path: "rel/dir", created: t0.Add(7 * time.Hour), managed: true}
 	// Inserted out of order: the migration must sort by created_at.
 	insertLegacy(t, db, true, g, c, a, f, d, b, e, h)
 
@@ -295,5 +300,55 @@ func TestLegacyDirNameMatchesOldExecutor(t *testing.T) {
 		if got := legacyDirName(in); got != want {
 			t.Errorf("legacyDirName(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestMigrateLegacyProjectsEdgeRows(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Exec(legacyCLISchema).Error; err != nil {
+		t.Fatal(err)
+	}
+	oldDir := filepath.Join(t.TempDir(), "projects")
+	t0 := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	deleting, userChosen, managed := uuid.New(), uuid.New(), uuid.New()
+	rows := []struct {
+		id, name, status, source, path string
+	}{
+		{"not-a-uuid", "broken", "ready", "managed", filepath.Join(oldDir, "broken")},
+		{deleting.String(), "half-gone", "deleting", "managed", filepath.Join(oldDir, "half-gone")},
+		{userChosen.String(), "mine", "ready", "local", filepath.Join(oldDir, "mine")},
+		{managed.String(), "theirs", "ready", "managed", filepath.Join(oldDir, "theirs")},
+	}
+	for i, r := range rows {
+		at := t0.Add(time.Duration(i) * time.Hour)
+		if err := db.Exec("INSERT INTO projects (id, name, status, source, path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			r.id, r.name, r.status, r.source, r.path, at, at).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	report, err := MigrateLegacyProjects(context.Background(), db, LegacyMigrationOptions{OldProjectsDir: oldDir})
+	if err != nil {
+		t.Fatalf("an invalid id must not abort the migration: %v", err)
+	}
+	got := clientProjects(t, db)
+	if len(got) != 2 || report.Migrated != 2 {
+		t.Fatalf("want 2 migrated, got %d rows, report %+v", len(got), report)
+	}
+	if _, ok := got[deleting]; ok {
+		t.Error("a row that was being deleted must be dropped")
+	}
+	if got[userChosen].ManagedDir {
+		t.Error("a source=local directory must not be managed, even under the old projects dir")
+	}
+	if !got[managed].ManagedDir {
+		t.Error("a managed directory under the old projects dir stays managed")
+	}
+	reasons := map[string]bool{}
+	for _, d := range report.Dropped {
+		reasons[d.Name] = true
+	}
+	if len(report.Dropped) != 2 || !reasons["broken"] || !reasons["half-gone"] {
+		t.Errorf("dropped = %+v", report.Dropped)
 	}
 }

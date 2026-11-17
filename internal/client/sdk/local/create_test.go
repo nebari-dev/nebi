@@ -481,12 +481,11 @@ func TestWriteNewFileNeverOverwrites(t *testing.T) {
 func TestNameIsReusableAfterDelete(t *testing.T) {
 	h := newHarness(t)
 	p, _ := h.mustCreate(specRequest("reuse"))
-	if _, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{DeleteFiles: true}); err != nil {
+	job, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{DeleteFiles: true})
+	if err != nil {
 		t.Fatal(err)
 	}
-	// Wait for the file removal job before creating in the same place.
-	list, _ := h.runner.ProjectJobs(context.Background(), p.ID)
-	h.wait(&list[len(list)-1])
+	h.wait(job)
 	if _, job := h.mustCreate(specRequest("reuse")); job.Status != jobs.StatusSucceeded {
 		t.Fatalf("recreate: %+v", job)
 	}

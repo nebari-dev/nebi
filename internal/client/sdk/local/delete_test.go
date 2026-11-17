@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -78,6 +79,94 @@ func TestDeleteManagedProjectWithFiles(t *testing.T) {
 	}
 	if !exists(h.resolved(h.projectsDir)) {
 		t.Fatal("only the project directory may be removed, not the projects dir")
+	}
+	if left := trashEntries(t, filepath.Dir(p.Path)); len(left) != 0 {
+		t.Fatalf("the moved-aside directory must be removed: %v", left)
+	}
+}
+
+// trashEntries lists the moved-aside directories in dir.
+func trashEntries(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".deleting-") {
+			out = append(out, e.Name())
+		}
+	}
+	return out
+}
+
+// gatedDeletes holds delete_files jobs until gate is closed.
+type gatedDeletes struct {
+	*jobs.Memory
+	gate chan struct{}
+}
+
+func (g gatedDeletes) Submit(ctx context.Context, id uuid.UUID, typ jobs.Type, run jobs.Func) (*jobs.Job, error) {
+	if typ == jobs.TypeDeleteFiles {
+		inner := run
+		run = func(ctx context.Context) error {
+			<-g.gate
+			return inner(ctx)
+		}
+	}
+	return g.Memory.Submit(ctx, id, typ, run)
+}
+
+func TestRecreateWhileFilesAreBeingRemoved(t *testing.T) {
+	gate := make(chan struct{})
+	var runner *jobs.Memory
+	h := newHarness(t, func(o *Options) {
+		runner = o.Jobs.(*jobs.Memory)
+		o.Jobs = gatedDeletes{Memory: runner, gate: gate}
+	})
+	old, _ := h.mustCreate(specRequest("reuse"))
+	delJob, err := h.svc.DeleteProject(context.Background(), old.ID, DeleteProjectOptions{DeleteFiles: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exists(old.Path) {
+		t.Fatal("the path must be free as soon as DeleteProject returns")
+	}
+
+	// The removal job has not run yet; create the same project again.
+	p, job := h.mustCreate(specRequest("reuse"))
+	if job.Status != jobs.StatusSucceeded || p.Path != old.Path || !p.ManagedDir {
+		t.Fatalf("recreate: job %+v, project %+v", job, p)
+	}
+
+	close(gate)
+	if done := h.wait(delJob); done.Status != jobs.StatusSucceeded {
+		t.Fatalf("removal job: %+v", done)
+	}
+	if !exists(filepath.Join(p.Path, "pixi.toml")) {
+		t.Fatal("the old project's removal must not touch the new project's files")
+	}
+	if left := trashEntries(t, filepath.Dir(p.Path)); len(left) != 0 {
+		t.Fatalf("the moved-aside directory must be removed: %v", left)
+	}
+}
+
+func TestDeleteFilesWhenDirectoryIsAlreadyGone(t *testing.T) {
+	h := newHarness(t)
+	p, _ := h.mustCreate(specRequest("vanished"))
+	if err := os.RemoveAll(p.Path); err != nil {
+		t.Fatal(err)
+	}
+	job, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{DeleteFiles: true})
+	if err != nil {
+		t.Fatalf("DeleteProject: %v", err)
+	}
+	if done := h.wait(job); done.Status != jobs.StatusSucceeded {
+		t.Fatalf("removal job: %+v", done)
+	}
+	if h.projectCount() != 0 {
+		t.Fatal("the row must be deleted")
 	}
 }
 
@@ -170,8 +259,11 @@ func TestDeleteIsOneTransaction(t *testing.T) {
 	if h.projectCount() != 1 {
 		t.Fatal("the project row must be rolled back")
 	}
-	if !exists(p.Path) {
-		t.Fatal("files must not be removed when the records could not be deleted")
+	if !exists(filepath.Join(p.Path, "pixi.toml")) {
+		t.Fatal("files must be moved back when the records could not be deleted")
+	}
+	if left := trashEntries(t, filepath.Dir(p.Path)); len(left) != 0 {
+		t.Fatalf("no moved-aside directory may be left: %v", left)
 	}
 	if list, _ := h.runner.ProjectJobs(context.Background(), p.ID); len(list) != 1 {
 		t.Fatalf("no file removal job may be submitted, jobs: %+v", list)

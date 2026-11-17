@@ -49,7 +49,46 @@ type Spec struct {
 type Manifest struct {
 	Name        string
 	Description string
-	Platforms   []string
+	// Channels are the channel names, from plain strings or from the
+	// channel key of { channel = ..., priority = ... } tables.
+	Channels  []string
+	Platforms []string
+}
+
+// knownPlatforms are the platforms a pixi workspace can target.
+var knownPlatforms = map[string]bool{
+	"linux-32": true, "linux-64": true, "linux-aarch64": true, "linux-armv6l": true,
+	"linux-armv7l": true, "linux-ppc64le": true, "linux-ppc64": true, "linux-s390x": true,
+	"linux-riscv32": true, "linux-riscv64": true,
+	"osx-64": true, "osx-arm64": true,
+	"win-32": true, "win-64": true, "win-arm64": true,
+	"emscripten-wasm32": true, "wasi-wasm32": true, "zos-z": true,
+}
+
+// ValidatePlatforms checks that every platform is one pixi knows and that
+// none is listed twice. An empty list is not an error here; callers that
+// need a platform check for one themselves.
+func ValidatePlatforms(platforms []string) error {
+	seen := make(map[string]bool, len(platforms))
+	for _, p := range platforms {
+		if !knownPlatforms[p] {
+			return fmt.Errorf("%w: unknown platform %q", ErrInvalid, p)
+		}
+		if seen[p] {
+			return fmt.Errorf("%w: platform %q is listed more than once", ErrInvalid, p)
+		}
+		seen[p] = true
+	}
+	return nil
+}
+
+// Validate checks what pixi would reject before solving: at least one
+// channel, and known, distinct platforms.
+func (m *Manifest) Validate() error {
+	if len(m.Channels) == 0 {
+		return fmt.Errorf("%w: at least one channel is required", ErrInvalid)
+	}
+	return ValidatePlatforms(m.Platforms)
 }
 
 var (
@@ -73,6 +112,8 @@ func (p Package) VersionSpec() (string, error) {
 		return "", fmt.Errorf("%w: package %q: unknown version operator %q", ErrInvalid, p.Name, op)
 	case constraint == "":
 		return "", fmt.Errorf("%w: package %q: operator %q needs a version", ErrInvalid, p.Name, op)
+	case strings.ContainsAny(constraint[:1], "=<>!~"):
+		return "", fmt.Errorf("%w: package %q: version %q already has an operator; leave Operator empty or drop it from the version", ErrInvalid, p.Name, constraint)
 	default:
 		return op + constraint, nil
 	}
@@ -96,6 +137,26 @@ func ParseManifest(content string) (*Manifest, error) {
 	}
 	if m.Description, err = optionalString(table, "description"); err != nil {
 		return nil, err
+	}
+	if raw, present := table["channels"]; present {
+		list, ok := raw.([]any)
+		if !ok {
+			return nil, fmt.Errorf("%w: channels must be a list", ErrInvalid)
+		}
+		for _, item := range list {
+			switch c := item.(type) {
+			case string:
+				m.Channels = append(m.Channels, c)
+			case map[string]any:
+				name, ok := c["channel"].(string)
+				if !ok {
+					return nil, fmt.Errorf("%w: a channel table needs a channel name", ErrInvalid)
+				}
+				m.Channels = append(m.Channels, name)
+			default:
+				return nil, fmt.Errorf("%w: channels must be names or channel tables", ErrInvalid)
+			}
+		}
 	}
 	if raw, present := table["platforms"]; present {
 		list, ok := raw.([]any)
@@ -148,10 +209,21 @@ func RenderManifest(name, description string, spec Spec) (string, error) {
 			return "", fmt.Errorf("%w: platform names must not be empty", ErrInvalid)
 		}
 	}
+	if err := ValidatePlatforms(spec.Platforms); err != nil {
+		return "", err
+	}
+	if len(spec.Channels) == 0 {
+		return "", fmt.Errorf("%w: at least one channel is required", ErrInvalid)
+	}
+	channels := make(map[string]bool, len(spec.Channels))
 	for _, c := range spec.Channels {
 		if strings.TrimSpace(c) == "" {
 			return "", fmt.Errorf("%w: channel names must not be empty", ErrInvalid)
 		}
+		if channels[c] {
+			return "", fmt.Errorf("%w: channel %q is listed more than once", ErrInvalid, c)
+		}
+		channels[c] = true
 	}
 
 	var b strings.Builder

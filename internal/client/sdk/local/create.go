@@ -160,6 +160,9 @@ func buildManifest(req CreateProjectRequest) (string, error) {
 	if !hasPlatform(parsed.Platforms) {
 		return "", ErrNoPlatform
 	}
+	if err := parsed.Validate(); err != nil {
+		return "", fmt.Errorf("%w: %v", ErrInvalidManifest, err)
+	}
 	out, err := artifact.SetWorkspaceFields(req.Manifest, req.Name, req.Description)
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrInvalidManifest, err)

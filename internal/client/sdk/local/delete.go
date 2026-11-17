@@ -27,7 +27,7 @@ type DeleteProjectOptions struct {
 //     with ErrPathTaken when DeleteFiles would remove another project's
 //     directory. Nothing is changed in these cases.
 //  2. In one transaction it deletes the project's versions and tags, the
-//     rows of the DeleteHooks, and the project row.
+//     rows of the DeleteHooks, its legacy origin row, and the project row.
 //  3. With DeleteFiles it first renames Path to a hidden sibling, so the
 //     path is free as soon as DeleteProject returns, then submits a job
 //     that removes the renamed directory and returns that job; otherwise
@@ -91,6 +91,9 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID, opts DeletePr
 			if err := hook(tx, id); err != nil {
 				return err
 			}
+		}
+		if err := tx.Delete(&LegacyProjectOrigin{}, "project_id = ?", id).Error; err != nil {
+			return fmt.Errorf("deleting legacy origin: %w", err)
 		}
 		if err := tx.Delete(&Project{}, "id = ?", id).Error; err != nil {
 			return fmt.Errorf("deleting project row: %w", err)

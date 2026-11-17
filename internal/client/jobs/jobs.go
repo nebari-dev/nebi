@@ -49,8 +49,11 @@ type Job struct {
 	Status    Status    `json:"status"`
 	// Stage is the last step the job reported with ReportStage, e.g. "lock"
 	// or "install". Empty until the job reports one.
-	Stage      string     `json:"stage,omitempty"`
-	Error      string     `json:"error,omitempty"`
+	Stage string `json:"stage,omitempty"`
+	Error string `json:"error,omitempty"`
+	// VersionID is the version the job recorded, reported with
+	// ReportVersion. Versions do not point at jobs; the job carries it.
+	VersionID  *uuid.UUID `json:"version_id,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 	StartedAt  *time.Time `json:"started_at,omitempty"`
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
@@ -74,8 +77,9 @@ var ErrUnknownJob = errors.New("unknown job")
 type ctxKey struct{}
 
 type jobCtx struct {
-	id     uuid.UUID
-	report func(stage string)
+	id            uuid.UUID
+	report        func(stage string)
+	reportVersion func(id uuid.UUID)
 }
 
 // IDFromContext returns the ID of the job whose body is running with ctx.
@@ -92,6 +96,14 @@ func IDFromContext(ctx context.Context) (uuid.UUID, bool) {
 func ReportStage(ctx context.Context, stage string) {
 	if jc, ok := ctx.Value(ctxKey{}).(*jobCtx); ok {
 		jc.report(stage)
+	}
+}
+
+// ReportVersion records the version the running job created. It does
+// nothing when ctx does not belong to a job.
+func ReportVersion(ctx context.Context, versionID uuid.UUID) {
+	if jc, ok := ctx.Value(ctxKey{}).(*jobCtx); ok {
+		jc.reportVersion(versionID)
 	}
 }
 
@@ -164,6 +176,11 @@ func (m *Memory) run(e *entry, run Func) {
 		report: func(stage string) {
 			m.mu.Lock()
 			e.job.Stage = stage
+			m.mu.Unlock()
+		},
+		reportVersion: func(versionID uuid.UUID) {
+			m.mu.Lock()
+			e.job.VersionID = &versionID
 			m.mu.Unlock()
 		},
 	})

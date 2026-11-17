@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/artifact"
 	"github.com/nebari-dev/nebi/internal/client/jobs"
+	"gorm.io/gorm"
 )
 
 // Stages the create job reports through jobs.ReportStage. A failed create
@@ -48,11 +49,12 @@ type CreateProjectRequest struct {
 // inserts the project row and submits a create job, and returns the project
 // and that job.
 //
-// The job solves the lock file and records version 1 (origin "created", no
-// base, req.Tags). With req.Install it then installs the environment and
-// sets InstalledVersionID. When the job fails the project is kept, with
-// pixi.toml as written, so the user can fix it or delete the project: with
-// no versions its state is StateLockFailed, linked to the job.
+// The job solves the lock file, records version 1 (origin "created", no
+// base, req.Tags) and reports its ID as the job's VersionID. With
+// req.Install it then installs the environment and sets InstalledVersionID.
+// When the job fails the project is kept, with pixi.toml as written, so the
+// user can fix it or delete the project: with no versions its state is
+// StateLockFailed, linked to the job.
 //
 // ManagedDir is set only when CreateProject itself creates the directory
 // and the directory is inside the projects directory. An existing
@@ -282,20 +284,24 @@ func (s *Service) createJob(projectID uuid.UUID, dir string, tags []string, inst
 		if err != nil {
 			return fmt.Errorf("reading %s: %w", artifact.LockFile, err)
 		}
-		in := RecordVersionInput{
+		req := RecordVersionRequest{
 			ProjectID: projectID,
 			Manifest:  string(manifest),
 			Lock:      string(lock),
-			Origin:    VersionOriginCreated,
+			Origin:    OriginCreated,
+			Author:    s.author,
 			Tags:      tags,
 		}
-		if id, ok := jobs.IDFromContext(ctx); ok {
-			in.JobID = &id
-		}
-		versionID, err := s.versions.RecordVersion(ctx, in)
+		var versionID uuid.UUID
+		err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			var err error
+			versionID, err = s.versions.RecordVersion(tx, req)
+			return err
+		})
 		if err != nil {
 			return fmt.Errorf("recording version 1: %w", err)
 		}
+		jobs.ReportVersion(ctx, versionID)
 		if !install {
 			return nil
 		}

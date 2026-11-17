@@ -38,17 +38,19 @@ func openTestDB(t *testing.T) *gorm.DB {
 }
 
 // testVersion is the table behind fakeVersions. It is a real table so the
-// delete transaction can be checked for atomicity.
+// delete transaction can be checked for atomicity. Like #661's
+// ProjectVersion it has no job column.
 type testVersion struct {
-	ID        uuid.UUID `gorm:"type:text;primaryKey"`
-	ProjectID uuid.UUID `gorm:"type:text;index"`
-	Number    int
-	Manifest  string
-	Lock      string
-	Origin    string
-	Base      *uuid.UUID `gorm:"type:text"`
-	Tags      string
-	JobID     *uuid.UUID `gorm:"type:text"`
+	ID          uuid.UUID `gorm:"type:text;primaryKey"`
+	ProjectID   uuid.UUID `gorm:"type:text;index"`
+	Number      int
+	Manifest    string
+	Lock        string
+	Origin      VersionOrigin
+	Base        *uuid.UUID `gorm:"type:text"`
+	Author      string
+	Description string
+	Tags        string
 }
 
 func (testVersion) TableName() string { return "test_versions" }
@@ -61,31 +63,34 @@ type fakeVersions struct {
 	recordErr   error
 	deleteErr   error
 	deleteCalls []uuid.UUID
+	recordTx    []*gorm.DB
 }
 
-func (f *fakeVersions) RecordVersion(ctx context.Context, in RecordVersionInput) (uuid.UUID, error) {
+func (f *fakeVersions) RecordVersion(tx *gorm.DB, req RecordVersionRequest) (uuid.UUID, error) {
 	f.mu.Lock()
 	err := f.recordErr
+	f.recordTx = append(f.recordTx, tx)
 	f.mu.Unlock()
 	if err != nil {
 		return uuid.Nil, err
 	}
 	var n int64
-	if err := f.db.WithContext(ctx).Model(&testVersion{}).Where("project_id = ?", in.ProjectID).Count(&n).Error; err != nil {
+	if err := tx.Model(&testVersion{}).Where("project_id = ?", req.ProjectID).Count(&n).Error; err != nil {
 		return uuid.Nil, err
 	}
 	v := testVersion{
-		ID:        uuid.New(),
-		ProjectID: in.ProjectID,
-		Number:    int(n) + 1,
-		Manifest:  in.Manifest,
-		Lock:      in.Lock,
-		Origin:    in.Origin,
-		Base:      in.BaseVersionID,
-		Tags:      strings.Join(in.Tags, ","),
-		JobID:     in.JobID,
+		ID:          uuid.New(),
+		ProjectID:   req.ProjectID,
+		Number:      int(n) + 1,
+		Manifest:    req.Manifest,
+		Lock:        req.Lock,
+		Origin:      req.Origin,
+		Base:        req.BaseVersionID,
+		Author:      req.Author,
+		Description: req.Description,
+		Tags:        strings.Join(req.Tags, ","),
 	}
-	return v.ID, f.db.WithContext(ctx).Create(&v).Error
+	return v.ID, tx.Create(&v).Error
 }
 
 func (f *fakeVersions) VersionInfo(ctx context.Context, projectID uuid.UUID, installedID *uuid.UUID) (VersionInfo, error) {
@@ -227,6 +232,7 @@ func newHarness(t *testing.T, mods ...func(*Options)) *harness {
 		Jobs:        h.runner,
 		Pixi:        h.pixi,
 		ProjectsDir: h.projectsDir,
+		Author:      "tester",
 	}
 	for _, m := range mods {
 		m(&opts)

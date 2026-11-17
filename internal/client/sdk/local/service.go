@@ -17,6 +17,8 @@ package local
 import (
 	"context"
 	"errors"
+	"os/user"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,22 +27,32 @@ import (
 	"gorm.io/gorm"
 )
 
-// VersionOriginCreated is the origin of version 1, recorded by the create job.
-const VersionOriginCreated = "created"
+// VersionOrigin records how a version entered this machine's history. The
+// version CRUD issue (#661) owns it and adds the other origins.
+type VersionOrigin string
 
-// RecordVersionInput is what the create job hands to VersionStore.RecordVersion.
-type RecordVersionInput struct {
+// OriginCreated is the origin of a version made on this machine, including
+// version 1, which the create job records.
+const OriginCreated VersionOrigin = "created"
+
+// RecordVersionRequest mirrors recordVersionRequest from the version CRUD
+// issue (#661): everything recordVersion needs to write one version.
+type RecordVersionRequest struct {
 	ProjectID uuid.UUID
-	// Manifest and Lock are the contents of pixi.toml and pixi.lock.
+	// BaseVersionID is the version this one was created from; nil for
+	// version 1.
+	BaseVersionID *uuid.UUID
+	// Manifest and Lock are the complete pixi.toml and pixi.lock.
 	Manifest string
 	Lock     string
-	// Origin says how the version came to be; VersionOriginCreated for version 1.
-	Origin string
-	// BaseVersionID is the version this one was derived from; nil for version 1.
-	BaseVersionID *uuid.UUID
-	Tags          []string
-	// JobID is the job that produced the version, when there is one.
-	JobID *uuid.UUID
+	Origin   VersionOrigin
+	Author   string
+	// Description is the version's description, not the workspace's.
+	Description string
+	Tags        []string
+	// DedupeLatest returns the latest version instead of inserting a new
+	// one when its content hash matches.
+	DedupeLatest bool
 }
 
 // VersionInfo is the version data the project list shows.
@@ -58,9 +70,10 @@ type VersionInfo struct {
 // issue (#661), which provides the ProjectVersion and ProjectTag tables and
 // recordVersion.
 type VersionStore interface {
-	// RecordVersion writes a new immutable version and its tags and returns
-	// the version's ID.
-	RecordVersion(ctx context.Context, in RecordVersionInput) (uuid.UUID, error)
+	// RecordVersion is #661's recordVersion: it validates the tags and
+	// writes the version and its tags inside tx, the job's success
+	// transaction, and returns the version's ID.
+	RecordVersion(tx *gorm.DB, req RecordVersionRequest) (uuid.UUID, error)
 	// VersionInfo reports the version count, the latest version number and
 	// the number of the version whose ID is installedID (nil: none).
 	VersionInfo(ctx context.Context, projectID uuid.UUID, installedID *uuid.UUID) (VersionInfo, error)
@@ -106,6 +119,10 @@ type Options struct {
 	// recomputes it in the background. Zero means one minute.
 	SizeTTL time.Duration
 
+	// Author is recorded as the author of the versions this service
+	// creates. Empty means the operating system user name, or "unknown".
+	Author string
+
 	// DeleteHooks run inside DeleteProject's transaction, after the
 	// project's versions are deleted.
 	DeleteHooks []DeleteHook
@@ -120,6 +137,7 @@ type Service struct {
 	projectsDir string
 	sizeTTL     time.Duration
 	deleteHooks []DeleteHook
+	author      string
 
 	// mu serializes the operations that write project rows, so the
 	// checks they run and the writes they make cannot interleave.
@@ -160,6 +178,7 @@ func New(opts Options) (*Service, error) {
 		projectsDir: opts.ProjectsDir,
 		sizeTTL:     ttl,
 		deleteHooks: opts.DeleteHooks,
+		author:      versionAuthor(opts.Author),
 		sizes:       newSizeCache(),
 		measureDir:  measureDir,
 		now:         time.Now,
@@ -173,4 +192,16 @@ func New(opts Options) (*Service, error) {
 func (s *Service) Close() {
 	s.bgCancel()
 	s.bg.Wait()
+}
+
+// versionAuthor returns author, or the operating system user name when it
+// is empty, or "unknown".
+func versionAuthor(author string) string {
+	if author = strings.TrimSpace(author); author != "" {
+		return author
+	}
+	if u, err := user.Current(); err == nil && strings.TrimSpace(u.Username) != "" {
+		return u.Username
+	}
+	return "unknown"
 }

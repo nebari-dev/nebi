@@ -58,14 +58,20 @@ func TestCreateFromSpec(t *testing.T) {
 		t.Fatalf("want version 1 recorded, got %d versions", len(versions))
 	}
 	v := versions[0]
-	if v.Number != 1 || v.Origin != VersionOriginCreated || v.Base != nil || v.Tags != "stable,q3" {
+	if v.Number != 1 || v.Origin != OriginCreated || v.Base != nil || v.Tags != "stable,q3" {
 		t.Fatalf("version 1 = %+v; want origin created, no base, tags stable,q3", v)
+	}
+	if v.Author != "tester" || v.Description != "" {
+		t.Fatalf("version 1 author/description = %q/%q; want the service author and no description", v.Author, v.Description)
 	}
 	if v.Manifest != manifest || v.Lock != fakeLockContent {
 		t.Fatal("version 1 must hold the pixi.toml and pixi.lock contents")
 	}
-	if v.JobID == nil || *v.JobID != job.ID {
-		t.Fatalf("version 1 JobID = %v, want %s", v.JobID, job.ID)
+	if done.VersionID == nil || *done.VersionID != v.ID {
+		t.Fatalf("the job must carry version 1's ID: VersionID = %v, want %s", done.VersionID, v.ID)
+	}
+	if h.versions.recordTx[0] == nil || h.versions.recordTx[0].Statement.ConnPool == h.db.Statement.ConnPool {
+		t.Fatal("version 1 must be recorded inside a transaction")
 	}
 
 	d := h.detail(p.ID)
@@ -190,6 +196,9 @@ func TestCreateRecordVersionFailure(t *testing.T) {
 	}
 	if d := h.detail(p.ID); d.State != StateLockFailed {
 		t.Fatalf("no version recorded means lock_failed, got %s", d.State)
+	}
+	if job.VersionID != nil {
+		t.Fatalf("a job that recorded no version must not report one, got %s", job.VersionID)
 	}
 }
 
@@ -523,5 +532,14 @@ func TestCreateRejectsNestedPaths(t *testing.T) {
 	})
 	if h.projectCount() != 2 {
 		t.Fatalf("want 2 projects, got %d", h.projectCount())
+	}
+}
+
+func TestVersionAuthorDefaults(t *testing.T) {
+	if got := versionAuthor("  alice "); got != "alice" {
+		t.Fatalf("explicit author: got %q", got)
+	}
+	if got := versionAuthor(""); strings.TrimSpace(got) == "" {
+		t.Fatal("the default author must not be empty")
 	}
 }

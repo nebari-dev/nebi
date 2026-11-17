@@ -102,6 +102,7 @@ func TestActiveWhileRunningAndProjectJobsOrder(t *testing.T) {
 func TestContextCarriesJobIDAndStage(t *testing.T) {
 	m := newRunner(t)
 	var seen uuid.UUID
+	version := uuid.New()
 	j, _ := m.Submit(context.Background(), uuid.New(), TypeCreate, func(ctx context.Context) error {
 		id, ok := IDFromContext(ctx)
 		if !ok {
@@ -110,6 +111,7 @@ func TestContextCarriesJobIDAndStage(t *testing.T) {
 		seen = id
 		ReportStage(ctx, "lock")
 		ReportStage(ctx, "install")
+		ReportVersion(ctx, version)
 		return nil
 	})
 	got, _ := m.Wait(waitCtx(t), j.ID)
@@ -122,10 +124,14 @@ func TestContextCarriesJobIDAndStage(t *testing.T) {
 	if got.Stage != "install" {
 		t.Fatalf("Stage = %q, want last reported stage %q", got.Stage, "install")
 	}
+	if got.VersionID == nil || *got.VersionID != version {
+		t.Fatalf("VersionID = %v, want %s", got.VersionID, version)
+	}
 	if _, ok := IDFromContext(context.Background()); ok {
 		t.Fatal("IDFromContext outside a job should report false")
 	}
 	ReportStage(context.Background(), "ignored") // must not panic
+	ReportVersion(context.Background(), version)
 }
 
 func TestCloseCancelsAndRejects(t *testing.T) {

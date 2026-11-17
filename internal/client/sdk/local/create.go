@@ -182,15 +182,26 @@ func (s *Service) createPath(req CreateProjectRequest) (string, error) {
 	return normalizePath(req.Path)
 }
 
-// checkPathFree returns ErrPathTaken when a project already tracks dir and
+// checkPathFree returns ErrPathTaken when a project already tracks dir, a
+// directory inside dir or a directory that contains dir, and
 // ErrPathNotEmpty when dir already has a pixi.toml.
+//
+// Nested projects are refused because deleting the outer one with its
+// files would remove the inner one's files too.
 func (s *Service) checkPathFree(ctx context.Context, dir string) error {
-	var count int64
-	if err := s.db.WithContext(ctx).Model(&Project{}).Where("path = ?", dir).Count(&count).Error; err != nil {
-		return fmt.Errorf("checking project path: %w", err)
+	tracked, err := s.trackedPaths(ctx)
+	if err != nil {
+		return err
 	}
-	if count > 0 {
-		return fmt.Errorf("%w: %s", ErrPathTaken, dir)
+	for _, o := range tracked {
+		switch {
+		case o.Path == dir:
+			return fmt.Errorf("%w: %s", ErrPathTaken, dir)
+		case isWithin(o.Path, dir):
+			return fmt.Errorf("%w: %s is inside project %q at %s", ErrPathTaken, dir, o.Name, o.Path)
+		case isWithin(dir, o.Path):
+			return fmt.Errorf("%w: %s contains project %q at %s", ErrPathTaken, dir, o.Name, o.Path)
+		}
 	}
 	info, err := os.Stat(dir)
 	switch {

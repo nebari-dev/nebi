@@ -19,7 +19,9 @@ var (
 	ErrInvalidManifest = errors.New("invalid pixi.toml")
 	// ErrNameTaken: the name is already used.
 	ErrNameTaken = errors.New("project name is already taken")
-	// ErrPathTaken: the path is already tracked.
+	// ErrPathTaken: the path is already tracked, or is inside or contains
+	// a tracked project's directory. DeleteProject also returns it when
+	// removing files would remove another project's directory.
 	ErrPathTaken = errors.New("path is already used by another project")
 	// ErrPathNotEmpty: the directory already has a pixi.toml.
 	ErrPathNotEmpty = errors.New("directory already contains a pixi.toml")

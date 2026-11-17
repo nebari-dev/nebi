@@ -210,3 +210,33 @@ func TestRemoveProjectDirGuards(t *testing.T) {
 		t.Fatal("home must survive")
 	}
 }
+
+func TestDeleteFilesRefusedWhenAnotherProjectIsInside(t *testing.T) {
+	h := newHarness(t)
+	outer, _ := h.mustCreate(specRequest("outer"))
+	// Create refuses nested paths; a migrated row can still nest.
+	innerDir := filepath.Join(outer.Path, "inner")
+	if err := os.MkdirAll(innerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	inner := &Project{Name: "inner", Path: innerDir, ManagedDir: true}
+	h.insertRow(inner)
+
+	_, err := h.svc.DeleteProject(context.Background(), outer.ID, DeleteProjectOptions{DeleteFiles: true})
+	if !errors.Is(err, ErrPathTaken) {
+		t.Fatalf("want ErrPathTaken, got %v", err)
+	}
+	if h.projectCount() != 2 || !exists(innerDir) {
+		t.Fatal("a refused delete must keep both rows and the inner project's files")
+	}
+
+	// Deleting the inner project's files is fine: nothing else is inside it.
+	job, err := h.svc.DeleteProject(context.Background(), inner.ID, DeleteProjectOptions{DeleteFiles: true})
+	if err != nil {
+		t.Fatalf("delete inner: %v", err)
+	}
+	h.wait(job)
+	if exists(innerDir) || !exists(outer.Path) {
+		t.Fatal("only the inner directory may be removed")
+	}
+}

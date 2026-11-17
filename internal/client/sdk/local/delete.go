@@ -21,8 +21,9 @@ type DeleteProjectOptions struct {
 //
 //  1. It refuses with a *BusyError (errors.Is ErrProjectBusy) while a job
 //     for the project is queued or running, and with ErrFilesNotManaged
-//     when DeleteFiles is asked for a directory nebi did not create. Nothing
-//     is changed in either case.
+//     when DeleteFiles is asked for a directory nebi did not create, and
+//     with ErrPathTaken when DeleteFiles would remove another project's
+//     directory. Nothing is changed in these cases.
 //  2. In one transaction it deletes the project's versions and tags, the
 //     rows of the DeleteHooks, and the project row.
 //  3. With DeleteFiles it submits a job that removes Path and returns that
@@ -40,6 +41,19 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID, opts DeletePr
 	}
 	if opts.DeleteFiles && !p.ManagedDir {
 		return nil, fmt.Errorf("%w: %s; remove it yourself if you no longer need it", ErrFilesNotManaged, p.Path)
+	}
+	if opts.DeleteFiles {
+		// Create refuses nested projects, but rows from the legacy
+		// migration can still nest; never remove another project's files.
+		tracked, err := s.trackedPaths(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, o := range tracked {
+			if o.ID != id && isWithin(p.Path, o.Path) {
+				return nil, fmt.Errorf("%w: cannot remove %s, project %q at %s is inside it", ErrPathTaken, p.Path, o.Name, o.Path)
+			}
+		}
 	}
 	projectJobs, err := s.jobs.ProjectJobs(ctx, id)
 	if err != nil {

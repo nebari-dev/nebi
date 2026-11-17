@@ -491,3 +491,38 @@ func TestNameIsReusableAfterDelete(t *testing.T) {
 		t.Fatalf("recreate: %+v", job)
 	}
 }
+
+func TestCreateRejectsNestedPaths(t *testing.T) {
+	h := newHarness(t)
+	outer, _ := h.mustCreate(specRequest("outer"))
+
+	t.Run("inside a tracked project", func(t *testing.T) {
+		req := specRequest("inner")
+		req.Path = filepath.Join(outer.Path, "inner")
+		if _, _, err := h.svc.CreateProject(context.Background(), req); !errors.Is(err, ErrPathTaken) {
+			t.Fatalf("want ErrPathTaken, got %v", err)
+		}
+		if exists(req.Path) {
+			t.Fatal("a refused create must not create the directory")
+		}
+	})
+	t.Run("containing a tracked project", func(t *testing.T) {
+		req := specRequest("parent")
+		req.Path = filepath.Dir(outer.Path)
+		if _, _, err := h.svc.CreateProject(context.Background(), req); !errors.Is(err, ErrPathTaken) {
+			t.Fatalf("want ErrPathTaken, got %v", err)
+		}
+	})
+	t.Run("sibling with a shared prefix is fine", func(t *testing.T) {
+		req := specRequest("outer-2")
+		req.Path = outer.Path + "-2"
+		if _, job, err := h.svc.CreateProject(context.Background(), req); err != nil {
+			t.Fatalf("CreateProject: %v", err)
+		} else {
+			h.wait(job)
+		}
+	})
+	if h.projectCount() != 2 {
+		t.Fatalf("want 2 projects, got %d", h.projectCount())
+	}
+}

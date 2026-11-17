@@ -68,6 +68,22 @@ func (s *Service) loadProject(ctx context.Context, id uuid.UUID) (*Project, erro
 	return &p, nil
 }
 
+// trackedPath is the identity and directory of a tracked project.
+type trackedPath struct {
+	ID   uuid.UUID
+	Name string
+	Path string
+}
+
+// trackedPaths returns the directory of every tracked project.
+func (s *Service) trackedPaths(ctx context.Context) ([]trackedPath, error) {
+	var out []trackedPath
+	if err := s.db.WithContext(ctx).Model(&Project{}).Select("id", "name", "path").Find(&out).Error; err != nil {
+		return nil, fmt.Errorf("reading project paths: %w", err)
+	}
+	return out, nil
+}
+
 // uniqueViolation maps a unique-index error from inserting or updating a
 // project row to ErrNameTaken or ErrPathTaken. Other errors are returned
 // unchanged. The check-then-write paths already return these errors; this

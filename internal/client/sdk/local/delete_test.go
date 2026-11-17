@@ -371,3 +371,29 @@ func TestDeleteKeepsLegacyOriginOnRollback(t *testing.T) {
 		t.Fatalf("origin row must be rolled back: %d rows, %v", n, err)
 	}
 }
+
+func TestDeletedProjectAcceptsNoNewJobs(t *testing.T) {
+	h := newHarness(t)
+	p, _ := h.mustCreate(specRequest("retired"))
+	if _, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	noop := func(context.Context) error { return nil }
+	if _, err := h.runner.Submit(context.Background(), p.ID, jobs.TypeInstall, noop); !errors.Is(err, jobs.ErrProjectRetired) {
+		t.Fatalf("an install for a deleted project must be refused, got %v", err)
+	}
+}
+
+func TestFailedDeleteAcceptsJobsAgain(t *testing.T) {
+	h := newHarness(t)
+	p, _ := h.mustCreate(specRequest("kept"))
+	h.versions.deleteErr = errors.New("tags table locked")
+	if _, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{DeleteFiles: true}); err == nil {
+		t.Fatal("want an error")
+	}
+	job, err := h.runner.Submit(context.Background(), p.ID, jobs.TypeInstall, func(context.Context) error { return nil })
+	if err != nil {
+		t.Fatalf("a project whose delete failed must accept jobs again: %v", err)
+	}
+	h.wait(job)
+}

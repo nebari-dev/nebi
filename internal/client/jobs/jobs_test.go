@@ -169,3 +169,55 @@ func TestUnknownJobAndNilBody(t *testing.T) {
 		t.Fatal("Submit with nil body should fail")
 	}
 }
+
+func TestRetireProject(t *testing.T) {
+	m := newRunner(t)
+	ctx := context.Background()
+	project, other := uuid.New(), uuid.New()
+	noop := func(context.Context) error { return nil }
+
+	release := make(chan struct{})
+	busy, _ := m.Submit(ctx, project, TypeInstall, func(context.Context) error { <-release; return nil })
+	active, err := m.RetireProject(ctx, project, TypeDeleteFiles)
+	if err != nil || len(active) != 1 || active[0] != busy.ID {
+		t.Fatalf("busy project: active = %v, %v; want [%s]", active, err, busy.ID)
+	}
+	if _, err := m.Submit(ctx, project, TypeInstall, noop); err != nil {
+		t.Fatalf("a refused retire must not block jobs: %v", err)
+	}
+	close(release)
+	for _, j := range mustJobs(t, m, project) {
+		if _, err := m.Wait(waitCtx(t), j.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if active, err := m.RetireProject(ctx, project, TypeDeleteFiles); err != nil || len(active) != 0 {
+		t.Fatalf("idle project: active = %v, %v", active, err)
+	}
+	if _, err := m.Submit(ctx, project, TypeInstall, noop); !errors.Is(err, ErrProjectRetired) {
+		t.Fatalf("retired project: want ErrProjectRetired, got %v", err)
+	}
+	if _, err := m.Submit(ctx, project, TypeDeleteFiles, noop); err != nil {
+		t.Fatalf("an allowed type must still be accepted: %v", err)
+	}
+	if _, err := m.Submit(ctx, other, TypeInstall, noop); err != nil {
+		t.Fatalf("other projects are not affected: %v", err)
+	}
+
+	if err := m.RestoreProject(ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Submit(ctx, project, TypeInstall, noop); err != nil {
+		t.Fatalf("a restored project accepts jobs again: %v", err)
+	}
+}
+
+func mustJobs(t *testing.T, m *Memory, projectID uuid.UUID) []Job {
+	t.Helper()
+	list, err := m.ProjectJobs(context.Background(), projectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return list
+}

@@ -3,7 +3,9 @@
 // start and then follow by job ID instead of waiting on them.
 //
 // Memory is an in-process runner. Jobs do not survive a restart of the
-// process that ran them.
+// process that ran them, and one runner does not see the jobs of another,
+// so every client process that shares a data directory must go through the
+// same runner for its busy checks to hold.
 package jobs
 
 import (
@@ -71,6 +73,10 @@ type Func func(ctx context.Context) error
 // ErrClosed is returned by Submit after Close.
 var ErrClosed = errors.New("job runner is closed")
 
+// ErrProjectRetired is returned by Submit for a project retired with
+// RetireProject, for job types it did not allow.
+var ErrProjectRetired = errors.New("project no longer accepts jobs")
+
 // ErrUnknownJob is returned for a job ID the runner does not know.
 var ErrUnknownJob = errors.New("unknown job")
 
@@ -114,6 +120,8 @@ type Memory struct {
 	jobs   map[uuid.UUID]*entry
 	order  []uuid.UUID // submission order
 	closed bool
+	// retired maps a retired project to the job types it still accepts.
+	retired map[uuid.UUID]map[Type]bool
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -128,7 +136,12 @@ type entry struct {
 // NewMemory returns a ready runner. Call Close when done with it.
 func NewMemory() *Memory {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Memory{jobs: make(map[uuid.UUID]*entry), ctx: ctx, cancel: cancel}
+	return &Memory{
+		jobs:    make(map[uuid.UUID]*entry),
+		retired: make(map[uuid.UUID]map[Type]bool),
+		ctx:     ctx,
+		cancel:  cancel,
+	}
 }
 
 // Submit starts run as a job of the given type for projectID and returns
@@ -141,6 +154,9 @@ func (m *Memory) Submit(_ context.Context, projectID uuid.UUID, typ Type, run Fu
 	defer m.mu.Unlock()
 	if m.closed {
 		return nil, ErrClosed
+	}
+	if allowed, ok := m.retired[projectID]; ok && !allowed[typ] {
+		return nil, fmt.Errorf("%w: %s job for project %s", ErrProjectRetired, typ, projectID)
 	}
 	e := &entry{
 		job: Job{
@@ -205,6 +221,39 @@ func call(ctx context.Context, run Func) (err error) {
 		}
 	}()
 	return run(ctx)
+}
+
+// RetireProject atomically checks that the project has no queued or
+// running job and, when it has none, makes Submit refuse every later job
+// for it except those of the allowed types. When jobs are active it
+// returns their IDs and retires nothing. Deleting a project retires it, so
+// no job can start between the busy check and the delete.
+func (m *Memory) RetireProject(_ context.Context, projectID uuid.UUID, allow ...Type) ([]uuid.UUID, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var active []uuid.UUID
+	for _, id := range m.order {
+		if e := m.jobs[id]; e.job.ProjectID == projectID && e.job.Active() {
+			active = append(active, id)
+		}
+	}
+	if len(active) > 0 {
+		return active, nil
+	}
+	allowed := make(map[Type]bool, len(allow))
+	for _, t := range allow {
+		allowed[t] = true
+	}
+	m.retired[projectID] = allowed
+	return nil, nil
+}
+
+// RestoreProject undoes RetireProject, for a delete that did not happen.
+func (m *Memory) RestoreProject(_ context.Context, projectID uuid.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.retired, projectID)
+	return nil
 }
 
 // Get returns a snapshot of the job.

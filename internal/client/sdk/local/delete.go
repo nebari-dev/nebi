@@ -22,10 +22,13 @@ type DeleteProjectOptions struct {
 // DeleteProject deletes a local project.
 //
 //  1. It refuses with a *BusyError (errors.Is ErrProjectBusy) while a job
-//     for the project is queued or running, and with ErrFilesNotManaged
-//     when DeleteFiles is asked for a directory nebi did not create, and
-//     with ErrPathTaken when DeleteFiles would remove another project's
-//     directory. Nothing is changed in these cases.
+//     for the project is queued or running. The check and refusing new
+//     jobs for the project are one step in the JobRunner, so nothing can
+//     start in between; the check covers only jobs of that runner. It also
+//     refuses with ErrFilesNotManaged when DeleteFiles is asked for a
+//     directory nebi did not create, and with ErrPathTaken when
+//     DeleteFiles would remove another project's directory. Nothing is
+//     changed in these cases.
 //  2. In one transaction it deletes the project's versions and tags, the
 //     rows of the DeleteHooks, its legacy origin row, and the project row.
 //  3. With DeleteFiles it first renames Path to a hidden sibling, so the
@@ -59,18 +62,18 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID, opts DeletePr
 			}
 		}
 	}
-	projectJobs, err := s.jobs.ProjectJobs(ctx, id)
+	// Check for active jobs and stop new ones in one step, so no job can
+	// start between the check and the delete. Only the file removal job
+	// below is still accepted.
+	active, err := s.jobs.RetireProject(ctx, id, jobs.TypeDeleteFiles)
 	if err != nil {
-		return nil, fmt.Errorf("reading jobs of %s: %w", p.Name, err)
-	}
-	var active []uuid.UUID
-	for _, j := range projectJobs {
-		if j.Active() {
-			active = append(active, j.ID)
-		}
+		return nil, fmt.Errorf("checking jobs of %s: %w", p.Name, err)
 	}
 	if len(active) > 0 {
 		return nil, &BusyError{ProjectID: id, JobIDs: active}
+	}
+	restore := func() {
+		_ = s.jobs.RestoreProject(context.WithoutCancel(ctx), id)
 	}
 
 	// Move the directory aside before the row goes, so its path is free
@@ -79,6 +82,7 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID, opts DeletePr
 	var trash string
 	if opts.DeleteFiles {
 		if trash, err = moveAside(p.Path, id); err != nil {
+			restore()
 			return nil, err
 		}
 	}
@@ -101,6 +105,7 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID, opts DeletePr
 		return nil
 	})
 	if err != nil {
+		restore()
 		if trash != "" {
 			if rbErr := os.Rename(trash, p.Path); rbErr != nil {
 				return nil, fmt.Errorf("deleting project %s: %w (and moving %s back to %s failed: %v)", p.Name, err, trash, p.Path, rbErr)

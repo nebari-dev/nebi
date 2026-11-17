@@ -89,6 +89,13 @@ type JobRunner interface {
 	Submit(ctx context.Context, projectID uuid.UUID, typ jobs.Type, run jobs.Func) (*jobs.Job, error)
 	// ProjectJobs returns the project's jobs, oldest first.
 	ProjectJobs(ctx context.Context, projectID uuid.UUID) ([]jobs.Job, error)
+	// RetireProject atomically checks that the project has no queued or
+	// running job and, when it has none, refuses every later job for it
+	// except the allowed types. When jobs are active it returns their IDs
+	// and changes nothing.
+	RetireProject(ctx context.Context, projectID uuid.UUID, allow ...jobs.Type) ([]uuid.UUID, error)
+	// RestoreProject undoes RetireProject.
+	RestoreProject(ctx context.Context, projectID uuid.UUID) error
 }
 
 // PixiRunner runs pixi in a project directory (internal/client/sdk/exec).

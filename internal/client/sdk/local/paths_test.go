@@ -105,3 +105,58 @@ func TestIsWithin(t *testing.T) {
 		}
 	}
 }
+
+// caseInsensitive reports whether the filesystem holding dir ignores case
+// in names, as macOS and Windows do by default.
+func caseInsensitive(t *testing.T, dir string) bool {
+	t.Helper()
+	probe := filepath.Join(dir, "case-probe")
+	if err := os.Mkdir(probe, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(probe)
+	_, err := os.Stat(filepath.Join(dir, "CASE-PROBE"))
+	return err == nil
+}
+
+func TestSameDirAndInside(t *testing.T) {
+	base := mustResolve(t, t.TempDir())
+	outer := filepath.Join(base, "outer")
+	if err := os.MkdirAll(filepath.Join(outer, "inner"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !sameDir(outer, outer) || sameDir(outer, filepath.Join(outer, "inner")) {
+		t.Fatal("sameDir by path")
+	}
+	if !inside(outer, filepath.Join(outer, "inner")) || inside(outer, outer) || inside(filepath.Join(outer, "inner"), outer) {
+		t.Fatal("inside by path")
+	}
+	if !inside(outer, filepath.Join(outer, "missing", "deeper")) {
+		t.Fatal("a path that does not exist yet is inside its existing ancestor")
+	}
+
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(outer, link); err == nil {
+		if !sameDir(outer, link) || !inside(outer, filepath.Join(link, "inner")) {
+			t.Fatal("a symlink to a directory is the same directory")
+		}
+	}
+
+	if caseInsensitive(t, base) {
+		upper := filepath.Join(base, "OUTER")
+		if !sameDir(outer, upper) || !inside(outer, filepath.Join(upper, "inner")) || !inside(upper, filepath.Join(outer, "inner")) {
+			t.Fatal("paths that differ only in case are the same directory here")
+		}
+	} else if sameDir(outer, filepath.Join(base, "OUTER")) {
+		t.Fatal("paths that differ in case are different directories here")
+	}
+}
+
+func mustResolve(t *testing.T, p string) string {
+	t.Helper()
+	r, err := resolveSymlinks(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}

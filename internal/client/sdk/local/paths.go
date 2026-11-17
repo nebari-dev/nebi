@@ -88,8 +88,49 @@ func resolveSymlinks(p string) (string, error) {
 	}
 }
 
-// isWithin reports whether p is strictly inside dir. Both must be clean
-// absolute paths.
+// sameDir reports whether a and b are the same directory: equal paths, or
+// existing paths that are the same file on disk. Comparing files rather
+// than strings also matches paths that differ only in case on a
+// case-insensitive filesystem (the default on macOS and Windows).
+func sameDir(a, b string) bool {
+	if a == b {
+		return true
+	}
+	ai, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	bi, err := os.Stat(b)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(ai, bi)
+}
+
+// inside reports whether p is strictly inside dir: by path, or because an
+// existing ancestor of p is the same file on disk as dir. Like sameDir it
+// matches paths that differ only in case, and paths that reach dir through
+// a symlink. Both must be clean absolute paths.
+func inside(dir, p string) bool {
+	if isWithin(dir, p) {
+		return true
+	}
+	di, err := os.Stat(dir)
+	if err != nil {
+		return false
+	}
+	for cur := filepath.Dir(p); ; cur = filepath.Dir(cur) {
+		if ci, err := os.Stat(cur); err == nil && os.SameFile(di, ci) {
+			return true
+		}
+		if filepath.Dir(cur) == cur {
+			return false
+		}
+	}
+}
+
+// isWithin reports whether p is strictly inside dir, comparing paths only.
+// Both must be clean absolute paths.
 func isWithin(dir, p string) bool {
 	rel, err := filepath.Rel(dir, p)
 	if err != nil {

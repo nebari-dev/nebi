@@ -28,6 +28,9 @@ func TestMigrateCreatesClientProjectsTable(t *testing.T) {
 	if !db.Migrator().HasTable("legacy_project_origins") {
 		t.Fatal("legacy_project_origins table missing")
 	}
+	if !db.Migrator().HasTable("client_pending_removals") {
+		t.Fatal("client_pending_removals table missing")
+	}
 	if db.Migrator().HasTable("projects") {
 		t.Fatal("Migrate must not create or share the server's projects table")
 	}

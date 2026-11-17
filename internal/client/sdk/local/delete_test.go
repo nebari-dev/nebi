@@ -3,8 +3,10 @@ package local
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -82,6 +84,9 @@ func TestDeleteManagedProjectWithFiles(t *testing.T) {
 	}
 	if left := trashEntries(t, filepath.Dir(p.Path)); len(left) != 0 {
 		t.Fatalf("the moved-aside directory must be removed: %v", left)
+	}
+	if h.pendingCount() != 0 {
+		t.Fatal("the removal record must be cleared once the directory is gone")
 	}
 }
 
@@ -167,6 +172,9 @@ func TestDeleteFilesWhenDirectoryIsAlreadyGone(t *testing.T) {
 	}
 	if h.projectCount() != 0 {
 		t.Fatal("the row must be deleted")
+	}
+	if h.pendingCount() != 0 {
+		t.Fatal("no removal record may be left when there was nothing to move")
 	}
 }
 
@@ -264,6 +272,9 @@ func TestDeleteIsOneTransaction(t *testing.T) {
 	}
 	if left := trashEntries(t, filepath.Dir(p.Path)); len(left) != 0 {
 		t.Fatalf("no moved-aside directory may be left: %v", left)
+	}
+	if h.pendingCount() != 0 {
+		t.Fatal("the removal record must be dropped when the delete is rolled back")
 	}
 	if list, _ := h.runner.ProjectJobs(context.Background(), p.ID); len(list) != 1 {
 		t.Fatalf("no file removal job may be submitted, jobs: %+v", list)
@@ -394,6 +405,229 @@ func TestFailedDeleteAcceptsJobsAgain(t *testing.T) {
 	job, err := h.runner.Submit(context.Background(), p.ID, jobs.TypeInstall, func(context.Context) error { return nil })
 	if err != nil {
 		t.Fatalf("a project whose delete failed must accept jobs again: %v", err)
+	}
+	h.wait(job)
+}
+
+func TestDeleteFilesRefusedForAliasedProjectInside(t *testing.T) {
+	h := newHarness(t)
+	outer, _ := h.mustCreate(specRequest("outer"))
+	innerDir := filepath.Join(outer.Path, "inner")
+	if err := os.MkdirAll(innerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var aliases []string
+	// Migrated rows are stored as they were, so a row can reach the
+	// directory through a symlink...
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(outer.Path, link); err == nil {
+		aliases = append(aliases, filepath.Join(link, "inner"), link)
+	}
+	// ...or, on a case-insensitive filesystem, in another case.
+	if caseInsensitive(t, filepath.Dir(outer.Path)) {
+		upper := filepath.Join(filepath.Dir(outer.Path), "OUTER")
+		aliases = append(aliases, filepath.Join(upper, "inner"), upper)
+	}
+	if len(aliases) == 0 {
+		t.Skip("no symlinks and a case-sensitive filesystem")
+	}
+
+	for i, alias := range aliases {
+		other := &Project{Name: fmt.Sprintf("alias-%d", i), Path: alias, ManagedDir: true}
+		h.insertRow(other)
+		_, err := h.svc.DeleteProject(context.Background(), outer.ID, DeleteProjectOptions{DeleteFiles: true})
+		if !errors.Is(err, ErrPathTaken) {
+			t.Fatalf("%s: want ErrPathTaken, got %v", alias, err)
+		}
+		if !exists(innerDir) || h.pendingCount() != 0 {
+			t.Fatalf("%s: a refused delete must change nothing", alias)
+		}
+		if err := h.db.Delete(other).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func (h *harness) pendingCount() int64 {
+	h.t.Helper()
+	var n int64
+	if err := h.db.Model(&pendingRemoval{}).Count(&n).Error; err != nil {
+		h.t.Fatal(err)
+	}
+	return n
+}
+
+// failingDeletes is a JobRunner whose Submit fails for file removal jobs.
+type failingDeletes struct{ *jobs.Memory }
+
+func (f failingDeletes) Submit(ctx context.Context, id uuid.UUID, typ jobs.Type, run jobs.Func) (*jobs.Job, error) {
+	if typ == jobs.TypeDeleteFiles {
+		return nil, errors.New("queue unavailable")
+	}
+	return f.Memory.Submit(ctx, id, typ, run)
+}
+
+// restart returns a new Service on the harness database with its own job
+// runner, as after the client restarts.
+func (h *harness) restart() (*Service, *jobs.Memory) {
+	h.t.Helper()
+	runner := jobs.NewMemory()
+	svc, err := New(Options{DB: h.db, Versions: h.versions, Jobs: runner, Pixi: h.pixi, ProjectsDir: h.projectsDir})
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	h.t.Cleanup(func() {
+		svc.Close()
+		runner.Close()
+	})
+	return svc, runner
+}
+
+func TestRecoverDeletesAfterSubmitFailure(t *testing.T) {
+	h := newHarness(t, func(o *Options) { o.Jobs = failingDeletes{o.Jobs.(*jobs.Memory)} })
+	p, _ := h.mustCreate(specRequest("stranded"))
+
+	_, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{DeleteFiles: true})
+	if err == nil || !strings.Contains(err.Error(), "could not be started") {
+		t.Fatalf("want a submit error, got %v", err)
+	}
+	if h.projectCount() != 0 || exists(p.Path) {
+		t.Fatal("the project is deleted and its path is free")
+	}
+	if len(trashEntries(t, filepath.Dir(p.Path))) != 1 || h.pendingCount() != 1 {
+		t.Fatal("the moved-aside directory must be recorded")
+	}
+
+	svc, runner := h.restart()
+	started, err := svc.RecoverDeletes(context.Background())
+	if err != nil || len(started) != 1 {
+		t.Fatalf("RecoverDeletes: %v, %d jobs", err, len(started))
+	}
+	if done, _ := runner.Wait(context.Background(), started[0].ID); done.Status != jobs.StatusSucceeded {
+		t.Fatalf("removal job: %+v", done)
+	}
+	if left := trashEntries(t, filepath.Dir(p.Path)); len(left) != 0 || h.pendingCount() != 0 {
+		t.Fatalf("the directory and its record must be gone: %v", left)
+	}
+}
+
+// crashMidDelete leaves p as a delete that stopped after moving its
+// directory aside: the record is written and the directory moved.
+func (h *harness) crashMidDelete(p *Project) string {
+	h.t.Helper()
+	r, err := h.svc.moveAside(context.Background(), p)
+	if err != nil || r == nil {
+		h.t.Fatalf("moveAside: %v", err)
+	}
+	return r.TrashPath
+}
+
+func TestRecoverDeletesAfterCrash(t *testing.T) {
+	t.Run("before the commit the directory is moved back", func(t *testing.T) {
+		h := newHarness(t)
+		p, _ := h.mustCreate(specRequest("interrupted"))
+		trash := h.crashMidDelete(p)
+
+		svc, _ := h.restart()
+		started, err := svc.RecoverDeletes(context.Background())
+		if err != nil || len(started) != 0 {
+			t.Fatalf("RecoverDeletes: %v, %d jobs", err, len(started))
+		}
+		if !exists(filepath.Join(p.Path, "pixi.toml")) || exists(trash) || h.pendingCount() != 0 {
+			t.Fatal("the project directory must be back and the record gone")
+		}
+	})
+	t.Run("after the commit the directory is removed", func(t *testing.T) {
+		h := newHarness(t)
+		p, _ := h.mustCreate(specRequest("committed"))
+		trash := h.crashMidDelete(p)
+		if err := h.db.Delete(&Project{}, "id = ?", p.ID).Error; err != nil {
+			t.Fatal(err)
+		}
+
+		svc, runner := h.restart()
+		started, err := svc.RecoverDeletes(context.Background())
+		if err != nil || len(started) != 1 {
+			t.Fatalf("RecoverDeletes: %v, %d jobs", err, len(started))
+		}
+		runner.Wait(context.Background(), started[0].ID)
+		if exists(trash) || h.pendingCount() != 0 {
+			t.Fatal("the moved-aside directory and its record must be gone")
+		}
+	})
+	t.Run("a record without a moved directory is dropped", func(t *testing.T) {
+		h := newHarness(t)
+		p, _ := h.mustCreate(specRequest("unmoved"))
+		if err := h.db.Create(&pendingRemoval{ID: uuid.New(), ProjectID: p.ID, Path: p.Path, TrashPath: p.Path + ".gone"}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.svc.RecoverDeletes(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if !exists(p.Path) || h.pendingCount() != 0 {
+			t.Fatal("the project must be untouched and the record dropped")
+		}
+	})
+}
+
+func TestRecoverDeletesLeavesRunningRemovalAlone(t *testing.T) {
+	gate := make(chan struct{})
+	h := newHarness(t, func(o *Options) { o.Jobs = gatedDeletes{Memory: o.Jobs.(*jobs.Memory), gate: gate} })
+	p, _ := h.mustCreate(specRequest("in-flight"))
+	job, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{DeleteFiles: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := h.svc.RecoverDeletes(context.Background())
+	if err != nil || len(started) != 0 {
+		t.Fatalf("RecoverDeletes: %v, %d jobs", err, len(started))
+	}
+	close(gate)
+	h.wait(job)
+	if left := trashEntries(t, filepath.Dir(p.Path)); len(left) != 0 || h.pendingCount() != 0 {
+		t.Fatalf("the removal must finish and clear its record: %v", left)
+	}
+}
+
+func TestDeleteMovesBackDirectoryLeftAside(t *testing.T) {
+	h := newHarness(t)
+	p, _ := h.mustCreate(specRequest("left-aside"))
+	h.crashMidDelete(p)
+
+	// The user deletes the record but keeps the files: they must be back
+	// at the project path, not left in the hidden directory.
+	if _, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if !exists(filepath.Join(p.Path, "pixi.toml")) || h.pendingCount() != 0 {
+		t.Fatal("the directory must be moved back and the record dropped")
+	}
+	if left := trashEntries(t, filepath.Dir(p.Path)); len(left) != 0 {
+		t.Fatalf("no moved-aside directory may be left: %v", left)
+	}
+}
+
+func TestDeleteMoveAsideFailureChangesNothing(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a directory the test cannot write to")
+	}
+	h := newHarness(t)
+	p, _ := h.mustCreate(specRequest("stuck"))
+	parent := filepath.Dir(p.Path)
+	if err := os.Chmod(parent, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o755) })
+
+	if _, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{DeleteFiles: true}); err == nil {
+		t.Fatal("want an error when the directory cannot be moved")
+	}
+	if h.projectCount() != 1 || !exists(p.Path) || h.pendingCount() != 0 {
+		t.Fatal("a failed move must keep the project, its files, and no record")
+	}
+	job, err := h.runner.Submit(context.Background(), p.ID, jobs.TypeInstall, func(context.Context) error { return nil })
+	if err != nil {
+		t.Fatalf("the project must accept jobs again: %v", err)
 	}
 	h.wait(job)
 }

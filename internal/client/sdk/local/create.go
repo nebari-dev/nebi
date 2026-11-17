@@ -111,7 +111,7 @@ func (s *Service) CreateProject(ctx context.Context, req CreateProjectRequest) (
 	p := &Project{
 		Name:       req.Name,
 		Path:       dir,
-		ManagedDir: created && isWithin(projectsDir, dir),
+		ManagedDir: created && inside(projectsDir, dir),
 	}
 	if err := s.db.WithContext(ctx).Create(p).Error; err != nil {
 		cleanup()
@@ -192,7 +192,9 @@ func (s *Service) createPath(req CreateProjectRequest) (string, error) {
 // ErrPathNotEmpty when dir already has a pixi.toml.
 //
 // Nested projects are refused because deleting the outer one with its
-// files would remove the inner one's files too.
+// files would remove the inner one's files too. Directories are compared
+// on disk, so a path that differs from a tracked one only in case is the
+// same directory on a case-insensitive filesystem.
 func (s *Service) checkPathFree(ctx context.Context, dir string) error {
 	tracked, err := s.trackedPaths(ctx)
 	if err != nil {
@@ -200,11 +202,11 @@ func (s *Service) checkPathFree(ctx context.Context, dir string) error {
 	}
 	for _, o := range tracked {
 		switch {
-		case o.Path == dir:
-			return fmt.Errorf("%w: %s", ErrPathTaken, dir)
-		case isWithin(o.Path, dir):
+		case sameDir(o.Path, dir):
+			return fmt.Errorf("%w: %s is project %q at %s", ErrPathTaken, dir, o.Name, o.Path)
+		case inside(o.Path, dir):
 			return fmt.Errorf("%w: %s is inside project %q at %s", ErrPathTaken, dir, o.Name, o.Path)
-		case isWithin(dir, o.Path):
+		case inside(dir, o.Path):
 			return fmt.Errorf("%w: %s contains project %q at %s", ErrPathTaken, dir, o.Name, o.Path)
 		}
 	}

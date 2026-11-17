@@ -548,3 +548,28 @@ func TestVersionAuthorDefaults(t *testing.T) {
 		t.Fatal("the default author must not be empty")
 	}
 }
+
+func TestCreateRejectsCaseVariantOfTrackedPath(t *testing.T) {
+	h := newHarness(t)
+	outer, _ := h.mustCreate(specRequest("outer"))
+	projects := filepath.Dir(outer.Path)
+	if !caseInsensitive(t, projects) {
+		t.Skip("the filesystem is case-sensitive")
+	}
+	variant := filepath.Join(filepath.Dir(projects), strings.ToUpper(filepath.Base(projects)))
+
+	for name, path := range map[string]string{
+		"inside":   filepath.Join(variant, "outer", "inner"),
+		"same":     filepath.Join(variant, "OUTER"),
+		"contains": variant,
+	} {
+		req := specRequest("case-" + name)
+		req.Path = path
+		if _, _, err := h.svc.CreateProject(context.Background(), req); !errors.Is(err, ErrPathTaken) {
+			t.Errorf("%s: want ErrPathTaken, got %v", name, err)
+		}
+	}
+	if h.projectCount() != 1 || exists(filepath.Join(outer.Path, "inner")) {
+		t.Fatal("a refused create must change nothing")
+	}
+}

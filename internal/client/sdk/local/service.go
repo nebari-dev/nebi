@@ -160,7 +160,9 @@ type Service struct {
 	bg       sync.WaitGroup
 }
 
-// New returns a Service. The client tables must exist; see Migrate.
+// New returns a Service. The client tables must exist; see Migrate. Call
+// RecoverDeletes once at startup to finish file removals that an earlier
+// run left incomplete.
 func New(opts Options) (*Service, error) {
 	switch {
 	case opts.DB == nil:

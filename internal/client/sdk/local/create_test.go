@@ -3,6 +3,7 @@ package local
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -723,5 +724,36 @@ func TestCancelCreateDuringInstall(t *testing.T) {
 	// The fake leaves a partial .pixi/envs behind, as pixi can.
 	if d.State != StateInstallFailed || d.JobID == nil || *d.JobID != job.ID {
 		t.Fatalf("a cancelled install must not look installed, got %+v", d.ProjectSummary)
+	}
+}
+
+// cancelAfterInstall is a PixiRunner whose Install succeeds and then has its
+// job cancelled, as when a cancel arrives right after pixi exits.
+type cancelAfterInstall struct {
+	*fakePixi
+	runner *jobs.Memory
+}
+
+func (c cancelAfterInstall) Install(ctx context.Context, dir string, out io.Writer) error {
+	if err := c.fakePixi.Install(ctx, dir, out); err != nil {
+		return err
+	}
+	id, _ := jobs.IDFromContext(ctx)
+	return c.runner.Cancel(context.Background(), id)
+}
+
+func TestCancelAfterInstallSucceededRecordsInstall(t *testing.T) {
+	h := newHarness(t, func(o *Options) {
+		o.Pixi = cancelAfterInstall{fakePixi: o.Pixi.(*fakePixi), runner: o.Jobs.(*jobs.Memory)}
+	})
+	req := specRequest("late-cancel")
+	req.Install = true
+	p, job := h.mustCreate(req)
+	if job.Status != jobs.StatusCompleted {
+		t.Fatalf("the work was done before the cancel, so the job completes: %+v", job)
+	}
+	d := h.detail(p.ID)
+	if d.InstalledVersionID == nil || d.State != StateInstalled {
+		t.Fatalf("a finished install must be recorded, got %+v", d)
 	}
 }

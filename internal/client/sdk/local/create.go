@@ -318,7 +318,9 @@ func (s *Service) createJob(projectID uuid.UUID, dir string, tags []string, inst
 		if err := s.pixi.Install(ctx, dir, log); err != nil {
 			return fmt.Errorf("pixi install: %w", err)
 		}
-		if err := s.db.WithContext(ctx).Model(&Project{}).Where("id = ?", projectID).
+		// The environment is installed: record it even if the job is
+		// cancelled now, or a complete install would look failed.
+		if err := s.db.WithContext(context.WithoutCancel(ctx)).Model(&Project{}).Where("id = ?", projectID).
 			Update("installed_version_id", versionID).Error; err != nil {
 			return fmt.Errorf("marking version 1 installed: %w", err)
 		}

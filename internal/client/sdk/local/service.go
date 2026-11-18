@@ -18,6 +18,7 @@ package local
 import (
 	"context"
 	"errors"
+	"io"
 	"os/user"
 	"strings"
 	"sync"
@@ -104,21 +105,30 @@ type JobRunner interface {
 	Submit(ctx context.Context, projectID uuid.UUID, typ jobs.Type, run jobs.Func) (*jobs.Job, error)
 	// ProjectJobs returns the project's jobs, oldest first.
 	ProjectJobs(ctx context.Context, projectID uuid.UUID) ([]jobs.Job, error)
-	// RetireProject atomically checks that the project has no queued or
+	// RetireProject atomically checks that the project has no pending or
 	// running job and, when it has none, refuses every later job for it
 	// except the allowed types. When jobs are active it returns their IDs
 	// and changes nothing.
 	RetireProject(ctx context.Context, projectID uuid.UUID, allow ...jobs.Type) ([]uuid.UUID, error)
 	// RestoreProject undoes RetireProject.
 	RestoreProject(ctx context.Context, projectID uuid.UUID) error
+	// Cancel cancels a job: a pending job ends as cancelled without
+	// running, and a running job has its context cancelled. Cancelling a
+	// finished job does nothing. A file removal job cannot be cancelled;
+	// for one that is active, Cancel returns a *jobs.NotCancellableError.
+	Cancel(ctx context.Context, jobID uuid.UUID) error
 }
 
 // PixiRunner runs pixi in a project directory (internal/client/sdk/exec).
+//
+// Each method sends pixi's stdout and stderr to out, the job's log, and
+// starts pixi with ctx through process.CommandContext, so cancelling ctx
+// stops pixi and its child processes and the method returns promptly.
 type PixiRunner interface {
 	// Lock solves the manifest in dir and writes dir/pixi.lock.
-	Lock(ctx context.Context, dir string) error
+	Lock(ctx context.Context, dir string, out io.Writer) error
 	// Install materializes the locked environment in dir/.pixi.
-	Install(ctx context.Context, dir string) error
+	Install(ctx context.Context, dir string, out io.Writer) error
 }
 
 // DeleteHook deletes rows another part of the client keeps for a project

@@ -17,17 +17,18 @@ import (
 type State string
 
 const (
-	// StateCreating: the create job is queued or running.
+	// StateCreating: the create job is pending or running.
 	StateCreating State = "creating"
 	// StateLockFailed: the project has no versions because the create job
-	// failed (or did not survive a restart). JobID is the failed job, when
-	// known.
+	// failed or was cancelled (or did not survive a restart). JobID is that
+	// job, when known.
 	StateLockFailed State = "lock_failed"
-	// StateInstalling: an install is queued or running.
+	// StateInstalling: an install is pending or running.
 	StateInstalling State = "installing"
-	// StateUninstalling: an uninstall is queued or running.
+	// StateUninstalling: an uninstall is pending or running.
 	StateUninstalling State = "uninstalling"
-	// StateInstallFailed: the last install failed. JobID is that job.
+	// StateInstallFailed: the last install failed or was cancelled. JobID
+	// is that job.
 	StateInstallFailed State = "install_failed"
 	// StateInstalled: the environment is on disk (.pixi/envs exists).
 	StateInstalled State = "installed"
@@ -171,10 +172,11 @@ func envInstalled(dir string) bool {
 // (oldest first) and whether .pixi/envs exists, and returns the job the
 // state refers to.
 //
-// An active create job wins. A project with no versions is lock_failed. An
-// active install or uninstall comes next; then a failed last install wins
-// over what is on disk, because pixi can leave a partial .pixi/envs behind
-// before failing; then the disk decides.
+// An active (pending or running) create job wins. A project with no
+// versions is lock_failed. An active install or uninstall comes next; then
+// a failed or cancelled last install wins over what is on disk, because
+// pixi can leave a partial .pixi/envs behind when it stops early; then the
+// disk decides.
 func deriveState(versionCount int, projectJobs []jobs.Job, installed bool) (State, *uuid.UUID) {
 	create := latestJob(projectJobs, func(j jobs.Job) bool { return j.Type == jobs.TypeCreate })
 	if create != nil && create.Active() {
@@ -199,7 +201,7 @@ func deriveState(versionCount int, projectJobs []jobs.Job, installed bool) (Stat
 		}
 		return StateInstalling, &env.ID
 	}
-	if env != nil && env.Status == jobs.StatusFailed && env.Type != jobs.TypeUninstall {
+	if env != nil && (env.Status == jobs.StatusFailed || env.Status == jobs.StatusCancelled) && env.Type != jobs.TypeUninstall {
 		return StateInstallFailed, &env.ID
 	}
 	if installed {

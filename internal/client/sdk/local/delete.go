@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -40,7 +41,7 @@ func (pendingRemoval) TableName() string { return "client_pending_removals" }
 //
 //  1. It refuses with ErrFilesNotManaged when DeleteFiles is asked for a
 //     directory nebi did not create, and with a *BusyError (errors.Is
-//     ErrProjectBusy) while a job for the project is queued or running.
+//     ErrProjectBusy) while a job for the project is pending or running.
 //     The busy check and refusing new jobs for the project are one step in
 //     the JobRunner, so nothing can start in between; the check covers
 //     only jobs of that runner. It then moves back a directory that an
@@ -146,7 +147,7 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID, opts DeletePr
 	}
 	if removal == nil {
 		// The directory was already gone; the job has nothing to do.
-		job, err := s.jobs.Submit(ctx, id, jobs.TypeDeleteFiles, func(context.Context) error { return nil })
+		job, err := s.jobs.Submit(ctx, id, jobs.TypeDeleteFiles, func(context.Context, io.Writer) error { return nil })
 		if err != nil {
 			return nil, fmt.Errorf("project %s was deleted, but its file removal job could not be started: %w", p.Name, err)
 		}
@@ -300,9 +301,10 @@ func (s *Service) undoRemoval(ctx context.Context, r pendingRemoval) error {
 
 // removalJob is the body of the job that removes a moved-aside directory.
 // The record is dropped only once the directory is gone, so a failed or
-// interrupted removal is retried by RecoverDeletes.
+// interrupted removal is retried by RecoverDeletes. The job cannot be
+// cancelled (jobs.TypeDeleteFiles), so it never stops part way.
 func (s *Service) removalJob(r pendingRemoval) jobs.Func {
-	return func(ctx context.Context) error {
+	return func(ctx context.Context, _ io.Writer) error {
 		if err := removeProjectDir(r.TrashPath); err != nil {
 			return err
 		}
@@ -311,7 +313,7 @@ func (s *Service) removalJob(r pendingRemoval) jobs.Func {
 }
 
 // removalRunning reports whether a file removal job of the project is
-// queued or running.
+// pending or running.
 func (s *Service) removalRunning(ctx context.Context, projectID uuid.UUID) (bool, error) {
 	list, err := s.jobs.ProjectJobs(ctx, projectID)
 	if err != nil {

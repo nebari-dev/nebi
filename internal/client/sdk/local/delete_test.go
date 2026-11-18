@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -73,7 +75,7 @@ func TestDeleteManagedProjectWithFiles(t *testing.T) {
 	if n := len(h.versions.versionsOf(t, p.ID)); n != 0 {
 		t.Fatalf("versions must be deleted with the project, %d left", n)
 	}
-	if done := h.wait(job); done.Status != jobs.StatusSucceeded {
+	if done := h.wait(job); done.Status != jobs.StatusCompleted {
 		t.Fatalf("file removal job: %+v", done)
 	}
 	if exists(p.Path) {
@@ -115,9 +117,9 @@ type gatedDeletes struct {
 func (g gatedDeletes) Submit(ctx context.Context, id uuid.UUID, typ jobs.Type, run jobs.Func) (*jobs.Job, error) {
 	if typ == jobs.TypeDeleteFiles {
 		inner := run
-		run = func(ctx context.Context) error {
+		run = func(ctx context.Context, log io.Writer) error {
 			<-g.gate
-			return inner(ctx)
+			return inner(ctx, log)
 		}
 	}
 	return g.Memory.Submit(ctx, id, typ, run)
@@ -141,12 +143,12 @@ func TestRecreateWhileFilesAreBeingRemoved(t *testing.T) {
 
 	// The removal job has not run yet; create the same project again.
 	p, job := h.mustCreate(specRequest("reuse"))
-	if job.Status != jobs.StatusSucceeded || p.Path != old.Path || !p.ManagedDir {
+	if job.Status != jobs.StatusCompleted || p.Path != old.Path || !p.ManagedDir {
 		t.Fatalf("recreate: job %+v, project %+v", job, p)
 	}
 
 	close(gate)
-	if done := h.wait(delJob); done.Status != jobs.StatusSucceeded {
+	if done := h.wait(delJob); done.Status != jobs.StatusCompleted {
 		t.Fatalf("removal job: %+v", done)
 	}
 	if !exists(filepath.Join(p.Path, "pixi.toml")) {
@@ -167,7 +169,7 @@ func TestDeleteFilesWhenDirectoryIsAlreadyGone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeleteProject: %v", err)
 	}
-	if done := h.wait(job); done.Status != jobs.StatusSucceeded {
+	if done := h.wait(job); done.Status != jobs.StatusCompleted {
 		t.Fatalf("removal job: %+v", done)
 	}
 	if h.projectCount() != 0 {
@@ -389,7 +391,7 @@ func TestDeletedProjectAcceptsNoNewJobs(t *testing.T) {
 	if _, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	noop := func(context.Context) error { return nil }
+	noop := func(context.Context, io.Writer) error { return nil }
 	if _, err := h.runner.Submit(context.Background(), p.ID, jobs.TypeInstall, noop); !errors.Is(err, jobs.ErrProjectRetired) {
 		t.Fatalf("an install for a deleted project must be refused, got %v", err)
 	}
@@ -402,7 +404,7 @@ func TestFailedDeleteAcceptsJobsAgain(t *testing.T) {
 	if _, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{DeleteFiles: true}); err == nil {
 		t.Fatal("want an error")
 	}
-	job, err := h.runner.Submit(context.Background(), p.ID, jobs.TypeInstall, func(context.Context) error { return nil })
+	job, err := h.runner.Submit(context.Background(), p.ID, jobs.TypeInstall, func(context.Context, io.Writer) error { return nil })
 	if err != nil {
 		t.Fatalf("a project whose delete failed must accept jobs again: %v", err)
 	}
@@ -534,7 +536,7 @@ func (f failingDeletes) Submit(ctx context.Context, id uuid.UUID, typ jobs.Type,
 // runner, as after the client restarts.
 func (h *harness) restart() (*Service, *jobs.Memory) {
 	h.t.Helper()
-	runner := jobs.NewMemory()
+	runner := jobs.NewMemory(jobs.Options{})
 	svc, err := New(Options{DB: h.db, Versions: h.versions, Jobs: runner, Pixi: h.pixi, ProjectsDir: h.projectsDir})
 	if err != nil {
 		h.t.Fatal(err)
@@ -566,7 +568,7 @@ func TestRecoverDeletesAfterSubmitFailure(t *testing.T) {
 	if err != nil || len(started) != 1 {
 		t.Fatalf("RecoverDeletes: %v, %d jobs", err, len(started))
 	}
-	if done, _ := runner.Wait(context.Background(), started[0].ID); done.Status != jobs.StatusSucceeded {
+	if done, _ := runner.Wait(context.Background(), started[0].ID); done.Status != jobs.StatusCompleted {
 		t.Fatalf("removal job: %+v", done)
 	}
 	if left := trashEntries(t, filepath.Dir(p.Path)); len(left) != 0 || h.pendingCount() != 0 {
@@ -688,9 +690,78 @@ func TestDeleteMoveAsideFailureChangesNothing(t *testing.T) {
 	if h.projectCount() != 1 || !exists(p.Path) || h.pendingCount() != 0 {
 		t.Fatal("a failed move must keep the project, its files, and no record")
 	}
-	job, err := h.runner.Submit(context.Background(), p.ID, jobs.TypeInstall, func(context.Context) error { return nil })
+	job, err := h.runner.Submit(context.Background(), p.ID, jobs.TypeInstall, func(context.Context, io.Writer) error { return nil })
 	if err != nil {
 		t.Fatalf("the project must accept jobs again: %v", err)
 	}
 	h.wait(job)
+}
+
+func TestPendingJobKeepsProjectBusy(t *testing.T) {
+	h := newHarnessWithRunner(t, jobs.Options{MaxRunning: 1})
+	gate := make(chan struct{})
+	started := make(chan struct{}, 1)
+	h.pixi.lockGate, h.pixi.lockStarted = gate, started
+
+	_, firstJob, err := h.svc.CreateProject(context.Background(), specRequest("first"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	waiting, waitingJob, err := h.svc.CreateProject(context.Background(), specRequest("waiting"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if waitingJob.Status != jobs.StatusPending {
+		t.Fatalf("precondition: the second create waits, got %+v", waitingJob)
+	}
+
+	// Project state: a pending create is creating, like a running one.
+	if d := h.detail(waiting.ID); d.State != StateCreating || d.JobID == nil || *d.JobID != waitingJob.ID {
+		t.Fatalf("want creating with the pending job, got %+v", d.ProjectSummary)
+	}
+	// Delete guard and ErrProjectBusy.
+	_, err = h.svc.DeleteProject(context.Background(), waiting.ID, DeleteProjectOptions{DeleteFiles: true})
+	var busy *BusyError
+	if !errors.Is(err, ErrProjectBusy) || !errors.As(err, &busy) || len(busy.JobIDs) != 1 || busy.JobIDs[0] != waitingJob.ID {
+		t.Fatalf("want a BusyError naming the pending job, got %v", err)
+	}
+	if h.projectCount() != 2 || !exists(waiting.Path) {
+		t.Fatal("a refused delete must change nothing")
+	}
+
+	close(gate)
+	h.wait(firstJob)
+	if done := h.wait(waitingJob); done.Status != jobs.StatusCompleted {
+		t.Fatalf("the pending create must run once the slot frees: %+v", done)
+	}
+	if _, err := h.svc.DeleteProject(context.Background(), waiting.ID, DeleteProjectOptions{DeleteFiles: true}); err != nil {
+		t.Fatalf("delete after the job finished: %v", err)
+	}
+}
+
+func TestRemovalJobCannotBeCancelled(t *testing.T) {
+	gate := make(chan struct{})
+	release := sync.OnceFunc(func() { close(gate) })
+	h := newHarness(t, func(o *Options) {
+		o.Jobs = gatedDeletes{Memory: o.Jobs.(*jobs.Memory), gate: gate}
+	})
+	t.Cleanup(release) // runs before the harness closes the runner
+	p, _ := h.mustCreate(specRequest("removing"))
+	job, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{DeleteFiles: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.svc.jobs.Cancel(context.Background(), job.ID)
+	var nc *jobs.NotCancellableError
+	if !errors.As(err, &nc) || !errors.Is(err, jobs.ErrNotCancellable) || nc.JobID != job.ID {
+		t.Fatalf("want a *jobs.NotCancellableError, got %v", err)
+	}
+	release()
+	if done := h.wait(job); done.Status != jobs.StatusCompleted {
+		t.Fatalf("the removal must run to the end: %+v", done)
+	}
+	if left := trashEntries(t, filepath.Dir(p.Path)); len(left) != 0 || h.pendingCount() != 0 {
+		t.Fatalf("the directory and its record must be gone: %v", left)
+	}
 }

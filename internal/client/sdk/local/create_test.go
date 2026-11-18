@@ -45,7 +45,7 @@ func TestCreateFromSpec(t *testing.T) {
 	}
 
 	done := h.wait(job)
-	if done.Status != jobs.StatusSucceeded {
+	if done.Status != jobs.StatusCompleted {
 		t.Fatalf("create job failed: %+v", done)
 	}
 	lock, install := h.pixi.calls()
@@ -92,7 +92,7 @@ platforms = ["linux-64"]
 python = "3.12.*"
 `
 	p, job := h.mustCreate(CreateProjectRequest{Name: "raw-env", Manifest: raw, Description: "from a paste"})
-	if job.Status != jobs.StatusSucceeded {
+	if job.Status != jobs.StatusCompleted {
 		t.Fatalf("job: %+v", job)
 	}
 	want := `# keep this comment
@@ -126,7 +126,7 @@ func TestCreateLeavesPlatformsAndChannelsToPixi(t *testing.T) {
 			"[environments]\npy = [\"py\"]\n",
 	} {
 		p, job := h.mustCreate(CreateProjectRequest{Name: name, Manifest: raw})
-		if job.Status != jobs.StatusSucceeded {
+		if job.Status != jobs.StatusCompleted {
 			t.Fatalf("%s: job: %+v", name, job)
 		}
 		if n := len(h.versions.versionsOf(t, p.ID)); n != 1 {
@@ -140,7 +140,7 @@ func TestCreateAndInstall(t *testing.T) {
 	req := specRequest("installed-env")
 	req.Install = true
 	p, job := h.mustCreate(req)
-	if job.Status != jobs.StatusSucceeded {
+	if job.Status != jobs.StatusCompleted {
 		t.Fatalf("job: %+v", job)
 	}
 	lock, install := h.pixi.calls()
@@ -455,7 +455,7 @@ func TestCreateInsertFailureCleansUp(t *testing.T) {
 }
 
 func TestCreateSubmitFailureUndoesEverything(t *testing.T) {
-	h := newHarness(t, func(o *Options) { o.Jobs = failingSubmitter{jobs.NewMemory()} })
+	h := newHarness(t, func(o *Options) { o.Jobs = failingSubmitter{jobs.NewMemory(jobs.Options{})} })
 	_, _, err := h.svc.CreateProject(context.Background(), specRequest("unsubmitted"))
 	if err == nil || !strings.Contains(err.Error(), "queue unavailable") {
 		t.Fatalf("want the submit error, got %v", err)
@@ -495,7 +495,7 @@ func TestConcurrentCreatesSameName(t *testing.T) {
 		}
 	}
 	if ok != 1 || h.projectCount() != 1 {
-		t.Fatalf("exactly one create must win: %d succeeded, %d rows", ok, h.projectCount())
+		t.Fatalf("exactly one create must win: %d won, %d rows", ok, h.projectCount())
 	}
 }
 
@@ -520,7 +520,7 @@ func TestNameIsReusableAfterDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.wait(job)
-	if _, job := h.mustCreate(specRequest("reuse")); job.Status != jobs.StatusSucceeded {
+	if _, job := h.mustCreate(specRequest("reuse")); job.Status != jobs.StatusCompleted {
 		t.Fatalf("recreate: %+v", job)
 	}
 }
@@ -591,5 +591,137 @@ func TestCreateRejectsCaseVariantOfTrackedPath(t *testing.T) {
 	}
 	if h.projectCount() != 1 || exists(filepath.Join(outer.Path, "inner")) {
 		t.Fatal("a refused create must change nothing")
+	}
+}
+
+func TestCreateJobLogsPixiOutput(t *testing.T) {
+	h := newHarness(t)
+	req := specRequest("logged")
+	req.Install = true
+	p, job := h.mustCreate(req)
+	if job.Status != jobs.StatusCompleted {
+		t.Fatalf("job: %+v", job)
+	}
+	out, err := h.runner.Logs(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := fakeLockOutput(p.Path) + fakeInstallOutput(p.Path); string(out) != want {
+		t.Fatalf("job log = %q, want pixi's lock then install output %q", out, want)
+	}
+}
+
+func TestCreateFailureOutputIsLogged(t *testing.T) {
+	h := newHarness(t)
+	h.pixi.lockErr = errors.New("cannot solve numpy ==99")
+	p, job := h.mustCreate(specRequest("unsolvable"))
+	out, _ := h.runner.Logs(job.ID)
+	if want := fakeLockOutput(p.Path) + "error: cannot solve numpy ==99\n"; string(out) != want {
+		t.Fatalf("job log = %q, want %q", out, want)
+	}
+}
+
+func TestCancelRunningCreateLeavesLockFailed(t *testing.T) {
+	h := newHarness(t)
+	gate := make(chan struct{})
+	started := make(chan struct{}, 1)
+	h.pixi.lockGate, h.pixi.lockStarted = gate, started
+	defer close(gate)
+
+	p, job, err := h.svc.CreateProject(context.Background(), specRequest("stopped"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	if err := h.runner.Cancel(context.Background(), job.ID); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	done := h.wait(job)
+	if done.Status != jobs.StatusCancelled || done.Error != "" {
+		t.Fatalf("want a cancelled job, got %+v", done)
+	}
+	d := h.detail(p.ID)
+	if d.State != StateLockFailed || d.JobID == nil || *d.JobID != job.ID {
+		t.Fatalf("a cancelled create is lock_failed and links to its job, got %+v", d.ProjectSummary)
+	}
+	if d.VersionCount != 0 || exists(filepath.Join(p.Path, artifact.LockFile)) {
+		t.Fatal("a cancelled lock must record no version and write no pixi.lock")
+	}
+	if !exists(filepath.Join(p.Path, artifact.ManifestFile)) || h.projectCount() != 1 {
+		t.Fatal("the project and its pixi.toml are kept, as after a failed lock")
+	}
+	if _, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{DeleteFiles: true}); err != nil {
+		t.Fatalf("a cancelled job must not keep the project busy: %v", err)
+	}
+}
+
+func TestCancelPendingCreateLeavesLockFailed(t *testing.T) {
+	h := newHarnessWithRunner(t, jobs.Options{MaxRunning: 1})
+	gate := make(chan struct{})
+	started := make(chan struct{}, 1)
+	h.pixi.lockGate, h.pixi.lockStarted = gate, started
+
+	first, firstJob, err := h.svc.CreateProject(context.Background(), specRequest("first"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	second, secondJob, err := h.svc.CreateProject(context.Background(), specRequest("second"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secondJob.Status != jobs.StatusPending {
+		t.Fatalf("with one slot the second create must wait, got %+v", secondJob)
+	}
+	if err := h.runner.Cancel(context.Background(), secondJob.ID); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if done := h.wait(secondJob); done.Status != jobs.StatusCancelled || done.StartedAt != nil {
+		t.Fatalf("want cancelled without starting, got %+v", done)
+	}
+	close(gate)
+	if done := h.wait(firstJob); done.Status != jobs.StatusCompleted {
+		t.Fatalf("first create: %+v", done)
+	}
+
+	if d := h.detail(second.ID); d.State != StateLockFailed || d.JobID == nil || *d.JobID != secondJob.ID {
+		t.Fatalf("second: want lock_failed linked to its job, got %+v", d.ProjectSummary)
+	}
+	if d := h.detail(first.ID); d.State != StateNotInstalled {
+		t.Fatalf("first: %s", d.State)
+	}
+	if lock, _ := h.pixi.calls(); len(lock) != 1 || lock[0] != first.Path {
+		t.Fatalf("pixi lock must run only for the first project, ran for %v", lock)
+	}
+}
+
+func TestCancelCreateDuringInstall(t *testing.T) {
+	h := newHarness(t)
+	gate := make(chan struct{})
+	started := make(chan struct{}, 1)
+	h.pixi.installGate, h.pixi.installStarted = gate, started
+	defer close(gate)
+
+	req := specRequest("half-way")
+	req.Install = true
+	p, job, err := h.svc.CreateProject(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	if err := h.runner.Cancel(context.Background(), job.ID); err != nil {
+		t.Fatal(err)
+	}
+	done := h.wait(job)
+	if done.Status != jobs.StatusCancelled || done.Stage != StageInstall || done.VersionID == nil {
+		t.Fatalf("want cancelled at the install stage after recording version 1, got %+v", done)
+	}
+	d := h.detail(p.ID)
+	if d.VersionCount != 1 || d.InstalledVersionID != nil {
+		t.Fatalf("version 1 is kept but not installed: %+v", d)
+	}
+	// The fake leaves a partial .pixi/envs behind, as pixi can.
+	if d.State != StateInstallFailed || d.JobID == nil || *d.JobID != job.ID {
+		t.Fatalf("a cancelled install must not look installed, got %+v", d.ProjectSummary)
 	}
 }

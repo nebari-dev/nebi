@@ -22,17 +22,23 @@ func TestDeriveState(t *testing.T) {
 		return jobs.Job{ID: uuid.New(), Type: typ, Status: status, Stage: stage}
 	}
 	createRunning := job(jobs.TypeCreate, jobs.StatusRunning, StageLock)
-	createQueued := job(jobs.TypeCreate, jobs.StatusQueued, "")
+	createPending := job(jobs.TypeCreate, jobs.StatusPending, "")
 	createFailedLock := job(jobs.TypeCreate, jobs.StatusFailed, StageLock)
 	createFailedInstall := job(jobs.TypeCreate, jobs.StatusFailed, StageInstall)
-	createOK := job(jobs.TypeCreate, jobs.StatusSucceeded, StageLock)
-	createOKInstalled := job(jobs.TypeCreate, jobs.StatusSucceeded, StageInstall)
+	createOK := job(jobs.TypeCreate, jobs.StatusCompleted, StageLock)
+	createOKInstalled := job(jobs.TypeCreate, jobs.StatusCompleted, StageInstall)
 	installRunning := job(jobs.TypeInstall, jobs.StatusRunning, "")
 	installFailed := job(jobs.TypeInstall, jobs.StatusFailed, "")
-	installOK := job(jobs.TypeInstall, jobs.StatusSucceeded, "")
-	uninstallRunning := job(jobs.TypeUninstall, jobs.StatusQueued, "")
+	installOK := job(jobs.TypeInstall, jobs.StatusCompleted, "")
+	uninstallPending := job(jobs.TypeUninstall, jobs.StatusPending, "")
 	uninstallFailed := job(jobs.TypeUninstall, jobs.StatusFailed, "")
 	deleteFiles := job(jobs.TypeDeleteFiles, jobs.StatusRunning, "")
+	createCancelledLock := job(jobs.TypeCreate, jobs.StatusCancelled, StageLock)
+	createCancelledPending := job(jobs.TypeCreate, jobs.StatusCancelled, "")
+	createCancelledInstall := job(jobs.TypeCreate, jobs.StatusCancelled, StageInstall)
+	installPending := job(jobs.TypeInstall, jobs.StatusPending, "")
+	installCancelled := job(jobs.TypeInstall, jobs.StatusCancelled, "")
+	uninstallCancelled := job(jobs.TypeUninstall, jobs.StatusCancelled, "")
 
 	cases := []struct {
 		name      string
@@ -43,22 +49,28 @@ func TestDeriveState(t *testing.T) {
 		wantJob   *jobs.Job
 	}{
 		{"create running", 0, []jobs.Job{createRunning}, false, StateCreating, &createRunning},
-		{"create queued", 0, []jobs.Job{createQueued}, false, StateCreating, &createQueued},
+		{"create pending", 0, []jobs.Job{createPending}, false, StateCreating, &createPending},
 		{"create running at install stage", 1, []jobs.Job{job(jobs.TypeCreate, jobs.StatusRunning, StageInstall)}, false, StateCreating, nil},
 		{"lock failed", 0, []jobs.Job{createFailedLock}, false, StateLockFailed, &createFailedLock},
 		{"no versions and no job (lost on restart)", 0, nil, false, StateLockFailed, nil},
-		{"no versions even if create succeeded", 0, []jobs.Job{createOK}, false, StateLockFailed, &createOK},
+		{"no versions even if create completed", 0, []jobs.Job{createOK}, false, StateLockFailed, &createOK},
 		{"created, not installed", 1, []jobs.Job{createOK}, false, StateNotInstalled, nil},
 		{"created and installed", 1, []jobs.Job{createOKInstalled}, true, StateInstalled, nil},
 		{"install failed in create", 1, []jobs.Job{createFailedInstall}, true, StateInstallFailed, &createFailedInstall},
 		{"lock failed then fixed by a new version", 1, []jobs.Job{createFailedLock}, false, StateNotInstalled, nil},
 		{"installing", 2, []jobs.Job{createOK, installRunning}, false, StateInstalling, &installRunning},
-		{"uninstalling", 2, []jobs.Job{createOK, installOK, uninstallRunning}, true, StateUninstalling, &uninstallRunning},
+		{"uninstalling", 2, []jobs.Job{createOK, installOK, uninstallPending}, true, StateUninstalling, &uninstallPending},
 		{"install failed wins over disk", 1, []jobs.Job{createOK, installFailed}, true, StateInstallFailed, &installFailed},
-		{"later install succeeded", 1, []jobs.Job{installFailed, installOK}, true, StateInstalled, nil},
+		{"later install completed", 1, []jobs.Job{installFailed, installOK}, true, StateInstalled, nil},
 		{"failed uninstall falls back to disk", 1, []jobs.Job{installOK, uninstallFailed}, true, StateInstalled, nil},
 		{"other jobs are ignored", 1, []jobs.Job{createOK, deleteFiles}, false, StateNotInstalled, nil},
 		{"installed by hand", 1, nil, true, StateInstalled, nil},
+		{"create cancelled while locking", 0, []jobs.Job{createCancelledLock}, false, StateLockFailed, &createCancelledLock},
+		{"create cancelled while pending", 0, []jobs.Job{createCancelledPending}, false, StateLockFailed, &createCancelledPending},
+		{"create cancelled while installing", 1, []jobs.Job{createCancelledInstall}, true, StateInstallFailed, &createCancelledInstall},
+		{"install pending", 1, []jobs.Job{createOK, installPending}, false, StateInstalling, &installPending},
+		{"install cancelled wins over a partial env", 1, []jobs.Job{createOK, installCancelled}, true, StateInstallFailed, &installCancelled},
+		{"cancelled uninstall falls back to disk", 1, []jobs.Job{installOK, uninstallCancelled}, true, StateInstalled, nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

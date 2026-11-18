@@ -597,20 +597,40 @@ func TestEvictionKeepsActiveAndLatestPerProject(t *testing.T) {
 		}
 	}
 
-	// Once w2 is w's latest finished job, w1 is an ordinary old job and
-	// the oldest beyond the cap.
+	// Once w2 finishes, w1 is still w's latest create job, so it stays
+	// next to w2, the latest install.
 	zg.open()
 	wg.open()
 	mustWait(t, m, zj.ID)
 	mustWait(t, m, w2.ID)
-	if _, err := m.Get(w1.ID); !errors.Is(err, ErrUnknownJob) {
-		t.Fatalf("w1 is no longer w's latest job and must be dropped, got %v", err)
-	}
-	for _, id := range append([]uuid.UUID{zj.ID, w2.ID, x1.ID}, ys[6:]...) {
+	for _, id := range append([]uuid.UUID{zj.ID, w1.ID, w2.ID, x1.ID}, ys[6:]...) {
 		mustGet(t, m, id)
 	}
-	if n := jobCount(m); n != 7 {
-		t.Fatalf("%d jobs kept, want 7 (3 latest-per-project + y10 + 3 others)", n)
+	if n := jobCount(m); n != 8 {
+		t.Fatalf("%d jobs kept, want 8 (latest per project and type: z, w create, w install, x, y10; plus 3 others)", n)
+	}
+}
+
+func TestEvictionKeepsLatestJobOfEachType(t *testing.T) {
+	m := newRunner(t, Options{KeepFinished: 1})
+	p := uuid.New()
+	failed := mustSubmit(t, m, p, TypeInstall, func(context.Context, io.Writer) error { return errors.New("solve failed") })
+	mustWait(t, m, failed.ID)
+	later := mustSubmit(t, m, p, TypeUninstall, noop) // a later job of another type
+	mustWait(t, m, later.ID)
+	oldInstall := mustSubmit(t, m, p, TypeInstall, noop)
+	mustWait(t, m, oldInstall.ID)
+	newInstall := mustSubmit(t, m, p, TypeInstall, func(context.Context, io.Writer) error { return errors.New("solve failed again") })
+	mustWait(t, m, newInstall.ID)
+
+	// Unkept jobs of other projects push p's older jobs out of the tail.
+	for range 3 {
+		mustWait(t, m, mustSubmit(t, m, uuid.New(), TypeDeleteFiles, noop).ID)
+	}
+	// p keeps its latest uninstall and its latest install; the earlier
+	// installs are ordinary old jobs and age out.
+	if got, want := ids(projectJobs(t, m, p)), []uuid.UUID{later.ID, newInstall.ID}; !equalIDs(got, want) {
+		t.Fatalf("project keeps %v, want its latest uninstall and install %v", got, want)
 	}
 }
 

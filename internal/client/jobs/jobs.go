@@ -73,9 +73,10 @@ type Options struct {
 	// MaxRunning is the most job bodies that run at the same time, across
 	// every project and job type. Values below 1 mean DefaultMaxRunning.
 	MaxRunning int
-	// KeepFinished is how many finished jobs are kept, beyond each
-	// project's latest finished job: the most recently finished across all
-	// projects. Values below 1 mean DefaultKeepFinished.
+	// KeepFinished is how many finished jobs are kept, beyond the latest
+	// finished job of each type for each project: the most recently
+	// finished across all projects. Values below 1 mean
+	// DefaultKeepFinished.
 	KeepFinished int
 	// LogLimit is how many bytes of output are kept per job; older output
 	// is dropped. Values below 1 mean DefaultLogLimit.
@@ -187,10 +188,16 @@ func ReportVersion(ctx context.Context, versionID uuid.UUID) {
 // The others wait as pending and start in submission order, skipping a job
 // whose project is busy so it does not hold back jobs for other projects.
 //
-// Finished jobs are dropped when they are no longer needed: each project's
-// latest finished job is kept while the project exists, and the others are
-// kept up to Options.KeepFinished, most recently finished first. Active
-// jobs are never dropped. Jobs are dropped as other jobs finish.
+// Finished jobs are dropped when they are no longer needed: the latest
+// finished job of each type is kept for each project while the project
+// exists, and the others are kept up to Options.KeepFinished, most recently
+// finished first. Active jobs are never dropped. Jobs are dropped as other
+// jobs finish.
+//
+// The latest job of each type is kept, not only the latest job of the
+// project, because project state reads more than one: a failed install
+// must still decide the state after a later job of another type finishes.
+// "Latest" follows submission order, the order ProjectJobs returns.
 type Memory struct {
 	maxRunning   int
 	keepFinished int
@@ -335,9 +342,11 @@ func (m *Memory) start(e *entry) {
 	go func() {
 		defer m.wg.Done()
 		err := call(ctx, run, e.log)
-		// Only a cancel that reached the body before it returned makes the
-		// job cancelled; a body that had already failed on its own stays
-		// failed.
+		// The context is checked as soon as the body returns. A cancel that
+		// lands after this check finds the job finishing and changes
+		// nothing, so a body that failed on its own stays failed. One that
+		// lands between the body returning and this check counts: nothing
+		// tells it apart from a cancel that caused the error.
 		interrupted := ctx.Err() != nil
 		cancel()
 		m.mu.Lock()
@@ -384,20 +393,23 @@ func (m *Memory) finish(e *entry, status Status, errMsg string) {
 	m.evict()
 }
 
-// evict drops finished jobs beyond the kept ones: each existing project's
-// latest finished job, and the KeepFinished most recently finished others.
-// A project counts as gone while it is retired, and once its latest job is
-// a file removal, which only runs for a deleted project. Called with mu
-// held.
+// evict drops finished jobs beyond the kept ones: the latest finished job
+// of each type for each existing project, and the KeepFinished most
+// recently finished others. A project counts as gone while it is retired,
+// and once its latest job is a file removal, which only runs for a deleted
+// project. Called with mu held.
 func (m *Memory) evict() {
 	pinned := func(e *entry) bool {
 		if _, retired := m.retired[e.job.ProjectID]; retired || e.job.Type == TypeDeleteFiles {
 			return false
 		}
 		list := m.byProj[e.job.ProjectID]
+		if list[len(list)-1].job.Type == TypeDeleteFiles {
+			return false // the project is gone
+		}
 		for i := len(list) - 1; i >= 0; i-- {
-			if !list[i].job.Active() {
-				return list[i] == e
+			if o := list[i]; o.job.Type == e.job.Type && !o.job.Active() {
+				return o == e
 			}
 		}
 		return false
@@ -438,8 +450,9 @@ func (m *Memory) drop(e *entry) {
 
 // Cancel cancels a job. A pending job ends as cancelled without running. A
 // running job has its context cancelled and ends as cancelled when its body
-// returns an error; Cancel does not wait for that. Cancelling a finished
-// job does nothing. Cancel returns a *NotCancellableError for an active job
+// returns an error; Cancel does not wait for that. A cancel that comes once
+// the runner has seen the body return changes nothing, so a job that failed
+// on its own stays failed. Cancelling a finished job does nothing. Cancel returns a *NotCancellableError for an active job
 // whose type cannot be cancelled, and ErrUnknownJob for an unknown ID.
 func (m *Memory) Cancel(_ context.Context, id uuid.UUID) error {
 	m.mu.Lock()
@@ -475,7 +488,7 @@ func (m *Memory) cancelLocked(e *entry) error {
 // returns their IDs and retires nothing. Deleting a project retires it, so
 // no job can start between the busy check and the delete.
 //
-// A retired project counts as gone: its latest finished job is no longer
+// A retired project counts as gone: its latest finished jobs are no longer
 // kept for it. The retirement ends when a file removal job of the project
 // completes, or with RestoreProject.
 func (m *Memory) RetireProject(_ context.Context, projectID uuid.UUID, allow ...Type) ([]uuid.UUID, error) {

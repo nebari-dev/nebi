@@ -107,8 +107,8 @@ type JobRunner interface {
 	Submit(ctx context.Context, projectID uuid.UUID, typ jobs.Type, run jobs.Func) (*jobs.Job, error)
 	// ProjectJobs returns the project's jobs the runner still keeps,
 	// oldest first: every pending or running job, the latest finished one
-	// while the project exists, and older finished ones only until they
-	// are dropped.
+	// of each type while the project exists, and older finished ones only
+	// until they are dropped.
 	ProjectJobs(ctx context.Context, projectID uuid.UUID) ([]jobs.Job, error)
 	// RetireProject atomically checks that the project has no pending or
 	// running job and, when it has none, refuses every later job for it

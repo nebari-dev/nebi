@@ -9,15 +9,12 @@ import (
 	"strings"
 )
 
-// ProjectsDirEnv overrides the default projects directory.
-const ProjectsDirEnv = "NEBI_PROJECTS_DIR"
-
 // defaultProjectsDirName is the projects directory under the home directory.
 const defaultProjectsDirName = "nebi-projects"
 
 // DefaultProjectPath returns <projects_dir>/<name>, the directory a project
 // gets when it is created without a path. projects_dir is
-// Options.ProjectsDir, else $NEBI_PROJECTS_DIR, else ~/nebi-projects.
+// Options.ProjectsDir, else ~/nebi-projects.
 func (s *Service) DefaultProjectPath(name string) (string, error) {
 	if err := checkNameFormat(name); err != nil {
 		return "", err
@@ -33,9 +30,6 @@ func (s *Service) DefaultProjectPath(name string) (string, error) {
 // directory.
 func (s *Service) resolvedProjectsDir() (string, error) {
 	dir := s.projectsDir
-	if dir == "" {
-		dir = os.Getenv(ProjectsDirEnv)
-	}
 	if dir == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -110,7 +104,8 @@ func sameDir(a, b string) bool {
 // inside reports whether p is strictly inside dir: by path, or because an
 // existing ancestor of p is the same file on disk as dir. Like sameDir it
 // matches paths that differ only in case, and paths that reach dir through
-// a symlink. Both must be clean absolute paths.
+// a symlink, including p itself being a symlink to a directory inside dir.
+// Both must be clean absolute paths.
 func inside(dir, p string) bool {
 	if isWithin(dir, p) {
 		return true
@@ -119,14 +114,27 @@ func inside(dir, p string) bool {
 	if err != nil {
 		return false
 	}
-	for cur := filepath.Dir(p); ; cur = filepath.Dir(cur) {
-		if ci, err := os.Stat(cur); err == nil && os.SameFile(di, ci) {
+	starts := []string{filepath.Dir(p)}
+	// The walk below starts at p's parent, so it never follows p itself.
+	// A stored project path can be a symlink by now (the user moved the
+	// directory and left a link behind), so check where p points too.
+	if resolved, err := filepath.EvalSymlinks(p); err == nil && resolved != p {
+		if isWithin(dir, resolved) {
 			return true
 		}
-		if filepath.Dir(cur) == cur {
-			return false
+		starts = append(starts, filepath.Dir(resolved))
+	}
+	for _, start := range starts {
+		for cur := start; ; cur = filepath.Dir(cur) {
+			if ci, err := os.Stat(cur); err == nil && os.SameFile(di, ci) {
+				return true
+			}
+			if filepath.Dir(cur) == cur {
+				break
+			}
 		}
 	}
+	return false
 }
 
 // isWithin reports whether p is strictly inside dir, comparing paths only.

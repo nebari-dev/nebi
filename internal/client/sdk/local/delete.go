@@ -38,14 +38,16 @@ func (pendingRemoval) TableName() string { return "client_pending_removals" }
 
 // DeleteProject deletes a local project.
 //
-//  1. It refuses with a *BusyError (errors.Is ErrProjectBusy) while a job
-//     for the project is queued or running. The check and refusing new
-//     jobs for the project are one step in the JobRunner, so nothing can
-//     start in between; the check covers only jobs of that runner. It also
-//     refuses with ErrFilesNotManaged when DeleteFiles is asked for a
-//     directory nebi did not create, and with ErrPathTaken when
-//     DeleteFiles would remove another project's directory. Nothing is
-//     changed in these cases.
+//  1. It refuses with ErrFilesNotManaged when DeleteFiles is asked for a
+//     directory nebi did not create, and with a *BusyError (errors.Is
+//     ErrProjectBusy) while a job for the project is queued or running.
+//     The busy check and refusing new jobs for the project are one step in
+//     the JobRunner, so nothing can start in between; the check covers
+//     only jobs of that runner. It then moves back a directory that an
+//     earlier failed delete left moved aside, and refuses with
+//     ErrPathTaken when DeleteFiles would remove another project's
+//     directory. Apart from that move back, nothing is changed in these
+//     cases.
 //  2. In one transaction it deletes the project's versions and tags, the
 //     rows of the DeleteHooks, its legacy origin row, and the project row.
 //  3. With DeleteFiles it first renames Path to a hidden sibling, so the
@@ -69,25 +71,6 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID, opts DeletePr
 	if opts.DeleteFiles && !p.ManagedDir {
 		return nil, fmt.Errorf("%w: %s; remove it yourself if you no longer need it", ErrFilesNotManaged, p.Path)
 	}
-	if opts.DeleteFiles {
-		// Create refuses nested projects, but rows from the legacy
-		// migration can still nest; never remove another project's files.
-		tracked, err := s.trackedPaths(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for _, o := range tracked {
-			if o.ID == id {
-				continue
-			}
-			if sameDir(p.Path, o.Path) {
-				return nil, fmt.Errorf("%w: cannot remove %s, project %q at %s uses the same directory", ErrPathTaken, p.Path, o.Name, o.Path)
-			}
-			if inside(p.Path, o.Path) {
-				return nil, fmt.Errorf("%w: cannot remove %s, project %q at %s is inside it", ErrPathTaken, p.Path, o.Name, o.Path)
-			}
-		}
-	}
 	// Check for active jobs and stop new ones in one step, so no job can
 	// start between the check and the delete. Only the file removal job
 	// below is still accepted.
@@ -104,10 +87,19 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID, opts DeletePr
 
 	// An earlier delete of this project that failed may have left its
 	// directory moved aside; put it back so it is kept or removed below
-	// like the rest of the project.
+	// like the rest of the project. This runs before the nested-project
+	// check, which looks at the directory on disk and would find nothing
+	// inside it while it is moved aside.
 	if err := s.undoRemovals(ctx, id); err != nil {
 		restore()
 		return nil, err
+	}
+
+	if opts.DeleteFiles {
+		if err := s.checkNothingInside(ctx, p); err != nil {
+			restore()
+			return nil, err
+		}
 	}
 
 	// Move the directory aside before the row goes, so its path is free
@@ -165,6 +157,30 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID, opts DeletePr
 		return nil, fmt.Errorf("project %s was deleted, but removing %s could not be started: %w; RecoverDeletes removes it later", p.Name, removal.TrashPath, err)
 	}
 	return job, nil
+}
+
+// checkNothingInside returns ErrPathTaken when removing p's directory would
+// remove another tracked project's directory: the same directory, or one
+// inside it. Create refuses nested projects, but rows from the legacy
+// migration can still nest, and a directory can be moved under another
+// one after it was tracked.
+func (s *Service) checkNothingInside(ctx context.Context, p *Project) error {
+	tracked, err := s.trackedPaths(ctx)
+	if err != nil {
+		return err
+	}
+	for _, o := range tracked {
+		if o.ID == p.ID {
+			continue
+		}
+		if sameDir(p.Path, o.Path) {
+			return fmt.Errorf("%w: cannot remove %s, project %q at %s uses the same directory", ErrPathTaken, p.Path, o.Name, o.Path)
+		}
+		if inside(p.Path, o.Path) {
+			return fmt.Errorf("%w: cannot remove %s, project %q at %s is inside it", ErrPathTaken, p.Path, o.Name, o.Path)
+		}
+	}
+	return nil
 }
 
 // RecoverDeletes finishes or undoes the file removals DeleteProject left

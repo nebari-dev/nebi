@@ -448,6 +448,69 @@ func TestDeleteFilesRefusedForAliasedProjectInside(t *testing.T) {
 	}
 }
 
+// TestDeleteFilesRefusedForProjectMovedInsideBehindSymlink is the case
+// where a tracked project's stored path is itself a symlink into the
+// directory being deleted: an unmanaged project whose directory the user
+// moved into a managed one, leaving a symlink at the old path.
+func TestDeleteFilesRefusedForProjectMovedInsideBehindSymlink(t *testing.T) {
+	h := newHarness(t)
+	outer, _ := h.mustCreate(specRequest("outer"))
+	req := specRequest("inner")
+	req.Path = filepath.Join(t.TempDir(), "inner")
+	inner, _ := h.mustCreate(req)
+	if inner.ManagedDir {
+		t.Fatal("a project outside the projects directory must not be managed")
+	}
+
+	moved := filepath.Join(outer.Path, "inner")
+	if err := os.Rename(inner.Path, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(moved, inner.Path); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	_, err := h.svc.DeleteProject(context.Background(), outer.ID, DeleteProjectOptions{DeleteFiles: true})
+	if !errors.Is(err, ErrPathTaken) {
+		t.Fatalf("want ErrPathTaken, got %v", err)
+	}
+	if !exists(filepath.Join(moved, "pixi.toml")) || h.projectCount() != 2 || h.pendingCount() != 0 {
+		t.Fatal("a refused delete must keep both rows and the inner project's files")
+	}
+}
+
+// TestDeleteFilesChecksNestingAfterMovingBack covers a delete that runs
+// while an earlier interrupted delete left the directory moved aside. The
+// nested-project check looks at the directory on disk, so it must run
+// after the directory is moved back, or it sees nothing inside.
+func TestDeleteFilesChecksNestingAfterMovingBack(t *testing.T) {
+	h := newHarness(t)
+	outer, _ := h.mustCreate(specRequest("outer"))
+	innerDir := filepath.Join(outer.Path, "inner")
+	if err := os.MkdirAll(innerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The row reaches inner through a symlink to outer, so only the
+	// on-disk check can tell it is inside outer.
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(outer.Path, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	h.insertRow(&Project{Name: "inner", Path: filepath.Join(link, "inner"), ManagedDir: true})
+	h.crashMidDelete(outer)
+
+	_, err := h.svc.DeleteProject(context.Background(), outer.ID, DeleteProjectOptions{DeleteFiles: true})
+	if !errors.Is(err, ErrPathTaken) {
+		t.Fatalf("want ErrPathTaken, got %v", err)
+	}
+	if !exists(innerDir) || h.projectCount() != 2 || h.pendingCount() != 0 {
+		t.Fatal("the directory must be moved back and the inner project's files kept")
+	}
+	if left := trashEntries(t, filepath.Dir(outer.Path)); len(left) != 0 {
+		t.Fatalf("no moved-aside directory may be left: %v", left)
+	}
+}
+
 func (h *harness) pendingCount() int64 {
 	h.t.Helper()
 	var n int64

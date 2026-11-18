@@ -113,6 +113,28 @@ python = "3.12.*"
 	}
 }
 
+// TestCreateLeavesPlatformsAndChannelsToPixi covers raw manifests that pixi
+// locks but a fixed platform list or a top-level channel check would
+// refuse: newer platform names, and no channels in [workspace] because a
+// feature sets its own.
+func TestCreateLeavesPlatformsAndChannelsToPixi(t *testing.T) {
+	h := newHarness(t)
+	for name, raw := range map[string]string{
+		"newer-platforms": "[workspace]\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\", \"linux-loongarch64\", \"freebsd-64\"]\n",
+		"feature-channels": "[workspace]\nchannels = []\nplatforms = [\"linux-64\"]\n\n" +
+			"[feature.py.dependencies]\npython = \"*\"\n\n[feature.py]\nchannels = [\"conda-forge\"]\n\n" +
+			"[environments]\npy = [\"py\"]\n",
+	} {
+		p, job := h.mustCreate(CreateProjectRequest{Name: name, Manifest: raw})
+		if job.Status != jobs.StatusSucceeded {
+			t.Fatalf("%s: job: %+v", name, job)
+		}
+		if n := len(h.versions.versionsOf(t, p.ID)); n != 1 {
+			t.Fatalf("%s: want 1 version, got %d", name, n)
+		}
+	}
+}
+
 func TestCreateAndInstall(t *testing.T) {
 	h := newHarness(t)
 	req := specRequest("installed-env")
@@ -222,10 +244,8 @@ func TestCreateValidation(t *testing.T) {
 		{"manifest without workspace", CreateProjectRequest{Name: "x", Manifest: "[dependencies]\nnumpy = \"*\"\n"}, ErrInvalidManifest},
 		{"bad package in spec", CreateProjectRequest{Name: "x", Spec: &artifact.Spec{Platforms: []string{"linux-64"}, Channels: []string{"conda-forge"}, Packages: []artifact.Package{{Name: "bad name"}}}}, ErrInvalidManifest},
 		{"spec without channel", CreateProjectRequest{Name: "x", Spec: &artifact.Spec{Platforms: []string{"linux-64"}}}, ErrInvalidManifest},
-		{"spec with unknown platform", CreateProjectRequest{Name: "x", Spec: &artifact.Spec{Platforms: []string{"not-a-platform"}, Channels: []string{"conda-forge"}}}, ErrInvalidManifest},
 		{"spec with operator twice", CreateProjectRequest{Name: "x", Spec: &artifact.Spec{Platforms: []string{"linux-64"}, Channels: []string{"conda-forge"}, Packages: []artifact.Package{{Name: "numpy", Operator: ">=", Constraint: ">=1"}}}}, ErrInvalidManifest},
-		{"manifest without channel", CreateProjectRequest{Name: "x", Manifest: "[workspace]\nplatforms = [\"linux-64\"]\n"}, ErrInvalidManifest},
-		{"manifest with unknown platform", CreateProjectRequest{Name: "x", Manifest: "[workspace]\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-65\"]\n"}, ErrInvalidManifest},
+		{"manifest with duplicate platform", CreateProjectRequest{Name: "x", Manifest: "[workspace]\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\", \"linux-64\"]\n"}, ErrInvalidManifest},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

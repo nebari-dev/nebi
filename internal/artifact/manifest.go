@@ -55,25 +55,14 @@ type Manifest struct {
 	Platforms []string
 }
 
-// knownPlatforms are the platforms a pixi workspace can target.
-var knownPlatforms = map[string]bool{
-	"linux-32": true, "linux-64": true, "linux-aarch64": true, "linux-armv6l": true,
-	"linux-armv7l": true, "linux-ppc64le": true, "linux-ppc64": true, "linux-s390x": true,
-	"linux-riscv32": true, "linux-riscv64": true,
-	"osx-64": true, "osx-arm64": true,
-	"win-32": true, "win-64": true, "win-arm64": true,
-	"emscripten-wasm32": true, "wasi-wasm32": true, "zos-z": true,
-}
-
-// ValidatePlatforms checks that every platform is one pixi knows and that
-// none is listed twice. An empty list is not an error here; callers that
+// ValidatePlatforms checks that no platform is listed twice. It does not
+// check the names against a list: pixi adds platforms between releases, so
+// `pixi lock` decides which ones it supports, and a platform it rejects
+// fails the create job. An empty list is not an error here; callers that
 // need a platform check for one themselves.
 func ValidatePlatforms(platforms []string) error {
 	seen := make(map[string]bool, len(platforms))
 	for _, p := range platforms {
-		if !knownPlatforms[p] {
-			return fmt.Errorf("%w: unknown platform %q", ErrInvalid, p)
-		}
 		if seen[p] {
 			return fmt.Errorf("%w: platform %q is listed more than once", ErrInvalid, p)
 		}
@@ -82,12 +71,10 @@ func ValidatePlatforms(platforms []string) error {
 	return nil
 }
 
-// Validate checks what pixi would reject before solving: at least one
-// channel, and known, distinct platforms.
+// Validate checks a raw manifest before it is written: no platform listed
+// twice. Everything else, including platform names and an empty channel
+// list (valid when features set their own channels), is left to pixi lock.
 func (m *Manifest) Validate() error {
-	if len(m.Channels) == 0 {
-		return fmt.Errorf("%w: at least one channel is required", ErrInvalid)
-	}
 	return ValidatePlatforms(m.Platforms)
 }
 

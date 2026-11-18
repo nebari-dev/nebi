@@ -8,18 +8,25 @@ import (
 	"github.com/google/uuid"
 )
 
-// projectNamePattern is the project name rule: lowercase letters, digits,
-// '.', '_' and '-', starting with a letter or digit, 1 to 63 characters.
+// projectNamePattern is the OCI distribution spec's rule for a repository
+// path component: lowercase letters and digits, in runs separated by one
+// '.', one '_', two '_' or any number of '-'. So a name starts and ends
+// with a letter or digit, and separators never meet ("a..b", "a._b" and
+// "a___b" are refused).
 //
 // The name is also the default directory name, [workspace].name, the
 // server project name on first push and part of the default OCI repository
-// (<name>-<id8>), and OCI repository components must be lowercase.
-var projectNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,62}$`)
+// (<name>-<id8>), so it has to be a valid repository component.
+var projectNamePattern = regexp.MustCompile(`^[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*$`)
+
+// maxProjectNameLen caps names at 63 characters on top of the OCI rule,
+// which sets no per-component limit.
+const maxProjectNameLen = 63
 
 // checkNameFormat applies the name rule without looking at the database.
 func checkNameFormat(name string) error {
-	if !projectNamePattern.MatchString(name) {
-		return fmt.Errorf("%w: %q: use 1-63 lowercase letters, digits, '.', '_' or '-', starting with a letter or digit", ErrInvalidName, name)
+	if len(name) > maxProjectNameLen || !projectNamePattern.MatchString(name) {
+		return fmt.Errorf("%w: %q: use up to 63 lowercase letters and digits, separated by '.', '_', '__' or '-', starting and ending with a letter or digit", ErrInvalidName, name)
 	}
 	return nil
 }

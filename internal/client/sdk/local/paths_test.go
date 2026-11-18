@@ -9,7 +9,6 @@ import (
 
 func TestDefaultProjectPath(t *testing.T) {
 	t.Run("option wins", func(t *testing.T) {
-		t.Setenv(ProjectsDirEnv, filepath.Join(t.TempDir(), "from-env"))
 		h := newHarness(t)
 		got, err := h.svc.DefaultProjectPath("demo")
 		if err != nil {
@@ -19,23 +18,13 @@ func TestDefaultProjectPath(t *testing.T) {
 			t.Fatalf("got %s, want %s", got, want)
 		}
 	})
-	t.Run("NEBI_PROJECTS_DIR when no option", func(t *testing.T) {
-		envDir := filepath.Join(t.TempDir(), "from-env")
-		t.Setenv(ProjectsDirEnv, envDir)
-		h := newHarness(t, func(o *Options) { o.ProjectsDir = "" })
-		got, err := h.svc.DefaultProjectPath("demo")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if want := h.resolved(filepath.Join(envDir, "demo")); got != want {
-			t.Fatalf("got %s, want %s", got, want)
-		}
-	})
 	t.Run("~/nebi-projects by default", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
 		t.Setenv("USERPROFILE", home)
-		t.Setenv(ProjectsDirEnv, "")
+		// The SDK reads no environment variable; entrypoints pass
+		// NEBI_PROJECTS_DIR as Options.ProjectsDir.
+		t.Setenv("NEBI_PROJECTS_DIR", filepath.Join(t.TempDir(), "ignored"))
 		h := newHarness(t, func(o *Options) { o.ProjectsDir = "" })
 		got, err := h.svc.DefaultProjectPath("demo")
 		if err != nil {

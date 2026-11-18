@@ -9,7 +9,8 @@
 //
 // Work that belongs to other parts of the client is reached through small
 // interfaces, so each part can be built and tested on its own:
-//   - VersionStore: project versions and tags (the version CRUD issue, #661)
+//   - VersionStore: project versions and tags (the version CRUD issue, #661;
+//     a temporary seam removed when #661 lands, tracked in #669)
 //   - JobRunner: background jobs (internal/client/jobs)
 //   - PixiRunner: pixi lock and install (internal/client/sdk/exec)
 package local
@@ -27,8 +28,17 @@ import (
 	"gorm.io/gorm"
 )
 
+// Temporary seam until the version CRUD issue (#661) lands. #661 specifies
+// recordVersion as an unexported method in this package,
+// func (s *Service) recordVersion(tx, req) (*ProjectVersion, bool, error),
+// so VersionStore, VersionOrigin, OriginCreated and RecordVersionRequest
+// are placeholders that will be removed or collide with #661's own types
+// when it lands. Replacing them with the real version tables is tracked in
+// #669.
+
 // VersionOrigin records how a version entered this machine's history. The
-// version CRUD issue (#661) owns it and adds the other origins.
+// version CRUD issue (#661) owns it and adds the other origins. Temporary;
+// see the note above.
 type VersionOrigin string
 
 // OriginCreated is the origin of a version made on this machine, including
@@ -37,6 +47,7 @@ const OriginCreated VersionOrigin = "created"
 
 // RecordVersionRequest mirrors recordVersionRequest from the version CRUD
 // issue (#661): everything recordVersion needs to write one version.
+// Temporary; #661 replaces it with its own unexported request (#669).
 type RecordVersionRequest struct {
 	ProjectID uuid.UUID
 	// BaseVersionID is the version this one was created from; nil for
@@ -69,6 +80,10 @@ type VersionInfo struct {
 // VersionStore is the version side of a project, owned by the version CRUD
 // issue (#661), which provides the ProjectVersion and ProjectTag tables and
 // recordVersion.
+//
+// Temporary seam: #661 makes recordVersion an unexported Service method in
+// this package, so this interface and the fake behind it go away when #661
+// lands. The cleanup is tracked in #669.
 type VersionStore interface {
 	// RecordVersion is #661's recordVersion: it validates the tags and
 	// writes the version and its tags inside tx, the job's success
@@ -119,7 +134,8 @@ type Options struct {
 	Pixi     PixiRunner
 
 	// ProjectsDir is where projects go when no path is given. Empty means
-	// $NEBI_PROJECTS_DIR, or ~/nebi-projects when that is unset too.
+	// ~/nebi-projects. The SDK reads no environment variables; entrypoints
+	// that honour NEBI_PROJECTS_DIR or a flag pass the result here.
 	ProjectsDir string
 
 	// SizeTTL is how long a computed project size is reused before List

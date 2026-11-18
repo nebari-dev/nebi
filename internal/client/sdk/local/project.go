@@ -20,7 +20,7 @@ type Project struct {
 
 	// Name is the local display name. Unique case-insensitively, validated
 	// by ValidateProjectName. Renaming does not touch files on disk.
-	Name string `gorm:"not null;uniqueIndex:idx_projects_name,collate:NOCASE" json:"name"`
+	Name string `gorm:"not null;uniqueIndex:idx_client_projects_name,collate:NOCASE" json:"name"`
 
 	// Path is the absolute, symlink-resolved project directory.
 	Path string `gorm:"not null;uniqueIndex" json:"path"`

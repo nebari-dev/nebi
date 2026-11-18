@@ -71,7 +71,6 @@ func TestRenderManifestRejectsBadSpecs(t *testing.T) {
 	cases := map[string]Spec{
 		"no platform":           {Channels: cf},
 		"empty platform":        {Platforms: []string{" "}, Channels: cf},
-		"unknown platform":      {Platforms: []string{"not-a-platform"}, Channels: cf},
 		"duplicate platform":    {Platforms: []string{"linux-64", "linux-64"}, Channels: cf},
 		"no channel":            {Platforms: linux},
 		"empty channel":         {Platforms: linux, Channels: []string{""}},
@@ -179,17 +178,31 @@ func TestParseManifestChannels(t *testing.T) {
 }
 
 func TestManifestValidate(t *testing.T) {
-	ok := &Manifest{Channels: []string{"conda-forge"}, Platforms: []string{"linux-64", "osx-arm64", "win-64"}}
-	if err := ok.Validate(); err != nil {
-		t.Fatalf("valid manifest: %v", err)
-	}
+	// Platform names are not checked against a list: these are newer than
+	// some pixi releases, and pixi lock decides which it supports. No
+	// channels is valid when features set their own.
 	for name, m := range map[string]*Manifest{
-		"no channel":         {Platforms: []string{"linux-64"}},
-		"unknown platform":   {Channels: []string{"conda-forge"}, Platforms: []string{"linux-65"}},
-		"duplicate platform": {Channels: []string{"conda-forge"}, Platforms: []string{"osx-64", "osx-64"}},
+		"common platforms": {Channels: []string{"conda-forge"}, Platforms: []string{"linux-64", "osx-arm64", "win-64"}},
+		"newer platforms":  {Channels: []string{"conda-forge"}, Platforms: []string{"linux-64", "linux-loongarch64", "freebsd-64", "noarch", "linux-ppc", "ios-arm64", "android-arm64"}},
+		"no channels":      {Platforms: []string{"linux-64"}},
+		"no platforms":     {Channels: []string{"conda-forge"}},
 	} {
-		if err := m.Validate(); !errors.Is(err, ErrInvalid) {
-			t.Errorf("%s: want ErrInvalid, got %v", name, err)
+		if err := m.Validate(); err != nil {
+			t.Errorf("%s: %v", name, err)
 		}
+	}
+	dup := &Manifest{Channels: []string{"conda-forge"}, Platforms: []string{"osx-64", "osx-64"}}
+	if err := dup.Validate(); !errors.Is(err, ErrInvalid) {
+		t.Errorf("duplicate platform: want ErrInvalid, got %v", err)
+	}
+}
+
+func TestRenderManifestLeavesPlatformNamesToPixi(t *testing.T) {
+	out, err := RenderManifest("demo", "", Spec{Platforms: []string{"linux-64", "freebsd-64"}, Channels: []string{"conda-forge"}})
+	if err != nil {
+		t.Fatalf("RenderManifest: %v", err)
+	}
+	if !strings.Contains(out, `platforms = ["linux-64", "freebsd-64"]`) {
+		t.Fatalf("platforms not rendered as given:\n%s", out)
 	}
 }

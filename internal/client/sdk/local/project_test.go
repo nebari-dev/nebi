@@ -2,12 +2,8 @@ package local
 
 import (
 	"errors"
-	"go/parser"
-	"go/token"
-	"io/fs"
-	"path/filepath"
+	"os/exec"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -47,6 +43,28 @@ func TestMigrateCreatesClientProjectsTable(t *testing.T) {
 	want := []string{"created_at", "id", "installed_version_id", "managed_dir", "name", "path"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("columns = %v, want exactly %v (no owner, status, source, size, origin or soft-delete columns)", names, want)
+	}
+}
+
+// TestMigrateNextToLegacyProjectsIndex checks that the name index does not
+// clash with an index on the legacy projects table. SQLite index names are
+// database-wide, and idx_projects_name is the name GORM gives an index on
+// projects.name.
+func TestMigrateNextToLegacyProjectsIndex(t *testing.T) {
+	db := openTestDB(t)
+	for _, stmt := range []string{
+		"CREATE TABLE `projects` (`id` text PRIMARY KEY, `name` text)",
+		"CREATE INDEX `idx_projects_name` ON `projects`(`name`)",
+	} {
+		if err := db.Exec(stmt).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Migrate(db); err != nil {
+		t.Fatalf("Migrate next to a legacy projects index: %v", err)
+	}
+	if !db.Migrator().HasIndex(&Project{}, "idx_client_projects_name") {
+		t.Fatal("client_projects must have idx_client_projects_name")
 	}
 }
 
@@ -105,35 +123,80 @@ func TestBeforeCreateAssignsID(t *testing.T) {
 	}
 }
 
-// TestClientDoesNotImportServerModels enforces the data model acceptance
-// criterion: nothing in internal/client imports internal/models.
-func TestClientDoesNotImportServerModels(t *testing.T) {
-	root := filepath.Join("..", "..") // internal/client
-	const forbidden = "github.com/nebari-dev/nebi/internal/models"
-	checked := 0
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+// serverPackages are the server-side packages internal/client must not
+// depend on, directly or through another package.
+var serverPackages = []string{
+	"github.com/nebari-dev/nebi/internal/models",
+	"github.com/nebari-dev/nebi/internal/store",
+	"github.com/nebari-dev/nebi/internal/service",
+	"github.com/nebari-dev/nebi/internal/db",
+	"github.com/nebari-dev/nebi/internal/queue",
+	"github.com/nebari-dev/nebi/internal/worker",
+	"github.com/nebari-dev/nebi/internal/executor",
+	"github.com/nebari-dev/nebi/internal/api",
+}
+
+// TestClientDoesNotDependOnServerPackages enforces the data model acceptance
+// criterion: nothing in internal/client depends on internal/models or the
+// other server packages. It reads the full dependency graph from go list
+// -deps, test files included, so an import through another package (for
+// example internal/store, which reaches internal/models via internal/auth)
+// is caught too.
+func TestClientDoesNotDependOnServerPackages(t *testing.T) {
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		t.Fatalf("go list needs the go command on PATH: %v", err)
+	}
+	cmd := exec.Command(goBin, "list", "-deps", "-test", "-tags=e2e",
+		"-f", "{{.ImportPath}}|{{join .Imports \",\"}}",
+		"github.com/nebari-dev/nebi/internal/client/...")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("go list: %v\n%s", err, stderr.String())
+	}
+
+	// importers maps every package in the graph to the packages that
+	// import it, so a violation can name where it comes from.
+	importers := map[string]map[string]bool{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		pkg, imports, _ := strings.Cut(line, "|")
+		pkg = stripTestVariant(pkg)
+		if importers[pkg] == nil {
+			importers[pkg] = map[string]bool{}
 		}
-		if d.IsDir() || !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
-		if err != nil {
-			return err
-		}
-		checked++
-		for _, imp := range f.Imports {
-			if p, _ := strconv.Unquote(imp.Path.Value); p == forbidden {
-				t.Errorf("%s imports %s", path, forbidden)
+		for _, imp := range strings.Split(imports, ",") {
+			if imp = stripTestVariant(imp); imp != "" {
+				if importers[imp] == nil {
+					importers[imp] = map[string]bool{}
+				}
+				importers[imp][pkg] = true
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
-	if checked == 0 {
-		t.Fatal("no Go files found under internal/client")
+	if _, ok := importers["github.com/nebari-dev/nebi/internal/client/sdk/local"]; !ok {
+		t.Fatalf("go list did not report internal/client/sdk/local:\n%s", out)
 	}
+	for pkg, set := range importers {
+		for _, forbidden := range serverPackages {
+			if pkg == forbidden || strings.HasPrefix(pkg, forbidden+"/") {
+				var by []string
+				for b := range set {
+					by = append(by, b)
+				}
+				sort.Strings(by)
+				t.Errorf("internal/client depends on %s (imported by %s)", pkg, strings.Join(by, ", "))
+			}
+		}
+	}
+}
+
+// stripTestVariant drops the " [pkg.test]" suffix go list adds to packages
+// recompiled for a test.
+func stripTestVariant(pkg string) string {
+	if i := strings.Index(pkg, " ["); i >= 0 {
+		return pkg[:i]
+	}
+	return pkg
 }

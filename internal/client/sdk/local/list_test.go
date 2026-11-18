@@ -35,34 +35,44 @@ func TestDeriveState(t *testing.T) {
 	deleteFiles := job(jobs.TypeDeleteFiles, jobs.StatusRunning, "")
 
 	cases := []struct {
-		name      string
-		versions  int
-		jobs      []jobs.Job
-		installed bool
-		want      State
-		wantJob   *jobs.Job
+		name     string
+		versions int
+		jobs     []jobs.Job
+		// recorded is whether InstalledVersionID is set; onDisk is whether
+		// .pixi/envs exists.
+		recorded, onDisk bool
+		want             State
+		wantJob          *jobs.Job
 	}{
-		{"create running", 0, []jobs.Job{createRunning}, false, StateCreating, &createRunning},
-		{"create queued", 0, []jobs.Job{createQueued}, false, StateCreating, &createQueued},
-		{"create running at install stage", 1, []jobs.Job{job(jobs.TypeCreate, jobs.StatusRunning, StageInstall)}, false, StateCreating, nil},
-		{"lock failed", 0, []jobs.Job{createFailedLock}, false, StateLockFailed, &createFailedLock},
-		{"no versions and no job (lost on restart)", 0, nil, false, StateLockFailed, nil},
-		{"no versions even if create succeeded", 0, []jobs.Job{createOK}, false, StateLockFailed, &createOK},
-		{"created, not installed", 1, []jobs.Job{createOK}, false, StateNotInstalled, nil},
-		{"created and installed", 1, []jobs.Job{createOKInstalled}, true, StateInstalled, nil},
-		{"install failed in create", 1, []jobs.Job{createFailedInstall}, true, StateInstallFailed, &createFailedInstall},
-		{"lock failed then fixed by a new version", 1, []jobs.Job{createFailedLock}, false, StateNotInstalled, nil},
-		{"installing", 2, []jobs.Job{createOK, installRunning}, false, StateInstalling, &installRunning},
-		{"uninstalling", 2, []jobs.Job{createOK, installOK, uninstallRunning}, true, StateUninstalling, &uninstallRunning},
-		{"install failed wins over disk", 1, []jobs.Job{createOK, installFailed}, true, StateInstallFailed, &installFailed},
-		{"later install succeeded", 1, []jobs.Job{installFailed, installOK}, true, StateInstalled, nil},
-		{"failed uninstall falls back to disk", 1, []jobs.Job{installOK, uninstallFailed}, true, StateInstalled, nil},
-		{"other jobs are ignored", 1, []jobs.Job{createOK, deleteFiles}, false, StateNotInstalled, nil},
-		{"installed by hand", 1, nil, true, StateInstalled, nil},
+		{"create running", 0, []jobs.Job{createRunning}, false, false, StateCreating, &createRunning},
+		{"create queued", 0, []jobs.Job{createQueued}, false, false, StateCreating, &createQueued},
+		{"create running at install stage", 1, []jobs.Job{job(jobs.TypeCreate, jobs.StatusRunning, StageInstall)}, false, true, StateCreating, nil},
+		{"lock failed", 0, []jobs.Job{createFailedLock}, false, false, StateLockFailed, &createFailedLock},
+		{"no versions and no job (lost on restart)", 0, nil, false, false, StateLockFailed, nil},
+		{"no versions even if create succeeded", 0, []jobs.Job{createOK}, false, false, StateLockFailed, &createOK},
+		{"created, not installed", 1, []jobs.Job{createOK}, false, false, StateNotInstalled, nil},
+		{"created and installed", 1, []jobs.Job{createOKInstalled}, true, true, StateInstalled, nil},
+		{"install failed in create", 1, []jobs.Job{createFailedInstall}, false, true, StateInstallFailed, &createFailedInstall},
+		{"lock failed then fixed by a new version", 1, []jobs.Job{createFailedLock}, false, false, StateNotInstalled, nil},
+		{"installing", 2, []jobs.Job{createOK, installRunning}, false, false, StateInstalling, &installRunning},
+		{"uninstalling", 2, []jobs.Job{createOK, installOK, uninstallRunning}, true, true, StateUninstalling, &uninstallRunning},
+		{"install failed wins over disk", 1, []jobs.Job{createOK, installFailed}, true, true, StateInstallFailed, &installFailed},
+		{"later install succeeded", 1, []jobs.Job{installFailed, installOK}, true, true, StateInstalled, nil},
+		{"failed uninstall falls back to disk", 1, []jobs.Job{installOK, uninstallFailed}, true, true, StateInstalled, nil},
+		{"other jobs are ignored", 1, []jobs.Job{createOK, deleteFiles}, false, false, StateNotInstalled, nil},
+		{"installed, no jobs (after restart)", 1, nil, true, true, StateInstalled, nil},
+		// The failed or interrupted install's job is gone after a restart;
+		// only its partial .pixi/envs is left, and nothing was recorded.
+		{"partial env, job lost on restart", 1, nil, false, true, StateNotInstalled, nil},
+		{"partial env, create job lost on restart", 1, []jobs.Job{createOK}, false, true, StateNotInstalled, nil},
+		// pixi install run by hand: nebi does not know which version is on
+		// disk, so it is deliberately not reported as installed.
+		{"env installed outside nebi", 1, nil, false, true, StateNotInstalled, nil},
+		{"installed version recorded but env removed", 1, nil, true, false, StateNotInstalled, nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, gotJob := deriveState(c.versions, c.jobs, c.installed)
+			got, gotJob := deriveState(c.versions, c.jobs, c.recorded, c.onDisk)
 			if got != c.want {
 				t.Fatalf("state = %s, want %s", got, c.want)
 			}
@@ -73,6 +83,173 @@ func TestDeriveState(t *testing.T) {
 				t.Fatalf("job = %v, want none", gotJob)
 			}
 		})
+	}
+}
+
+// restarted returns a copy of h whose service and job runner are new, as
+// after the client restarts (see restart). The old ones are left as they
+// are, like a process that was killed, and closed at cleanup.
+func (h *harness) restarted() *harness {
+	h.t.Helper()
+	r := *h
+	r.svc, r.runner = h.restart()
+	return &r
+}
+
+// checkAfterRestart checks GetProject and ListProjects for the project.
+// want is the expected state; wantInstalled is the expected installed
+// version number (nil: none). The state must not link to a job, since the
+// new runner has none.
+func checkAfterRestart(t *testing.T, h *harness, id uuid.UUID, want State, wantInstalled *int) {
+	t.Helper()
+	if js, err := h.runner.ProjectJobs(context.Background(), id); err != nil || len(js) != 0 {
+		t.Fatalf("precondition: the restarted runner must know no jobs of the project, got %v, %v", js, err)
+	}
+	d := h.detail(id)
+	list, err := h.svc.ListProjects(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s *ProjectSummary
+	for i := range list {
+		if list[i].ID == id {
+			s = &list[i]
+		}
+	}
+	if s == nil {
+		t.Fatalf("ListProjects does not list project %s", id)
+	}
+	for _, got := range []struct {
+		from string
+		ProjectSummary
+	}{{"GetProject", d.ProjectSummary}, {"ListProjects", *s}} {
+		if got.State != want {
+			t.Errorf("%s: state = %s, want %s", got.from, got.State, want)
+		}
+		if got.JobID != nil {
+			t.Errorf("%s: JobID = %s, want none", got.from, got.JobID)
+		}
+		if !reflect.DeepEqual(got.InstalledVersion, wantInstalled) {
+			t.Errorf("%s: InstalledVersion = %v, want %v", got.from, deref(got.InstalledVersion), deref(wantInstalled))
+		}
+		if got.LatestVersion == nil || *got.LatestVersion != 1 {
+			t.Errorf("%s: LatestVersion = %v, want 1", got.from, deref(got.LatestVersion))
+		}
+	}
+	if d.VersionCount != 1 {
+		t.Errorf("VersionCount = %d, want 1", d.VersionCount)
+	}
+}
+
+func deref(n *int) any {
+	if n == nil {
+		return nil
+	}
+	return *n
+}
+
+func intPtr(n int) *int { return &n }
+
+// A failed install leaves a partial .pixi/envs. After a restart its job is
+// gone, and the project must not be reported as installed (#670).
+func TestStateAfterRestartFollowingFailedInstall(t *testing.T) {
+	h := newHarness(t)
+	h.pixi.installErr = errors.New("download failed")
+	h.pixi.partialEnv = true
+	req := specRequest("failed-install")
+	req.Install = true
+	p, job := h.mustCreate(req)
+	if job.Status != jobs.StatusFailed || job.Stage != StageInstall {
+		t.Fatalf("precondition: want the create job failed at the install stage, got %+v", job)
+	}
+	if !envInstalled(p.Path) {
+		t.Fatal("precondition: the failed install must leave .pixi/envs behind")
+	}
+	if d := h.detail(p.ID); d.State != StateInstallFailed || d.InstalledVersionID != nil {
+		t.Fatalf("precondition: before the restart want install_failed and no installed version, got %+v", d)
+	}
+
+	r := h.restarted()
+	checkAfterRestart(t, r, p.ID, StateNotInstalled, nil)
+	if d := r.detail(p.ID); d.InstalledVersionID != nil {
+		t.Fatalf("InstalledVersionID = %s, want nil", d.InstalledVersionID)
+	}
+}
+
+// Quitting nebi during a long install leaves a partial .pixi/envs and no
+// job. The old process is not shut down cleanly here: the new service
+// starts while the old install is still blocked, as after a kill.
+func TestStateAfterRestartDuringInstall(t *testing.T) {
+	h := newHarness(t)
+	started := make(chan struct{}, 1)
+	h.pixi.installGate = make(chan struct{}) // never opened: the install never finishes
+	h.pixi.installStarted = started
+	req := specRequest("interrupted")
+	req.Install = true
+	p, job, err := h.svc.CreateProject(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the install never started")
+	}
+	if !envInstalled(p.Path) {
+		t.Fatal("precondition: the interrupted install must have created .pixi/envs")
+	}
+	if d := h.detail(p.ID); d.State != StateCreating || d.JobID == nil || *d.JobID != job.ID {
+		t.Fatalf("precondition: before the restart want creating with the job, got %+v", d.ProjectSummary)
+	}
+
+	r := h.restarted()
+	checkAfterRestart(t, r, p.ID, StateNotInstalled, nil)
+}
+
+// A successful install is still reported after a restart, with its version.
+func TestStateAfterRestartKeepsSuccessfulInstall(t *testing.T) {
+	h := newHarness(t)
+	req := specRequest("installed")
+	req.Install = true
+	p, job := h.mustCreate(req)
+	if job.Status != jobs.StatusSucceeded {
+		t.Fatalf("precondition: create job: %+v", job)
+	}
+
+	r := h.restarted()
+	checkAfterRestart(t, r, p.ID, StateInstalled, intPtr(1))
+}
+
+// An environment created by running pixi outside nebi has .pixi/envs but no
+// InstalledVersionID. nebi does not know which version is on disk, so the
+// project is deliberately reported as not_installed (#670).
+func TestStateOfEnvInstalledOutsideNebi(t *testing.T) {
+	h := newHarness(t)
+	p, _ := h.mustCreate(specRequest("by-hand"))
+	if err := os.MkdirAll(filepath.Join(p.Path, ".pixi", "envs", "default"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	d := h.detail(p.ID)
+	if d.State != StateNotInstalled || d.InstalledVersion != nil || d.InstalledVersionID != nil || d.JobID != nil {
+		t.Fatalf("want not_installed with no installed version, got %+v", d)
+	}
+}
+
+// Removing an installed environment by hand makes the project
+// not_installed even though InstalledVersionID is still set.
+func TestStateOfInstalledEnvRemovedFromDisk(t *testing.T) {
+	h := newHarness(t)
+	req := specRequest("removed")
+	req.Install = true
+	p, _ := h.mustCreate(req)
+	if d := h.detail(p.ID); d.State != StateInstalled {
+		t.Fatalf("precondition: want installed, got %s", d.State)
+	}
+	if err := os.RemoveAll(filepath.Join(p.Path, ".pixi")); err != nil {
+		t.Fatal(err)
+	}
+	if d := h.detail(p.ID); d.State != StateNotInstalled {
+		t.Fatalf("want not_installed once .pixi is removed, got %s", d.State)
 	}
 }
 

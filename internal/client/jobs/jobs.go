@@ -109,6 +109,12 @@ func (j Job) Active() bool {
 	return j.Status == StatusPending || j.Status == StatusRunning
 }
 
+// Started reports whether the job's body has started. A pending job, and a
+// job cancelled while pending, has not.
+func (j Job) Started() bool {
+	return j.StartedAt != nil
+}
+
 // Func is the body of a job. Output written to log is kept with the job
 // and can be followed with FollowLogs; pixi's stdout and stderr go there.
 // log is safe for concurrent use.
@@ -197,7 +203,10 @@ func ReportVersion(ctx context.Context, versionID uuid.UUID) {
 // The latest job of each type is kept, not only the latest job of the
 // project, because project state reads more than one: a failed install
 // must still decide the state after a later job of another type finishes.
-// "Latest" follows submission order, the order ProjectJobs returns.
+// "Latest" follows submission order, the order ProjectJobs returns, and
+// counts only jobs that started: a job cancelled while pending never ran,
+// so it says nothing about the project and is never kept in place of the
+// job that did run.
 type Memory struct {
 	maxRunning   int
 	keepFinished int
@@ -394,10 +403,10 @@ func (m *Memory) finish(e *entry, status Status, errMsg string) {
 }
 
 // evict drops finished jobs beyond the kept ones: the latest finished job
-// of each type for each existing project, and the KeepFinished most
-// recently finished others. A project counts as gone while it is retired,
-// and once its latest job is a file removal, which only runs for a deleted
-// project. Called with mu held.
+// that started, of each type, for each existing project, and the
+// KeepFinished most recently finished others. A project counts as gone
+// while it is retired, and once its latest job is a file removal, which
+// only runs for a deleted project. Called with mu held.
 func (m *Memory) evict() {
 	pinned := func(e *entry) bool {
 		if _, retired := m.retired[e.job.ProjectID]; retired || e.job.Type == TypeDeleteFiles {
@@ -408,7 +417,7 @@ func (m *Memory) evict() {
 			return false // the project is gone
 		}
 		for i := len(list) - 1; i >= 0; i-- {
-			if o := list[i]; o.job.Type == e.job.Type && !o.job.Active() {
+			if o := list[i]; o.job.Type == e.job.Type && !o.job.Active() && o.job.Started() {
 				return o == e
 			}
 		}

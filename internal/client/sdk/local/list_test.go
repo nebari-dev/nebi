@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -19,7 +20,17 @@ import (
 
 func TestDeriveState(t *testing.T) {
 	job := func(typ jobs.Type, status jobs.Status, stage string) jobs.Job {
-		return jobs.Job{ID: uuid.New(), Type: typ, Status: status, Stage: stage}
+		j := jobs.Job{ID: uuid.New(), Type: typ, Status: status, Stage: stage}
+		if status != jobs.StatusPending {
+			started := time.Now()
+			j.StartedAt = &started
+		}
+		return j
+	}
+	// neverStarted is j cancelled while pending: its body never ran.
+	neverStarted := func(j jobs.Job) jobs.Job {
+		j.StartedAt = nil
+		return j
 	}
 	createRunning := job(jobs.TypeCreate, jobs.StatusRunning, StageLock)
 	createPending := job(jobs.TypeCreate, jobs.StatusPending, "")
@@ -34,11 +45,12 @@ func TestDeriveState(t *testing.T) {
 	uninstallFailed := job(jobs.TypeUninstall, jobs.StatusFailed, "")
 	deleteFiles := job(jobs.TypeDeleteFiles, jobs.StatusRunning, "")
 	createCancelledLock := job(jobs.TypeCreate, jobs.StatusCancelled, StageLock)
-	createCancelledPending := job(jobs.TypeCreate, jobs.StatusCancelled, "")
+	createCancelledPending := neverStarted(job(jobs.TypeCreate, jobs.StatusCancelled, ""))
 	createCancelledInstall := job(jobs.TypeCreate, jobs.StatusCancelled, StageInstall)
 	installPending := job(jobs.TypeInstall, jobs.StatusPending, "")
 	installCancelled := job(jobs.TypeInstall, jobs.StatusCancelled, "")
 	uninstallCancelled := job(jobs.TypeUninstall, jobs.StatusCancelled, "")
+	installCancelledPending := neverStarted(job(jobs.TypeInstall, jobs.StatusCancelled, ""))
 
 	cases := []struct {
 		name      string
@@ -71,6 +83,8 @@ func TestDeriveState(t *testing.T) {
 		{"install pending", 1, []jobs.Job{createOK, installPending}, false, StateInstalling, &installPending},
 		{"install cancelled wins over a partial env", 1, []jobs.Job{createOK, installCancelled}, true, StateInstallFailed, &installCancelled},
 		{"cancelled uninstall falls back to disk", 1, []jobs.Job{installOK, uninstallCancelled}, true, StateInstalled, nil},
+		{"install cancelled while pending is ignored", 1, []jobs.Job{createOKInstalled, installCancelledPending}, true, StateInstalled, nil},
+		{"install cancelled while pending does not hide a failed one", 1, []jobs.Job{createOK, installFailed, installCancelledPending}, true, StateInstallFailed, &installFailed},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -324,5 +338,33 @@ func TestProjectSize(t *testing.T) {
 	}
 	if _, err := h.svc.ProjectSize(context.Background(), uuid.New()); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown project: want ErrNotFound, got %v", err)
+	}
+}
+
+func TestInstallCancelledWhilePendingKeepsState(t *testing.T) {
+	h := newHarnessWithRunner(t, jobs.Options{MaxRunning: 1})
+	ctx := context.Background()
+	req := specRequest("installed")
+	req.Install = true
+	p, _ := h.mustCreate(req)
+
+	// The install waits for the only slot and is cancelled before it runs.
+	gate := make(chan struct{})
+	blocker, err := h.runner.Submit(ctx, uuid.New(), jobs.TypeInstall, func(context.Context, io.Writer) error { <-gate; return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	install, err := h.runner.Submit(ctx, p.ID, jobs.TypeInstall, func(context.Context, io.Writer) error { return nil })
+	if err != nil || install.Status != jobs.StatusPending {
+		t.Fatalf("precondition: a pending install, got %+v, %v", install, err)
+	}
+	if err := h.runner.Cancel(ctx, install.ID); err != nil {
+		t.Fatal(err)
+	}
+	close(gate)
+	h.wait(blocker)
+
+	if d := h.detail(p.ID); d.State != StateInstalled || d.JobID != nil {
+		t.Fatalf("an install that never ran must not change the state, got %+v", d.ProjectSummary)
 	}
 }

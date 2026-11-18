@@ -176,7 +176,8 @@ func envInstalled(dir string) bool {
 // versions is lock_failed. An active install or uninstall comes next; then
 // a failed or cancelled last install wins over what is on disk, because
 // pixi can leave a partial .pixi/envs behind when it stops early; then the
-// disk decides.
+// disk decides. An install or uninstall cancelled while pending never ran
+// pixi, so it is skipped and the job before it decides.
 func deriveState(versionCount int, projectJobs []jobs.Job, installed bool) (State, *uuid.UUID) {
 	create := latestJob(projectJobs, func(j jobs.Job) bool { return j.Type == jobs.TypeCreate })
 	if create != nil && create.Active() {
@@ -192,6 +193,9 @@ func deriveState(versionCount int, projectJobs []jobs.Job, installed bool) (Stat
 	// The environment jobs: installs, uninstalls, and create jobs that got
 	// as far as installing.
 	env := latestJob(projectJobs, func(j jobs.Job) bool {
+		if !j.Active() && !j.Started() {
+			return false // cancelled while pending: it changed nothing
+		}
 		return j.Type == jobs.TypeInstall || j.Type == jobs.TypeUninstall ||
 			(j.Type == jobs.TypeCreate && j.Stage == StageInstall)
 	})

@@ -634,6 +634,36 @@ func TestEvictionKeepsLatestJobOfEachType(t *testing.T) {
 	}
 }
 
+func TestEvictionSkipsJobsCancelledWhilePending(t *testing.T) {
+	m := newRunner(t, Options{MaxRunning: 1, KeepFinished: 1})
+	p := uuid.New()
+	failed := mustSubmit(t, m, p, TypeInstall, func(context.Context, io.Writer) error { return errors.New("partial env") })
+	mustWait(t, m, failed.ID)
+
+	// A later install waits behind another project's job and is cancelled
+	// before it starts.
+	g := newGate()
+	blocker := mustSubmit(t, m, uuid.New(), TypeCreate, g.body)
+	g.waitStarted(t)
+	never := mustSubmit(t, m, p, TypeInstall, noop)
+	if err := m.Cancel(context.Background(), never.ID); err != nil {
+		t.Fatal(err)
+	}
+	g.open()
+	mustWait(t, m, blocker.ID)
+
+	// Unkept jobs of other projects push the tail out.
+	for range 3 {
+		mustWait(t, m, mustSubmit(t, m, uuid.New(), TypeDeleteFiles, noop).ID)
+	}
+	if _, err := m.Get(failed.ID); err != nil {
+		t.Fatalf("the latest install that ran must stay kept, got %v", err)
+	}
+	if _, err := m.Get(never.ID); !errors.Is(err, ErrUnknownJob) {
+		t.Fatalf("an install cancelled while pending must age out like any old job, got %v", err)
+	}
+}
+
 func TestEvictionDefaultCap(t *testing.T) {
 	m := newRunner(t, Options{})
 	project := uuid.New()

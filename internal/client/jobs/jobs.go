@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/nebari-dev/nebi/internal/logstream"
 )
 
 // Type says what a job does.
@@ -196,7 +195,6 @@ type Memory struct {
 	maxRunning   int
 	keepFinished int
 	logLimit     int
-	broker       *logstream.LogBroker
 
 	mu     sync.Mutex
 	jobs   map[uuid.UUID]*entry
@@ -244,7 +242,6 @@ func NewMemory(opts Options) *Memory {
 		maxRunning:   opts.MaxRunning,
 		keepFinished: opts.KeepFinished,
 		logLimit:     opts.LogLimit,
-		broker:       logstream.NewBroker(),
 		jobs:         make(map[uuid.UUID]*entry),
 		byProj:       make(map[uuid.UUID][]*entry),
 		busy:         make(map[uuid.UUID]bool),
@@ -280,7 +277,7 @@ func (m *Memory) Submit(_ context.Context, projectID uuid.UUID, typ Type, run Fu
 		},
 		run:  run,
 		done: make(chan struct{}),
-		log:  &jobLog{id: id, broker: m.broker, buf: tailBuffer{max: m.logLimit}},
+		log:  newJobLog(m.logLimit),
 	}
 	m.jobs[id] = e
 	m.byProj[projectID] = append(m.byProj[projectID], e)
@@ -563,7 +560,7 @@ func (m *Memory) Logs(id uuid.UUID) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrUnknownJob, id)
 	}
-	b, _ := e.log.snapshot(false)
+	b, _, _, _, _ := e.log.readFrom(-1)
 	return b, nil
 }
 
@@ -572,9 +569,11 @@ func (m *Memory) Logs(id uuid.UUID) ([]byte, error) {
 // written. It returns early with ctx's error when ctx is done, or with w's
 // error when a write fails. Several readers can follow one job.
 //
-// New output reaches a reader through the log broker, which never blocks
-// the job: a reader that falls far behind loses output, and is told how
-// much with a marker line in the stream.
+// Each reader reads the job's kept output at its own pace, so a slow reader
+// never blocks the job and holds no output of its own: memory stays bounded
+// by Options.LogLimit per job. A reader that falls more than LogLimit bytes
+// behind skips the output no longer kept, and a marker line in the stream
+// says how many bytes it skipped.
 func (m *Memory) FollowLogs(ctx context.Context, id uuid.UUID, w io.Writer) error {
 	m.mu.Lock()
 	e, ok := m.jobs[id]
@@ -582,27 +581,25 @@ func (m *Memory) FollowLogs(ctx context.Context, id uuid.UUID, w io.Writer) erro
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrUnknownJob, id)
 	}
-	buffered, ch := e.log.snapshot(true)
-	if ch != nil {
-		defer m.broker.Unsubscribe(id, ch)
-	}
-	if len(buffered) > 0 {
-		if _, err := w.Write(buffered); err != nil {
-			return err
-		}
-	}
-	if ch == nil {
-		return nil
-	}
+	off := int64(-1) // start at the oldest kept byte
 	for {
-		select {
-		case s, ok := <-ch:
-			if !ok {
-				return nil
-			}
-			if _, err := io.WriteString(w, s); err != nil {
+		data, skipped, next, done, changed := e.log.readFrom(off)
+		if skipped > 0 {
+			if _, err := fmt.Fprintf(w, "\n[nebi] %d bytes of output skipped: this reader fell behind, and a job keeps only its last %d bytes\n", skipped, m.logLimit); err != nil {
 				return err
 			}
+		}
+		if len(data) > 0 {
+			if _, err := w.Write(data); err != nil {
+				return err
+			}
+		}
+		if done {
+			return nil
+		}
+		off = next
+		select {
+		case <-changed:
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -631,19 +628,26 @@ func (m *Memory) Close() {
 	m.wg.Wait()
 }
 
-// jobLog is a job's output: the last bytes it wrote, and a stream of new
-// output through the broker for the readers following it.
+// jobLog is a job's output: the last bytes it wrote, which Logs returns
+// and followers read from at their own pace.
 type jobLog struct {
-	id     uuid.UUID
-	broker *logstream.LogBroker
-
-	mu   sync.Mutex
-	buf  tailBuffer
-	done bool
+	mu  sync.Mutex
+	buf tailBuffer
+	// total counts every byte written; the kept bytes are the last
+	// len(buf.buf) of them.
+	total int64
+	done  bool
+	// changed is closed when output is written or the log ends, to wake
+	// the followers. A write replaces it with a new one.
+	changed chan struct{}
 }
 
-// Write keeps p and publishes it to the readers following the job. Output
-// written after the job finished is discarded.
+func newJobLog(limit int) *jobLog {
+	return &jobLog{buf: tailBuffer{max: limit}, changed: make(chan struct{})}
+}
+
+// Write keeps p and wakes the followers. Output written after the job
+// finished is discarded.
 func (l *jobLog) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -651,31 +655,37 @@ func (l *jobLog) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 	l.buf.Write(p)
-	if l.broker.HasSubscribers(l.id) {
-		l.broker.Publish(l.id, string(p))
-	}
+	l.total += int64(len(p))
+	close(l.changed)
+	l.changed = make(chan struct{})
 	return len(p), nil
 }
 
-// snapshot returns a copy of the kept output and, when subscribe is set
-// and the job has not finished, a subscription that receives everything
-// written after the copy and is closed when the job finishes.
-func (l *jobLog) snapshot(subscribe bool) ([]byte, chan string) {
+// readFrom returns a copy of the output from byte offset off on, the
+// offset after it, whether the log has ended, and a channel closed on the
+// next change. skipped counts the bytes from off on that are no longer
+// kept. A negative off reads from the oldest kept byte.
+func (l *jobLog) readFrom(off int64) (data []byte, skipped, next int64, done bool, changed <-chan struct{}) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	b := l.buf.Bytes()
-	if !subscribe || l.done {
-		return b, nil
+	oldest := l.total - int64(len(l.buf.buf))
+	if off < oldest {
+		if off >= 0 {
+			skipped = oldest - off
+		}
+		off = oldest
 	}
-	return b, l.broker.Subscribe(l.id)
+	return l.buf.bytesFrom(int(off - oldest)), skipped, l.total, l.done, l.changed
 }
 
 // finish ends the log: later writes are discarded and followers return.
 func (l *jobLog) finish() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.done = true
-	l.broker.Close(l.id)
+	if !l.done {
+		l.done = true
+		close(l.changed)
+	}
 }
 
 // tailBuffer keeps the last max bytes written to it. It grows as output
@@ -706,8 +716,20 @@ func (b *tailBuffer) Write(p []byte) {
 
 // Bytes returns a copy of the kept bytes, oldest first.
 func (b *tailBuffer) Bytes() []byte {
-	out := make([]byte, len(b.buf))
-	n := copy(out, b.buf[b.start:])
-	copy(out[n:], b.buf[:b.start])
+	return b.bytesFrom(0)
+}
+
+// bytesFrom returns a copy of the kept bytes from the i-th oldest on.
+func (b *tailBuffer) bytesFrom(i int) []byte {
+	out := make([]byte, max(len(b.buf)-i, 0))
+	if len(out) == 0 {
+		return out
+	}
+	if p := b.start + i; p < len(b.buf) {
+		n := copy(out, b.buf[p:])
+		copy(out[n:], b.buf[:b.start])
+	} else {
+		copy(out, b.buf[p-len(b.buf):b.start])
+	}
 	return out
 }

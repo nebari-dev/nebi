@@ -948,6 +948,11 @@ func TestTailBufferKeepsLastBytes(t *testing.T) {
 			if got := b.Bytes(); !bytes.Equal(got, want) {
 				t.Fatalf("limit %d after %d bytes: got %x, want %x", limit, len(all), got, want)
 			}
+			for i := 0; i <= len(want); i++ {
+				if got := b.bytesFrom(i); !bytes.Equal(got, want[i:]) {
+					t.Fatalf("limit %d after %d bytes, from %d: got %x, want %x", limit, len(all), i, got, want[i:])
+				}
+			}
 			if len(b.buf) > limit {
 				t.Fatalf("limit %d: buffer holds %d bytes", limit, len(b.buf))
 			}
@@ -1061,8 +1066,63 @@ func TestFollowLogs(t *testing.T) {
 	if err := m.FollowLogs(waitCtx(t), j.ID, late); err != nil || late.String() != "one\ntwo\nthree\n" {
 		t.Fatalf("late follower: %q, %v", late.String(), err)
 	}
-	if m.broker.HasSubscribers(j.ID) {
-		t.Fatal("followers must be unsubscribed when the job finishes")
+}
+
+// blockingWriter blocks its first Write until release is closed, standing
+// in for a reader that cannot keep up.
+type blockingWriter struct {
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+	buf     bytes.Buffer
+}
+
+func (w *blockingWriter) Write(p []byte) (int, error) {
+	w.once.Do(func() {
+		close(w.entered)
+		<-w.release
+	})
+	return w.buf.Write(p)
+}
+
+func TestSlowFollowerSkipsDroppedOutputWithoutBlockingJob(t *testing.T) {
+	const limit = 10
+	m := newRunner(t, Options{LogLimit: limit})
+	wrote, more := make(chan struct{}), make(chan struct{})
+	burst := strings.Repeat("0123456789", 3)
+	j := mustSubmit(t, m, uuid.New(), TypeInstall, func(ctx context.Context, log io.Writer) error {
+		io.WriteString(log, "abc")
+		close(wrote)
+		select {
+		case <-more:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		io.WriteString(log, burst)
+		return nil
+	})
+	recv(t, wrote)
+
+	w := &blockingWriter{entered: make(chan struct{}), release: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() { done <- m.FollowLogs(context.Background(), j.ID, w) }()
+	recv(t, w.entered) // the follower is stuck writing "abc"
+
+	// The job writes three times its log limit and finishes while the
+	// follower is stuck: a slow reader must not hold it back.
+	close(more)
+	if got := mustWait(t, m, j.ID); got.Status != StatusCompleted {
+		t.Fatalf("job: %+v", got)
+	}
+
+	close(w.release)
+	if err := recv(t, done); err != nil {
+		t.Fatalf("FollowLogs: %v", err)
+	}
+	skipped := len(burst) - limit
+	want := "abc" + fmt.Sprintf("\n[nebi] %d bytes of output skipped: this reader fell behind, and a job keeps only its last %d bytes\n", skipped, limit) + burst[len(burst)-limit:]
+	if got := w.buf.String(); got != want {
+		t.Fatalf("slow follower got %q, want %q", got, want)
 	}
 }
 
@@ -1084,16 +1144,10 @@ func TestFollowLogsStopsWithContextAndWriterErrors(t *testing.T) {
 	if err := recv(t, done); !errors.Is(err, context.Canceled) {
 		t.Fatalf("FollowLogs after ctx is cancelled: want context.Canceled, got %v", err)
 	}
-	if m.broker.HasSubscribers(j.ID) {
-		t.Fatal("a follower that stopped must be unsubscribed")
-	}
 
 	errWrite := errors.New("client went away")
 	if err := m.FollowLogs(waitCtx(t), j.ID, failingWriter{errWrite}); !errors.Is(err, errWrite) {
 		t.Fatalf("FollowLogs with a failing writer: want its error, got %v", err)
-	}
-	if m.broker.HasSubscribers(j.ID) {
-		t.Fatal("a follower that failed must be unsubscribed")
 	}
 	g.open()
 	mustWait(t, m, j.ID)

@@ -101,9 +101,14 @@ type VersionStore interface {
 // JobRunner submits and reports background jobs (internal/client/jobs).
 // *jobs.Memory implements it.
 type JobRunner interface {
-	// Submit starts run as a job of the given type for the project.
+	// Submit adds run as a job of the given type for the project. The job
+	// is running when it could start at once, and pending while it waits
+	// for a free slot or for the project's running job to finish.
 	Submit(ctx context.Context, projectID uuid.UUID, typ jobs.Type, run jobs.Func) (*jobs.Job, error)
-	// ProjectJobs returns the project's jobs, oldest first.
+	// ProjectJobs returns the project's jobs the runner still keeps,
+	// oldest first: every pending or running job, the latest finished one
+	// while the project exists, and older finished ones only until they
+	// are dropped.
 	ProjectJobs(ctx context.Context, projectID uuid.UUID) ([]jobs.Job, error)
 	// RetireProject atomically checks that the project has no pending or
 	// running job and, when it has none, refuses every later job for it

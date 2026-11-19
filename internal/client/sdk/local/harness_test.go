@@ -139,16 +139,20 @@ func (f *fakeVersions) versionsOf(t *testing.T, projectID uuid.UUID) []testVersi
 // output to the job's log. A blocked call returns ctx's error when ctx is
 // cancelled, as the real runner does when it stops pixi.
 type fakePixi struct {
-	mu             sync.Mutex
-	lockErr        error
-	installErr     error
-	partialEnv     bool          // a failing install still leaves .pixi/envs behind
-	lockGate       chan struct{} // when set, Lock waits until it is closed
-	lockStarted    chan struct{} // receives once per Lock call that waits on lockGate
-	installGate    chan struct{} // when set, Install waits until it is closed
+	mu           sync.Mutex
+	lockErr      error
+	installErr   error
+	partialEnv   bool          // a failing install still leaves .pixi/envs behind
+	lockGate     chan struct{} // when set, Lock waits until it is closed
+	lockStarted  chan struct{} // receives once per Lock call that waits on lockGate
+	lockCalls    []string
+	installCalls []string
+
+	// installGate, when set, makes Install create a partial .pixi/envs and
+	// then wait until it is closed or the job is cancelled, like a long
+	// install that is interrupted.
+	installGate    chan struct{}
 	installStarted chan struct{} // receives once per Install call that waits on installGate
-	lockCalls      []string
-	installCalls   []string
 }
 
 const fakeLockContent = "version: 6\n# fake lock\n"
@@ -193,14 +197,15 @@ func (f *fakePixi) Install(ctx context.Context, dir string, out io.Writer) error
 		return werr
 	}
 	if gate != nil {
+		if mkErr := os.MkdirAll(filepath.Join(dir, ".pixi", "envs", "default"), 0o755); mkErr != nil {
+			return mkErr
+		}
 		if started != nil {
 			started <- struct{}{}
 		}
 		select {
 		case <-gate:
 		case <-ctx.Done():
-			// pixi stopped part way: it can leave a partial environment.
-			_ = os.MkdirAll(filepath.Join(dir, ".pixi", "envs"), 0o755)
 			return ctx.Err()
 		}
 	}

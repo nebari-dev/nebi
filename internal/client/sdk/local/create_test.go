@@ -275,9 +275,12 @@ func TestCreateValidation(t *testing.T) {
 func TestCreateNameTakenIgnoringCase(t *testing.T) {
 	h := newHarness(t)
 	h.mustCreate(specRequest("demo"))
-	h.insertRow(&Project{Name: "Legacy", Path: "/legacy"})
+	// Create stores only lowercase names. The name index also ignores
+	// case, as a safeguard, so a row written outside Create still blocks
+	// its lowercase form.
+	h.insertRow(&Project{Name: "Other", Path: "/other"})
 
-	for _, name := range []string{"demo", "legacy"} {
+	for _, name := range []string{"demo", "other"} {
 		if _, _, err := h.svc.CreateProject(context.Background(), specRequest(name)); !errors.Is(err, ErrNameTaken) {
 			t.Fatalf("%s: want ErrNameTaken, got %v", name, err)
 		}

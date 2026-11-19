@@ -27,14 +27,13 @@ func TestMigrateCreatesClientProjectsTable(t *testing.T) {
 	if !db.Migrator().HasTable("client_projects") {
 		t.Fatal("client_projects table missing")
 	}
-	if !db.Migrator().HasTable("legacy_project_origins") {
-		t.Fatal("legacy_project_origins table missing")
-	}
 	if !db.Migrator().HasTable("client_pending_removals") {
 		t.Fatal("client_pending_removals table missing")
 	}
-	if db.Migrator().HasTable("projects") {
-		t.Fatal("Migrate must not create or share the server's projects table")
+	for _, table := range []string{"projects", "legacy_project_origins", "client_migrations"} {
+		if db.Migrator().HasTable(table) {
+			t.Fatalf("Migrate must not create %s", table)
+		}
 	}
 
 	cols, err := db.Migrator().ColumnTypes(&Project{})
@@ -52,11 +51,11 @@ func TestMigrateCreatesClientProjectsTable(t *testing.T) {
 	}
 }
 
-// TestMigrateNextToLegacyProjectsIndex checks that the name index does not
-// clash with an index on the legacy projects table. SQLite index names are
+// TestMigrateNextToServerProjectsIndex checks that the name index does not
+// clash with an index on the server's projects table. SQLite index names are
 // database-wide, and idx_projects_name is the name GORM gives an index on
 // projects.name.
-func TestMigrateNextToLegacyProjectsIndex(t *testing.T) {
+func TestMigrateNextToServerProjectsIndex(t *testing.T) {
 	db := openTestDB(t)
 	for _, stmt := range []string{
 		"CREATE TABLE `projects` (`id` text PRIMARY KEY, `name` text)",
@@ -67,7 +66,7 @@ func TestMigrateNextToLegacyProjectsIndex(t *testing.T) {
 		}
 	}
 	if err := Migrate(db); err != nil {
-		t.Fatalf("Migrate next to a legacy projects index: %v", err)
+		t.Fatalf("Migrate next to a server projects index: %v", err)
 	}
 	if !db.Migrator().HasIndex(&Project{}, "idx_client_projects_name") {
 		t.Fatal("client_projects must have idx_client_projects_name")

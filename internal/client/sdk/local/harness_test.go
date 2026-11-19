@@ -345,8 +345,8 @@ func (h *harness) detail(id uuid.UUID) *ProjectDetail {
 	return d
 }
 
-// insertRow inserts a project row directly, bypassing validation (for
-// legacy names and fixtures).
+// insertRow inserts a project row directly, bypassing validation, for
+// fixtures that CreateProject would refuse.
 func (h *harness) insertRow(p *Project) {
 	h.t.Helper()
 	if err := h.db.Create(p).Error; err != nil {

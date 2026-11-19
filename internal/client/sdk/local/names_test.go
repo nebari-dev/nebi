@@ -34,17 +34,15 @@ func TestNameFormat(t *testing.T) {
 func TestValidateProjectName(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
-	// A legacy row with an uppercase name, as the migration keeps them.
-	legacy := &Project{Name: "Demo", Path: "/legacy/demo"}
-	h.insertRow(legacy)
+	demo, _ := h.mustCreate(specRequest("demo"))
 
 	if err := h.svc.ValidateProjectName(ctx, "demo", nil); !errors.Is(err, ErrNameTaken) {
-		t.Fatalf("demo vs existing Demo: want ErrNameTaken, got %v", err)
+		t.Fatalf("demo vs existing demo: want ErrNameTaken, got %v", err)
 	}
-	if err := h.svc.ValidateProjectName(ctx, "demo", &legacy.ID); err != nil {
+	if err := h.svc.ValidateProjectName(ctx, "demo", &demo.ID); err != nil {
 		t.Fatalf("excluding the project's own ID: %v", err)
 	}
-	other := legacy.ID
+	other := demo.ID
 	other[0] ^= 0xff
 	if err := h.svc.ValidateProjectName(ctx, "demo", &other); !errors.Is(err, ErrNameTaken) {
 		t.Fatalf("excluding another ID: want ErrNameTaken, got %v", err)

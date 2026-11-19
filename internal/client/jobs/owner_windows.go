@@ -34,24 +34,42 @@ func unlockFile(f *os.File) error {
 // Windows refuses to rename over, remove or open a file another process has
 // open without FILE_SHARE_DELETE, which Go does not pass. A reader and the
 // owner can collide for the moment ReadOwner holds owner.json open, so these
-// retry sharing errors briefly.
-const shareRetryFor = 2 * time.Second
+// retry such errors briefly.
+//
+// The refusal is not always a sharing error. Renaming over a file that is
+// open, and removing or opening a file whose delete is still pending, fail
+// with ERROR_ACCESS_DENIED, so that is retried too. A real permission
+// problem, such as a read-only owner.json, reports the same code, so it gets
+// a shorter budget: long enough to outlast a reader, short enough that a
+// lasting failure does not stall every file operation.
+const (
+	shareRetryFor        = 2 * time.Second
+	accessDeniedRetryFor = 500 * time.Millisecond
+)
 
 func retryShared(op func() error) error {
-	deadline := time.Now().Add(shareRetryFor)
+	start := time.Now()
 	for {
 		err := op()
-		if err == nil || !isSharingError(err) || time.Now().After(deadline) {
+		budget := retryBudget(err)
+		if err == nil || budget == 0 || time.Since(start) >= budget {
 			return err
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 }
 
-func isSharingError(err error) bool {
-	return errors.Is(err, windows.ERROR_SHARING_VIOLATION) ||
-		errors.Is(err, windows.ERROR_ACCESS_DENIED) ||
-		errors.Is(err, windows.ERROR_LOCK_VIOLATION)
+// retryBudget returns how long to keep retrying an operation that failed
+// with err, or 0 when err is not worth retrying.
+func retryBudget(err error) time.Duration {
+	switch {
+	case errors.Is(err, windows.ERROR_SHARING_VIOLATION),
+		errors.Is(err, windows.ERROR_LOCK_VIOLATION):
+		return shareRetryFor
+	case errors.Is(err, windows.ERROR_ACCESS_DENIED):
+		return accessDeniedRetryFor
+	}
+	return 0
 }
 
 func replaceFile(from, to string) error {

@@ -201,7 +201,7 @@ jobs:
   # Backend / Test runs on Linux only. The client job runner's owner lock has
   # separate Unix and Windows code (flock, LockFileEx), and #667 requires its
   # tests to pass on Linux, macOS and Windows. The package needs no frontend
-  # embed, so only it runs here.
+  # embed, so only it runs here, with the same flags as the Linux job.
   backend-test-os:
     name: Backend / Test client jobs (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -218,7 +218,7 @@ jobs:
           go-version-file: 'go.mod'
 
       - name: Run tests
-        run: go test -v -count=1 ./internal/client/jobs/...
+        run: go test -tags=e2e -v -race -count=1 ./internal/client/jobs/...
 
   backend-security:
     name: Backend / Security

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"os"
@@ -32,6 +33,11 @@ const (
 // lockPollInterval is how often AcquireOwner retries a held lock.
 const lockPollInterval = 50 * time.Millisecond
 
+// testHookBeforeUnlock, when a test sets it, runs in Release after owner.json
+// is removed and before the lock is released, so the test can check that
+// order. It is nil outside tests.
+var testHookBeforeUnlock func(dir string)
+
 // heldOwners keeps every Owner reachable until Release. The lock lives in an
 // *os.File, so a dropped handle would let the garbage collector close the file
 // and the OS free the lock while the process still runs jobs.
@@ -45,6 +51,12 @@ var (
 	// After failing to take the lock it means the owner has not published
 	// yet: wait and try again. It never means there is no owner.
 	ErrNoOwnerInfo = errors.New("job runner owner has not published owner.json")
+	// ErrInvalidOwnerInfo is returned by ReadOwner when owner.json decodes
+	// but its content is not valid owner info, such as an address form this
+	// build does not accept. The OwnerInfo returned with it still holds the
+	// PID and versions the file gave, so a caller can report a version skew,
+	// but never its Address or Token.
+	ErrInvalidOwnerInfo = errors.New("invalid job runner owner info")
 	// ErrOwnerReleased is returned by Owner methods after Release.
 	ErrOwnerReleased = errors.New("job runner owner lock was released")
 
@@ -66,8 +78,42 @@ type OwnerInfo struct {
 	// API, or that is not listening yet.
 	Address string `json:"address"`
 	// Token authenticates requests to the owner's client API. Empty exactly
-	// when Address is empty.
+	// when Address is empty. String, GoString and LogValue never print it.
 	Token string `json:"token"`
+}
+
+// redactedToken stands in for a set Token when OwnerInfo is printed.
+const redactedToken = "REDACTED"
+
+func (info OwnerInfo) redactedToken() string {
+	if info.Token == "" {
+		return ""
+	}
+	return redactedToken
+}
+
+// String formats info with the token redacted. It is also what %v and %+v
+// print.
+func (info OwnerInfo) String() string {
+	return fmt.Sprintf("{PID:%d NebiVersion:%s ClientAPIVersion:%s Address:%s Token:%s}",
+		info.PID, info.NebiVersion, info.ClientAPIVersion, info.Address, info.redactedToken())
+}
+
+// GoString formats info for %#v with the token redacted.
+func (info OwnerInfo) GoString() string {
+	return fmt.Sprintf("jobs.OwnerInfo{PID:%d, NebiVersion:%q, ClientAPIVersion:%q, Address:%q, Token:%q}",
+		info.PID, info.NebiVersion, info.ClientAPIVersion, info.Address, info.redactedToken())
+}
+
+// LogValue implements slog.LogValuer with the token redacted.
+func (info OwnerInfo) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Int("pid", info.PID),
+		slog.String("nebi_version", info.NebiVersion),
+		slog.String("client_api_version", info.ClientAPIVersion),
+		slog.String("address", info.Address),
+		slog.String("token", info.redactedToken()),
+	)
 }
 
 // Owner is the handle of the process that holds the owner lock for a
@@ -122,12 +168,9 @@ type Owner struct {
 // behind before returning. Until then, and after an owner dies, owner.json
 // may still describe the dead owner; see Owner.
 func TryAcquireOwner(dir string) (*Owner, error) {
-	if dir == "" {
-		return nil, errEmptyOwnerDir
-	}
-	dir, err := filepath.Abs(dir)
+	dir, err := resolveOwnerDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("resolving owner lock directory: %w", err)
+		return nil, err
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("creating owner lock directory: %w", err)
@@ -157,9 +200,27 @@ func TryAcquireOwner(dir string) (*Owner, error) {
 	return o, nil
 }
 
+// resolveOwnerDir makes dir absolute, refusing an empty dir.
+func resolveOwnerDir(dir string) (string, error) {
+	if dir == "" {
+		return "", errEmptyOwnerDir
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", fmt.Errorf("resolving owner lock directory: %w", err)
+	}
+	return abs, nil
+}
+
 // AcquireOwner takes the owner lock for dir, waiting until it is free or ctx
-// ends. On ctx ending it returns an error that wraps ctx.Err().
+// ends. On ctx ending it returns an error that wraps ctx.Err(). A relative
+// dir is resolved once, before waiting, so a change of working directory
+// while it waits does not make it lock a different directory.
 func AcquireOwner(ctx context.Context, dir string) (*Owner, error) {
+	dir, err := resolveOwnerDir(dir)
+	if err != nil {
+		return nil, err
+	}
 	t := time.NewTicker(lockPollInterval)
 	defer t.Stop()
 	for {
@@ -221,7 +282,11 @@ func (o *Owner) Release() error {
 	}
 	// owner.json goes first, while the lock is still held: removed after
 	// unlocking, it could be the next owner's file.
-	return errors.Join(removeOwnerInfo(o.dir), o.unlock())
+	removeErr := removeOwnerInfo(o.dir)
+	if testHookBeforeUnlock != nil {
+		testHookBeforeUnlock(o.dir)
+	}
+	return errors.Join(removeErr, o.unlock())
 }
 
 func (o *Owner) unlock() error {
@@ -245,8 +310,12 @@ func (o *Owner) unlock() error {
 // The content can describe an owner that has died (see Owner), so an Address
 // that refuses connections or rejects the token also means wait and try
 // again. A file that is not valid owner info, such as one with an address
-// that is not loopback, is an error, so a reader never sends the token off
-// the machine.
+// that is not loopback, is an error wrapping ErrInvalidOwnerInfo, so a reader
+// never sends the token off the machine. With that error ReadOwner still
+// returns the PID, NebiVersion and ClientAPIVersion the file gave, any of
+// which may be empty, and never Address or Token: a caller can then report
+// that the owner speaks a client API version it does not. Compare
+// ClientAPIVersion before treating the error as a corrupt file.
 func ReadOwner(dir string) (OwnerInfo, error) {
 	if dir == "" {
 		// Reading the working directory would return ErrNoOwnerInfo, which
@@ -265,7 +334,8 @@ func ReadOwner(dir string) (OwnerInfo, error) {
 		return OwnerInfo{}, fmt.Errorf("decoding owner info: %w", err)
 	}
 	if err := info.validate(); err != nil {
-		return OwnerInfo{}, fmt.Errorf("invalid owner info: %w", err)
+		info.Address, info.Token = "", ""
+		return info, fmt.Errorf("%w: %w", ErrInvalidOwnerInfo, err)
 	}
 	return info, nil
 }

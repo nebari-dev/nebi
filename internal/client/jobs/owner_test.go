@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -549,6 +551,108 @@ func TestOwnerDirResolution(t *testing.T) {
 	}
 }
 
+// AcquireOwner resolves a relative dir once, before waiting. Resolved on
+// every retry, a change of working directory during the wait would make it
+// lock a different directory while the first is still held.
+func TestAcquireOwnerResolvesDirOnce(t *testing.T) {
+	base := ownerTestDir(t)
+	other := ownerTestDir(t)
+	want := filepath.Join(base, "data")
+	held := mustAcquire(t, want)
+
+	t.Chdir(base)
+	type result struct {
+		o   *Owner
+		err error
+	}
+	got := make(chan result, 1)
+	started := make(chan struct{})
+	ctx, cancel := context.WithTimeout(context.Background(), helperTimeout)
+	defer cancel()
+	go func() {
+		close(started)
+		o, err := AcquireOwner(ctx, "data")
+		got <- result{o, err}
+	}()
+	<-started
+	// Let it resolve dir and retry a few times before moving.
+	time.Sleep(4 * lockPollInterval)
+	if err := os.Chdir(other); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case r := <-got:
+		if r.o != nil {
+			_ = r.o.Release()
+			t.Fatalf("AcquireOwner took the lock in %s while %s was held", r.o.Dir(), want)
+		}
+		t.Fatalf("AcquireOwner returned while the lock was held: %v", r.err)
+	case <-time.After(10 * lockPollInterval):
+	}
+	if _, err := os.Stat(filepath.Join(other, "data")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("AcquireOwner created %s: %v", filepath.Join(other, "data"), err)
+	}
+
+	if err := held.Release(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-got:
+		if r.err != nil {
+			t.Fatalf("AcquireOwner: %v", r.err)
+		}
+		t.Cleanup(func() { _ = r.o.Release() })
+		if r.o.Dir() != want {
+			t.Fatalf("AcquireOwner took the lock in %s, want %s", r.o.Dir(), want)
+		}
+	case <-time.After(helperTimeout):
+		t.Fatal("AcquireOwner did not return after the lock was released")
+	}
+}
+
+// Release removes owner.json while it still holds the lock. Removed after
+// unlocking, it could be the next owner's file.
+func TestReleaseRemovesOwnerInfoBeforeUnlock(t *testing.T) {
+	dir := ownerTestDir(t)
+	o := mustAcquire(t, dir)
+	if err := o.Publish(helperAPI); err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		called  bool
+		statErr error
+		lockErr error
+	)
+	testHookBeforeUnlock = func(dir string) {
+		if called {
+			return
+		}
+		called = true
+		_, statErr = os.Stat(filepath.Join(dir, OwnerInfoFile))
+		next, err := TryAcquireOwner(dir)
+		lockErr = err
+		if err == nil {
+			_ = next.Release()
+		}
+	}
+	t.Cleanup(func() { testHookBeforeUnlock = nil })
+
+	if err := o.Release(); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("Release did not run the hook between its steps")
+	}
+	if !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("owner.json before unlock: %v, want it removed", statErr)
+	}
+	if !errors.Is(lockErr, ErrOwnerLockHeld) {
+		t.Fatalf("TryAcquireOwner after owner.json was removed: got %v, want ErrOwnerLockHeld", lockErr)
+	}
+}
+
 func TestOwnerLockIsPerHandleInOneProcess(t *testing.T) {
 	dir := filepath.Join(ownerTestDir(t), "data", "nested")
 	o := mustAcquire(t, dir)
@@ -690,12 +794,15 @@ func TestOwnerInfoFile(t *testing.T) {
 	}
 }
 
+// A best-effort concurrency smoke test: a reader polls owner.json while the
+// owner replaces it, and must only ever see one of the published values. It
+// depends on timing, so it can miss a Publish that writes in place;
+// TestOwnerInfoReplacedNotRewritten is the test that reliably catches that.
 func TestOwnerInfoReplacedAtomically(t *testing.T) {
 	dir := ownerTestDir(t)
 	o := mustAcquire(t, dir)
 
-	// Big enough that a write is not a single small syscall, so a reader of
-	// a file written in place would see it empty or cut short.
+	// Large values make a partly written file more likely to be seen.
 	a := OwnerInfo{NebiVersion: "a", ClientAPIVersion: "v1", Address: "127.0.0.1:1", Token: strings.Repeat("a", 1<<20)}
 	b := OwnerInfo{NebiVersion: "b", ClientAPIVersion: "v1", Address: "127.0.0.1:2", Token: strings.Repeat("b", 1<<20)}
 	if err := o.Publish(a); err != nil {
@@ -848,25 +955,92 @@ func TestReadOwnerRejectsCorruptFile(t *testing.T) {
 }
 
 // A reader must never send the token to an address owner.json names unless
-// it is loopback, whoever wrote the file.
+// it is loopback, whoever wrote the file. It still gets the PID and versions,
+// so it can report a version skew.
 func TestReadOwnerRejectsInvalidInfo(t *testing.T) {
-	for name, content := range map[string]string{
-		"private address": `{"pid":1,"nebi_version":"1","client_api_version":"v1","address":"10.0.0.1:80","token":"t"}`,
-		"host name":       `{"pid":1,"nebi_version":"1","client_api_version":"v1","address":"evil.example:80","token":"t"}`,
-		"no token":        `{"pid":1,"nebi_version":"1","client_api_version":"v1","address":"127.0.0.1:80"}`,
-		"no version":      `{"pid":1,"nebi_version":"1","address":"127.0.0.1:80","token":"t"}`,
-		"no pid":          `{"nebi_version":"1","client_api_version":"v1"}`,
+	for name, tc := range map[string]struct {
+		content string
+		want    OwnerInfo
+	}{
+		"private address": {
+			`{"pid":1,"nebi_version":"1","client_api_version":"v1","address":"10.0.0.1:80","token":"t"}`,
+			OwnerInfo{PID: 1, NebiVersion: "1", ClientAPIVersion: "v1"},
+		},
+		"host name": {
+			`{"pid":1,"nebi_version":"1","client_api_version":"v1","address":"evil.example:80","token":"t"}`,
+			OwnerInfo{PID: 1, NebiVersion: "1", ClientAPIVersion: "v1"},
+		},
+		"no token": {
+			`{"pid":1,"nebi_version":"1","client_api_version":"v1","address":"127.0.0.1:80"}`,
+			OwnerInfo{PID: 1, NebiVersion: "1", ClientAPIVersion: "v1"},
+		},
+		"no version": {
+			`{"pid":1,"nebi_version":"1","address":"127.0.0.1:80","token":"t"}`,
+			OwnerInfo{PID: 1, NebiVersion: "1"},
+		},
+		"no pid": {
+			`{"nebi_version":"1","client_api_version":"v1"}`,
+			OwnerInfo{NebiVersion: "1", ClientAPIVersion: "v1"},
+		},
+		// A newer owner with an address form this build does not know.
+		"newer address form": {
+			`{"pid":7,"nebi_version":"9.0.0","client_api_version":"v2","address":"unix:/run/nebi.sock","token":"t"}`,
+			OwnerInfo{PID: 7, NebiVersion: "9.0.0", ClientAPIVersion: "v2"},
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := ownerTestDir(t)
-			if err := os.WriteFile(filepath.Join(dir, OwnerInfoFile), []byte(content), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, OwnerInfoFile), []byte(tc.content), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			info, err := ReadOwner(dir)
-			if err == nil || errors.Is(err, ErrNoOwnerInfo) {
-				t.Fatalf("ReadOwner = %+v, %v; want an invalid owner info error", info, err)
+			if !errors.Is(err, ErrInvalidOwnerInfo) {
+				t.Fatalf("ReadOwner = %+v, %v; want ErrInvalidOwnerInfo", info, err)
+			}
+			if info.Address != "" || info.Token != "" {
+				t.Fatalf("ReadOwner returned address %q, token set %t, with invalid owner info", info.Address, info.Token != "")
+			}
+			if info != tc.want {
+				t.Fatalf("ReadOwner = %+v, want %+v", info, tc.want)
 			}
 		})
+	}
+}
+
+// Printing or logging OwnerInfo must not reveal the token.
+func TestOwnerInfoRedactsToken(t *testing.T) {
+	info := helperAPI
+	info.PID = 42
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s"} {
+		out := fmt.Sprintf(verb, info)
+		if strings.Contains(out, info.Token) {
+			t.Errorf("%s printed the token: %s", verb, out)
+		}
+		if !strings.Contains(out, info.Address) || !strings.Contains(out, redactedToken) {
+			t.Errorf("%s = %s, want the address and a redacted token", verb, out)
+		}
+	}
+
+	var buf bytes.Buffer
+	slog.New(slog.NewJSONHandler(&buf, nil)).Info("owner", "owner", info)
+	if strings.Contains(buf.String(), info.Token) {
+		t.Errorf("slog printed the token: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), `"client_api_version":"v1"`) {
+		t.Errorf("slog output %s lacks the owner's fields", buf.String())
+	}
+
+	// An unset token prints as empty, not as redacted.
+	if out := fmt.Sprint(helperNoAPI); strings.Contains(out, redactedToken) {
+		t.Errorf("owner info without a token printed %s", out)
+	}
+	// The JSON in owner.json still carries the token.
+	data, err := json.Marshal(info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), info.Token) {
+		t.Errorf("JSON lost the token: %s", data)
 	}
 }
 

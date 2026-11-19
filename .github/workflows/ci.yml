@@ -198,6 +198,28 @@ jobs:
           flags: unittests
           fail_ci_if_error: false
 
+  # Backend / Test runs on Linux only. The client job runner's owner lock has
+  # separate Unix and Windows code (flock, LockFileEx), and #667 requires its
+  # tests to pass on Linux, macOS and Windows. The package needs no frontend
+  # embed, so only it runs here.
+  backend-test-os:
+    name: Backend / Test client jobs (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Run tests
+        run: go test -v -count=1 ./internal/client/jobs/...
+
   backend-security:
     name: Backend / Security
     runs-on: ubuntu-latest

@@ -21,7 +21,9 @@ var (
 	ErrNameTaken = errors.New("project name is already taken")
 	// ErrPathTaken: the path is already tracked, or is inside or contains
 	// a tracked project's directory. DeleteProject also returns it when
-	// removing files would remove another project's directory.
+	// removing files would remove another project's directory. When
+	// another project's directory cannot be checked, DeleteProject refuses
+	// with an error that does not match ErrPathTaken; see DeleteProject.
 	ErrPathTaken = errors.New("path is already used by another project")
 	// ErrPathNotEmpty: the directory already has a pixi.toml.
 	ErrPathNotEmpty = errors.New("directory already contains a pixi.toml")

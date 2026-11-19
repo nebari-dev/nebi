@@ -258,58 +258,83 @@ func TestStateOfInstalledEnvRemovedFromDisk(t *testing.T) {
 	}
 }
 
-// finishOnRead is a JobRunner whose next ProjectJobs call runs finish, which
-// lets a gated job complete and waits for it, so the job finishes in the
-// middle of a GetProject or ListProjects. With before set, finish runs
-// before the jobs are read; otherwise after.
-type finishOnRead struct {
+// hookOnRead is a JobRunner that runs an armed hook once, right after its
+// after-th ProjectJobs call has read the list (after=0: before the first
+// call reads it). A GetProject or a ListProjects of one project reads the
+// project's jobs before and after its row, so after=1 runs the hook
+// between the first jobs read and the row read, and after=2 once the read
+// has read everything it uses.
+type hookOnRead struct {
 	*jobs.Memory
-	before bool
-	mu     sync.Mutex
-	finish func()
+	mu    sync.Mutex
+	calls int
+	after int
+	hook  func()
 }
 
-func (f *finishOnRead) arm(finish func()) {
+func (f *hookOnRead) arm(after int, hook func()) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.finish = finish
+	f.calls, f.after, f.hook = 0, after, hook
 }
 
-func (f *finishOnRead) ProjectJobs(ctx context.Context, id uuid.UUID) ([]jobs.Job, error) {
+// due returns the hook when it is due now, and disarms it.
+func (f *hookOnRead) due() func() {
 	f.mu.Lock()
-	finish := f.finish
-	f.finish = nil
-	f.mu.Unlock()
-	if finish != nil && f.before {
-		finish()
+	defer f.mu.Unlock()
+	if f.hook == nil || f.calls != f.after {
+		return nil
+	}
+	hook := f.hook
+	f.hook = nil
+	return hook
+}
+
+func (f *hookOnRead) ProjectJobs(ctx context.Context, id uuid.UUID) ([]jobs.Job, error) {
+	if hook := f.due(); hook != nil {
+		hook()
 	}
 	list, err := f.Memory.ProjectJobs(ctx, id)
-	if finish != nil && !f.before {
-		finish()
+	f.mu.Lock()
+	f.calls++
+	f.mu.Unlock()
+	if hook := f.due(); hook != nil {
+		hook()
 	}
 	return list, err
 }
 
+// readers are the two ways to read one project's summary.
+var readers = map[string]func(h *harness, id uuid.UUID) ProjectSummary{
+	"GetProject": func(h *harness, id uuid.UUID) ProjectSummary { return h.detail(id).ProjectSummary },
+	"ListProjects": func(h *harness, id uuid.UUID) ProjectSummary {
+		h.t.Helper()
+		list, err := h.svc.ListProjects(context.Background())
+		if err != nil || len(list) != 1 || list[0].ID != id {
+			h.t.Fatalf("ListProjects = %v, %v", list, err)
+		}
+		return list[0]
+	},
+}
+
+// readMoments are the points in a read where the hooks below run.
+var readMoments = map[int]string{
+	0: "before the first jobs read",
+	1: "between the jobs read and the row read",
+	2: "after the second jobs read",
+}
+
 // TestStateWhenInstallFinishesDuringRead covers a create-with-install job
-// that finishes while a project is being read. Whether the read sees the
-// job still running (creating) or finished (installed), it must never pair
+// that finishes while a project is being read. The read must never pair
 // the finished job with a row read before the job recorded the install,
-// which would report not_installed for a project that just installed.
+// which would report not_installed for a project that just installed: it
+// reports creating when the whole read saw the job running, and installed
+// otherwise.
 func TestStateWhenInstallFinishesDuringRead(t *testing.T) {
-	read := map[string]func(h *harness, id uuid.UUID) ProjectSummary{
-		"GetProject": func(h *harness, id uuid.UUID) ProjectSummary { return h.detail(id).ProjectSummary },
-		"ListProjects": func(h *harness, id uuid.UUID) ProjectSummary {
-			list, err := h.svc.ListProjects(context.Background())
-			if err != nil || len(list) != 1 || list[0].ID != id {
-				h.t.Fatalf("ListProjects = %v, %v", list, err)
-			}
-			return list[0]
-		},
-	}
-	for name, readState := range read {
-		for _, before := range []bool{true, false} {
-			t.Run(fmt.Sprintf("%s/finished before jobs read=%v", name, before), func(t *testing.T) {
-				runner := &finishOnRead{before: before}
+	for name, readState := range readers {
+		for after, moment := range readMoments {
+			t.Run(name+"/"+moment, func(t *testing.T) {
+				runner := &hookOnRead{}
 				h := newHarness(t, func(o *Options) {
 					runner.Memory = o.Jobs.(*jobs.Memory)
 					o.Jobs = runner
@@ -324,15 +349,15 @@ func TestStateWhenInstallFinishesDuringRead(t *testing.T) {
 					t.Fatal(err)
 				}
 				<-started
-				runner.arm(func() {
+				runner.arm(after, func() {
 					close(gate)
 					h.wait(job)
 				})
 
 				got := readState(h, p.ID)
-				want, wantJob := StateCreating, &job.ID
-				if before {
-					want, wantJob = StateInstalled, nil
+				want, wantJob := StateInstalled, (*uuid.UUID)(nil)
+				if after == 2 {
+					want, wantJob = StateCreating, &job.ID
 				}
 				if got.State != want {
 					t.Fatalf("state = %s, want %s", got.State, want)
@@ -342,6 +367,80 @@ func TestStateWhenInstallFinishesDuringRead(t *testing.T) {
 				}
 				if d := h.detail(p.ID); d.State != StateInstalled {
 					t.Fatalf("the next read must be installed, got %s", d.State)
+				}
+			})
+		}
+	}
+}
+
+// TestStateWhenInstallStartsDuringRead is the mirror image: a reinstall of
+// an installed project starts while the project is being read, and clears
+// InstalledVersionID before touching .pixi as its job must. The read must
+// never pair the cleared row with jobs read before the job was submitted,
+// which would report not_installed, with no job, for a project being
+// installed: it reports installed when the whole read came before the job,
+// and installing with the job otherwise.
+func TestStateWhenInstallStartsDuringRead(t *testing.T) {
+	for name, readState := range readers {
+		for after, moment := range readMoments {
+			t.Run(name+"/"+moment, func(t *testing.T) {
+				runner := &hookOnRead{}
+				h := newHarness(t, func(o *Options) {
+					runner.Memory = o.Jobs.(*jobs.Memory)
+					o.Jobs = runner
+				})
+				req := specRequest("restart")
+				req.Install = true
+				p, _ := h.mustCreate(req)
+				installed := h.detail(p.ID)
+				if installed.State != StateInstalled || installed.InstalledVersionID == nil {
+					t.Fatalf("setup: want installed, got %+v", installed)
+				}
+				versionID := *installed.InstalledVersionID
+
+				gate := make(chan struct{})
+				var reinstall *jobs.Job
+				runner.arm(after, func() {
+					cleared := make(chan struct{})
+					var err error
+					reinstall, err = runner.Memory.Submit(context.Background(), p.ID, jobs.TypeInstall, func(ctx context.Context) error {
+						err := h.db.Model(&Project{}).Where("id = ?", p.ID).Update("installed_version_id", nil).Error
+						close(cleared)
+						if err != nil {
+							return err
+						}
+						<-gate
+						return h.db.Model(&Project{}).Where("id = ?", p.ID).Update("installed_version_id", versionID).Error
+					})
+					if err != nil {
+						t.Error(err)
+						close(cleared)
+					}
+					<-cleared
+				})
+				t.Cleanup(func() {
+					close(gate)
+					if reinstall != nil {
+						h.wait(reinstall)
+					}
+				})
+
+				got := readState(h, p.ID)
+				if reinstall == nil {
+					t.Fatal("the reinstall was not submitted")
+				}
+				want, wantJob := StateInstalling, &reinstall.ID
+				if after == 2 {
+					want, wantJob = StateInstalled, nil
+				}
+				if got.State != want {
+					t.Fatalf("state = %s, want %s", got.State, want)
+				}
+				if !reflect.DeepEqual(got.JobID, wantJob) {
+					t.Fatalf("JobID = %v, want %v", got.JobID, wantJob)
+				}
+				if d := h.detail(p.ID); d.State != StateInstalling || d.JobID == nil || *d.JobID != reinstall.ID {
+					t.Fatalf("the next read must be installing with the reinstall, got %s %v", d.State, d.JobID)
 				}
 			})
 		}

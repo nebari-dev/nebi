@@ -103,6 +103,14 @@ type JobRunner interface {
 	// Submit starts run as a job of the given type for the project.
 	Submit(ctx context.Context, projectID uuid.UUID, typ jobs.Type, run jobs.Func) (*jobs.Job, error)
 	// ProjectJobs returns the project's jobs, oldest first.
+	//
+	// Project reads rely on when this list changes (see readProjects): a
+	// job is listed before its body starts, so before it writes anything,
+	// and is marked finished (succeeded or failed) only after its body has
+	// returned, so after every write it makes. A runner must
+	// keep both: a job that writes before it is listed, or is marked
+	// finished before its writes are done, can make a read report a state
+	// the project was never in.
 	ProjectJobs(ctx context.Context, projectID uuid.UUID) ([]jobs.Job, error)
 	// RetireProject atomically checks that the project has no queued or
 	// running job and, when it has none, refuses every later job for it

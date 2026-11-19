@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -154,8 +155,8 @@ func isServerPackage(pkg string) bool {
 // TestClientDoesNotImportServerPackages checks the direct imports of every
 // .go file under internal/client, whatever its build constraints. go list
 // in TestClientDoesNotDependOnServerPackages only sees the files that build
-// on the test host with -tags=e2e, so it misses a server import in a file
-// for another OS (such as a _windows.go file) or behind another build tag.
+// for the operating systems it lists with -tags=e2e, so it misses a server
+// import in a file behind another build tag.
 func TestClientDoesNotImportServerPackages(t *testing.T) {
 	root := filepath.Join("..", "..") // internal/client
 	checked := 0
@@ -186,27 +187,45 @@ func TestClientDoesNotImportServerPackages(t *testing.T) {
 	}
 }
 
+// clientTargetOSes are the operating systems the client is built for.
+var clientTargetOSes = []string{"linux", "darwin", "windows"}
+
 // TestClientDoesNotDependOnServerPackages enforces the data model acceptance
 // criterion: nothing in internal/client depends on internal/models or the
 // other server packages. It reads the full dependency graph from go list
 // -deps, test files included, so an import through another package (for
 // example internal/store, which reaches internal/models via internal/auth)
-// is caught too. go list only sees the files that build on this host, so
-// TestClientDoesNotImportServerPackages covers the direct imports of the
-// rest.
+// is caught too. go list only sees the files that build for one GOOS, so
+// it runs once per OS the client targets: an OS-specific file (such as a
+// _windows.go file) that reaches a server package through another package
+// is caught too. TestClientDoesNotImportServerPackages covers the direct
+// imports of files behind other build tags.
 func TestClientDoesNotDependOnServerPackages(t *testing.T) {
 	goBin, err := exec.LookPath("go")
 	if err != nil {
 		t.Fatalf("go list needs the go command on PATH: %v", err)
 	}
+	for _, goos := range clientTargetOSes {
+		t.Run(goos, func(t *testing.T) {
+			checkServerDeps(t, goBin, goos)
+		})
+	}
+}
+
+// checkServerDeps fails t when internal/client, built for goos, depends on
+// a server package.
+func checkServerDeps(t *testing.T, goBin, goos string) {
 	cmd := exec.Command(goBin, "list", "-deps", "-test", "-tags=e2e",
 		"-f", "{{.ImportPath}}|{{join .Imports \",\"}}",
 		"github.com/nebari-dev/nebi/internal/client/...")
+	// CGO_ENABLED=1 keeps the cgo files, which go list drops by default
+	// when GOOS is not the host's, so the graph matches a real build.
+	cmd.Env = append(os.Environ(), "GOOS="+goos, "CGO_ENABLED=1")
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("go list: %v\n%s", err, stderr.String())
+		t.Fatalf("GOOS=%s go list: %v\n%s", goos, err, stderr.String())
 	}
 
 	// importers maps every package in the graph to the packages that
@@ -237,7 +256,7 @@ func TestClientDoesNotDependOnServerPackages(t *testing.T) {
 				by = append(by, b)
 			}
 			sort.Strings(by)
-			t.Errorf("internal/client depends on %s (imported by %s)", pkg, strings.Join(by, ", "))
+			t.Errorf("internal/client depends on %s for GOOS=%s (imported by %s)", pkg, goos, strings.Join(by, ", "))
 		}
 	}
 }

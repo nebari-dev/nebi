@@ -128,6 +128,19 @@ func TestSameDirAndInside(t *testing.T) {
 		t.Fatal("a directory that does not exist is neither the same as nor contains another")
 	}
 
+	// A path through a regular file does not exist either: stat fails with
+	// "not a directory" (ENOTDIR on Unix), not "no such file", as for a
+	// project whose parent directory was replaced by a file.
+	file := filepath.Join(base, "file")
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	throughFile := filepath.Join(file, "project")
+	if mustSameDir(t, outer, throughFile) || mustSameDir(t, throughFile, outer) ||
+		mustInside(t, throughFile, filepath.Join(outer, "inner")) || mustInside(t, outer, throughFile) {
+		t.Fatal("a path through a regular file is neither the same as, inside nor contains another")
+	}
+
 	link := filepath.Join(base, "link")
 	if err := os.Symlink(outer, link); err == nil {
 		if !mustSameDir(t, outer, link) || !mustInside(t, outer, filepath.Join(link, "inner")) {

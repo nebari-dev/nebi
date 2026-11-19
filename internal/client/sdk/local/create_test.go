@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -591,5 +592,57 @@ func TestCreateRejectsCaseVariantOfTrackedPath(t *testing.T) {
 	}
 	if h.projectCount() != 1 || exists(filepath.Join(outer.Path, "inner")) {
 		t.Fatal("a refused create must change nothing")
+	}
+}
+
+// TestCreateSkipsProjectThatCannotBeChecked covers a tracked project whose
+// directory cannot be checked on disk, here because the directory holding
+// it cannot be read. Create must not fail for unrelated paths because of
+// it: it compares that project by path only. DeleteProject still refuses
+// to remove files when it cannot check (TestDeleteFilesRefusedWhenProjectCannotBeChecked).
+func TestCreateSkipsProjectThatCannotBeChecked(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a directory the test cannot read")
+	}
+	h := newHarness(t)
+	locked := filepath.Join(h.resolved(t.TempDir()), "locked")
+	stuck := filepath.Join(locked, "stuck")
+	if err := os.MkdirAll(stuck, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h.insertRow(&Project{Name: "stuck", Path: stuck})
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	if _, err := sameDir(stuck, h.projectsDir); err == nil {
+		t.Fatal("setup: the stuck project must be one that cannot be checked")
+	}
+
+	ctx := context.Background()
+	p, job, err := h.svc.CreateProject(ctx, specRequest("fresh"))
+	if err != nil {
+		t.Fatalf("an unrelated create must succeed: %v", err)
+	}
+	if got := h.wait(job); got.Status != jobs.StatusSucceeded {
+		t.Fatalf("create job: %+v", got)
+	}
+	if !p.ManagedDir || !exists(p.Path) {
+		t.Fatalf("unexpected project %+v", p)
+	}
+
+	// The path comparisons still apply to the project that cannot be
+	// checked. CreateProject cannot get this far for these paths (it fails
+	// resolving them), so call the check itself.
+	for name, path := range map[string]string{
+		"same":   stuck,
+		"inside": filepath.Join(stuck, "inner"),
+	} {
+		if err := h.svc.checkPathFree(ctx, path); !errors.Is(err, ErrPathTaken) {
+			t.Errorf("%s: want ErrPathTaken, got %v", name, err)
+		}
+	}
+	if h.projectCount() != 2 {
+		t.Fatalf("want 2 projects, got %d", h.projectCount())
 	}
 }

@@ -108,10 +108,17 @@ func (s *Service) CreateProject(ctx context.Context, req CreateProjectRequest) (
 	}
 
 	// 3. Insert the project row.
+	managed := false
+	if created {
+		if managed, err = inside(projectsDir, dir); err != nil {
+			cleanup()
+			return nil, nil, err
+		}
+	}
 	p := &Project{
 		Name:       req.Name,
 		Path:       dir,
-		ManagedDir: created && inside(projectsDir, dir),
+		ManagedDir: managed,
 	}
 	if err := s.db.WithContext(ctx).Create(p).Error; err != nil {
 		cleanup()
@@ -201,12 +208,19 @@ func (s *Service) checkPathFree(ctx context.Context, dir string) error {
 		return err
 	}
 	for _, o := range tracked {
-		switch {
-		case sameDir(o.Path, dir):
+		if same, err := sameDir(o.Path, dir); err != nil {
+			return err
+		} else if same {
 			return fmt.Errorf("%w: %s is project %q at %s", ErrPathTaken, dir, o.Name, o.Path)
-		case inside(o.Path, dir):
+		}
+		if in, err := inside(o.Path, dir); err != nil {
+			return err
+		} else if in {
 			return fmt.Errorf("%w: %s is inside project %q at %s", ErrPathTaken, dir, o.Name, o.Path)
-		case inside(dir, o.Path):
+		}
+		if in, err := inside(dir, o.Path); err != nil {
+			return err
+		} else if in {
 			return fmt.Errorf("%w: %s contains project %q at %s", ErrPathTaken, dir, o.Name, o.Path)
 		}
 	}

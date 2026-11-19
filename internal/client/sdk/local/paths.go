@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // defaultProjectsDirName is the projects directory under the home directory.
@@ -86,19 +87,24 @@ func resolveSymlinks(p string) (string, error) {
 // existing paths that are the same file on disk. Comparing files rather
 // than strings also matches paths that differ only in case on a
 // case-insensitive filesystem (the default on macOS and Windows).
-func sameDir(a, b string) bool {
+//
+// A path that does not exist is a different directory. Any other error
+// (for example a directory on the way that cannot be read) is returned,
+// so a caller guarding another project's files can refuse rather than
+// assume the two are unrelated.
+func sameDir(a, b string) (bool, error) {
 	if a == b {
-		return true
+		return true, nil
 	}
-	ai, err := os.Stat(a)
-	if err != nil {
-		return false
+	ai, err := statDir(a)
+	if ai == nil || err != nil {
+		return false, err
 	}
-	bi, err := os.Stat(b)
-	if err != nil {
-		return false
+	bi, err := statDir(b)
+	if bi == nil || err != nil {
+		return false, err
 	}
-	return os.SameFile(ai, bi)
+	return os.SameFile(ai, bi), nil
 }
 
 // inside reports whether p is strictly inside dir: by path, or because an
@@ -106,35 +112,65 @@ func sameDir(a, b string) bool {
 // matches paths that differ only in case, and paths that reach dir through
 // a symlink, including p itself being a symlink to a directory inside dir.
 // Both must be clean absolute paths.
-func inside(dir, p string) bool {
+//
+// Like sameDir, it returns an error when a path cannot be checked for a
+// reason other than not existing, instead of reporting p as outside dir.
+func inside(dir, p string) (bool, error) {
 	if isWithin(dir, p) {
-		return true
+		return true, nil
 	}
-	di, err := os.Stat(dir)
-	if err != nil {
-		return false
+	di, err := statDir(dir)
+	if di == nil || err != nil {
+		return false, err
 	}
 	starts := []string{filepath.Dir(p)}
 	// The walk below starts at p's parent, so it never follows p itself.
 	// A stored project path can be a symlink by now (the user moved the
 	// directory and left a link behind), so check where p points too.
-	if resolved, err := filepath.EvalSymlinks(p); err == nil && resolved != p {
+	resolved, err := filepath.EvalSymlinks(p)
+	switch {
+	case err != nil && !missing(err):
+		return false, fmt.Errorf("resolving %s: %w", p, err)
+	case err == nil && resolved != p:
 		if isWithin(dir, resolved) {
-			return true
+			return true, nil
 		}
 		starts = append(starts, filepath.Dir(resolved))
 	}
 	for _, start := range starts {
 		for cur := start; ; cur = filepath.Dir(cur) {
-			if ci, err := os.Stat(cur); err == nil && os.SameFile(di, ci) {
-				return true
+			ci, err := statDir(cur)
+			if err != nil {
+				return false, err
+			}
+			if ci != nil && os.SameFile(di, ci) {
+				return true, nil
 			}
 			if filepath.Dir(cur) == cur {
 				break
 			}
 		}
 	}
-	return false
+	return false, nil
+}
+
+// statDir stats p. It returns nil info and no error when p does not exist,
+// and the error for any other failure.
+func statDir(p string) (fs.FileInfo, error) {
+	info, err := os.Stat(p)
+	if err == nil {
+		return info, nil
+	}
+	if missing(err) {
+		return nil, nil
+	}
+	return nil, fmt.Errorf("checking %s: %w", p, err)
+}
+
+// missing reports whether err means the path does not exist: no such file,
+// or a component of the path that is a file rather than a directory.
+func missing(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
 }
 
 // isWithin reports whether p is strictly inside dir, comparing paths only.

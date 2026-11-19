@@ -72,8 +72,8 @@ type VersionInfo struct {
 	Count int
 	// Latest is the newest version number; nil when there are no versions.
 	Latest *int
-	// Installed is the number of the installed version; nil when nothing
-	// is installed.
+	// Installed is the number of the version whose ID was passed as
+	// installedID; nil when that is nil.
 	Installed *int
 }
 

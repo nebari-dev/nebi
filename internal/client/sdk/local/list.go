@@ -58,10 +58,14 @@ type ProjectSummary struct {
 	// the failed one for StateLockFailed and StateInstallFailed.
 	JobID *uuid.UUID `json:"job_id,omitempty"`
 
-	// InstalledVersion and LatestVersion are version numbers; nil when
-	// nothing is installed or there are no versions.
+	// InstalledVersion is the number of the version nebi last recorded as
+	// installed (InstalledVersionID); nil when none is recorded. It is
+	// kept when the environment is no longer on disk, so check State to
+	// know whether it is installed now.
 	InstalledVersion *int `json:"installed_version"`
-	LatestVersion    *int `json:"latest_version"`
+	// LatestVersion is the newest version number; nil when there are no
+	// versions.
+	LatestVersion *int `json:"latest_version"`
 
 	// SizeBytes is the cached size of Path on disk. Nil until it has been
 	// computed: sizes are computed in the background, so a project's first
@@ -85,14 +89,32 @@ type ProjectDetail struct {
 // ListProjects returns every local project, ordered by name. It only reads:
 // sizes come from the cache, and missing or stale ones are recomputed in
 // the background, so listing never waits for a walk of .pixi.
+//
+// Each project's jobs are read before its row and versions; see describe
+// for why. A project created after the list starts is left out; the next
+// list shows it.
 func (s *Service) ListProjects(ctx context.Context) ([]ProjectSummary, error) {
-	var projects []Project
-	if err := s.db.WithContext(ctx).Order("name COLLATE NOCASE ASC").Find(&projects).Error; err != nil {
+	var ids []uuid.UUID
+	if err := s.db.WithContext(ctx).Model(&Project{}).Pluck("id", &ids).Error; err != nil {
 		return nil, fmt.Errorf("listing projects: %w", err)
+	}
+	snapshot := make(map[uuid.UUID][]jobs.Job, len(ids))
+	for _, id := range ids {
+		projectJobs, err := s.jobs.ProjectJobs(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("reading jobs of project %s: %w", id, err)
+		}
+		snapshot[id] = projectJobs
+	}
+	var projects []Project
+	if len(ids) > 0 {
+		if err := s.db.WithContext(ctx).Where("id IN ?", ids).Order("name COLLATE NOCASE ASC").Find(&projects).Error; err != nil {
+			return nil, fmt.Errorf("listing projects: %w", err)
+		}
 	}
 	out := make([]ProjectSummary, 0, len(projects))
 	for i := range projects {
-		d, err := s.describe(ctx, &projects[i])
+		d, err := s.describe(ctx, &projects[i], snapshot[projects[i].ID])
 		if err != nil {
 			return nil, err
 		}
@@ -103,13 +125,18 @@ func (s *Service) ListProjects(ctx context.Context) ([]ProjectSummary, error) {
 }
 
 // GetProject returns one project. Like ListProjects it only reads, and its
-// size comes from the cache.
+// size comes from the cache. The project's jobs are read before its row;
+// see describe.
 func (s *Service) GetProject(ctx context.Context, id uuid.UUID) (*ProjectDetail, error) {
+	projectJobs, err := s.jobs.ProjectJobs(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("reading jobs of project %s: %w", id, err)
+	}
 	p, err := s.loadProject(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	d, err := s.describe(ctx, p)
+	d, err := s.describe(ctx, p, projectJobs)
 	if err != nil {
 		return nil, err
 	}
@@ -132,14 +159,21 @@ func (s *Service) ProjectSize(ctx context.Context, id uuid.UUID) (int64, error) 
 	return size, nil
 }
 
-func (s *Service) describe(ctx context.Context, p *Project) (*ProjectDetail, error) {
+// describe builds a project's detail from its row p and projectJobs, the
+// project's jobs read before p was loaded.
+//
+// That order matters for a job finishing during the read. A job writes its
+// results (the version, InstalledVersionID) before the runner marks it
+// succeeded, so when the jobs read first show it succeeded, the row and
+// versions read afterwards include its writes; when they show it still
+// running, the state is creating or installing whatever the row says.
+// Reading the row first could pair a row from before the job's writes with
+// the job already succeeded, and report not_installed (or lock_failed) for
+// a project that has just been installed (or created).
+func (s *Service) describe(ctx context.Context, p *Project, projectJobs []jobs.Job) (*ProjectDetail, error) {
 	info, err := s.versions.VersionInfo(ctx, p.ID, p.InstalledVersionID)
 	if err != nil {
 		return nil, fmt.Errorf("reading versions of %s: %w", p.Name, err)
-	}
-	projectJobs, err := s.jobs.ProjectJobs(ctx, p.ID)
-	if err != nil {
-		return nil, fmt.Errorf("reading jobs of %s: %w", p.Name, err)
 	}
 	state, jobID := deriveState(info.Count, projectJobs, p.InstalledVersionID != nil, envInstalled(p.Path))
 

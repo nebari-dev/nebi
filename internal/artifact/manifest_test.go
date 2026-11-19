@@ -158,40 +158,40 @@ func TestPackageVersionSpec(t *testing.T) {
 	}
 }
 
-func TestParseManifestChannels(t *testing.T) {
-	m, err := ParseManifest("[workspace]\nchannels = [\"conda-forge\", { channel = \"bioconda\", priority = 1 }]\nplatforms = [\"linux-64\"]\n")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(m.Channels, []string{"conda-forge", "bioconda"}) {
-		t.Fatalf("channels = %v", m.Channels)
-	}
+// TestParseManifestLeavesChannelsToPixi checks that channels are not read
+// or checked: any form, including one pixi would reject, parses, and pixi
+// lock reports the problem.
+func TestParseManifestLeavesChannelsToPixi(t *testing.T) {
 	for name, content := range map[string]string{
-		"channels not a list":   "[workspace]\nchannels = \"conda-forge\"\n",
-		"channel table no name": "[workspace]\nchannels = [{ priority = 1 }]\n",
-		"channel not a name":    "[workspace]\nchannels = [1]\n",
+		"names and tables":      "[workspace]\nchannels = [\"conda-forge\", { channel = \"bioconda\", priority = 1 }]\nplatforms = [\"linux-64\"]\n",
+		"empty":                 "[workspace]\nchannels = []\nplatforms = [\"linux-64\"]\n",
+		"channels not a list":   "[workspace]\nchannels = \"conda-forge\"\nplatforms = [\"linux-64\"]\n",
+		"channel table no name": "[workspace]\nchannels = [{ priority = 1 }]\nplatforms = [\"linux-64\"]\n",
 	} {
-		if _, err := ParseManifest(content); !errors.Is(err, ErrInvalid) {
-			t.Errorf("%s: want ErrInvalid, got %v", name, err)
+		m, err := ParseManifest(content)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if !reflect.DeepEqual(m.Platforms, []string{"linux-64"}) {
+			t.Errorf("%s: platforms = %v", name, m.Platforms)
 		}
 	}
 }
 
 func TestManifestValidate(t *testing.T) {
 	// Platform names are not checked against a list: these are newer than
-	// some pixi releases, and pixi lock decides which it supports. No
-	// channels is valid when features set their own.
+	// some pixi releases, and pixi lock decides which it supports.
 	for name, m := range map[string]*Manifest{
-		"common platforms": {Channels: []string{"conda-forge"}, Platforms: []string{"linux-64", "osx-arm64", "win-64"}},
-		"newer platforms":  {Channels: []string{"conda-forge"}, Platforms: []string{"linux-64", "linux-loongarch64", "freebsd-64", "noarch", "linux-ppc", "ios-arm64", "android-arm64"}},
-		"no channels":      {Platforms: []string{"linux-64"}},
-		"no platforms":     {Channels: []string{"conda-forge"}},
+		"common platforms": {Platforms: []string{"linux-64", "osx-arm64", "win-64"}},
+		"newer platforms":  {Platforms: []string{"linux-64", "linux-loongarch64", "freebsd-64", "noarch", "linux-ppc", "ios-arm64", "android-arm64"}},
+		"no platforms":     {},
 	} {
 		if err := m.Validate(); err != nil {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	dup := &Manifest{Channels: []string{"conda-forge"}, Platforms: []string{"osx-64", "osx-64"}}
+	dup := &Manifest{Platforms: []string{"osx-64", "osx-64"}}
 	if err := dup.Validate(); !errors.Is(err, ErrInvalid) {
 		t.Errorf("duplicate platform: want ErrInvalid, got %v", err)
 	}

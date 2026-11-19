@@ -509,6 +509,85 @@ func TestDeleteFilesChecksNestingAfterMovingBack(t *testing.T) {
 	if left := trashEntries(t, filepath.Dir(outer.Path)); len(left) != 0 {
 		t.Fatalf("no moved-aside directory may be left: %v", left)
 	}
+	// The project was retired before the check; the refusal must let it
+	// take work again.
+	h.mustAcceptJobs(outer.ID)
+	if _, err := h.svc.DeleteProject(context.Background(), outer.ID, DeleteProjectOptions{}); err != nil {
+		t.Fatalf("a delete without files must still succeed after the refused one: %v", err)
+	}
+}
+
+// TestDeleteAcceptsJobsWhenMovingBackFails covers a delete that cannot move
+// back a directory an earlier interrupted delete left aside, because
+// something now sits at the project path. The project was retired before
+// the move back, so the failure must let it take work again.
+func TestDeleteAcceptsJobsWhenMovingBackFails(t *testing.T) {
+	h := newHarness(t)
+	p, _ := h.mustCreate(specRequest("blocked"))
+	trash := h.crashMidDelete(p)
+	if err := os.MkdirAll(p.Path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{DeleteFiles: true})
+	if err == nil || !strings.Contains(err.Error(), "moving") {
+		t.Fatalf("want a move-back error, got %v", err)
+	}
+	if h.projectCount() != 1 || !exists(trash) || h.pendingCount() != 1 {
+		t.Fatal("a failed move back must keep the project, the moved-aside directory and its record")
+	}
+	h.mustAcceptJobs(p.ID)
+}
+
+// TestDeleteFilesRefusedWhenProjectCannotBeChecked covers a tracked project
+// whose path cannot be resolved: its stored path is a symlink into the
+// directory being deleted, inside a directory that cannot be read. The
+// nested-project check cannot tell where it points, so the delete must be
+// refused instead of treating it as unrelated.
+func TestDeleteFilesRefusedWhenProjectCannotBeChecked(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a directory the test cannot read")
+	}
+	h := newHarness(t)
+	outer, _ := h.mustCreate(specRequest("outer"))
+	innerDir := filepath.Join(outer.Path, "inner")
+	if err := os.MkdirAll(innerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	locked := filepath.Join(h.resolved(t.TempDir()), "locked")
+	if err := os.MkdirAll(locked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(locked, "inner")
+	if err := os.Symlink(innerDir, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	h.insertRow(&Project{Name: "inner", Path: link})
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+	job, err := h.svc.DeleteProject(context.Background(), outer.ID, DeleteProjectOptions{DeleteFiles: true})
+	if err == nil {
+		h.wait(job)
+		t.Fatal("want an error when another project's path cannot be checked")
+	}
+	if !exists(innerDir) || h.projectCount() != 2 || h.pendingCount() != 0 {
+		t.Fatal("a refused delete must keep both rows and the files")
+	}
+	h.mustAcceptJobs(outer.ID)
+}
+
+// mustAcceptJobs fails the test unless the project accepts a new job, as
+// it must after a delete that was refused or failed.
+func (h *harness) mustAcceptJobs(id uuid.UUID) {
+	h.t.Helper()
+	job, err := h.runner.Submit(context.Background(), id, jobs.TypeInstall, func(context.Context) error { return nil })
+	if err != nil {
+		h.t.Fatalf("the project must accept jobs again: %v", err)
+	}
+	h.wait(job)
 }
 
 func (h *harness) pendingCount() int64 {

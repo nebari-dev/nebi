@@ -61,13 +61,13 @@ func TestDeriveState(t *testing.T) {
 		{"failed uninstall falls back to disk", 1, []jobs.Job{installOK, uninstallFailed}, true, true, StateInstalled, nil},
 		{"other jobs are ignored", 1, []jobs.Job{createOK, deleteFiles}, false, false, StateNotInstalled, nil},
 		{"installed, no jobs (after restart)", 1, nil, true, true, StateInstalled, nil},
-		// The failed or interrupted install's job is gone after a restart;
-		// only its partial .pixi/envs is left, and nothing was recorded.
-		{"partial env, job lost on restart", 1, nil, false, true, StateNotInstalled, nil},
+		// An env on disk with nothing recorded: a failed or interrupted
+		// install whose job is gone after a restart left a partial
+		// .pixi/envs, or pixi install was run outside nebi. Either way nebi
+		// does not know which version, if any, is on disk, so it is
+		// deliberately not reported as installed.
+		{"env without a recorded install (job lost on restart, or installed outside nebi)", 1, nil, false, true, StateNotInstalled, nil},
 		{"partial env, create job lost on restart", 1, []jobs.Job{createOK}, false, true, StateNotInstalled, nil},
-		// pixi install run by hand: nebi does not know which version is on
-		// disk, so it is deliberately not reported as installed.
-		{"env installed outside nebi", 1, nil, false, true, StateNotInstalled, nil},
 		{"installed version recorded but env removed", 1, nil, true, false, StateNotInstalled, nil},
 	}
 	for _, c := range cases {
@@ -236,7 +236,8 @@ func TestStateOfEnvInstalledOutsideNebi(t *testing.T) {
 }
 
 // Removing an installed environment by hand makes the project
-// not_installed even though InstalledVersionID is still set.
+// not_installed even though InstalledVersionID is still set. The summary
+// keeps reporting that version as the one nebi last installed.
 func TestStateOfInstalledEnvRemovedFromDisk(t *testing.T) {
 	h := newHarness(t)
 	req := specRequest("removed")
@@ -248,8 +249,102 @@ func TestStateOfInstalledEnvRemovedFromDisk(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(p.Path, ".pixi")); err != nil {
 		t.Fatal(err)
 	}
-	if d := h.detail(p.ID); d.State != StateNotInstalled {
+	d := h.detail(p.ID)
+	if d.State != StateNotInstalled {
 		t.Fatalf("want not_installed once .pixi is removed, got %s", d.State)
+	}
+	if d.InstalledVersion == nil || *d.InstalledVersion != 1 || d.InstalledVersionID == nil {
+		t.Fatalf("InstalledVersion = %v, want 1, the version nebi last recorded as installed", deref(d.InstalledVersion))
+	}
+}
+
+// finishOnRead is a JobRunner whose next ProjectJobs call runs finish, which
+// lets a gated job complete and waits for it, so the job finishes in the
+// middle of a GetProject or ListProjects. With before set, finish runs
+// before the jobs are read; otherwise after.
+type finishOnRead struct {
+	*jobs.Memory
+	before bool
+	mu     sync.Mutex
+	finish func()
+}
+
+func (f *finishOnRead) arm(finish func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.finish = finish
+}
+
+func (f *finishOnRead) ProjectJobs(ctx context.Context, id uuid.UUID) ([]jobs.Job, error) {
+	f.mu.Lock()
+	finish := f.finish
+	f.finish = nil
+	f.mu.Unlock()
+	if finish != nil && f.before {
+		finish()
+	}
+	list, err := f.Memory.ProjectJobs(ctx, id)
+	if finish != nil && !f.before {
+		finish()
+	}
+	return list, err
+}
+
+// TestStateWhenInstallFinishesDuringRead covers a create-with-install job
+// that finishes while a project is being read. Whether the read sees the
+// job still running (creating) or finished (installed), it must never pair
+// the finished job with a row read before the job recorded the install,
+// which would report not_installed for a project that just installed.
+func TestStateWhenInstallFinishesDuringRead(t *testing.T) {
+	read := map[string]func(h *harness, id uuid.UUID) ProjectSummary{
+		"GetProject": func(h *harness, id uuid.UUID) ProjectSummary { return h.detail(id).ProjectSummary },
+		"ListProjects": func(h *harness, id uuid.UUID) ProjectSummary {
+			list, err := h.svc.ListProjects(context.Background())
+			if err != nil || len(list) != 1 || list[0].ID != id {
+				h.t.Fatalf("ListProjects = %v, %v", list, err)
+			}
+			return list[0]
+		},
+	}
+	for name, readState := range read {
+		for _, before := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/finished before jobs read=%v", name, before), func(t *testing.T) {
+				runner := &finishOnRead{before: before}
+				h := newHarness(t, func(o *Options) {
+					runner.Memory = o.Jobs.(*jobs.Memory)
+					o.Jobs = runner
+				})
+				gate := make(chan struct{})
+				started := make(chan struct{}, 1)
+				h.pixi.installGate, h.pixi.installStarted = gate, started
+				req := specRequest("straddle")
+				req.Install = true
+				p, job, err := h.svc.CreateProject(context.Background(), req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				<-started
+				runner.arm(func() {
+					close(gate)
+					h.wait(job)
+				})
+
+				got := readState(h, p.ID)
+				want, wantJob := StateCreating, &job.ID
+				if before {
+					want, wantJob = StateInstalled, nil
+				}
+				if got.State != want {
+					t.Fatalf("state = %s, want %s", got.State, want)
+				}
+				if !reflect.DeepEqual(got.JobID, wantJob) {
+					t.Fatalf("JobID = %v, want %v", got.JobID, wantJob)
+				}
+				if d := h.detail(p.ID); d.State != StateInstalled {
+					t.Fatalf("the next read must be installed, got %s", d.State)
+				}
+			})
+		}
 	}
 }
 

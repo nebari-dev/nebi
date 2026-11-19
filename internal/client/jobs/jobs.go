@@ -5,7 +5,8 @@
 // Memory is an in-process runner. Jobs do not survive a restart of the
 // process that ran them, and one runner does not see the jobs of another,
 // so every client process that shares a data directory must go through the
-// same runner for its busy checks to hold.
+// same runner for its busy checks to hold. The owner lock (TryAcquireOwner,
+// AcquireOwner, ReadOwner) decides which process runs it; see Owner.
 package jobs
 
 import (

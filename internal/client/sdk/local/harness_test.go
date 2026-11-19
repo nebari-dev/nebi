@@ -3,6 +3,8 @@ package local
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -133,7 +135,9 @@ func (f *fakeVersions) versionsOf(t *testing.T, projectID uuid.UUID) []testVersi
 }
 
 // fakePixi stands in for sdk/exec. Lock writes a pixi.lock; Install
-// creates .pixi/envs. Either can fail or block.
+// creates .pixi/envs. Either can fail or block, and both write pixi-like
+// output to the job's log. A blocked call returns ctx's error when ctx is
+// cancelled, as the real runner does when it stops pixi.
 type fakePixi struct {
 	mu           sync.Mutex
 	lockErr      error
@@ -153,11 +157,19 @@ type fakePixi struct {
 
 const fakeLockContent = "version: 6\n# fake lock\n"
 
-func (f *fakePixi) Lock(ctx context.Context, dir string) error {
+// fakeLockOutput and fakeInstallOutput are what the fake writes to the
+// job's log for dir.
+func fakeLockOutput(dir string) string    { return fmt.Sprintf("pixi lock: solving %s\n", dir) }
+func fakeInstallOutput(dir string) string { return fmt.Sprintf("pixi install: installing %s\n", dir) }
+
+func (f *fakePixi) Lock(ctx context.Context, dir string, out io.Writer) error {
 	f.mu.Lock()
 	f.lockCalls = append(f.lockCalls, dir)
 	gate, started, err := f.lockGate, f.lockStarted, f.lockErr
 	f.mu.Unlock()
+	if _, werr := io.WriteString(out, fakeLockOutput(dir)); werr != nil {
+		return werr
+	}
 	if gate != nil {
 		if started != nil {
 			started <- struct{}{}
@@ -169,17 +181,21 @@ func (f *fakePixi) Lock(ctx context.Context, dir string) error {
 		}
 	}
 	if err != nil {
+		fmt.Fprintf(out, "error: %v\n", err)
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, artifact.LockFile), []byte(fakeLockContent), 0o644)
 }
 
-func (f *fakePixi) Install(ctx context.Context, dir string) error {
+func (f *fakePixi) Install(ctx context.Context, dir string, out io.Writer) error {
 	f.mu.Lock()
 	f.installCalls = append(f.installCalls, dir)
 	err, partial := f.installErr, f.partialEnv
 	gate, started := f.installGate, f.installStarted
 	f.mu.Unlock()
+	if _, werr := io.WriteString(out, fakeInstallOutput(dir)); werr != nil {
+		return werr
+	}
 	if gate != nil {
 		if mkErr := os.MkdirAll(filepath.Join(dir, ".pixi", "envs", "default"), 0o755); mkErr != nil {
 			return mkErr
@@ -231,6 +247,12 @@ type harness struct {
 
 func newHarness(t *testing.T, mods ...func(*Options)) *harness {
 	t.Helper()
+	return newHarnessWithRunner(t, jobs.Options{}, mods...)
+}
+
+// newHarnessWithRunner is newHarness with a job runner configured by ro.
+func newHarnessWithRunner(t *testing.T, ro jobs.Options, mods ...func(*Options)) *harness {
+	t.Helper()
 	db := openTestDB(t)
 	if err := Migrate(db); err != nil {
 		t.Fatalf("Migrate: %v", err)
@@ -241,7 +263,7 @@ func newHarness(t *testing.T, mods ...func(*Options)) *harness {
 	h := &harness{
 		t:           t,
 		db:          db,
-		runner:      jobs.NewMemory(),
+		runner:      jobs.NewMemory(ro),
 		pixi:        &fakePixi{},
 		versions:    &fakeVersions{db: db},
 		projectsDir: filepath.Join(t.TempDir(), "projects"),

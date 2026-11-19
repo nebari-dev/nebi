@@ -25,7 +25,7 @@ var (
 	ErrPathTaken = errors.New("path is already used by another project")
 	// ErrPathNotEmpty: the directory already has a pixi.toml.
 	ErrPathNotEmpty = errors.New("directory already contains a pixi.toml")
-	// ErrProjectBusy: a job for the project is queued or running. The
+	// ErrProjectBusy: a job for the project is pending or running. The
 	// returned error is a *BusyError carrying the job IDs.
 	ErrProjectBusy = errors.New("project has a job in progress")
 	// ErrFilesNotManaged: file deletion was asked for a directory nebi did
@@ -36,7 +36,7 @@ var (
 )
 
 // BusyError is returned by DeleteProject while jobs for the project are
-// queued or running. It matches ErrProjectBusy with errors.Is.
+// pending or running. It matches ErrProjectBusy with errors.Is.
 type BusyError struct {
 	ProjectID uuid.UUID
 	JobIDs    []uuid.UUID

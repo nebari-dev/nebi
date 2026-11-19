@@ -17,17 +17,18 @@ import (
 type State string
 
 const (
-	// StateCreating: the create job is queued or running.
+	// StateCreating: the create job is pending or running.
 	StateCreating State = "creating"
 	// StateLockFailed: the project has no versions because the create job
-	// failed (or did not survive a restart). JobID is the failed job, when
-	// known.
+	// failed or was cancelled (or did not survive a restart). JobID is that
+	// job, when known.
 	StateLockFailed State = "lock_failed"
-	// StateInstalling: an install is queued or running.
+	// StateInstalling: an install is pending or running.
 	StateInstalling State = "installing"
-	// StateUninstalling: an uninstall is queued or running.
+	// StateUninstalling: an uninstall is pending or running.
 	StateUninstalling State = "uninstalling"
-	// StateInstallFailed: the last install failed. JobID is that job.
+	// StateInstallFailed: the last install failed or was cancelled. JobID
+	// is that job.
 	StateInstallFailed State = "install_failed"
 	// StateInstalled: nebi installed a version (InstalledVersionID is set)
 	// and its environment is on disk (.pixi/envs exists).
@@ -304,14 +305,16 @@ func envInstalled(dir string) bool {
 // and whether .pixi/envs exists (envOnDisk), and returns the job the state
 // refers to.
 //
-// An active create job wins. A project with no versions is lock_failed. An
-// active install or uninstall comes next; then a failed last install wins
-// over what is on disk, because pixi can leave a partial .pixi/envs behind
-// before failing. Otherwise the project is installed only when both
-// hasInstalledVersion and envOnDisk hold. Jobs live in memory, so after a
-// restart a failed install leaves no job behind, only its partial
-// .pixi/envs; InstalledVersionID, which is set only after an install
-// succeeds, is what tells that apart from a real install.
+// An active (pending or running) create job wins. A project with no
+// versions is lock_failed. An active install or uninstall comes next; then
+// a failed or cancelled last install wins over what is on disk, because
+// pixi can leave a partial .pixi/envs behind when it stops early. An
+// install or uninstall cancelled while pending never ran pixi, so it is
+// skipped and the job before it decides. Otherwise the project is installed
+// only when both hasInstalledVersion and envOnDisk hold. Jobs live in
+// memory, so after a restart a failed install leaves no job behind, only
+// its partial .pixi/envs; InstalledVersionID, which is set only after an
+// install succeeds, is what tells that apart from a real install.
 func deriveState(versionCount int, projectJobs []jobs.Job, hasInstalledVersion, envOnDisk bool) (State, *uuid.UUID) {
 	create := latestJob(projectJobs, func(j jobs.Job) bool { return j.Type == jobs.TypeCreate })
 	if create != nil && create.Active() {
@@ -327,6 +330,9 @@ func deriveState(versionCount int, projectJobs []jobs.Job, hasInstalledVersion, 
 	// The environment jobs: installs, uninstalls, and create jobs that got
 	// as far as installing.
 	env := latestJob(projectJobs, func(j jobs.Job) bool {
+		if !j.Active() && !j.Started() {
+			return false // cancelled while pending: it changed nothing
+		}
 		return j.Type == jobs.TypeInstall || j.Type == jobs.TypeUninstall ||
 			(j.Type == jobs.TypeCreate && j.Stage == StageInstall)
 	})
@@ -336,7 +342,7 @@ func deriveState(versionCount int, projectJobs []jobs.Job, hasInstalledVersion, 
 		}
 		return StateInstalling, &env.ID
 	}
-	if env != nil && env.Status == jobs.StatusFailed && env.Type != jobs.TypeUninstall {
+	if env != nil && (env.Status == jobs.StatusFailed || env.Status == jobs.StatusCancelled) && env.Type != jobs.TypeUninstall {
 		return StateInstallFailed, &env.ID
 	}
 	if hasInstalledVersion && envOnDisk {

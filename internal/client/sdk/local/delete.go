@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -40,7 +41,7 @@ func (pendingRemoval) TableName() string { return "client_pending_removals" }
 //
 //  1. It refuses with ErrFilesNotManaged when DeleteFiles is asked for a
 //     directory nebi did not create, and with a *BusyError (errors.Is
-//     ErrProjectBusy) while a job for the project is queued or running.
+//     ErrProjectBusy) while a job for the project is pending or running.
 //     The busy check and refusing new jobs for the project are one step in
 //     the JobRunner, so nothing can start in between; the check covers
 //     only jobs of that runner. It then moves back a directory that an
@@ -146,18 +147,29 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID, opts DeletePr
 	}
 	s.sizes.forget(id)
 
+	job, err := s.submitRemoval(ctx, p, opts, removal)
+	// The project is gone for good, so the runner need no longer keep its
+	// jobs for it. This comes after the removal is submitted, so the
+	// removal job is not kept for it either.
+	_ = s.jobs.ProjectDeleted(context.WithoutCancel(ctx), id)
+	return job, err
+}
+
+// submitRemoval submits the job that removes a deleted project's
+// moved-aside directory, when the delete asked for its files to go.
+func (s *Service) submitRemoval(ctx context.Context, p *Project, opts DeleteProjectOptions, removal *pendingRemoval) (*jobs.Job, error) {
 	if !opts.DeleteFiles {
 		return nil, nil
 	}
 	if removal == nil {
 		// The directory was already gone; the job has nothing to do.
-		job, err := s.jobs.Submit(ctx, id, jobs.TypeDeleteFiles, func(context.Context) error { return nil })
+		job, err := s.jobs.Submit(ctx, p.ID, jobs.TypeDeleteFiles, func(context.Context, io.Writer) error { return nil })
 		if err != nil {
 			return nil, fmt.Errorf("project %s was deleted, but its file removal job could not be started: %w", p.Name, err)
 		}
 		return job, nil
 	}
-	job, err := s.jobs.Submit(ctx, id, jobs.TypeDeleteFiles, s.removalJob(*removal))
+	job, err := s.jobs.Submit(ctx, p.ID, jobs.TypeDeleteFiles, s.removalJob(*removal))
 	if err != nil {
 		return nil, fmt.Errorf("project %s was deleted, but removing %s could not be started: %w; RecoverDeletes removes it later", p.Name, removal.TrashPath, err)
 	}
@@ -204,10 +216,10 @@ func (s *Service) checkNothingInside(ctx context.Context, p *Project) error {
 // When the project row is gone, the delete went through: it submits a job
 // that removes the moved-aside directory, and returns those jobs. When the
 // row is still there, the delete did not happen: it moves the directory
-// back to the project path. Removals whose job is still running in this
-// service's JobRunner are left alone. Like the busy check, this only knows
-// the jobs of its own runner, so another client process must not be
-// deleting projects in the same database while it runs.
+// back to the project path. Removals whose job is still pending or running
+// in this service's JobRunner are left alone. Like the busy check, this
+// only knows the jobs of its own runner, so another client process must
+// not be deleting projects in the same database while it runs.
 func (s *Service) RecoverDeletes(ctx context.Context) ([]*jobs.Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -219,12 +231,12 @@ func (s *Service) RecoverDeletes(ctx context.Context) ([]*jobs.Job, error) {
 	var started []*jobs.Job
 	var errs []error
 	for _, r := range pending {
-		running, err := s.removalRunning(ctx, r.ProjectID)
+		active, err := s.removalActive(ctx, r.ProjectID)
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
-		if running {
+		if active {
 			continue
 		}
 		var n int64
@@ -243,6 +255,9 @@ func (s *Service) RecoverDeletes(ctx context.Context) ([]*jobs.Job, error) {
 			errs = append(errs, fmt.Errorf("starting removal of %s: %w", r.TrashPath, err))
 			continue
 		}
+		// The project row is gone, so the removal job need not be kept for
+		// the project.
+		_ = s.jobs.ProjectDeleted(ctx, r.ProjectID)
 		started = append(started, job)
 	}
 	return started, errors.Join(errs...)
@@ -313,9 +328,10 @@ func (s *Service) undoRemoval(ctx context.Context, r pendingRemoval) error {
 
 // removalJob is the body of the job that removes a moved-aside directory.
 // The record is dropped only once the directory is gone, so a failed or
-// interrupted removal is retried by RecoverDeletes.
+// interrupted removal is retried by RecoverDeletes. The job cannot be
+// cancelled (jobs.TypeDeleteFiles), so it never stops part way.
 func (s *Service) removalJob(r pendingRemoval) jobs.Func {
-	return func(ctx context.Context) error {
+	return func(ctx context.Context, _ io.Writer) error {
 		if err := removeProjectDir(r.TrashPath); err != nil {
 			return err
 		}
@@ -323,9 +339,9 @@ func (s *Service) removalJob(r pendingRemoval) jobs.Func {
 	}
 }
 
-// removalRunning reports whether a file removal job of the project is
-// queued or running.
-func (s *Service) removalRunning(ctx context.Context, projectID uuid.UUID) (bool, error) {
+// removalActive reports whether a file removal job of the project is
+// pending or running.
+func (s *Service) removalActive(ctx context.Context, projectID uuid.UUID) (bool, error) {
 	list, err := s.jobs.ProjectJobs(ctx, projectID)
 	if err != nil {
 		return false, fmt.Errorf("reading jobs of project %s: %w", projectID, err)

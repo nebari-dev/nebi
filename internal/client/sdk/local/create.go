@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -290,11 +291,13 @@ func cleanTags(tags []string) []string {
 	return out
 }
 
-// createJob is the body of the create job.
+// createJob is the body of the create job. pixi's output goes to the job's
+// log. A create cancelled before version 1 is recorded leaves the project
+// with no versions, in StateLockFailed like a failed lock.
 func (s *Service) createJob(projectID uuid.UUID, dir string, tags []string, install bool) jobs.Func {
-	return func(ctx context.Context) error {
+	return func(ctx context.Context, log io.Writer) error {
 		jobs.ReportStage(ctx, StageLock)
-		if err := s.pixi.Lock(ctx, dir); err != nil {
+		if err := s.pixi.Lock(ctx, dir, log); err != nil {
 			return fmt.Errorf("pixi lock: %w", err)
 		}
 		manifest, err := os.ReadFile(filepath.Join(dir, artifact.ManifestFile))
@@ -328,10 +331,12 @@ func (s *Service) createJob(projectID uuid.UUID, dir string, tags []string, inst
 		}
 
 		jobs.ReportStage(ctx, StageInstall)
-		if err := s.pixi.Install(ctx, dir); err != nil {
+		if err := s.pixi.Install(ctx, dir, log); err != nil {
 			return fmt.Errorf("pixi install: %w", err)
 		}
-		if err := s.db.WithContext(ctx).Model(&Project{}).Where("id = ?", projectID).
+		// The environment is installed: record it even if the job is
+		// cancelled now, or a complete install would look failed.
+		if err := s.db.WithContext(context.WithoutCancel(ctx)).Model(&Project{}).Where("id = ?", projectID).
 			Update("installed_version_id", versionID).Error; err != nil {
 			return fmt.Errorf("marking version 1 installed: %w", err)
 		}

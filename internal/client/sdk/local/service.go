@@ -18,6 +18,7 @@ package local
 import (
 	"context"
 	"errors"
+	"io"
 	"os/user"
 	"strings"
 	"sync"
@@ -100,33 +101,55 @@ type VersionStore interface {
 // JobRunner submits and reports background jobs (internal/client/jobs).
 // *jobs.Memory implements it.
 type JobRunner interface {
-	// Submit starts run as a job of the given type for the project.
+	// Submit adds run as a job of the given type for the project. The job
+	// is running when it could start at once, and pending while it waits
+	// for a free slot or for the project's running job to finish.
 	Submit(ctx context.Context, projectID uuid.UUID, typ jobs.Type, run jobs.Func) (*jobs.Job, error)
-	// ProjectJobs returns the project's jobs, oldest first.
+	// ProjectJobs returns the project's jobs the runner still keeps,
+	// oldest first: every pending or running job, the latest finished one
+	// of each type that started while the project exists, and older
+	// finished ones only until they are dropped.
 	//
 	// Project reads rely on when this list changes (see readProjects): a
 	// job is listed before its body starts, so before it writes anything,
-	// and is marked finished (succeeded or failed) only after its body has
-	// returned, so after every write it makes. A runner must
-	// keep both: a job that writes before it is listed, or is marked
-	// finished before its writes are done, can make a read report a state
-	// the project was never in.
+	// and is marked finished, meaning no longer active, only after its
+	// body has returned, so after every write it makes. A runner must keep
+	// both: a job that writes before it is listed, or is marked finished
+	// before its writes are done, can make a read report a state the
+	// project was never in. The list may change at other times too, such
+	// as when an old finished job is dropped; that only costs a read a
+	// retry.
 	ProjectJobs(ctx context.Context, projectID uuid.UUID) ([]jobs.Job, error)
-	// RetireProject atomically checks that the project has no queued or
+	// RetireProject atomically checks that the project has no pending or
 	// running job and, when it has none, refuses every later job for it
 	// except the allowed types. When jobs are active it returns their IDs
 	// and changes nothing.
 	RetireProject(ctx context.Context, projectID uuid.UUID, allow ...jobs.Type) ([]uuid.UUID, error)
 	// RestoreProject undoes RetireProject.
 	RestoreProject(ctx context.Context, projectID uuid.UUID) error
+	// ProjectDeleted reports that the project's delete has committed, after
+	// any job the delete still runs for it was submitted. It ends the
+	// retirement, and the runner no longer keeps the project's finished
+	// jobs for it.
+	ProjectDeleted(ctx context.Context, projectID uuid.UUID) error
+	// Cancel cancels a job: a pending job ends as cancelled without
+	// running, and a running job has its context cancelled. Cancelling a
+	// finished job does nothing. A file removal job cannot be cancelled;
+	// for one that is active, Cancel returns a *jobs.NotCancellableError.
+	Cancel(ctx context.Context, jobID uuid.UUID) error
 }
 
 // PixiRunner runs pixi in a project directory (internal/client/sdk/exec).
+//
+// Each method sends pixi's stdout and stderr to out, the job's log, and
+// starts pixi with ctx through process.CommandContext, so on unix
+// cancelling ctx stops pixi and its child processes and the method returns
+// promptly. On other systems only pixi itself is stopped.
 type PixiRunner interface {
 	// Lock solves the manifest in dir and writes dir/pixi.lock.
-	Lock(ctx context.Context, dir string) error
+	Lock(ctx context.Context, dir string, out io.Writer) error
 	// Install materializes the locked environment in dir/.pixi.
-	Install(ctx context.Context, dir string) error
+	Install(ctx context.Context, dir string, out io.Writer) error
 }
 
 // DeleteHook deletes rows another part of the client keeps for a project

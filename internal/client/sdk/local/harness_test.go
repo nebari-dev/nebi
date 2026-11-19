@@ -2,6 +2,7 @@ package local
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -39,109 +40,152 @@ func openTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// testVersion is the table behind fakeVersions. It is a real table so the
-// delete transaction can be checked for atomicity. Like #661's
-// ProjectVersion it has no job column.
-type testVersion struct {
-	ID          uuid.UUID `gorm:"type:text;primaryKey"`
-	ProjectID   uuid.UUID `gorm:"type:text;index"`
-	Number      int
-	Manifest    string
-	Lock        string
-	Origin      VersionOrigin
-	Base        *uuid.UUID `gorm:"type:text"`
-	Author      string
-	Description string
-	Tags        string
-}
-
-func (testVersion) TableName() string { return "test_versions" }
-
-// fakeVersions stands in for the version CRUD issue (#661).
-type fakeVersions struct {
+// versionProbe watches the real version and tag tables of a harness
+// database through GORM callbacks: it can fail version inserts or deletes,
+// records whether inserts ran in a transaction, counts deletes, and
+// records any update of a version row, which must never happen.
+type versionProbe struct {
 	db *gorm.DB
 
 	mu          sync.Mutex
-	recordErr   error
-	deleteErr   error
-	deleteCalls []uuid.UUID
-	recordTx    []*gorm.DB
+	recordErr   error // fails inserts into client_project_versions
+	deleteErr   error // fails deletes from client_project_versions
+	deleteCalls int
+	recordInTx  []bool
+	updates     []string // statements that updated client_project_versions
 }
 
-func (f *fakeVersions) RecordVersion(tx *gorm.DB, req RecordVersionRequest) (uuid.UUID, error) {
-	f.mu.Lock()
-	err := f.recordErr
-	f.recordTx = append(f.recordTx, tx)
-	f.mu.Unlock()
-	if err != nil {
-		return uuid.Nil, err
-	}
-	var n int64
-	if err := tx.Model(&testVersion{}).Where("project_id = ?", req.ProjectID).Count(&n).Error; err != nil {
-		return uuid.Nil, err
-	}
-	v := testVersion{
-		ID:          uuid.New(),
-		ProjectID:   req.ProjectID,
-		Number:      int(n) + 1,
-		Manifest:    req.Manifest,
-		Lock:        req.Lock,
-		Origin:      req.Origin,
-		Base:        req.BaseVersionID,
-		Author:      req.Author,
-		Description: req.Description,
-		Tags:        strings.Join(req.Tags, ","),
-	}
-	return v.ID, tx.Create(&v).Error
-}
+const versionTable = "client_project_versions"
 
-func (f *fakeVersions) VersionInfo(ctx context.Context, projectID uuid.UUID, installedID *uuid.UUID) (VersionInfo, error) {
-	var list []testVersion
-	if err := f.db.WithContext(ctx).Where("project_id = ?", projectID).Order("number").Find(&list).Error; err != nil {
-		return VersionInfo{}, err
-	}
-	info := VersionInfo{Count: len(list)}
-	if len(list) > 0 {
-		latest := list[len(list)-1].Number
-		info.Latest = &latest
-	}
-	for _, v := range list {
-		if installedID != nil && v.ID == *installedID {
-			n := v.Number
-			info.Installed = &n
+func newVersionProbe(t *testing.T, db *gorm.DB) *versionProbe {
+	t.Helper()
+	p := &versionProbe{db: db}
+	cb := db.Callback()
+	must := func(err error) {
+		if err != nil {
+			t.Fatalf("registering version probe: %v", err)
 		}
 	}
-	return info, nil
+	must(cb.Create().Before("gorm:create").Register("test:version_create", func(tx *gorm.DB) {
+		if tx.Statement.Table != versionTable {
+			return
+		}
+		_, inTx := tx.Statement.ConnPool.(gorm.TxCommitter)
+		p.mu.Lock()
+		p.recordInTx = append(p.recordInTx, inTx)
+		err := p.recordErr
+		p.mu.Unlock()
+		if err != nil {
+			_ = tx.AddError(err)
+		}
+	}))
+	must(cb.Delete().Before("gorm:delete").Register("test:version_delete", func(tx *gorm.DB) {
+		if tx.Statement.Table != versionTable {
+			return
+		}
+		p.mu.Lock()
+		p.deleteCalls++
+		err := p.deleteErr
+		p.mu.Unlock()
+		if err != nil {
+			_ = tx.AddError(err)
+		}
+	}))
+	must(cb.Update().Before("gorm:update").Register("test:version_update", func(tx *gorm.DB) {
+		if tx.Statement.Table == versionTable {
+			p.mu.Lock()
+			p.updates = append(p.updates, "gorm update of "+versionTable)
+			p.mu.Unlock()
+		}
+	}))
+	must(cb.Raw().Before("gorm:raw").Register("test:version_raw", func(tx *gorm.DB) {
+		sql := strings.ToLower(strings.TrimSpace(tx.Statement.SQL.String()))
+		if strings.HasPrefix(sql, "update") && strings.Contains(sql, versionTable) {
+			p.mu.Lock()
+			p.updates = append(p.updates, sql)
+			p.mu.Unlock()
+		}
+	}))
+	// Versions are immutable: no test may see a version row updated.
+	t.Cleanup(func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		if len(p.updates) > 0 {
+			t.Errorf("version rows must never be updated, saw: %v", p.updates)
+		}
+	})
+	return p
 }
 
-func (f *fakeVersions) DeleteProjectVersions(tx *gorm.DB, projectID uuid.UUID) error {
-	f.mu.Lock()
-	f.deleteCalls = append(f.deleteCalls, projectID)
-	err := f.deleteErr
-	f.mu.Unlock()
-	if err := tx.Where("project_id = ?", projectID).Delete(&testVersion{}).Error; err != nil {
-		return err
-	}
-	return err
+func (p *versionProbe) setRecordErr(err error) {
+	p.mu.Lock()
+	p.recordErr = err
+	p.mu.Unlock()
 }
 
-func (f *fakeVersions) versionsOf(t *testing.T, projectID uuid.UUID) []testVersion {
+func (p *versionProbe) setDeleteErr(err error) {
+	p.mu.Lock()
+	p.deleteErr = err
+	p.mu.Unlock()
+}
+
+func (p *versionProbe) deletes() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.deleteCalls
+}
+
+func (p *versionProbe) inserts() []bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]bool(nil), p.recordInTx...)
+}
+
+// versionsOf returns the project's versions, whole, oldest first.
+func (p *versionProbe) versionsOf(t *testing.T, projectID uuid.UUID) []ProjectVersion {
 	t.Helper()
-	var list []testVersion
-	if err := f.db.Where("project_id = ?", projectID).Order("number").Find(&list).Error; err != nil {
+	var list []ProjectVersion
+	if err := p.db.Where("project_id = ?", projectID).Order("number").Find(&list).Error; err != nil {
 		t.Fatal(err)
 	}
 	return list
 }
 
-// fakePixi stands in for sdk/exec. Lock writes a pixi.lock; Install
-// creates .pixi/envs. Either can fail or block, and both write pixi-like
-// output to the job's log. A blocked call returns ctx's error when ctx is
-// cancelled, as the real runner does when it stops pixi.
+// tagsOf maps each stored tag of the project to its version number.
+func (p *versionProbe) tagsOf(t *testing.T, projectID uuid.UUID) map[string]int {
+	t.Helper()
+	var rows []struct {
+		Name   string
+		Number int
+	}
+	if err := p.db.Table("client_project_tags AS t").
+		Select("t.name AS name, v.number AS number").
+		Joins("JOIN client_project_versions v ON v.id = t.version_id").
+		Where("t.project_id = ?", projectID).Scan(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	out := make(map[string]int, len(rows))
+	for _, r := range rows {
+		out[r.Name] = r.Number
+	}
+	return out
+}
+
+// fakePixi stands in for sdk/exec. Lock writes a pixi.lock derived from
+// pixi.toml (fakeLockFor); Install creates .pixi/envs; CheckLock reports
+// whether pixi.lock is the one Lock would write. Lock and Install can fail
+// or block, and both write pixi-like output to the job's log. A blocked
+// call returns ctx's error when ctx is cancelled, as the real runner does
+// when it stops pixi.
 type fakePixi struct {
-	mu           sync.Mutex
-	lockErr      error
-	installErr   error
+	mu         sync.Mutex
+	lockErr    error
+	installErr error
+	checkErr   error
+	// lockInputs records, per Lock call, the pixi.lock that was in the
+	// directory when the call started ("" when there was none).
+	lockInputs   []string
+	checkCalls   []string
 	partialEnv   bool          // a failing install still leaves .pixi/envs behind
 	lockGate     chan struct{} // when set, Lock waits until it is closed
 	lockStarted  chan struct{} // receives once per Lock call that waits on lockGate
@@ -155,7 +199,11 @@ type fakePixi struct {
 	installStarted chan struct{} // receives once per Install call that waits on installGate
 }
 
-const fakeLockContent = "version: 6\n# fake lock\n"
+// fakeLockFor is the pixi.lock the fake writes for a manifest.
+func fakeLockFor(manifest string) string {
+	sum := sha256.Sum256([]byte(manifest))
+	return fmt.Sprintf("version: 6\n# fake lock for %x\n", sum[:8])
+}
 
 // fakeLockOutput and fakeInstallOutput are what the fake writes to the
 // job's log for dir.
@@ -163,8 +211,10 @@ func fakeLockOutput(dir string) string    { return fmt.Sprintf("pixi lock: solvi
 func fakeInstallOutput(dir string) string { return fmt.Sprintf("pixi install: installing %s\n", dir) }
 
 func (f *fakePixi) Lock(ctx context.Context, dir string, out io.Writer) error {
+	input, _ := os.ReadFile(filepath.Join(dir, artifact.LockFile))
 	f.mu.Lock()
 	f.lockCalls = append(f.lockCalls, dir)
+	f.lockInputs = append(f.lockInputs, string(input))
 	gate, started, err := f.lockGate, f.lockStarted, f.lockErr
 	f.mu.Unlock()
 	if _, werr := io.WriteString(out, fakeLockOutput(dir)); werr != nil {
@@ -184,7 +234,34 @@ func (f *fakePixi) Lock(ctx context.Context, dir string, out io.Writer) error {
 		fmt.Fprintf(out, "error: %v\n", err)
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, artifact.LockFile), []byte(fakeLockContent), 0o644)
+	manifest, err := os.ReadFile(filepath.Join(dir, artifact.ManifestFile))
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, artifact.LockFile), []byte(fakeLockFor(string(manifest))), 0o644)
+}
+
+func (f *fakePixi) CheckLock(_ context.Context, dir string, out io.Writer) (bool, error) {
+	f.mu.Lock()
+	f.checkCalls = append(f.checkCalls, dir)
+	err := f.checkErr
+	f.mu.Unlock()
+	fmt.Fprintf(out, "pixi lock --check: %s\n", dir)
+	if err != nil {
+		return false, err
+	}
+	manifest, err := os.ReadFile(filepath.Join(dir, artifact.ManifestFile))
+	if err != nil {
+		return false, err
+	}
+	lock, err := os.ReadFile(filepath.Join(dir, artifact.LockFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return string(lock) == fakeLockFor(string(manifest)), nil
 }
 
 func (f *fakePixi) Install(ctx context.Context, dir string, out io.Writer) error {
@@ -241,7 +318,7 @@ type harness struct {
 	svc         *Service
 	runner      *jobs.Memory
 	pixi        *fakePixi
-	versions    *fakeVersions
+	versions    *versionProbe
 	projectsDir string // as configured (may contain symlinks on macOS)
 }
 
@@ -257,20 +334,16 @@ func newHarnessWithRunner(t *testing.T, ro jobs.Options, mods ...func(*Options))
 	if err := Migrate(db); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	if err := db.AutoMigrate(&testVersion{}); err != nil {
-		t.Fatalf("migrate test versions: %v", err)
-	}
 	h := &harness{
 		t:           t,
 		db:          db,
 		runner:      jobs.NewMemory(ro),
 		pixi:        &fakePixi{},
-		versions:    &fakeVersions{db: db},
+		versions:    newVersionProbe(t, db),
 		projectsDir: filepath.Join(t.TempDir(), "projects"),
 	}
 	opts := Options{
 		DB:          db,
-		Versions:    h.versions,
 		Jobs:        h.runner,
 		Pixi:        h.pixi,
 		ProjectsDir: h.projectsDir,

@@ -33,12 +33,30 @@ var (
 	// ErrFilesNotManaged: file deletion was asked for a directory nebi did
 	// not create.
 	ErrFilesNotManaged = errors.New("project directory was not created by nebi")
-	// ErrNotFound: the project doesn't exist.
-	ErrNotFound = errors.New("project not found")
+	// ErrNotFound: the project, version or tag doesn't exist.
+	ErrNotFound = errors.New("not found")
+	// ErrInvalidTag: the tag fails the OCI tag grammar, or is reserved
+	// ("latest" or the "sha-" prefix).
+	ErrInvalidTag = errors.New("invalid tag")
+	// ErrOlderBase: the base version is not the latest and AllowOlderBase
+	// is false.
+	ErrOlderBase = errors.New("base version is not the latest version")
+	// ErrTagExists: the tag is on another version and Move is false.
+	ErrTagExists = errors.New("tag is already on another version")
+	// ErrLockStale: the snapshot's pixi.lock doesn't match pixi.toml on
+	// disk, or is missing.
+	ErrLockStale = errors.New("pixi.lock is out of date")
+	// ErrWorkingCopyMissing: there is no pixi.toml at the project path, or
+	// no project directory.
+	ErrWorkingCopyMissing = errors.New("working copy is missing")
+	// ErrWorkingCopyModified: pixi.toml or pixi.lock in the project
+	// directory hold changes that are in no recorded version, and an
+	// operation would overwrite them.
+	ErrWorkingCopyModified = errors.New("working copy has changes that are in no version")
 )
 
-// BusyError is returned by DeleteProject while jobs for the project are
-// pending or running. It matches ErrProjectBusy with errors.Is.
+// BusyError is returned by DeleteProject and SnapshotWorkingCopy while
+// jobs for the project are pending or running. It matches ErrProjectBusy with errors.Is.
 type BusyError struct {
 	ProjectID uuid.UUID
 	JobIDs    []uuid.UUID

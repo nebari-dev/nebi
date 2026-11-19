@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/pelletier/go-toml/v2"
 )
 
 var (
@@ -78,22 +80,12 @@ func tableEnd(lines []string, header int) int {
 
 // setKey replaces `key = ...` in the table that starts at header with
 // `key = value`. A missing key is inserted after the table's name line, or
-// right after the header when there is none. A value that is a multi-line
-// string is replaced as a whole.
+// right after the header when there is none. A value that spans lines (a
+// multi-line string, array or inline table) is replaced as a whole.
 func setKey(lines []string, header int, key, value string) []string {
 	end := tableEnd(lines, header)
 	if i, m := findKey(lines, header, end, key); i >= 0 {
-		last := i
-		for _, delim := range []string{`"""`, `'''`} {
-			if strings.HasPrefix(m[2], delim) && !strings.Contains(m[2][len(delim):], delim) {
-				for j := i + 1; j < end; j++ {
-					if strings.Contains(lines[j], delim) {
-						last = j
-						break
-					}
-				}
-			}
-		}
+		last := valueEnd(lines, i, end, m[2])
 		replaced := append([]string{}, lines[:i]...)
 		replaced = append(replaced, m[1]+key+" = "+value)
 		return append(replaced, lines[last+1:]...)
@@ -119,4 +111,204 @@ func findKey(lines []string, header, end int, key string) (int, []string) {
 		}
 	}
 	return -1, nil
+}
+
+// valueEnd returns the index of the last line of the value that starts on
+// line i with text value (the part after `key =`), before end. Multi-line
+// strings, arrays and inline tables can span lines; brackets inside strings
+// and comments are ignored.
+func valueEnd(lines []string, i, end int, value string) int {
+	depth := 0
+	quote := "" // the open string delimiter, if any
+	text := value
+	for line := i; ; {
+		for j := 0; j < len(text); j++ {
+			rest := text[j:]
+			switch quote {
+			case `"""`, `"`:
+				if rest[0] == '\\' {
+					j++ // skip the escaped character
+				} else if strings.HasPrefix(rest, quote) {
+					j += len(quote) - 1
+					quote = ""
+				}
+			case `'''`, `'`:
+				if strings.HasPrefix(rest, quote) {
+					j += len(quote) - 1
+					quote = ""
+				}
+			default:
+				switch {
+				case strings.HasPrefix(rest, `"""`), strings.HasPrefix(rest, `'''`):
+					quote = rest[:3]
+					j += 2
+				case rest[0] == '"' || rest[0] == '\'':
+					quote = rest[:1]
+				case rest[0] == '#':
+					j = len(text)
+				case rest[0] == '[' || rest[0] == '{':
+					depth++
+				case rest[0] == ']' || rest[0] == '}':
+					depth--
+				}
+			}
+		}
+		// A single-line string cannot continue on the next line.
+		if quote == `"` || quote == `'` {
+			quote = ""
+		}
+		if quote == "" && depth <= 0 {
+			return line
+		}
+		line++
+		if line >= end {
+			return end - 1
+		}
+		text = lines[line]
+	}
+}
+
+// ApplySpec returns content with spec applied: [workspace].channels and
+// [workspace].platforms (or those of the legacy [project] table) set to
+// the Spec's, and the top-level [dependencies] table replaced by the Spec's
+// packages, or added when there is none. Every other table and key,
+// including the workspace name and description, features, targets,
+// [pypi-dependencies] and tasks, is kept as written. Lines inside the
+// replaced [dependencies] table are not kept, apart from comments and
+// blank lines after its last entry.
+//
+// The result is parsed again and checked, so a layout the line editor
+// does not understand (for example dotted keys, or dependencies written
+// as an inline table) returns ErrInvalid instead of a corrupted file.
+func ApplySpec(content string, spec Spec) (string, error) {
+	if _, err := ParseManifest(content); err != nil {
+		return "", err
+	}
+	if err := spec.validateLists(); err != nil {
+		return "", err
+	}
+	deps, err := spec.dependencyLines()
+	if err != nil {
+		return "", err
+	}
+
+	newline := "\n"
+	if strings.Contains(content, "\r\n") {
+		newline = "\r\n"
+	}
+	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+
+	start := findTable(lines, "workspace")
+	if start < 0 {
+		start = findTable(lines, "project")
+	}
+	if start < 0 {
+		return "", fmt.Errorf("%w: the manifest needs a [workspace] table header", ErrInvalid)
+	}
+	lines = setKey(lines, start, "channels", quoteList(spec.Channels))
+	lines = setKey(lines, start, "platforms", quoteList(spec.Platforms))
+
+	if header := findTable(lines, "dependencies"); header >= 0 {
+		end := tableEnd(lines, header)
+		last := header
+		for i := header + 1; i < end; i++ {
+			if t := strings.TrimSpace(lines[i]); t != "" && !strings.HasPrefix(t, "#") {
+				last = i
+			}
+		}
+		replaced := append([]string{}, lines[:header+1]...)
+		replaced = append(replaced, deps...)
+		lines = append(replaced, lines[last+1:]...)
+	} else {
+		for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+			lines = lines[:len(lines)-1]
+		}
+		lines = append(lines, "", "[dependencies]")
+		lines = append(lines, deps...)
+		lines = append(lines, "")
+	}
+	out := strings.Join(lines, newline)
+
+	if err := checkSpecApplied(out, spec); err != nil {
+		return "", err
+	}
+	return out, nil
+}
+
+// checkSpecApplied parses out and checks that its workspace channels and
+// platforms and its top-level dependencies are exactly spec's.
+func checkSpecApplied(out string, spec Spec) error {
+	var doc map[string]any
+	if err := toml.Unmarshal([]byte(out), &doc); err != nil {
+		return fmt.Errorf("%w: could not apply the spec: %v", ErrInvalid, err)
+	}
+	failed := fmt.Errorf("%w: could not apply the spec to this pixi.toml layout", ErrInvalid)
+	table, ok := workspaceTable(doc)
+	if !ok || !sameStrings(table["channels"], spec.Channels) || !sameStrings(table["platforms"], spec.Platforms) {
+		return failed
+	}
+	deps, _ := doc["dependencies"].(map[string]any)
+	if len(deps) != len(spec.Packages) {
+		return failed
+	}
+	for _, pkg := range spec.Packages {
+		want, err := pkg.VersionSpec()
+		if err != nil {
+			return err
+		}
+		if got, ok := deps[strings.TrimSpace(pkg.Name)].(string); !ok || got != want {
+			return failed
+		}
+	}
+	return nil
+}
+
+// sameStrings reports whether raw, a parsed TOML value, is a list of
+// exactly the strings in want, in order.
+func sameStrings(raw any, want []string) bool {
+	list, ok := raw.([]any)
+	if !ok || len(list) != len(want) {
+		return false
+	}
+	for i, item := range list {
+		if s, ok := item.(string); !ok || s != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// HasPathDependencies reports whether the manifest has a dependency given
+// by a local path, such as an editable PyPI package with path = ".", in
+// any dependency table: top level, in a feature or in a target. pixi
+// resolves such a path against the manifest's directory, so a manifest
+// with one can only be locked in its own directory.
+func HasPathDependencies(content string) (bool, error) {
+	var doc map[string]any
+	if err := toml.Unmarshal([]byte(content), &doc); err != nil {
+		return false, fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	return hasPathDependency(doc), nil
+}
+
+func hasPathDependency(table map[string]any) bool {
+	for key, value := range table {
+		sub, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		if key == "dev" || strings.HasSuffix(key, "dependencies") {
+			for _, dep := range sub {
+				if spec, ok := dep.(map[string]any); ok {
+					if _, ok := spec["path"]; ok {
+						return true
+					}
+				}
+			}
+		}
+		if hasPathDependency(sub) {
+			return true
+		}
+	}
+	return false
 }

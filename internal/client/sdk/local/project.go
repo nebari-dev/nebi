@@ -31,7 +31,8 @@ type Project struct {
 
 	// InstalledVersionID is the version whose environment is materialized in
 	// Path/.pixi. Nil when nothing is installed. Written only after an
-	// install succeeds, by the create job and sdk/exec. State is installed
+	// install succeeds, by installStep (run by the create, create_version
+	// and install jobs). SnapshotWorkingCopy never sets it. State is installed
 	// only when it is set and .pixi/envs exists. A reinstall or uninstall
 	// must clear it before touching .pixi, so a crash midway does not leave
 	// the old version reported as installed, and must do so inside its job
@@ -54,10 +55,11 @@ func (p *Project) BeforeCreate(tx *gorm.DB) error {
 }
 
 // Migrate creates or updates the project tables in the client database:
-// client_projects and client_pending_removals, where DeleteProject records
-// the directories it is removing. It is idempotent.
+// client_projects, client_project_versions, client_project_tags and
+// client_pending_removals, where DeleteProject records the directories it
+// is removing. It is idempotent.
 func Migrate(db *gorm.DB) error {
-	if err := db.AutoMigrate(&Project{}, &pendingRemoval{}); err != nil {
+	if err := db.AutoMigrate(&Project{}, &ProjectVersion{}, &ProjectTag{}, &pendingRemoval{}); err != nil {
 		return fmt.Errorf("migrating client project tables: %w", err)
 	}
 	return nil
@@ -67,7 +69,7 @@ func (s *Service) loadProject(ctx context.Context, id uuid.UUID) (*Project, erro
 	var p Project
 	err := s.db.WithContext(ctx).Where("id = ?", id).First(&p).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("%w: %s", ErrNotFound, id)
+		return nil, fmt.Errorf("%w: project %s", ErrNotFound, id)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("loading project %s: %w", id, err)

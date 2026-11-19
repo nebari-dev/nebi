@@ -28,6 +28,9 @@ const (
 	// TypeCreate solves a new project's lock file (and installs it when
 	// requested) and records version 1.
 	TypeCreate Type = "create"
+	// TypeCreateVersion solves the lock file of a new version of a project
+	// (and installs it when requested) and records the version.
+	TypeCreateVersion Type = "create_version"
 	// TypeInstall materializes a project's environment.
 	TypeInstall Type = "install"
 	// TypeUninstall removes a project's environment.
@@ -98,7 +101,11 @@ type Job struct {
 	// VersionID is the version the job recorded, reported with
 	// ReportVersion. Versions do not point at jobs; the job carries it.
 	VersionID *uuid.UUID `json:"version_id,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
+	// Deduplicated is true when the job's result matched an existing
+	// version, so it recorded none; VersionID is then that version. Set
+	// with ReportDeduplicated.
+	Deduplicated bool      `json:"deduplicated,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
 	// StartedAt is nil until the body starts, and stays nil for a job
 	// cancelled while pending.
 	StartedAt  *time.Time `json:"started_at,omitempty"`
@@ -163,7 +170,7 @@ type ctxKey struct{}
 type jobCtx struct {
 	id            uuid.UUID
 	report        func(stage string)
-	reportVersion func(id uuid.UUID)
+	reportVersion func(id uuid.UUID, deduplicated bool)
 }
 
 // IDFromContext returns the ID of the job whose body is running with ctx.
@@ -187,7 +194,16 @@ func ReportStage(ctx context.Context, stage string) {
 // nothing when ctx does not belong to a job.
 func ReportVersion(ctx context.Context, versionID uuid.UUID) {
 	if jc, ok := ctx.Value(ctxKey{}).(*jobCtx); ok {
-		jc.reportVersion(versionID)
+		jc.reportVersion(versionID, false)
+	}
+}
+
+// ReportDeduplicated records that the running job's result matched an
+// existing version, so it created none, and that version's ID. It does
+// nothing when ctx does not belong to a job.
+func ReportDeduplicated(ctx context.Context, versionID uuid.UUID) {
+	if jc, ok := ctx.Value(ctxKey{}).(*jobCtx); ok {
+		jc.reportVersion(versionID, true)
 	}
 }
 
@@ -353,9 +369,10 @@ func (m *Memory) start(e *entry) {
 			e.job.Stage = stage
 			m.mu.Unlock()
 		},
-		reportVersion: func(versionID uuid.UUID) {
+		reportVersion: func(versionID uuid.UUID, deduplicated bool) {
 			m.mu.Lock()
 			e.job.VersionID = &versionID
+			e.job.Deduplicated = deduplicated
 			m.mu.Unlock()
 		},
 	})

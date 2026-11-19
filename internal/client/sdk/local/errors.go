@@ -33,6 +33,8 @@ var (
 	// ErrFilesNotManaged: file deletion was asked for a directory nebi did
 	// not create.
 	ErrFilesNotManaged = errors.New("project directory was not created by nebi")
+	// ErrInvalidRequest: a required field of the request is missing.
+	ErrInvalidRequest = errors.New("invalid request")
 	// ErrNotFound: the project, version or tag doesn't exist.
 	ErrNotFound = errors.New("not found")
 	// ErrInvalidTag: the tag fails the OCI tag grammar, or is reserved
@@ -56,7 +58,8 @@ var (
 )
 
 // BusyError is returned by DeleteProject and SnapshotWorkingCopy while
-// jobs for the project are pending or running. It matches ErrProjectBusy with errors.Is.
+// jobs for the project are pending or running. It matches ErrProjectBusy
+// with errors.Is.
 type BusyError struct {
 	ProjectID uuid.UUID
 	JobIDs    []uuid.UUID

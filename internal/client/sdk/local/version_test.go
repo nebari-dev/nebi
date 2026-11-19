@@ -236,7 +236,7 @@ func TestCreateVersionValidation(t *testing.T) {
 		want error
 	}{
 		{"unknown project", CreateVersionRequest{ProjectID: uuid.New(), BaseVersionID: v1.ID}, ErrNotFound},
-		{"no base", CreateVersionRequest{ProjectID: p.ID}, ErrNotFound},
+		{"no base", CreateVersionRequest{ProjectID: p.ID}, ErrInvalidRequest},
 		{"base of another project", CreateVersionRequest{ProjectID: p.ID, BaseVersionID: otherV1.ID}, ErrNotFound},
 		{"spec and manifest", CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: newerSpec(), Manifest: "[workspace]\n"}, ErrInvalidManifest},
 		{"spec without platform", CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: &artifact.Spec{Channels: []string{"conda-forge"}}}, ErrNoPlatform},
@@ -389,6 +389,42 @@ func TestCreateVersionWithPathDependenciesLocksInPlace(t *testing.T) {
 	}
 	if st, _ := h.svc.WorkingCopyStatus(context.Background(), p.ID); st != WorkingCopyClean {
 		t.Fatalf("working copy = %s, want clean", st)
+	}
+}
+
+func TestCreateVersionWithRelativeChannelLocksInPlace(t *testing.T) {
+	h := newHarness(t)
+	p, v1 := h.newProject("local-channel", true)
+	manifest := "[workspace]\nname = \"local-channel\"\nchannels = [\"./channel\", \"conda-forge\"]\nplatforms = [\"linux-64\"]\n\n[dependencies]\nmytool = \"*\"\n"
+	h.createVersion(CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Manifest: manifest})
+	lockCalls, _ := h.pixi.calls()
+	if lockCalls[1] != p.Path {
+		t.Fatalf("a relative channel must be locked in the project directory, got %s", lockCalls[1])
+	}
+	if readFile(t, filepath.Join(p.Path, artifact.ManifestFile)) != v1.Manifest {
+		t.Fatal("the project directory must be put back after the solve")
+	}
+}
+
+func TestCreateVersionSolveUsesProjectConfig(t *testing.T) {
+	h := newHarness(t)
+	p, v1 := h.newProject("configured", false)
+	config := "[mirrors]\n\"https://conda.anaconda.org/conda-forge\" = [\"https://mirror.example/conda-forge\"]\n"
+	if err := os.MkdirAll(filepath.Join(p.Path, ".pixi"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(p.Path, ".pixi", "config.toml"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.createVersion(CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: newerSpec()})
+	h.pixi.mu.Lock()
+	dir, got := h.pixi.lockCalls[1], h.pixi.lockConfigs[1]
+	h.pixi.mu.Unlock()
+	if dir == p.Path {
+		t.Fatal("precondition: the solve runs in a temporary directory")
+	}
+	if got != config {
+		t.Fatalf("the temporary solve must see the project's .pixi/config.toml, got %q", got)
 	}
 }
 
@@ -967,6 +1003,62 @@ func TestDeleteProjectDeletesVersionsAndTags(t *testing.T) {
 	h.db.Model(&ProjectTag{}).Where("project_id = ?", p.ID).Count(&tags)
 	if versions != 0 || tags != 0 {
 		t.Fatalf("versions and tags must go with the project: %d versions, %d tags", versions, tags)
+	}
+}
+
+func TestMigrateNeverRebuildsTables(t *testing.T) {
+	h := newHarness(t)
+	p, v1 := h.newProject("migrated", false)
+	if _, err := h.svc.SetTag(context.Background(), SetTagRequest{ProjectID: p.ID, Name: "kept", VersionID: v1.ID}); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var stmts []string
+	if err := h.db.Callback().Raw().Before("gorm:raw").Register("test:migrate_sql", func(tx *gorm.DB) {
+		mu.Lock()
+		stmts = append(stmts, tx.Statement.SQL.String())
+		mu.Unlock()
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(h.db); err != nil {
+		t.Fatalf("second Migrate: %v", err)
+	}
+	mu.Lock()
+	if len(stmts) != 0 {
+		t.Fatalf("Migrate on an up-to-date database must change nothing, ran: %q", stmts)
+	}
+	mu.Unlock()
+
+	// A missing column and index are added back without touching the rows.
+	if err := h.db.Exec("DROP INDEX idx_client_project_versions_content_hash").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := h.db.Exec("ALTER TABLE client_project_versions DROP COLUMN description").Error; err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	stmts = nil
+	mu.Unlock()
+	if err := Migrate(h.db); err != nil {
+		t.Fatalf("Migrate with a missing column: %v", err)
+	}
+	m := h.db.Migrator()
+	if !m.HasColumn(&ProjectVersion{}, "description") || !m.HasIndex(&ProjectVersion{}, "idx_client_project_versions_content_hash") {
+		t.Fatal("Migrate must add the missing column and index")
+	}
+	mu.Lock()
+	for _, s := range stmts {
+		if strings.Contains(s, "__temp") || strings.HasPrefix(strings.ToUpper(strings.TrimSpace(s)), "DROP") {
+			t.Fatalf("Migrate must not rebuild a table: %q", s)
+		}
+	}
+	mu.Unlock()
+	if list := h.versions.versionsOf(t, p.ID); len(list) != 1 || list[0].Manifest != v1.Manifest {
+		t.Fatal("rows must be kept")
+	}
+	if tags := h.versions.tagsOf(t, p.ID); tags["kept"] != 1 {
+		t.Fatalf("tags must be kept: %v", tags)
 	}
 }
 

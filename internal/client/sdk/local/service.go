@@ -1,9 +1,9 @@
 // Package local is the client SDK for projects on this machine: the local
 // Project data model and its create, list, get, rename and delete
 // operations (issue #660), and the immutable versions and movable tags of a
-// project with their create, read and tag operations (issue #661). Everything here runs on the user's machine; the server
-// is never contacted, and a project exists on a server only after it is
-// pushed.
+// project with their create, read and tag operations (issue #661).
+// Everything here runs on the user's machine; the server is never
+// contacted, and a project exists on a server only after it is pushed.
 //
 // The SDK owns its tables in the client database (nebi.db) and shares none
 // with the server models in internal/models.

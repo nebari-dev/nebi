@@ -145,26 +145,46 @@ func TestApplySpecRejects(t *testing.T) {
 	}
 }
 
-func TestHasPathDependencies(t *testing.T) {
+func TestHasLocalPaths(t *testing.T) {
+	const ws = "[workspace]\nname = \"x\"\nplatforms = [\"linux-64\"]\n"
 	cases := map[string]bool{
-		"[workspace]\nname = \"x\"\n\n[dependencies]\npython = \"*\"\n":                                false,
-		"[workspace]\nname = \"x\"\n\n[pypi-dependencies]\nmine = { path = \".\", editable = true }\n": true,
-		"[workspace]\nname = \"x\"\n\n[feature.dev.pypi-dependencies]\nlib = { path = \"../lib\" }\n":  true,
-		"[workspace]\nname = \"x\"\n\n[target.linux-64.dependencies]\npkg = { path = \"./pkg\" }\n":    true,
-		"[workspace]\nname = \"x\"\n\n[dev]\nmine = { path = \".\" }\n":                                true,
-		"[workspace]\nname = \"x\"\n\n[pypi-dependencies]\nreq = { version = \">=2\" }\n":              false,
-		"[workspace]\nname = \"x\"\n\n[tasks]\nbuild = { cmd = \"make\", cwd = \"path\" }\n":           false,
+		// Path dependencies, anywhere.
+		ws + "channels = [\"conda-forge\"]\n\n[dependencies]\npython = \"*\"\n":  false,
+		ws + "\n[pypi-dependencies]\nmine = { path = \".\", editable = true }\n": true,
+		ws + "\n[feature.dev.pypi-dependencies]\nlib = { path = \"../lib\" }\n":  true,
+		ws + "\n[target.linux-64.dependencies]\npkg = { path = \"./pkg\" }\n":    true,
+		ws + "\n[dev]\nmine = { path = \".\" }\n":                                true,
+		ws + "\n[pypi-dependencies]\nreq = { version = \">=2\" }\n":              false,
+		ws + "\n[tasks]\nbuild = { cmd = \"make\", cwd = \"path\" }\n":           false,
+		// Channels.
+		ws + "channels = [\"./local-channel\"]\n":                                                                  true,
+		ws + "channels = [\"conda-forge\", { channel = \"../chan\", priority = 1 }]\n":                             true,
+		ws + "channels = [\"file://./chan\"]\n":                                                                    true,
+		ws + "channels = [\"file:///opt/chan\", \"/opt/chan\", \"~/chan\"]\n":                                      false,
+		ws + "channels = [\"conda-forge/label/dev\", \"https://prefix.dev/x\"]\n":                                  false,
+		ws + "channels = [\"conda-forge\"]\n\n[feature.x]\nchannels = [\"./feat\"]\n":                              true,
+		ws + "channels = [\"conda-forge\"]\n\n[dependencies]\npkg = { version = \"*\", channel = \"./c\" }\n":      true,
+		ws + "channels = [\"conda-forge\"]\n\n[dependencies]\npkg = { version = \"*\", channel = \"bioconda\" }\n": false,
+		// PyPI options.
+		ws + "\n[pypi-options]\nfind-links = [{ path = \"./wheels\" }]\n":                                    true,
+		ws + "\n[pypi-options]\nfind-links = [{ path = \"wheels\" }]\n":                                      true,
+		ws + "\n[pypi-options]\nfind-links = [{ path = \"/srv/wheels\" }, { url = \"https://x/simple\" }]\n": false,
+		ws + "\n[pypi-options]\nfind-links = [{ url = \"file:./wheels\" }]\n":                                true,
+		ws + "\n[pypi-options]\nindex-url = \"file:./index\"\n":                                              true,
+		ws + "\n[pypi-options]\nextra-index-urls = [\"https://pypi.org/simple\", \"file:../idx\"]\n":         true,
+		ws + "\n[pypi-options]\nindex-url = \"https://pypi.org/simple\"\n":                                   false,
+		ws + "\n[feature.gpu.pypi-options]\nfind-links = [{ path = \"./gpu-wheels\" }]\n":                    true,
 	}
 	for in, want := range cases {
-		got, err := HasPathDependencies(in)
+		got, err := HasLocalPaths(in)
 		if err != nil {
-			t.Fatalf("HasPathDependencies(%q): %v", in, err)
+			t.Fatalf("HasLocalPaths(%q): %v", in, err)
 		}
 		if got != want {
-			t.Errorf("HasPathDependencies(%q) = %v, want %v", in, got, want)
+			t.Errorf("HasLocalPaths(%q) = %v, want %v", in, got, want)
 		}
 	}
-	if _, err := HasPathDependencies("[workspace"); !errors.Is(err, ErrInvalid) {
+	if _, err := HasLocalPaths("[workspace"); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("invalid toml: want ErrInvalid, got %v", err)
 	}
 }

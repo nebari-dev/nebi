@@ -278,21 +278,70 @@ func sameStrings(raw any, want []string) bool {
 	return true
 }
 
-// HasPathDependencies reports whether the manifest has a dependency given
-// by a local path, such as an editable PyPI package with path = ".", in
-// any dependency table: top level, in a feature or in a target. pixi
-// resolves such a path against the manifest's directory, so a manifest
-// with one can only be locked in its own directory.
-func HasPathDependencies(content string) (bool, error) {
+// HasLocalPaths reports whether the manifest refers to local files that
+// pixi resolves against the manifest's directory, so that it can only be
+// locked in its own directory:
+//   - a dependency given by a path, such as an editable PyPI package with
+//     path = ".", in any dependency table (top level, feature or target);
+//   - a channel given by a relative path or relative file: URL, in a
+//     channels list or a dependency's channel;
+//   - a relative find-links path or relative file: URL, or a relative
+//     file: index-url or extra-index-urls entry, in [pypi-options].
+//
+// Absolute paths and remote URLs resolve the same from any directory and do
+// not count.
+func HasLocalPaths(content string) (bool, error) {
 	var doc map[string]any
 	if err := toml.Unmarshal([]byte(content), &doc); err != nil {
 		return false, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
-	return hasPathDependency(doc), nil
+	return hasLocalPath(doc), nil
 }
 
-func hasPathDependency(table map[string]any) bool {
+func hasLocalPath(table map[string]any) bool {
 	for key, value := range table {
+		switch key {
+		case "channels":
+			for _, c := range asList(value) {
+				switch c := c.(type) {
+				case string:
+					if relativePath(c, false) {
+						return true
+					}
+				case map[string]any:
+					if name, ok := c["channel"].(string); ok && relativePath(name, false) {
+						return true
+					}
+				}
+			}
+		case "channel":
+			if name, ok := value.(string); ok && relativePath(name, false) {
+				return true
+			}
+		case "find-links":
+			for _, l := range asList(value) {
+				link, ok := l.(map[string]any)
+				if !ok {
+					continue
+				}
+				if path, ok := link["path"].(string); ok && relativePath(path, true) {
+					return true
+				}
+				if url, ok := link["url"].(string); ok && relativePath(url, false) {
+					return true
+				}
+			}
+		case "index-url":
+			if url, ok := value.(string); ok && relativePath(url, false) {
+				return true
+			}
+		case "extra-index-urls":
+			for _, u := range asList(value) {
+				if url, ok := u.(string); ok && relativePath(url, false) {
+					return true
+				}
+			}
+		}
 		sub, ok := value.(map[string]any)
 		if !ok {
 			continue
@@ -306,9 +355,47 @@ func hasPathDependency(table map[string]any) bool {
 				}
 			}
 		}
-		if hasPathDependency(sub) {
+		if hasLocalPath(sub) {
 			return true
 		}
 	}
 	return false
+}
+
+func asList(value any) []any {
+	list, _ := value.([]any)
+	return list
+}
+
+// relativePath reports whether s is a path relative to the manifest's
+// directory, either written as a path or as a file: URL. A bare name with
+// no leading "./" or "../" counts as a path only when bareIsPath is set:
+// a channel called "conda-forge" is a name, a find-links path "wheels" is
+// a directory.
+func relativePath(s string, bareIsPath bool) bool {
+	s = strings.TrimSpace(s)
+	lower := strings.ToLower(s)
+	switch {
+	case strings.HasPrefix(lower, "file://"):
+		s, bareIsPath = s[len("file://"):], true
+	case strings.HasPrefix(lower, "file:"):
+		s, bareIsPath = s[len("file:"):], true
+	case strings.Contains(s, "://"):
+		return false // a remote URL
+	}
+	if s == "" || strings.HasPrefix(s, "/") || strings.HasPrefix(s, `\`) || strings.HasPrefix(s, "~") {
+		return false
+	}
+	if len(s) >= 2 && s[1] == ':' {
+		return false // a Windows drive path, such as C:\channel
+	}
+	for _, prefix := range []string{"./", "../", `.\`, `..\`} {
+		if strings.HasPrefix(s, prefix) {
+			return true
+		}
+	}
+	if s == "." || s == ".." {
+		return true
+	}
+	return bareIsPath
 }

@@ -184,7 +184,10 @@ type fakePixi struct {
 	checkErr   error
 	// lockInputs records, per Lock call, the pixi.lock that was in the
 	// directory when the call started ("" when there was none).
-	lockInputs   []string
+	lockInputs []string
+	// lockConfigs records, per Lock call, the .pixi/config.toml that was in
+	// the directory ("" when there was none).
+	lockConfigs  []string
 	checkCalls   []string
 	partialEnv   bool          // a failing install still leaves .pixi/envs behind
 	lockGate     chan struct{} // when set, Lock waits until it is closed
@@ -212,9 +215,11 @@ func fakeInstallOutput(dir string) string { return fmt.Sprintf("pixi install: in
 
 func (f *fakePixi) Lock(ctx context.Context, dir string, out io.Writer) error {
 	input, _ := os.ReadFile(filepath.Join(dir, artifact.LockFile))
+	config, _ := os.ReadFile(filepath.Join(dir, ".pixi", "config.toml"))
 	f.mu.Lock()
 	f.lockCalls = append(f.lockCalls, dir)
 	f.lockInputs = append(f.lockInputs, string(input))
+	f.lockConfigs = append(f.lockConfigs, string(config))
 	gate, started, err := f.lockGate, f.lockStarted, f.lockErr
 	f.mu.Unlock()
 	if _, werr := io.WriteString(out, fakeLockOutput(dir)); werr != nil {

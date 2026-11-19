@@ -90,7 +90,7 @@ func (s *Service) CreateVersion(ctx context.Context, req CreateVersionRequest) (
 		return nil, err
 	}
 	if req.BaseVersionID == uuid.Nil {
-		return nil, fmt.Errorf("%w: a base version is required", ErrNotFound)
+		return nil, fmt.Errorf("%w: a base version is required", ErrInvalidRequest)
 	}
 	db := s.db.WithContext(ctx)
 	base, err := versionByID(db, p.ID, req.BaseVersionID)
@@ -121,7 +121,7 @@ func (s *Service) CreateVersion(ctx context.Context, req CreateVersionRequest) (
 		return s.copyVersion(ctx, p, base, req, tags)
 	}
 
-	inPlace, err := artifact.HasPathDependencies(manifest)
+	inPlace, err := artifact.HasLocalPaths(manifest)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidManifest, err)
 	}
@@ -227,7 +227,7 @@ type versionJob struct {
 	tags        []string
 	install     bool
 	// inPlace locks in the project directory instead of a temporary one,
-	// for manifests with path dependencies.
+	// for manifests with local paths (see artifact.HasLocalPaths).
 	inPlace bool
 }
 
@@ -239,7 +239,8 @@ type versionJob struct {
 //
 // The solve runs in a temporary directory, so the project directory and
 // its environment stay on the installed version until the new one is
-// installed. A manifest with path dependencies is solved in the project
+// installed. A manifest with local paths, such as path dependencies or a
+// relative channel, is solved in the project
 // directory instead (see solveInPlace).
 func (s *Service) createVersionJob(j versionJob) jobs.Func {
 	return func(ctx context.Context, log io.Writer) error {
@@ -288,7 +289,8 @@ func (s *Service) createVersionJob(j versionJob) jobs.Func {
 }
 
 // solveInTemp writes the new pixi.toml and the base's pixi.lock to a
-// temporary directory, runs pixi lock there and returns the result.
+// temporary directory, with the project's pixi configuration, runs pixi
+// lock there and returns the result.
 func (s *Service) solveInTemp(ctx context.Context, j versionJob, log io.Writer) (workingCopy, error) {
 	dir, err := os.MkdirTemp("", "nebi-lock-")
 	if err != nil {
@@ -298,13 +300,16 @@ func (s *Service) solveInTemp(ctx context.Context, j versionJob, log io.Writer) 
 	if err := writeVersionFiles(dir, j.manifest, j.base.Lock); err != nil {
 		return workingCopy{}, err
 	}
+	if err := copyProjectConfig(j.dir, dir); err != nil {
+		return workingCopy{}, err
+	}
 	if err := s.pixi.Lock(ctx, dir, log); err != nil {
 		return workingCopy{}, fmt.Errorf("pixi lock: %w", err)
 	}
 	return readSolved(dir)
 }
 
-// solveInPlace locks a manifest with path dependencies in the project
+// solveInPlace locks a manifest with local paths in the project
 // directory, where its relative paths resolve. The working copy must hold
 // the files of a recorded version, so nothing unsaved is overwritten; it
 // is checked again here because it may have changed while the job was
@@ -331,6 +336,32 @@ func (s *Service) solveInPlace(ctx context.Context, j versionJob, log io.Writer)
 		return workingCopy{}, fmt.Errorf("pixi lock: %w", err)
 	}
 	return readSolved(j.dir)
+}
+
+// projectConfigFile is pixi's per-project configuration (mirrors, channel
+// and PyPI settings), relative to the project directory.
+var projectConfigFile = filepath.Join(".pixi", "config.toml")
+
+// copyProjectConfig copies the project's pixi configuration, when it has
+// one, into dir, so a solve there uses the same settings as one in the
+// project directory.
+func copyProjectConfig(projectDir, dir string) error {
+	src := filepath.Join(projectDir, projectConfigFile)
+	data, err := os.ReadFile(src)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", src, err)
+	}
+	dst := filepath.Join(dir, projectConfigFile)
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return fmt.Errorf("copying %s: %w", projectConfigFile, err)
+	}
+	if err := os.WriteFile(dst, data, 0o644); err != nil {
+		return fmt.Errorf("copying %s: %w", projectConfigFile, err)
+	}
+	return nil
 }
 
 // readSolved reads pixi.toml and pixi.lock after a solve. pixi lock must
@@ -371,14 +402,14 @@ func restoreWorkingCopy(dir string, wc workingCopy) error {
 func (s *Service) checkLockableInPlace(ctx context.Context, projectID uuid.UUID, dir string) error {
 	wc, err := readWorkingCopy(dir)
 	if err != nil {
-		return fmt.Errorf("%w; a pixi.toml with path dependencies is locked in the project directory", err)
+		return fmt.Errorf("%w; a pixi.toml with local paths is locked in the project directory", err)
 	}
 	recorded, err := s.isRecorded(ctx, projectID, wc)
 	if err != nil {
 		return err
 	}
 	if !recorded {
-		return fmt.Errorf("%w: a pixi.toml with path dependencies is locked in the project directory, which has changes that are in no version; snapshot or discard them first", ErrWorkingCopyModified)
+		return fmt.Errorf("%w: a pixi.toml with local paths is locked in the project directory, which has changes that are in no version; snapshot or discard them first", ErrWorkingCopyModified)
 	}
 	return nil
 }

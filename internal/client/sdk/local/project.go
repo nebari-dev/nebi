@@ -54,13 +54,54 @@ func (p *Project) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// Migrate creates or updates the project tables in the client database:
+// Migrate creates the project tables in the client database:
 // client_projects, client_project_versions, client_project_tags and
 // client_pending_removals, where DeleteProject records the directories it
 // is removing. It is idempotent.
+//
+// It only creates what is missing: tables, then columns and indexes of
+// existing tables. It never alters or rebuilds an existing table, so it
+// copies no rows and stays cheap however many versions are stored. GORM's
+// AutoMigrate is not used because, with this SQLite driver, it reads every
+// nullable column back as NOT NULL and rebuilds the table, copying all of
+// its rows, on every run. Changing an existing column is not supported.
 func Migrate(db *gorm.DB) error {
-	if err := db.AutoMigrate(&Project{}, &ProjectVersion{}, &ProjectTag{}, &pendingRemoval{}); err != nil {
-		return fmt.Errorf("migrating client project tables: %w", err)
+	// In foreign-key order: versions reference projects, tags reference both.
+	for _, model := range []any{&Project{}, &ProjectVersion{}, &ProjectTag{}, &pendingRemoval{}} {
+		if err := ensureTable(db, model); err != nil {
+			return fmt.Errorf("migrating client project tables: %w", err)
+		}
+	}
+	return nil
+}
+
+// ensureTable creates model's table when it is missing, or else adds the
+// columns and indexes it lacks.
+func ensureTable(db *gorm.DB, model any) error {
+	m := db.Migrator()
+	if !m.HasTable(model) {
+		return m.CreateTable(model)
+	}
+	stmt := &gorm.Statement{DB: db}
+	if err := stmt.Parse(model); err != nil {
+		return err
+	}
+	for _, name := range stmt.Schema.DBNames {
+		if field := stmt.Schema.LookUpField(name); field == nil || field.IgnoreMigration {
+			continue
+		}
+		if !m.HasColumn(model, name) {
+			if err := m.AddColumn(model, name); err != nil {
+				return err
+			}
+		}
+	}
+	for _, idx := range stmt.Schema.ParseIndexes() {
+		if !m.HasIndex(model, idx.Name) {
+			if err := m.CreateIndex(model, idx.Name); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

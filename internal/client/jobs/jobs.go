@@ -461,8 +461,9 @@ func (m *Memory) drop(e *entry) {
 // running job has its context cancelled and ends as cancelled when its body
 // returns an error; Cancel does not wait for that. A cancel that comes once
 // the runner has seen the body return changes nothing, so a job that failed
-// on its own stays failed. Cancelling a finished job does nothing. Cancel returns a *NotCancellableError for an active job
-// whose type cannot be cancelled, and ErrUnknownJob for an unknown ID.
+// on its own stays failed. Cancelling a finished job does nothing. Cancel
+// returns a *NotCancellableError for an active job whose type cannot be
+// cancelled, and ErrUnknownJob for an unknown ID.
 func (m *Memory) Cancel(_ context.Context, id uuid.UUID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -630,6 +631,8 @@ func (m *Memory) FollowLogs(ctx context.Context, id uuid.UUID, w io.Writer) erro
 
 // Close cancels pending and running jobs, waits for running ones to
 // return and rejects new submissions. The jobs it stops end as cancelled.
+// A running job that cannot be cancelled (a file removal) is left to
+// finish, and ends as completed or failed.
 func (m *Memory) Close() {
 	m.mu.Lock()
 	if !m.closed {
@@ -640,7 +643,7 @@ func (m *Memory) Close() {
 			m.finish(e, StatusCancelled, "")
 		}
 		for _, e := range m.jobs {
-			if e.job.Status == StatusRunning {
+			if e.job.Status == StatusRunning && e.job.Type.Cancellable() {
 				e.cancelled = true
 			}
 		}
@@ -734,11 +737,6 @@ func (b *tailBuffer) Write(p []byte) {
 		p = p[n:]
 		b.start = (b.start + n) % b.max
 	}
-}
-
-// Bytes returns a copy of the kept bytes, oldest first.
-func (b *tailBuffer) Bytes() []byte {
-	return b.bytesFrom(0)
 }
 
 // bytesFrom returns a copy of the kept bytes from the i-th oldest on.

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -897,6 +898,81 @@ func TestCloseCancelsAndRejects(t *testing.T) {
 	m.Close() // a second Close is harmless
 }
 
+// waitClosed waits until Close has stopped accepting jobs.
+func waitClosed(t *testing.T, m *Memory) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		_, err := m.Submit(context.Background(), uuid.New(), TypeCreate, noop)
+		if errors.Is(err, ErrClosed) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Close did not start")
+		}
+		runtime.Gosched()
+	}
+}
+
+func TestCloseLetsRemovalJobsFinish(t *testing.T) {
+	m := NewMemory(Options{MaxRunning: 2})
+	release := make(chan struct{})
+	removal := func(err error) *Job {
+		started := make(chan struct{})
+		j := mustSubmit(t, m, uuid.New(), TypeDeleteFiles, func(context.Context, io.Writer) error {
+			close(started)
+			<-release // a removal does not stop part way
+			return err
+		})
+		recv(t, started)
+		return j
+	}
+	failed := removal(errors.New("permission denied"))
+	completed := removal(nil)
+
+	closed := make(chan struct{})
+	go func() { m.Close(); close(closed) }()
+	waitClosed(t, m)
+	close(release)
+	recv(t, closed)
+
+	if got := mustGet(t, m, failed.ID); got.Status != StatusFailed || got.Error != "permission denied" {
+		t.Fatalf("a removal that fails during Close is failed, not cancelled: %+v", got)
+	}
+	if got := mustGet(t, m, completed.ID); got.Status != StatusCompleted {
+		t.Fatalf("a removal that finishes during Close is completed: %+v", got)
+	}
+}
+
+func TestFollowLogsEndsWhenPendingJobIsCancelledOrRunnerCloses(t *testing.T) {
+	m := NewMemory(Options{MaxRunning: 1})
+	g := newGate()
+	running := mustSubmit(t, m, uuid.New(), TypeInstall, g.body)
+	g.waitStarted(t)
+	cancelled := mustSubmit(t, m, uuid.New(), TypeInstall, noop)
+	closed := mustSubmit(t, m, uuid.New(), TypeInstall, noop)
+
+	follow := func(id uuid.UUID) chan error {
+		done := make(chan error, 1)
+		go func() { done <- m.FollowLogs(context.Background(), id, io.Discard) }()
+		return done
+	}
+	cancelledDone, closedDone, runningDone := follow(cancelled.ID), follow(closed.ID), follow(running.ID)
+
+	if err := m.Cancel(context.Background(), cancelled.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := recv(t, cancelledDone); err != nil {
+		t.Fatalf("follower of a job cancelled while pending: %v", err)
+	}
+	m.Close()
+	for _, done := range []chan error{closedDone, runningDone} {
+		if err := recv(t, done); err != nil {
+			t.Fatalf("follower after Close: %v", err)
+		}
+	}
+}
+
 // --- Logs ---------------------------------------------------------------
 
 func TestLogsKeepOutput(t *testing.T) {
@@ -995,7 +1071,7 @@ func TestTailBufferKeepsLastBytes(t *testing.T) {
 			all = append(all, p...)
 			b.Write(p)
 			want := all[max(0, len(all)-limit):]
-			if got := b.Bytes(); !bytes.Equal(got, want) {
+			if got := b.bytesFrom(0); !bytes.Equal(got, want) {
 				t.Fatalf("limit %d after %d bytes: got %x, want %x", limit, len(all), got, want)
 			}
 			for i := 0; i <= len(want); i++ {

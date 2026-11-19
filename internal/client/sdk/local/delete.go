@@ -192,10 +192,10 @@ func (s *Service) checkNothingInside(ctx context.Context, p *Project) error {
 // When the project row is gone, the delete went through: it submits a job
 // that removes the moved-aside directory, and returns those jobs. When the
 // row is still there, the delete did not happen: it moves the directory
-// back to the project path. Removals whose job is still running in this
-// service's JobRunner are left alone. Like the busy check, this only knows
-// the jobs of its own runner, so another client process must not be
-// deleting projects in the same database while it runs.
+// back to the project path. Removals whose job is still pending or running
+// in this service's JobRunner are left alone. Like the busy check, this
+// only knows the jobs of its own runner, so another client process must
+// not be deleting projects in the same database while it runs.
 func (s *Service) RecoverDeletes(ctx context.Context) ([]*jobs.Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -207,12 +207,12 @@ func (s *Service) RecoverDeletes(ctx context.Context) ([]*jobs.Job, error) {
 	var started []*jobs.Job
 	var errs []error
 	for _, r := range pending {
-		running, err := s.removalRunning(ctx, r.ProjectID)
+		active, err := s.removalActive(ctx, r.ProjectID)
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
-		if running {
+		if active {
 			continue
 		}
 		var n int64
@@ -312,9 +312,9 @@ func (s *Service) removalJob(r pendingRemoval) jobs.Func {
 	}
 }
 
-// removalRunning reports whether a file removal job of the project is
+// removalActive reports whether a file removal job of the project is
 // pending or running.
-func (s *Service) removalRunning(ctx context.Context, projectID uuid.UUID) (bool, error) {
+func (s *Service) removalActive(ctx context.Context, projectID uuid.UUID) (bool, error) {
 	list, err := s.jobs.ProjectJobs(ctx, projectID)
 	if err != nil {
 		return false, fmt.Errorf("reading jobs of project %s: %w", projectID, err)

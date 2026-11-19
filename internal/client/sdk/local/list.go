@@ -92,8 +92,9 @@ type ProjectDetail struct {
 // the background, so listing never waits for a walk of .pixi.
 //
 // Projects are read with readProjects, so a job that starts or finishes
-// during the list cannot tear a project's state. A project created after
-// the list starts is left out; the next list shows it.
+// during the list does not tear the state the job writes, within the
+// limits readProjects describes. A project created after the list starts
+// is left out; the next list shows it.
 func (s *Service) ListProjects(ctx context.Context) ([]ProjectSummary, error) {
 	var ids []uuid.UUID
 	if err := s.db.WithContext(ctx).Model(&Project{}).Pluck("id", &ids).Error; err != nil {
@@ -138,8 +139,9 @@ type projectRead struct {
 }
 
 // readProjects reads the projects with the given IDs, ordered by name as
-// of their first read, and leaves out those that do not exist. It is the only way project state is
-// read, so every read path gets the same guarantee.
+// of their first read, and leaves out those that do not exist. It is the
+// only way project state is read, so every read path gets the same
+// guarantee for the state a job writes.
 //
 // A project's state comes from two sources that change independently: its
 // jobs, in the JobRunner, and its row, versions and .pixi/envs, which a
@@ -157,7 +159,16 @@ type projectRead struct {
 // job started or finished during the row read, and the row is consistent
 // with the jobs. When they differ, the project is read again, up to
 // maxReadAttempts times; if its jobs still change on the last attempt,
-// that attempt is returned as read.
+// that attempt is returned as read, unchecked.
+//
+// The guarantee covers only what a job writes. State written outside a
+// job is not bracketed by the two job reads:
+//   - CreateProject inserts the row before it submits the create job, so a
+//     read in between sees the row with no job.
+//   - DeleteProject deletes the row and versions in a transaction, not a
+//     job, so a read that loads the row before the delete commits and the
+//     versions after it reports lock_failed linked to the create job; the
+//     next read returns ErrNotFound.
 func (s *Service) readProjects(ctx context.Context, ids []uuid.UUID) ([]projectRead, error) {
 	var out []projectRead
 	index := make(map[uuid.UUID]int, len(ids))

@@ -115,6 +115,9 @@ func sameDir(a, b string) (bool, error) {
 //
 // Like sameDir, it returns an error when a path cannot be checked for a
 // reason other than not existing, instead of reporting p as outside dir.
+// A path that cannot be checked does not end the check, since another of
+// p's ancestors can still match: the first error is returned only when
+// nothing matched.
 func inside(dir, p string) (bool, error) {
 	if isWithin(dir, p) {
 		return true, nil
@@ -123,6 +126,7 @@ func inside(dir, p string) (bool, error) {
 	if di == nil || err != nil {
 		return false, err
 	}
+	var firstErr error
 	starts := []string{filepath.Dir(p)}
 	// The walk below starts at p's parent, so it never follows p itself.
 	// A stored project path can be a symlink by now (the user moved the
@@ -130,7 +134,7 @@ func inside(dir, p string) (bool, error) {
 	resolved, err := filepath.EvalSymlinks(p)
 	switch {
 	case err != nil && !missing(err):
-		return false, fmt.Errorf("resolving %s: %w", p, err)
+		firstErr = fmt.Errorf("resolving %s: %w", p, err)
 	case err == nil && resolved != p:
 		if isWithin(dir, resolved) {
 			return true, nil
@@ -141,9 +145,10 @@ func inside(dir, p string) (bool, error) {
 		for cur := start; ; cur = filepath.Dir(cur) {
 			ci, err := statDir(cur)
 			if err != nil {
-				return false, err
-			}
-			if ci != nil && os.SameFile(di, ci) {
+				if firstErr == nil {
+					firstErr = err
+				}
+			} else if ci != nil && os.SameFile(di, ci) {
 				return true, nil
 			}
 			if filepath.Dir(cur) == cur {
@@ -151,7 +156,7 @@ func inside(dir, p string) (bool, error) {
 			}
 		}
 	}
-	return false, nil
+	return false, firstErr
 }
 
 // statDir stats p. It returns nil info and no error when p does not exist,

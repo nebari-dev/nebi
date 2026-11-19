@@ -195,10 +195,11 @@ var clientTargetOSes = []string{"linux", "darwin", "windows"}
 // other server packages. It reads the full dependency graph from go list
 // -deps, test files included, so an import through another package (for
 // example internal/store, which reaches internal/models via internal/auth)
-// is caught too. go list only sees the files that build for one GOOS, so
-// it runs once per OS the client targets: an OS-specific file (such as a
-// _windows.go file) that reaches a server package through another package
-// is caught too. TestClientDoesNotImportServerPackages covers the direct
+// is caught too. go list only sees the files that build for one GOOS and
+// cgo setting, so it runs for each OS the client targets, with cgo off and
+// on: an OS-specific file (such as a _windows.go file) or a cgo or !cgo
+// file that reaches a server package through another package is caught
+// too. TestClientDoesNotImportServerPackages covers the direct
 // imports of files behind other build tags.
 func TestClientDoesNotDependOnServerPackages(t *testing.T) {
 	goBin, err := exec.LookPath("go")
@@ -206,26 +207,30 @@ func TestClientDoesNotDependOnServerPackages(t *testing.T) {
 		t.Fatalf("go list needs the go command on PATH: %v", err)
 	}
 	for _, goos := range clientTargetOSes {
-		t.Run(goos, func(t *testing.T) {
-			checkServerDeps(t, goBin, goos)
-		})
+		// Release builds set CGO_ENABLED=0 (.goreleaser.yaml, Dockerfile),
+		// and a cgo build keeps the cgo files instead of the !cgo ones
+		// (go list drops cgo files by default when GOOS is not the
+		// host's), so check both graphs.
+		for _, cgo := range []string{"0", "1"} {
+			t.Run(goos+"/cgo="+cgo, func(t *testing.T) {
+				checkServerDeps(t, goBin, goos, cgo)
+			})
+		}
 	}
 }
 
-// checkServerDeps fails t when internal/client, built for goos, depends on
-// a server package.
-func checkServerDeps(t *testing.T, goBin, goos string) {
+// checkServerDeps fails t when internal/client, built for goos with
+// CGO_ENABLED=cgo, depends on a server package.
+func checkServerDeps(t *testing.T, goBin, goos, cgo string) {
 	cmd := exec.Command(goBin, "list", "-deps", "-test", "-tags=e2e",
 		"-f", "{{.ImportPath}}|{{join .Imports \",\"}}",
 		"github.com/nebari-dev/nebi/internal/client/...")
-	// CGO_ENABLED=1 keeps the cgo files, which go list drops by default
-	// when GOOS is not the host's, so the graph matches a real build.
-	cmd.Env = append(os.Environ(), "GOOS="+goos, "CGO_ENABLED=1")
+	cmd.Env = append(os.Environ(), "GOOS="+goos, "CGO_ENABLED="+cgo)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("GOOS=%s go list: %v\n%s", goos, err, stderr.String())
+		t.Fatalf("GOOS=%s CGO_ENABLED=%s go list: %v\n%s", goos, cgo, err, stderr.String())
 	}
 
 	// importers maps every package in the graph to the packages that
@@ -256,7 +261,7 @@ func checkServerDeps(t *testing.T, goBin, goos string) {
 				by = append(by, b)
 			}
 			sort.Strings(by)
-			t.Errorf("internal/client depends on %s for GOOS=%s (imported by %s)", pkg, goos, strings.Join(by, ", "))
+			t.Errorf("internal/client depends on %s for GOOS=%s CGO_ENABLED=%s (imported by %s)", pkg, goos, cgo, strings.Join(by, ", "))
 		}
 	}
 }

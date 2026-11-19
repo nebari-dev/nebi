@@ -632,19 +632,84 @@ func TestCreateSkipsProjectThatCannotBeChecked(t *testing.T) {
 		t.Fatalf("unexpected project %+v", p)
 	}
 
+	// A create at a directory that already exists checks it on disk
+	// against the stuck project, which a path that does not exist yet
+	// skips.
+	existing := h.resolved(t.TempDir())
+	req := specRequest("existing")
+	req.Path = existing
+	p, job, err = h.svc.CreateProject(ctx, req)
+	if err != nil {
+		t.Fatalf("an unrelated create at an existing directory must succeed: %v", err)
+	}
+	if got := h.wait(job); got.Status != jobs.StatusCompleted {
+		t.Fatalf("create job: %+v", got)
+	}
+	if p.ManagedDir || p.Path != existing {
+		t.Fatalf("unexpected project %+v", p)
+	}
+
 	// The path comparisons still apply to the project that cannot be
-	// checked. CreateProject cannot get this far for these paths (it fails
-	// resolving them), so call the check itself.
+	// checked. CreateProject cannot get this far for the first two paths
+	// (it fails resolving them), so call the check itself.
 	for name, path := range map[string]string{
-		"same":   stuck,
-		"inside": filepath.Join(stuck, "inner"),
+		"same":     stuck,
+		"inside":   filepath.Join(stuck, "inner"),
+		"contains": filepath.Dir(locked),
 	} {
 		if err := h.svc.checkPathFree(ctx, path); !errors.Is(err, ErrPathTaken) {
 			t.Errorf("%s: want ErrPathTaken, got %v", name, err)
 		}
 	}
-	if h.projectCount() != 2 {
-		t.Fatalf("want 2 projects, got %d", h.projectCount())
+	if h.projectCount() != 3 {
+		t.Fatalf("want 3 projects, got %d", h.projectCount())
+	}
+}
+
+// TestCreateRefusesDirContainingProjectThatCannotBeChecked covers a tracked
+// project that cannot be checked on disk and is stored under another
+// spelling of the new directory: through a symlink, or in another case on
+// a case-insensitive filesystem. The stored path cannot be resolved, but
+// one of its ancestors is still the new directory on disk, so the create
+// is refused as containing that project.
+func TestCreateRefusesDirContainingProjectThatCannotBeChecked(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a directory the test cannot read")
+	}
+	base := mustResolve(t, t.TempDir())
+	outer := filepath.Join(base, "outer")
+	if err := os.MkdirAll(filepath.Join(outer, "locked", "stuck"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]string{}
+	if err := os.Symlink(outer, filepath.Join(base, "link")); err == nil {
+		cases["symlink"] = filepath.Join(base, "link", "locked", "stuck")
+	}
+	if caseInsensitive(t, base) {
+		cases["case"] = filepath.Join(base, "OUTER", "locked", "stuck")
+	}
+	if len(cases) == 0 {
+		t.Skip("needs symlinks or a case-insensitive filesystem")
+	}
+	if err := os.Chmod(filepath.Join(outer, "locked"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(outer, "locked"), 0o755) })
+
+	for name, stored := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.insertRow(&Project{Name: "stuck", Path: stored})
+			req := specRequest("outer")
+			req.Path = outer
+			_, _, err := h.svc.CreateProject(context.Background(), req)
+			if !errors.Is(err, ErrPathTaken) || !strings.Contains(err.Error(), "contains project") {
+				t.Fatalf("want ErrPathTaken containing the stuck project, got %v", err)
+			}
+			if h.projectCount() != 1 {
+				t.Fatalf("want 1 project, got %d", h.projectCount())
+			}
+		})
 	}
 }
 

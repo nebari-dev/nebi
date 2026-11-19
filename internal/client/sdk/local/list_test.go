@@ -284,31 +284,30 @@ func TestStateOfInstalledEnvRemovedFromDisk(t *testing.T) {
 	}
 }
 
-// hookOnRead is a JobRunner that runs an armed hook once, right after its
-// after-th ProjectJobs call has read the list (after=0: before the first
-// call reads it). A GetProject or a ListProjects of one project reads the
-// project's jobs before and after its row, so after=1 runs the hook
-// between the first jobs read and the row read, and after=2 once the read
-// has read everything it uses.
+// hookOnRead is a JobRunner that runs an armed hook once, at a chosen
+// moment of its ProjectJobs calls: on entry to the call made after
+// `calls` earlier calls, or right after that many calls have read the
+// list.
 type hookOnRead struct {
 	*jobs.Memory
-	mu    sync.Mutex
-	calls int
-	after int
-	hook  func()
+	mu     sync.Mutex
+	calls  int
+	moment readMoment
+	hook   func()
 }
 
-func (f *hookOnRead) arm(after int, hook func()) {
+func (f *hookOnRead) arm(m readMoment, hook func()) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls, f.after, f.hook = 0, after, hook
+	f.calls, f.moment, f.hook = 0, m, hook
 }
 
-// due returns the hook when it is due now, and disarms it.
-func (f *hookOnRead) due() func() {
+// due returns the hook when it is due now, on entry to a call or on
+// leaving it, and disarms it.
+func (f *hookOnRead) due(entry bool) func() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.hook == nil || f.calls != f.after {
+	if f.hook == nil || f.calls != f.moment.calls || f.moment.entry != entry {
 		return nil
 	}
 	hook := f.hook
@@ -317,14 +316,14 @@ func (f *hookOnRead) due() func() {
 }
 
 func (f *hookOnRead) ProjectJobs(ctx context.Context, id uuid.UUID) ([]jobs.Job, error) {
-	if hook := f.due(); hook != nil {
+	if hook := f.due(true); hook != nil {
 		hook()
 	}
 	list, err := f.Memory.ProjectJobs(ctx, id)
 	f.mu.Lock()
 	f.calls++
 	f.mu.Unlock()
-	if hook := f.due(); hook != nil {
+	if hook := f.due(false); hook != nil {
 		hook()
 	}
 	return list, err
@@ -343,11 +342,22 @@ var readers = map[string]func(h *harness, id uuid.UUID) ProjectSummary{
 	},
 }
 
+// readMoment is a point in a read where a hookOnRead hook runs. A
+// GetProject or a ListProjects of one project reads the project's jobs,
+// then its row, versions and disk, then its jobs again.
+type readMoment struct {
+	name  string
+	calls int  // ProjectJobs calls made before the hook runs
+	entry bool // run on entry to the next call rather than after the last
+	last  bool // the read has read everything it uses
+}
+
 // readMoments are the points in a read where the hooks below run.
-var readMoments = map[int]string{
-	0: "before the first jobs read",
-	1: "between the jobs read and the row read",
-	2: "after the second jobs read",
+var readMoments = []readMoment{
+	{name: "before the first jobs read", calls: 0, entry: true},
+	{name: "between the jobs read and the row read", calls: 1},
+	{name: "between the row read and the second jobs read", calls: 1, entry: true},
+	{name: "after the second jobs read", calls: 2, last: true},
 }
 
 // TestStateWhenInstallFinishesDuringRead covers a create-with-install job
@@ -358,8 +368,8 @@ var readMoments = map[int]string{
 // otherwise.
 func TestStateWhenInstallFinishesDuringRead(t *testing.T) {
 	for name, readState := range readers {
-		for after, moment := range readMoments {
-			t.Run(name+"/"+moment, func(t *testing.T) {
+		for _, moment := range readMoments {
+			t.Run(name+"/"+moment.name, func(t *testing.T) {
 				runner := &hookOnRead{}
 				h := newHarness(t, func(o *Options) {
 					runner.Memory = o.Jobs.(*jobs.Memory)
@@ -375,14 +385,14 @@ func TestStateWhenInstallFinishesDuringRead(t *testing.T) {
 					t.Fatal(err)
 				}
 				<-started
-				runner.arm(after, func() {
+				runner.arm(moment, func() {
 					close(gate)
 					h.wait(job)
 				})
 
 				got := readState(h, p.ID)
 				want, wantJob := StateInstalled, (*uuid.UUID)(nil)
-				if after == 2 {
+				if moment.last {
 					want, wantJob = StateCreating, &job.ID
 				}
 				if got.State != want {
@@ -408,8 +418,8 @@ func TestStateWhenInstallFinishesDuringRead(t *testing.T) {
 // and installing with the job otherwise.
 func TestStateWhenInstallStartsDuringRead(t *testing.T) {
 	for name, readState := range readers {
-		for after, moment := range readMoments {
-			t.Run(name+"/"+moment, func(t *testing.T) {
+		for _, moment := range readMoments {
+			t.Run(name+"/"+moment.name, func(t *testing.T) {
 				runner := &hookOnRead{}
 				h := newHarness(t, func(o *Options) {
 					runner.Memory = o.Jobs.(*jobs.Memory)
@@ -426,7 +436,7 @@ func TestStateWhenInstallStartsDuringRead(t *testing.T) {
 
 				gate := make(chan struct{})
 				var reinstall *jobs.Job
-				runner.arm(after, func() {
+				runner.arm(moment, func() {
 					cleared := make(chan struct{})
 					var err error
 					reinstall, err = runner.Memory.Submit(context.Background(), p.ID, jobs.TypeInstall, func(ctx context.Context, _ io.Writer) error {
@@ -456,7 +466,7 @@ func TestStateWhenInstallStartsDuringRead(t *testing.T) {
 					t.Fatal("the reinstall was not submitted")
 				}
 				want, wantJob := StateInstalling, &reinstall.ID
-				if after == 2 {
+				if moment.last {
 					want, wantJob = StateInstalled, nil
 				}
 				if got.State != want {
@@ -470,6 +480,92 @@ func TestStateWhenInstallStartsDuringRead(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// churningJobs is a JobRunner whose job list for a project differs on
+// every ProjectJobs call, as if a job started or finished during every
+// read. It counts the calls.
+type churningJobs struct {
+	*jobs.Memory
+	calls atomic.Int64
+}
+
+func (c *churningJobs) ProjectJobs(ctx context.Context, id uuid.UUID) ([]jobs.Job, error) {
+	list, err := c.Memory.ProjectJobs(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	c.calls.Add(1)
+	return append(list, jobs.Job{ID: uuid.New(), ProjectID: id, Type: jobs.TypeUninstall, Status: jobs.StatusCompleted}), nil
+}
+
+// TestReadReturnsWhenJobsKeepChanging checks that a read whose jobs change
+// on every attempt stops after maxReadAttempts attempts and returns the
+// last one instead of reading forever.
+func TestReadReturnsWhenJobsKeepChanging(t *testing.T) {
+	for name, readState := range readers {
+		t.Run(name, func(t *testing.T) {
+			runner := &churningJobs{}
+			h := newHarness(t, func(o *Options) {
+				runner.Memory = o.Jobs.(*jobs.Memory)
+				o.Jobs = runner
+			})
+			p, _ := h.mustCreate(specRequest("churn"))
+			runner.calls.Store(0)
+
+			done := make(chan ProjectSummary, 1)
+			go func() { done <- readState(h, p.ID) }()
+			select {
+			case got := <-done:
+				if got.ID != p.ID {
+					t.Fatalf("read returned %+v", got)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("the read did not return while the jobs kept changing")
+			}
+			if got, want := runner.calls.Load(), int64(2*maxReadAttempts); got != want {
+				t.Fatalf("ProjectJobs called %d times, want %d (two per attempt)", got, want)
+			}
+		})
+	}
+}
+
+// TestReadLeavesOutProjectDeletedBetweenAttempts covers a project whose
+// jobs change during a read, so it is read again, and that is deleted
+// before the next attempt. The read must not return the earlier attempt
+// for a project that no longer exists.
+func TestReadLeavesOutProjectDeletedBetweenAttempts(t *testing.T) {
+	runner := &hookOnRead{}
+	h := newHarness(t, func(o *Options) {
+		runner.Memory = o.Jobs.(*jobs.Memory)
+		o.Jobs = runner
+	})
+	ctx := context.Background()
+	arm := func(p *Project) {
+		runner.arm(readMoment{calls: 1, entry: true}, func() {
+			job, err := runner.Memory.Submit(ctx, p.ID, jobs.TypeInstall, func(context.Context, io.Writer) error { return nil })
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			h.wait(job)
+			if _, err := h.svc.DeleteProject(ctx, p.ID, DeleteProjectOptions{}); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+
+	p, _ := h.mustCreate(specRequest("vanishing"))
+	arm(p)
+	if d, err := h.svc.GetProject(ctx, p.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetProject: want ErrNotFound for the deleted project, got %+v, %v", d, err)
+	}
+
+	p, _ = h.mustCreate(specRequest("gone"))
+	arm(p)
+	if list, err := h.svc.ListProjects(ctx); err != nil || len(list) != 0 {
+		t.Fatalf("ListProjects: want no projects, got %+v, %v", list, err)
 	}
 }
 

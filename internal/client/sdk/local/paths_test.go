@@ -189,6 +189,16 @@ func TestSameDirAndInsideFailClosed(t *testing.T) {
 	if _, err := inside(unreadable, filepath.Join(outer, "x")); err == nil {
 		t.Error("inside must return an error for a directory it cannot stat")
 	}
+
+	// A path that cannot be resolved is still inside a directory that
+	// matches one of its ancestors on disk; only a check that finds no
+	// match returns the error.
+	alias := filepath.Join(t.TempDir(), "alias")
+	if os.Symlink(base, alias) == nil {
+		if !mustInside(t, base, filepath.Join(alias, "locked", "inner")) {
+			t.Error("an ancestor that matches must win over a path that cannot be resolved")
+		}
+	}
 }
 
 func mustSameDir(t *testing.T, a, b string) bool {

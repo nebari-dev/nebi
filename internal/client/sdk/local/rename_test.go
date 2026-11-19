@@ -67,16 +67,3 @@ func TestRenameProject(t *testing.T) {
 		t.Fatalf("a rejected rename must not change the name, got %q", d.Name)
 	}
 }
-
-func TestRenameLegacyNameIgnoresItsOwnCase(t *testing.T) {
-	h := newHarness(t)
-	legacy := &Project{Name: "Demo", Path: filepath.Join(t.TempDir(), "demo")}
-	h.insertRow(legacy)
-	// "demo" only collides with the project's own legacy name "Demo".
-	if _, err := h.svc.RenameProject(context.Background(), legacy.ID, "demo"); err != nil {
-		t.Fatalf("RenameProject: %v", err)
-	}
-	if d := h.detail(legacy.ID); d.Name != "demo" {
-		t.Fatalf("got %q", d.Name)
-	}
-}

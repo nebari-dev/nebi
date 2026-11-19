@@ -55,7 +55,7 @@ func (pendingRemoval) TableName() string { return "client_pending_removals" }
 //     cannot be checked, without its files, clears it. Apart from that
 //     move back, nothing is changed in these cases.
 //  2. In one transaction it deletes the project's versions and tags, the
-//     rows of the DeleteHooks, its legacy origin row, and the project row.
+//     rows of the DeleteHooks, and the project row.
 //  3. With DeleteFiles it first renames Path to a hidden sibling, so the
 //     path is free as soon as DeleteProject returns, then submits a job
 //     that removes the renamed directory and returns that job; otherwise
@@ -128,9 +128,6 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID, opts DeletePr
 				return err
 			}
 		}
-		if err := tx.Delete(&LegacyProjectOrigin{}, "project_id = ?", id).Error; err != nil {
-			return fmt.Errorf("deleting legacy origin: %w", err)
-		}
 		if err := tx.Delete(&Project{}, "id = ?", id).Error; err != nil {
 			return fmt.Errorf("deleting project row: %w", err)
 		}
@@ -180,9 +177,9 @@ func (s *Service) submitRemoval(ctx context.Context, p *Project, opts DeleteProj
 // remove another tracked project's directory: the same directory, or one
 // inside it. When a directory cannot be checked it returns that error,
 // naming the project, so the delete is refused rather than allowed. Create
-// refuses nested projects, but rows from the legacy migration can still
-// nest, and a directory can be moved under another one after it was
-// tracked.
+// refuses nested projects, but a directory can be moved under another one
+// after it was tracked, possibly leaving a symlink at its stored path, so
+// the check is repeated here against the disk.
 func (s *Service) checkNothingInside(ctx context.Context, p *Project) error {
 	tracked, err := s.trackedPaths(ctx)
 	if err != nil {

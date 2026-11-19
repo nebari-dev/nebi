@@ -319,7 +319,9 @@ func TestRemoveProjectDirGuards(t *testing.T) {
 func TestDeleteFilesRefusedWhenAnotherProjectIsInside(t *testing.T) {
 	h := newHarness(t)
 	outer, _ := h.mustCreate(specRequest("outer"))
-	// Create refuses nested paths; a migrated row can still nest.
+	// Create refuses nested paths, but a directory can be moved inside
+	// another one after it was tracked. Insert the row directly to stand
+	// for that.
 	innerDir := filepath.Join(outer.Path, "inner")
 	if err := os.MkdirAll(innerDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -343,45 +345,6 @@ func TestDeleteFilesRefusedWhenAnotherProjectIsInside(t *testing.T) {
 	h.wait(job)
 	if exists(innerDir) || !exists(outer.Path) {
 		t.Fatal("only the inner directory may be removed")
-	}
-}
-
-func TestDeleteRemovesLegacyOrigin(t *testing.T) {
-	h := newHarness(t)
-	p, _ := h.mustCreate(specRequest("synced"))
-	sib := &Project{Name: "sibling", Path: filepath.Join(t.TempDir(), "sibling")}
-	h.insertRow(sib)
-	for _, id := range []uuid.UUID{p.ID, sib.ID} {
-		if err := h.db.Create(&LegacyProjectOrigin{ProjectID: id, OriginName: "team/x"}).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	var left []LegacyProjectOrigin
-	if err := h.db.Find(&left).Error; err != nil {
-		t.Fatal(err)
-	}
-	if len(left) != 1 || left[0].ProjectID != sib.ID {
-		t.Fatalf("only the deleted project's origin row may go, left %+v", left)
-	}
-}
-
-func TestDeleteKeepsLegacyOriginOnRollback(t *testing.T) {
-	h := newHarness(t, func(o *Options) {
-		o.DeleteHooks = []DeleteHook{func(*gorm.DB, uuid.UUID) error { return errors.New("locked") }}
-	})
-	p, _ := h.mustCreate(specRequest("synced"))
-	if err := h.db.Create(&LegacyProjectOrigin{ProjectID: p.ID, OriginName: "team/x"}).Error; err != nil {
-		t.Fatal(err)
-	}
-	if _, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{}); err == nil {
-		t.Fatal("want an error")
-	}
-	var n int64
-	if err := h.db.Model(&LegacyProjectOrigin{}).Count(&n).Error; err != nil || n != 1 {
-		t.Fatalf("origin row must be rolled back: %d rows, %v", n, err)
 	}
 }
 
@@ -472,8 +435,8 @@ func TestDeleteFilesRefusedForAliasedProjectInside(t *testing.T) {
 		t.Fatal(err)
 	}
 	var aliases []string
-	// Migrated rows are stored as they were, so a row can reach the
-	// directory through a symlink...
+	// Create refuses these paths, but after directories are moved a
+	// stored path can reach the directory through a symlink...
 	link := filepath.Join(t.TempDir(), "link")
 	if err := os.Symlink(outer.Path, link); err == nil {
 		aliases = append(aliases, filepath.Join(link, "inner"), link)

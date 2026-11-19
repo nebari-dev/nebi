@@ -54,11 +54,10 @@ func (p *Project) BeforeCreate(tx *gorm.DB) error {
 }
 
 // Migrate creates or updates the project tables in the client database:
-// client_projects, legacy_project_origins, which DeleteProject also
-// clears, and client_pending_removals, where DeleteProject records the
-// directories it is removing. It is idempotent.
+// client_projects and client_pending_removals, where DeleteProject records
+// the directories it is removing. It is idempotent.
 func Migrate(db *gorm.DB) error {
-	if err := db.AutoMigrate(&Project{}, &LegacyProjectOrigin{}, &pendingRemoval{}); err != nil {
+	if err := db.AutoMigrate(&Project{}, &pendingRemoval{}); err != nil {
 		return fmt.Errorf("migrating client project tables: %w", err)
 	}
 	return nil

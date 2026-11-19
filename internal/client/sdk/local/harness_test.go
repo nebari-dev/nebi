@@ -143,6 +143,12 @@ type fakePixi struct {
 	lockStarted  chan struct{} // receives once per Lock call that waits on lockGate
 	lockCalls    []string
 	installCalls []string
+
+	// installGate, when set, makes Install create a partial .pixi/envs and
+	// then wait until it is closed or the job is cancelled, like a long
+	// install that is interrupted.
+	installGate    chan struct{}
+	installStarted chan struct{} // receives once per Install call that waits on installGate
 }
 
 const fakeLockContent = "version: 6\n# fake lock\n"
@@ -172,7 +178,21 @@ func (f *fakePixi) Install(ctx context.Context, dir string) error {
 	f.mu.Lock()
 	f.installCalls = append(f.installCalls, dir)
 	err, partial := f.installErr, f.partialEnv
+	gate, started := f.installGate, f.installStarted
 	f.mu.Unlock()
+	if gate != nil {
+		if mkErr := os.MkdirAll(filepath.Join(dir, ".pixi", "envs", "default"), 0o755); mkErr != nil {
+			return mkErr
+		}
+		if started != nil {
+			started <- struct{}{}
+		}
+		select {
+		case <-gate:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	if err != nil {
 		if partial {
 			_ = os.MkdirAll(filepath.Join(dir, ".pixi", "envs"), 0o755)

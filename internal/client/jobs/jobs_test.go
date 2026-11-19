@@ -525,7 +525,7 @@ func TestRetireProject(t *testing.T) {
 	mustWait(t, m, mustSubmit(t, m, project, TypeInstall, noop).ID)
 }
 
-func TestRetirementEndsWhenRemovalCompletes(t *testing.T) {
+func TestProjectDeletedEndsRetirement(t *testing.T) {
 	m := newRunner(t, Options{})
 	ctx := context.Background()
 
@@ -537,29 +537,36 @@ func TestRetirementEndsWhenRemovalCompletes(t *testing.T) {
 	removal := mustSubmit(t, m, removed, TypeDeleteFiles, g.body)
 	g.waitStarted(t)
 	if _, err := m.Submit(ctx, removed, TypeInstall, noop); !errors.Is(err, ErrProjectRetired) {
-		t.Fatalf("while the removal runs the project stays retired, got %v", err)
+		t.Errorf("until the delete commits the project stays retired, got %v", err)
+	}
+	if err := m.ProjectDeleted(ctx, removed); err != nil {
+		t.Fatal(err)
+	}
+	if retiredCount(m) != 0 {
+		t.Error("ProjectDeleted must drop the retired entry")
 	}
 	g.open()
 	if got := mustWait(t, m, removal.ID); got.Status != StatusCompleted {
-		t.Fatalf("removal: %+v", got)
+		t.Fatalf("a removal running when its project is reported deleted still finishes: %+v", got)
 	}
-	if retiredCount(m) != 0 {
-		t.Fatal("the retired entry must be dropped when the removal job completes")
-	}
+}
 
-	stuck := uuid.New()
-	if _, err := m.RetireProject(ctx, stuck, TypeDeleteFiles); err != nil {
-		t.Fatal(err)
+func TestDeletesWithoutRemovalLeaveNothingBehind(t *testing.T) {
+	m := newRunner(t, Options{})
+	ctx := context.Background()
+	for range 20 {
+		p := uuid.New()
+		if _, err := m.RetireProject(ctx, p, TypeDeleteFiles); err != nil {
+			t.Fatal(err)
+		}
+		if err := m.ProjectDeleted(ctx, p); err != nil {
+			t.Fatal(err)
+		}
 	}
-	failed := mustSubmit(t, m, stuck, TypeDeleteFiles, func(context.Context, io.Writer) error { return errors.New("permission denied") })
-	if got := mustWait(t, m, failed.ID); got.Status != StatusFailed {
-		t.Fatalf("failed removal: %+v", got)
-	}
-	if _, err := m.Submit(ctx, stuck, TypeInstall, noop); !errors.Is(err, ErrProjectRetired) {
-		t.Fatalf("a failed removal must keep the project retired, got %v", err)
-	}
-	if retiredCount(m) != 1 {
-		t.Fatal("the retired entry must stay when the removal job fails")
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.retired) != 0 || len(m.gone) != 0 {
+		t.Fatalf("deletes of projects without jobs left %d retired and %d gone entries, want none", len(m.retired), len(m.gone))
 	}
 }
 
@@ -626,7 +633,7 @@ func TestEvictionKeepsLatestJobOfEachType(t *testing.T) {
 
 	// Unkept jobs of other projects push p's older jobs out of the tail.
 	for range 3 {
-		mustWait(t, m, mustSubmit(t, m, uuid.New(), TypeDeleteFiles, noop).ID)
+		deletedProjectJob(t, m)
 	}
 	// p keeps its latest uninstall and its latest install; the earlier
 	// installs are ordinary old jobs and age out.
@@ -655,7 +662,7 @@ func TestEvictionSkipsJobsCancelledWhilePending(t *testing.T) {
 
 	// Unkept jobs of other projects push the tail out.
 	for range 3 {
-		mustWait(t, m, mustSubmit(t, m, uuid.New(), TypeDeleteFiles, noop).ID)
+		deletedProjectJob(t, m)
 	}
 	if _, err := m.Get(failed.ID); err != nil {
 		t.Fatalf("the latest install that ran must stay kept, got %v", err)
@@ -689,37 +696,74 @@ func TestCreateDeleteCyclesStayBounded(t *testing.T) {
 		if active, err := m.RetireProject(ctx, p, TypeDeleteFiles); err != nil || len(active) != 0 {
 			t.Fatalf("RetireProject: %v, %v", active, err)
 		}
-		mustWait(t, m, mustSubmit(t, m, p, TypeDeleteFiles, noop).ID)
+		removal := mustSubmit(t, m, p, TypeDeleteFiles, noop)
+		if err := m.ProjectDeleted(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+		mustWait(t, m, removal.ID)
 	}
 	if n := jobCount(m); n != 200 {
 		t.Fatalf("%d jobs kept after 500 create and delete cycles, want 200", n)
 	}
 	if n := retiredCount(m); n != 0 {
-		t.Fatalf("%d retired entries kept after their removals completed, want 0", n)
+		t.Fatalf("%d retired entries kept after their deletes, want 0", n)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if len(m.gone) != len(m.byProj) {
+		t.Fatalf("%d gone entries for %d projects with kept jobs: an entry must go with its project's last job", len(m.gone), len(m.byProj))
+	}
 	if len(m.finished) != 200 || len(m.byProj) != 100 || len(m.pending) != 0 || m.running != 0 || len(m.busy) != 0 {
 		t.Fatalf("internal state not cleaned up: finished %d, projects %d, pending %d, running %d, busy %d",
 			len(m.finished), len(m.byProj), len(m.pending), m.running, len(m.busy))
 	}
 }
 
-func TestRetiredProjectsLatestJobIsNotKept(t *testing.T) {
+func TestRetiredProjectKeepsJobsUntilDeleted(t *testing.T) {
 	m := newRunner(t, Options{KeepFinished: 1})
 	ctx := context.Background()
-	deleted := uuid.New()
-	old := mustSubmit(t, m, deleted, TypeCreate, noop)
-	mustWait(t, m, old.ID)
-	if _, err := m.RetireProject(ctx, deleted); err != nil { // deleted without its files
+	p := uuid.New()
+	failed := mustSubmit(t, m, p, TypeInstall, func(context.Context, io.Writer) error { return errors.New("partial env") })
+	mustWait(t, m, failed.ID)
+
+	// A delete that is still in progress, or fails and restores the
+	// project, must not lose the job that decides its state.
+	if _, err := m.RetireProject(ctx, p); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {
-		mustWait(t, m, mustSubmit(t, m, uuid.New(), TypeDeleteFiles, noop).ID)
+		deletedProjectJob(t, m)
 	}
-	if _, err := m.Get(old.ID); !errors.Is(err, ErrUnknownJob) {
+	if _, err := m.Get(failed.ID); err != nil {
+		t.Fatalf("a retired project's latest job must stay kept, got %v", err)
+	}
+
+	if err := m.ProjectDeleted(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		deletedProjectJob(t, m)
+	}
+	if _, err := m.Get(failed.ID); !errors.Is(err, ErrUnknownJob) {
 		t.Fatalf("a deleted project's last job must age out like any other, got %v", err)
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.gone[p] {
+		t.Fatal("the gone entry must go with the project's last job")
+	}
+}
+
+// deletedProjectJob runs a job for a new project and reports the project
+// deleted, so the job is an ordinary old job that is not kept for it.
+func deletedProjectJob(t *testing.T, m *Memory) {
+	t.Helper()
+	p := uuid.New()
+	j := mustSubmit(t, m, p, TypeInstall, noop)
+	if err := m.ProjectDeleted(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	mustWait(t, m, j.ID)
 }
 
 // --- Cancel -------------------------------------------------------------
@@ -915,7 +959,7 @@ func waitClosed(t *testing.T, m *Memory) {
 }
 
 func TestCloseLetsRemovalJobsFinish(t *testing.T) {
-	m := NewMemory(Options{MaxRunning: 2})
+	m := NewMemory(Options{MaxRunning: 3})
 	release := make(chan struct{})
 	removal := func(err error) *Job {
 		started := make(chan struct{})
@@ -929,6 +973,20 @@ func TestCloseLetsRemovalJobsFinish(t *testing.T) {
 	}
 	failed := removal(errors.New("permission denied"))
 	completed := removal(nil)
+	// A removal that returns once its context is cancelled must still
+	// finish: Close does not cancel the context of a job that cannot be
+	// cancelled.
+	started := make(chan struct{})
+	watching := mustSubmit(t, m, uuid.New(), TypeDeleteFiles, func(ctx context.Context, _ io.Writer) error {
+		close(started)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-release:
+			return nil
+		}
+	})
+	recv(t, started)
 
 	closed := make(chan struct{})
 	go func() { m.Close(); close(closed) }()
@@ -941,6 +999,9 @@ func TestCloseLetsRemovalJobsFinish(t *testing.T) {
 	}
 	if got := mustGet(t, m, completed.ID); got.Status != StatusCompleted {
 		t.Fatalf("a removal that finishes during Close is completed: %+v", got)
+	}
+	if got := mustGet(t, m, watching.ID); got.Status != StatusCompleted {
+		t.Fatalf("Close must not cancel a removal's context: %+v", got)
 	}
 }
 

@@ -117,6 +117,11 @@ type JobRunner interface {
 	RetireProject(ctx context.Context, projectID uuid.UUID, allow ...jobs.Type) ([]uuid.UUID, error)
 	// RestoreProject undoes RetireProject.
 	RestoreProject(ctx context.Context, projectID uuid.UUID) error
+	// ProjectDeleted reports that the project's delete has committed, after
+	// any job the delete still runs for it was submitted. It ends the
+	// retirement, and the runner no longer keeps the project's finished
+	// jobs for it.
+	ProjectDeleted(ctx context.Context, projectID uuid.UUID) error
 	// Cancel cancels a job: a pending job ends as cancelled without
 	// running, and a running job has its context cancelled. Cancelling a
 	// finished job does nothing. A file removal job cannot be cancelled;
@@ -127,8 +132,9 @@ type JobRunner interface {
 // PixiRunner runs pixi in a project directory (internal/client/sdk/exec).
 //
 // Each method sends pixi's stdout and stderr to out, the job's log, and
-// starts pixi with ctx through process.CommandContext, so cancelling ctx
-// stops pixi and its child processes and the method returns promptly.
+// starts pixi with ctx through process.CommandContext, so on unix
+// cancelling ctx stops pixi and its child processes and the method returns
+// promptly. On other systems only pixi itself is stopped.
 type PixiRunner interface {
 	// Lock solves the manifest in dir and writes dir/pixi.lock.
 	Lock(ctx context.Context, dir string, out io.Writer) error

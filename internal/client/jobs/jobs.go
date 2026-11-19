@@ -43,7 +43,7 @@ func (t Type) Cancellable() bool {
 }
 
 // Status is where a job is in its life cycle. The values match the job
-// statuses of the server (internal/models.JobStatus) and the frontend.
+// statuses of the server (internal/models.JobStatus).
 type Status string
 
 const (
@@ -120,9 +120,11 @@ func (j Job) Started() bool {
 // log is safe for concurrent use.
 //
 // The context is cancelled when the job is cancelled or the runner is
-// closed. The body must then return promptly, so every process it starts
-// must be started with ctx (for pixi, through process.CommandContext,
-// which also stops pixi's child processes).
+// closed, except for job types that cannot be cancelled (see
+// Type.Cancellable), whose context is never cancelled. The body must then
+// return promptly, so every process it starts must be started with ctx
+// (for pixi, through process.CommandContext, which on unix also stops
+// pixi's child processes).
 type Func func(ctx context.Context, log io.Writer) error
 
 // ErrClosed is returned by Submit after Close.
@@ -195,9 +197,9 @@ func ReportVersion(ctx context.Context, versionID uuid.UUID) {
 // whose project is busy so it does not hold back jobs for other projects.
 //
 // Finished jobs are dropped when they are no longer needed: the latest
-// finished job of each type is kept for each project while the project
-// exists, and the others are kept up to Options.KeepFinished, most recently
-// finished first. Active jobs are never dropped. Jobs are dropped as other
+// finished job of each type is kept for each project until ProjectDeleted
+// reports the project deleted, and the others are kept up to
+// Options.KeepFinished, most recently finished first. Active jobs are never dropped. Jobs are dropped as other
 // jobs finish.
 //
 // The latest job of each type is kept, not only the latest job of the
@@ -224,7 +226,11 @@ type Memory struct {
 	finished []*entry
 	// retired maps a retired project to the job types it still accepts.
 	retired map[uuid.UUID]map[Type]bool
-	closed  bool
+	// gone holds the projects reported deleted with ProjectDeleted while
+	// the runner still keeps jobs of theirs. An entry goes with the
+	// project's last kept job.
+	gone   map[uuid.UUID]bool
+	closed bool
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -262,6 +268,7 @@ func NewMemory(opts Options) *Memory {
 		byProj:       make(map[uuid.UUID][]*entry),
 		busy:         make(map[uuid.UUID]bool),
 		retired:      make(map[uuid.UUID]map[Type]bool),
+		gone:         make(map[uuid.UUID]bool),
 		ctx:          ctx,
 		cancel:       cancel,
 	}
@@ -330,7 +337,13 @@ func (m *Memory) start(e *entry) {
 	e.job.Status = StatusRunning
 	e.job.StartedAt = &started
 
-	ctx, cancel := context.WithCancel(m.ctx)
+	// A job that cannot be cancelled must not stop part way, so Close does
+	// not reach its context either.
+	parent := m.ctx
+	if !e.job.Type.Cancellable() {
+		parent = context.WithoutCancel(m.ctx)
+	}
+	ctx, cancel := context.WithCancel(parent)
 	e.cancel = cancel
 	ctx = context.WithValue(ctx, ctxKey{}, &jobCtx{
 		id: e.job.ID,
@@ -395,27 +408,19 @@ func (m *Memory) finish(e *entry, status Status, errMsg string) {
 	e.log.finish()
 	close(e.done)
 	m.finished = append(m.finished, e)
-	if e.job.Type == TypeDeleteFiles && status == StatusCompleted {
-		// The project's files are gone, so the project is gone for good.
-		delete(m.retired, e.job.ProjectID)
-	}
 	m.evict()
 }
 
 // evict drops finished jobs beyond the kept ones: the latest finished job
-// that started, of each type, for each existing project, and the
-// KeepFinished most recently finished others. A project counts as gone
-// while it is retired, and once its latest job is a file removal, which
-// only runs for a deleted project. Called with mu held.
+// that started, of each type, for each project not reported deleted with
+// ProjectDeleted, and the KeepFinished most recently finished others.
+// Called with mu held.
 func (m *Memory) evict() {
 	pinned := func(e *entry) bool {
-		if _, retired := m.retired[e.job.ProjectID]; retired || e.job.Type == TypeDeleteFiles {
+		if m.gone[e.job.ProjectID] {
 			return false
 		}
 		list := m.byProj[e.job.ProjectID]
-		if list[len(list)-1].job.Type == TypeDeleteFiles {
-			return false // the project is gone
-		}
 		for i := len(list) - 1; i >= 0; i-- {
 			if o := list[i]; o.job.Type == e.job.Type && !o.job.Active() && o.job.Started() {
 				return o == e
@@ -452,6 +457,7 @@ func (m *Memory) drop(e *entry) {
 	list := slices.DeleteFunc(m.byProj[pid], func(o *entry) bool { return o == e })
 	if len(list) == 0 {
 		delete(m.byProj, pid)
+		delete(m.gone, pid)
 	} else {
 		m.byProj[pid] = list
 	}
@@ -498,9 +504,9 @@ func (m *Memory) cancelLocked(e *entry) error {
 // returns their IDs and retires nothing. Deleting a project retires it, so
 // no job can start between the busy check and the delete.
 //
-// A retired project counts as gone: its latest finished jobs are no longer
-// kept for it. The retirement ends when a file removal job of the project
-// completes, or with RestoreProject.
+// Retiring is a reservation that RestoreProject can undo, so a retired
+// project's latest finished jobs are still kept. The retirement ends with
+// ProjectDeleted, once the delete has gone through, or with RestoreProject.
 func (m *Memory) RetireProject(_ context.Context, projectID uuid.UUID, allow ...Type) ([]uuid.UUID, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -526,6 +532,22 @@ func (m *Memory) RestoreProject(_ context.Context, projectID uuid.UUID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.retired, projectID)
+	return nil
+}
+
+// ProjectDeleted reports that the project is deleted for good. Call it once
+// the delete has committed, after submitting any job the delete still runs
+// for the project. It ends the project's retirement, and its finished jobs
+// are no longer kept for it: they age out like any other old job. Active
+// jobs, such as a running file removal, are not affected.
+func (m *Memory) ProjectDeleted(_ context.Context, projectID uuid.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.retired, projectID)
+	if len(m.byProj[projectID]) > 0 {
+		m.gone[projectID] = true
+		m.evict()
+	}
 	return nil
 }
 
@@ -593,8 +615,9 @@ func (m *Memory) Logs(id uuid.UUID) ([]byte, error) {
 // error when a write fails. Several readers can follow one job.
 //
 // Each reader reads the job's kept output at its own pace, so a slow reader
-// never blocks the job and holds no output of its own: memory stays bounded
-// by Options.LogLimit per job. A reader that falls more than LogLimit bytes
+// never blocks the job. A reader holds at most Options.LogLimit bytes of
+// its own, the copy it is writing to w, so memory stays bounded by LogLimit
+// per job plus at most LogLimit per follower. A reader that falls more than LogLimit bytes
 // behind skips the output no longer kept, and a marker line in the stream
 // says how many bytes it skipped.
 func (m *Memory) FollowLogs(ctx context.Context, id uuid.UUID, w io.Writer) error {
@@ -632,7 +655,7 @@ func (m *Memory) FollowLogs(ctx context.Context, id uuid.UUID, w io.Writer) erro
 // Close cancels pending and running jobs, waits for running ones to
 // return and rejects new submissions. The jobs it stops end as cancelled.
 // A running job that cannot be cancelled (a file removal) is left to
-// finish, and ends as completed or failed.
+// finish: its context is not cancelled, and it ends as completed or failed.
 func (m *Memory) Close() {
 	m.mu.Lock()
 	if !m.closed {

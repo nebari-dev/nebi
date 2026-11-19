@@ -385,15 +385,68 @@ func TestDeleteKeepsLegacyOriginOnRollback(t *testing.T) {
 	}
 }
 
-func TestDeletedProjectAcceptsNoNewJobs(t *testing.T) {
-	h := newHarness(t)
-	p, _ := h.mustCreate(specRequest("retired"))
-	if _, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{}); err != nil {
+// deleteRecorder is a JobRunner that records, for each ProjectDeleted
+// call, whether the project row was gone and the project's jobs then.
+type deleteRecorder struct {
+	*jobs.Memory
+	db *gorm.DB
+
+	mu    sync.Mutex
+	calls map[uuid.UUID][]deletedCall
+}
+
+type deletedCall struct {
+	rows int64
+	jobs []jobs.Job
+}
+
+func (r *deleteRecorder) ProjectDeleted(ctx context.Context, id uuid.UUID) error {
+	var c deletedCall
+	if err := r.db.Model(&Project{}).Where("id = ?", id).Count(&c.rows).Error; err != nil {
+		return err
+	}
+	c.jobs, _ = r.Memory.ProjectJobs(ctx, id)
+	r.mu.Lock()
+	r.calls[id] = append(r.calls[id], c)
+	r.mu.Unlock()
+	return r.Memory.ProjectDeleted(ctx, id)
+}
+
+func TestDeleteReportsProjectDeleted(t *testing.T) {
+	rec := &deleteRecorder{calls: map[uuid.UUID][]deletedCall{}}
+	h := newHarness(t, func(o *Options) {
+		rec.Memory, rec.db = o.Jobs.(*jobs.Memory), o.DB
+		o.Jobs = rec
+	})
+	withFiles, _ := h.mustCreate(specRequest("with-files"))
+	kept, _ := h.mustCreate(specRequest("files-kept"))
+	failed, _ := h.mustCreate(specRequest("failed"))
+
+	job, err := h.svc.DeleteProject(context.Background(), withFiles.ID, DeleteProjectOptions{DeleteFiles: true})
+	if err != nil {
 		t.Fatal(err)
 	}
-	noop := func(context.Context, io.Writer) error { return nil }
-	if _, err := h.runner.Submit(context.Background(), p.ID, jobs.TypeInstall, noop); !errors.Is(err, jobs.ErrProjectRetired) {
-		t.Fatalf("an install for a deleted project must be refused, got %v", err)
+	calls := rec.calls[withFiles.ID]
+	if len(calls) != 1 || calls[0].rows != 0 {
+		t.Fatalf("ProjectDeleted must be called once, after the row is deleted: %+v", calls)
+	}
+	if js := calls[0].jobs; len(js) == 0 || js[len(js)-1].ID != job.ID {
+		t.Fatalf("ProjectDeleted must come after the removal job %s is submitted, jobs then: %+v", job.ID, js)
+	}
+
+	if _, err := h.svc.DeleteProject(context.Background(), kept.ID, DeleteProjectOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if calls := rec.calls[kept.ID]; len(calls) != 1 || calls[0].rows != 0 {
+		t.Fatalf("a delete that keeps the files must report the project deleted too: %+v", calls)
+	}
+
+	h.versions.deleteErr = errors.New("tags table locked")
+	if _, err := h.svc.DeleteProject(context.Background(), failed.ID, DeleteProjectOptions{}); err == nil {
+		t.Fatal("want an error")
+	}
+	if calls := rec.calls[failed.ID]; len(calls) != 0 {
+		t.Fatalf("a delete that did not happen must not report the project deleted: %+v", calls)
 	}
 }
 

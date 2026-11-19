@@ -142,18 +142,29 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID, opts DeletePr
 	}
 	s.sizes.forget(id)
 
+	job, err := s.submitRemoval(ctx, p, opts, removal)
+	// The project is gone for good, so the runner need no longer keep its
+	// jobs for it. This comes after the removal is submitted, so the
+	// removal job is not kept for it either.
+	_ = s.jobs.ProjectDeleted(context.WithoutCancel(ctx), id)
+	return job, err
+}
+
+// submitRemoval submits the job that removes a deleted project's
+// moved-aside directory, when the delete asked for its files to go.
+func (s *Service) submitRemoval(ctx context.Context, p *Project, opts DeleteProjectOptions, removal *pendingRemoval) (*jobs.Job, error) {
 	if !opts.DeleteFiles {
 		return nil, nil
 	}
 	if removal == nil {
 		// The directory was already gone; the job has nothing to do.
-		job, err := s.jobs.Submit(ctx, id, jobs.TypeDeleteFiles, func(context.Context, io.Writer) error { return nil })
+		job, err := s.jobs.Submit(ctx, p.ID, jobs.TypeDeleteFiles, func(context.Context, io.Writer) error { return nil })
 		if err != nil {
 			return nil, fmt.Errorf("project %s was deleted, but its file removal job could not be started: %w", p.Name, err)
 		}
 		return job, nil
 	}
-	job, err := s.jobs.Submit(ctx, id, jobs.TypeDeleteFiles, s.removalJob(*removal))
+	job, err := s.jobs.Submit(ctx, p.ID, jobs.TypeDeleteFiles, s.removalJob(*removal))
 	if err != nil {
 		return nil, fmt.Errorf("project %s was deleted, but removing %s could not be started: %w; RecoverDeletes removes it later", p.Name, removal.TrashPath, err)
 	}
@@ -231,6 +242,9 @@ func (s *Service) RecoverDeletes(ctx context.Context) ([]*jobs.Job, error) {
 			errs = append(errs, fmt.Errorf("starting removal of %s: %w", r.TrashPath, err))
 			continue
 		}
+		// The project row is gone, so the removal job need not be kept for
+		// the project.
+		_ = s.jobs.ProjectDeleted(ctx, r.ProjectID)
 		started = append(started, job)
 	}
 	return started, errors.Join(errs...)

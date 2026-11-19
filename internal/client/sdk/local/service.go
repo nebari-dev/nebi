@@ -73,8 +73,8 @@ type VersionInfo struct {
 	Count int
 	// Latest is the newest version number; nil when there are no versions.
 	Latest *int
-	// Installed is the number of the installed version; nil when nothing
-	// is installed.
+	// Installed is the number of the version whose ID was passed as
+	// installedID; nil when that is nil.
 	Installed *int
 }
 
@@ -109,6 +109,16 @@ type JobRunner interface {
 	// oldest first: every pending or running job, the latest finished one
 	// of each type that started while the project exists, and older
 	// finished ones only until they are dropped.
+	//
+	// Project reads rely on when this list changes (see readProjects): a
+	// job is listed before its body starts, so before it writes anything,
+	// and is marked finished, meaning no longer active, only after its
+	// body has returned, so after every write it makes. A runner must keep
+	// both: a job that writes before it is listed, or is marked finished
+	// before its writes are done, can make a read report a state the
+	// project was never in. The list may change at other times too, such
+	// as when an old finished job is dropped; that only costs a read a
+	// retry.
 	ProjectJobs(ctx context.Context, projectID uuid.UUID) ([]jobs.Job, error)
 	// RetireProject atomically checks that the project has no pending or
 	// running job and, when it has none, refuses every later job for it

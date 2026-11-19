@@ -32,7 +32,11 @@ type Project struct {
 	// InstalledVersionID is the version whose environment is materialized in
 	// Path/.pixi. Nil when nothing is installed. Written only after an
 	// install succeeds, by the create job and sdk/exec. State is installed
-	// only when it is set and .pixi/envs exists.
+	// only when it is set and .pixi/envs exists. A reinstall or uninstall
+	// must clear it before touching .pixi, so a crash midway does not leave
+	// the old version reported as installed, and must do so inside its job
+	// body, never before Submit, so a read that sees it cleared also sees
+	// the job (see readProjects).
 	InstalledVersionID *uuid.UUID `gorm:"type:text" json:"installed_version_id,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`

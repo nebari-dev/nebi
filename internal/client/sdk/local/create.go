@@ -109,10 +109,17 @@ func (s *Service) CreateProject(ctx context.Context, req CreateProjectRequest) (
 	}
 
 	// 3. Insert the project row.
+	managed := false
+	if created {
+		if managed, err = inside(projectsDir, dir); err != nil {
+			cleanup()
+			return nil, nil, err
+		}
+	}
 	p := &Project{
 		Name:       req.Name,
 		Path:       dir,
-		ManagedDir: created && inside(projectsDir, dir),
+		ManagedDir: managed,
 	}
 	if err := s.db.WithContext(ctx).Create(p).Error; err != nil {
 		cleanup()
@@ -196,18 +203,27 @@ func (s *Service) createPath(req CreateProjectRequest) (string, error) {
 // files would remove the inner one's files too. Directories are compared
 // on disk, so a path that differs from a tracked one only in case is the
 // same directory on a case-insensitive filesystem.
+//
+// A tracked project whose directory cannot be checked on disk (for
+// example because a directory on its path cannot be read) is compared by
+// path only, instead of failing every create. Create removes nothing, and
+// DeleteProject checks again before removing files and refuses when it
+// cannot check, which is what protects the files.
 func (s *Service) checkPathFree(ctx context.Context, dir string) error {
 	tracked, err := s.trackedPaths(ctx)
 	if err != nil {
 		return err
 	}
 	for _, o := range tracked {
-		switch {
-		case sameDir(o.Path, dir):
+		// sameDir and inside compare the paths before going to disk, so
+		// an error here means only the on-disk comparison failed.
+		if same, err := sameDir(o.Path, dir); err == nil && same {
 			return fmt.Errorf("%w: %s is project %q at %s", ErrPathTaken, dir, o.Name, o.Path)
-		case inside(o.Path, dir):
+		}
+		if in, err := inside(o.Path, dir); err == nil && in {
 			return fmt.Errorf("%w: %s is inside project %q at %s", ErrPathTaken, dir, o.Name, o.Path)
-		case inside(dir, o.Path):
+		}
+		if in, err := inside(dir, o.Path); err == nil && in {
 			return fmt.Errorf("%w: %s contains project %q at %s", ErrPathTaken, dir, o.Name, o.Path)
 		}
 	}

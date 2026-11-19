@@ -47,8 +47,13 @@ func (pendingRemoval) TableName() string { return "client_pending_removals" }
 //     only jobs of that runner. It then moves back a directory that an
 //     earlier failed delete left moved aside, and refuses with
 //     ErrPathTaken when DeleteFiles would remove another project's
-//     directory. Apart from that move back, nothing is changed in these
-//     cases.
+//     directory. When DeleteFiles is asked and another project's directory
+//     cannot be checked (for example a directory on its path cannot be
+//     read), it also refuses, with an error that names that project and
+//     matches no sentinel: the path is not known to be taken, but removing
+//     the files might remove that project's too. Deleting the project that
+//     cannot be checked, without its files, clears it. Apart from that
+//     move back, nothing is changed in these cases.
 //  2. In one transaction it deletes the project's versions and tags, the
 //     rows of the DeleteHooks, its legacy origin row, and the project row.
 //  3. With DeleteFiles it first renames Path to a hidden sibling, so the
@@ -173,9 +178,11 @@ func (s *Service) submitRemoval(ctx context.Context, p *Project, opts DeleteProj
 
 // checkNothingInside returns ErrPathTaken when removing p's directory would
 // remove another tracked project's directory: the same directory, or one
-// inside it. Create refuses nested projects, but rows from the legacy
-// migration can still nest, and a directory can be moved under another
-// one after it was tracked.
+// inside it. When a directory cannot be checked it returns that error,
+// naming the project, so the delete is refused rather than allowed. Create
+// refuses nested projects, but rows from the legacy migration can still
+// nest, and a directory can be moved under another one after it was
+// tracked.
 func (s *Service) checkNothingInside(ctx context.Context, p *Project) error {
 	tracked, err := s.trackedPaths(ctx)
 	if err != nil {
@@ -185,10 +192,16 @@ func (s *Service) checkNothingInside(ctx context.Context, p *Project) error {
 		if o.ID == p.ID {
 			continue
 		}
-		if sameDir(p.Path, o.Path) {
+		// An error here means a directory could not be checked; refuse
+		// rather than risk removing another project's files.
+		if same, err := sameDir(p.Path, o.Path); err != nil {
+			return fmt.Errorf("cannot remove %s: checking project %q at %s: %w", p.Path, o.Name, o.Path, err)
+		} else if same {
 			return fmt.Errorf("%w: cannot remove %s, project %q at %s uses the same directory", ErrPathTaken, p.Path, o.Name, o.Path)
 		}
-		if inside(p.Path, o.Path) {
+		if in, err := inside(p.Path, o.Path); err != nil {
+			return fmt.Errorf("cannot remove %s: checking project %q at %s: %w", p.Path, o.Name, o.Path, err)
+		} else if in {
 			return fmt.Errorf("%w: cannot remove %s, project %q at %s is inside it", ErrPathTaken, p.Path, o.Name, o.Path)
 		}
 	}

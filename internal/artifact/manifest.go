@@ -45,14 +45,12 @@ type Spec struct {
 }
 
 // Manifest is what ParseManifest reads from a pixi.toml: the fields of the
-// [workspace] table (or the legacy [project] table).
+// [workspace] table (or the legacy [project] table) that nebi uses. Channels
+// are not read: nebi does not check them, and pixi lock reports a bad one.
 type Manifest struct {
 	Name        string
 	Description string
-	// Channels are the channel names, from plain strings or from the
-	// channel key of { channel = ..., priority = ... } tables.
-	Channels  []string
-	Platforms []string
+	Platforms   []string
 }
 
 // ValidatePlatforms checks that no platform is listed twice. It does not
@@ -124,26 +122,6 @@ func ParseManifest(content string) (*Manifest, error) {
 	}
 	if m.Description, err = optionalString(table, "description"); err != nil {
 		return nil, err
-	}
-	if raw, present := table["channels"]; present {
-		list, ok := raw.([]any)
-		if !ok {
-			return nil, fmt.Errorf("%w: channels must be a list", ErrInvalid)
-		}
-		for _, item := range list {
-			switch c := item.(type) {
-			case string:
-				m.Channels = append(m.Channels, c)
-			case map[string]any:
-				name, ok := c["channel"].(string)
-				if !ok {
-					return nil, fmt.Errorf("%w: a channel table needs a channel name", ErrInvalid)
-				}
-				m.Channels = append(m.Channels, name)
-			default:
-				return nil, fmt.Errorf("%w: channels must be names or channel tables", ErrInvalid)
-			}
-		}
 	}
 	if raw, present := table["platforms"]; present {
 		list, ok := raw.([]any)

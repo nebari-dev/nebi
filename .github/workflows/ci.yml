@@ -1,7 +1,7 @@
 name: CI
 
 # ux-rework-dev is the integration branch for the UX rework (#554). Remove it
-# here once the rework merges back into main (#668).
+# here once the rework merges back into main (#590).
 on:
   push:
     branches: [main, ux-rework-dev]

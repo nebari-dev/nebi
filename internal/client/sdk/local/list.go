@@ -59,10 +59,14 @@ type ProjectSummary struct {
 	// the failed one for StateLockFailed and StateInstallFailed.
 	JobID *uuid.UUID `json:"job_id,omitempty"`
 
-	// InstalledVersion and LatestVersion are version numbers; nil when
-	// nothing is installed or there are no versions.
+	// InstalledVersion is the number of the version nebi last recorded as
+	// installed (InstalledVersionID); nil when none is recorded. It is
+	// kept when the environment is no longer on disk, so check State to
+	// know whether it is installed now.
 	InstalledVersion *int `json:"installed_version"`
-	LatestVersion    *int `json:"latest_version"`
+	// LatestVersion is the newest version number; nil when there are no
+	// versions.
+	LatestVersion *int `json:"latest_version"`
 
 	// SizeBytes is the cached size of Path on disk. Nil until it has been
 	// computed: sizes are computed in the background, so a project's first
@@ -86,36 +90,171 @@ type ProjectDetail struct {
 // ListProjects returns every local project, ordered by name. It only reads:
 // sizes come from the cache, and missing or stale ones are recomputed in
 // the background, so listing never waits for a walk of .pixi.
+//
+// Projects are read with readProjects, so a job that starts or finishes
+// during the list does not tear the state the job writes, within the
+// limits readProjects describes. A project created after the list starts
+// is left out; the next list shows it.
 func (s *Service) ListProjects(ctx context.Context) ([]ProjectSummary, error) {
-	var projects []Project
-	if err := s.db.WithContext(ctx).Order("name COLLATE NOCASE ASC").Find(&projects).Error; err != nil {
+	var ids []uuid.UUID
+	if err := s.db.WithContext(ctx).Model(&Project{}).Pluck("id", &ids).Error; err != nil {
 		return nil, fmt.Errorf("listing projects: %w", err)
 	}
-	out := make([]ProjectSummary, 0, len(projects))
-	for i := range projects {
-		d, err := s.describe(ctx, &projects[i])
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, d.ProjectSummary)
+	reads, err := s.readProjects(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ProjectSummary, len(reads))
+	projects := make([]Project, len(reads))
+	for i, r := range reads {
+		out[i] = r.detail.ProjectSummary
+		projects[i] = r.project
 	}
 	s.refreshSizes(projects)
 	return out, nil
 }
 
-// GetProject returns one project. Like ListProjects it only reads, and its
-// size comes from the cache.
+// GetProject returns one project. Like ListProjects it only reads, its
+// size comes from the cache, and it is read with readProjects.
 func (s *Service) GetProject(ctx context.Context, id uuid.UUID) (*ProjectDetail, error) {
-	p, err := s.loadProject(ctx, id)
+	reads, err := s.readProjects(ctx, []uuid.UUID{id})
 	if err != nil {
 		return nil, err
 	}
-	d, err := s.describe(ctx, p)
-	if err != nil {
-		return nil, err
+	if len(reads) == 0 {
+		return nil, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	s.refreshSizes([]Project{*p})
-	return d, nil
+	s.refreshSizes([]Project{reads[0].project})
+	return reads[0].detail, nil
+}
+
+// maxReadAttempts bounds how many times readProjects reads a project whose
+// jobs keep changing during the read.
+const maxReadAttempts = 5
+
+// projectRead is a project row and the detail readProjects built from it.
+type projectRead struct {
+	project Project
+	detail  *ProjectDetail
+}
+
+// readProjects reads the projects with the given IDs, ordered by name as
+// of their first read, and leaves out those that do not exist. It is the
+// only way project state is read, so every read path gets the same
+// guarantee for the state a job writes.
+//
+// A project's state comes from two sources that change independently: its
+// jobs, in the JobRunner, and its row, versions and .pixi/envs, which a
+// job writes. Reading them one after the other can tear in either
+// direction. A job that finishes between the reads pairs a row from before
+// its writes with the job already finished (not_installed for a project
+// that was just installed); a job that starts between them pairs a row it
+// has already changed (an install clears InstalledVersionID first) with
+// jobs that do not show it (not_installed for a project being installed).
+//
+// So each project's jobs are read before and after its row, versions and
+// disk. The job list changes only when a job is submitted, before its body
+// writes anything, and when it finishes, after its body has written
+// everything (see JobRunner.ProjectJobs). When the two job reads match, no
+// job started or finished during the row read, and the row is consistent
+// with the jobs. When they differ, the project is read again, up to
+// maxReadAttempts times; if its jobs still change on the last attempt,
+// that attempt is returned as read, unchecked.
+//
+// The guarantee covers only what a job writes. State written outside a
+// job is not bracketed by the two job reads:
+//   - CreateProject inserts the row before it submits the create job, so a
+//     read in between sees the row with no job.
+//   - DeleteProject deletes the row and versions in a transaction, not a
+//     job, so a read that loads the row before the delete commits and the
+//     versions after it reports lock_failed linked to the create job; the
+//     next read returns ErrNotFound.
+func (s *Service) readProjects(ctx context.Context, ids []uuid.UUID) ([]projectRead, error) {
+	var out []projectRead
+	index := make(map[uuid.UUID]int, len(ids))
+	gone := map[uuid.UUID]bool{}
+	pending := ids
+	for attempt := 1; len(pending) > 0; attempt++ {
+		before, err := s.projectJobs(ctx, pending)
+		if err != nil {
+			return nil, err
+		}
+		var rows []Project
+		if err := s.db.WithContext(ctx).Where("id IN ?", pending).Order("name COLLATE NOCASE ASC").Find(&rows).Error; err != nil {
+			return nil, fmt.Errorf("loading projects: %w", err)
+		}
+		details := make([]*ProjectDetail, len(rows))
+		for i := range rows {
+			if details[i], err = s.describe(ctx, &rows[i], before[rows[i].ID]); err != nil {
+				return nil, err
+			}
+		}
+		after, err := s.projectJobs(ctx, pending)
+		if err != nil {
+			return nil, err
+		}
+
+		found := make(map[uuid.UUID]bool, len(rows))
+		var retry []uuid.UUID
+		for i := range rows {
+			id := rows[i].ID
+			found[id] = true
+			r := projectRead{project: rows[i], detail: details[i]}
+			if j, ok := index[id]; ok {
+				out[j] = r
+			} else {
+				index[id] = len(out)
+				out = append(out, r)
+			}
+			if attempt < maxReadAttempts && !sameJobs(before[id], after[id]) {
+				retry = append(retry, id)
+			}
+		}
+		// A project deleted since an earlier attempt read it is gone.
+		for _, id := range pending {
+			if !found[id] {
+				gone[id] = true
+			}
+		}
+		pending = retry
+	}
+	if len(gone) == 0 {
+		return out, nil
+	}
+	kept := out[:0]
+	for _, r := range out {
+		if !gone[r.project.ID] {
+			kept = append(kept, r)
+		}
+	}
+	return kept, nil
+}
+
+// projectJobs reads the jobs of each project.
+func (s *Service) projectJobs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID][]jobs.Job, error) {
+	out := make(map[uuid.UUID][]jobs.Job, len(ids))
+	for _, id := range ids {
+		list, err := s.jobs.ProjectJobs(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("reading jobs of project %s: %w", id, err)
+		}
+		out[id] = list
+	}
+	return out, nil
+}
+
+// sameJobs reports whether two reads of a project's jobs list the same jobs
+// with the same statuses.
+func sameJobs(a, b []jobs.Job) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].ID != b[i].ID || a[i].Status != b[i].Status {
+			return false
+		}
+	}
+	return true
 }
 
 // ProjectSize walks the project directory, caches its size and returns it.
@@ -133,14 +272,13 @@ func (s *Service) ProjectSize(ctx context.Context, id uuid.UUID) (int64, error) 
 	return size, nil
 }
 
-func (s *Service) describe(ctx context.Context, p *Project) (*ProjectDetail, error) {
+// describe builds a project's detail from its row p and projectJobs, the
+// project's jobs. Call it through readProjects, which reads the jobs on
+// both sides of the row so the two are consistent.
+func (s *Service) describe(ctx context.Context, p *Project, projectJobs []jobs.Job) (*ProjectDetail, error) {
 	info, err := s.versions.VersionInfo(ctx, p.ID, p.InstalledVersionID)
 	if err != nil {
 		return nil, fmt.Errorf("reading versions of %s: %w", p.Name, err)
-	}
-	projectJobs, err := s.jobs.ProjectJobs(ctx, p.ID)
-	if err != nil {
-		return nil, fmt.Errorf("reading jobs of %s: %w", p.Name, err)
 	}
 	state, jobID := deriveState(info.Count, projectJobs, p.InstalledVersionID != nil, envInstalled(p.Path))
 

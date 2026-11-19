@@ -2,8 +2,14 @@ package local
 
 import (
 	"errors"
+	"go/parser"
+	"go/token"
+	"io/fs"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -136,25 +142,95 @@ var serverPackages = []string{
 	"github.com/nebari-dev/nebi/internal/api",
 }
 
+// isServerPackage reports whether pkg is one of serverPackages or inside one.
+func isServerPackage(pkg string) bool {
+	for _, forbidden := range serverPackages {
+		if pkg == forbidden || strings.HasPrefix(pkg, forbidden+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// TestClientDoesNotImportServerPackages checks the direct imports of every
+// .go file under internal/client, whatever its build constraints. go list
+// in TestClientDoesNotDependOnServerPackages only sees the files that build
+// for the operating systems it lists with -tags=e2e, so it misses a server
+// import in a file behind another build tag.
+func TestClientDoesNotImportServerPackages(t *testing.T) {
+	root := filepath.Join("..", "..") // internal/client
+	checked := 0
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		checked++
+		for _, imp := range f.Imports {
+			if p, _ := strconv.Unquote(imp.Path.Value); isServerPackage(p) {
+				t.Errorf("%s imports %s", path, p)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checked == 0 {
+		t.Fatal("no Go files found under internal/client")
+	}
+}
+
+// clientTargetOSes are the operating systems the client is built for.
+var clientTargetOSes = []string{"linux", "darwin", "windows"}
+
 // TestClientDoesNotDependOnServerPackages enforces the data model acceptance
 // criterion: nothing in internal/client depends on internal/models or the
 // other server packages. It reads the full dependency graph from go list
 // -deps, test files included, so an import through another package (for
 // example internal/store, which reaches internal/models via internal/auth)
-// is caught too.
+// is caught too. go list only sees the files that build for one GOOS and
+// cgo setting, so it runs for each OS the client targets, with cgo off and
+// on: an OS-specific file (such as a _windows.go file) or a cgo or !cgo
+// file that reaches a server package through another package is caught
+// too. TestClientDoesNotImportServerPackages covers the direct
+// imports of files behind other build tags.
 func TestClientDoesNotDependOnServerPackages(t *testing.T) {
 	goBin, err := exec.LookPath("go")
 	if err != nil {
 		t.Fatalf("go list needs the go command on PATH: %v", err)
 	}
+	for _, goos := range clientTargetOSes {
+		// Release builds set CGO_ENABLED=0 (.goreleaser.yaml, Dockerfile),
+		// and a cgo build keeps the cgo files instead of the !cgo ones
+		// (go list drops cgo files by default when GOOS is not the
+		// host's), so check both graphs.
+		for _, cgo := range []string{"0", "1"} {
+			t.Run(goos+"/cgo="+cgo, func(t *testing.T) {
+				checkServerDeps(t, goBin, goos, cgo)
+			})
+		}
+	}
+}
+
+// checkServerDeps fails t when internal/client, built for goos with
+// CGO_ENABLED=cgo, depends on a server package.
+func checkServerDeps(t *testing.T, goBin, goos, cgo string) {
 	cmd := exec.Command(goBin, "list", "-deps", "-test", "-tags=e2e",
 		"-f", "{{.ImportPath}}|{{join .Imports \",\"}}",
 		"github.com/nebari-dev/nebi/internal/client/...")
+	cmd.Env = append(os.Environ(), "GOOS="+goos, "CGO_ENABLED="+cgo)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("go list: %v\n%s", err, stderr.String())
+		t.Fatalf("GOOS=%s CGO_ENABLED=%s go list: %v\n%s", goos, cgo, err, stderr.String())
 	}
 
 	// importers maps every package in the graph to the packages that
@@ -179,15 +255,13 @@ func TestClientDoesNotDependOnServerPackages(t *testing.T) {
 		t.Fatalf("go list did not report internal/client/sdk/local:\n%s", out)
 	}
 	for pkg, set := range importers {
-		for _, forbidden := range serverPackages {
-			if pkg == forbidden || strings.HasPrefix(pkg, forbidden+"/") {
-				var by []string
-				for b := range set {
-					by = append(by, b)
-				}
-				sort.Strings(by)
-				t.Errorf("internal/client depends on %s (imported by %s)", pkg, strings.Join(by, ", "))
+		if isServerPackage(pkg) {
+			var by []string
+			for b := range set {
+				by = append(by, b)
 			}
+			sort.Strings(by)
+			t.Errorf("internal/client depends on %s for GOOS=%s CGO_ENABLED=%s (imported by %s)", pkg, goos, cgo, strings.Join(by, ", "))
 		}
 	}
 }

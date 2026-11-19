@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -114,31 +115,108 @@ func TestSameDirAndInside(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(outer, "inner"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if !sameDir(outer, outer) || sameDir(outer, filepath.Join(outer, "inner")) {
+	if !mustSameDir(t, outer, outer) || mustSameDir(t, outer, filepath.Join(outer, "inner")) {
 		t.Fatal("sameDir by path")
 	}
-	if !inside(outer, filepath.Join(outer, "inner")) || inside(outer, outer) || inside(filepath.Join(outer, "inner"), outer) {
+	if !mustInside(t, outer, filepath.Join(outer, "inner")) || mustInside(t, outer, outer) || mustInside(t, filepath.Join(outer, "inner"), outer) {
 		t.Fatal("inside by path")
 	}
-	if !inside(outer, filepath.Join(outer, "missing", "deeper")) {
+	if !mustInside(t, outer, filepath.Join(outer, "missing", "deeper")) {
 		t.Fatal("a path that does not exist yet is inside its existing ancestor")
+	}
+	if mustSameDir(t, outer, filepath.Join(base, "missing")) || mustInside(t, filepath.Join(base, "missing"), filepath.Join(outer, "inner")) {
+		t.Fatal("a directory that does not exist is neither the same as nor contains another")
+	}
+
+	// A path through a regular file does not exist either: stat fails with
+	// "not a directory" (ENOTDIR on Unix), not "no such file", as for a
+	// project whose parent directory was replaced by a file.
+	file := filepath.Join(base, "file")
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	throughFile := filepath.Join(file, "project")
+	if mustSameDir(t, outer, throughFile) || mustSameDir(t, throughFile, outer) ||
+		mustInside(t, throughFile, filepath.Join(outer, "inner")) || mustInside(t, outer, throughFile) {
+		t.Fatal("a path through a regular file is neither the same as, inside nor contains another")
 	}
 
 	link := filepath.Join(base, "link")
 	if err := os.Symlink(outer, link); err == nil {
-		if !sameDir(outer, link) || !inside(outer, filepath.Join(link, "inner")) {
+		if !mustSameDir(t, outer, link) || !mustInside(t, outer, filepath.Join(link, "inner")) {
 			t.Fatal("a symlink to a directory is the same directory")
 		}
 	}
 
 	if caseInsensitive(t, base) {
 		upper := filepath.Join(base, "OUTER")
-		if !sameDir(outer, upper) || !inside(outer, filepath.Join(upper, "inner")) || !inside(upper, filepath.Join(outer, "inner")) {
+		if !mustSameDir(t, outer, upper) || !mustInside(t, outer, filepath.Join(upper, "inner")) || !mustInside(t, upper, filepath.Join(outer, "inner")) {
 			t.Fatal("paths that differ only in case are the same directory here")
 		}
-	} else if sameDir(outer, filepath.Join(base, "OUTER")) {
+	} else if mustSameDir(t, outer, filepath.Join(base, "OUTER")) {
 		t.Fatal("paths that differ in case are different directories here")
 	}
+}
+
+// TestSameDirAndInsideFailClosed checks that a path that cannot be checked,
+// here because the directory holding it cannot be read, is an error and
+// not reported as unrelated: callers use these checks to guard another
+// project's files.
+func TestSameDirAndInsideFailClosed(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a directory the test cannot read")
+	}
+	base := mustResolve(t, t.TempDir())
+	outer := filepath.Join(base, "outer")
+	locked := filepath.Join(base, "locked")
+	for _, d := range []string{outer, filepath.Join(locked, "inner")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	unreadable := filepath.Join(locked, "inner")
+
+	if _, err := inside(outer, unreadable); err == nil {
+		t.Error("inside must return an error for a path it cannot resolve")
+	}
+	if _, err := sameDir(outer, unreadable); err == nil {
+		t.Error("sameDir must return an error for a path it cannot stat")
+	}
+	if _, err := inside(unreadable, filepath.Join(outer, "x")); err == nil {
+		t.Error("inside must return an error for a directory it cannot stat")
+	}
+
+	// A path that cannot be resolved is still inside a directory that
+	// matches one of its ancestors on disk; only a check that finds no
+	// match returns the error.
+	alias := filepath.Join(t.TempDir(), "alias")
+	if os.Symlink(base, alias) == nil {
+		if !mustInside(t, base, filepath.Join(alias, "locked", "inner")) {
+			t.Error("an ancestor that matches must win over a path that cannot be resolved")
+		}
+	}
+}
+
+func mustSameDir(t *testing.T, a, b string) bool {
+	t.Helper()
+	same, err := sameDir(a, b)
+	if err != nil {
+		t.Fatalf("sameDir(%s, %s): %v", a, b, err)
+	}
+	return same
+}
+
+func mustInside(t *testing.T, dir, p string) bool {
+	t.Helper()
+	in, err := inside(dir, p)
+	if err != nil {
+		t.Fatalf("inside(%s, %s): %v", dir, p, err)
+	}
+	return in
 }
 
 func mustResolve(t *testing.T, p string) string {

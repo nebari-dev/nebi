@@ -510,6 +510,30 @@ func TestOwnerLockIsPerHandleInOneProcess(t *testing.T) {
 	mustAcquire(t, dir)
 }
 
+// A caller that drops the handle without releasing it must not lose the
+// lock to the garbage collector closing the file.
+func TestOwnerLockSurvivesDroppedHandle(t *testing.T) {
+	dir := ownerTestDir(t)
+	func() {
+		if _, err := TryAcquireOwner(dir); err != nil {
+			t.Fatalf("TryAcquireOwner: %v", err)
+		}
+	}()
+	for range 5 {
+		runtime.GC()
+		time.Sleep(10 * time.Millisecond)
+	}
+	requireHeld(t, dir)
+	t.Cleanup(func() {
+		heldOwners.Range(func(k, _ any) bool {
+			if o := k.(*Owner); o.Dir() == dir {
+				_ = o.Release()
+			}
+			return true
+		})
+	})
+}
+
 func TestOwnerInfoFile(t *testing.T) {
 	dir := ownerTestDir(t)
 	o := mustAcquire(t, dir)

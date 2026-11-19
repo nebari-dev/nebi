@@ -28,6 +28,11 @@ const (
 // lockPollInterval is how often AcquireOwner retries a held lock.
 const lockPollInterval = 50 * time.Millisecond
 
+// heldOwners keeps every Owner reachable until Release. The lock lives in an
+// *os.File, so a dropped handle would let the garbage collector close the file
+// and the OS free the lock while the process still runs jobs.
+var heldOwners sync.Map // *Owner -> struct{}
+
 var (
 	// ErrOwnerLockHeld is returned by TryAcquireOwner when another owner
 	// holds the lock.
@@ -71,6 +76,9 @@ type OwnerInfo struct {
 // releases it when the owner exits or dies, so there are no stale locks and
 // no PID checks. owner.lock itself is never removed: removing a lock file
 // lets two processes lock two different files of the same name.
+//
+// The lock is held until Release or until the process exits, even if the
+// caller drops the handle.
 type Owner struct {
 	dir string
 
@@ -113,6 +121,7 @@ func TryAcquireOwner(dir string) (*Owner, error) {
 		_ = o.unlock()
 		return nil, err
 	}
+	heldOwners.Store(o, struct{}{})
 	return o, nil
 }
 
@@ -182,6 +191,7 @@ func (o *Owner) Release() error {
 func (o *Owner) unlock() error {
 	f := o.lock
 	o.lock = nil
+	heldOwners.Delete(o)
 	unlockErr := unlockFile(f)
 	if unlockErr != nil {
 		unlockErr = fmt.Errorf("unlocking owner lock: %w", unlockErr)

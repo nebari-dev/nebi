@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -236,6 +235,26 @@ func mustAcquire(t *testing.T, dir string) *Owner {
 	return o
 }
 
+// acquireAfterOwnerDied takes the lock that a killed owner held, with no
+// cleanup step in between. On Unix the kernel closes a process's files before
+// the process can be waited for, so the very next try must succeed. Windows
+// frees a dead process's file locks a little later and gives no point at
+// which they are known to be free, so there the test waits for the lock.
+func acquireAfterOwnerDied(t *testing.T, dir string) *Owner {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		return mustAcquire(t, dir)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), helperTimeout)
+	defer cancel()
+	o, err := AcquireOwner(ctx, dir)
+	if err != nil {
+		t.Fatalf("AcquireOwner after the owner was killed: %v", err)
+	}
+	t.Cleanup(func() { _ = o.Release() })
+	return o
+}
+
 func requireHeld(t *testing.T, dir string) {
 	t.Helper()
 	o, err := TryAcquireOwner(dir)
@@ -326,9 +345,9 @@ func TestOwnerLockFreedWhenOwnerIsKilled(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, OwnerInfoFile)); err != nil {
 		t.Fatalf("owner.json of the killed owner: %v", err)
 	}
-	// The very next attempt succeeds, with no cleanup step in between, and
-	// the new owner has removed the dead owner's details.
-	o := mustAcquire(t, dir)
+	// The lock is taken with no cleanup step in between, and the new owner
+	// has removed the dead owner's details.
+	o := acquireAfterOwnerDied(t, dir)
 	if _, err := ReadOwner(dir); !errors.Is(err, ErrNoOwnerInfo) {
 		t.Fatalf("ReadOwner after a new owner took the lock: got %v, want ErrNoOwnerInfo", err)
 	}
@@ -362,19 +381,16 @@ func TestOwnerLockNotHeldByChildOfKilledOwner(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		_ = child.Kill()
-		_, _ = child.Wait() // reaped by init on Unix; harmless error there
+		_, _ = child.Wait() // not our child on Unix; the error is harmless
 	})
 	requireHeld(t, dir)
 
 	h.kill()
 
-	mustAcquire(t, dir)
-	// The lock was free while the child still ran. (Signal 0 only probes
-	// whether a process exists; Windows has no equivalent.)
-	if runtime.GOOS != "windows" {
-		if err := child.Signal(syscall.Signal(0)); err != nil {
-			t.Fatalf("child %d of the killed owner is not running, so the test proved nothing: %v", pid, err)
-		}
+	acquireAfterOwnerDied(t, dir)
+	// The lock was free while the child still ran.
+	if err := processRunning(pid); err != nil {
+		t.Fatalf("child %d of the killed owner is not running, so the test proved nothing: %v", pid, err)
 	}
 }
 
@@ -585,14 +601,35 @@ func TestOwnerInfoFile(t *testing.T) {
 	}
 	check(helperAPI)
 
-	for _, bad := range []OwnerInfo{
-		{Address: "127.0.0.1:1"},
-		{Token: "secret"},
+	ipv6 := helperAPI
+	ipv6.Address = "[::1]:43210"
+	if err := o.Publish(ipv6); err != nil {
+		t.Fatalf("Publish with an IPv6 loopback address: %v", err)
+	}
+	check(ipv6)
+	if err := o.Publish(helperAPI); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, edit := range map[string]func(*OwnerInfo){
+		"address without token": func(i *OwnerInfo) { i.Token = "" },
+		"token without address": func(i *OwnerInfo) { i.Address = "" },
+		"no nebi version":       func(i *OwnerInfo) { i.NebiVersion = "" },
+		"no client API version": func(i *OwnerInfo) { i.ClientAPIVersion = "" },
+		"private address":       func(i *OwnerInfo) { i.Address = "192.168.1.2:43210" },
+		"unspecified address":   func(i *OwnerInfo) { i.Address = "0.0.0.0:43210" },
+		"host name":             func(i *OwnerInfo) { i.Address = "localhost:43210" },
+		"no port":               func(i *OwnerInfo) { i.Address = "127.0.0.1" },
+		"port zero":             func(i *OwnerInfo) { i.Address = "127.0.0.1:0" },
+		"port out of range":     func(i *OwnerInfo) { i.Address = "127.0.0.1:65536" },
 	} {
+		bad := helperAPI
+		edit(&bad)
 		if err := o.Publish(bad); err == nil {
-			t.Fatalf("Publish(%+v) accepted an address without a token or a token without an address", bad)
+			t.Fatalf("Publish accepted owner info with %s: %+v", name, bad)
 		}
 	}
+	// A refused Publish leaves the published file alone.
 	check(helperAPI)
 
 	if err := o.Release(); err != nil {
@@ -642,6 +679,12 @@ func TestOwnerInfoReplacedAtomically(t *testing.T) {
 			case <-stop:
 				return
 			default:
+			}
+			// Windows cannot replace a file while it is open, so Publish
+			// retries for a while. Leave it gaps between reads, as a real
+			// reader polling now and then does.
+			if runtime.GOOS == "windows" && reads > 0 {
+				time.Sleep(2 * time.Millisecond)
 			}
 			got, err := ReadOwner(dir)
 			reads++
@@ -765,6 +808,29 @@ func TestReadOwnerRejectsCorruptFile(t *testing.T) {
 	_, err := ReadOwner(dir)
 	if err == nil || errors.Is(err, ErrNoOwnerInfo) {
 		t.Fatalf("ReadOwner of a corrupt file: got %v, want a decode error", err)
+	}
+}
+
+// A reader must never send the token to an address owner.json names unless
+// it is loopback, whoever wrote the file.
+func TestReadOwnerRejectsInvalidInfo(t *testing.T) {
+	for name, content := range map[string]string{
+		"private address": `{"pid":1,"nebi_version":"1","client_api_version":"v1","address":"10.0.0.1:80","token":"t"}`,
+		"host name":       `{"pid":1,"nebi_version":"1","client_api_version":"v1","address":"evil.example:80","token":"t"}`,
+		"no token":        `{"pid":1,"nebi_version":"1","client_api_version":"v1","address":"127.0.0.1:80"}`,
+		"no version":      `{"pid":1,"nebi_version":"1","address":"127.0.0.1:80","token":"t"}`,
+		"no pid":          `{"nebi_version":"1","client_api_version":"v1"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := ownerTestDir(t)
+			if err := os.WriteFile(filepath.Join(dir, OwnerInfoFile), []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			info, err := ReadOwner(dir)
+			if err == nil || errors.Is(err, ErrNoOwnerInfo) {
+				t.Fatalf("ReadOwner = %+v, %v; want an invalid owner info error", info, err)
+			}
+		})
 	}
 }
 

@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -50,12 +53,14 @@ type OwnerInfo struct {
 	// PID is the owner's process ID, for messages such as "waiting for
 	// process 1234". It is not used to decide whether the owner is alive.
 	PID int `json:"pid"`
-	// NebiVersion is the owner's nebi version.
+	// NebiVersion is the owner's nebi version. Never empty.
 	NebiVersion string `json:"nebi_version"`
 	// ClientAPIVersion is the version of the client API the owner speaks.
+	// Never empty.
 	ClientAPIVersion string `json:"client_api_version"`
-	// Address is the loopback address of the owner's client API. Empty for
-	// an owner that serves no API, or that is not listening yet.
+	// Address is the loopback address of the owner's client API, as
+	// "127.0.0.1:port" or "[::1]:port". Empty for an owner that serves no
+	// API, or that is not listening yet.
 	Address string `json:"address"`
 	// Token authenticates requests to the owner's client API. Empty exactly
 	// when Address is empty.
@@ -79,6 +84,20 @@ type OwnerInfo struct {
 //
 // The lock is held until Release or until the process exits, even if the
 // caller drops the handle.
+//
+// Callers should know:
+//   - The lock directory must be the directory of the nebi.db the process
+//     actually opened, not a data directory it was configured with, so that
+//     every binary that shares a database shares the lock.
+//   - owner.json can describe an owner that has died: one that died after a
+//     reader failed to take the lock, or one whose file the next owner has
+//     not removed yet. A reader that gets "connection refused" or a rejected
+//     token from Address must wait and try again, not report an error.
+//   - On Windows a file has no 0600 mode; owner.json, and the token in it,
+//     rely on the access rules of the user's data directory.
+//   - On Windows the OS can take a moment to free the lock of a process that
+//     died. TryAcquireOwner may report the lock as held during that time;
+//     AcquireOwner waits it out.
 type Owner struct {
 	dir string
 
@@ -92,7 +111,8 @@ type Owner struct {
 // in the same process.
 //
 // A new owner removes owner.json and any temporary file a crashed owner left
-// behind before returning, so ReadOwner never reports a dead owner.
+// behind before returning. Until then, and after an owner dies, owner.json
+// may still describe the dead owner; see Owner.
 func TryAcquireOwner(dir string) (*Owner, error) {
 	if dir == "" {
 		return nil, errors.New("owner lock directory is empty")
@@ -156,11 +176,14 @@ func (o *Owner) Dir() string {
 // Publish once it holds the lock and again once it is listening, to add its
 // address and token. The file has mode 0600 and is replaced with an atomic
 // rename, so a reader sees either the old content or the new, never part.
+//
+// NebiVersion and ClientAPIVersion are required. Address and Token are set
+// together or not at all, and Address must be a loopback IP and port.
 func (o *Owner) Publish(info OwnerInfo) error {
-	if (info.Address == "") != (info.Token == "") {
-		return errors.New("owner address and token must be set together")
-	}
 	info.PID = os.Getpid()
+	if err := info.validate(); err != nil {
+		return err
+	}
 	data, err := json.MarshalIndent(info, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encoding owner info: %w", err)
@@ -204,7 +227,13 @@ func (o *Owner) unlock() error {
 // failing to take the lock. It returns ErrNoOwnerInfo when the file does not
 // exist, which means the owner has not published yet; an empty Address means
 // the owner is not serving the client API (yet). Neither means there is no
-// owner.
+// owner: wait and try again.
+//
+// The content can describe an owner that has died (see Owner), so an Address
+// that refuses connections or rejects the token also means wait and try
+// again. A file that is not valid owner info, such as one with an address
+// that is not loopback, is an error, so a reader never sends the token off
+// the machine.
 func ReadOwner(dir string) (OwnerInfo, error) {
 	data, err := readFile(filepath.Join(dir, OwnerInfoFile))
 	if errors.Is(err, os.ErrNotExist) {
@@ -217,7 +246,46 @@ func ReadOwner(dir string) (OwnerInfo, error) {
 	if err := json.Unmarshal(data, &info); err != nil {
 		return OwnerInfo{}, fmt.Errorf("decoding owner info: %w", err)
 	}
+	if err := info.validate(); err != nil {
+		return OwnerInfo{}, fmt.Errorf("invalid owner info: %w", err)
+	}
 	return info, nil
+}
+
+func (info OwnerInfo) validate() error {
+	if info.PID <= 0 {
+		return fmt.Errorf("owner pid %d is not a process id", info.PID)
+	}
+	if info.NebiVersion == "" {
+		return errors.New("owner nebi version is empty")
+	}
+	if info.ClientAPIVersion == "" {
+		return errors.New("owner client API version is empty")
+	}
+	if (info.Address == "") != (info.Token == "") {
+		return errors.New("owner address and token must be set together")
+	}
+	if info.Address != "" {
+		return validateLoopbackAddress(info.Address)
+	}
+	return nil
+}
+
+// validateLoopbackAddress accepts only a loopback IP literal and a non-zero
+// port. A host name is refused: it could resolve to a non-loopback address.
+func validateLoopbackAddress(addr string) error {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("owner address %q: %w", addr, err)
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil || !ip.IsLoopback() {
+		return fmt.Errorf("owner address %q is not a loopback IP address", addr)
+	}
+	if n, err := strconv.ParseUint(port, 10, 16); err != nil || n == 0 {
+		return fmt.Errorf("owner address %q has no valid port", addr)
+	}
+	return nil
 }
 
 // writeFileAtomic writes data to a temporary file in dir and renames it over

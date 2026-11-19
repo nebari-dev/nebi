@@ -45,7 +45,8 @@ var (
 //   - try: TryAcquireOwner, print "acquired" or "held". The owner then obeys
 //     stdin: "publish" publishes helperNoAPI, "publish-api" publishes
 //     helperAPI, and EOF releases the lock and prints "released".
-//   - wait: like try, but takes the lock with AcquireOwner.
+//   - wait: like try, but when the lock is held it prints "waiting" and
+//     takes the lock with AcquireOwner.
 //   - spawn: take the lock, publish, start a long-lived child process, print
 //     "child <pid>", then block until killed.
 //   - sleep: block for a minute; the parent test kills it.
@@ -74,10 +75,10 @@ func TestOwnerHelperProcess(t *testing.T) {
 		o   *Owner
 		err error
 	)
-	if mode == "wait" {
+	o, err = TryAcquireOwner(dir)
+	if mode == "wait" && errors.Is(err, ErrOwnerLockHeld) {
+		out("waiting")
 		o, err = AcquireOwner(context.Background(), dir)
-	} else {
-		o, err = TryAcquireOwner(dir)
 	}
 	if errors.Is(err, ErrOwnerLockHeld) {
 		out("held")
@@ -441,8 +442,10 @@ func TestAcquireOwnerWaitingProcessTakesOver(t *testing.T) {
 	o := mustAcquire(t, dir)
 
 	h := startOwnerHelper(t, "wait", dir)
-	// The helper is waiting; give it time to try at least once.
-	time.Sleep(10 * lockPollInterval)
+	// The helper found the lock held and is now waiting in AcquireOwner.
+	h.expect("waiting")
+	// Give it a few retries; it must not take the lock meanwhile.
+	time.Sleep(4 * lockPollInterval)
 	select {
 	case line := <-h.lines:
 		t.Fatalf("waiting helper printed %q while this process held the lock", line)
@@ -510,6 +513,39 @@ func acquireWithin(t *testing.T, ctx context.Context, dir string) error {
 	case <-time.After(helperTimeout):
 		t.Fatal("AcquireOwner did not return after its context ended")
 		return nil
+	}
+}
+
+// A relative dir is resolved once, so owner.json stays put if the working
+// directory changes later. An empty dir is an error, not "wait".
+func TestOwnerDirResolution(t *testing.T) {
+	base := ownerTestDir(t)
+	t.Chdir(base)
+	o := mustAcquire(t, "data")
+	want := filepath.Join(base, "data")
+	if got := o.Dir(); got != want {
+		t.Fatalf("Dir() = %q, want %q", got, want)
+	}
+
+	t.Chdir(ownerTestDir(t))
+	if err := o.Publish(helperNoAPI); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadOwner(want); err != nil {
+		t.Fatalf("ReadOwner after a change of working directory: %v", err)
+	}
+	if err := o.Release(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(want, OwnerInfoFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("owner.json after release: %v, want it removed", err)
+	}
+
+	if _, err := TryAcquireOwner(""); err == nil || errors.Is(err, ErrOwnerLockHeld) {
+		t.Fatalf("TryAcquireOwner(\"\"): got %v, want an empty directory error", err)
+	}
+	if _, err := ReadOwner(""); err == nil || errors.Is(err, ErrNoOwnerInfo) {
+		t.Fatalf("ReadOwner(\"\"): got %v, want an empty directory error", err)
 	}
 }
 

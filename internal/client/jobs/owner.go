@@ -18,8 +18,9 @@ import (
 const (
 	// OwnerLockFile is the file the owner holds the OS lock on.
 	OwnerLockFile = "owner.lock"
-	// OwnerInfoFile describes the current owner. It only exists while an
-	// owner holds the lock and has published.
+	// OwnerInfoFile describes the current owner once it has published. A
+	// file left by an owner that died, or that Release could not remove,
+	// stays until the next owner takes the lock and removes it.
 	OwnerInfoFile = "owner.json"
 
 	// ownerTempPrefix names the files owner.json is written through before
@@ -46,6 +47,8 @@ var (
 	ErrNoOwnerInfo = errors.New("job runner owner has not published owner.json")
 	// ErrOwnerReleased is returned by Owner methods after Release.
 	ErrOwnerReleased = errors.New("job runner owner lock was released")
+
+	errEmptyOwnerDir = errors.New("owner lock directory is empty")
 )
 
 // OwnerInfo is the content of owner.json.
@@ -89,6 +92,9 @@ type OwnerInfo struct {
 //   - The lock directory must be the directory of the nebi.db the process
 //     actually opened, not a data directory it was configured with, so that
 //     every binary that shares a database shares the lock.
+//   - Close the job runner before Release. Memory.Close waits for running
+//     jobs. Released first, another process can become the owner and start
+//     jobs while this process's jobs still run.
 //   - owner.json can describe an owner that has died: one that died after a
 //     reader failed to take the lock, or one whose file the next owner has
 //     not removed yet. A reader that gets "connection refused" or a rejected
@@ -106,7 +112,9 @@ type Owner struct {
 }
 
 // TryAcquireOwner takes the owner lock for dir without waiting. dir is the
-// directory that holds nebi.db; it is created if missing. It returns
+// directory that holds nebi.db; it is created if missing, and a relative dir
+// is made absolute, so a later change of working directory does not move
+// owner.json. It returns
 // ErrOwnerLockHeld when another owner holds the lock, including another handle
 // in the same process.
 //
@@ -115,7 +123,11 @@ type Owner struct {
 // may still describe the dead owner; see Owner.
 func TryAcquireOwner(dir string) (*Owner, error) {
 	if dir == "" {
-		return nil, errors.New("owner lock directory is empty")
+		return nil, errEmptyOwnerDir
+	}
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, fmt.Errorf("resolving owner lock directory: %w", err)
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("creating owner lock directory: %w", err)
@@ -166,7 +178,7 @@ func AcquireOwner(ctx context.Context, dir string) (*Owner, error) {
 	}
 }
 
-// Dir returns the directory the lock was taken in.
+// Dir returns the absolute path of the directory the lock was taken in.
 func (o *Owner) Dir() string {
 	return o.dir
 }
@@ -198,8 +210,9 @@ func (o *Owner) Publish(info OwnerInfo) error {
 	return writeFileAtomic(o.dir, data)
 }
 
-// Release removes owner.json and releases the lock. It is safe to call more
-// than once; later calls return nil.
+// Release removes owner.json and releases the lock. Close the job runner
+// first; see Owner. It is safe to call more than once; later calls return
+// nil.
 func (o *Owner) Release() error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -235,6 +248,11 @@ func (o *Owner) unlock() error {
 // that is not loopback, is an error, so a reader never sends the token off
 // the machine.
 func ReadOwner(dir string) (OwnerInfo, error) {
+	if dir == "" {
+		// Reading the working directory would return ErrNoOwnerInfo, which
+		// tells the caller to wait, so a missing dir would wait forever.
+		return OwnerInfo{}, errEmptyOwnerDir
+	}
 	data, err := readFile(filepath.Join(dir, OwnerInfoFile))
 	if errors.Is(err, os.ErrNotExist) {
 		return OwnerInfo{}, ErrNoOwnerInfo

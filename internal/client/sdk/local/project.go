@@ -30,7 +30,9 @@ type Project struct {
 	ManagedDir bool `gorm:"not null;default:false" json:"managed_dir"`
 
 	// InstalledVersionID is the version whose environment is materialized in
-	// Path/.pixi. Nil when nothing is installed. Written by sdk/exec.
+	// Path/.pixi. Nil when nothing is installed. Written only after an
+	// install succeeds, by the create job and sdk/exec. State is installed
+	// only when it is set and .pixi/envs exists.
 	InstalledVersionID *uuid.UUID `gorm:"type:text" json:"installed_version_id,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`

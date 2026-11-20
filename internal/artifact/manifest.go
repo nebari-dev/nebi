@@ -1,10 +1,12 @@
 // Package artifact reads and writes pixi.toml manifests.
 //
 // It holds the subset the local project SDK needs to create a project
-// (issue #660): a structured Spec and its renderer, a manifest parser, and a
-// helper that sets [workspace].name and [workspace].description in a raw
-// manifest while leaving the rest of the file as the user wrote it. Full
-// form round-trip and validation of pixi.toml is tracked separately.
+// (issue #660) and a new version of one (issue #661): a structured Spec and
+// its renderer, a manifest parser, a helper that sets [workspace].name and
+// [workspace].description in a raw manifest, a helper that applies a Spec
+// to an existing manifest, and a check for path dependencies. The editors
+// leave the rest of the file as the user wrote it. Full form round-trip and
+// validation of pixi.toml is tracked separately.
 package artifact
 
 import (
@@ -166,29 +168,12 @@ func RenderManifest(name, description string, spec Spec) (string, error) {
 	if strings.TrimSpace(name) == "" {
 		return "", fmt.Errorf("%w: name is required", ErrInvalid)
 	}
-	if len(spec.Platforms) == 0 {
-		return "", fmt.Errorf("%w: at least one platform is required", ErrInvalid)
-	}
-	for _, p := range spec.Platforms {
-		if strings.TrimSpace(p) == "" {
-			return "", fmt.Errorf("%w: platform names must not be empty", ErrInvalid)
-		}
-	}
-	if err := ValidatePlatforms(spec.Platforms); err != nil {
+	if err := spec.validateLists(); err != nil {
 		return "", err
 	}
-	if len(spec.Channels) == 0 {
-		return "", fmt.Errorf("%w: at least one channel is required", ErrInvalid)
-	}
-	channels := make(map[string]bool, len(spec.Channels))
-	for _, c := range spec.Channels {
-		if strings.TrimSpace(c) == "" {
-			return "", fmt.Errorf("%w: channel names must not be empty", ErrInvalid)
-		}
-		if channels[c] {
-			return "", fmt.Errorf("%w: channel %q is listed more than once", ErrInvalid, c)
-		}
-		channels[c] = true
+	deps, err := spec.dependencyLines()
+	if err != nil {
+		return "", err
 	}
 
 	var b strings.Builder
@@ -200,23 +185,8 @@ func RenderManifest(name, description string, spec Spec) (string, error) {
 	fmt.Fprintf(&b, "channels = %s\n", quoteList(spec.Channels))
 	fmt.Fprintf(&b, "platforms = %s\n", quoteList(spec.Platforms))
 	b.WriteString("\n[dependencies]\n")
-
-	seen := make(map[string]bool, len(spec.Packages))
-	for _, pkg := range spec.Packages {
-		pkgName := strings.TrimSpace(pkg.Name)
-		if !packageNamePattern.MatchString(pkgName) {
-			return "", fmt.Errorf("%w: invalid package name %q", ErrInvalid, pkg.Name)
-		}
-		key := strings.ToLower(pkgName)
-		if seen[key] {
-			return "", fmt.Errorf("%w: package %q is listed more than once", ErrInvalid, pkgName)
-		}
-		seen[key] = true
-		version, err := pkg.VersionSpec()
-		if err != nil {
-			return "", err
-		}
-		fmt.Fprintf(&b, "%s = %s\n", tomlKey(pkgName), Quote(version))
+	for _, line := range deps {
+		b.WriteString(line + "\n")
 	}
 
 	out := b.String()
@@ -224,6 +194,60 @@ func RenderManifest(name, description string, spec Spec) (string, error) {
 		return "", fmt.Errorf("rendered manifest does not parse: %w", err)
 	}
 	return out, nil
+}
+
+// validateLists checks the platforms and channels of a Spec: at least one
+// of each, none empty and none listed twice.
+func (spec Spec) validateLists() error {
+	if len(spec.Platforms) == 0 {
+		return fmt.Errorf("%w: at least one platform is required", ErrInvalid)
+	}
+	for _, p := range spec.Platforms {
+		if strings.TrimSpace(p) == "" {
+			return fmt.Errorf("%w: platform names must not be empty", ErrInvalid)
+		}
+	}
+	if err := ValidatePlatforms(spec.Platforms); err != nil {
+		return err
+	}
+	if len(spec.Channels) == 0 {
+		return fmt.Errorf("%w: at least one channel is required", ErrInvalid)
+	}
+	channels := make(map[string]bool, len(spec.Channels))
+	for _, c := range spec.Channels {
+		if strings.TrimSpace(c) == "" {
+			return fmt.Errorf("%w: channel names must not be empty", ErrInvalid)
+		}
+		if channels[c] {
+			return fmt.Errorf("%w: channel %q is listed more than once", ErrInvalid, c)
+		}
+		channels[c] = true
+	}
+	return nil
+}
+
+// dependencyLines returns the `name = "version"` lines of the Spec's
+// packages, in order, after checking each name and version.
+func (spec Spec) dependencyLines() ([]string, error) {
+	lines := make([]string, 0, len(spec.Packages))
+	seen := make(map[string]bool, len(spec.Packages))
+	for _, pkg := range spec.Packages {
+		pkgName := strings.TrimSpace(pkg.Name)
+		if !packageNamePattern.MatchString(pkgName) {
+			return nil, fmt.Errorf("%w: invalid package name %q", ErrInvalid, pkg.Name)
+		}
+		key := strings.ToLower(pkgName)
+		if seen[key] {
+			return nil, fmt.Errorf("%w: package %q is listed more than once", ErrInvalid, pkgName)
+		}
+		seen[key] = true
+		version, err := pkg.VersionSpec()
+		if err != nil {
+			return nil, err
+		}
+		lines = append(lines, fmt.Sprintf("%s = %s", tomlKey(pkgName), Quote(version)))
+	}
+	return lines, nil
 }
 
 // Quote returns s as a TOML basic string.

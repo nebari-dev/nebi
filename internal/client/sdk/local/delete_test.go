@@ -40,7 +40,7 @@ func TestDeleteRefusesWhileBusy(t *testing.T) {
 	if h.projectCount() != 1 || !exists(p.Path) {
 		t.Fatal("a refused delete must change nothing")
 	}
-	if calls := h.versions.deleteCalls; len(calls) != 0 {
+	if h.versions.deletes() != 0 {
 		t.Fatal("a refused delete must not touch versions")
 	}
 
@@ -258,10 +258,10 @@ func TestDeleteIsOneTransaction(t *testing.T) {
 	if len(hookCalls) != 1 || hookCalls[0] != p.ID {
 		t.Fatalf("hook calls = %v", hookCalls)
 	}
-	// DeleteProjectVersions ran inside the transaction; the rollback must
-	// bring its deletes back together with the project row.
-	if len(h.versions.deleteCalls) != 1 {
-		t.Fatalf("DeleteProjectVersions calls = %d, want 1", len(h.versions.deleteCalls))
+	// The versions were deleted inside the transaction; the rollback must
+	// bring them back together with the project row.
+	if h.versions.deletes() != 1 {
+		t.Fatalf("version deletes = %d, want 1", h.versions.deletes())
 	}
 	if n := len(h.versions.versionsOf(t, p.ID)); n != 1 {
 		t.Fatalf("versions must be rolled back, %d left", n)
@@ -283,10 +283,10 @@ func TestDeleteIsOneTransaction(t *testing.T) {
 	}
 }
 
-func TestDeleteVersionStoreFailureRollsBack(t *testing.T) {
+func TestDeleteVersionFailureRollsBack(t *testing.T) {
 	h := newHarness(t)
 	p, _ := h.mustCreate(specRequest("rollback"))
-	h.versions.deleteErr = errors.New("tags table locked")
+	h.versions.setDeleteErr(errors.New("versions table locked"))
 	if _, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{}); err == nil {
 		t.Fatal("want an error")
 	}
@@ -404,7 +404,7 @@ func TestDeleteReportsProjectDeleted(t *testing.T) {
 		t.Fatalf("a delete that keeps the files must report the project deleted too: %+v", calls)
 	}
 
-	h.versions.deleteErr = errors.New("tags table locked")
+	h.versions.setDeleteErr(errors.New("versions table locked"))
 	if _, err := h.svc.DeleteProject(context.Background(), failed.ID, DeleteProjectOptions{}); err == nil {
 		t.Fatal("want an error")
 	}
@@ -416,7 +416,7 @@ func TestDeleteReportsProjectDeleted(t *testing.T) {
 func TestFailedDeleteAcceptsJobsAgain(t *testing.T) {
 	h := newHarness(t)
 	p, _ := h.mustCreate(specRequest("kept"))
-	h.versions.deleteErr = errors.New("tags table locked")
+	h.versions.setDeleteErr(errors.New("versions table locked"))
 	if _, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{DeleteFiles: true}); err == nil {
 		t.Fatal("want an error")
 	}
@@ -632,7 +632,7 @@ func (f failingDeletes) Submit(ctx context.Context, id uuid.UUID, typ jobs.Type,
 func (h *harness) restart() (*Service, *jobs.Memory) {
 	h.t.Helper()
 	runner := jobs.NewMemory(jobs.Options{})
-	svc, err := New(Options{DB: h.db, Versions: h.versions, Jobs: runner, Pixi: h.pixi, ProjectsDir: h.projectsDir})
+	svc, err := New(Options{DB: h.db, Jobs: runner, Pixi: h.pixi, ProjectsDir: h.projectsDir})
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -701,7 +701,13 @@ func TestRecoverDeletesAfterCrash(t *testing.T) {
 		h := newHarness(t)
 		p, _ := h.mustCreate(specRequest("committed"))
 		trash := h.crashMidDelete(p)
-		if err := h.db.Delete(&Project{}, "id = ?", p.ID).Error; err != nil {
+		// The delete's transaction commits: versions, then the row.
+		if err := h.db.Transaction(func(tx *gorm.DB) error {
+			if err := deleteProjectVersions(tx, p.ID); err != nil {
+				return err
+			}
+			return tx.Delete(&Project{}, "id = ?", p.ID).Error
+		}); err != nil {
 			t.Fatal(err)
 		}
 

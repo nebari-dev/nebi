@@ -122,7 +122,7 @@ func (s *Service) GetProject(ctx context.Context, id uuid.UUID) (*ProjectDetail,
 		return nil, err
 	}
 	if len(reads) == 0 {
-		return nil, fmt.Errorf("%w: %s", ErrNotFound, id)
+		return nil, fmt.Errorf("%w: project %s", ErrNotFound, id)
 	}
 	s.refreshSizes([]Project{reads[0].project})
 	return reads[0].detail, nil
@@ -276,7 +276,7 @@ func (s *Service) ProjectSize(ctx context.Context, id uuid.UUID) (int64, error) 
 // project's jobs. Call it through readProjects, which reads the jobs on
 // both sides of the row so the two are consistent.
 func (s *Service) describe(ctx context.Context, p *Project, projectJobs []jobs.Job) (*ProjectDetail, error) {
-	info, err := s.versions.VersionInfo(ctx, p.ID, p.InstalledVersionID)
+	info, err := s.versionCounts(ctx, p.ID, p.InstalledVersionID)
 	if err != nil {
 		return nil, fmt.Errorf("reading versions of %s: %w", p.Name, err)
 	}
@@ -338,14 +338,14 @@ func deriveState(versionCount int, projectJobs []jobs.Job, hasInstalledVersion, 
 		return StateLockFailed, nil
 	}
 
-	// The environment jobs: installs, uninstalls, and create jobs that got
-	// as far as installing.
+	// The environment jobs: installs, uninstalls, and create and
+	// create_version jobs that got as far as installing.
 	env := latestJob(projectJobs, func(j jobs.Job) bool {
 		if !j.Active() && !j.Started() {
 			return false // cancelled while pending: it changed nothing
 		}
 		return j.Type == jobs.TypeInstall || j.Type == jobs.TypeUninstall ||
-			(j.Type == jobs.TypeCreate && j.Stage == StageInstall)
+			((j.Type == jobs.TypeCreate || j.Type == jobs.TypeCreateVersion) && j.Stage == StageInstall)
 	})
 	if env != nil && env.Active() {
 		if env.Type == jobs.TypeUninstall {

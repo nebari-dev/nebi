@@ -254,8 +254,25 @@ func TestContextCarriesJobIDAndStage(t *testing.T) {
 	if _, ok := IDFromContext(context.Background()); ok {
 		t.Fatal("IDFromContext outside a job should report false")
 	}
+	if got.Deduplicated {
+		t.Fatal("ReportVersion must not mark the job deduplicated")
+	}
 	ReportStage(context.Background(), "ignored") // must not panic
 	ReportVersion(context.Background(), version)
+	ReportDeduplicated(context.Background(), version)
+}
+
+func TestReportDeduplicated(t *testing.T) {
+	m := newRunner(t, Options{})
+	existing := uuid.New()
+	j := mustSubmit(t, m, uuid.New(), TypeCreateVersion, func(ctx context.Context, _ io.Writer) error {
+		ReportDeduplicated(ctx, existing)
+		return nil
+	})
+	got := mustWait(t, m, j.ID)
+	if got.Status != StatusCompleted || !got.Deduplicated || got.VersionID == nil || *got.VersionID != existing {
+		t.Fatalf("want a completed job reporting the existing version as deduplicated, got %+v", got)
+	}
 }
 
 func TestUnknownJobAndNilBody(t *testing.T) {

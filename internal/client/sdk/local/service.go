@@ -1,18 +1,17 @@
-// Package local is the client SDK for projects on this machine (issue
-// #660): the local Project data model and its create, list, get, rename and
-// delete operations. Everything here runs on the user's machine; the server
-// is never contacted, and a project exists on a server only after it is
-// pushed.
+// Package local is the client SDK for projects on this machine: the local
+// Project data model and its create, list, get, rename and delete
+// operations (issue #660), and the immutable versions and movable tags of a
+// project with their create, read and tag operations (issue #661).
+// Everything here runs on the user's machine; the server is never
+// contacted, and a project exists on a server only after it is pushed.
 //
 // The SDK owns its tables in the client database (nebi.db) and shares none
 // with the server models in internal/models.
 //
 // Work that belongs to other parts of the client is reached through small
 // interfaces, so each part can be built and tested on its own:
-//   - VersionStore: project versions and tags (the version CRUD issue, #661;
-//     a temporary seam removed when #661 lands, tracked in #669)
 //   - JobRunner: background jobs (internal/client/jobs)
-//   - PixiRunner: pixi lock and install (internal/client/sdk/exec)
+//   - PixiRunner: pixi lock, install and lock check (internal/client/sdk/exec)
 package local
 
 import (
@@ -28,75 +27,6 @@ import (
 	"github.com/nebari-dev/nebi/internal/client/jobs"
 	"gorm.io/gorm"
 )
-
-// Temporary seam until the version CRUD issue (#661) lands. #661 specifies
-// recordVersion as an unexported method in this package,
-// func (s *Service) recordVersion(tx, req) (*ProjectVersion, bool, error),
-// so VersionStore, VersionOrigin, OriginCreated and RecordVersionRequest
-// are placeholders that will be removed or collide with #661's own types
-// when it lands. Replacing them with the real version tables is tracked in
-// #669.
-
-// VersionOrigin records how a version entered this machine's history. The
-// version CRUD issue (#661) owns it and adds the other origins. Temporary;
-// see the note above.
-type VersionOrigin string
-
-// OriginCreated is the origin of a version made on this machine, including
-// version 1, which the create job records.
-const OriginCreated VersionOrigin = "created"
-
-// RecordVersionRequest mirrors recordVersionRequest from the version CRUD
-// issue (#661): everything recordVersion needs to write one version.
-// Temporary; #661 replaces it with its own unexported request (#669).
-type RecordVersionRequest struct {
-	ProjectID uuid.UUID
-	// BaseVersionID is the version this one was created from; nil for
-	// version 1.
-	BaseVersionID *uuid.UUID
-	// Manifest and Lock are the complete pixi.toml and pixi.lock.
-	Manifest string
-	Lock     string
-	Origin   VersionOrigin
-	Author   string
-	// Description is the version's description, not the workspace's.
-	Description string
-	Tags        []string
-	// DedupeLatest returns the latest version instead of inserting a new
-	// one when its content hash matches.
-	DedupeLatest bool
-}
-
-// VersionInfo is the version data the project list shows.
-type VersionInfo struct {
-	// Count is the number of versions of the project.
-	Count int
-	// Latest is the newest version number; nil when there are no versions.
-	Latest *int
-	// Installed is the number of the version whose ID was passed as
-	// installedID; nil when that is nil.
-	Installed *int
-}
-
-// VersionStore is the version side of a project, owned by the version CRUD
-// issue (#661), which provides the ProjectVersion and ProjectTag tables and
-// recordVersion.
-//
-// Temporary seam: #661 makes recordVersion an unexported Service method in
-// this package, so this interface and the fake behind it go away when #661
-// lands. The cleanup is tracked in #669.
-type VersionStore interface {
-	// RecordVersion is #661's recordVersion: it validates the tags and
-	// writes the version and its tags inside tx, the job's success
-	// transaction, and returns the version's ID.
-	RecordVersion(tx *gorm.DB, req RecordVersionRequest) (uuid.UUID, error)
-	// VersionInfo reports the version count, the latest version number and
-	// the number of the version whose ID is installedID (nil: none).
-	VersionInfo(ctx context.Context, projectID uuid.UUID, installedID *uuid.UUID) (VersionInfo, error)
-	// DeleteProjectVersions deletes every version and tag of the project
-	// inside tx, the transaction that deletes the project row.
-	DeleteProjectVersions(tx *gorm.DB, projectID uuid.UUID) error
-}
 
 // JobRunner submits and reports background jobs (internal/client/jobs).
 // *jobs.Memory implements it.
@@ -150,6 +80,29 @@ type PixiRunner interface {
 	Lock(ctx context.Context, dir string, out io.Writer) error
 	// Install materializes the locked environment in dir/.pixi.
 	Install(ctx context.Context, dir string, out io.Writer) error
+	// CheckLock checks that dir/pixi.lock satisfies dir/pixi.toml, without
+	// changing either file. It returns nil for a current lock. A stale lock
+	// is reported with an error that implements StaleLockError, which the
+	// SDK turns into ErrLockStale; any other error means the check itself
+	// could not run.
+	CheckLock(ctx context.Context, dir string, out io.Writer) error
+}
+
+// StaleLockError is implemented by the error PixiRunner.CheckLock returns
+// for a stale lock. The runner (internal/client/sdk/exec) defines its own
+// error type with a StaleLock method, so it does not import this package
+// and its database code; errors.As finds the error through wrapping.
+type StaleLockError interface {
+	error
+	// StaleLock reports whether the lock is stale.
+	StaleLock() bool
+}
+
+// isStaleLock reports whether err, from PixiRunner.CheckLock, reports a
+// stale lock.
+func isStaleLock(err error) bool {
+	var stale StaleLockError
+	return errors.As(err, &stale) && stale.StaleLock()
 }
 
 // DeleteHook deletes rows another part of the client keeps for a project
@@ -157,12 +110,11 @@ type PixiRunner interface {
 // that deletes the project row.
 type DeleteHook func(tx *gorm.DB, projectID uuid.UUID) error
 
-// Options configures a Service. DB, Versions, Jobs and Pixi are required.
+// Options configures a Service. DB, Jobs and Pixi are required.
 type Options struct {
-	DB       *gorm.DB
-	Versions VersionStore
-	Jobs     JobRunner
-	Pixi     PixiRunner
+	DB   *gorm.DB
+	Jobs JobRunner
+	Pixi PixiRunner
 
 	// ProjectsDir is where projects go when no path is given. Empty means
 	// ~/nebi-projects. The SDK reads no environment variables; entrypoints
@@ -185,7 +137,6 @@ type Options struct {
 // Service is the local project SDK. Call Close when done with it.
 type Service struct {
 	db          *gorm.DB
-	versions    VersionStore
 	jobs        JobRunner
 	pixi        PixiRunner
 	projectsDir string
@@ -196,6 +147,8 @@ type Service struct {
 	// mu serializes the operations that write project rows, so the
 	// checks they run and the writes they make cannot interleave.
 	mu sync.Mutex
+	// versionMu serializes version and tag writes; see versionTx.
+	versionMu sync.Mutex
 
 	sizes sizeCache
 	// measureDir and now are replaced in tests.
@@ -208,14 +161,12 @@ type Service struct {
 }
 
 // New returns a Service. The client tables must exist; see Migrate. Call
-// RecoverDeletes once at startup to finish file removals that an earlier
-// run left incomplete.
+// RecoverDeletes and RecoverInPlaceSolves once at startup to finish file
+// removals and in-place solves that an earlier run left incomplete.
 func New(opts Options) (*Service, error) {
 	switch {
 	case opts.DB == nil:
 		return nil, errors.New("local: Options.DB is required")
-	case opts.Versions == nil:
-		return nil, errors.New("local: Options.Versions is required")
 	case opts.Jobs == nil:
 		return nil, errors.New("local: Options.Jobs is required")
 	case opts.Pixi == nil:
@@ -228,7 +179,6 @@ func New(opts Options) (*Service, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Service{
 		db:          opts.DB,
-		versions:    opts.Versions,
 		jobs:        opts.Jobs,
 		pixi:        opts.Pixi,
 		projectsDir: opts.ProjectsDir,

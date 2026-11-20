@@ -172,8 +172,8 @@ func (p *versionProbe) tagsOf(t *testing.T, projectID uuid.UUID) map[string]int 
 }
 
 // fakePixi stands in for sdk/exec. Lock writes a pixi.lock derived from
-// pixi.toml (fakeLockFor); Install creates .pixi/envs; CheckLock reports
-// whether pixi.lock is the one Lock would write. Lock and Install can fail
+// pixi.toml (fakeLockFor); Install creates .pixi/envs; CheckLock returns a
+// fakeStaleLock unless pixi.lock is the one Lock would write. Lock and Install can fail
 // or block, and both write pixi-like output to the job's log. A blocked
 // call returns ctx's error when ctx is cancelled, as the real runner does
 // when it stops pixi.
@@ -248,7 +248,14 @@ func (f *fakePixi) Lock(ctx context.Context, dir string, out io.Writer) error {
 	return os.WriteFile(filepath.Join(dir, artifact.LockFile), []byte(fakeLockFor(string(manifest))), 0o644)
 }
 
-func (f *fakePixi) CheckLock(_ context.Context, dir string, out io.Writer) (bool, error) {
+// fakeStaleLock is the fake's stale-lock error. Like the real runner's,
+// it is its own type with a StaleLock method (see StaleLockError).
+type fakeStaleLock struct{ dir string }
+
+func (e fakeStaleLock) Error() string   { return "lock file is not up to date in " + e.dir }
+func (e fakeStaleLock) StaleLock() bool { return true }
+
+func (f *fakePixi) CheckLock(_ context.Context, dir string, out io.Writer) error {
 	f.mu.Lock()
 	f.checkCalls = append(f.checkCalls, dir)
 	err, gate, started := f.checkErr, f.checkGate, f.checkStarted
@@ -261,20 +268,23 @@ func (f *fakePixi) CheckLock(_ context.Context, dir string, out io.Writer) (bool
 		<-gate
 	}
 	if err != nil {
-		return false, err
+		return err
 	}
 	manifest, err := os.ReadFile(filepath.Join(dir, artifact.ManifestFile))
 	if err != nil {
-		return false, err
+		return err
 	}
 	lock, err := os.ReadFile(filepath.Join(dir, artifact.LockFile))
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		return fmt.Errorf("pixi lock --check: %w", fakeStaleLock{dir})
 	}
 	if err != nil {
-		return false, err
+		return err
 	}
-	return string(lock) == fakeLockFor(string(manifest)), nil
+	if string(lock) != fakeLockFor(string(manifest)) {
+		return fmt.Errorf("pixi lock --check: %w", fakeStaleLock{dir})
+	}
+	return nil
 }
 
 func (f *fakePixi) Install(ctx context.Context, dir string, out io.Writer) error {

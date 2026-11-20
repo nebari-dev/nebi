@@ -820,6 +820,23 @@ func TestSnapshotRefusals(t *testing.T) {
 	if _, err := h.svc.SnapshotWorkingCopy(context.Background(), q.ID, "", nil); err == nil || errors.Is(err, ErrLockStale) {
 		t.Fatalf("want a plain error, got %v", err)
 	}
+	// The runner's typed stale-lock error, wrapped, is ErrLockStale and
+	// keeps the runner's message; one whose StaleLock is false is not.
+	for _, c := range []struct {
+		err   error
+		stale bool
+	}{
+		{fmt.Errorf("pixi lock --check: %w", fakeStaleLock{"q"}), true},
+		{notStale{}, false},
+	} {
+		h.pixi.mu.Lock()
+		h.pixi.checkErr = c.err
+		h.pixi.mu.Unlock()
+		_, err := h.svc.SnapshotWorkingCopy(context.Background(), q.ID, "", nil)
+		if err == nil || errors.Is(err, ErrLockStale) != c.stale || !strings.Contains(err.Error(), c.err.Error()) {
+			t.Fatalf("CheckLock error %v: want stale=%v with its message, got %v", c.err, c.stale, err)
+		}
+	}
 	h.pixi.mu.Lock()
 	h.pixi.checkErr = nil
 	h.pixi.mu.Unlock()
@@ -1257,3 +1274,9 @@ func TestCreateProjectValidatesTagsUpFront(t *testing.T) {
 		t.Fatal("a refused tag must start no job")
 	}
 }
+
+// notStale is an error with a StaleLock method that reports false.
+type notStale struct{}
+
+func (notStale) Error() string   { return "lock check interrupted" }
+func (notStale) StaleLock() bool { return false }

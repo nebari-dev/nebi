@@ -610,7 +610,8 @@ func writeFileAtomic(path, content string) error {
 //
 // It returns ErrWorkingCopyMissing when pixi.toml is gone, and ErrLockStale
 // when pixi.lock is missing or does not satisfy pixi.toml
-// (PixiRunner.CheckLock, which changes neither file): run pixi lock or
+// (PixiRunner.CheckLock, which changes neither file, reports a
+// StaleLockError): run pixi lock or
 // pixi install first. It refuses with a *BusyError while a job for the
 // project is pending or running, since jobs write these files, and holds
 // off new jobs for the project until the version is recorded.
@@ -651,12 +652,11 @@ func (s *Service) SnapshotWorkingCopy(ctx context.Context, projectID uuid.UUID, 
 	}
 
 	var out bytes.Buffer
-	current, err := s.pixi.CheckLock(ctx, p.Path, &out)
-	if err != nil {
+	if err := s.pixi.CheckLock(ctx, p.Path, &out); err != nil {
+		if isStaleLock(err) {
+			return nil, fmt.Errorf("%w: %s does not match %s; run pixi lock or pixi install first: %v%s", ErrLockStale, artifact.LockFile, artifact.ManifestFile, err, pixiOutput(&out))
+		}
 		return nil, fmt.Errorf("checking %s: %w%s", artifact.LockFile, err, pixiOutput(&out))
-	}
-	if !current {
-		return nil, fmt.Errorf("%w: %s does not match %s; run pixi lock or pixi install first%s", ErrLockStale, artifact.LockFile, artifact.ManifestFile, pixiOutput(&out))
 	}
 	// The check ran on the files on disk; make sure they are still the
 	// ones that were read.

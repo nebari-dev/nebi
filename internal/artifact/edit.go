@@ -353,7 +353,9 @@ func sameStrings(raw any, want []string) bool {
 //   - a channel given by a relative path or relative file: URL, in a
 //     channels list or a dependency's channel;
 //   - a relative find-links path or relative file: URL, or a relative
-//     file: index-url or extra-index-urls entry, in [pypi-options].
+//     file: index-url or extra-index-urls entry, in [pypi-options];
+//   - a mapping file given by a relative path or file: URL in
+//     conda-pypi-map.
 //
 // Absolute paths and remote URLs resolve the same from any directory and do
 // not count.
@@ -408,6 +410,19 @@ func hasLocalPath(table map[string]any) bool {
 					return true
 				}
 			}
+		case "conda-pypi-map":
+			// Each channel maps to a location (a URL or a file), given as a
+			// string or as the location of a table; false disables it.
+			entries, _ := value.(map[string]any)
+			for _, entry := range entries {
+				if table, ok := entry.(map[string]any); ok {
+					entry = table["location"]
+				}
+				if location, ok := entry.(string); ok && relativePath(location, true) {
+					return true
+				}
+			}
+			continue // its keys are channels, not manifest tables
 		}
 		sub, ok := value.(map[string]any)
 		if !ok {

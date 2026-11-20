@@ -202,6 +202,15 @@ func TestHasLocalPaths(t *testing.T) {
 		ws + "\n[pypi-options]\nextra-index-urls = [\"https://pypi.org/simple\", \"file:../idx\"]\n":         true,
 		ws + "\n[pypi-options]\nindex-url = \"https://pypi.org/simple\"\n":                                   false,
 		ws + "\n[feature.gpu.pypi-options]\nfind-links = [{ path = \"./gpu-wheels\" }]\n":                    true,
+		// conda-pypi-map files, resolved against the workspace root.
+		ws + "conda-pypi-map = { conda-forge = \"mapping.json\" }\n":                                              true,
+		ws + "conda-pypi-map = { \"https://repo.prefix.dev/robostack\" = \"local/robostack.json\" }\n":            true,
+		ws + "conda-pypi-map = { conda-forge = \"file:./mapping.json\" }\n":                                       true,
+		ws + "conda-pypi-map = { conda-forge = { location = \"./mapping.json\", mapping-mode = \"replace\" } }\n": true,
+		ws + "conda-pypi-map = { conda-forge = \"https://example.com/mapping.json\" }\n":                          false,
+		ws + "conda-pypi-map = { conda-forge = \"/srv/mapping.json\", bioconda = false }\n":                       false,
+		ws + "conda-pypi-map = { conda-forge = { mapping = { numpy = \"numpy\" } } }\n":                           false,
+		"[project]\nname = \"x\"\nplatforms = [\"linux-64\"]\nconda-pypi-map = { conda-forge = \"map.json\" }\n":  true,
 	}
 	for in, want := range cases {
 		got, err := HasLocalPaths(in)

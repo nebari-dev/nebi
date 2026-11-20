@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/nebari-dev/nebi/internal/artifact"
@@ -844,6 +845,65 @@ func TestSnapshotWithoutInstalledVersionHasNoBase(t *testing.T) {
 	}
 	if res.Version.BaseVersionID != nil {
 		t.Fatal("a snapshot with nothing installed has no base")
+	}
+}
+
+func TestSnapshotHoldsOffNewJobsUntilRecorded(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	// The working copy is version 1, installed; version 2 is the latest, so
+	// a snapshot records version 1's files as version 3.
+	p, v1 := h.newProject("snapshot-race", true)
+	h.createVersion(CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: newerSpec()})
+	v2 := h.versions.versionsOf(t, p.ID)[1]
+
+	checkGate, checkStarted := make(chan struct{}), make(chan struct{}, 1)
+	lockGate, lockStarted := make(chan struct{}), make(chan struct{}, 1)
+	h.pixi.mu.Lock()
+	h.pixi.checkGate, h.pixi.checkStarted = checkGate, checkStarted
+	h.pixi.lockGate, h.pixi.lockStarted = lockGate, lockStarted
+	h.pixi.mu.Unlock()
+
+	type snapResult struct {
+		res *CreateVersionResult
+		err error
+	}
+	snapDone := make(chan snapResult, 1)
+	go func() {
+		res, err := h.svc.SnapshotWorkingCopy(ctx, p.ID, "", nil)
+		snapDone <- snapResult{res, err}
+	}()
+	<-checkStarted
+
+	// A create whose solve rewrites the project directory, submitted while
+	// the snapshot checks the files.
+	createDone := make(chan *CreateVersionResult, 1)
+	go func() {
+		res, err := h.svc.CreateVersion(ctx, CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v2.ID, AllowOlderBase: true, Manifest: pathDepManifest})
+		if err != nil {
+			t.Errorf("CreateVersion: %v", err)
+		}
+		createDone <- res
+	}()
+	select {
+	case <-lockStarted:
+		t.Error("a job must not start rewriting the project directory while a snapshot reads it")
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(checkGate)
+
+	snap := <-snapDone
+	if snap.err != nil {
+		t.Fatalf("SnapshotWorkingCopy: %v", snap.err)
+	}
+	if v := snap.res.Version; v == nil || v.Number != 3 || v.Manifest != v1.Manifest || v.Lock != v1.Lock {
+		t.Fatalf("the snapshot must record the working copy as version 3, got %+v", snap.res)
+	}
+	close(lockGate)
+	if res := <-createDone; res != nil {
+		if done := h.wait(res.Job); done.Status != jobs.StatusCompleted {
+			t.Fatalf("create job: %+v", done)
+		}
 	}
 }
 

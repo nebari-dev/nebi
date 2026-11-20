@@ -189,6 +189,8 @@ type fakePixi struct {
 	// the directory ("" when there was none).
 	lockConfigs  []string
 	checkCalls   []string
+	checkGate    chan struct{} // when set, CheckLock waits until it is closed
+	checkStarted chan struct{} // receives once per CheckLock call that waits on checkGate
 	partialEnv   bool          // a failing install still leaves .pixi/envs behind
 	lockGate     chan struct{} // when set, Lock waits until it is closed
 	lockStarted  chan struct{} // receives once per Lock call that waits on lockGate
@@ -249,9 +251,15 @@ func (f *fakePixi) Lock(ctx context.Context, dir string, out io.Writer) error {
 func (f *fakePixi) CheckLock(_ context.Context, dir string, out io.Writer) (bool, error) {
 	f.mu.Lock()
 	f.checkCalls = append(f.checkCalls, dir)
-	err := f.checkErr
+	err, gate, started := f.checkErr, f.checkGate, f.checkStarted
 	f.mu.Unlock()
 	fmt.Fprintf(out, "pixi lock --check: %s\n", dir)
+	if gate != nil {
+		if started != nil {
+			started <- struct{}{}
+		}
+		<-gate
+	}
 	if err != nil {
 		return false, err
 	}

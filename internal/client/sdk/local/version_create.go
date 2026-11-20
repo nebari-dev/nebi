@@ -612,13 +612,19 @@ func writeFileAtomic(path, content string) error {
 // when pixi.lock is missing or does not satisfy pixi.toml
 // (PixiRunner.CheckLock, which changes neither file): run pixi lock or
 // pixi install first. It refuses with a *BusyError while a job for the
-// project is pending or running, since jobs write these files.
+// project is pending or running, since jobs write these files, and holds
+// off new jobs for the project until the version is recorded.
 //
 // The version's origin is snapshot and its base is the installed version.
 // It is deduplicated against the latest version. InstalledVersionID is not
 // changed: the environment on disk may not match until the version is
 // installed.
 func (s *Service) SnapshotWorkingCopy(ctx context.Context, projectID uuid.UUID, description string, tags []string) (*CreateVersionResult, error) {
+	// Held until the version is recorded, so no job that writes these files
+	// can be submitted between the idle check and the write.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	p, err := s.loadProject(ctx, projectID)
 	if err != nil {
 		return nil, err

@@ -361,6 +361,70 @@ func TestCreateVersionInstallProtectsUnsavedEdits(t *testing.T) {
 	}
 }
 
+func TestInstallReplacesOnlyRecordedOrMissingFiles(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		name     string
+		manifest func(v1 ProjectVersion) *string // nil: remove pixi.toml
+		lock     func(v1 ProjectVersion) *string // nil: remove pixi.lock
+		want     error
+	}{
+		{"both missing", nil, nil, nil},
+		{"lock missing, pixi.toml recorded", func(v1 ProjectVersion) *string { return &v1.Manifest }, nil, nil},
+		{"lock missing, pixi.toml edited", func(v1 ProjectVersion) *string { s := v1.Manifest + "# edit\n"; return &s }, nil, ErrWorkingCopyModified},
+		{"pixi.toml missing, lock in no version", nil, func(ProjectVersion) *string { s := "version: 6\n# by hand\n"; return &s }, ErrWorkingCopyModified},
+		{"pixi.toml missing, recorded lock", nil, func(v1 ProjectVersion) *string { return &v1.Lock }, ErrWorkingCopyModified},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t)
+			p, v1 := h.newProject("replace", true)
+			set := func(name string, content *string) {
+				path := filepath.Join(p.Path, name)
+				if content == nil {
+					if err := os.Remove(path); err != nil {
+						t.Fatal(err)
+					}
+					return
+				}
+				if err := os.WriteFile(path, []byte(*content), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var manifest, lock *string
+			if c.manifest != nil {
+				manifest = c.manifest(v1)
+			}
+			if c.lock != nil {
+				lock = c.lock(v1)
+			}
+			set(artifact.ManifestFile, manifest)
+			set(artifact.LockFile, lock)
+
+			res, err := h.svc.CreateVersion(ctx, CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: newerSpec(), Install: true})
+			if c.want != nil {
+				if !errors.Is(err, c.want) {
+					t.Fatalf("want %v, got %v", c.want, err)
+				}
+				if lock != nil && readFile(t, filepath.Join(p.Path, artifact.LockFile)) != *lock {
+					t.Fatal("a refused install must keep pixi.lock")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("CreateVersion: %v", err)
+			}
+			if done := h.wait(res.Job); done.Status != jobs.StatusCompleted {
+				t.Fatalf("job: %+v", done)
+			}
+			v2 := h.versions.versionsOf(t, p.ID)[1]
+			if readFile(t, filepath.Join(p.Path, artifact.ManifestFile)) != v2.Manifest {
+				t.Fatal("install must write the new version's pixi.toml")
+			}
+		})
+	}
+}
+
 const pathDepManifest = "[workspace]\nname = \"editable\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n\n" +
 	"[dependencies]\npython = \"3.12.*\"\n\n[pypi-dependencies]\neditable = { path = \".\", editable = true }\n"
 

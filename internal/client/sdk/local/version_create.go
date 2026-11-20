@@ -415,8 +415,10 @@ func (s *Service) checkLockableInPlace(ctx context.Context, projectID uuid.UUID,
 }
 
 // checkReplaceable allows replacing pixi.toml and pixi.lock in dir: the
-// directory must exist, and the files must be missing or match a recorded
-// version of the project, so no change that exists only on disk is lost.
+// directory must exist, and the files must both be missing or hold a
+// recorded version of the project (see isRecorded), so no change that
+// exists only on disk is lost. A pixi.lock without a pixi.toml is refused:
+// it may hold a lock that is in no version.
 func (s *Service) checkReplaceable(ctx context.Context, projectID uuid.UUID, dir string) error {
 	info, err := os.Stat(dir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -430,6 +432,12 @@ func (s *Service) checkReplaceable(ctx context.Context, projectID uuid.UUID, dir
 	}
 	wc, err := readWorkingCopy(dir)
 	if errors.Is(err, ErrWorkingCopyMissing) {
+		lockPath := filepath.Join(dir, artifact.LockFile)
+		if _, err := os.Lstat(lockPath); err == nil {
+			return fmt.Errorf("%w: %s has a %s but no %s; remove it or restore %s first", ErrWorkingCopyModified, dir, artifact.LockFile, artifact.ManifestFile, artifact.ManifestFile)
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("checking %s: %w", lockPath, err)
+		}
 		return nil
 	}
 	if err != nil {
@@ -445,12 +453,19 @@ func (s *Service) checkReplaceable(ctx context.Context, projectID uuid.UUID, dir
 	return nil
 }
 
-// isRecorded reports whether wc has the content of a version of the
-// project.
+// isRecorded reports whether wc holds nothing that is in no version of the
+// project: its content matches a version by content hash or, when there is
+// no pixi.lock, its pixi.toml is a version's pixi.toml, since a missing lock
+// loses nothing.
 func (s *Service) isRecorded(ctx context.Context, projectID uuid.UUID, wc workingCopy) (bool, error) {
+	q := s.db.WithContext(ctx).Model(&ProjectVersion{}).Where("project_id = ?", projectID)
+	if wc.HasLock {
+		q = q.Where("content_hash = ?", wc.hash())
+	} else {
+		q = q.Where("manifest = ?", wc.Manifest)
+	}
 	var n int64
-	if err := s.db.WithContext(ctx).Model(&ProjectVersion{}).
-		Where("project_id = ? AND content_hash = ?", projectID, wc.hash()).Count(&n).Error; err != nil {
+	if err := q.Count(&n).Error; err != nil {
 		return false, fmt.Errorf("checking the working copy: %w", err)
 	}
 	return n > 0, nil

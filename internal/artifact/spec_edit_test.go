@@ -2,6 +2,7 @@ package artifact
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -79,7 +80,7 @@ platforms = [
 ]
 
 [dependencies]
-python = { version = "3.11.*", channel = "conda-forge" }
+python = { version = "3.11.*" }
 `
 	want := `[workspace]
 name = "demo"
@@ -96,6 +97,33 @@ numpy = ">=2"
 	}
 	if got != want {
 		t.Fatalf("mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func TestApplySpecRefusesToDropSettings(t *testing.T) {
+	const head = "[workspace]\nname = \"demo\"\nplatforms = [\"linux-64\"]\n"
+	refused := map[string]string{
+		"dependency channel":   head + "channels = [\"conda-forge\"]\n\n[dependencies]\nPython = { version = \"3.11.*\", channel = \"conda-forge\" }\n",
+		"dependency build":     head + "channels = [\"conda-forge\"]\n\n[dependencies]\nnumpy = { version = \"2.*\", build = \"py312*\" }\n",
+		"channel priority":     head + "channels = [{ channel = \"bioconda\", priority = 1 }, \"conda-forge\"]\n",
+		"multi-line dep table": head + "channels = [\"conda-forge\"]\n\n[dependencies.numpy]\nversion = \"2.*\"\nchannel = \"conda-forge\"\n",
+	}
+	for name, in := range refused {
+		t.Run(name, func(t *testing.T) {
+			if _, err := ApplySpec(in, appliedSpec); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("want ErrInvalid instead of dropping the setting, got %v", err)
+			}
+		})
+	}
+
+	// Settings of a package or channel the spec removes go with it.
+	in := head + "channels = [{ channel = \"pytorch\", priority = 1 }]\n\n[dependencies]\npytorch = { version = \"2.*\", channel = \"pytorch\" }\n"
+	got, err := ApplySpec(in, appliedSpec)
+	if err != nil {
+		t.Fatalf("ApplySpec: %v", err)
+	}
+	if strings.Contains(got, "pytorch") {
+		t.Fatalf("removed package and channel must be gone:\n%s", got)
 	}
 }
 

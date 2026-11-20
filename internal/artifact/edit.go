@@ -3,6 +3,7 @@ package artifact
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
@@ -177,6 +178,11 @@ func valueEnd(lines []string, i, end int, value string) int {
 // replaced [dependencies] table are not kept, apart from comments and
 // blank lines after its last entry.
 //
+// A Spec holds only names and version specs. When a package or channel the
+// Spec keeps has settings it cannot express, such as a dependency's channel
+// or build, or a channel's priority, ApplySpec returns ErrInvalid instead
+// of dropping them; such a pixi.toml is edited as a raw manifest.
+//
 // The result is parsed again and checked, so a layout the line editor
 // does not understand (for example dotted keys, or dependencies written
 // as an inline table) returns ErrInvalid instead of a corrupted file.
@@ -185,6 +191,9 @@ func ApplySpec(content string, spec Spec) (string, error) {
 		return "", err
 	}
 	if err := spec.validateLists(); err != nil {
+		return "", err
+	}
+	if err := checkNothingDropped(content, spec); err != nil {
 		return "", err
 	}
 	deps, err := spec.dependencyLines()
@@ -233,6 +242,64 @@ func ApplySpec(content string, spec Spec) (string, error) {
 		return "", err
 	}
 	return out, nil
+}
+
+// checkNothingDropped returns ErrInvalid when applying spec to content
+// would drop settings of a top-level dependency or a workspace channel that
+// the Spec keeps: any key of a dependency table other than version, or of a
+// channel table other than channel.
+func checkNothingDropped(content string, spec Spec) error {
+	var doc map[string]any
+	if err := toml.Unmarshal([]byte(content), &doc); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	deps, _ := doc["dependencies"].(map[string]any)
+	for _, pkg := range spec.Packages {
+		name := strings.TrimSpace(pkg.Name)
+		for key, value := range deps {
+			if !strings.EqualFold(key, name) {
+				continue
+			}
+			if extra := extraKey(value, "version"); extra != "" {
+				return fmt.Errorf("%w: dependency %q sets %q, which a spec cannot hold; edit pixi.toml directly", ErrInvalid, key, extra)
+			}
+		}
+	}
+	table, _ := workspaceTable(doc)
+	for _, c := range asList(table["channels"]) {
+		entry, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := entry["channel"].(string)
+		if !slices.Contains(spec.Channels, name) {
+			continue
+		}
+		if extra := extraKey(entry, "channel"); extra != "" {
+			return fmt.Errorf("%w: channel %q sets %q, which a spec cannot hold; edit pixi.toml directly", ErrInvalid, name, extra)
+		}
+	}
+	return nil
+}
+
+// extraKey returns a key of value, when it is a table, other than allowed,
+// or "" when there is none.
+func extraKey(value any, allowed string) string {
+	table, ok := value.(map[string]any)
+	if !ok {
+		return ""
+	}
+	keys := make([]string, 0, len(table))
+	for key := range table {
+		if key != allowed {
+			keys = append(keys, key)
+		}
+	}
+	if len(keys) == 0 {
+		return ""
+	}
+	slices.Sort(keys)
+	return keys[0]
 }
 
 // checkSpecApplied parses out and checks that its workspace channels and

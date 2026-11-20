@@ -55,9 +55,10 @@ func (p *Project) BeforeCreate(tx *gorm.DB) error {
 }
 
 // Migrate creates the project tables in the client database:
-// client_projects, client_project_versions, client_project_tags and
+// client_projects, client_project_versions, client_project_tags,
 // client_pending_removals, where DeleteProject records the directories it
-// is removing. It is idempotent.
+// is removing, and client_pending_restores, where an in-place solve records
+// the files it must put back. It is idempotent.
 //
 // It only creates what is missing: tables, then columns and indexes of
 // existing tables. It never alters or rebuilds an existing table, so it
@@ -67,7 +68,7 @@ func (p *Project) BeforeCreate(tx *gorm.DB) error {
 // its rows, on every run. Changing an existing column is not supported.
 func Migrate(db *gorm.DB) error {
 	// In foreign-key order: versions reference projects, tags reference both.
-	for _, model := range []any{&Project{}, &ProjectVersion{}, &ProjectTag{}, &pendingRemoval{}} {
+	for _, model := range []any{&Project{}, &ProjectVersion{}, &ProjectTag{}, &pendingRemoval{}, &pendingRestore{}} {
 		if err := ensureTable(db, model); err != nil {
 			return fmt.Errorf("migrating client project tables: %w", err)
 		}

@@ -313,29 +313,36 @@ func (s *Service) solveInTemp(ctx context.Context, j versionJob, log io.Writer) 
 // directory, where its relative paths resolve. The working copy must hold
 // the files of a recorded version, so nothing unsaved is overwritten; it
 // is checked again here because it may have changed while the job was
-// pending. The new pixi.toml and the base's pixi.lock are written in place,
-// pixi lock runs, and the original files are put back whatever happens,
-// so the project directory stays on its version until install.
+// pending. The new pixi.toml and the base's pixi.lock are written in place
+// (see beginInPlace), pixi lock runs, and the original files are put back
+// however the solve ends, so the project directory stays on its version
+// until install. If pixi.toml is changed while the lock runs, the solve
+// fails and the files are left as they are, so the change is kept.
 func (s *Service) solveInPlace(ctx context.Context, j versionJob, log io.Writer) (solved workingCopy, err error) {
 	if err := s.checkLockableInPlace(ctx, j.projectID, j.dir); err != nil {
 		return workingCopy{}, err
 	}
-	orig, err := readWorkingCopy(j.dir)
+	orig, written, err := s.beginInPlace(ctx, j)
 	if err != nil {
 		return workingCopy{}, err
 	}
 	defer func() {
-		if rerr := restoreWorkingCopy(j.dir, orig); rerr != nil {
-			err = errors.Join(err, rerr)
+		if ferr := s.finishInPlace(ctx, j.projectID, j.dir, written, orig); ferr != nil {
+			err = errors.Join(err, ferr)
 		}
 	}()
-	if err := writeVersionFiles(j.dir, j.manifest, j.base.Lock); err != nil {
-		return workingCopy{}, err
-	}
 	if err := s.pixi.Lock(ctx, j.dir, log); err != nil {
 		return workingCopy{}, fmt.Errorf("pixi lock: %w", err)
 	}
-	return readSolved(j.dir)
+	solved, err = readSolved(j.dir)
+	if err != nil {
+		return workingCopy{}, err
+	}
+	if solved.Manifest != j.manifest {
+		// finishInPlace reports that the files were left as they are.
+		return workingCopy{}, fmt.Errorf("%s changed while it was being locked", artifact.ManifestFile)
+	}
+	return solved, nil
 }
 
 // projectConfigFile is pixi's per-project configuration (mirrors, channel
@@ -458,17 +465,27 @@ func (s *Service) checkReplaceable(ctx context.Context, projectID uuid.UUID, dir
 // no pixi.lock, its pixi.toml is a version's pixi.toml, since a missing lock
 // loses nothing.
 func (s *Service) isRecorded(ctx context.Context, projectID uuid.UUID, wc workingCopy) (bool, error) {
+	id, err := s.recordedVersionID(ctx, projectID, wc)
+	return id != uuid.Nil, err
+}
+
+// recordedVersionID returns the ID of the newest version of the project
+// that wc matches as isRecorded does, or uuid.Nil when there is none.
+func (s *Service) recordedVersionID(ctx context.Context, projectID uuid.UUID, wc workingCopy) (uuid.UUID, error) {
 	q := s.db.WithContext(ctx).Model(&ProjectVersion{}).Where("project_id = ?", projectID)
 	if wc.HasLock {
 		q = q.Where("content_hash = ?", wc.hash())
 	} else {
 		q = q.Where("manifest = ?", wc.Manifest)
 	}
-	var n int64
-	if err := q.Count(&n).Error; err != nil {
-		return false, fmt.Errorf("checking the working copy: %w", err)
+	var ids []uuid.UUID
+	if err := q.Order("number DESC").Limit(1).Pluck("id", &ids).Error; err != nil {
+		return uuid.Nil, fmt.Errorf("checking the working copy: %w", err)
 	}
-	return n > 0, nil
+	if len(ids) == 0 {
+		return uuid.Nil, nil
+	}
+	return ids[0], nil
 }
 
 // installStep installs version v into the project directory dir: the step
@@ -524,9 +541,24 @@ func writeVersionFiles(dir, manifest, lock string) error {
 }
 
 // writeFileAtomic writes content to a temporary file next to path and
-// renames it over path, so readers see the old file or the new one.
+// renames it over path, so readers see the old file or the new one. When
+// path is a symlink the file it points at is replaced and the link is
+// kept, and an existing file keeps its permissions; a new one gets 0644.
 func writeFileAtomic(path, content string) error {
-	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-")
+	target, err := filepath.EvalSymlinks(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		target = path
+	case err != nil:
+		return err
+	}
+	mode := fs.FileMode(0o644)
+	if info, err := os.Stat(target); err == nil {
+		mode = info.Mode().Perm()
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".tmp-")
 	if err != nil {
 		return err
 	}
@@ -536,7 +568,7 @@ func writeFileAtomic(path, content string) error {
 		os.Remove(tmp)
 		return err
 	}
-	if err := f.Chmod(0o644); err != nil {
+	if err := f.Chmod(mode); err != nil {
 		f.Close()
 		os.Remove(tmp)
 		return err
@@ -545,7 +577,7 @@ func writeFileAtomic(path, content string) error {
 		os.Remove(tmp)
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := os.Rename(tmp, target); err != nil {
 		os.Remove(tmp)
 		return err
 	}

@@ -120,6 +120,9 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID, opts DeletePr
 	}
 
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := deletePendingRestores(tx, id); err != nil {
+			return err
+		}
 		if err := deleteProjectVersions(tx, id); err != nil {
 			return err
 		}

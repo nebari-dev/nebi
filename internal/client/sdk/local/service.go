@@ -142,8 +142,8 @@ type Service struct {
 }
 
 // New returns a Service. The client tables must exist; see Migrate. Call
-// RecoverDeletes once at startup to finish file removals that an earlier
-// run left incomplete.
+// RecoverDeletes and RecoverInPlaceSolves once at startup to finish file
+// removals and in-place solves that an earlier run left incomplete.
 func New(opts Options) (*Service, error) {
 	switch {
 	case opts.DB == nil:

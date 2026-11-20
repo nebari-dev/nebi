@@ -320,6 +320,35 @@ func TestCreateVersionAndInstall(t *testing.T) {
 	}
 }
 
+// failingInstalls is a JobRunner whose Submit fails for install jobs.
+type failingInstalls struct{ *jobs.Memory }
+
+func (f failingInstalls) Submit(ctx context.Context, id uuid.UUID, typ jobs.Type, run jobs.Func) (*jobs.Job, error) {
+	if typ == jobs.TypeInstall {
+		return nil, errors.New("queue unavailable")
+	}
+	return f.Memory.Submit(ctx, id, typ, run)
+}
+
+func TestCreateVersionCopyReportsAnInstallThatCouldNotStart(t *testing.T) {
+	h := newHarness(t, func(o *Options) { o.Jobs = failingInstalls{o.Jobs.(*jobs.Memory)} })
+	p, v1 := h.newProject("no-install-queue", false)
+	h.createVersion(CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: newerSpec()})
+
+	// The copy is recorded before its install is submitted, so the result
+	// reports it with no error, and says the install did not start.
+	res, err := h.svc.CreateVersion(context.Background(), CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, AllowOlderBase: true, Install: true})
+	if err != nil {
+		t.Fatalf("the version was recorded, so CreateVersion must not fail: %v", err)
+	}
+	if res.Version == nil || res.Version.Number != 3 || res.Job != nil || !strings.Contains(res.InstallError, "queue unavailable") {
+		t.Fatalf("want version 3, no job and the install error, got %+v", res)
+	}
+	if n := len(h.versions.versionsOf(t, p.ID)); n != 3 {
+		t.Fatalf("want version 3 recorded, %d versions", n)
+	}
+}
+
 func TestCreateVersionInstallFailure(t *testing.T) {
 	h := newHarness(t)
 	p, v1 := h.newProject("broken-install", true)

@@ -33,7 +33,10 @@ var (
 	// ErrFilesNotManaged: file deletion was asked for a directory nebi did
 	// not create.
 	ErrFilesNotManaged = errors.New("project directory was not created by nebi")
-	// ErrInvalidRequest: a required field of the request is missing.
+	// ErrInvalidRequest: a required field of the request is missing, such
+	// as CreateVersionRequest.BaseVersionID, or a version to record has no
+	// pixi.lock. Not in #661's error table; the client API maps it to 422,
+	// like the other validation errors.
 	ErrInvalidRequest = errors.New("invalid request")
 	// ErrNotFound: the project, version or tag doesn't exist.
 	ErrNotFound = errors.New("not found")
@@ -59,7 +62,8 @@ var (
 
 // BusyError is returned by DeleteProject and SnapshotWorkingCopy while
 // jobs for the project are pending or running. It matches ErrProjectBusy
-// with errors.Is.
+// with errors.Is. For SnapshotWorkingCopy it is an addition to #661's error
+// table; the client API maps it to 409, as for delete.
 type BusyError struct {
 	ProjectID uuid.UUID
 	JobIDs    []uuid.UUID

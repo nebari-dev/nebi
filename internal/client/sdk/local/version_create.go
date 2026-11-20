@@ -41,17 +41,30 @@ type CreateVersionRequest struct {
 }
 
 // CreateVersionResult is what CreateVersion and SnapshotWorkingCopy return.
+// It has one of three shapes:
+//
+//   - Version set, Job nil: the version is recorded (no solve was needed),
+//     or, with Deduplicated, the latest version already had this content.
+//     The client API answers 201, or 200 when Deduplicated.
+//   - Job set, Version nil: a create_version job is solving the lock file
+//     and records the version when it succeeds; the job carries its ID.
+//     The client API answers 202.
+//   - Version and Job set: CreateVersion with Install recorded the version
+//     at once (as in the first shape) and Job is the install job installing
+//     it. The client API answers 202, with the version in the body.
+//
+// InstallError is set instead of Job when the version was recorded but its
+// install could not be started; CreateVersion then returns no error,
+// because the version exists.
 type CreateVersionResult struct {
-	// Version is set when no solve was needed (unchanged copy of the base,
-	// or a result identical to the latest version).
 	Version *ProjectVersion `json:"version,omitempty"`
-	// Job is set when a solve is running. The version is recorded when the
-	// job succeeds, and the job result carries its ID. When Version is set
-	// and Install was asked for, Job is the install job.
-	Job *jobs.Job `json:"job,omitempty"`
+	Job     *jobs.Job       `json:"job,omitempty"`
 	// Deduplicated is true when the result matched the latest version and
 	// no new version was created.
 	Deduplicated bool `json:"deduplicated"`
+	// InstallError says why the install of a recorded Version could not be
+	// started.
+	InstallError string `json:"install_error,omitempty"`
 }
 
 // CreateVersion makes a new version of a project from a base version.
@@ -77,6 +90,11 @@ type CreateVersionResult struct {
 //
 // Tags are checked before anything runs: an invalid one returns
 // ErrInvalidTag, and one already on another version ErrTagExists.
+//
+// Besides the errors in #661's table, CreateVersion returns
+// ErrInvalidRequest when BaseVersionID is not set, ErrWorkingCopyModified
+// (#682) as above, and ErrWorkingCopyMissing when Install is asked for and
+// the project directory is gone.
 func (s *Service) CreateVersion(ctx context.Context, req CreateVersionRequest) (*CreateVersionResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -177,7 +195,9 @@ func (s *Service) copyVersion(ctx context.Context, p *Project, base *ProjectVers
 		return s.installStep(ctx, p.ID, p.Path, v, log)
 	})
 	if err != nil {
-		return res, fmt.Errorf("version %d is recorded, but its install could not be started: %w", v.Number, err)
+		// The version exists, so this is not a failed create.
+		res.InstallError = fmt.Sprintf("version %d is recorded, but its install could not be started: %v", v.Number, err)
+		return res, nil
 	}
 	res.Job = job
 	return res, nil

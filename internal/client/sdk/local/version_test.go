@@ -616,7 +616,7 @@ func TestNumbersAreAssignedInTheInsertAndNeverReused(t *testing.T) {
 	// A failed insert does not consume a number.
 	h.versions.setRecordErr(errors.New("disk full"))
 	err := h.svc.versionTx(context.Background(), func(tx *gorm.DB) error {
-		_, _, err := h.svc.recordVersion(tx, recordVersionRequest{ProjectID: p.ID, Manifest: "[workspace]\n# x\n", Origin: OriginPulled})
+		_, _, err := h.svc.recordVersion(tx, recordVersionRequest{ProjectID: p.ID, Manifest: "[workspace]\n# x\n", Lock: "version: 6\n", Origin: OriginPulled})
 		return err
 	})
 	if err == nil {
@@ -624,7 +624,7 @@ func TestNumbersAreAssignedInTheInsertAndNeverReused(t *testing.T) {
 	}
 	h.versions.setRecordErr(nil)
 	err = h.svc.versionTx(context.Background(), func(tx *gorm.DB) error {
-		v, _, err := h.svc.recordVersion(tx, recordVersionRequest{ProjectID: p.ID, Manifest: "[workspace]\n# y\n", Origin: OriginPulled})
+		v, _, err := h.svc.recordVersion(tx, recordVersionRequest{ProjectID: p.ID, Manifest: "[workspace]\n# y\n", Lock: "version: 6\n", Origin: OriginPulled})
 		if err == nil && v.Number != writers+2 {
 			return fmt.Errorf("next number = %d, want %d", v.Number, writers+2)
 		}
@@ -653,20 +653,28 @@ func TestRecordVersionChecks(t *testing.T) {
 		_, _, err := recordV(req)
 		return err
 	}
-	m := "[workspace]\n# checks\n"
-	if err := record(recordVersionRequest{ProjectID: uuid.New(), Manifest: m, Origin: OriginPulled}); !errors.Is(err, ErrNotFound) {
+	m, l := "[workspace]\n# checks\n", "version: 6\n# checks\n"
+	if err := record(recordVersionRequest{ProjectID: uuid.New(), Manifest: m, Lock: l, Origin: OriginPulled}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown project: %v", err)
 	}
-	if err := record(recordVersionRequest{ProjectID: p.ID, BaseVersionID: &otherV1.ID, Manifest: m, Origin: OriginPulled}); !errors.Is(err, ErrNotFound) {
+	if err := record(recordVersionRequest{ProjectID: p.ID, BaseVersionID: &otherV1.ID, Manifest: m, Lock: l, Origin: OriginPulled}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("base of another project: %v", err)
 	}
-	if err := record(recordVersionRequest{ProjectID: p.ID, Manifest: m, Origin: OriginPulled, Tags: []string{"LATEST"}}); !errors.Is(err, ErrInvalidTag) {
+	if err := record(recordVersionRequest{ProjectID: p.ID, Manifest: m, Lock: l, Origin: OriginPulled, Tags: []string{"LATEST"}}); !errors.Is(err, ErrInvalidTag) {
 		t.Fatalf("reserved tag: %v", err)
 	}
-	if err := record(recordVersionRequest{ProjectID: p.ID, Manifest: " ", Origin: OriginPulled}); !errors.Is(err, ErrInvalidManifest) {
+	if err := record(recordVersionRequest{ProjectID: p.ID, Manifest: " ", Lock: l, Origin: OriginPulled}); !errors.Is(err, ErrInvalidManifest) {
 		t.Fatalf("empty manifest: %v", err)
 	}
-	if err := record(recordVersionRequest{ProjectID: p.ID, Manifest: m, Origin: "rolled_back"}); err == nil {
+	for _, lock := range []string{"", " \n"} {
+		if err := record(recordVersionRequest{ProjectID: p.ID, Manifest: m, Lock: lock, Origin: OriginPulled}); !errors.Is(err, ErrInvalidRequest) {
+			t.Fatalf("empty lock %q: want ErrInvalidRequest, got %v", lock, err)
+		}
+	}
+	if n := len(h.versions.versionsOf(t, p.ID)); n != 1 {
+		t.Fatalf("refused records must write nothing, %d versions", n)
+	}
+	if err := record(recordVersionRequest{ProjectID: p.ID, Manifest: m, Lock: l, Origin: "rolled_back"}); err == nil {
 		t.Fatal("unknown origin must be refused")
 	}
 
@@ -675,7 +683,7 @@ func TestRecordVersionChecks(t *testing.T) {
 	if _, err := h.svc.SetTag(context.Background(), SetTagRequest{ProjectID: p.ID, Name: "held", VersionID: v1.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if err := record(recordVersionRequest{ProjectID: p.ID, Manifest: m, Origin: OriginPulled, Tags: []string{"held"}}); !errors.Is(err, ErrTagExists) {
+	if err := record(recordVersionRequest{ProjectID: p.ID, Manifest: m, Lock: l, Origin: OriginPulled, Tags: []string{"held"}}); !errors.Is(err, ErrTagExists) {
 		t.Fatalf("tag on another version: want ErrTagExists, got %v", err)
 	}
 

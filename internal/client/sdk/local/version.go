@@ -171,7 +171,8 @@ type recordVersionRequest struct {
 	// BaseVersionID is the version this one was created from; nil for
 	// version 1, snapshots without an installed version, and imports.
 	BaseVersionID *uuid.UUID
-	// Manifest and Lock are the complete pixi.toml and pixi.lock.
+	// Manifest and Lock are the complete pixi.toml and pixi.lock; both are
+	// required.
 	Manifest string
 	Lock     string
 	Origin   VersionOrigin
@@ -211,6 +212,11 @@ func (s *Service) recordVersion(tx *gorm.DB, req recordVersionRequest) (*Project
 	}
 	if strings.TrimSpace(req.Manifest) == "" {
 		return nil, false, fmt.Errorf("%w: a version needs a pixi.toml", ErrInvalidManifest)
+	}
+	// Every version is complete: without a lock it could not be installed
+	// as recorded.
+	if strings.TrimSpace(req.Lock) == "" {
+		return nil, false, fmt.Errorf("%w: a version needs a pixi.lock", ErrInvalidRequest)
 	}
 	switch req.Origin {
 	case OriginCreated, OriginSnapshot, OriginPulled:

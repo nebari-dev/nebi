@@ -7,16 +7,16 @@ import (
 	"gorm.io/gorm"
 )
 
-// User represents a system user
+// User is a person known to nebi. Team-mode users are provisioned from the
+// identity provider on first sight (see FederatedIdentity).
 type User struct {
-	ID           uuid.UUID      `gorm:"type:text;primary_key" json:"id"`
-	Username     string         `gorm:"uniqueIndex;not null" json:"username"`
-	PasswordHash string         `gorm:"not null" json:"-"`
-	Email        string         `gorm:"uniqueIndex;not null" json:"email"`
-	AvatarURL    string         `json:"avatar_url"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
+	ID        uuid.UUID      `gorm:"type:text;primary_key" json:"id"`
+	Username  string         `gorm:"uniqueIndex;not null" json:"username"`
+	Email     string         `gorm:"uniqueIndex;not null" json:"email"`
+	AvatarURL string         `json:"avatar_url"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 // BeforeCreate hook to generate UUID

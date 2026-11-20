@@ -245,7 +245,6 @@ func isForbiddenError(err error, target **ForbiddenError) bool {
 
 func TestShareProjectWithGroup_GrantsTransitiveAccess(t *testing.T) {
 	svc, db := testSetup(t, false)
-	groupSvc := NewGroupService(db, rbac.NewDefaultProvider())
 
 	alice := createTestUser(t, db, "alice")
 	bob := createTestUser(t, db, "bob")
@@ -254,10 +253,10 @@ func TestShareProjectWithGroup_GrantsTransitiveAccess(t *testing.T) {
 	db.Create(&models.Role{Name: "viewer", Description: "read"})
 	db.Create(&models.Role{Name: "editor", Description: "write"})
 
-	g, _ := groupSvc.CreateGroup(CreateGroupRequest{Name: "team"}, alice)
+	g := createTestGroup(t, db, "team")
 	// alice (owner) must be a member of the group to share with it.
-	_ = groupSvc.AddMember(g.ID, alice, alice)
-	_ = groupSvc.AddMember(g.ID, bob, alice)
+	addTestGroupMember(t, db, g.ID, alice)
+	addTestGroupMember(t, db, g.ID, bob)
 
 	perm, err := svc.ShareProjectWithGroup(project.ID.String(), alice, g.ID, "editor")
 	if err != nil {
@@ -275,14 +274,13 @@ func TestShareProjectWithGroup_GrantsTransitiveAccess(t *testing.T) {
 
 func TestShareProjectWithGroup_OwnerNotInGroupRejected(t *testing.T) {
 	svc, db := testSetup(t, false)
-	groupSvc := NewGroupService(db, rbac.NewDefaultProvider())
 
 	alice := createTestUser(t, db, "alice")
 	project := createReadyProject(t, svc, db, "share-grp", alice)
 	db.Create(&models.Role{Name: "viewer"})
 	db.Create(&models.Role{Name: "editor"})
 
-	g, _ := groupSvc.CreateGroup(CreateGroupRequest{Name: "outsiders"}, alice)
+	g := createTestGroup(t, db, "outsiders")
 	// Note: alice is NOT a member of `g`.
 
 	_, err := svc.ShareProjectWithGroup(project.ID.String(), alice, g.ID, "viewer")
@@ -297,14 +295,13 @@ func TestShareProjectWithGroup_OwnerNotInGroupRejected(t *testing.T) {
 
 func TestListCollaborators_IncludesGroups(t *testing.T) {
 	svc, db := testSetup(t, false)
-	groupSvc := NewGroupService(db, rbac.NewDefaultProvider())
 	alice := createTestUser(t, db, "alice")
 	project := createReadyProject(t, svc, db, "x", alice)
 	db.Create(&models.Role{Name: "viewer"})
 	db.Create(&models.Role{Name: "editor"})
 
-	g, _ := groupSvc.CreateGroup(CreateGroupRequest{Name: "ds"}, alice)
-	_ = groupSvc.AddMember(g.ID, alice, alice)
+	g := createTestGroup(t, db, "ds")
+	addTestGroupMember(t, db, g.ID, alice)
 	_, _ = svc.ShareProjectWithGroup(project.ID.String(), alice, g.ID, "viewer")
 
 	cs, err := svc.ListCollaborators(project.ID.String())
@@ -317,9 +314,6 @@ func TestListCollaborators_IncludesGroups(t *testing.T) {
 			sawGroup = true
 			if c.Role != "viewer" {
 				t.Errorf("expected role viewer, got %q", c.Role)
-			}
-			if c.Source != "native" {
-				t.Errorf("expected source native, got %q", c.Source)
 			}
 		}
 	}
@@ -343,7 +337,7 @@ func TestCollaboratorResult_JSON_OmitsIrrelevantIDs(t *testing.T) {
 
 	groupID := uuid.New()
 	groupEntry := CollaboratorResult{
-		Kind: CollaboratorKindGroup, GroupID: &groupID, Name: "ds", Source: "native", Role: "viewer",
+		Kind: CollaboratorKindGroup, GroupID: &groupID, Name: "ds", Role: "viewer",
 	}
 	groupJSON, err := json.Marshal(groupEntry)
 	if err != nil {
@@ -356,7 +350,6 @@ func TestCollaboratorResult_JSON_OmitsIrrelevantIDs(t *testing.T) {
 
 func TestListProjects_IncludesGroupShared(t *testing.T) {
 	svc, db := testSetup(t, false)
-	groupSvc := NewGroupService(db, rbac.NewDefaultProvider())
 
 	alice := createTestUser(t, db, "alice")
 	bob := createTestUser(t, db, "bob")
@@ -365,9 +358,9 @@ func TestListProjects_IncludesGroupShared(t *testing.T) {
 	db.Create(&models.Role{Name: "viewer"})
 	db.Create(&models.Role{Name: "editor"})
 
-	g, _ := groupSvc.CreateGroup(CreateGroupRequest{Name: "team"}, alice)
-	_ = groupSvc.AddMember(g.ID, alice, alice)
-	_ = groupSvc.AddMember(g.ID, bob, alice)
+	g := createTestGroup(t, db, "team")
+	addTestGroupMember(t, db, g.ID, alice)
+	addTestGroupMember(t, db, g.ID, bob)
 	if _, err := svc.ShareProjectWithGroup(project.ID.String(), alice, g.ID, "viewer"); err != nil {
 		t.Fatalf("share with group: %v", err)
 	}

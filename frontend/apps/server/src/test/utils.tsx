@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { type RenderOptions, render } from '@testing-library/react';
 import type React from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { type InitialEntry, MemoryRouter } from 'react-router-dom';
 
 function makeQueryClient() {
   return new QueryClient({
@@ -15,7 +15,7 @@ function makeQueryClient() {
 export function createWrapper({
   initialEntries = ['/'],
 }: {
-  initialEntries?: string[];
+  initialEntries?: InitialEntry[];
 } = {}) {
   const queryClient = makeQueryClient();
   return function Wrapper({ children }: { children: React.ReactNode }) {
@@ -29,7 +29,9 @@ export function createWrapper({
 
 export function renderWithProviders(
   ui: React.ReactElement,
-  options?: Omit<RenderOptions, 'wrapper'> & { initialEntries?: string[] },
+  options?: Omit<RenderOptions, 'wrapper'> & {
+    initialEntries?: InitialEntry[];
+  },
 ) {
   const { initialEntries, ...renderOptions } = options ?? {};
   return render(ui, {

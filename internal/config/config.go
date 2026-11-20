@@ -39,6 +39,9 @@ type Config struct {
 	Storage    StorageConfig    `mapstructure:"storage"`
 	Limits     limits.Limits    `mapstructure:"limits"`
 	Registries RegistriesConfig `mapstructure:"registries"`
+	// EncryptionKey is the secret the key that encrypts stored registry
+	// credentials is derived from (team mode: 32+ characters).
+	EncryptionKey string `mapstructure:"encryption_key"`
 }
 
 // IsLocalMode returns true when the server is running in local/desktop mode.
@@ -60,16 +63,7 @@ type ServerConfig struct {
 // AllowedOriginsList returns server.allowed_origins split on commas, with
 // whitespace trimmed and empty entries dropped.
 func (c *ServerConfig) AllowedOriginsList() []string {
-	if strings.TrimSpace(c.AllowedOrigins) == "" {
-		return nil
-	}
-	var out []string
-	for _, o := range strings.Split(c.AllowedOrigins, ",") {
-		if o = strings.TrimSpace(o); o != "" {
-			out = append(out, o)
-		}
-	}
-	return out
+	return splitCommaList(c.AllowedOrigins)
 }
 
 // ReadTimeout returns the configured HTTP request read timeout.
@@ -106,19 +100,47 @@ type DatabaseConfig struct {
 	ConnMaxLifetime int    `mapstructure:"conn_max_lifetime"` // Connection max lifetime in minutes (Postgres)
 }
 
-// AuthConfig holds authentication configuration
+// Supported values for auth.type.
+const (
+	AuthTypeOIDC = "oidc"
+	AuthTypeNone = "none"
+)
+
+// AuthConfig holds authentication configuration. In team mode nebi is an
+// OIDC resource server: clients obtain access tokens from the identity
+// provider and nebi only validates them.
 type AuthConfig struct {
-	Type                        string `mapstructure:"type"`                           // "basic" or "oidc"
-	JWTSecret                   string `mapstructure:"jwt_secret"`                     // Secret for JWT signing
-	OIDCIssuerURL               string `mapstructure:"oidc_issuer_url"`                // OIDC provider issuer URL (e.g., https://accounts.google.com)
-	OIDCDiscoveryURL            string `mapstructure:"oidc_discovery_url"`             // Optional: URL for fetching .well-known/openid-configuration when it differs from the issuer (e.g. in-cluster Keycloak Service for back-channel calls); falls back to oidc_issuer_url when unset
-	OIDCClientID                string `mapstructure:"oidc_client_id"`                 // OIDC client ID
-	OIDCClientSecret            string `mapstructure:"oidc_client_secret"`             // OIDC client secret
-	OIDCRedirectURL             string `mapstructure:"oidc_redirect_url"`              // OIDC redirect URL (e.g., http://localhost:8460/auth/oidc/callback)
-	ProxyAdminGroups            string `mapstructure:"proxy_admin_groups"`             // Comma-separated Keycloak/OIDC groups that grant admin (e.g., "admin,nebi-admin")
-	ProxyDefaultRole            string `mapstructure:"proxy_default_role"`             // Default role for proxy-authenticated users (default: "editor")
-	DeviceFlowClientID          string `mapstructure:"device_flow_client_id"`          // OIDC device flow public client ID (for RFC 8628 CLI login)
-	AuthorizationStaleAfterMins int    `mapstructure:"authorization_stale_after_mins"` // Reconciled bearer authorization freshness window in minutes (default: 1440)
+	Type             string `mapstructure:"type"`               // "oidc" (default) or "none" (no authentication, every request is an implicit admin)
+	OIDCIssuerURL    string `mapstructure:"oidc_issuer_url"`    // OIDC provider issuer URL; must match the "iss" claim of access tokens
+	OIDCDiscoveryURL string `mapstructure:"oidc_discovery_url"` // Optional: URL for fetching .well-known/openid-configuration when it differs from the issuer (e.g. in-cluster Keycloak Service for back-channel calls); falls back to oidc_issuer_url when unset
+	OIDCClientID     string `mapstructure:"oidc_client_id"`     // Public OIDC client used by the web UI, CLI and desktop app; access tokens must list it in "aud"
+	OIDCScopes       string `mapstructure:"oidc_scopes"`        // Comma-separated scopes clients request (default: "openid,profile,email")
+	OIDCAdminGroups  string `mapstructure:"oidc_admin_groups"`  // Comma-separated IdP groups whose members are nebi admins (default: "admin")
+}
+
+// OIDCScopesList returns auth.oidc_scopes split on commas, with whitespace
+// trimmed and empty entries dropped.
+func (c *AuthConfig) OIDCScopesList() []string {
+	return splitCommaList(c.OIDCScopes)
+}
+
+// OIDCAdminGroupsList returns auth.oidc_admin_groups split on commas, with
+// whitespace trimmed and empty entries dropped.
+func (c *AuthConfig) OIDCAdminGroupsList() []string {
+	return splitCommaList(c.OIDCAdminGroups)
+}
+
+func splitCommaList(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	var out []string
+	for _, item := range strings.Split(s, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 // LogConfig holds logging configuration
@@ -188,17 +210,13 @@ func Load(options ...LoadOption) (*Config, error) {
 	v.SetDefault("database.max_idle_conns", 10)
 	v.SetDefault("database.max_open_conns", 100)
 	v.SetDefault("database.conn_max_lifetime", 60) // 60 minutes
-	v.SetDefault("auth.type", "basic")
-	v.SetDefault("auth.jwt_secret", "change-me-in-production")
+	v.SetDefault("auth.type", AuthTypeOIDC)
+	v.SetDefault("encryption_key", defaultEncryptionKey)
 	v.SetDefault("auth.oidc_issuer_url", "")
 	v.SetDefault("auth.oidc_discovery_url", "")
 	v.SetDefault("auth.oidc_client_id", "")
-	v.SetDefault("auth.oidc_client_secret", "")
-	v.SetDefault("auth.oidc_redirect_url", "http://localhost:8460/api/v1/auth/oidc/callback")
-	v.SetDefault("auth.proxy_admin_groups", "admin")
-	v.SetDefault("auth.proxy_default_role", "editor")
-	v.SetDefault("auth.device_flow_client_id", "")
-	v.SetDefault("auth.authorization_stale_after_mins", 1440)
+	v.SetDefault("auth.oidc_scopes", "openid,profile,email")
+	v.SetDefault("auth.oidc_admin_groups", "admin")
 	v.SetDefault("log.format", "text")
 	v.SetDefault("log.level", "info")
 	v.SetDefault("storage.projects_dir", "./data/projects")
@@ -253,13 +271,12 @@ func Load(options ...LoadOption) (*Config, error) {
 	_ = v.BindEnv("database.driver", "NEBI_DATABASE_DRIVER")
 	_ = v.BindEnv("database.dsn", "NEBI_DATABASE_DSN")
 	_ = v.BindEnv("auth.type", "NEBI_AUTH_TYPE")
-	_ = v.BindEnv("auth.jwt_secret", "NEBI_AUTH_JWT_SECRET")
+	_ = v.BindEnv("encryption_key", "NEBI_ENCRYPTION_KEY")
 	_ = v.BindEnv("auth.oidc_issuer_url", "NEBI_AUTH_OIDC_ISSUER_URL")
 	_ = v.BindEnv("auth.oidc_discovery_url", "NEBI_AUTH_OIDC_DISCOVERY_URL")
 	_ = v.BindEnv("auth.oidc_client_id", "NEBI_AUTH_OIDC_CLIENT_ID")
-	_ = v.BindEnv("auth.oidc_client_secret", "NEBI_AUTH_OIDC_CLIENT_SECRET")
-	_ = v.BindEnv("auth.oidc_redirect_url", "NEBI_AUTH_OIDC_REDIRECT_URL")
-	_ = v.BindEnv("auth.authorization_stale_after_mins", "NEBI_AUTH_AUTHORIZATION_STALE_AFTER_MINS")
+	_ = v.BindEnv("auth.oidc_scopes", "NEBI_AUTH_OIDC_SCOPES")
+	_ = v.BindEnv("auth.oidc_admin_groups", "NEBI_AUTH_OIDC_ADMIN_GROUPS")
 	_ = v.BindEnv("log.format", "NEBI_LOG_FORMAT")
 	_ = v.BindEnv("log.level", "NEBI_LOG_LEVEL")
 	_ = v.BindEnv("limits.request_body_bytes", "NEBI_LIMITS_REQUEST_BODY_BYTES")
@@ -303,12 +320,14 @@ func Load(options ...LoadOption) (*Config, error) {
 		return nil, err
 	}
 
-	// Team mode exposes JWT-authenticated network endpoints, so its signing
-	// secret must not be empty, the shipped default, or too short to resist
-	// brute force. Local mode never reaches this auth path (it uses
-	// LocalAuthenticator, see router.go), so it's exempt.
+	// Team mode stores registry credentials encrypted with a key derived from
+	// this secret, so it must not be empty, the shipped default, or too short
+	// to resist brute force. Local mode is exempt.
 	if !cfg.IsLocalMode() {
-		if err := validateTeamModeJWTSecret(cfg.Auth.JWTSecret); err != nil {
+		if err := validateTeamModeEncryptionKey(cfg.EncryptionKey); err != nil {
+			return nil, err
+		}
+		if err := validateTeamModeAuth(&cfg.Auth); err != nil {
 			return nil, err
 		}
 	}
@@ -326,21 +345,39 @@ func validateMode(mode Mode) error {
 }
 
 const (
-	defaultJWTSecret   = "change-me-in-production"
-	minJWTSecretLength = 32
+	defaultEncryptionKey   = "change-me-in-production"
+	minEncryptionKeyLength = 32
 )
 
-func validateTeamModeJWTSecret(secret string) error {
-	if secret == "" {
-		return fmt.Errorf("auth.jwt_secret (NEBI_AUTH_JWT_SECRET) must be set in team mode")
+func validateTeamModeEncryptionKey(key string) error {
+	if key == "" {
+		return fmt.Errorf("encryption_key (NEBI_ENCRYPTION_KEY) must be set in team mode")
 	}
-	if secret == defaultJWTSecret {
-		return fmt.Errorf("auth.jwt_secret (NEBI_AUTH_JWT_SECRET) must not be the default value %q in team mode", defaultJWTSecret)
+	if key == defaultEncryptionKey {
+		return fmt.Errorf("encryption_key (NEBI_ENCRYPTION_KEY) must not be the default value %q in team mode", defaultEncryptionKey)
 	}
-	if len(secret) < minJWTSecretLength {
-		return fmt.Errorf("auth.jwt_secret (NEBI_AUTH_JWT_SECRET) must be at least %d characters in team mode", minJWTSecretLength)
+	if len(key) < minEncryptionKeyLength {
+		return fmt.Errorf("encryption_key (NEBI_ENCRYPTION_KEY) must be at least %d characters in team mode", minEncryptionKeyLength)
 	}
 	return nil
+}
+
+func validateTeamModeAuth(ac *AuthConfig) error {
+	ac.Type = strings.ToLower(strings.TrimSpace(ac.Type))
+	switch ac.Type {
+	case AuthTypeNone:
+		return nil
+	case AuthTypeOIDC:
+		if strings.TrimSpace(ac.OIDCIssuerURL) == "" {
+			return fmt.Errorf("auth.oidc_issuer_url (NEBI_AUTH_OIDC_ISSUER_URL) must be set when auth.type is %q", AuthTypeOIDC)
+		}
+		if strings.TrimSpace(ac.OIDCClientID) == "" {
+			return fmt.Errorf("auth.oidc_client_id (NEBI_AUTH_OIDC_CLIENT_ID) must be set when auth.type is %q", AuthTypeOIDC)
+		}
+		return nil
+	default:
+		return fmt.Errorf("invalid auth.type %q: must be %q or %q", ac.Type, AuthTypeOIDC, AuthTypeNone)
+	}
 }
 
 // normalizeRegistries validates the registries section.

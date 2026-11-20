@@ -12,12 +12,21 @@ If you don't have a server for your team or organization yet, see [Server Setup]
 
 Before syncing projects, connect and authenticate with your Nebi server. You only need to do this once per server.
 
+`nebi login` opens your organization's sign-in page in the browser and waits until you approve the login there:
+
 ```bash
 $ nebi login https://nebi.company.com
-Username: alice
-Password: ********
-Logged in to "https://nebi.company.com" as alice
+To authenticate, open the following URL in your browser:
+
+  https://auth.company.com/realms/nebi/device?user_code=WDJB-MJHT
+
+And verify the code: WDJB-MJHT
+
+Waiting for authentication...
+Logged in to https://nebi.company.com as alice
 ```
+
+The login is refreshed automatically. To use an access token you obtained from the identity provider yourself (for example in automation), pass it with `--token`; such a token is used as is and is not refreshed.
 
 ## Server Push and Pull
 

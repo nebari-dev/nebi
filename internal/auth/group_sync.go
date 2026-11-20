@@ -12,38 +12,16 @@ import (
 	"github.com/nebari-dev/nebi/internal/models"
 	"github.com/nebari-dev/nebi/internal/rbac"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
-// syncOIDCGroups reconciles the user's OIDC group memberships with the names
-// in the latest ID token's `groups` claim. Idempotent: safe to call on every
-// login. Only affects groups with source=oidc; native memberships are
-// untouched. Zero-member OIDC groups are preserved so existing project
-// shares survive churn.
-//
-// Name collision with native groups: If an OIDC claim names a group that
-// already exists with source=native, the membership is NOT added — native
-// groups are administered explicitly in nebi, and silently merging IdP claims
-// into them would create permanent untracked grants (phase-2 reconcile only
-// considers source=oidc memberships).
-//
-// It also records auth_reconciliation_statuses rows so callers can fail closed
-// and operators can see unresolved reconciliation failures. The RBAC provider
-// is injected so auth flows can reuse the configured provider and tests can
-// fail known reconciliation steps.
+// syncOIDCGroups reconciles the user's group memberships with the names in
+// the token's `groups` claim. Groups are owned by the identity provider:
+// unknown names are created, and memberships missing from the claim are
+// removed. Idempotent: safe to call for every new token. Zero-member groups
+// are preserved so existing project shares survive churn. The RBAC provider
+// is injected so tests can fail known reconciliation steps.
 func syncOIDCGroups(db *gorm.DB, userID uuid.UUID, claimGroups []string, rbacProvider rbac.Provider) error {
-	if err := syncOIDCGroupsOnce(db, userID, claimGroups, rbacProvider); err != nil {
-		recordAuthReconciliationFailureWithGroups(db, userID, authReconciliationOIDCGroups, err, claimGroups)
-		return err
-	}
-	if err := recordAuthReconciliationSuccessWithGroups(db, userID, authReconciliationOIDCGroups, claimGroups); err != nil {
-		recordAuthReconciliationFailureWithGroups(db, userID, authReconciliationOIDCGroups, err, claimGroups)
-		return fmt.Errorf("record oidc group sync success: %w", err)
-	}
-
-	return nil
-}
-
-func syncOIDCGroupsOnce(db *gorm.DB, userID uuid.UUID, claimGroups []string, rbacProvider rbac.Provider) error {
 	if err := validateOIDCGroupSyncInputs(db, rbacProvider); err != nil {
 		return err
 	}
@@ -57,41 +35,22 @@ func syncOIDCGroupsOnce(db *gorm.DB, userID uuid.UUID, claimGroups []string, rba
 
 	if err := db.Transaction(func(tx *gorm.DB) error {
 		for name := range desired {
-			var g models.Group
-			err := tx.Where("name = ?", name).First(&g).Error
-			switch {
-			case err == nil:
-				// If this name already exists as a native group, do NOT merge OIDC claims
-				// into it. Native group membership is administered explicitly in nebi; an
-				// OIDC claim that happens to share the name must not silently grant
-				// permanent access (phase-2 reconcile only looks at source=oidc, so any
-				// membership added here would never be removed).
-				if g.Source == models.GroupSourceNative {
-					slog.Warn("OIDC claim names a native group; skipping membership",
-						"group_name", name, "group_id", g.ID, "user_id", userID)
-					continue
-				}
-			case errors.Is(err, gorm.ErrRecordNotFound):
-				g = models.Group{Name: name, Source: models.GroupSourceOIDC}
-				if err := tx.Create(&g).Error; err != nil {
-					return fmt.Errorf("create oidc group %q: %w", name, err)
-				}
-				audit.LogAction(tx, userID, audit.ActionCreateGroup, fmt.Sprintf("group:%s", g.ID),
-					map[string]any{"origin": "oidc", "name": g.Name})
-			default:
-				return fmt.Errorf("lookup group %q: %w", name, err)
+			g, err := findOrCreateOIDCGroup(tx, name, userID)
+			if err != nil {
+				return err
 			}
 
-			var existing models.GroupMember
-			err = tx.Where("group_id = ? AND user_id = ?", g.ID, userID).First(&existing).Error
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				if err := tx.Create(&models.GroupMember{GroupID: g.ID, UserID: userID}).Error; err != nil {
-					return fmt.Errorf("create membership for %q: %w", name, err)
-				}
+			// Concurrent syncs for the same user (e.g. parallel requests with a
+			// fresh token) may race on the same membership, so tolerate an
+			// existing row instead of failing.
+			result := tx.Clauses(clause.OnConflict{DoNothing: true}).
+				Create(&models.GroupMember{GroupID: g.ID, UserID: userID})
+			if result.Error != nil {
+				return fmt.Errorf("create membership for %q: %w", name, result.Error)
+			}
+			if result.RowsAffected > 0 {
 				audit.LogAction(tx, userID, audit.ActionAddGroupMember, fmt.Sprintf("group:%s", g.ID),
 					map[string]any{"origin": "oidc", "user_id": userID})
-			} else if err != nil {
-				return fmt.Errorf("lookup membership for %q: %w", name, err)
 			}
 
 			desiredGroupIDs = append(desiredGroupIDs, g.ID)
@@ -132,18 +91,33 @@ func syncOIDCGroupsOnce(db *gorm.DB, userID uuid.UUID, claimGroups []string, rba
 	return nil
 }
 
-func syncOIDCGroupRemovalsOnly(db *gorm.DB, userID uuid.UUID, claimGroups []string, rbacProvider rbac.Provider) error {
-	if err := validateOIDCGroupSyncInputs(db, rbacProvider); err != nil {
-		return err
+// findOrCreateOIDCGroup returns the group named name, creating it if needed.
+// Creation tolerates a concurrent insert of the same name.
+func findOrCreateOIDCGroup(tx *gorm.DB, name string, actorID uuid.UUID) (*models.Group, error) {
+	var g models.Group
+	err := tx.Where("name = ?", name).First(&g).Error
+	if err == nil {
+		return &g, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("lookup group %q: %w", name, err)
 	}
 
-	desiredNames, desired := normalizedOIDCGroupSet(claimGroups)
-	if err := syncOIDCGroupRemovalsWithDesired(db, userID, desired, rbacProvider); err != nil {
-		return err
+	g = models.Group{Name: name}
+	result := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "name"}}, DoNothing: true}).Create(&g)
+	if result.Error != nil {
+		return nil, fmt.Errorf("create oidc group %q: %w", name, result.Error)
 	}
-
-	slog.Debug("OIDC group removals synced", "user_id", userID, "claim_count", len(desiredNames))
-	return nil
+	if result.RowsAffected == 0 {
+		var existing models.Group
+		if err := tx.Where("name = ?", name).First(&existing).Error; err != nil {
+			return nil, fmt.Errorf("lookup group %q: %w", name, err)
+		}
+		return &existing, nil
+	}
+	audit.LogAction(tx, actorID, audit.ActionCreateGroup, fmt.Sprintf("group:%s", g.ID),
+		map[string]any{"origin": "oidc", "name": g.Name})
+	return &g, nil
 }
 
 func validateOIDCGroupSyncInputs(db *gorm.DB, rbacProvider rbac.Provider) error {
@@ -170,12 +144,11 @@ func normalizedOIDCGroupSet(claimGroups []string) ([]string, map[string]struct{}
 func syncOIDCGroupRemovalsWithDesired(db *gorm.DB, userID uuid.UUID, desired map[string]struct{}, rbacProvider rbac.Provider) error {
 	var current []models.GroupMember
 	err := db.
-		Joins("JOIN groups g ON g.id = group_members.group_id").
-		Where("group_members.user_id = ? AND g.source = ?", userID, models.GroupSourceOIDC).
+		Where("user_id = ?", userID).
 		Preload("Group").
 		Find(&current).Error
 	if err != nil {
-		return fmt.Errorf("list current oidc memberships: %w", err)
+		return fmt.Errorf("list current group memberships: %w", err)
 	}
 
 	staleMemberships := staleOIDCMemberships(current, desired)

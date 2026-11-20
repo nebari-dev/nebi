@@ -4,11 +4,10 @@ import type {
   CreateRegistryRequest,
   CreateRemoteProjectRequest,
   DashboardStats,
-  FederatedIdentity,
-  FederatedIdentityReview,
-  FederatedIdentityReviewStatusFilter,
   Job,
   OCIRegistry,
+  RemoteConnectPollResponse,
+  RemoteConnectStartResponse,
   RemoteProject,
   RemoteProjectTag,
   RemoteProjectVersion,
@@ -25,8 +24,20 @@ export const remoteApi = {
     return data;
   },
 
-  connectServer: async (req: ConnectServerRequest): Promise<RemoteServer> => {
+  // Starts an OAuth device authorization against the remote server's
+  // identity provider, replacing any pending one. A remote server with auth
+  // disabled connects immediately instead.
+  startConnect: async (
+    req: ConnectServerRequest,
+  ): Promise<RemoteConnectStartResponse> => {
     const { data } = await apiClient.post('/remote/connect', req);
+    return data;
+  },
+
+  // Checks whether the user approved the pending device authorization. Once
+  // connected, the backend stores the credentials itself.
+  pollConnect: async (): Promise<RemoteConnectPollResponse> => {
+    const { data } = await apiClient.post('/remote/connect/poll');
     return data;
   },
 
@@ -146,36 +157,5 @@ export const remoteApi = {
   getDashboardStats: async (): Promise<DashboardStats> => {
     const { data } = await apiClient.get('/remote/admin/dashboard/stats');
     return data;
-  },
-
-  listFederatedIdentityReviews: async (
-    status: FederatedIdentityReviewStatusFilter = 'pending',
-  ): Promise<FederatedIdentityReview[]> => {
-    const { data } = await apiClient.get(
-      '/remote/admin/federated-identity-reviews',
-      { params: { status } },
-    );
-    return data;
-  },
-
-  approveFederatedIdentityReview: async (
-    reviewId: string,
-  ): Promise<FederatedIdentity> => {
-    const { data } = await apiClient.post(
-      `/remote/admin/federated-identity-reviews/${reviewId}/approve`,
-    );
-    return data;
-  },
-
-  rejectFederatedIdentityReview: async (reviewId: string): Promise<void> => {
-    await apiClient.post(
-      `/remote/admin/federated-identity-reviews/${reviewId}/reject`,
-    );
-  },
-
-  discardFederatedIdentityReview: async (reviewId: string): Promise<void> => {
-    await apiClient.delete(
-      `/remote/admin/federated-identity-reviews/${reviewId}`,
-    );
   },
 };

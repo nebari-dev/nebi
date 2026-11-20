@@ -11,28 +11,21 @@ import {
   HardDrive,
   Loader2,
   Package,
-  ShieldAlert,
-  UserPlus,
   Users,
+  Users2,
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { RemoteUnreachableBanner } from '@/components/remote/RemoteUnreachableBanner';
-import {
-  useDashboardStats,
-  useFederatedIdentityReviews,
-  useUsers,
-} from '@/hooks/useAdmin';
+import { useDashboardStats, useUsers } from '@/hooks/useAdmin';
 import { useJobs } from '@/hooks/useJobs';
 import { useProjects } from '@/hooks/useProjects';
 import {
   useRemoteDashboardStats,
-  useRemoteFederatedIdentityReviews,
   useRemoteJobs,
   useRemoteProjects,
   useRemoteView,
 } from '@/hooks/useRemote';
-import { isPendingFederatedIdentityReview } from '@/types';
 
 const StatCard = ({
   title,
@@ -62,9 +55,9 @@ const StatCard = ({
 
 const quickActions = [
   {
-    title: 'Manage Users',
-    description: 'Add users and manage permissions',
-    icon: UserPlus,
+    title: 'View Users',
+    description: 'See who has signed in and their roles',
+    icon: Users,
     to: '/admin/users',
   },
   {
@@ -74,10 +67,10 @@ const quickActions = [
     to: '/admin/registries',
   },
   {
-    title: 'Review Identities',
-    description: 'Review blocked federated identity links',
-    icon: ShieldAlert,
-    to: '/admin/identity-reviews',
+    title: 'View Groups',
+    description: 'Browse identity provider groups',
+    icon: Users2,
+    to: '/admin/groups',
   },
   {
     title: 'View Audit Logs',
@@ -92,8 +85,6 @@ export const AdminDashboard = () => {
   const { data: projects, isLoading: projectLoading } = useProjects();
   const { data: jobs, isLoading: jobsLoading } = useJobs();
   const { data: dashboardStats, isLoading: statsLoading } = useDashboardStats();
-  const { data: identityReviews, isLoading: reviewsLoading } =
-    useFederatedIdentityReviews();
 
   // View mode support
   const { viewMode, isRemoteConnected, isRemoteView } = useRemoteView();
@@ -102,11 +93,9 @@ export const AdminDashboard = () => {
   const remoteProjectsQuery = useRemoteProjects(isRemoteView);
   const remoteJobsQuery = useRemoteJobs(isRemoteView);
   const remoteStatsQuery = useRemoteDashboardStats(isRemoteView);
-  const remoteReviewsQuery = useRemoteFederatedIdentityReviews(isRemoteView);
   const remoteProjects = remoteProjectsQuery.data;
   const remoteJobs = remoteJobsQuery.data;
   const remoteDashboardStats = remoteStatsQuery.data;
-  const remoteIdentityReviews = remoteReviewsQuery.data;
 
   // Select data based on view mode
   const displayedProjects = useMemo(() => {
@@ -130,22 +119,12 @@ export const AdminDashboard = () => {
     return remoteDashboardStats;
   }, [dashboardStats, remoteDashboardStats, isRemoteConnected, viewMode]);
 
-  const displayedIdentityReviews = useMemo(() => {
-    if (!isRemoteConnected || viewMode === 'local') {
-      return identityReviews || [];
-    }
-    return remoteIdentityReviews || [];
-  }, [identityReviews, remoteIdentityReviews, isRemoteConnected, viewMode]);
-
   const activeJobs = displayedJobs.filter(
     (job) => job.status === 'running' || job.status === 'pending',
   ).length;
 
   const failedJobs = displayedJobs.filter(
     (job) => job.status === 'failed',
-  ).length;
-  const pendingIdentityReviews = displayedIdentityReviews.filter(
-    isPendingFederatedIdentityReview,
   ).length;
 
   const remoteRequiredQueries = [
@@ -162,7 +141,6 @@ export const AdminDashboard = () => {
     projectLoading ||
     jobsLoading ||
     statsLoading ||
-    reviewsLoading ||
     (isRemoteView && remoteRequiredQueries.some((query) => query.isFirstLoad));
 
   if (isLoading) {
@@ -179,18 +157,13 @@ export const AdminDashboard = () => {
       `${failedJobs} job${failedJobs > 1 ? 's' : ''} failed recently`,
     );
   }
-  if (pendingIdentityReviews > 0) {
-    alerts.push(
-      `${pendingIdentityReviews} identity review${pendingIdentityReviews > 1 ? 's' : ''} pending`,
-    );
-  }
 
   return (
     <div className="space-y-6">
       {remoteUnreachable && <RemoteUnreachableBanner />}
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard title="Total Users" value={users?.length || 0} icon={Users} />
         <StatCard
           title="Environments"
@@ -198,11 +171,6 @@ export const AdminDashboard = () => {
           icon={Boxes}
         />
         <StatCard title="Active Jobs" value={activeJobs} icon={Activity} />
-        <StatCard
-          title="Identity Reviews"
-          value={pendingIdentityReviews}
-          icon={ShieldAlert}
-        />
         <StatCard
           title="Disk Usage"
           value={displayedStats?.total_disk_usage_formatted || 'N/A'}

@@ -96,9 +96,9 @@ func resolveVersion() (string, string) {
 // Mode is set by the router based on config (e.g. "local" or "team")
 var Mode = "team"
 
-// LogoutURL is set by the router when the deployment requires an external
-// logout redirect (e.g. Envoy Gateway's /logout path for OIDC session cleanup).
-var LogoutURL = ""
+// AuthEnabled is set by the router: false in local mode and when
+// auth.type is "none", true when requests must carry an OIDC access token.
+var AuthEnabled = true
 
 // GetVersion godoc
 // @Summary Get version information
@@ -109,7 +109,7 @@ var LogoutURL = ""
 // @Router /version [get]
 func GetVersion(c *gin.Context) {
 	features := map[string]bool{
-		"auth":          Mode != "local",
+		"auth":          AuthEnabled,
 		"rbac":          Mode != "local",
 		"remote_proxy":  Mode == "local",
 		"local_storage": Mode == "local",
@@ -125,9 +125,6 @@ func GetVersion(c *gin.Context) {
 		"arch":       runtime.GOARCH,
 		"mode":       Mode,
 		"features":   features,
-	}
-	if LogoutURL != "" {
-		resp["logout_url"] = LogoutURL
 	}
 
 	c.JSON(http.StatusOK, resp)

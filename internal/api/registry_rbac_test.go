@@ -7,11 +7,9 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
-	"github.com/nebari-dev/nebi/internal/auth"
-	"github.com/nebari-dev/nebi/internal/config"
+	"github.com/nebari-dev/nebi/internal/auth/authtest"
 	"github.com/nebari-dev/nebi/internal/db"
 	"github.com/nebari-dev/nebi/internal/executor"
 	"github.com/nebari-dev/nebi/internal/models"
@@ -20,15 +18,11 @@ import (
 	"gorm.io/gorm"
 )
 
-func buildRegistryRBACTestRouter(t *testing.T) (http.Handler, *gorm.DB) {
+func buildRegistryRBACTestRouter(t *testing.T) (http.Handler, *gorm.DB, *authtest.Server) {
 	t.Helper()
 
-	cfg := &config.Config{Mode: config.ModeTeam}
-	cfg.Auth.Type = "basic"
-	cfg.Auth.JWTSecret = "test-secret-for-registry-rbac"
-	cfg.Database.Driver = "sqlite"
-	cfg.Database.DSN = filepath.Join(t.TempDir(), "registry-rbac.db")
-	cfg.Storage.ProjectsDir = t.TempDir()
+	idp := newTestIdP(t)
+	cfg := teamModeConfig(t, idp, "registry-rbac.db")
 
 	database, err := db.New(cfg.Database)
 	if err != nil {
@@ -47,31 +41,7 @@ func buildRegistryRBACTestRouter(t *testing.T) (http.Handler, *gorm.DB) {
 	t.Cleanup(func() { q.Close() })
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewRouter(cfg, database, q, exec, nil, logger), database
-}
-
-func loginTestUser(t *testing.T, router http.Handler, username, password string) string {
-	t.Helper()
-
-	body := bytes.NewBufferString(`{"username":"` + username + `","password":"` + password + `"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", body)
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("login status: got %d body %s", w.Code, w.Body.String())
-	}
-
-	var resp struct {
-		Token string `json:"token"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("decode login response: %v", err)
-	}
-	if resp.Token == "" {
-		t.Fatal("login response did not include token")
-	}
-	return resp.Token
+	return NewRouter(t.Context(), cfg, database, q, exec, nil, logger), database, idp
 }
 
 func authedRequest(router http.Handler, method, path, token, body string) *httptest.ResponseRecorder {
@@ -86,21 +56,10 @@ func authedRequest(router http.Handler, method, path, token, body string) *httpt
 }
 
 func TestRegistryRoutesRequireRegistryRBAC(t *testing.T) {
-	router, database := buildRegistryRBACTestRouter(t)
+	router, database, idp := buildRegistryRBACTestRouter(t)
 
-	const password = "password"
-	passwordHash, err := auth.HashPassword(password)
-	if err != nil {
-		t.Fatalf("hash password: %v", err)
-	}
-	user := models.User{
-		Username:     "alice",
-		Email:        "alice@test.com",
-		PasswordHash: passwordHash,
-	}
-	if err := database.Create(&user).Error; err != nil {
-		t.Fatalf("create user: %v", err)
-	}
+	token := idp.Token(authtest.Identity{Subject: "sub-alice", Username: "alice", Email: "alice@test.com", EmailVerified: true})
+	user := provisionTestUser(t, router, database, token)
 
 	registry := models.OCIRegistry{Name: "private", URL: "https://ghcr.io", IsDefault: true, Restricted: true}
 	if err := database.Create(&registry).Error; err != nil {
@@ -136,8 +95,6 @@ func TestRegistryRoutesRequireRegistryRBAC(t *testing.T) {
 	if err := database.Create(&publication).Error; err != nil {
 		t.Fatalf("create publication: %v", err)
 	}
-
-	token := loginTestUser(t, router, user.Username, password)
 
 	listResp := authedRequest(router, http.MethodGet, "/api/v1/registries", token, "")
 	if listResp.Code != http.StatusOK {

@@ -9,14 +9,14 @@ Modern React frontend for the Nebi environment management system.
 - **Tailwind CSS v4** - Utility-first CSS framework
 - **shadcn/ui** - Beautiful, accessible component library
 - **TanStack Query (React Query)** - Powerful server state management
-- **Zustand** - Lightweight client state for authentication
+- **Zustand** - Lightweight client state (auth session, app mode)
 - **React Router v7** - Client-side routing
 - **Axios** - HTTP client
 - **Lucide React** - Icon library
 
 ## Features
 
-- ✅ Team server authentication with JWT; local client login bypass
+- ✅ Sign-in through the identity provider (OIDC, PKCE); local client login bypass
 - ✅ Environment management (create, view, delete)
 - ✅ Package installation and removal
 - ✅ Real-time job status updates (2-second polling)
@@ -154,9 +154,11 @@ Open http://localhost:8461 while the corresponding Vite server is running.
 - **Client:** `/login` redirects to `/projects`; local access does not require
   signing in. Use **Settings** to connect to a remote team server, then switch
   between local and remote views.
-- **Server:** Sign in at `/login` using an account configured on the team
-  backend. When OIDC is configured, use the configured sign-in flow. Successful
-  sign-in opens **Projects**. There are no default credentials supplied by the UI.
+- **Server:** With `auth.type: oidc`, `/login` sends you to the identity provider,
+  which redirects back to `/auth/callback` once you have signed in. With
+  `auth.type: none`, access requires no login. See
+  [Server Setup](../docs/src/content/docs/server-setup.md#authentication) for the
+  provider configuration.
   Both apps retain `/settings` and `/remote/projects/:id` routes, although their
   remote connection workflows require the local backend's `/remote/*` endpoints.
 
@@ -193,14 +195,15 @@ Both apps communicate with their backend through REST APIs:
 - **Client:** Uses the local backend, which bypasses authentication. It keeps
   queries and mutations running while the OS reports offline. Remote-view
   requests go through that local backend to the connected team server.
-- **Server:** Uses authenticated requests to the team backend. Stored JWTs are
-  attached to requests; authentication failures normally redirect to `/login`.
-  Queries and mutations pause while the browser reports offline.
+- **Server:** The SPA is a public OIDC client (`oidc-client-ts`, authorization
+  code + PKCE). Access tokens come from the identity provider and are renewed
+  silently. Queries and mutations pause while the browser reports offline.
 - **Updates:** Project, package, and job hooks poll for progress. Client remote
   queries use their own retry and polling policies to recover from outages.
 
-Both apps retain the original Axios interceptors: stored JWTs are attached to
-requests, and authentication-error redirects are bypassed in local mode.
+Both apps use Axios interceptors to attach the access token as a Bearer header
+and redirect to login on authentication failures. Authentication-error redirects
+are bypassed in local mode and when the team server has authentication disabled.
 
 ## Styling
 
@@ -273,8 +276,9 @@ Visual indicators for:
 - Inspect browser console for CORS errors
 
 **Authentication Issues:**
-- For the server UI, check the backend authentication configuration and JWT
-  request headers; clear stored authentication and sign in again if needed.
+- For the server UI, sign out and in again so the identity provider issues a fresh
+  token. Verify the `Authorization: Bearer` header and that the server's
+  `auth.oidc_client_id` matches the token's `aud`.
 - For the client UI, local access requires no login. Check the remote server
   connection in **Settings** when remote requests fail.
 

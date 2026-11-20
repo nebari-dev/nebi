@@ -1,59 +1,138 @@
-import { screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { type InitialEntry, Route, Routes } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { configureOidc, resetOidc } from '@/lib/oidc';
+import { useAuthStore } from '@/store/authStore';
 import { useModeStore } from '@/store/modeStore';
-import { renderWithProviders } from '@/test/utils';
+import { CurrentPath } from '@/test/CurrentPath';
+import { FakeUserManager, makeOidcUser } from '@/test/fakeOidc';
+import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import { Login } from './Login';
+
+vi.mock('oidc-client-ts', () => import('@/test/fakeOidc'));
+
+const oidcConfig = {
+  type: 'oidc' as const,
+  issuer_url: 'https://auth.example.com/realms/nebi',
+  client_id: 'nebi',
+  scopes: ['openid'],
+};
+
+const renderLogin = (initialEntry: InitialEntry = '/login') =>
+  renderWithProviders(
+    <Routes>
+      <Route path="/login" element={<Login isDarkMode={false} />} />
+      <Route path="*" element={<CurrentPath />} />
+    </Routes>,
+    { initialEntries: [initialEntry] },
+  );
+
+const useOidc = () => {
+  configureOidc(oidcConfig);
+  useAuthStore.setState({
+    config: oidcConfig,
+    status: 'ready',
+    oidcUser: null,
+  });
+  return FakeUserManager.latest();
+};
 
 describe('Login', () => {
   beforeEach(() => {
-    useModeStore.setState({ mode: 'team', logoutUrl: null, loading: false });
+    resetOidc();
+    FakeUserManager.reset();
+    useModeStore.setState({ mode: 'team', loading: false });
   });
 
-  it('shows pending identity-review status from auth redirects', async () => {
-    renderWithProviders(<Login isDarkMode={false} />, {
-      initialEntries: ['/login?error=identity_review_pending'],
-    });
-
-    expect(
-      await screen.findByText(
-        'Your identity link request is pending admin approval. Try again after an admin approves it.',
-      ),
-    ).toBeInTheDocument();
+  afterEach(() => {
+    useAuthStore.setState({ config: null, status: 'idle', oidcUser: null });
+    useModeStore.setState({ mode: null });
   });
 
-  it('shows rejected identity-review status from auth redirects', async () => {
-    renderWithProviders(<Login isDarkMode={false} />, {
-      initialEntries: ['/login?error=identity_review_rejected'],
-    });
+  it('starts the OIDC redirect from the Sign in button', async () => {
+    const manager = useOidc();
+    renderLogin();
 
-    expect(
-      await screen.findByText(
-        'Your identity link request was rejected by an admin. Contact an administrator if you believe this is a mistake.',
-      ),
-    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(manager.signinRedirect).toHaveBeenCalledWith({
+      state: { returnTo: '/projects' },
+    });
+    expect(screen.queryByPlaceholderText('Password')).not.toBeInTheDocument();
   });
 
-  it('does not echo unknown auth redirect errors', async () => {
-    renderWithProviders(<Login isDarkMode={false} />, {
-      initialEntries: ['/login?error=Call%20IT%20at%201-800-555-0199'],
+  it('returns to the page that required sign-in', async () => {
+    const manager = useOidc();
+    renderLogin({
+      pathname: '/login',
+      state: { from: '/projects/ws-1?tab=jobs' },
     });
 
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(manager.signinRedirect).toHaveBeenCalledWith({
+      state: { returnTo: '/projects/ws-1?tab=jobs' },
+    });
+  });
+
+  it('accepts a returnTo query parameter but not an off-site one', async () => {
+    const manager = useOidc();
+    renderLogin('/login?returnTo=%2F%2Fevil.example.com');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(manager.signinRedirect).toHaveBeenCalledWith({
+      state: { returnTo: '/projects' },
+    });
+  });
+
+  it('shows a generic message for sign-in errors without echoing them', () => {
+    useOidc();
+    renderLogin('/login?error=Call%20IT%20at%201-800-555-0199');
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Sign in failed. Please try again.',
+    );
     expect(
-      await screen.findByText('Authentication failed'),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText('Call IT at 1-800-555-0199'),
+      screen.queryByText(/Call IT at 1-800-555-0199/),
     ).not.toBeInTheDocument();
   });
 
-  it('shows login options when no proxy gateway is configured', async () => {
-    renderWithProviders(<Login isDarkMode={false} />, {
-      initialEntries: ['/login'],
-    });
+  it('reports when the identity provider cannot be reached', async () => {
+    const manager = useOidc();
+    manager.signinRedirect.mockRejectedValue(new Error('network'));
+    renderLogin();
 
-    expect(
-      await screen.findByRole('button', { name: /sign in with oauth/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Username')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not reach the sign-in provider. Please try again.',
+    );
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled();
+  });
+
+  it('skips the page when already signed in', async () => {
+    useOidc();
+    useAuthStore.setState({ oidcUser: makeOidcUser() });
+    renderLogin({ pathname: '/login', state: { from: '/registries' } });
+
+    expect(await screen.findByText('at /registries')).toBeInTheDocument();
+  });
+
+  it('goes straight to projects when the server has auth disabled', async () => {
+    useAuthStore.setState({ config: { type: 'none' }, status: 'ready' });
+    renderLogin();
+
+    await waitFor(() =>
+      expect(screen.getByText('at /projects')).toBeInTheDocument(),
+    );
+  });
+
+  it('goes straight to projects in local mode', async () => {
+    useModeStore.setState({ mode: 'local' });
+    useAuthStore.setState({ config: { type: 'none' }, status: 'ready' });
+    renderLogin();
+
+    expect(await screen.findByText('at /projects')).toBeInTheDocument();
   });
 });

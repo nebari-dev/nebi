@@ -44,9 +44,7 @@ export const CollaboratorsList = ({
           >
             <div className="flex-1">
               <div className="font-medium">{collab.name}</div>
-              <div className="text-sm text-muted-foreground">
-                {collab.source === 'oidc' ? 'OIDC group' : 'Native group'}
-              </div>
+              <div className="text-sm text-muted-foreground">Group</div>
             </div>
             <RoleBadge role={collab.role} />
           </div>

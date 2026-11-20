@@ -1,11 +1,7 @@
 import type {
   AuditLog,
   Collaborator,
-  CreateUserRequest,
   DashboardStats,
-  FederatedIdentity,
-  FederatedIdentityReview,
-  FederatedIdentityReviewStatusFilter,
   Group,
   ShareProjectRequest,
   User,
@@ -17,19 +13,6 @@ export const adminApi = {
   getUsers: async (): Promise<User[]> => {
     const response = await apiClient.get('/admin/users');
     return response.data;
-  },
-
-  createUser: async (data: CreateUserRequest): Promise<User> => {
-    const response = await apiClient.post('/admin/users', data);
-    return response.data;
-  },
-
-  toggleAdmin: async (userId: string): Promise<void> => {
-    await apiClient.post(`/admin/users/${userId}/toggle-admin`);
-  },
-
-  deleteUser: async (userId: string): Promise<void> => {
-    await apiClient.delete(`/admin/users/${userId}`);
   },
 
   getUserGroups: async (userId: string): Promise<Group[]> => {
@@ -69,34 +52,5 @@ export const adminApi = {
   getDashboardStats: async (): Promise<DashboardStats> => {
     const response = await apiClient.get('/admin/dashboard/stats');
     return response.data;
-  },
-
-  // Federated Identity Reviews
-  getFederatedIdentityReviews: async (
-    status: FederatedIdentityReviewStatusFilter = 'pending',
-  ): Promise<FederatedIdentityReview[]> => {
-    const response = await apiClient.get('/admin/federated-identity-reviews', {
-      params: { status },
-    });
-    return response.data;
-  },
-
-  approveFederatedIdentityReview: async (
-    reviewId: string,
-  ): Promise<FederatedIdentity> => {
-    const response = await apiClient.post(
-      `/admin/federated-identity-reviews/${reviewId}/approve`,
-    );
-    return response.data;
-  },
-
-  rejectFederatedIdentityReview: async (reviewId: string): Promise<void> => {
-    await apiClient.post(
-      `/admin/federated-identity-reviews/${reviewId}/reject`,
-    );
-  },
-
-  discardFederatedIdentityReview: async (reviewId: string): Promise<void> => {
-    await apiClient.delete(`/admin/federated-identity-reviews/${reviewId}`);
   },
 };

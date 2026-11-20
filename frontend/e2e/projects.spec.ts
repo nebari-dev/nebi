@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { expectNoCriticalOrSeriousA11yViolations, mockApi } from './helpers';
+import {
+  expectNoCriticalOrSeriousA11yViolations,
+  mockApi,
+  signIn,
+} from './helpers';
 
 test.beforeEach(async ({ page }) => {
   await mockApi(page);
@@ -8,13 +12,8 @@ test.beforeEach(async ({ page }) => {
 test('signs in, creates a project, and passes critical a11y checks @a11y', async ({
   page,
 }) => {
-  await page.goto('/login');
+  await signIn(page);
 
-  await page.getByPlaceholder('Username').fill('testuser');
-  await page.getByPlaceholder('Password').fill('password123');
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-
-  await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
   await expect(page.getByText('analytics-project')).toBeVisible();
   await expectNoCriticalOrSeriousA11yViolations(page);
 

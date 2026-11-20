@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/nebari-dev/nebi/internal/models"
+	_ "github.com/nebari-dev/nebi/internal/models" // imported for swagger type resolution
 	"github.com/nebari-dev/nebi/internal/service"
 )
 
@@ -33,35 +33,6 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, users)
 }
 
-// CreateUser godoc
-// @Summary Create a new user (admin only)
-// @Tags admin
-// @Security BearerAuth
-// @Accept json
-// @Produce json
-// @Param user body CreateUserRequest true "User details"
-// @Success 201 {object} models.User
-// @Router /admin/users [post]
-func (h *AdminHandler) CreateUser(c *gin.Context) {
-	var req CreateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		handleBindError(c, err)
-		return
-	}
-
-	user, err := h.svc.CreateUser(service.CreateUserRequest{
-		Username: req.Username,
-		Email:    req.Email,
-		Password: req.Password,
-		IsAdmin:  req.IsAdmin,
-	}, getAdminUserID(c))
-	if err != nil {
-		handleServiceError(c, err)
-		return
-	}
-	c.JSON(http.StatusCreated, user)
-}
-
 // GetUser godoc
 // @Summary Get user by ID (admin only)
 // @Tags admin
@@ -82,28 +53,6 @@ func (h *AdminHandler) GetUser(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, user)
-}
-
-// ToggleAdmin godoc
-// @Summary Toggle admin status for a user
-// @Tags admin
-// @Security BearerAuth
-// @Param id path string true "User UUID"
-// @Success 200 {object} service.UserWithAdmin
-// @Router /admin/users/{id}/toggle-admin [post]
-func (h *AdminHandler) ToggleAdmin(c *gin.Context) {
-	userID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid user ID"})
-		return
-	}
-
-	result, err := h.svc.ToggleAdmin(userID, getAdminUserID(c))
-	if err != nil {
-		handleServiceError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, result)
 }
 
 // ListUserGroups godoc
@@ -130,27 +79,6 @@ func (h *AdminHandler) ListUserGroups(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, groups)
-}
-
-// DeleteUser godoc
-// @Summary Delete a user (admin only)
-// @Tags admin
-// @Security BearerAuth
-// @Param id path string true "User UUID"
-// @Success 204
-// @Router /admin/users/{id} [delete]
-func (h *AdminHandler) DeleteUser(c *gin.Context) {
-	userID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid user ID"})
-		return
-	}
-
-	if err := h.svc.DeleteUser(userID, getAdminUserID(c)); err != nil {
-		handleServiceError(c, err)
-		return
-	}
-	c.Status(http.StatusNoContent)
 }
 
 // ListRoles godoc
@@ -224,88 +152,6 @@ func (h *AdminHandler) RevokePermission(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// ListFederatedIdentityReviews godoc
-// @Summary List federated identity reviews
-// @Tags admin
-// @Security BearerAuth
-// @Produce json
-// @Param status query string false "Review status: pending, rejected, or all"
-// @Success 200 {array} models.FederatedIdentityReview
-// @Router /admin/federated-identity-reviews [get]
-func (h *AdminHandler) ListFederatedIdentityReviews(c *gin.Context) {
-	reviews, err := h.svc.ListFederatedIdentityReviews(c.DefaultQuery("status", models.FederatedIdentityReviewStatusPending))
-	if err != nil {
-		handleServiceError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, reviews)
-}
-
-// ApproveFederatedIdentityReview godoc
-// @Summary Approve a pending federated identity review
-// @Tags admin
-// @Security BearerAuth
-// @Produce json
-// @Param id path string true "Review UUID"
-// @Success 201 {object} models.FederatedIdentity
-// @Router /admin/federated-identity-reviews/{id}/approve [post]
-func (h *AdminHandler) ApproveFederatedIdentityReview(c *gin.Context) {
-	reviewID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid review ID"})
-		return
-	}
-
-	identity, err := h.svc.ApproveFederatedIdentityReview(reviewID, getAdminUserID(c))
-	if err != nil {
-		handleServiceError(c, err)
-		return
-	}
-	c.JSON(http.StatusCreated, identity)
-}
-
-// RejectFederatedIdentityReview godoc
-// @Summary Reject a pending federated identity review
-// @Tags admin
-// @Security BearerAuth
-// @Param id path string true "Review UUID"
-// @Success 204
-// @Router /admin/federated-identity-reviews/{id}/reject [post]
-func (h *AdminHandler) RejectFederatedIdentityReview(c *gin.Context) {
-	reviewID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid review ID"})
-		return
-	}
-
-	if err := h.svc.RejectFederatedIdentityReview(reviewID, getAdminUserID(c)); err != nil {
-		handleServiceError(c, err)
-		return
-	}
-	c.Status(http.StatusNoContent)
-}
-
-// DiscardFederatedIdentityReview godoc
-// @Summary Discard a federated identity review
-// @Tags admin
-// @Security BearerAuth
-// @Param id path string true "Review UUID"
-// @Success 204
-// @Router /admin/federated-identity-reviews/{id} [delete]
-func (h *AdminHandler) DiscardFederatedIdentityReview(c *gin.Context) {
-	reviewID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid review ID"})
-		return
-	}
-
-	if err := h.svc.DiscardFederatedIdentityReview(reviewID, getAdminUserID(c)); err != nil {
-		handleServiceError(c, err)
-		return
-	}
-	c.Status(http.StatusNoContent)
-}
-
 // ListAuditLogs godoc
 // @Summary List audit logs
 // @Tags admin
@@ -358,13 +204,6 @@ func (h *AdminHandler) GetResourceMetrics(c *gin.Context) {
 
 // --- Request types ---
 
-type CreateUserRequest struct {
-	Username string `json:"username" binding:"required"`
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
-	IsAdmin  bool   `json:"is_admin"`
-}
-
 type GrantPermissionRequest struct {
 	UserID    uuid.UUID `json:"user_id" binding:"required"`
 	ProjectID uuid.UUID `json:"project_id" binding:"required"`
@@ -373,52 +212,3 @@ type GrantPermissionRequest struct {
 
 // getAdminUserID reuses getUserID from helpers.go.
 var getAdminUserID = getUserID
-
-// GrantGroupAdmin godoc
-// @Summary Promote a group to admin (admin only)
-// @Description Every current and future member of the group gains effective admin via Casbin role inheritance.
-// @Tags admin
-// @Security BearerAuth
-// @Param id path string true "Group ID"
-// @Success 201
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
-// @Router /admin/groups/{id}/grant-admin [post]
-func (h *AdminHandler) GrantGroupAdmin(c *gin.Context) {
-	groupID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid group ID"})
-		return
-	}
-	if err := h.svc.GrantGroupAdmin(groupID, getUserID(c)); err != nil {
-		handleServiceError(c, err)
-		return
-	}
-	c.Status(http.StatusCreated)
-}
-
-// RevokeGroupAdmin godoc
-// @Summary Revoke admin from a group (admin only)
-// @Tags admin
-// @Security BearerAuth
-// @Param id path string true "Group ID"
-// @Success 204
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
-// @Router /admin/groups/{id}/grant-admin [delete]
-func (h *AdminHandler) RevokeGroupAdmin(c *gin.Context) {
-	groupID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid group ID"})
-		return
-	}
-	if err := h.svc.RevokeGroupAdmin(groupID, getUserID(c)); err != nil {
-		handleServiceError(c, err)
-		return
-	}
-	c.Status(http.StatusNoContent)
-}

@@ -14,6 +14,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/pixi"
 	"github.com/nebari-dev/nebi/internal/store"
 	"github.com/spf13/cobra"
+	"golang.org/x/oauth2"
 )
 
 // ErrProjectNotFound is returned when a project name is not found on the server.
@@ -47,11 +48,26 @@ func getAuthenticatedClient() (*cliclient.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading credentials: %w", err)
 	}
-	if creds.Token == "" {
+	if !creds.LoggedIn() {
 		return nil, fmt.Errorf("not logged in; run 'nebi login <server-url>' first")
 	}
 
-	return cliclient.New(serverURL, creds.Token), nil
+	return storedCredentialsClient(serverURL, creds), nil
+}
+
+// storedCredentialsClient returns a client for the stored login that
+// refreshes the access token when it is about to expire and saves the
+// refreshed token back to the store.
+func storedCredentialsClient(serverURL string, creds *store.Credentials) *cliclient.Client {
+	tokens := creds.TokenSource(context.Background(), func(tok *oauth2.Token) error {
+		s, err := store.New()
+		if err != nil {
+			return err
+		}
+		defer s.Close()
+		return store.SaveToken(s.DB(), tok)
+	})
+	return cliclient.NewWithTokenSource(serverURL, tokens)
 }
 
 // isLocalMode returns true if the command should operate in local mode.
@@ -76,7 +92,7 @@ func isLocalMode(cmd *cobra.Command) bool {
 	}
 
 	creds, err := s.LoadCredentials()
-	if err != nil || creds.Token == "" {
+	if err != nil || !creds.LoggedIn() {
 		return true
 	}
 

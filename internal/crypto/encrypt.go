@@ -14,13 +14,8 @@ import (
 
 const (
 	// hkdfInfo provides domain separation so this derived key is independent
-	// from keys derived for other purposes (e.g. JWT signing).
+	// from keys derived from the same secret for any other purpose.
 	hkdfInfo = "nebi/v1/field-encryption"
-
-	// hkdfSigningInfo domain-separates the JWT signing key from the
-	// field-encryption key, even when both are derived from the same root
-	// secret: knowing one derived key does not yield the other.
-	hkdfSigningInfo = "nebi/v1/jwt-signing"
 
 	// ciphertextPrefix is prepended to encrypted values for reliable detection.
 	// Format: enc:v1:<base64(nonce+ciphertext+tag)>
@@ -31,13 +26,6 @@ const (
 // The info parameter provides domain separation per NIST SP 800-56C.
 func DeriveKey(secret string) ([]byte, error) {
 	return deriveKey(secret, hkdfInfo)
-}
-
-// DeriveSigningKey derives a 32-byte HMAC key for JWT signing from the given
-// secret using HKDF-SHA256, independent of the key DeriveKey produces from
-// the same secret.
-func DeriveSigningKey(secret string) ([]byte, error) {
-	return deriveKey(secret, hkdfSigningInfo)
 }
 
 func deriveKey(secret, info string) ([]byte, error) {

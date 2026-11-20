@@ -31,6 +31,15 @@ export const makeProject = (id: string, name: string) => ({
   size_formatted: '1 KB',
 });
 
+// The SPA signs in against the identity provider directly; e2e tests skip
+// that round trip by seeding the session oidc-client-ts would have stored.
+const oidcConfig = {
+  type: 'oidc',
+  issuer_url: 'https://auth.example.com/realms/nebi',
+  client_id: 'nebi',
+  scopes: ['openid', 'profile', 'email'],
+};
+
 const registries = [
   {
     id: 'reg-1',
@@ -62,8 +71,6 @@ const groups = [
   {
     id: 'group-1',
     name: 'data-science',
-    description: 'Data science users',
-    source: 'native',
     member_count: 1,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
@@ -115,8 +122,13 @@ export const mockApi = async (page: Page) => {
       return;
     }
 
-    if (method === 'POST' && path === '/auth/login') {
-      await fulfillJson(route, { token: 'test-token', user: mockUser });
+    if (method === 'GET' && path === '/auth/config') {
+      await fulfillJson(route, oidcConfig);
+      return;
+    }
+
+    if (method === 'GET' && path === '/auth/me') {
+      await fulfillJson(route, mockUser);
       return;
     }
 
@@ -237,7 +249,6 @@ export const mockApi = async (page: Page) => {
           kind: 'group',
           group_id: 'group-1',
           name: 'data-science',
-          source: 'native',
           role: 'viewer',
           is_owner: false,
         },
@@ -299,9 +310,29 @@ export const mockApi = async (page: Page) => {
 
 export const signIn = async (page: Page) => {
   await page.goto('/login');
-  await page.getByPlaceholder('Username').fill(mockUser.username);
-  await page.getByPlaceholder('Password').fill('password123');
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Sign in', exact: true }),
+  ).toBeVisible();
+  await page.evaluate(
+    ({ key, user }) => localStorage.setItem(key, JSON.stringify(user)),
+    {
+      key: `oidc.user:${oidcConfig.issuer_url}:${oidcConfig.client_id}`,
+      user: {
+        access_token: 'test-access-token',
+        refresh_token: 'test-refresh-token',
+        token_type: 'Bearer',
+        scope: oidcConfig.scopes.join(' '),
+        profile: {
+          sub: mockUser.id,
+          iss: oidcConfig.issuer_url,
+          aud: oidcConfig.client_id,
+          preferred_username: mockUser.username,
+        },
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+      },
+    },
+  );
+  await page.goto('/projects');
   await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
 };
 

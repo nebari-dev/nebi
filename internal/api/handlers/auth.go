@@ -1,146 +1,32 @@
 package handlers
 
 import (
-	"encoding/json"
-	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nebari-dev/nebi/internal/auth"
 )
 
-// Login godoc
-// @Summary User login
-// @Description Authenticate user and return JWT token
-// @Tags auth
-// @Accept json
-// @Produce json
-// @Param credentials body auth.LoginRequest true "Login credentials"
-// @Success 200 {object} auth.LoginResponse
-// @Failure 400 {object} map[string]string
-// @Failure 401 {object} map[string]string
-// @Router /auth/login [post]
-func Login(authenticator auth.Authenticator) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var req auth.LoginRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			handleBindError(c, err)
-			return
-		}
-
-		resp, err := authenticator.Login(req.Username, req.Password)
-		if err != nil {
-			if errors.Is(err, auth.ErrInvalidCredentials) {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-			return
-		}
-
-		c.JSON(http.StatusOK, resp)
-	}
+// AuthConfigResponse tells clients how to authenticate. Nebi does not issue
+// tokens: with type "oidc", clients obtain an access token from the issuer
+// (authorization code + PKCE in the browser, device authorization grant in
+// the CLI and desktop app) for client_id and send it as a bearer token. With
+// type "none", no credentials are needed.
+type AuthConfigResponse struct {
+	Type      string   `json:"type" example:"oidc"`
+	IssuerURL string   `json:"issuer_url,omitempty" example:"https://auth.example.com/realms/nebi"`
+	ClientID  string   `json:"client_id,omitempty" example:"nebi"`
+	Scopes    []string `json:"scopes,omitempty"`
 }
 
-// SessionRedirect exchanges a proxy IdToken cookie for a short-lived,
-// single-use authorization code and redirects to /login?code=<code>.
-// The frontend then exchanges the code for a JWT via POST /api/v1/auth/code/exchange.
-//
-// This follows the OAuth 2.0 authorization code pattern (RFC 6749 §4.1):
-// sensitive tokens never appear in URLs, logs, or browser history.
-//
-// This endpoint lives outside /api/ so that gateway proxies that strip
-// cookies from public routes still forward them here.
-func SessionRedirect(basicAuth *auth.BasicAuthenticator, proxyAdminGroups string, basePath string, codeStore *auth.AuthCodeStore) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		resp, err := basicAuth.SessionFromProxy(c.Request, proxyAdminGroups)
-		if err != nil {
-			if redirectFederatedIdentityReview(c, err, http.StatusFound, basePath) {
-				return
-			}
-			// No valid proxy session — redirect to login without code
-			c.Redirect(http.StatusFound, basePath+"/login")
-			return
-		}
-
-		userJSON, err := json.Marshal(resp.User)
-		if err != nil {
-			c.Redirect(http.StatusFound, basePath+"/login")
-			return
-		}
-
-		code, err := codeStore.Generate(resp.Token, userJSON)
-		if err != nil {
-			c.Redirect(http.StatusFound, basePath+"/login")
-			return
-		}
-
-		c.Redirect(http.StatusFound, basePath+"/login?code="+code)
-	}
-}
-
-// CodeExchange exchanges a single-use authorization code for a Nebi JWT.
-// The code is consumed on use and expires after 30 seconds.
-func CodeExchange(codeStore *auth.AuthCodeStore) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var req struct {
-			Code string `json:"code"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			handleBindError(c, err)
-			return
-		}
-		if req.Code == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "missing code"})
-			return
-		}
-
-		token, userJSON, ok := codeStore.Exchange(req.Code)
-		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired code"})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"token": token, "user": json.RawMessage(userJSON)})
-	}
-}
-
-// SessionCheck godoc
-// @Summary Check proxy session
-// @Description Check for an IdToken cookie (set by an authenticating proxy) and return a Nebi JWT
+// AuthConfig godoc
+// @Summary Get authentication configuration
+// @Description Returns the OIDC provider and client that issue access tokens for this server, or type "none" when authentication is disabled
 // @Tags auth
 // @Produce json
-// @Success 200 {object} auth.LoginResponse
-// @Failure 401 {object} map[string]string
-// @Router /auth/session [get]
-func SessionCheck(basicAuth *auth.BasicAuthenticator, proxyAdminGroups string) gin.HandlerFunc {
+// @Success 200 {object} AuthConfigResponse
+// @Router /auth/config [get]
+func AuthConfig(resp AuthConfigResponse) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		resp, err := basicAuth.SessionFromProxy(c.Request, proxyAdminGroups)
-		if err != nil {
-			if writeFederatedIdentityReviewJSON(c, err) {
-				return
-			}
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "no proxy session"})
-			return
-		}
 		c.JSON(http.StatusOK, resp)
 	}
-}
-
-func writeFederatedIdentityReviewJSON(c *gin.Context, err error) bool {
-	code, ok := auth.FederatedIdentityReviewErrorCode(err)
-	if !ok {
-		return false
-	}
-	c.JSON(http.StatusForbidden, gin.H{"error": code})
-	return true
-}
-
-func redirectFederatedIdentityReview(c *gin.Context, err error, status int, basePath string) bool {
-	code, ok := auth.FederatedIdentityReviewErrorCode(err)
-	if !ok {
-		return false
-	}
-	c.Redirect(status, basePath+"/login?error="+code)
-	return true
 }

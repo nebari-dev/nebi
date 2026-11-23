@@ -289,23 +289,32 @@ func TestInstallPackages_ConcurrentPerUserQuotaBeforeJobWrite(t *testing.T) {
 	limitCfg.ActiveJobsGlobal = 10
 	svc.limits = limitCfg
 	userID := createTestUser(t, db, "alice")
-	project := createReadyProject(t, svc, db, "concurrent-user-quota", userID)
-	if err := db.Model(&models.Job{}).Where("project_id = ?", project.ID).Update("status", models.JobStatusCompleted).Error; err != nil {
-		t.Fatalf("complete setup job: %v", err)
-	}
 
 	const attempts = 8
+	// Use distinct projects so the package-job guard does not mask the user quota.
+	projects := make([]models.Project, attempts)
+	for i := range projects {
+		projects[i] = models.Project{
+			Name:    fmt.Sprintf("concurrent-user-quota-%d", i),
+			OwnerID: userID,
+			Status:  models.ProjectStatusReady,
+		}
+	}
+	if err := db.Create(&projects).Error; err != nil {
+		t.Fatalf("create projects: %v", err)
+	}
+
 	start := make(chan struct{})
 	errs := make(chan error, attempts)
 	var wg sync.WaitGroup
-	for i := 0; i < attempts; i++ {
+	for _, project := range projects {
 		wg.Add(1)
-		go func(i int) {
+		go func() {
 			defer wg.Done()
 			<-start
-			_, err := svc.InstallPackages(context.Background(), project.ID.String(), []string{fmt.Sprintf("pkg-%d", i)}, userID)
+			_, err := svc.InstallPackages(context.Background(), project.ID.String(), []string{"numpy"}, userID)
 			errs <- err
-		}(i)
+		}()
 	}
 	close(start)
 	wg.Wait()
@@ -317,7 +326,7 @@ func TestInstallPackages_ConcurrentPerUserQuotaBeforeJobWrite(t *testing.T) {
 		switch {
 		case err == nil:
 			admitted++
-		case isConflictError(err, &ce):
+		case isConflictError(err, &ce) && ce.Message == "active job limit 2 reached for user":
 			rejected++
 		default:
 			t.Fatalf("unexpected concurrent admission error: %T: %v", err, err)
@@ -331,9 +340,11 @@ func TestInstallPackages_ConcurrentPerUserQuotaBeforeJobWrite(t *testing.T) {
 	}
 
 	var activeInstallJobs int64
-	db.Model(&models.Job{}).
-		Where("project_id = ? AND type = ? AND status IN ?", project.ID, models.JobTypeInstall, activeJobStatuses).
-		Count(&activeInstallJobs)
+	if err := db.Model(&models.Job{}).
+		Where("user_id = ? AND type = ? AND status IN ?", userID, models.JobTypeInstall, activeJobStatuses).
+		Count(&activeInstallJobs).Error; err != nil {
+		t.Fatalf("count active install jobs: %v", err)
+	}
 	if activeInstallJobs != int64(limitCfg.ActiveJobsPerUser) {
 		t.Fatalf("expected %d active install jobs, got %d", limitCfg.ActiveJobsPerUser, activeInstallJobs)
 	}

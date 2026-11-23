@@ -88,6 +88,22 @@ func (s *ProjectService) enqueueAdmittedJob(ctx context.Context, job *models.Job
 	return nil
 }
 
+func rejectActiveProjectJobs(message string, jobTypes ...models.JobType) lockedJobValidation {
+	return func(tx *gorm.DB, project *models.Project) error {
+		count, err := activeJobCount(tx.Where("project_id = ? AND type IN ?", project.ID, jobTypes))
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			return &ConflictError{Message: message}
+		}
+		return nil
+	}
+}
+
+var rejectActivePackageJob = rejectActiveProjectJobs("a package job is already pending or running for this project",
+	models.JobTypeInstall, models.JobTypeRemove)
+
 // InstallPackages creates and enqueues an install-packages job.
 func (s *ProjectService) InstallPackages(ctx context.Context, projectID string, packages []string, userID uuid.UUID) (*models.Job, error) {
 	if err := s.validatePackages(packages); err != nil {
@@ -96,7 +112,8 @@ func (s *ProjectService) InstallPackages(ctx context.Context, projectID string, 
 	metadata := map[string]interface{}{
 		"packages": packages,
 	}
-	return s.submitJob(ctx, projectID, userID, models.JobTypeInstall, metadata, audit.ActionInstallPackage, s.validateProjectManifestAndLockForJob)
+	return s.submitJob(ctx, projectID, userID, models.JobTypeInstall, metadata, audit.ActionInstallPackage,
+		rejectActivePackageJob, s.validateProjectManifestAndLockForJob)
 }
 
 // SolveProject creates and enqueues a solve job (pixi install from current pixi.toml).
@@ -112,7 +129,8 @@ func (s *ProjectService) RemovePackage(ctx context.Context, projectID string, pa
 	metadata := map[string]interface{}{
 		"packages": []string{packageName},
 	}
-	return s.submitJob(ctx, projectID, userID, models.JobTypeRemove, metadata, audit.ActionRemovePackage, s.validateProjectManifestAndLockForJob)
+	return s.submitJob(ctx, projectID, userID, models.JobTypeRemove, metadata, audit.ActionRemovePackage,
+		rejectActivePackageJob, s.validateProjectManifestAndLockForJob)
 }
 
 // ListPackages returns packages for a project, auto-syncing from disk for local projects with no DB records.

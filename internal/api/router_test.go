@@ -186,6 +186,113 @@ func TestProjectCreateRejectsOversizedRequestBody(t *testing.T) {
 	}
 }
 
+func TestProjectPackageJobsRejectConflicts(t *testing.T) {
+	cfg := &config.Config{Mode: config.ModeLocal, Limits: limits.Defaults()}
+	cfg.Auth.JWTSecret = "test-secret-for-router-test"
+	cfg.Database.Driver = "sqlite"
+	cfg.Database.DSN = filepath.Join(t.TempDir(), "package-jobs.db")
+	cfg.Storage.ProjectsDir = t.TempDir()
+
+	database, err := db.New(cfg.Database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := database.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := db.Migrate(database, false); err != nil {
+		t.Fatal(err)
+	}
+	exec, err := executor.NewLocalExecutor(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := queue.NewMemoryQueue(16)
+	t.Cleanup(func() { jobs.Close() })
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	router := NewRouter(cfg, database, jobs, exec, nil, logger)
+
+	var owner models.User
+	if err := database.First(&owner, "username = ?", auth.LocalUsername()).Error; err != nil {
+		t.Fatal(err)
+	}
+	projects := []models.Project{
+		{Name: "first", OwnerID: owner.ID, Status: models.ProjectStatusReady},
+		{Name: "second", OwnerID: owner.ID, Status: models.ProjectStatusReady},
+	}
+	if err := database.Create(&projects).Error; err != nil {
+		t.Fatal(err)
+	}
+	send := func(method, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		if body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+	assertStatus := func(w *httptest.ResponseRecorder, want int) {
+		t.Helper()
+		if w.Code != want {
+			t.Fatalf("expected HTTP %d, got %d: %s", want, w.Code, w.Body.String())
+		}
+	}
+	path := "/api/v1/projects/" + projects[0].ID.String() + "/packages"
+	const ipykernel = `{"packages":["ipykernel"]}`
+	const numpy = `{"packages":["numpy"]}`
+	type submission struct {
+		body     string
+		response *httptest.ResponseRecorder
+	}
+	start := make(chan struct{})
+	responses := make(chan submission, 2)
+	for _, body := range []string{ipykernel, numpy} {
+		go func() {
+			<-start
+			responses <- submission{body: body, response: send(http.MethodPost, path, body)}
+		}()
+	}
+	close(start)
+	accepted, rejected := <-responses, <-responses
+	if accepted.response.Code == http.StatusConflict {
+		accepted, rejected = rejected, accepted
+	}
+	assertStatus(accepted.response, http.StatusAccepted)
+	assertStatus(rejected.response, http.StatusConflict)
+
+	var projectJobs []models.Job
+	if err := database.Where("project_id = ?", projects[0].ID).Find(&projectJobs).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(projectJobs) != 1 || projectJobs[0].Status != models.JobStatusPending {
+		t.Fatalf("expected one pending job after conflicting submissions, got %+v", projectJobs)
+	}
+	job := &projectJobs[0]
+	if err := database.Model(job).Update("status", models.JobStatusRunning).Error; err != nil {
+		t.Fatal(err)
+	}
+	removePath := path + "/ipykernel"
+	assertStatus(send(http.MethodDelete, removePath, ""), http.StatusConflict)
+	assertStatus(send(http.MethodPost, "/api/v1/projects/"+projects[1].ID.String()+"/packages", rejected.body), http.StatusAccepted)
+
+	if err := database.Model(job).Update("status", models.JobStatusCompleted).Error; err != nil {
+		t.Fatal(err)
+	}
+	assertStatus(send(http.MethodDelete, removePath, ""), http.StatusAccepted)
+	assertStatus(send(http.MethodPost, path, rejected.body), http.StatusConflict)
+
+	result := database.Model(&models.Job{}).
+		Where("project_id = ? AND type = ? AND status = ?", projects[0].ID, models.JobTypeRemove, models.JobStatusPending).
+		Update("status", models.JobStatusFailed)
+	if result.Error != nil || result.RowsAffected != 1 {
+		t.Fatalf("mark pending remove job failed: updated %d rows, error %v", result.RowsAffected, result.Error)
+	}
+	assertStatus(send(http.MethodPost, path, rejected.body), http.StatusAccepted)
+}
+
 func TestProtectedRoutesRejectQueryToken(t *testing.T) {
 	r, token := buildTeamTestRouter(t, nil)
 

@@ -57,8 +57,9 @@ func TestInstallProjectEnv_RejectsWhileEnvJobActive(t *testing.T) {
 	}
 
 	_, err := svc.InstallProjectEnv(context.Background(), project.ID.String(), userID)
-	if err == nil {
-		t.Fatal("expected second install to be rejected while first job is pending")
+	var conflict *ConflictError
+	if !isConflictError(err, &conflict) || conflict.Message != "an install or uninstall is already in progress for this project" {
+		t.Fatalf("expected active environment job conflict, got %v", err)
 	}
 }
 
@@ -279,7 +280,8 @@ func TestUninstallProjectEnv_RejectsWhileEnvJobActive(t *testing.T) {
 	}
 
 	_, err := svc.UninstallProjectEnv(context.Background(), project.ID.String(), userID)
-	if err == nil {
-		t.Fatal("expected uninstall to be rejected while install job is pending")
+	var conflict *ConflictError
+	if !isConflictError(err, &conflict) || conflict.Message != "an install or uninstall is already in progress for this project" {
+		t.Fatalf("expected active environment job conflict, got %v", err)
 	}
 }

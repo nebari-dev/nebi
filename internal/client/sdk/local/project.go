@@ -13,8 +13,8 @@ import (
 
 // Project is a pixi workspace on this machine that nebi tracks.
 // The directory at Path holds the working copy (pixi.toml, pixi.lock,
-// .pixi/ and any other project files). Versions are immutable snapshots
-// of pixi.toml and pixi.lock stored in the database.
+// .pixi/ and any other project files). Versions are immutable environment
+// specifications (pixi.toml and pixi.lock) stored in the database.
 type Project struct {
 	ID uuid.UUID `gorm:"type:text;primaryKey" json:"id"`
 
@@ -31,12 +31,13 @@ type Project struct {
 
 	// InstalledVersionID is the version whose environment is materialized in
 	// Path/.pixi. Nil when nothing is installed. Written only after an
-	// install succeeds, by the create job and sdk/exec. State is installed
-	// only when it is set and .pixi/envs exists. A reinstall or uninstall
-	// must clear it before touching .pixi, so a crash midway does not leave
-	// the old version reported as installed, and must do so inside its job
-	// body, never before Submit, so a read that sees it cleared also sees
-	// the job (see readProjects).
+	// install succeeds, by installStep (run by the create, create_version
+	// and install jobs). CreateResolvedVersion never sets it. State is
+	// installed only when it is set and .pixi/envs exists. A reinstall or
+	// uninstall must clear it before touching .pixi, so a crash midway does
+	// not leave the old version reported as installed, and must do so
+	// inside its job body, never before Submit, so a read that sees it
+	// cleared also sees the job (see readProjects).
 	InstalledVersionID *uuid.UUID `gorm:"type:text" json:"installed_version_id,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
@@ -53,12 +54,55 @@ func (p *Project) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// Migrate creates or updates the project tables in the client database:
-// client_projects and client_pending_removals, where DeleteProject records
-// the directories it is removing. It is idempotent.
+// Migrate creates the project tables in the client database:
+// client_projects, client_project_versions, client_project_tags,
+// client_pending_removals, where DeleteProject records the directories it
+// is removing, and client_pending_restores, where an in-place solve records
+// the files it must put back. It is idempotent.
+//
+// It only creates what is missing: tables, then columns and indexes of
+// existing tables. It never alters or rebuilds an existing table, so it
+// copies no rows and stays cheap however many versions are stored. GORM's
+// AutoMigrate is not used because, with this SQLite driver, it reads every
+// nullable column back as NOT NULL and rebuilds the table, copying all of
+// its rows, on every run. Changing an existing column is not supported.
 func Migrate(db *gorm.DB) error {
-	if err := db.AutoMigrate(&Project{}, &pendingRemoval{}); err != nil {
-		return fmt.Errorf("migrating client project tables: %w", err)
+	// In foreign-key order: versions reference projects, tags reference both.
+	for _, model := range []any{&Project{}, &ProjectVersion{}, &ProjectTag{}, &pendingRemoval{}, &pendingRestore{}} {
+		if err := ensureTable(db, model); err != nil {
+			return fmt.Errorf("migrating client project tables: %w", err)
+		}
+	}
+	return nil
+}
+
+// ensureTable creates model's table when it is missing, or else adds the
+// columns and indexes it lacks.
+func ensureTable(db *gorm.DB, model any) error {
+	m := db.Migrator()
+	if !m.HasTable(model) {
+		return m.CreateTable(model)
+	}
+	stmt := &gorm.Statement{DB: db}
+	if err := stmt.Parse(model); err != nil {
+		return err
+	}
+	for _, name := range stmt.Schema.DBNames {
+		if field := stmt.Schema.LookUpField(name); field == nil || field.IgnoreMigration {
+			continue
+		}
+		if !m.HasColumn(model, name) {
+			if err := m.AddColumn(model, name); err != nil {
+				return err
+			}
+		}
+	}
+	for _, idx := range stmt.Schema.ParseIndexes() {
+		if !m.HasIndex(model, idx.Name) {
+			if err := m.CreateIndex(model, idx.Name); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -67,7 +111,7 @@ func (s *Service) loadProject(ctx context.Context, id uuid.UUID) (*Project, erro
 	var p Project
 	err := s.db.WithContext(ctx).Where("id = ?", id).First(&p).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("%w: %s", ErrNotFound, id)
+		return nil, fmt.Errorf("%w: project %s", ErrNotFound, id)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("loading project %s: %w", id, err)

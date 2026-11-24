@@ -28,6 +28,9 @@ const (
 	// TypeCreate solves a new project's lock file (and installs it when
 	// requested) and records version 1.
 	TypeCreate Type = "create"
+	// TypeCreateVersion solves the lock file of a new version of a project
+	// (and installs it when requested) and records the version.
+	TypeCreateVersion Type = "create_version"
 	// TypeInstall materializes a project's environment.
 	TypeInstall Type = "install"
 	// TypeUninstall removes a project's environment.

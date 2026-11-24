@@ -16,9 +16,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// Stages the create job reports through jobs.ReportStage. A failed create
-// job whose stage is StageInstall solved its lock file and recorded version
-// 1 before the install failed.
+// Stages the create and create_version jobs report through
+// jobs.ReportStage. A failed job whose stage is StageInstall solved its lock
+// file and recorded its version before the install failed.
 const (
 	StageLock    = "lock"
 	StageInstall = "install"
@@ -37,7 +37,9 @@ type CreateProjectRequest struct {
 
 	// Description is written to [workspace].description in pixi.toml.
 	Description string
-	// Tags are applied to version 1 when it is recorded.
+	// Tags are applied to version 1 when it is recorded. They are checked
+	// before anything is created: an invalid or reserved tag returns
+	// ErrInvalidTag.
 	Tags []string
 	// Install creates and installs in one step: after the lock is solved
 	// and version 1 is recorded, the create job runs `pixi install` and sets
@@ -67,6 +69,10 @@ func (s *Service) CreateProject(ctx context.Context, req CreateProjectRequest) (
 
 	// 1. Validate the request before touching anything.
 	if err := s.ValidateProjectName(ctx, req.Name, nil); err != nil {
+		return nil, nil, err
+	}
+	tags, err := checkTags(req.Tags)
+	if err != nil {
 		return nil, nil, err
 	}
 	manifest, err := buildManifest(req)
@@ -127,7 +133,7 @@ func (s *Service) CreateProject(ctx context.Context, req CreateProjectRequest) (
 	}
 
 	// 4. Submit the create job.
-	job, err := s.jobs.Submit(ctx, p.ID, jobs.TypeCreate, s.createJob(p.ID, dir, cleanTags(req.Tags), req.Install))
+	job, err := s.jobs.Submit(ctx, p.ID, jobs.TypeCreate, s.createJob(p.ID, dir, tags, req.Install))
 	if err != nil {
 		// Nothing ran: undo the row and the files so the name and the
 		// directory are free for a retry.
@@ -308,38 +314,28 @@ func (s *Service) createJob(projectID uuid.UUID, dir string, tags []string, inst
 		if err != nil {
 			return fmt.Errorf("reading %s: %w", artifact.LockFile, err)
 		}
-		req := RecordVersionRequest{
-			ProjectID: projectID,
-			Manifest:  string(manifest),
-			Lock:      string(lock),
-			Origin:    OriginCreated,
-			Author:    s.author,
-			Tags:      tags,
-		}
-		var versionID uuid.UUID
-		err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var v *ProjectVersion
+		err = s.versionTx(ctx, func(tx *gorm.DB) error {
 			var err error
-			versionID, err = s.versions.RecordVersion(tx, req)
+			v, err = s.recordVersion(tx, recordVersionRequest{
+				ProjectID: projectID,
+				EnvironmentSpecification: EnvironmentSpecification{
+					Manifest: string(manifest),
+					Lock:     string(lock),
+				},
+				Origin: OriginCreated,
+				Author: s.author,
+				Tags:   tags,
+			})
 			return err
 		})
 		if err != nil {
 			return fmt.Errorf("recording version 1: %w", err)
 		}
-		jobs.ReportVersion(ctx, versionID)
+		jobs.ReportVersion(ctx, v.ID)
 		if !install {
 			return nil
 		}
-
-		jobs.ReportStage(ctx, StageInstall)
-		if err := s.pixi.Install(ctx, dir, log); err != nil {
-			return fmt.Errorf("pixi install: %w", err)
-		}
-		// The environment is installed: record it even if the job is
-		// cancelled now, or a complete install would look failed.
-		if err := s.db.WithContext(context.WithoutCancel(ctx)).Model(&Project{}).Where("id = ?", projectID).
-			Update("installed_version_id", versionID).Error; err != nil {
-			return fmt.Errorf("marking version 1 installed: %w", err)
-		}
-		return nil
+		return s.installStep(ctx, projectID, dir, v, log)
 	}
 }

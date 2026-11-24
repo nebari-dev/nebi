@@ -784,7 +784,7 @@ func TestProjectSize(t *testing.T) {
 	req.Path = dir
 	p, _ := h.mustCreate(req)
 	manifest := int64(len(readFile(t, filepath.Join(dir, "pixi.toml"))))
-	want := 1000 + 5000 + manifest + int64(len(fakeLockContent))
+	want := 1000 + 5000 + manifest + int64(len(fakeLockFor(readFile(t, filepath.Join(dir, "pixi.toml")))))
 
 	got, err := h.svc.ProjectSize(context.Background(), p.ID)
 	if err != nil {

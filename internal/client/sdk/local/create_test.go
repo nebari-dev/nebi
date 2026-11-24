@@ -13,6 +13,7 @@ import (
 
 	"github.com/nebari-dev/nebi/internal/artifact"
 	"github.com/nebari-dev/nebi/internal/client/jobs"
+	"github.com/nebari-dev/nebi/internal/contenthash"
 	"gorm.io/gorm"
 )
 
@@ -60,20 +61,26 @@ func TestCreateFromSpec(t *testing.T) {
 		t.Fatalf("want version 1 recorded, got %d versions", len(versions))
 	}
 	v := versions[0]
-	if v.Number != 1 || v.Origin != OriginCreated || v.Base != nil || v.Tags != "stable,q3" {
-		t.Fatalf("version 1 = %+v; want origin created, no base, tags stable,q3", v)
+	if v.Number != 1 || v.Origin != OriginCreated || v.BaseVersionID != nil {
+		t.Fatalf("version 1 = %+v; want origin created, no base", v)
+	}
+	if tags := h.versions.tagsOf(t, p.ID); len(tags) != 2 || tags["stable"] != 1 || tags["q3"] != 1 {
+		t.Fatalf("tags = %v; want stable and q3 on version 1", tags)
 	}
 	if v.Author != "tester" || v.Description != "" {
 		t.Fatalf("version 1 author/description = %q/%q; want the service author and no description", v.Author, v.Description)
 	}
-	if v.Manifest != manifest || v.Lock != fakeLockContent {
+	if v.Manifest != manifest || v.Lock != fakeLockFor(manifest) {
 		t.Fatal("version 1 must hold the pixi.toml and pixi.lock contents")
+	}
+	if v.ContentHash != contenthash.Hash(v.Manifest, v.Lock) {
+		t.Fatalf("ContentHash = %q, want the hash of pixi.toml and pixi.lock", v.ContentHash)
 	}
 	if done.VersionID == nil || *done.VersionID != v.ID {
 		t.Fatalf("the job must carry version 1's ID: VersionID = %v, want %s", done.VersionID, v.ID)
 	}
-	if h.versions.recordTx[0] == nil || h.versions.recordTx[0].Statement.ConnPool == h.db.Statement.ConnPool {
-		t.Fatal("version 1 must be recorded inside a transaction")
+	if in := h.versions.inserts(); len(in) != 1 || !in[0] {
+		t.Fatalf("version 1 must be recorded inside a transaction, inserts in tx: %v", in)
 	}
 
 	d := h.detail(p.ID)
@@ -151,6 +158,9 @@ func TestCreateAndInstall(t *testing.T) {
 	}
 	v := h.versions.versionsOf(t, p.ID)
 	d := h.detail(p.ID)
+	if st, err := h.svc.WorkingCopyStatus(context.Background(), p.ID); err != nil || st != WorkingCopyClean {
+		t.Fatalf("WorkingCopyStatus = %q, %v; want clean", st, err)
+	}
 	if d.InstalledVersionID == nil || *d.InstalledVersionID != v[0].ID {
 		t.Fatalf("InstalledVersionID = %v, want version 1 (%s)", d.InstalledVersionID, v[0].ID)
 	}
@@ -213,7 +223,7 @@ func TestCreateInstallFailureAfterLock(t *testing.T) {
 
 func TestCreateRecordVersionFailure(t *testing.T) {
 	h := newHarness(t)
-	h.versions.recordErr = errors.New("db locked")
+	h.versions.setRecordErr(errors.New("db locked"))
 	p, job := h.mustCreate(specRequest("unrecorded"))
 	if job.Status != jobs.StatusFailed {
 		t.Fatalf("job: %+v", job)

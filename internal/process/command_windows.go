@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"sync"
@@ -70,9 +71,9 @@ type processTree struct {
 // outside the job.
 //
 // If the job cannot be set up the command still runs, without one, and
-// cancelling it stops only the process itself. That is not expected on the
-// Windows versions Go supports: since Windows 8 jobs nest, so even a process
-// whose parent runs in a job can join a new one.
+// cancelling it stops only the process itself; a warning says so. That is
+// not expected on the Windows versions Go supports: since Windows 8 jobs
+// nest, so even a process whose parent runs in a job can join a new one.
 func (t *processTree) start(cmd *exec.Cmd) error {
 	t.mu.Lock()
 	if cmd.SysProcAttr == nil {
@@ -83,8 +84,13 @@ func (t *processTree) start(cmd *exec.Cmd) error {
 		t.mu.Unlock()
 		return err
 	}
-	t.job = newJob(cmd.Process)
-	err := resumeProcess(uint32(cmd.Process.Pid))
+	job, err := newJob(cmd.Process)
+	if err != nil {
+		slog.Warn("Cancelling this command will stop only its own process, not the processes it starts",
+			"command", cmd.Path, "pid", cmd.Process.Pid, "error", err)
+	}
+	t.job = job
+	err = resumeProcess(uint32(cmd.Process.Pid))
 	t.mu.Unlock()
 	if err != nil {
 		// A process left suspended never runs, so stop it and reap it:
@@ -99,25 +105,28 @@ func (t *processTree) start(cmd *exec.Cmd) error {
 }
 
 // newJob puts p in a new job object that kills its processes when its last
-// handle closes and lets them break away, and returns the job, or 0 if that
-// fails.
-func newJob(p *os.Process) windows.Handle {
+// handle closes and lets them break away, and returns the job. It returns 0
+// and the reason if that fails.
+func newJob(p *os.Process) (windows.Handle, error) {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
-		return 0
+		return 0, fmt.Errorf("create job object: %w", err)
 	}
 	if err := setJobLimits(job, true); err != nil {
 		windows.CloseHandle(job)
-		return 0
+		return 0, fmt.Errorf("set job limits: %w", err)
 	}
 	herr := p.WithHandle(func(h uintptr) {
 		err = windows.AssignProcessToJobObject(job, windows.Handle(h))
 	})
-	if herr != nil || err != nil {
-		windows.CloseHandle(job)
-		return 0
+	if herr != nil {
+		err = herr
 	}
-	return job
+	if err != nil {
+		windows.CloseHandle(job)
+		return 0, fmt.Errorf("assign process to job object: %w", err)
+	}
+	return job, nil
 }
 
 // cancel terminates the job, stopping the process and everything it

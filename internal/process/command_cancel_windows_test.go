@@ -23,9 +23,9 @@ func processGone(pid int) bool {
 }
 
 // detach starts child out of the command's job, which allows breakaway (see
-// CommandContext). No Windows test starts a detacher: whether the start
-// succeeds also depends on any job the test itself runs in, so
-// TestJobLimits checks the job's limits instead.
+// CommandContext). Whether the start succeeds also depends on any job the
+// test itself runs in, so TestCancelWaitReturnsWhenOutputHeldOutsideTree
+// skips when it fails, and TestJobLimits checks the job's limits too.
 func detach(child *exec.Cmd) {
 	if child.SysProcAttr == nil {
 		child.SysProcAttr = &syscall.SysProcAttr{}

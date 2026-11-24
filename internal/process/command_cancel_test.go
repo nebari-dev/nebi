@@ -23,6 +23,11 @@ const (
 	cancelHelperEnv    = "NEBI_TEST_PROCESS_HELPER"
 	cancelHelperDirEnv = "NEBI_TEST_PROCESS_DIR"
 
+	// detachRefusedFile is the file a detacher writes, in place of its PID,
+	// when the system refuses to start its child outside the command's
+	// process tree.
+	detachRefusedFile = "detach-refused"
+
 	// cancelTimeout bounds every wait in these tests. It is far above what
 	// any step needs, so it only trips when a step is really stuck.
 	cancelTimeout = 20 * time.Second
@@ -45,7 +50,8 @@ const (
 //     until killed.
 //   - spawn-exit: start a sleep child and exit without waiting for it.
 //   - detacher: start a sleep child outside the command's process tree
-//     where the system allows it (see detach), then block until killed.
+//     (see detach), then block until killed. If the system refuses, write
+//     the reason to detachRefusedFile and exit.
 //   - owner: start a parent tree through CommandContext, as nebi starts
 //     pixi, then block until killed.
 //   - print: print "print stderr" to stderr and exit 0.
@@ -88,7 +94,15 @@ func TestCancelHelperProcess(t *testing.T) {
 		start("sleep", nil)
 		os.Exit(0)
 	case "detacher":
-		start("sleep", detach)
+		d := helperCommand("sleep", dir)
+		d.Stdout, d.Stderr = os.Stdout, os.Stderr
+		detach(d)
+		if err := d.Start(); err != nil {
+			if werr := os.WriteFile(filepath.Join(dir, detachRefusedFile), []byte(err.Error()), 0o600); werr != nil {
+				fail(werr)
+			}
+			os.Exit(4)
+		}
 	case "print", "fail":
 		fmt.Fprintf(os.Stderr, "%s stderr\n", mode)
 		if mode == "fail" {
@@ -163,6 +177,61 @@ func TestCancelStopsOrphanedDescendants(t *testing.T) {
 	assertStoppedPromptly(t, cmd, pids)
 	if !strings.Contains(out.String(), "sleep started") {
 		t.Fatalf("the orphan must hold the output pipe, got %q", out.String())
+	}
+}
+
+// TestCancelWaitReturnsWhenOutputHeldOutsideTree cancels a command whose
+// process started a child outside the command's process tree: in a process
+// group of its own on unix, or broken away from the job on Windows. Cancel
+// cannot reach that child, which keeps running and holds the output pipe;
+// Wait must still return, once WaitDelay gives up on the pipe.
+func TestCancelWaitReturnsWhenOutputHeldOutsideTree(t *testing.T) {
+	dir := t.TempDir()
+	cmd, out, cancel := startHelper(t, "detacher", dir)
+	pids := waitForDetacher(t, dir)
+
+	cancel()
+	elapsed, err := waitBounded(t, cmd)
+	if err == nil {
+		t.Fatal("a cancelled command must fail")
+	}
+	if limit := cmd.WaitDelay + 5*time.Second; elapsed > limit {
+		t.Fatalf("Wait took %v, more than %v", elapsed, limit)
+	}
+	for pid, mode := range pids {
+		if mode == "detacher" {
+			waitProcessGone(t, pid, mode)
+		} else if processGone(pid) {
+			t.Fatalf("the detached %s process %d was stopped by the cancel; it was not outside the tree", mode, pid)
+		}
+	}
+	if !strings.Contains(out.String(), "sleep started") {
+		t.Fatalf("the detached child must hold the output pipe, got %q", out.String())
+	}
+}
+
+// waitForDetacher waits until a detacher and its detached child have
+// recorded their PIDs, and returns them. It skips the test if the system
+// refused to start the child outside the tree: on Windows, a job the test
+// itself runs in may not allow breakaway.
+func waitForDetacher(t *testing.T, dir string) map[int]string {
+	t.Helper()
+	deadline := time.Now().Add(cancelTimeout)
+	for {
+		if reason, err := os.ReadFile(filepath.Join(dir, detachRefusedFile)); err == nil {
+			t.Skipf("this system does not let a process start a child outside its tree: %s", reason)
+		}
+		pids, err := readPIDs(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pids) == 2 {
+			return pids
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("only %d of 2 processes started: %v", len(pids), pids)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

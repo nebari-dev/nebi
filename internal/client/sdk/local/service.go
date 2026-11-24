@@ -142,9 +142,8 @@ type JobRunner interface {
 // PixiRunner runs pixi in a project directory (internal/client/sdk/exec).
 //
 // Each method sends pixi's stdout and stderr to out, the job's log, and
-// starts pixi with ctx through process.CommandContext, so on unix
-// cancelling ctx stops pixi and its child processes and the method returns
-// promptly. On other systems only pixi itself is stopped.
+// starts pixi with ctx through process.CommandContext, so cancelling ctx
+// stops pixi and its child processes and the method returns promptly.
 type PixiRunner interface {
 	// Lock solves the manifest in dir and writes dir/pixi.lock.
 	Lock(ctx context.Context, dir string, out io.Writer) error

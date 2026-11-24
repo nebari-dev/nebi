@@ -23,11 +23,13 @@ const cancelWaitDelay = 5 * time.Second
 // started, not just the process itself. Use it like an exec.Cmd: set its
 // fields, then Start and Wait, or Run.
 //
-// Its Start, Run, Output and CombinedOutput must be used rather than the
-// embedded exec.Cmd's: on Windows they put the process in a job object
-// before it runs, which is what lets cancel reach its children. A process
-// started through the embedded exec.Cmd still runs, but cancelling it stops
-// only the process itself.
+// Its Start, Wait, Run, Output and CombinedOutput must be used rather than
+// the embedded exec.Cmd's. On Windows, Start puts the process in a job
+// object before it runs, which is what lets cancel reach its children, and
+// Wait closes the job once the command has ended. A process started through
+// the embedded exec.Cmd still runs, but cancelling it stops only the process
+// itself. Waiting through the embedded exec.Cmd leaves the job open, so
+// whatever the command left running is stopped when this process exits.
 type Cmd struct {
 	*exec.Cmd
 	tree processTree

@@ -36,10 +36,10 @@ const (
 // TestCancelHelperProcess is one process of a cancel test's tree. It is not
 // a test: without cancelHelperEnv it returns at once.
 //
-// Every mode prints "<mode> started" to stdout and, except spawn-exit,
-// print and fail, records its PID as a file in the directory named by cancelHelperDirEnv.
-// Children inherit stdout and stderr, so they hold the command's output pipe
-// as long as they run.
+// Every mode prints "<mode> started" to stdout. Every mode except
+// spawn-exit, print and fail also records its PID as a file in the
+// directory named by cancelHelperDirEnv. Children inherit stdout and
+// stderr, so they hold the command's output pipe as long as they run.
 //
 // Modes:
 //   - sleep: block until killed.

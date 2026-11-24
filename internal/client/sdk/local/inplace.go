@@ -168,9 +168,9 @@ func (s *Service) recoverInPlace(ctx context.Context, r pendingRestore) error {
 	if err != nil {
 		return err
 	}
-	orig := workingCopy{Manifest: v.Manifest}
-	if r.HadLock {
-		orig.Lock, orig.HasLock = v.Lock, true
+	orig := workingCopy{EnvironmentSpecification: v.EnvironmentSpecification, HasLock: r.HadLock}
+	if !r.HadLock {
+		orig.Lock = ""
 	}
 	if _, err := putBack(p.Path, r.Written, orig); err != nil {
 		return fmt.Errorf("putting back the files of project %s: %w", p.Name, err)

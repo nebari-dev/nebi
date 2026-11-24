@@ -3,10 +3,10 @@
 // It holds the subset the local project SDK needs to create a project
 // (issue #660) and a new version of one (issue #661): a structured Spec and
 // its renderer, a manifest parser, a helper that sets [workspace].name and
-// [workspace].description in a raw manifest, a helper that applies a Spec
-// to an existing manifest, and a check for path dependencies. The editors
-// leave the rest of the file as the user wrote it. Full form round-trip and
-// validation of pixi.toml is tracked separately.
+// [workspace].description in a raw manifest, and a helper that applies a
+// Spec to an existing manifest. The editors leave the rest of the file as
+// the user wrote it. Full form round-trip and validation of pixi.toml is
+// tracked separately.
 package artifact
 
 import (

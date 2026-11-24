@@ -317,13 +317,15 @@ func (s *Service) createJob(projectID uuid.UUID, dir string, tags []string, inst
 		var v *ProjectVersion
 		err = s.versionTx(ctx, func(tx *gorm.DB) error {
 			var err error
-			v, _, err = s.recordVersion(tx, recordVersionRequest{
+			v, err = s.recordVersion(tx, recordVersionRequest{
 				ProjectID: projectID,
-				Manifest:  string(manifest),
-				Lock:      string(lock),
-				Origin:    OriginCreated,
-				Author:    s.author,
-				Tags:      tags,
+				EnvironmentSpecification: EnvironmentSpecification{
+					Manifest: string(manifest),
+					Lock:     string(lock),
+				},
+				Origin: OriginCreated,
+				Author: s.author,
+				Tags:   tags,
 			})
 			return err
 		})

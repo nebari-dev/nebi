@@ -40,12 +40,11 @@ type CreateVersionRequest struct {
 	Install bool
 }
 
-// CreateVersionResult is what CreateVersion and SnapshotWorkingCopy return.
-// It has one of three shapes:
+// CreateVersionResult is what CreateVersion and CreateResolvedVersion
+// return. It has one of three shapes:
 //
-//   - Version set, Job nil: the version is recorded (no solve was needed),
-//     or, with Deduplicated, the latest version already had this content.
-//     The client API answers 201, or 200 when Deduplicated.
+//   - Version set, Job nil: the version is recorded (no solve was needed).
+//     The client API answers 201.
 //   - Job set, Version nil: a create_version job is solving the lock file
 //     and records the version when it succeeds; the job carries its ID.
 //     The client API answers 202.
@@ -59,9 +58,6 @@ type CreateVersionRequest struct {
 type CreateVersionResult struct {
 	Version *ProjectVersion `json:"version,omitempty"`
 	Job     *jobs.Job       `json:"job,omitempty"`
-	// Deduplicated is true when the result matched the latest version and
-	// no new version was created.
-	Deduplicated bool `json:"deduplicated"`
 	// InstallError says why the install of a recorded Version could not be
 	// started.
 	InstallError string `json:"install_error,omitempty"`
@@ -75,18 +71,18 @@ type CreateVersionResult struct {
 //     (tables the Spec does not cover are kept), or req.Manifest as given,
 //     or the base's own when neither is set.
 //  3. When the pixi.toml is unchanged from the base, the version is
-//     recorded at once with the base's lock and no solve. When its content
-//     matches the latest version the result is Deduplicated and nothing is
-//     written; otherwise this is how an older version becomes the newest
-//     one again.
-//  4. Otherwise a create_version job solves the lock file and records the
-//     version and its tags in one transaction, or reports Deduplicated
-//     when the result matches the latest version (see createVersionJob).
+//     recorded at once with the base's lock and no solve. This is how an
+//     older version becomes the newest one again.
+//  4. Otherwise a create_version job solves the lock file in the project
+//     directory and records the version and its tags in one transaction
+//     (see createVersionJob). The solve writes pixi.toml and pixi.lock
+//     there, so it is refused with ErrWorkingCopyModified when they hold
+//     changes that are in no recorded version.
 //
 // With req.Install the recorded version is then installed into the project
 // directory. Install replaces pixi.toml and pixi.lock there, so it is
 // refused with ErrWorkingCopyModified when they hold changes that are not
-// in any recorded version; snapshot them first.
+// in any recorded version; record them with CreateResolvedVersion first.
 //
 // Tags are checked before anything runs: an invalid one returns
 // ErrInvalidTag, and one already on another version ErrTagExists.
@@ -139,14 +135,8 @@ func (s *Service) CreateVersion(ctx context.Context, req CreateVersionRequest) (
 		return s.copyVersion(ctx, p, base, req, tags)
 	}
 
-	inPlace, err := artifact.HasLocalPaths(manifest)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidManifest, err)
-	}
-	if inPlace {
-		if err := s.checkLockableInPlace(ctx, p.ID, p.Path); err != nil {
-			return nil, err
-		}
+	if err := s.checkLockableInPlace(ctx, p.ID, p.Path); err != nil {
+		return nil, err
 	}
 	job, err := s.jobs.Submit(ctx, p.ID, jobs.TypeCreateVersion, s.createVersionJob(versionJob{
 		projectID:   p.ID,
@@ -156,7 +146,6 @@ func (s *Service) CreateVersion(ctx context.Context, req CreateVersionRequest) (
 		description: req.Description,
 		tags:        tags,
 		install:     req.Install,
-		inPlace:     inPlace,
 	}))
 	if err != nil {
 		return nil, fmt.Errorf("submitting create_version job: %w", err)
@@ -168,26 +157,23 @@ func (s *Service) CreateVersion(ctx context.Context, req CreateVersionRequest) (
 // solve, and submits an install job for it when asked.
 func (s *Service) copyVersion(ctx context.Context, p *Project, base *ProjectVersion, req CreateVersionRequest, tags []string) (*CreateVersionResult, error) {
 	var v *ProjectVersion
-	var dedup bool
 	err := s.versionTx(ctx, func(tx *gorm.DB) error {
 		var err error
-		v, dedup, err = s.recordVersion(tx, recordVersionRequest{
-			ProjectID:     p.ID,
-			BaseVersionID: &base.ID,
-			Manifest:      base.Manifest,
-			Lock:          base.Lock,
-			Origin:        OriginCreated,
-			Author:        s.author,
-			Description:   req.Description,
-			Tags:          tags,
-			DedupeLatest:  true,
+		v, err = s.recordVersion(tx, recordVersionRequest{
+			ProjectID:                p.ID,
+			BaseVersionID:            &base.ID,
+			EnvironmentSpecification: base.EnvironmentSpecification,
+			Origin:                   OriginCreated,
+			Author:                   s.author,
+			Description:              req.Description,
+			Tags:                     tags,
 		})
 		return err
 	})
 	if err != nil {
 		return nil, fmt.Errorf("recording the version: %w", err)
 	}
-	res := &CreateVersionResult{Version: v, Deduplicated: dedup}
+	res := &CreateVersionResult{Version: v}
 	if !req.Install {
 		return res, nil
 	}
@@ -246,61 +232,43 @@ type versionJob struct {
 	description string
 	tags        []string
 	install     bool
-	// inPlace locks in the project directory instead of a temporary one,
-	// for manifests with local paths (see artifact.HasLocalPaths).
-	inPlace bool
 }
 
 // createVersionJob is the body of a create_version job. It solves the new
 // pixi.toml starting from the base's pixi.lock, so unrelated packages stay
-// pinned, and records the result in one transaction with its tags, or
-// reports Deduplicated when the result matches the latest version. With
+// pinned, and records the result in one transaction with its tags. With
 // install it then runs the install step.
 //
-// The solve runs in a temporary directory, so the project directory and
-// its environment stay on the installed version until the new one is
-// installed. A manifest with local paths, such as path dependencies or a
-// relative channel, is solved in the project
-// directory instead (see solveInPlace).
+// The solve runs in the project directory, where relative paths in the
+// manifest resolve, and puts the original files back afterwards, so the
+// project directory stays on its version until the new one is installed
+// (see solveInPlace).
 func (s *Service) createVersionJob(j versionJob) jobs.Func {
 	return func(ctx context.Context, log io.Writer) error {
 		jobs.ReportStage(ctx, StageLock)
-		var solved workingCopy
-		var err error
-		if j.inPlace {
-			solved, err = s.solveInPlace(ctx, j, log)
-		} else {
-			solved, err = s.solveInTemp(ctx, j, log)
-		}
+		solved, err := s.solveInPlace(ctx, j, log)
 		if err != nil {
 			return err
 		}
 
 		var v *ProjectVersion
-		var dedup bool
 		err = s.versionTx(ctx, func(tx *gorm.DB) error {
 			var err error
-			v, dedup, err = s.recordVersion(tx, recordVersionRequest{
-				ProjectID:     j.projectID,
-				BaseVersionID: &j.base.ID,
-				Manifest:      solved.Manifest,
-				Lock:          solved.Lock,
-				Origin:        OriginCreated,
-				Author:        s.author,
-				Description:   j.description,
-				Tags:          j.tags,
-				DedupeLatest:  true,
+			v, err = s.recordVersion(tx, recordVersionRequest{
+				ProjectID:                j.projectID,
+				BaseVersionID:            &j.base.ID,
+				EnvironmentSpecification: solved.EnvironmentSpecification,
+				Origin:                   OriginCreated,
+				Author:                   s.author,
+				Description:              j.description,
+				Tags:                     j.tags,
 			})
 			return err
 		})
 		if err != nil {
 			return fmt.Errorf("recording the version: %w", err)
 		}
-		if dedup {
-			jobs.ReportDeduplicated(ctx, v.ID)
-		} else {
-			jobs.ReportVersion(ctx, v.ID)
-		}
+		jobs.ReportVersion(ctx, v.ID)
 		if !j.install {
 			return nil
 		}
@@ -308,29 +276,8 @@ func (s *Service) createVersionJob(j versionJob) jobs.Func {
 	}
 }
 
-// solveInTemp writes the new pixi.toml and the base's pixi.lock to a
-// temporary directory, with the project's pixi configuration, runs pixi
-// lock there and returns the result.
-func (s *Service) solveInTemp(ctx context.Context, j versionJob, log io.Writer) (workingCopy, error) {
-	dir, err := os.MkdirTemp("", "nebi-lock-")
-	if err != nil {
-		return workingCopy{}, fmt.Errorf("creating a directory to lock in: %w", err)
-	}
-	defer os.RemoveAll(dir)
-	if err := writeVersionFiles(dir, j.manifest, j.base.Lock); err != nil {
-		return workingCopy{}, err
-	}
-	if err := copyProjectConfig(j.dir, dir); err != nil {
-		return workingCopy{}, err
-	}
-	if err := s.pixi.Lock(ctx, dir, log); err != nil {
-		return workingCopy{}, fmt.Errorf("pixi lock: %w", err)
-	}
-	return readSolved(dir)
-}
-
-// solveInPlace locks a manifest with local paths in the project
-// directory, where its relative paths resolve. The working copy must hold
+// solveInPlace locks the new pixi.toml in the project directory, where its
+// relative paths resolve. The working copy must hold
 // the files of a recorded version, so nothing unsaved is overwritten; it
 // is checked again here because it may have changed while the job was
 // pending. The new pixi.toml and the base's pixi.lock are written in place
@@ -363,32 +310,6 @@ func (s *Service) solveInPlace(ctx context.Context, j versionJob, log io.Writer)
 		return workingCopy{}, fmt.Errorf("%s changed while it was being locked", artifact.ManifestFile)
 	}
 	return solved, nil
-}
-
-// projectConfigFile is pixi's per-project configuration (mirrors, channel
-// and PyPI settings), relative to the project directory.
-var projectConfigFile = filepath.Join(".pixi", "config.toml")
-
-// copyProjectConfig copies the project's pixi configuration, when it has
-// one, into dir, so a solve there uses the same settings as one in the
-// project directory.
-func copyProjectConfig(projectDir, dir string) error {
-	src := filepath.Join(projectDir, projectConfigFile)
-	data, err := os.ReadFile(src)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("reading %s: %w", src, err)
-	}
-	dst := filepath.Join(dir, projectConfigFile)
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return fmt.Errorf("copying %s: %w", projectConfigFile, err)
-	}
-	if err := os.WriteFile(dst, data, 0o644); err != nil {
-		return fmt.Errorf("copying %s: %w", projectConfigFile, err)
-	}
-	return nil
 }
 
 // readSolved reads pixi.toml and pixi.lock after a solve. pixi lock must
@@ -429,14 +350,14 @@ func restoreWorkingCopy(dir string, wc workingCopy) error {
 func (s *Service) checkLockableInPlace(ctx context.Context, projectID uuid.UUID, dir string) error {
 	wc, err := readWorkingCopy(dir)
 	if err != nil {
-		return fmt.Errorf("%w; a pixi.toml with local paths is locked in the project directory", err)
+		return fmt.Errorf("%w; a new version is locked in the project directory", err)
 	}
 	recorded, err := s.isRecorded(ctx, projectID, wc)
 	if err != nil {
 		return err
 	}
 	if !recorded {
-		return fmt.Errorf("%w: a pixi.toml with local paths is locked in the project directory, which has changes that are in no version; snapshot or discard them first", ErrWorkingCopyModified)
+		return fmt.Errorf("%w: a new version is locked in the project directory, which has changes that are in no version; record them as a resolved version or discard them first", ErrWorkingCopyModified)
 	}
 	return nil
 }
@@ -475,7 +396,7 @@ func (s *Service) checkReplaceable(ctx context.Context, projectID uuid.UUID, dir
 		return err
 	}
 	if !recorded {
-		return fmt.Errorf("%w: %s has pixi.toml or pixi.lock changes that are in no version; snapshot them first", ErrWorkingCopyModified, dir)
+		return fmt.Errorf("%w: %s has pixi.toml or pixi.lock changes that are in no version; record them as a resolved version first", ErrWorkingCopyModified, dir)
 	}
 	return nil
 }
@@ -494,7 +415,7 @@ func (s *Service) isRecorded(ctx context.Context, projectID uuid.UUID, wc workin
 func (s *Service) recordedVersionID(ctx context.Context, projectID uuid.UUID, wc workingCopy) (uuid.UUID, error) {
 	q := s.db.WithContext(ctx).Model(&ProjectVersion{}).Where("project_id = ?", projectID)
 	if wc.HasLock {
-		q = q.Where("content_hash = ?", wc.hash())
+		q = q.Where("content_hash = ?", wc.Hash())
 	} else {
 		q = q.Where("manifest = ?", wc.Manifest)
 	}
@@ -604,23 +525,24 @@ func writeFileAtomic(path, content string) error {
 	return nil
 }
 
-// SnapshotWorkingCopy records pixi.toml and pixi.lock as they are in the
-// project directory, for users who edit pixi.toml by hand and run pixi
-// themselves.
+// CreateResolvedVersion makes a new version of a project from a pixi.toml
+// and pixi.lock that were already solved, for users who edit pixi.toml by
+// hand and run pixi themselves. It is CreateVersion without the solve: it
+// takes both files, as they are in the project directory, instead of
+// solving the lock from the pixi.toml.
 //
 // It returns ErrWorkingCopyMissing when pixi.toml is gone, and ErrLockStale
 // when pixi.lock is missing or does not satisfy pixi.toml
 // (PixiRunner.CheckLock, which changes neither file, reports a
-// StaleLockError): run pixi lock or
-// pixi install first. It refuses with a *BusyError while a job for the
-// project is pending or running, since jobs write these files, and holds
-// off new jobs for the project until the version is recorded.
+// StaleLockError): run pixi lock or pixi install first. It refuses with a
+// *BusyError while a job for the project is pending or running, since jobs
+// write these files, and holds off new jobs for the project until the
+// version is recorded.
 //
-// The version's origin is snapshot and its base is the installed version.
-// It is deduplicated against the latest version. InstalledVersionID is not
-// changed: the environment on disk may not match until the version is
-// installed.
-func (s *Service) SnapshotWorkingCopy(ctx context.Context, projectID uuid.UUID, description string, tags []string) (*CreateVersionResult, error) {
+// The version's origin is resolved and its base is the installed version.
+// InstalledVersionID is not changed: the environment on disk may not match
+// until the version is installed.
+func (s *Service) CreateResolvedVersion(ctx context.Context, projectID uuid.UUID, description string, tags []string) (*CreateVersionResult, error) {
 	// Held until the version is recorded, so no job that writes these files
 	// can be submitted between the idle check and the write.
 	s.mu.Lock()
@@ -669,30 +591,27 @@ func (s *Service) SnapshotWorkingCopy(ctx context.Context, projectID uuid.UUID, 
 	}
 
 	var v *ProjectVersion
-	var dedup bool
 	err = s.versionTx(ctx, func(tx *gorm.DB) error {
 		// The installed version as of the write, not of the first read.
 		current, err := projectIn(tx, p.ID)
 		if err != nil {
 			return err
 		}
-		v, dedup, err = s.recordVersion(tx, recordVersionRequest{
-			ProjectID:     p.ID,
-			BaseVersionID: current.InstalledVersionID,
-			Manifest:      wc.Manifest,
-			Lock:          wc.Lock,
-			Origin:        OriginSnapshot,
-			Author:        s.author,
-			Description:   description,
-			Tags:          tags,
-			DedupeLatest:  true,
+		v, err = s.recordVersion(tx, recordVersionRequest{
+			ProjectID:                p.ID,
+			BaseVersionID:            current.InstalledVersionID,
+			EnvironmentSpecification: wc.EnvironmentSpecification,
+			Origin:                   OriginResolved,
+			Author:                   s.author,
+			Description:              description,
+			Tags:                     tags,
 		})
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &CreateVersionResult{Version: v, Deduplicated: dedup}, nil
+	return &CreateVersionResult{Version: v}, nil
 }
 
 // checkIdle returns a *BusyError when the project has a pending or running

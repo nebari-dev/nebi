@@ -48,8 +48,8 @@ var (
 	ErrOlderBase = errors.New("base version is not the latest version")
 	// ErrTagExists: the tag is on another version and Move is false.
 	ErrTagExists = errors.New("tag is already on another version")
-	// ErrLockStale: the snapshot's pixi.lock doesn't match pixi.toml on
-	// disk, or is missing.
+	// ErrLockStale: the pixi.lock given to CreateResolvedVersion doesn't
+	// match pixi.toml on disk, or is missing.
 	ErrLockStale = errors.New("pixi.lock is out of date")
 	// ErrWorkingCopyMissing: there is no pixi.toml at the project path, or
 	// no project directory.
@@ -60,10 +60,10 @@ var (
 	ErrWorkingCopyModified = errors.New("working copy has changes that are in no version")
 )
 
-// BusyError is returned by DeleteProject and SnapshotWorkingCopy while
+// BusyError is returned by DeleteProject and CreateResolvedVersion while
 // jobs for the project are pending or running. It matches ErrProjectBusy
-// with errors.Is. For SnapshotWorkingCopy it is an addition to #661's error
-// table; the client API maps it to 409, as for delete.
+// with errors.Is. For CreateResolvedVersion it is an addition to #661's
+// error table; the client API maps it to 409, as for delete.
 type BusyError struct {
 	ProjectID uuid.UUID
 	JobIDs    []uuid.UUID

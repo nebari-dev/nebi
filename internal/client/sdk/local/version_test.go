@@ -80,7 +80,7 @@ func TestCreateVersionFromSpec(t *testing.T) {
 	if res.Version != nil || res.Job == nil || res.Job.Type != jobs.TypeCreateVersion {
 		t.Fatalf("a changed manifest must be solved in a create_version job, got %+v", res)
 	}
-	if done.Deduplicated || done.VersionID == nil || done.Stage != StageLock {
+	if done.VersionID == nil || done.Stage != StageLock {
 		t.Fatalf("job = %+v; want a recorded version, stage lock", done)
 	}
 
@@ -106,16 +106,13 @@ func TestCreateVersionFromSpec(t *testing.T) {
 		t.Fatalf("tags = %v; want stable on version 2", tags)
 	}
 
-	// The solve ran in a temporary directory, starting from the base's
-	// lock, and the project directory was not touched.
+	// The solve ran in the project directory, starting from the base's
+	// lock, and the project's files were put back afterwards.
 	h.pixi.mu.Lock()
 	lockDir, lockInput := h.pixi.lockCalls[1], h.pixi.lockInputs[1]
 	h.pixi.mu.Unlock()
-	if lockDir == p.Path || strings.HasPrefix(lockDir, p.Path+string(filepath.Separator)) {
-		t.Fatalf("the solve must not run in the project directory: %s", lockDir)
-	}
-	if exists(lockDir) {
-		t.Fatalf("the temporary directory must be removed: %s", lockDir)
+	if lockDir != p.Path {
+		t.Fatalf("the solve must run in the project directory %s, ran in %s", p.Path, lockDir)
 	}
 	if lockInput != v1.Lock {
 		t.Fatalf("the solve must start from the base's pixi.lock, got %q", lockInput)
@@ -170,17 +167,15 @@ func TestCreateVersionUnchangedCopy(t *testing.T) {
 	lockCalls, _ := h.pixi.calls()
 	locks := len(lockCalls)
 
-	// A copy of the latest version is deduplicated: nothing is written.
+	// A copy of the latest version is recorded as a new version, with its
+	// tags, even though its content is the same.
 	v2 := h.versions.versionsOf(t, p.ID)[1]
-	res, _ := h.createVersion(CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v2.ID, Tags: []string{"ignored"}})
-	if !res.Deduplicated || res.Version == nil || res.Version.ID != v2.ID || res.Job != nil {
-		t.Fatalf("copy of the latest: want deduplicated version 2, got %+v", res)
+	res, _ := h.createVersion(CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v2.ID, Tags: []string{"again"}})
+	if res.Version == nil || res.Version.Number != 3 || res.Version.ContentHash != v2.ContentHash || res.Job != nil {
+		t.Fatalf("copy of the latest: want version 3 with version 2's content, got %+v", res)
 	}
-	if n := len(h.versions.versionsOf(t, p.ID)); n != 2 {
-		t.Fatalf("a deduplicated copy must write nothing, %d versions", n)
-	}
-	if _, ok := h.versions.tagsOf(t, p.ID)["ignored"]; ok {
-		t.Fatal("a deduplicated copy must not write its tags")
+	if tags := h.versions.tagsOf(t, p.ID); tags["again"] != 3 {
+		t.Fatalf("tags = %v; want again on version 3", tags)
 	}
 
 	// A copy of an older version needs the confirmation.
@@ -189,38 +184,37 @@ func TestCreateVersionUnchangedCopy(t *testing.T) {
 		t.Fatalf("older base without confirmation: want ErrOlderBase, got %v", err)
 	}
 	res, _ = h.createVersion(CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, AllowOlderBase: true, Description: "back to 1"})
-	if res.Deduplicated || res.Version == nil || res.Job != nil {
+	if res.Version == nil || res.Job != nil {
 		t.Fatalf("copy of an older version: want a new version and no job, got %+v", res)
 	}
-	v3 := res.Version
-	if v3.Number != 3 || v3.Manifest != v1.Manifest || v3.Lock != v1.Lock || *v3.BaseVersionID != v1.ID {
-		t.Fatalf("version 3 must be a copy of version 1 with its lock: %+v", v3)
+	v4 := res.Version
+	if v4.Number != 4 || v4.Manifest != v1.Manifest || v4.Lock != v1.Lock || *v4.BaseVersionID != v1.ID {
+		t.Fatalf("version 4 must be a copy of version 1 with its lock: %+v", v4)
 	}
-	if v3.ContentHash != v1.ContentHash {
+	if v4.ContentHash != v1.ContentHash {
 		t.Fatal("a copy has the same content hash as its base")
 	}
 	if lockCalls, _ = h.pixi.calls(); len(lockCalls) != locks {
 		t.Fatal("an unchanged copy must not solve")
 	}
 	latest, err := h.svc.ResolveTag(context.Background(), p.ID, LatestTag)
-	if err != nil || latest.ID != v3.ID {
+	if err != nil || latest.ID != v4.ID {
 		t.Fatalf("latest must move to the copy: %v, %v", latest, err)
 	}
 }
 
-func TestCreateVersionDeduplicatesSolvedResult(t *testing.T) {
+func TestCreateVersionRecordsTheSameResultAgain(t *testing.T) {
 	h := newHarness(t)
 	p, v1 := h.newProject("same-result", false)
 	h.createVersion(CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: newerSpec()})
 	v2 := h.versions.versionsOf(t, p.ID)[1]
 
-	// The same spec from version 1 solves to version 2's content.
+	// The same spec from version 1 solves to version 2's content, and is
+	// still recorded as a new version.
 	_, done := h.createVersion(CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, AllowOlderBase: true, Spec: newerSpec()})
-	if !done.Deduplicated || done.VersionID == nil || *done.VersionID != v2.ID {
-		t.Fatalf("want the job deduplicated against version 2, got %+v", done)
-	}
-	if n := len(h.versions.versionsOf(t, p.ID)); n != 2 {
-		t.Fatalf("a deduplicated result must write nothing, %d versions", n)
+	list := h.versions.versionsOf(t, p.ID)
+	if len(list) != 3 || done.VersionID == nil || *done.VersionID != list[2].ID || list[2].ContentHash != v2.ContentHash {
+		t.Fatalf("want a new version 3 with version 2's content, got job %+v and %d versions", done, len(list))
 	}
 }
 
@@ -384,8 +378,12 @@ func TestCreateVersionInstallProtectsUnsavedEdits(t *testing.T) {
 	if got := readFile(t, filepath.Join(p.Path, artifact.ManifestFile)); got != edited {
 		t.Fatal("the edit must be kept")
 	}
-	// Without Install the working copy is not touched, so it is allowed.
-	h.createVersion(CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: newerSpec()})
+	// Without Install it is refused too: the solve writes the files in
+	// the project directory.
+	_, err = h.svc.CreateVersion(context.Background(), CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: newerSpec()})
+	if !errors.Is(err, ErrWorkingCopyModified) {
+		t.Fatalf("without install: want ErrWorkingCopyModified, got %v", err)
+	}
 	if got := readFile(t, filepath.Join(p.Path, artifact.ManifestFile)); got != edited {
 		t.Fatal("the edit must be kept")
 	}
@@ -399,7 +397,7 @@ func TestInstallReplacesOnlyRecordedOrMissingFiles(t *testing.T) {
 		lock     func(v1 ProjectVersion) *string // nil: remove pixi.lock
 		want     error
 	}{
-		{"both missing", nil, nil, nil},
+		{"both missing", nil, nil, ErrWorkingCopyMissing}, // nothing to solve in
 		{"lock missing, pixi.toml recorded", func(v1 ProjectVersion) *string { return &v1.Manifest }, nil, nil},
 		{"lock missing, pixi.toml edited", func(v1 ProjectVersion) *string { s := v1.Manifest + "# edit\n"; return &s }, nil, ErrWorkingCopyModified},
 		{"pixi.toml missing, lock in no version", nil, func(ProjectVersion) *string { s := "version: 6\n# by hand\n"; return &s }, ErrWorkingCopyModified},
@@ -458,7 +456,7 @@ func TestInstallReplacesOnlyRecordedOrMissingFiles(t *testing.T) {
 const pathDepManifest = "[workspace]\nname = \"editable\"\nchannels = [\"conda-forge\"]\nplatforms = [\"linux-64\"]\n\n" +
 	"[dependencies]\npython = \"3.12.*\"\n\n[pypi-dependencies]\neditable = { path = \".\", editable = true }\n"
 
-func TestCreateVersionWithPathDependenciesLocksInPlace(t *testing.T) {
+func TestCreateVersionWithPathDependencies(t *testing.T) {
 	h := newHarness(t)
 	p, v1 := h.newProject("editable", true)
 	origManifest := readFile(t, filepath.Join(p.Path, artifact.ManifestFile))
@@ -468,10 +466,10 @@ func TestCreateVersionWithPathDependenciesLocksInPlace(t *testing.T) {
 	lockDir, lockInput := h.pixi.lockCalls[1], h.pixi.lockInputs[1]
 	h.pixi.mu.Unlock()
 	if lockDir != p.Path {
-		t.Fatalf("a manifest with path dependencies must be locked in the project directory, got %s", lockDir)
+		t.Fatalf("a manifest with path dependencies must be locked in the project directory, where they resolve, got %s", lockDir)
 	}
 	if lockInput != v1.Lock {
-		t.Fatal("the in-place solve must start from the base's lock")
+		t.Fatal("the solve must start from the base's lock")
 	}
 	v2 := h.versions.versionsOf(t, p.ID)[1]
 	if v2.ID != *done.VersionID || v2.Manifest != pathDepManifest || v2.Lock != fakeLockFor(pathDepManifest) {
@@ -486,43 +484,7 @@ func TestCreateVersionWithPathDependenciesLocksInPlace(t *testing.T) {
 	}
 }
 
-func TestCreateVersionWithRelativeChannelLocksInPlace(t *testing.T) {
-	h := newHarness(t)
-	p, v1 := h.newProject("local-channel", true)
-	manifest := "[workspace]\nname = \"local-channel\"\nchannels = [\"./channel\", \"conda-forge\"]\nplatforms = [\"linux-64\"]\n\n[dependencies]\nmytool = \"*\"\n"
-	h.createVersion(CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Manifest: manifest})
-	lockCalls, _ := h.pixi.calls()
-	if lockCalls[1] != p.Path {
-		t.Fatalf("a relative channel must be locked in the project directory, got %s", lockCalls[1])
-	}
-	if readFile(t, filepath.Join(p.Path, artifact.ManifestFile)) != v1.Manifest {
-		t.Fatal("the project directory must be put back after the solve")
-	}
-}
-
-func TestCreateVersionSolveUsesProjectConfig(t *testing.T) {
-	h := newHarness(t)
-	p, v1 := h.newProject("configured", false)
-	config := "[mirrors]\n\"https://conda.anaconda.org/conda-forge\" = [\"https://mirror.example/conda-forge\"]\n"
-	if err := os.MkdirAll(filepath.Join(p.Path, ".pixi"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(p.Path, ".pixi", "config.toml"), []byte(config), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	h.createVersion(CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: newerSpec()})
-	h.pixi.mu.Lock()
-	dir, got := h.pixi.lockCalls[1], h.pixi.lockConfigs[1]
-	h.pixi.mu.Unlock()
-	if dir == p.Path {
-		t.Fatal("precondition: the solve runs in a temporary directory")
-	}
-	if got != config {
-		t.Fatalf("the temporary solve must see the project's .pixi/config.toml, got %q", got)
-	}
-}
-
-func TestCreateVersionInPlaceRestoresFilesOnFailure(t *testing.T) {
+func TestCreateVersionRestoresFilesOnFailure(t *testing.T) {
 	h := newHarness(t)
 	p, v1 := h.newProject("editable-fail", true)
 	h.pixi.mu.Lock()
@@ -537,11 +499,11 @@ func TestCreateVersionInPlaceRestoresFilesOnFailure(t *testing.T) {
 	}
 	if readFile(t, filepath.Join(p.Path, artifact.ManifestFile)) != v1.Manifest ||
 		readFile(t, filepath.Join(p.Path, artifact.LockFile)) != v1.Lock {
-		t.Fatal("a failed in-place solve must put the files back")
+		t.Fatal("a failed solve must put the files back")
 	}
 }
 
-func TestCreateVersionInPlaceRefusesUnsavedEdits(t *testing.T) {
+func TestCreateVersionRefusesUnsavedEdits(t *testing.T) {
 	h := newHarness(t)
 	p, v1 := h.newProject("editable-dirty", true)
 	if err := os.WriteFile(filepath.Join(p.Path, artifact.ManifestFile), []byte(pathDepManifest+"# wip\n"), 0o644); err != nil {
@@ -591,7 +553,7 @@ func TestConcurrentCreatesFromOneBaseAreBothRecorded(t *testing.T) {
 		if errs[i] != nil {
 			t.Fatalf("create %d: %v", i, errs[i])
 		}
-		if done := h.wait(results[i].Job); done.Status != jobs.StatusCompleted || done.Deduplicated {
+		if done := h.wait(results[i].Job); done.Status != jobs.StatusCompleted {
 			t.Fatalf("create %d: %+v", i, done)
 		}
 	}
@@ -619,8 +581,8 @@ func TestNumbersAreAssignedInTheInsertAndNeverReused(t *testing.T) {
 			defer wg.Done()
 			manifest := fmt.Sprintf("[workspace]\nname = \"numbers\"\nplatforms = [\"linux-64\"]\n# %d\n", i)
 			errs <- h.svc.versionTx(context.Background(), func(tx *gorm.DB) error {
-				_, _, err := h.svc.recordVersion(tx, recordVersionRequest{
-					ProjectID: p.ID, Manifest: manifest, Lock: fakeLockFor(manifest), Origin: OriginPulled, Author: "remote",
+				_, err := h.svc.recordVersion(tx, recordVersionRequest{
+					ProjectID: p.ID, EnvironmentSpecification: spec(manifest, fakeLockFor(manifest)), Origin: OriginPulled, Author: "remote",
 				})
 				return err
 			})
@@ -646,7 +608,7 @@ func TestNumbersAreAssignedInTheInsertAndNeverReused(t *testing.T) {
 	// A failed insert does not consume a number.
 	h.versions.setRecordErr(errors.New("disk full"))
 	err := h.svc.versionTx(context.Background(), func(tx *gorm.DB) error {
-		_, _, err := h.svc.recordVersion(tx, recordVersionRequest{ProjectID: p.ID, Manifest: "[workspace]\n# x\n", Lock: "version: 6\n", Origin: OriginPulled})
+		_, err := h.svc.recordVersion(tx, recordVersionRequest{ProjectID: p.ID, EnvironmentSpecification: spec("[workspace]\n# x\n", "version: 6\n"), Origin: OriginPulled})
 		return err
 	})
 	if err == nil {
@@ -654,7 +616,7 @@ func TestNumbersAreAssignedInTheInsertAndNeverReused(t *testing.T) {
 	}
 	h.versions.setRecordErr(nil)
 	err = h.svc.versionTx(context.Background(), func(tx *gorm.DB) error {
-		v, _, err := h.svc.recordVersion(tx, recordVersionRequest{ProjectID: p.ID, Manifest: "[workspace]\n# y\n", Lock: "version: 6\n", Origin: OriginPulled})
+		v, err := h.svc.recordVersion(tx, recordVersionRequest{ProjectID: p.ID, EnvironmentSpecification: spec("[workspace]\n# y\n", "version: 6\n"), Origin: OriginPulled})
 		if err == nil && v.Number != writers+2 {
 			return fmt.Errorf("next number = %d, want %d", v.Number, writers+2)
 		}
@@ -669,42 +631,41 @@ func TestRecordVersionChecks(t *testing.T) {
 	h := newHarness(t)
 	p, v1 := h.newProject("checks", false)
 	_, otherV1 := h.newProject("checks-other", false)
-	recordV := func(req recordVersionRequest) (*ProjectVersion, bool, error) {
+	recordV := func(req recordVersionRequest) (*ProjectVersion, error) {
 		var v *ProjectVersion
-		var dedup bool
 		err := h.svc.versionTx(context.Background(), func(tx *gorm.DB) error {
 			var err error
-			v, dedup, err = h.svc.recordVersion(tx, req)
+			v, err = h.svc.recordVersion(tx, req)
 			return err
 		})
-		return v, dedup, err
+		return v, err
 	}
 	record := func(req recordVersionRequest) error {
-		_, _, err := recordV(req)
+		_, err := recordV(req)
 		return err
 	}
 	m, l := "[workspace]\n# checks\n", "version: 6\n# checks\n"
-	if err := record(recordVersionRequest{ProjectID: uuid.New(), Manifest: m, Lock: l, Origin: OriginPulled}); !errors.Is(err, ErrNotFound) {
+	if err := record(recordVersionRequest{ProjectID: uuid.New(), EnvironmentSpecification: spec(m, l), Origin: OriginPulled}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown project: %v", err)
 	}
-	if err := record(recordVersionRequest{ProjectID: p.ID, BaseVersionID: &otherV1.ID, Manifest: m, Lock: l, Origin: OriginPulled}); !errors.Is(err, ErrNotFound) {
+	if err := record(recordVersionRequest{ProjectID: p.ID, BaseVersionID: &otherV1.ID, EnvironmentSpecification: spec(m, l), Origin: OriginPulled}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("base of another project: %v", err)
 	}
-	if err := record(recordVersionRequest{ProjectID: p.ID, Manifest: m, Lock: l, Origin: OriginPulled, Tags: []string{"LATEST"}}); !errors.Is(err, ErrInvalidTag) {
+	if err := record(recordVersionRequest{ProjectID: p.ID, EnvironmentSpecification: spec(m, l), Origin: OriginPulled, Tags: []string{"LATEST"}}); !errors.Is(err, ErrInvalidTag) {
 		t.Fatalf("reserved tag: %v", err)
 	}
-	if err := record(recordVersionRequest{ProjectID: p.ID, Manifest: " ", Lock: l, Origin: OriginPulled}); !errors.Is(err, ErrInvalidManifest) {
+	if err := record(recordVersionRequest{ProjectID: p.ID, EnvironmentSpecification: spec(" ", l), Origin: OriginPulled}); !errors.Is(err, ErrInvalidManifest) {
 		t.Fatalf("empty manifest: %v", err)
 	}
 	for _, lock := range []string{"", " \n"} {
-		if err := record(recordVersionRequest{ProjectID: p.ID, Manifest: m, Lock: lock, Origin: OriginPulled}); !errors.Is(err, ErrInvalidRequest) {
+		if err := record(recordVersionRequest{ProjectID: p.ID, EnvironmentSpecification: spec(m, lock), Origin: OriginPulled}); !errors.Is(err, ErrInvalidRequest) {
 			t.Fatalf("empty lock %q: want ErrInvalidRequest, got %v", lock, err)
 		}
 	}
 	if n := len(h.versions.versionsOf(t, p.ID)); n != 1 {
 		t.Fatalf("refused records must write nothing, %d versions", n)
 	}
-	if err := record(recordVersionRequest{ProjectID: p.ID, Manifest: m, Lock: l, Origin: "rolled_back"}); err == nil {
+	if err := record(recordVersionRequest{ProjectID: p.ID, EnvironmentSpecification: spec(m, l), Origin: "rolled_back"}); err == nil {
 		t.Fatal("unknown origin must be refused")
 	}
 
@@ -713,28 +674,22 @@ func TestRecordVersionChecks(t *testing.T) {
 	if _, err := h.svc.SetTag(context.Background(), SetTagRequest{ProjectID: p.ID, Name: "held", VersionID: v1.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if err := record(recordVersionRequest{ProjectID: p.ID, Manifest: m, Lock: l, Origin: OriginPulled, Tags: []string{"held"}}); !errors.Is(err, ErrTagExists) {
+	if err := record(recordVersionRequest{ProjectID: p.ID, EnvironmentSpecification: spec(m, l), Origin: OriginPulled, Tags: []string{"held"}}); !errors.Is(err, ErrTagExists) {
 		t.Fatalf("tag on another version: want ErrTagExists, got %v", err)
 	}
 
-	// Without DedupeLatest, content equal to the latest version is still
-	// a new version; with it, the latest is returned and nothing written.
-	same := recordVersionRequest{ProjectID: p.ID, Manifest: v1.Manifest, Lock: v1.Lock, Origin: OriginPulled, Author: "remote"}
-	v, dedup, err := recordV(same)
-	if err != nil || dedup || v.Number != 2 || v.ContentHash != v1.ContentHash {
-		t.Fatalf("DedupeLatest false: want a new version 2 with version 1's hash, got %+v, %v, %v", v, dedup, err)
-	}
-	same.DedupeLatest = true
-	got, dedup, err := recordV(same)
-	if err != nil || !dedup || got.ID != v.ID || got.Manifest != v1.Manifest || got.Lock != v1.Lock {
-		t.Fatalf("DedupeLatest true: want version 2 returned whole and deduplicated, got %+v, %v, %v", got, dedup, err)
-	}
-	if n := len(h.versions.versionsOf(t, p.ID)); n != 2 {
-		t.Fatalf("a deduplicated record must write nothing, %d versions", n)
+	// Content equal to the latest version is still a new version.
+	v, err := recordV(recordVersionRequest{ProjectID: p.ID, EnvironmentSpecification: v1.EnvironmentSpecification, Origin: OriginPulled, Author: "remote"})
+	if err != nil || v.Number != 2 || v.ContentHash != v1.ContentHash {
+		t.Fatalf("want a new version 2 with version 1's hash, got %+v, %v", v, err)
 	}
 }
 
-func TestSnapshotWorkingCopy(t *testing.T) {
+func spec(manifest, lock string) EnvironmentSpecification {
+	return EnvironmentSpecification{Manifest: manifest, Lock: lock}
+}
+
+func TestCreateResolvedVersion(t *testing.T) {
 	h := newHarness(t)
 	p, v1 := h.newProject("hand-edited", true)
 	manifestPath := filepath.Join(p.Path, artifact.ManifestFile)
@@ -749,41 +704,41 @@ func TestSnapshotWorkingCopy(t *testing.T) {
 		t.Fatalf("working copy = %s, want modified", st)
 	}
 	// Not locked yet: refused.
-	if _, err := h.svc.SnapshotWorkingCopy(context.Background(), p.ID, "", nil); !errors.Is(err, ErrLockStale) {
+	if _, err := h.svc.CreateResolvedVersion(context.Background(), p.ID, "", nil); !errors.Is(err, ErrLockStale) {
 		t.Fatalf("stale lock: want ErrLockStale, got %v", err)
 	}
 	// The user runs pixi lock.
 	if err := os.WriteFile(lockPath, []byte(fakeLockFor(edited)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	res, err := h.svc.SnapshotWorkingCopy(context.Background(), p.ID, "add scipy", []string{"wip"})
+	res, err := h.svc.CreateResolvedVersion(context.Background(), p.ID, "add scipy", []string{"wip"})
 	if err != nil {
-		t.Fatalf("SnapshotWorkingCopy: %v", err)
+		t.Fatalf("CreateResolvedVersion: %v", err)
 	}
 	v := res.Version
-	if res.Deduplicated || res.Job != nil || v == nil || v.Number != 2 || v.Origin != OriginSnapshot ||
+	if res.Job != nil || v == nil || v.Number != 2 || v.Origin != OriginResolved ||
 		v.BaseVersionID == nil || *v.BaseVersionID != v1.ID || v.Description != "add scipy" {
-		t.Fatalf("want snapshot version 2 based on the installed version 1, got %+v", res)
+		t.Fatalf("want resolved version 2 based on the installed version 1, got %+v", res)
 	}
 	if v.Manifest != edited || v.Lock != fakeLockFor(edited) {
-		t.Fatal("the snapshot must hold the files on disk")
+		t.Fatal("the resolved version must hold the files on disk")
 	}
 	if tags := h.versions.tagsOf(t, p.ID); tags["wip"] != 2 {
 		t.Fatalf("tags = %v", tags)
 	}
 	d := h.detail(p.ID)
 	if d.InstalledVersionID == nil || *d.InstalledVersionID != v1.ID {
-		t.Fatal("a snapshot must not change InstalledVersionID")
+		t.Fatal("a resolved version must not change InstalledVersionID")
 	}
 
-	// The same files again are deduplicated against the latest version.
-	res, err = h.svc.SnapshotWorkingCopy(context.Background(), p.ID, "", nil)
-	if err != nil || !res.Deduplicated || res.Version.ID != v.ID {
-		t.Fatalf("want deduplicated against version 2, got %+v, %v", res, err)
+	// The same files again are recorded as a new version.
+	res, err = h.svc.CreateResolvedVersion(context.Background(), p.ID, "", nil)
+	if err != nil || res.Version.Number != 3 || res.Version.ContentHash != v.ContentHash {
+		t.Fatalf("want version 3 with version 2's content, got %+v, %v", res, err)
 	}
 }
 
-func TestSnapshotRefusals(t *testing.T) {
+func TestCreateResolvedVersionRefusals(t *testing.T) {
 	h := newHarness(t)
 	p, _ := h.newProject("refused", false)
 	lockPath := filepath.Join(p.Path, artifact.LockFile)
@@ -791,7 +746,7 @@ func TestSnapshotRefusals(t *testing.T) {
 	if err := os.Remove(lockPath); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.svc.SnapshotWorkingCopy(context.Background(), p.ID, "", nil); !errors.Is(err, ErrLockStale) {
+	if _, err := h.svc.CreateResolvedVersion(context.Background(), p.ID, "", nil); !errors.Is(err, ErrLockStale) {
 		t.Fatalf("no pixi.lock: want ErrLockStale, got %v", err)
 	}
 	// A missing lock is refused before pixi runs, so the result does not
@@ -805,10 +760,10 @@ func TestSnapshotRefusals(t *testing.T) {
 	if err := os.Remove(filepath.Join(p.Path, artifact.ManifestFile)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.svc.SnapshotWorkingCopy(context.Background(), p.ID, "", nil); !errors.Is(err, ErrWorkingCopyMissing) {
+	if _, err := h.svc.CreateResolvedVersion(context.Background(), p.ID, "", nil); !errors.Is(err, ErrWorkingCopyMissing) {
 		t.Fatalf("no pixi.toml: want ErrWorkingCopyMissing, got %v", err)
 	}
-	if _, err := h.svc.SnapshotWorkingCopy(context.Background(), uuid.New(), "", nil); !errors.Is(err, ErrNotFound) {
+	if _, err := h.svc.CreateResolvedVersion(context.Background(), uuid.New(), "", nil); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown project: want ErrNotFound, got %v", err)
 	}
 
@@ -817,7 +772,7 @@ func TestSnapshotRefusals(t *testing.T) {
 	h.pixi.mu.Lock()
 	h.pixi.checkErr = errors.New("pixi not found")
 	h.pixi.mu.Unlock()
-	if _, err := h.svc.SnapshotWorkingCopy(context.Background(), q.ID, "", nil); err == nil || errors.Is(err, ErrLockStale) {
+	if _, err := h.svc.CreateResolvedVersion(context.Background(), q.ID, "", nil); err == nil || errors.Is(err, ErrLockStale) {
 		t.Fatalf("want a plain error, got %v", err)
 	}
 	// The runner's typed stale-lock error, wrapped, is ErrLockStale and
@@ -832,7 +787,7 @@ func TestSnapshotRefusals(t *testing.T) {
 		h.pixi.mu.Lock()
 		h.pixi.checkErr = c.err
 		h.pixi.mu.Unlock()
-		_, err := h.svc.SnapshotWorkingCopy(context.Background(), q.ID, "", nil)
+		_, err := h.svc.CreateResolvedVersion(context.Background(), q.ID, "", nil)
 		if err == nil || errors.Is(err, ErrLockStale) != c.stale || !strings.Contains(err.Error(), c.err.Error()) {
 			t.Fatalf("CheckLock error %v: want stale=%v with its message, got %v", c.err, c.stale, err)
 		}
@@ -840,12 +795,12 @@ func TestSnapshotRefusals(t *testing.T) {
 	h.pixi.mu.Lock()
 	h.pixi.checkErr = nil
 	h.pixi.mu.Unlock()
-	if _, err := h.svc.SnapshotWorkingCopy(context.Background(), q.ID, "", []string{"sha-1"}); !errors.Is(err, ErrInvalidTag) {
+	if _, err := h.svc.CreateResolvedVersion(context.Background(), q.ID, "", []string{"sha-1"}); !errors.Is(err, ErrInvalidTag) {
 		t.Fatalf("reserved tag: want ErrInvalidTag, got %v", err)
 	}
 }
 
-func TestSnapshotWithoutInstalledVersionHasNoBase(t *testing.T) {
+func TestCreateResolvedVersionWithoutInstalledVersionHasNoBase(t *testing.T) {
 	h := newHarness(t)
 	p, _ := h.newProject("not-installed", false)
 	manifestPath := filepath.Join(p.Path, artifact.ManifestFile)
@@ -856,21 +811,21 @@ func TestSnapshotWithoutInstalledVersionHasNoBase(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(p.Path, artifact.LockFile), []byte(fakeLockFor(edited)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	res, err := h.svc.SnapshotWorkingCopy(context.Background(), p.ID, "", nil)
+	res, err := h.svc.CreateResolvedVersion(context.Background(), p.ID, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.Version.BaseVersionID != nil {
-		t.Fatal("a snapshot with nothing installed has no base")
+		t.Fatal("a resolved version with nothing installed has no base")
 	}
 }
 
-func TestSnapshotHoldsOffNewJobsUntilRecorded(t *testing.T) {
+func TestCreateResolvedVersionHoldsOffNewJobsUntilRecorded(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	// The working copy is version 1, installed; version 2 is the latest, so
-	// a snapshot records version 1's files as version 3.
-	p, v1 := h.newProject("snapshot-race", true)
+	// CreateResolvedVersion records version 1's files as version 3.
+	p, v1 := h.newProject("resolved-race", true)
 	h.createVersion(CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: newerSpec()})
 	v2 := h.versions.versionsOf(t, p.ID)[1]
 
@@ -887,13 +842,13 @@ func TestSnapshotHoldsOffNewJobsUntilRecorded(t *testing.T) {
 	}
 	snapDone := make(chan snapResult, 1)
 	go func() {
-		res, err := h.svc.SnapshotWorkingCopy(ctx, p.ID, "", nil)
+		res, err := h.svc.CreateResolvedVersion(ctx, p.ID, "", nil)
 		snapDone <- snapResult{res, err}
 	}()
 	<-checkStarted
 
 	// A create whose solve rewrites the project directory, submitted while
-	// the snapshot checks the files.
+	// CreateResolvedVersion checks the files.
 	createDone := make(chan *CreateVersionResult, 1)
 	go func() {
 		res, err := h.svc.CreateVersion(ctx, CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v2.ID, AllowOlderBase: true, Manifest: pathDepManifest})
@@ -904,17 +859,17 @@ func TestSnapshotHoldsOffNewJobsUntilRecorded(t *testing.T) {
 	}()
 	select {
 	case <-lockStarted:
-		t.Error("a job must not start rewriting the project directory while a snapshot reads it")
+		t.Error("a job must not start rewriting the project directory while CreateResolvedVersion reads it")
 	case <-time.After(200 * time.Millisecond):
 	}
 	close(checkGate)
 
 	snap := <-snapDone
 	if snap.err != nil {
-		t.Fatalf("SnapshotWorkingCopy: %v", snap.err)
+		t.Fatalf("CreateResolvedVersion: %v", snap.err)
 	}
 	if v := snap.res.Version; v == nil || v.Number != 3 || v.Manifest != v1.Manifest || v.Lock != v1.Lock {
-		t.Fatalf("the snapshot must record the working copy as version 3, got %+v", snap.res)
+		t.Fatalf("the working copy must be recorded as version 3, got %+v", snap.res)
 	}
 	close(lockGate)
 	if res := <-createDone; res != nil {
@@ -924,17 +879,17 @@ func TestSnapshotHoldsOffNewJobsUntilRecorded(t *testing.T) {
 	}
 }
 
-func TestSnapshotRefusedWhileBusy(t *testing.T) {
+func TestCreateResolvedVersionRefusedWhileBusy(t *testing.T) {
 	h := newHarness(t)
 	gate := make(chan struct{})
 	started := make(chan struct{}, 1)
 	h.pixi.lockGate, h.pixi.lockStarted = gate, started
-	p, job, err := h.svc.CreateProject(context.Background(), specRequest("busy-snapshot"))
+	p, job, err := h.svc.CreateProject(context.Background(), specRequest("busy-resolved"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	<-started
-	_, err = h.svc.SnapshotWorkingCopy(context.Background(), p.ID, "", nil)
+	_, err = h.svc.CreateResolvedVersion(context.Background(), p.ID, "", nil)
 	var busy *BusyError
 	if !errors.Is(err, ErrProjectBusy) || !errors.As(err, &busy) || busy.JobIDs[0] != job.ID {
 		t.Fatalf("want a BusyError naming the create job, got %v", err)
@@ -1246,7 +1201,7 @@ func TestVersionTablesHaveForeignKeys(t *testing.T) {
 	if err := h.db.Delete(&Project{}, "id = ?", p.ID).Error; err == nil {
 		t.Fatal("a project with versions must not be deletable on its own")
 	}
-	bad := ProjectVersion{ProjectID: uuid.New(), Number: 1, Manifest: "x", ContentHash: "h", Origin: OriginPulled, Author: "a"}
+	bad := ProjectVersion{ProjectID: uuid.New(), Number: 1, EnvironmentSpecification: spec("x", ""), ContentHash: "h", Origin: OriginPulled, Author: "a"}
 	if err := h.db.Create(&bad).Error; err == nil {
 		t.Fatal("a version of an unknown project must be refused")
 	}

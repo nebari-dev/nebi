@@ -106,7 +106,7 @@ func TestRecoverInPlaceSolvesAfterCrash(t *testing.T) {
 		t.Run(map[bool]string{false: "put back", true: "edited since"}[edited], func(t *testing.T) {
 			h := newHarness(t)
 			p, v1 := h.newProject("crashed", true)
-			j := versionJob{projectID: p.ID, dir: p.Path, base: &v1, manifest: pathDepManifest, inPlace: true}
+			j := versionJob{projectID: p.ID, dir: p.Path, base: &v1, manifest: pathDepManifest}
 			if _, _, err := h.svc.beginInPlace(ctx, j); err != nil {
 				t.Fatal(err)
 			}
@@ -144,7 +144,7 @@ func TestDeleteProjectDropsInPlaceRecord(t *testing.T) {
 	ctx := context.Background()
 	h := newHarness(t)
 	p, v1 := h.newProject("crashed-then-deleted", true)
-	if _, _, err := h.svc.beginInPlace(ctx, versionJob{projectID: p.ID, dir: p.Path, base: &v1, manifest: pathDepManifest, inPlace: true}); err != nil {
+	if _, _, err := h.svc.beginInPlace(ctx, versionJob{projectID: p.ID, dir: p.Path, base: &v1, manifest: pathDepManifest}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := h.svc.DeleteProject(ctx, p.ID, DeleteProjectOptions{}); err != nil {

@@ -13,8 +13,8 @@ import (
 
 // Project is a pixi workspace on this machine that nebi tracks.
 // The directory at Path holds the working copy (pixi.toml, pixi.lock,
-// .pixi/ and any other project files). Versions are immutable snapshots
-// of pixi.toml and pixi.lock stored in the database.
+// .pixi/ and any other project files). Versions are immutable environment
+// specifications (pixi.toml and pixi.lock) stored in the database.
 type Project struct {
 	ID uuid.UUID `gorm:"type:text;primaryKey" json:"id"`
 
@@ -32,12 +32,12 @@ type Project struct {
 	// InstalledVersionID is the version whose environment is materialized in
 	// Path/.pixi. Nil when nothing is installed. Written only after an
 	// install succeeds, by installStep (run by the create, create_version
-	// and install jobs). SnapshotWorkingCopy never sets it. State is installed
-	// only when it is set and .pixi/envs exists. A reinstall or uninstall
-	// must clear it before touching .pixi, so a crash midway does not leave
-	// the old version reported as installed, and must do so inside its job
-	// body, never before Submit, so a read that sees it cleared also sees
-	// the job (see readProjects).
+	// and install jobs). CreateResolvedVersion never sets it. State is
+	// installed only when it is set and .pixi/envs exists. A reinstall or
+	// uninstall must clear it before touching .pixi, so a crash midway does
+	// not leave the old version reported as installed, and must do so
+	// inside its job body, never before Submit, so a read that sees it
+	// cleared also sees the job (see readProjects).
 	InstalledVersionID *uuid.UUID `gorm:"type:text" json:"installed_version_id,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`

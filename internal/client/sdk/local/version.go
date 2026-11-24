@@ -21,16 +21,31 @@ import (
 type VersionOrigin string
 
 const (
-	OriginCreated  VersionOrigin = "created"  // CreateProject and CreateVersion, from a base version
-	OriginSnapshot VersionOrigin = "snapshot" // SnapshotWorkingCopy, from files on disk
+	OriginCreated  VersionOrigin = "created"  // CreateProject and CreateVersion, solved by nebi
+	OriginResolved VersionOrigin = "resolved" // CreateResolvedVersion, solved outside nebi
 	OriginPulled   VersionOrigin = "pulled"   // written by sdk/remote on pull
 )
 
-// ProjectVersion is an immutable snapshot of a project's pixi.toml and
-// pixi.lock. No column is updated after insert: every change to a project's
-// environment is a new version.
+// EnvironmentSpecification is a pixi.toml together with the pixi.lock
+// solved from it: everything needed to reproduce one environment. Two
+// specifications with the same Hash are the same environment, on any
+// machine.
+type EnvironmentSpecification struct {
+	Manifest string `gorm:"type:text;not null" json:"-"` // pixi.toml
+	Lock     string `gorm:"type:text;not null" json:"-"` // pixi.lock
+}
+
+// Hash is the content hash of the specification, the identity of its
+// environment across machines.
+func (e EnvironmentSpecification) Hash() string {
+	return contenthash.Hash(e.Manifest, e.Lock)
+}
+
+// ProjectVersion is an immutable environment specification of a project
+// with its history. No column is updated after insert: every change to a
+// project's environment is a new version.
 //
-// Every version is complete. Manifest and Lock never depend on another
+// Every version is complete. Its specification never depends on another
 // version, so reading, installing, pushing or publishing a version reads
 // that one row.
 type ProjectVersion struct {
@@ -43,15 +58,18 @@ type ProjectVersion struct {
 	Number int `gorm:"not null;uniqueIndex:idx_client_version_number" json:"number"`
 
 	// BaseVersionID is the version this one was created from. Lineage
-	// only: Manifest and Lock are complete without it. Nil for the first
-	// version, snapshots without an installed version, and imports.
+	// only: the specification is complete without it. Nil for the first
+	// version, resolved versions without an installed version, and
+	// imports.
 	BaseVersionID *uuid.UUID `gorm:"type:text;index" json:"base_version_id,omitempty"`
 
-	Manifest string `gorm:"type:text;not null" json:"-"` // pixi.toml, served by GetVersionFile
-	Lock     string `gorm:"type:text;not null" json:"-"` // pixi.lock, served by GetVersionFile
+	// EnvironmentSpecification is the version's pixi.toml and pixi.lock,
+	// served by GetVersionFile. Its columns are manifest and lock.
+	EnvironmentSpecification `gorm:"embedded"`
 
-	// ContentHash is contenthash.Hash(Manifest, Lock). Two versions on
-	// different machines with the same hash are the same environment.
+	// ContentHash is EnvironmentSpecification.Hash(), stored so versions
+	// can be looked up by it. Two versions on different machines with the
+	// same hash are the same environment.
 	ContentHash string `gorm:"type:text;not null;index" json:"content_hash"`
 
 	Origin      VersionOrigin `gorm:"not null" json:"origin"`
@@ -169,20 +187,17 @@ func checkTags(tags []string) ([]string, error) {
 type recordVersionRequest struct {
 	ProjectID uuid.UUID
 	// BaseVersionID is the version this one was created from; nil for
-	// version 1, snapshots without an installed version, and imports.
+	// version 1, resolved versions without an installed version, and
+	// imports.
 	BaseVersionID *uuid.UUID
-	// Manifest and Lock are the complete pixi.toml and pixi.lock; both are
-	// required.
-	Manifest string
-	Lock     string
-	Origin   VersionOrigin
-	Author   string
+	// EnvironmentSpecification is the complete pixi.toml and pixi.lock;
+	// both are required.
+	EnvironmentSpecification
+	Origin VersionOrigin
+	Author string
 	// Description is the version's description, not the workspace's.
 	Description string
 	Tags        []string
-	// DedupeLatest returns the latest version, with Deduplicated set,
-	// when its ContentHash matches instead of inserting a new row.
-	DedupeLatest bool
 }
 
 // versionTx runs fn in a transaction while holding the lock that
@@ -202,86 +217,71 @@ func (s *Service) versionTx(ctx context.Context, fn func(tx *gorm.DB) error) err
 // as MAX(number)+1, and inserts the version and its tags in tx. It is the
 // only code that writes client_project_versions. Call it inside versionTx.
 //
-// The returned bool is true when DedupeLatest found the latest version
-// with the same content; that version is returned and nothing is written,
-// so the request's tags are not applied either.
-func (s *Service) recordVersion(tx *gorm.DB, req recordVersionRequest) (*ProjectVersion, bool, error) {
+// Every call records a new version, even when another version of the
+// project has the same content.
+func (s *Service) recordVersion(tx *gorm.DB, req recordVersionRequest) (*ProjectVersion, error) {
 	tags, err := checkTags(req.Tags)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	if strings.TrimSpace(req.Manifest) == "" {
-		return nil, false, fmt.Errorf("%w: a version needs a pixi.toml", ErrInvalidManifest)
+		return nil, fmt.Errorf("%w: a version needs a pixi.toml", ErrInvalidManifest)
 	}
 	// Every version is complete: without a lock it could not be installed
 	// as recorded.
 	if strings.TrimSpace(req.Lock) == "" {
-		return nil, false, fmt.Errorf("%w: a version needs a pixi.lock", ErrInvalidRequest)
+		return nil, fmt.Errorf("%w: a version needs a pixi.lock", ErrInvalidRequest)
 	}
 	switch req.Origin {
-	case OriginCreated, OriginSnapshot, OriginPulled:
+	case OriginCreated, OriginResolved, OriginPulled:
 	default:
-		return nil, false, fmt.Errorf("unknown version origin %q", req.Origin)
+		return nil, fmt.Errorf("unknown version origin %q", req.Origin)
 	}
 
 	var projects int64
 	if err := tx.Model(&Project{}).Where("id = ?", req.ProjectID).Count(&projects).Error; err != nil {
-		return nil, false, fmt.Errorf("checking project %s: %w", req.ProjectID, err)
+		return nil, fmt.Errorf("checking project %s: %w", req.ProjectID, err)
 	}
 	if projects == 0 {
-		return nil, false, fmt.Errorf("%w: project %s", ErrNotFound, req.ProjectID)
+		return nil, fmt.Errorf("%w: project %s", ErrNotFound, req.ProjectID)
 	}
 	if req.BaseVersionID != nil {
 		var bases int64
 		if err := tx.Model(&ProjectVersion{}).Where("id = ? AND project_id = ?", *req.BaseVersionID, req.ProjectID).Count(&bases).Error; err != nil {
-			return nil, false, fmt.Errorf("checking base version: %w", err)
+			return nil, fmt.Errorf("checking base version: %w", err)
 		}
 		if bases == 0 {
-			return nil, false, fmt.Errorf("%w: base version %s of project %s", ErrNotFound, *req.BaseVersionID, req.ProjectID)
+			return nil, fmt.Errorf("%w: base version %s of project %s", ErrNotFound, *req.BaseVersionID, req.ProjectID)
 		}
-	}
-
-	hash := contenthash.Hash(req.Manifest, req.Lock)
-	latest, err := latestVersion(tx, req.ProjectID, summaryColumns...)
-	if err != nil {
-		return nil, false, err
-	}
-	if req.DedupeLatest && latest != nil && latest.ContentHash == hash {
-		full, err := versionByID(tx, req.ProjectID, latest.ID)
-		if err != nil {
-			return nil, false, err
-		}
-		return full, true, nil
 	}
 	if err := tagsFree(tx, req.ProjectID, uuid.Nil, tags); err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
 	var maxNumber int
 	if err := tx.Model(&ProjectVersion{}).Where("project_id = ?", req.ProjectID).
 		Select("COALESCE(MAX(number), 0)").Scan(&maxNumber).Error; err != nil {
-		return nil, false, fmt.Errorf("numbering the version: %w", err)
+		return nil, fmt.Errorf("numbering the version: %w", err)
 	}
 	v := &ProjectVersion{
-		ProjectID:     req.ProjectID,
-		Number:        maxNumber + 1,
-		BaseVersionID: req.BaseVersionID,
-		Manifest:      req.Manifest,
-		Lock:          req.Lock,
-		ContentHash:   hash,
-		Origin:        req.Origin,
-		Author:        req.Author,
-		Description:   req.Description,
+		ProjectID:                req.ProjectID,
+		Number:                   maxNumber + 1,
+		BaseVersionID:            req.BaseVersionID,
+		EnvironmentSpecification: req.EnvironmentSpecification,
+		ContentHash:              req.Hash(),
+		Origin:                   req.Origin,
+		Author:                   req.Author,
+		Description:              req.Description,
 	}
 	if err := tx.Create(v).Error; err != nil {
-		return nil, false, fmt.Errorf("inserting version %d: %w", v.Number, err)
+		return nil, fmt.Errorf("inserting version %d: %w", v.Number, err)
 	}
 	for _, name := range tags {
 		if err := tx.Create(&ProjectTag{ProjectID: req.ProjectID, Name: name, VersionID: v.ID}).Error; err != nil {
-			return nil, false, fmt.Errorf("tagging version %d %q: %w", v.Number, name, err)
+			return nil, fmt.Errorf("tagging version %d %q: %w", v.Number, name, err)
 		}
 	}
-	return v, false, nil
+	return v, nil
 }
 
 // tagsFree returns ErrTagExists when one of names already points at a
@@ -553,7 +553,7 @@ func (s *Service) WorkingCopyStatus(ctx context.Context, projectID uuid.UUID) (W
 	if err != nil {
 		return "", err
 	}
-	if wc.hash() == installed.ContentHash {
+	if wc.Hash() == installed.ContentHash {
 		return WorkingCopyClean, nil
 	}
 	return WorkingCopyModified, nil
@@ -700,13 +700,10 @@ func deleteProjectVersions(tx *gorm.DB, projectID uuid.UUID) error {
 
 // workingCopy is pixi.toml and pixi.lock as read from a project directory.
 type workingCopy struct {
-	Manifest string
-	Lock     string
+	EnvironmentSpecification
 	// HasLock is false when there is no pixi.lock; Lock is then empty.
 	HasLock bool
 }
-
-func (wc workingCopy) hash() string { return contenthash.Hash(wc.Manifest, wc.Lock) }
 
 // readWorkingCopy reads pixi.toml and pixi.lock from dir. It returns
 // ErrWorkingCopyMissing when the directory or pixi.toml is gone.
@@ -718,7 +715,7 @@ func readWorkingCopy(dir string) (workingCopy, error) {
 	if err != nil {
 		return workingCopy{}, fmt.Errorf("reading %s: %w", artifact.ManifestFile, err)
 	}
-	wc := workingCopy{Manifest: string(manifest)}
+	wc := workingCopy{EnvironmentSpecification: EnvironmentSpecification{Manifest: string(manifest)}}
 	lock, err := os.ReadFile(filepath.Join(dir, artifact.LockFile))
 	switch {
 	case err == nil:

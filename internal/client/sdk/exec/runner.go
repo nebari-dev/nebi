@@ -144,6 +144,12 @@ func (r *Runner) run(ctx context.Context, dir string, out io.Writer, args ...str
 	if err := ctx.Err(); err != nil {
 		return "", fmt.Errorf("%s: %w", name, err)
 	}
+	// pixi runs in dir and resolves --manifest-path from there, so a
+	// relative dir is made absolute first or it would be applied twice.
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", name, err)
+	}
 	// --manifest-path stops pixi from searching the parent directories
 	// for a manifest when dir has none.
 	args = append(args, "--manifest-path", filepath.Join(dir, artifact.ManifestFile))
@@ -158,7 +164,7 @@ func (r *Runner) run(ctx context.Context, dir string, out io.Writer, args ...str
 	cmd.Stdout = &lockedWriter{mu: &mu, w: out}
 	cmd.Stderr = &lockedWriter{mu: &mu, w: io.MultiWriter(tail, out)}
 
-	err := cmd.Run()
+	err = cmd.Run()
 	mu.Lock()
 	stderr := tail.String()
 	mu.Unlock()

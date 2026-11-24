@@ -10,7 +10,7 @@ import (
 )
 
 // The stderr samples below are pixi 0.82.1 and 0.84.2 output, captured
-// with stderr not a terminal (paths shortened).
+// with stderr not a terminal (paths shortened or replaced).
 
 const solveFailure = ` WARN Using local manifest
 Error:   × failed to solve requirements of environment 'default' for platform 'osx-
@@ -50,8 +50,8 @@ Error:   × lock file not up-to-date with the workspace
 `
 
 const wrappedPath = `Error:   × could not find pixi.toml or pyproject.toml with tool.pixi at directory /
-  │ private/tmp/claude-501/-Users-a-Desktop-nebi/9f4cb4ae-ea48-4125-
-  │ 84ce-5d23ccc94829/scratchpad/exp2-0.82.1
+  │ home/user/nebi-projects/a-project-directory-with-a-long-name-for-
+  │ wrapping/exp-0.82.1
 
 `
 
@@ -66,7 +66,7 @@ func TestErrorLine(t *testing.T) {
 		{"source snippet left out", manifestFailure, "unexpected eof encountered"},
 		{"stale lock", staleLock, "lock file not up-to-date with the workspace"},
 		{"wrapped path", wrappedPath,
-			"could not find pixi.toml or pyproject.toml with tool.pixi at directory /private/tmp/claude-501/-Users-a-Desktop-nebi/9f4cb4ae-ea48-4125-84ce-5d23ccc94829/scratchpad/exp2-0.82.1"},
+			"could not find pixi.toml or pyproject.toml with tool.pixi at directory /home/user/nebi-projects/a-project-directory-with-a-long-name-for-wrapping/exp-0.82.1"},
 		{"crlf", strings.ReplaceAll(staleLock, "\n", "\r\n"), "lock file not up-to-date with the workspace"},
 		{"no Error line", "something\nthread 'main' panicked at src/main.rs\n\n", "thread 'main' panicked at src/main.rs"},
 		{"empty", "", ""},

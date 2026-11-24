@@ -131,6 +131,39 @@ func TestCommands(t *testing.T) {
 	}
 }
 
+// TestRelativeDir runs every command for a directory relative to the
+// working directory. pixi runs inside that directory, so it must get the
+// manifest path as an absolute path, or it would resolve it again from
+// there.
+func TestRelativeDir(t *testing.T) {
+	s := newStub(t, pixi.MinimumVersion, "exit 0")
+	r := newRunner(t, s.path)
+	dir := project(t, true)
+	t.Chdir(filepath.Dir(dir))
+	rel := filepath.Base(dir)
+	ctx := context.Background()
+
+	if err := r.Lock(ctx, rel, io.Discard); err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+	if err := r.Install(ctx, rel, io.Discard); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if err := r.CheckLock(ctx, rel, io.Discard); err != nil {
+		t.Fatalf("CheckLock: %v", err)
+	}
+
+	manifest := filepath.Join(dir, "pixi.toml")
+	want := []string{
+		dir + "|lock --manifest-path " + manifest + "|unset|never",
+		dir + "|install --frozen --manifest-path " + manifest + "|unset|never",
+		dir + "|lock --check --manifest-path " + manifest + "|unset|never",
+	}
+	if got := s.recorded(t); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("pixi calls:\n got %q\nwant %q", got, want)
+	}
+}
+
 func TestFailedCommandCarriesPixiError(t *testing.T) {
 	s := newStub(t, pixi.MinimumVersion, `cat >&2 <<'EOF'
 Error:   × failed to solve requirements of environment 'default' for platform 'osx-

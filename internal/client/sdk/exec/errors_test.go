@@ -49,6 +49,14 @@ Error:   × lock file not up-to-date with the workspace
 
 `
 
+const needsInstall = `Error:   × failed to solve the pypi requirements of environment 'default' for
+  │ platform 'osx-arm64'
+  ├─▶ build dispatch initialization failed
+  ╰─▶ installation of conda environment is required to solve PyPI source
+      dependencies but ` + "`--no-install`" + ` flag has been set
+
+`
+
 const wrappedPath = `Error:   × could not find pixi.toml or pyproject.toml with tool.pixi at directory /
   │ home/user/nebi-projects/a-project-directory-with-a-long-name-for-
   │ wrapping/exp-0.82.1
@@ -96,6 +104,17 @@ func TestIsStaleLockOutput(t *testing.T) {
 	}
 }
 
+func TestIsNeedsInstallOutput(t *testing.T) {
+	if !isNeedsInstallOutput(needsInstall) {
+		t.Error("pixi's report that it must install must be recognised")
+	}
+	for _, s := range []string{solveFailure, networkFailure, manifestFailure, staleLock, wrappedPath, ""} {
+		if isNeedsInstallOutput(s) {
+			t.Errorf("not a report that pixi must install: %q", s)
+		}
+	}
+}
+
 func TestCommandError(t *testing.T) {
 	exitErr := &osexec.ExitError{}
 	err := error(&CommandError{Command: "pixi lock", Line: "No candidates were found for foo", Err: exitErr})
@@ -122,7 +141,7 @@ func TestStaleLockError(t *testing.T) {
 }
 
 func TestCommandEnv(t *testing.T) {
-	got := commandEnv([]string{"HOME=/h", "PIXI_LOCKED=true", "PIXI_FROZEN=1", "PIXI_COLOR=always", "PIXI_CACHE_DIR=/c", "PATH=/bin"})
+	got := commandEnv([]string{"HOME=/h", "PIXI_LOCKED=true", "PIXI_FROZEN=1", "PIXI_NO_INSTALL=true", "PIXI_COLOR=always", "PIXI_CACHE_DIR=/c", "PATH=/bin"})
 	want := []string{"HOME=/h", "PIXI_CACHE_DIR=/c", "PATH=/bin", "PIXI_COLOR=never"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("got %q, want %q", got, want)

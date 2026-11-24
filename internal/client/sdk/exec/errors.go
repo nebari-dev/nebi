@@ -61,6 +61,17 @@ func isStaleLockOutput(stderr string) bool {
 	return strings.Contains(errorLine(stderr), staleLockMessage)
 }
 
+// needsInstallMessage is pixi's error for `pixi lock --no-install` when it
+// must install an environment to read the metadata of PyPI source
+// dependencies. Confirmed on pixi 0.82.1 and 0.84.2.
+const needsInstallMessage = "installation of conda environment is required to solve PyPI source dependencies"
+
+// isNeedsInstallOutput reports whether stderr, from
+// `pixi lock --no-install`, says that pixi must install to lock.
+func isNeedsInstallOutput(stderr string) bool {
+	return strings.Contains(errorLine(stderr), needsInstallMessage)
+}
+
 // maxErrorLine caps the length of the error message taken from pixi.
 const maxErrorLine = 2000
 

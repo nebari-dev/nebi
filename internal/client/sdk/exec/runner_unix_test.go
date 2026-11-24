@@ -114,7 +114,7 @@ func TestCommands(t *testing.T) {
 
 	manifest := filepath.Join(dir, "pixi.toml")
 	want := []string{
-		dir + "|lock --manifest-path " + manifest + "|unset|never",
+		dir + "|lock --no-install --manifest-path " + manifest + "|unset|never",
 		dir + "|install --frozen --manifest-path " + manifest + "|unset|never",
 		dir + "|lock --check --manifest-path " + manifest + "|unset|never",
 	}
@@ -155,7 +155,7 @@ func TestRelativeDir(t *testing.T) {
 
 	manifest := filepath.Join(dir, "pixi.toml")
 	want := []string{
-		dir + "|lock --manifest-path " + manifest + "|unset|never",
+		dir + "|lock --no-install --manifest-path " + manifest + "|unset|never",
 		dir + "|install --frozen --manifest-path " + manifest + "|unset|never",
 		dir + "|lock --check --manifest-path " + manifest + "|unset|never",
 	}
@@ -178,12 +178,189 @@ exit 1`)
 	if !errors.As(err, &cmdErr) {
 		t.Fatalf("want a *CommandError, got %T %v", err, err)
 	}
-	want := "pixi lock: failed to solve requirements of environment 'default' for platform 'osx-arm64': Cannot solve the request because of: No candidates were found for nope *. (exit status 1)"
+	want := "pixi lock --no-install: failed to solve requirements of environment 'default' for platform 'osx-arm64': Cannot solve the request because of: No candidates were found for nope *. (exit status 1)"
 	if err.Error() != want {
 		t.Fatalf("got  %q\nwant %q", err, want)
 	}
+	if calls := s.recorded(t); len(calls) != 1 {
+		t.Fatalf("a lock that fails for another reason must not run again, got %q", calls)
+	}
 	if !strings.Contains(out.String(), "No candidates were found for nope") {
 		t.Fatalf("pixi's error output must reach out too, got %q", out.String())
+	}
+}
+
+// needsInstallStub returns a pixi whose lock --no-install fails because it
+// must install, as pixi does for an uncached PyPI source dependency, and
+// whose plain lock checks that dir/.pixi/envs was set aside, installs into
+// it, and then runs body.
+func needsInstallStub(t *testing.T, body string) *stub {
+	t.Helper()
+	return newStub(t, pixi.MinimumVersion, `case "$*" in *--no-install*)
+	cat >&2 <<'EOF'
+Error:   × failed to solve the pypi requirements of environment 'default' for
+  │ platform 'osx-arm64'
+  ├─▶ build dispatch initialization failed
+  ╰─▶ installation of conda environment is required to solve PyPI source
+      dependencies but `+"`--no-install`"+` flag has been set
+EOF
+	exit 1;;
+esac
+if [ -e .pixi/envs ]; then echo "Error: the installed environments were not set aside" >&2; exit 1; fi
+mkdir -p .pixi/envs/default && echo new > .pixi/envs/default/from-lock
+`+body)
+}
+
+// installEnv writes an installed environment, dir/.pixi/envs/default/old.
+func installEnv(t *testing.T, dir string) {
+	t.Helper()
+	env := filepath.Join(dir, ".pixi", "envs", "default")
+	if err := os.MkdirAll(env, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(env, "old"), "installed")
+}
+
+// assertEnvUnchanged checks that dir/.pixi holds only the environment
+// installEnv wrote.
+func assertEnvUnchanged(t *testing.T, dir string) {
+	t.Helper()
+	assertEntries(t, filepath.Join(dir, ".pixi"), "envs")
+	assertEntries(t, filepath.Join(dir, ".pixi", "envs", "default"), "old")
+	if got := readFile(t, filepath.Join(dir, ".pixi", "envs", "default", "old")); got != "installed" {
+		t.Fatalf("the installed environment changed: %q", got)
+	}
+}
+
+// TestLockSetsEnvsAside checks a lock that pixi must install for: it runs
+// again without --no-install, and what pixi installs neither replaces the
+// installed environment nor, when there is none, is left behind.
+func TestLockSetsEnvsAside(t *testing.T) {
+	s := needsInstallStub(t, "exit 0")
+	r := newRunner(t, s.path)
+	ctx := context.Background()
+
+	dir := project(t, true)
+	installEnv(t, dir)
+	var out bytes.Buffer
+	if err := r.Lock(ctx, dir, &out); err != nil {
+		t.Fatalf("Lock: %v\n%s", err, out.String())
+	}
+	assertEnvUnchanged(t, dir)
+	if !strings.Contains(out.String(), "locking again with the installed environments set aside") {
+		t.Errorf("the log must say why pixi lock ran again: %q", out.String())
+	}
+	manifest := filepath.Join(dir, "pixi.toml")
+	want := []string{
+		dir + "|lock --no-install --manifest-path " + manifest + "|unset|never",
+		dir + "|lock --manifest-path " + manifest + "|unset|never",
+	}
+	if got := s.recorded(t); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("pixi calls:\n got %q\nwant %q", got, want)
+	}
+
+	// With nothing installed, nothing is left behind.
+	dir = project(t, false)
+	if err := r.Lock(ctx, dir, io.Discard); err != nil {
+		t.Fatalf("Lock without an environment: %v", err)
+	}
+	assertEntries(t, dir, "pixi.toml")
+}
+
+func TestLockPutsEnvsBackWhenPixiFails(t *testing.T) {
+	s := needsInstallStub(t, `echo "Error:   × Request failed after 3 retries" >&2; exit 1`)
+	dir := project(t, true)
+	installEnv(t, dir)
+	err := newRunner(t, s.path).Lock(context.Background(), dir, io.Discard)
+	var cmdErr *CommandError
+	if !errors.As(err, &cmdErr) || cmdErr.Command != "pixi lock" || !strings.Contains(err.Error(), "Request failed") {
+		t.Fatalf("want the *CommandError of the second pixi lock, got %T %v", err, err)
+	}
+	assertEnvUnchanged(t, dir)
+}
+
+func TestLockPutsEnvsBackWhenCancelled(t *testing.T) {
+	pidFile := filepath.Join(t.TempDir(), "pids")
+	s := needsInstallStub(t, fmt.Sprintf(`sleep 300 & echo "$$ $!" > %[1]q.tmp && mv %[1]q.tmp %[1]q; wait`, pidFile))
+	r := newRunner(t, s.path)
+	dir := project(t, true)
+	installEnv(t, dir)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- r.Lock(ctx, dir, io.Discard) }()
+
+	pids := readPIDs(t, pidFile)
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("want the context's error, got %v", err)
+		}
+	case <-time.After(waitTimeout):
+		t.Fatal("Lock did not return after cancel")
+	}
+	for _, pid := range pids {
+		waitGone(t, pid)
+	}
+	assertEnvUnchanged(t, dir)
+}
+
+// TestLockFailsWhenEnvsCannotBeSetAside checks that pixi lock does not run
+// without --no-install when the installed environments cannot be moved.
+func TestLockFailsWhenEnvsCannotBeSetAside(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can rename in a read-only directory")
+	}
+	s := needsInstallStub(t, "exit 0")
+	dir := project(t, true)
+	installEnv(t, dir)
+	pixiDir := filepath.Join(dir, ".pixi")
+	if err := os.Chmod(pixiDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(pixiDir, 0o755) })
+
+	err := newRunner(t, s.path).Lock(context.Background(), dir, io.Discard)
+	if !errors.Is(err, fs.ErrPermission) || !strings.Contains(err.Error(), "setting aside") {
+		t.Fatalf("want a permission error setting the environments aside, got %v", err)
+	}
+	if calls := s.recorded(t); len(calls) != 1 {
+		t.Fatalf("pixi lock must not run again, got %q", calls)
+	}
+	assertEnvUnchanged(t, dir)
+}
+
+// TestRestoresEnvsSetAside checks the recovery from a Lock stopped by a
+// crash while the environments were set aside: Install and Lock put them
+// back over what pixi had installed before they run pixi.
+func TestRestoresEnvsSetAside(t *testing.T) {
+	s := newStub(t, pixi.MinimumVersion, `[ -f .pixi/envs/default/old ] || { echo "Error: not put back" >&2; exit 1; }`)
+	r := newRunner(t, s.path)
+	ctx := context.Background()
+	for name, run := range map[string]func(string) error{
+		"Install": func(dir string) error { return r.Install(ctx, dir, io.Discard) },
+		"Lock":    func(dir string) error { return r.Lock(ctx, dir, io.Discard) },
+	} {
+		dir := project(t, true)
+		aside := filepath.Join(dir, ".pixi", envsAside, "default")
+		if err := os.MkdirAll(aside, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, filepath.Join(aside, "old"), "installed")
+		partial := filepath.Join(dir, ".pixi", "envs", "default")
+		if err := os.MkdirAll(partial, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, filepath.Join(partial, "from-lock"), "new")
+
+		if err := run(dir); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		assertEnvUnchanged(t, dir)
+	}
+	if calls := s.recorded(t); len(calls) != 2 {
+		t.Fatalf("pixi must run once per call, got %q", calls)
 	}
 }
 

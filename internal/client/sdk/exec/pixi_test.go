@@ -88,6 +88,7 @@ func TestRealPixi(t *testing.T) {
 			t.Run("LockCheckInstall", func(t *testing.T) { testLockCheckInstall(t, r, platform) })
 			t.Run("FailedLock", func(t *testing.T) { testFailedLock(t, r, platform) })
 			t.Run("NoParentManifest", func(t *testing.T) { testNoParentManifest(t, r, platform) })
+			t.Run("LockKeepsInstalledEnv", func(t *testing.T) { testLockKeepsInstalledEnv(t, r, platform) })
 		})
 	}
 }
@@ -205,6 +206,78 @@ func testNoParentManifest(t *testing.T, r *Runner, platform string) {
 	}
 	assertEntries(t, parent, "child", "pixi.toml")
 	assertEntries(t, dir)
+}
+
+// testLockKeepsInstalledEnv locks, for an installed project, a manifest
+// with a path dependency whose metadata pixi must build. With an empty
+// cache pixi refuses --no-install for it, so Lock runs pixi lock again
+// with the environment set aside; the installed environment must come
+// out unchanged.
+func testLockKeepsInstalledEnv(t *testing.T, r *Runner, platform string) {
+	t.Setenv("PIXI_CACHE_DIR", t.TempDir())
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "pixi.toml")
+	writeFile(t, manifestPath, manifest(platform, "zlib"))
+	if err := r.Lock(ctx, dir, io.Discard); err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+	if err := r.Install(ctx, dir, io.Discard); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	condaMeta := filepath.Join(dir, ".pixi", "envs", "default", "conda-meta")
+	installed := globNames(t, filepath.Join(condaMeta, "*.json"))
+
+	pkg := filepath.Join(dir, "mypkg")
+	if err := os.MkdirAll(filepath.Join(pkg, "src", "mypkg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(pkg, "pyproject.toml"), `[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mypkg"
+dynamic = ["version"]
+
+[tool.setuptools.dynamic]
+version = {attr = "mypkg.__version__"}
+`)
+	writeFile(t, filepath.Join(pkg, "src", "mypkg", "__init__.py"), "__version__ = \"0.1.0\"\n")
+	writeFile(t, manifestPath, manifest(platform, "zlib", "python")+"\n[pypi-dependencies]\nmypkg = { path = \"./mypkg\" }\n")
+
+	var out bytes.Buffer
+	if err := r.Lock(ctx, dir, &out); err != nil {
+		t.Fatalf("Lock: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "locking again with the installed environments set aside") {
+		t.Fatalf("pixi %s locked this with --no-install; the test needs a dependency it must install for:\n%s", r.Version(), out.String())
+	}
+	if lock := readFile(t, filepath.Join(dir, "pixi.lock")); !strings.Contains(lock, "mypkg") {
+		t.Fatalf("pixi.lock must record mypkg:\n%s", lock)
+	}
+	if got := globNames(t, filepath.Join(condaMeta, "*.json")); strings.Join(got, ",") != strings.Join(installed, ",") {
+		t.Fatalf("Lock changed the installed environment:\n got %q\nwant %q", got, installed)
+	}
+	assertEntries(t, filepath.Join(dir, ".pixi", "envs"), "default")
+	if _, err := os.Stat(filepath.Join(dir, ".pixi", envsAside)); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("%s must be gone: %v", envsAside, err)
+	}
+}
+
+// globNames returns the base names of the files matching pattern.
+func globNames(t *testing.T, pattern string) []string {
+	t.Helper()
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, len(matches))
+	for i, m := range matches {
+		names[i] = filepath.Base(m)
+	}
+	return names
 }
 
 func isStale(err error) bool {

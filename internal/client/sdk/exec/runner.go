@@ -36,7 +36,9 @@ type Options struct {
 }
 
 // Runner runs pixi in project directories. It implements local.PixiRunner
-// and is safe for concurrent use.
+// and is safe for concurrent use. Callers run one command at a time for a
+// directory, because Lock can move dir/.pixi/envs while it runs; the SDK's
+// jobs run at most one per project.
 type Runner struct {
 	path    string
 	version string
@@ -76,10 +78,86 @@ func (r *Runner) Path() string { return r.path }
 // Version returns the version of that binary, such as "0.82.1".
 func (r *Runner) Version() string { return r.version }
 
-// Lock runs `pixi lock`: it solves dir/pixi.toml and writes dir/pixi.lock.
+// Lock runs `pixi lock`: it solves dir/pixi.toml and writes dir/pixi.lock,
+// and leaves the environments in dir/.pixi/envs as they were.
+//
+// pixi lock installs the conda part of an environment when it needs one to
+// read the metadata of a PyPI source dependency, such as an sdist or a
+// path dependency, that it has not cached; with --no-install it fails
+// instead. So Lock runs pixi lock --no-install, and only when pixi says it
+// must install runs pixi lock again with the environments set aside (see
+// lockEnvsAside).
 func (r *Runner) Lock(ctx context.Context, dir string, out io.Writer) error {
-	_, err := r.run(ctx, dir, out, "lock")
+	if err := restoreEnvs(dir); err != nil {
+		return fmt.Errorf("pixi lock: %w", err)
+	}
+	stderr, err := r.run(ctx, dir, out, "lock", "--no-install")
+	var cmdErr *CommandError
+	if !errors.As(err, &cmdErr) || !isNeedsInstallOutput(stderr) {
+		return err
+	}
+	fmt.Fprintln(out, "\npixi needs an environment to solve PyPI source dependencies; locking again with the installed environments set aside")
+	return r.lockEnvsAside(ctx, dir, out)
+}
+
+// envsAside is where lockEnvsAside keeps dir/.pixi/envs while pixi lock
+// runs, inside dir/.pixi so that it stays on the same file system and out
+// of version control.
+const envsAside = "nebi-lock-envs"
+
+// lockEnvsAside runs pixi lock, which may install into dir/.pixi/envs, so
+// that the environments there are left as they were: it moves them to
+// dir/.pixi/nebi-lock-envs, runs pixi, removes what pixi installed and
+// moves them back. A Lock stopped in between by a crash leaves them in
+// nebi-lock-envs, and the next Lock or Install puts them back first
+// (restoreEnvs).
+func (r *Runner) lockEnvsAside(ctx context.Context, dir string, out io.Writer) (err error) {
+	pixiDir := filepath.Join(dir, ".pixi")
+	envs := filepath.Join(pixiDir, "envs")
+	_, statErr := os.Lstat(pixiDir)
+	hadPixiDir := statErr == nil
+	switch err := os.Rename(envs, filepath.Join(pixiDir, envsAside)); {
+	case errors.Is(err, fs.ErrNotExist):
+		// Nothing is installed.
+	case err != nil:
+		return fmt.Errorf("pixi lock: setting aside the installed environments: %w", err)
+	}
+	defer func() {
+		rerr := os.RemoveAll(envs)
+		if rerr == nil {
+			rerr = restoreEnvs(dir)
+		}
+		if rerr != nil {
+			err = errors.Join(err, fmt.Errorf("pixi lock: %w", rerr))
+		}
+		if !hadPixiDir {
+			// pixi created dir/.pixi for the install; it is empty now.
+			_ = os.Remove(pixiDir)
+		}
+	}()
+	_, err = r.run(ctx, dir, out, "lock")
 	return err
+}
+
+// restoreEnvs moves the environments lockEnvsAside set aside back to
+// dir/.pixi/envs, replacing what pixi installed there. It does nothing
+// when none are set aside.
+func restoreEnvs(dir string) error {
+	pixiDir := filepath.Join(dir, ".pixi")
+	aside := filepath.Join(pixiDir, envsAside)
+	if _, err := os.Lstat(aside); errors.Is(err, fs.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	envs := filepath.Join(pixiDir, "envs")
+	if err := os.RemoveAll(envs); err != nil {
+		return fmt.Errorf("removing what pixi lock installed: %w", err)
+	}
+	if err := os.Rename(aside, envs); err != nil {
+		return fmt.Errorf("putting back the installed environments: %w", err)
+	}
+	return nil
 }
 
 // Install runs `pixi install --frozen`: it installs exactly what
@@ -89,6 +167,9 @@ func (r *Runner) Lock(ctx context.Context, dir string, out io.Writer) error {
 func (r *Runner) Install(ctx context.Context, dir string, out io.Writer) error {
 	if err := requireFile(dir, artifact.LockFile); err != nil {
 		return fmt.Errorf("pixi install --frozen: %w; run pixi lock first", err)
+	}
+	if err := restoreEnvs(dir); err != nil {
+		return fmt.Errorf("pixi install --frozen: %w", err)
 	}
 	_, err := r.run(ctx, dir, out, "install", "--frozen")
 	return err
@@ -186,16 +267,16 @@ func result(ctx context.Context, name, stderr string, err error) error {
 	return &CommandError{Command: name, Line: errorLine(stderr), Err: err}
 }
 
-// commandEnv returns env for a pixi process. PIXI_LOCKED and PIXI_FROZEN
-// are dropped, because they would change what lock and install do, and
-// colour is turned off, because the output goes to a log and its error
-// line is parsed.
+// commandEnv returns env for a pixi process. PIXI_LOCKED, PIXI_FROZEN and
+// PIXI_NO_INSTALL are dropped, because they would change what lock and
+// install do, and colour is turned off, because the output goes to a log
+// and its error line is parsed.
 func commandEnv(env []string) []string {
 	out := make([]string, 0, len(env)+1)
 	for _, kv := range env {
 		key, _, _ := strings.Cut(kv, "=")
 		switch strings.ToUpper(key) {
-		case "PIXI_LOCKED", "PIXI_FROZEN", "PIXI_COLOR":
+		case "PIXI_LOCKED", "PIXI_FROZEN", "PIXI_NO_INSTALL", "PIXI_COLOR":
 			continue
 		}
 		out = append(out, kv)

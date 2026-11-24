@@ -140,3 +140,32 @@ func TestTailBuffer(t *testing.T) {
 		t.Fatalf("got %q, want the last 5 bytes", b.String())
 	}
 }
+
+// TestTailBufferKeepsTail writes sequences of chunks shorter than, equal
+// to and longer than the buffer, and checks after every write that it
+// holds the last max bytes written so far.
+func TestTailBufferKeepsTail(t *testing.T) {
+	for _, chunks := range [][]string{
+		{},
+		{"", "a", ""},
+		{"abc", "de"},
+		{"abcde", "f"},
+		{"abcdefgh", "ij"},
+		{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"},
+		{"abc", "defg", "hi", "jklmnopq", "r", "st", "uvwxy", "z"},
+		{"abcd", "efghijkl", "mn", "o", "pqrstu"},
+	} {
+		b := &tailBuffer{max: 5}
+		all := ""
+		for _, c := range chunks {
+			if n, err := b.Write([]byte(c)); n != len(c) || err != nil {
+				t.Fatalf("%q: Write(%q) = %d, %v", chunks, c, n, err)
+			}
+			all += c
+			want := all[max(len(all)-5, 0):]
+			if got := b.String(); got != want {
+				t.Fatalf("%q: after %q got %q, want %q", chunks, c, got, want)
+			}
+		}
+	}
+}

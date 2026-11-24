@@ -209,18 +209,36 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 	return l.w.Write(p)
 }
 
-// tailBuffer keeps the last max bytes written to it.
+// tailBuffer keeps the last max bytes written to it. It grows as output
+// arrives, up to max, and then wraps around, so a write copies only its
+// own bytes however full the buffer is (the same ring as the job log in
+// internal/client/jobs).
 type tailBuffer struct {
-	max int
-	buf []byte
+	max   int
+	buf   []byte // len(buf) <= max
+	start int    // index of the oldest byte once len(buf) == max; else 0
 }
 
 func (t *tailBuffer) Write(p []byte) (int, error) {
-	t.buf = append(t.buf, p...)
-	if over := len(t.buf) - t.max; over > 0 {
-		t.buf = append(t.buf[:0], t.buf[over:]...)
+	n := len(p)
+	if len(p) >= t.max {
+		t.buf = append(t.buf[:0], p[len(p)-t.max:]...)
+		t.start = 0
+		return n, nil
 	}
-	return len(p), nil
+	if room := t.max - len(t.buf); room > 0 {
+		k := min(room, len(p))
+		t.buf = append(t.buf, p[:k]...)
+		p = p[k:]
+	}
+	for len(p) > 0 {
+		k := copy(t.buf[t.start:], p)
+		p = p[k:]
+		t.start = (t.start + k) % t.max
+	}
+	return n, nil
 }
 
-func (t *tailBuffer) String() string { return string(t.buf) }
+func (t *tailBuffer) String() string {
+	return string(t.buf[t.start:]) + string(t.buf[:t.start])
+}

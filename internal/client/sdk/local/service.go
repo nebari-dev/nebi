@@ -12,7 +12,7 @@
 //   - VersionStore: project versions and tags (the version CRUD issue, #661;
 //     a temporary seam removed when #661 lands, tracked in #669)
 //   - JobRunner: background jobs (internal/client/jobs)
-//   - PixiRunner: pixi lock and install (internal/client/sdk/exec)
+//   - PixiRunner: pixi lock, install and lock check (internal/client/sdk/exec)
 package local
 
 import (
@@ -150,6 +150,29 @@ type PixiRunner interface {
 	Lock(ctx context.Context, dir string, out io.Writer) error
 	// Install materializes the locked environment in dir/.pixi.
 	Install(ctx context.Context, dir string, out io.Writer) error
+	// CheckLock checks that dir/pixi.lock satisfies dir/pixi.toml, without
+	// changing either file. It returns nil for a current lock. A stale lock
+	// is reported with an error that implements StaleLockError, which the
+	// SDK turns into ErrLockStale; any other error means the check itself
+	// could not run.
+	CheckLock(ctx context.Context, dir string, out io.Writer) error
+}
+
+// StaleLockError is implemented by the error PixiRunner.CheckLock returns
+// for a stale lock. The runner (internal/client/sdk/exec) defines its own
+// error type with a StaleLock method, so it does not import this package
+// and its database code; errors.As finds the error through wrapping.
+type StaleLockError interface {
+	error
+	// StaleLock reports whether the lock is stale.
+	StaleLock() bool
+}
+
+// isStaleLock reports whether err, from PixiRunner.CheckLock, reports a
+// stale lock.
+func isStaleLock(err error) bool {
+	var stale StaleLockError
+	return errors.As(err, &stale) && stale.StaleLock()
 }
 
 // DeleteHook deletes rows another part of the client keeps for a project

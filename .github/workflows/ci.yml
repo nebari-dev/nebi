@@ -220,6 +220,35 @@ jobs:
       - name: Run tests
         run: go test -tags=e2e -v -race -count=1 ./internal/client/jobs/...
 
+  # The client's pixi runner (internal/client/sdk/exec) is tested against a
+  # real pixi at the version nebi pins (internal/pixi/installer.go) and at
+  # the latest release (#684). Its tests skip unless NEBI_TEST_PIXI is set.
+  backend-test-pixi:
+    name: Backend / Test pixi runner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Download pinned and latest pixi
+        run: |
+          pinned=$(sed -nE 's/^[[:space:]]*pixiVersion[[:space:]]*=[[:space:]]*"(v[0-9.]+)".*/\1/p' internal/pixi/installer.go)
+          test -n "$pinned"
+          asset=pixi-x86_64-unknown-linux-musl.tar.gz
+          mkdir -p "$RUNNER_TEMP/pixi-pinned" "$RUNNER_TEMP/pixi-latest"
+          curl -fsSL "https://github.com/prefix-dev/pixi/releases/download/$pinned/$asset" | tar -xz -C "$RUNNER_TEMP/pixi-pinned"
+          curl -fsSL "https://github.com/prefix-dev/pixi/releases/latest/download/$asset" | tar -xz -C "$RUNNER_TEMP/pixi-latest"
+          "$RUNNER_TEMP/pixi-pinned/pixi" --version
+          "$RUNNER_TEMP/pixi-latest/pixi" --version
+          echo "NEBI_TEST_PIXI=$RUNNER_TEMP/pixi-pinned/pixi:$RUNNER_TEMP/pixi-latest/pixi" >> "$GITHUB_ENV"
+
+      - name: Run tests
+        run: go test -tags=e2e -v -race -count=1 ./internal/client/sdk/exec/...
+
   backend-security:
     name: Backend / Security
     runs-on: ubuntu-latest

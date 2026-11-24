@@ -234,14 +234,29 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
+      # Each archive is checked against the .sha256 file published with it
+      # before it is unpacked. The latest release is resolved to its tag
+      # once, so the archive and its checksum come from the same release.
       - name: Download pinned and latest pixi
         run: |
+          set -euo pipefail
           pinned=$(sed -nE 's/^[[:space:]]*pixiVersion[[:space:]]*=[[:space:]]*"(v[0-9.]+)".*/\1/p' internal/pixi/installer.go)
-          test -n "$pinned"
+          latest=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/prefix-dev/pixi/releases/latest)
+          latest=${latest##*/}
+          for v in "$pinned" "$latest"; do
+            [[ $v =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "bad pixi version: '$v'" >&2; exit 1; }
+          done
           asset=pixi-x86_64-unknown-linux-musl.tar.gz
-          mkdir -p "$RUNNER_TEMP/pixi-pinned" "$RUNNER_TEMP/pixi-latest"
-          curl -fsSL "https://github.com/prefix-dev/pixi/releases/download/$pinned/$asset" | tar -xz -C "$RUNNER_TEMP/pixi-pinned"
-          curl -fsSL "https://github.com/prefix-dev/pixi/releases/latest/download/$asset" | tar -xz -C "$RUNNER_TEMP/pixi-latest"
+          fetch() {
+            local url="https://github.com/prefix-dev/pixi/releases/download/$1/$asset"
+            mkdir -p "$2"
+            curl -fsSL -o "$2/$asset" "$url"
+            curl -fsSL -o "$2/$asset.sha256" "$url.sha256"
+            (cd "$2" && sha256sum --check --strict "$asset.sha256")
+            tar -xzf "$2/$asset" -C "$2"
+          }
+          fetch "$pinned" "$RUNNER_TEMP/pixi-pinned"
+          fetch "$latest" "$RUNNER_TEMP/pixi-latest"
           "$RUNNER_TEMP/pixi-pinned/pixi" --version
           "$RUNNER_TEMP/pixi-latest/pixi" --version
           echo "NEBI_TEST_PIXI=$RUNNER_TEMP/pixi-pinned/pixi:$RUNNER_TEMP/pixi-latest/pixi" >> "$GITHUB_ENV"

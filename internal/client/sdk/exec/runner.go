@@ -138,7 +138,7 @@ const stderrTail = 64 << 10
 // run runs pixi with args for the manifest in dir, with dir as the working
 // directory. pixi's stdout and stderr go to out. It returns the tail of
 // pixi's stderr. A failed command returns a *CommandError carrying pixi's
-// error, and a cancelled one an error wrapping ctx's error.
+// error, and a cancelled one an error wrapping ctx's error (see result).
 func (r *Runner) run(ctx context.Context, dir string, out io.Writer, args ...string) (string, error) {
 	name := "pixi " + strings.Join(args, " ")
 	if err := ctx.Err(); err != nil {
@@ -162,13 +162,22 @@ func (r *Runner) run(ctx context.Context, dir string, out io.Writer, args ...str
 	mu.Lock()
 	stderr := tail.String()
 	mu.Unlock()
+	return stderr, result(ctx, name, stderr, err)
+}
+
+// result returns run's error for a pixi command that ended with err. A
+// command that succeeded returns nil even when ctx was cancelled after it
+// finished: pixi has already written pixi.lock or .pixi, and the caller
+// must not take that work as undone. A failure is reported as a cancel
+// when ctx is done, since the cancel is what stopped pixi.
+func result(ctx context.Context, name, stderr string, err error) error {
+	if err == nil {
+		return nil
+	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return stderr, fmt.Errorf("%s: %w", name, ctxErr)
+		return fmt.Errorf("%s: %w", name, ctxErr)
 	}
-	if err != nil {
-		return stderr, &CommandError{Command: name, Line: errorLine(stderr), Err: err}
-	}
-	return stderr, nil
+	return &CommandError{Command: name, Line: errorLine(stderr), Err: err}
 }
 
 // commandEnv returns env for a pixi process. PIXI_LOCKED and PIXI_FROZEN

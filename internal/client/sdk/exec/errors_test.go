@@ -136,8 +136,11 @@ func TestStaleLockError(t *testing.T) {
 	if !err.StaleLock() {
 		t.Fatal("StaleLock must be true")
 	}
-	if want := "pixi.lock in /p does not satisfy pixi.toml: lock file not up-to-date with the workspace"; err.Error() != want {
+	if want := "lock file not up-to-date with the workspace"; err.Error() != want {
 		t.Fatalf("got %q, want %q", err, want)
+	}
+	if got, want := (&StaleLockError{Dir: "/p"}).Error(), "pixi.lock does not satisfy pixi.toml"; got != want {
+		t.Fatalf("without detail: got %q, want %q", got, want)
 	}
 }
 

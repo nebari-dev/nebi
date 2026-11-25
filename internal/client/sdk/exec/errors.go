@@ -39,12 +39,13 @@ type StaleLockError struct {
 	Detail string
 }
 
+// Error returns Detail alone, because the SDK says which files are out of
+// step itself.
 func (e *StaleLockError) Error() string {
-	msg := fmt.Sprintf("%s in %s does not satisfy %s", artifact.LockFile, e.Dir, artifact.ManifestFile)
-	if e.Detail != "" {
-		msg += ": " + e.Detail
+	if e.Detail == "" {
+		return fmt.Sprintf("%s does not satisfy %s", artifact.LockFile, artifact.ManifestFile)
 	}
-	return msg
+	return e.Detail
 }
 
 // StaleLock reports that the lock is stale.

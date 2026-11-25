@@ -178,7 +178,7 @@ exit 1`)
 	if !errors.As(err, &cmdErr) {
 		t.Fatalf("want a *CommandError, got %T %v", err, err)
 	}
-	want := "pixi lock --no-install: failed to solve requirements of environment 'default' for platform 'osx-arm64': Cannot solve the request because of: No candidates were found for nope *. (exit status 1)"
+	want := "failed to solve requirements of environment 'default' for platform 'osx-arm64': Cannot solve the request because of: No candidates were found for nope *. (exit status 1)"
 	if err.Error() != want {
 		t.Fatalf("got  %q\nwant %q", err, want)
 	}

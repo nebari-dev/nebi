@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 )
 
@@ -27,7 +28,7 @@ func TestResult(t *testing.T) {
 
 	err := result(cancelled, "pixi lock", stderr, exitErr)
 	var cmdErr *CommandError
-	if !errors.Is(err, context.Canceled) || errors.As(err, &cmdErr) {
+	if !errors.Is(err, context.Canceled) || errors.As(err, &cmdErr) || err.Error() != context.Canceled.Error() {
 		t.Errorf("failure while cancelled: want the context's error, got %T %v", err, err)
 	}
 	if err := result(expired, "pixi lock", stderr, exitErr); !errors.Is(err, context.DeadlineExceeded) {
@@ -37,5 +38,24 @@ func TestResult(t *testing.T) {
 	err = result(context.Background(), "pixi lock", stderr, exitErr)
 	if !errors.As(err, &cmdErr) || cmdErr.Line != "something broke" || !errors.Is(err, exitErr) {
 		t.Errorf("failure: want a *CommandError carrying pixi's error, got %T %v", err, err)
+	}
+}
+
+// TestNewRequiresPixiPath checks that New does not look for or download
+// pixi itself: finding pixi is up to the entry points.
+func TestNewRequiresPixiPath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("PATH", t.TempDir())
+	if _, err := New(context.Background(), Options{}); err == nil {
+		t.Fatal("New with no pixi path must fail")
+	}
+	entries, err := os.ReadDir(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("New must not install pixi, found %v in home", entries)
 	}
 }

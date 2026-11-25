@@ -25,13 +25,10 @@ import (
 
 // Options configures a Runner.
 type Options struct {
-	// PixiPath is the pixi binary. When it is set, that binary and no
+	// PixiPath is the pixi binary, and is required. That binary and no
 	// other is used, and nothing is downloaded (#630). A bare name such as
-	// "pixi" is looked up in PATH once, by New.
-	//
-	// Empty means the binary internal/pixi resolves for the old client:
-	// ~/.local/bin/pixi, then pixi in PATH, and as a last resort the
-	// pinned release, downloaded to ~/.local/bin.
+	// "pixi" is looked up in PATH once, by New. Finding or installing pixi
+	// is up to the entry points (#680).
 	PixiPath string
 }
 
@@ -48,17 +45,12 @@ type Runner struct {
 // every command. It refuses a pixi older than pixi.MinimumVersion with a
 // *pixi.VersionTooOldError, and a binary that does not run.
 func New(ctx context.Context, opts Options) (*Runner, error) {
-	path := opts.PixiPath
-	if path == "" {
-		m, err := pixi.NewWithPathContext(ctx, "")
-		if err != nil {
-			return nil, fmt.Errorf("finding pixi: %w", err)
-		}
-		path = m.BinaryPath()
+	if opts.PixiPath == "" {
+		return nil, errors.New("finding pixi: no pixi path is set")
 	}
 	// Pin a bare name or a relative path to one file now, so a later
 	// change to PATH or the working directory cannot swap the binary.
-	resolved, err := osexec.LookPath(path)
+	resolved, err := osexec.LookPath(opts.PixiPath)
 	if err != nil {
 		return nil, fmt.Errorf("finding pixi: %w", err)
 	}
@@ -89,7 +81,7 @@ func (r *Runner) Version() string { return r.version }
 // lockEnvsAside).
 func (r *Runner) Lock(ctx context.Context, dir string, out io.Writer) error {
 	if err := restoreEnvs(dir); err != nil {
-		return fmt.Errorf("pixi lock: %w", err)
+		return err
 	}
 	stderr, err := r.run(ctx, dir, out, "lock", "--no-install")
 	var cmdErr *CommandError
@@ -120,7 +112,7 @@ func (r *Runner) lockEnvsAside(ctx context.Context, dir string, out io.Writer) (
 	case errors.Is(err, fs.ErrNotExist):
 		// Nothing is installed.
 	case err != nil:
-		return fmt.Errorf("pixi lock: setting aside the installed environments: %w", err)
+		return fmt.Errorf("setting aside the installed environments: %w", err)
 	}
 	defer func() {
 		rerr := os.RemoveAll(envs)
@@ -128,7 +120,7 @@ func (r *Runner) lockEnvsAside(ctx context.Context, dir string, out io.Writer) (
 			rerr = restoreEnvs(dir)
 		}
 		if rerr != nil {
-			err = errors.Join(err, fmt.Errorf("pixi lock: %w", rerr))
+			err = errors.Join(err, rerr)
 		}
 		if !hadPixiDir {
 			// pixi created dir/.pixi for the install; it is empty now.
@@ -166,10 +158,10 @@ func restoreEnvs(dir string) error {
 // pixi.lock it fails before starting pixi.
 func (r *Runner) Install(ctx context.Context, dir string, out io.Writer) error {
 	if err := requireFile(dir, artifact.LockFile); err != nil {
-		return fmt.Errorf("pixi install --frozen: %w; run pixi lock first", err)
+		return fmt.Errorf("%w; run pixi lock first", err)
 	}
 	if err := restoreEnvs(dir); err != nil {
-		return fmt.Errorf("pixi install --frozen: %w", err)
+		return err
 	}
 	_, err := r.run(ctx, dir, out, "install", "--frozen")
 	return err
@@ -183,13 +175,13 @@ func (r *Runner) Install(ctx context.Context, dir string, out io.Writer) error {
 // network it can fail with an ordinary error instead.
 func (r *Runner) CheckLock(ctx context.Context, dir string, out io.Writer) error {
 	if err := requireFile(dir, artifact.ManifestFile); err != nil {
-		return fmt.Errorf("pixi lock --check: %w", err)
+		return err
 	}
 	if err := requireFile(dir, artifact.LockFile); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return &StaleLockError{Dir: dir, Detail: artifact.LockFile + " is missing"}
 		}
-		return fmt.Errorf("pixi lock --check: %w", err)
+		return err
 	}
 	stderr, err := r.run(ctx, dir, out, "lock", "--check")
 	var cmdErr *CommandError
@@ -219,17 +211,18 @@ const stderrTail = 64 << 10
 // run runs pixi with args for the manifest in dir, with dir as the working
 // directory. pixi's stdout and stderr go to out. It returns the tail of
 // pixi's stderr. A failed command returns a *CommandError carrying pixi's
-// error, and a cancelled one an error wrapping ctx's error (see result).
+// error, and a cancelled one ctx's error (see result). The errors do not
+// name the command: the SDK labels each step itself.
 func (r *Runner) run(ctx context.Context, dir string, out io.Writer, args ...string) (string, error) {
 	name := "pixi " + strings.Join(args, " ")
 	if err := ctx.Err(); err != nil {
-		return "", fmt.Errorf("%s: %w", name, err)
+		return "", err
 	}
 	// pixi runs in dir and resolves --manifest-path from there, so a
 	// relative dir is made absolute first or it would be applied twice.
 	dir, err := filepath.Abs(dir)
 	if err != nil {
-		return "", fmt.Errorf("%s: %w", name, err)
+		return "", err
 	}
 	// --manifest-path stops pixi from searching the parent directories
 	// for a manifest when dir has none.
@@ -262,7 +255,7 @@ func result(ctx context.Context, name, stderr string, err error) error {
 		return nil
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return fmt.Errorf("%s: %w", name, ctxErr)
+		return ctxErr
 	}
 	return &CommandError{Command: name, Line: errorLine(stderr), Err: err}
 }

@@ -12,7 +12,8 @@ import (
 // own error message, its causes joined with ": ", so the error says why
 // pixi failed and not only "exit status 1".
 type CommandError struct {
-	// Command is the pixi command, such as "pixi install --frozen".
+	// Command is the pixi command, such as "pixi install --frozen". It is
+	// left out of the message, because the SDK labels each step itself.
 	Command string
 	// Line is pixi's error message; empty when pixi printed none.
 	Line string
@@ -22,9 +23,9 @@ type CommandError struct {
 
 func (e *CommandError) Error() string {
 	if e.Line == "" {
-		return fmt.Sprintf("%s: %v", e.Command, e.Err)
+		return e.Err.Error()
 	}
-	return fmt.Sprintf("%s: %s (%v)", e.Command, e.Line, e.Err)
+	return fmt.Sprintf("%s (%v)", e.Line, e.Err)
 }
 
 func (e *CommandError) Unwrap() error { return e.Err }

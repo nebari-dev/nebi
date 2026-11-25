@@ -118,14 +118,15 @@ func TestIsNeedsInstallOutput(t *testing.T) {
 func TestCommandError(t *testing.T) {
 	exitErr := &osexec.ExitError{}
 	err := error(&CommandError{Command: "pixi lock", Line: "No candidates were found for foo", Err: exitErr})
-	if !strings.Contains(err.Error(), "pixi lock: No candidates were found for foo") {
-		t.Fatalf("the error must carry pixi's message, got %q", err)
+	// The SDK labels each step, so the message leaves out the command.
+	if !strings.HasPrefix(err.Error(), "No candidates were found for foo (") {
+		t.Fatalf("the error must be pixi's message without the command, got %q", err)
 	}
 	if !errors.Is(err, exitErr) {
 		t.Fatal("the error must wrap the process error")
 	}
 	bare := &CommandError{Command: "pixi lock", Err: errors.New("exit status 1")}
-	if bare.Error() != "pixi lock: exit status 1" {
+	if bare.Error() != "exit status 1" {
 		t.Fatalf("got %q", bare)
 	}
 }

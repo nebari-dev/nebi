@@ -127,8 +127,8 @@ func (j Job) Started() bool {
 // closed, except for job types that cannot be cancelled (see
 // Type.Cancellable), whose context is never cancelled. The body must then
 // return promptly, so every process it starts must be started with ctx
-// (for pixi, through process.CommandContext, which on unix also stops
-// pixi's child processes).
+// (for pixi, through process.CommandContext, which also stops pixi's
+// child processes).
 type Func func(ctx context.Context, log io.Writer) error
 
 // ErrClosed is returned by Submit after Close.

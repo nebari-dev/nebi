@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -50,36 +49,6 @@ func TestCancelStopsProcessAndChildren(t *testing.T) {
 	}
 	if out, _ := m.Logs(j.ID); !strings.Contains(string(out), "started") {
 		t.Fatalf("the process's output must reach the job's log, got %q", out)
-	}
-}
-
-// readPIDs waits for the shell to record its PID and its child's.
-func readPIDs(t *testing.T, path string) []int {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for {
-		b, err := os.ReadFile(path)
-		if err == nil {
-			var pids []int
-			for _, f := range strings.Fields(string(b)) {
-				pid, err := strconv.Atoi(f)
-				if err != nil {
-					t.Fatalf("bad pid file %q", b)
-				}
-				pids = append(pids, pid)
-			}
-			if len(pids) != 2 {
-				t.Fatalf("bad pid file %q", b)
-			}
-			return pids
-		}
-		if !errors.Is(err, os.ErrNotExist) {
-			t.Fatal(err)
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the process did not start")
-		}
-		time.Sleep(10 * time.Millisecond)
 	}
 }
 

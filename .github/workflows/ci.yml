@@ -200,8 +200,11 @@ jobs:
 
   # Backend / Test runs on Linux only. The client job runner's owner lock has
   # separate Unix and Windows code (flock, LockFileEx), and #667 requires its
-  # tests to pass on Linux, macOS and Windows. The package needs no frontend
-  # embed, so only it runs here, with the same flags as the Linux job.
+  # tests to pass on Linux, macOS and Windows. So does cancelling a command
+  # started through internal/process, which stops its child processes with a
+  # process group on unix and a job object on Windows (#677). The packages
+  # need no frontend embed, so only they run here, with the same flags as the
+  # Linux job.
   backend-test-os:
     name: Backend / Test client jobs (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -218,7 +221,7 @@ jobs:
           go-version-file: 'go.mod'
 
       - name: Run tests
-        run: go test -tags=e2e -v -race -count=1 ./internal/client/jobs/...
+        run: go test -tags=e2e -v -race -count=1 ./internal/client/jobs/... ./internal/process/...
 
   # The client's pixi runner (internal/client/sdk/exec) is tested against a
   # real pixi at the version nebi pins (internal/pixi/installer.go) and at

@@ -16,7 +16,7 @@ import (
 // CommandContext builds a command with OS resource limits. The command runs in
 // its own process group so context cancellation kills child processes spawned
 // by package managers, not just the immediate shell/process.
-func CommandContext(ctx context.Context, name string, args []string, limitCfg limits.ProcessLimits) *exec.Cmd {
+func CommandContext(ctx context.Context, name string, args []string, limitCfg limits.ProcessLimits) *Cmd {
 	var cmd *exec.Cmd
 	if hasLimits(limitCfg) {
 		script := limitScript(limitCfg)
@@ -27,8 +27,16 @@ func CommandContext(ctx context.Context, name string, args []string, limitCfg li
 	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	setCommandCancel(cmd)
-	return cmd
+	return &Cmd{Cmd: cmd}
 }
+
+// processTree needs nothing on unix: the process group set up by
+// CommandContext already holds the process and every process it starts.
+type processTree struct{}
+
+func (processTree) start(cmd *exec.Cmd) error { return cmd.Start() }
+
+func (processTree) release() {}
 
 func limitScript(limitCfg limits.ProcessLimits) string {
 	var b strings.Builder
@@ -64,5 +72,5 @@ func setCommandCancel(cmd *exec.Cmd) {
 		}(cmd.Process.Pid)
 		return nil
 	}
-	cmd.WaitDelay = 5 * time.Second
+	cmd.WaitDelay = cancelWaitDelay
 }

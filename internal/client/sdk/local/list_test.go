@@ -39,8 +39,8 @@ func TestDeriveState(t *testing.T) {
 	createOK := job(jobs.TypeCreate, jobs.StatusCompleted, StageLock)
 	createOKInstalled := job(jobs.TypeCreate, jobs.StatusCompleted, StageInstall)
 	installRunning := job(jobs.TypeInstall, jobs.StatusRunning, "")
-	installFailed := job(jobs.TypeInstall, jobs.StatusFailed, "")
-	installOK := job(jobs.TypeInstall, jobs.StatusCompleted, "")
+	installFailed := job(jobs.TypeInstall, jobs.StatusFailed, StageInstall)
+	installOK := job(jobs.TypeInstall, jobs.StatusCompleted, StageInstall)
 	uninstallPending := job(jobs.TypeUninstall, jobs.StatusPending, "")
 	uninstallFailed := job(jobs.TypeUninstall, jobs.StatusFailed, "")
 	deleteFiles := job(jobs.TypeDeleteFiles, jobs.StatusRunning, "")
@@ -48,7 +48,9 @@ func TestDeriveState(t *testing.T) {
 	createCancelledPending := neverStarted(job(jobs.TypeCreate, jobs.StatusCancelled, ""))
 	createCancelledInstall := job(jobs.TypeCreate, jobs.StatusCancelled, StageInstall)
 	installPending := job(jobs.TypeInstall, jobs.StatusPending, "")
-	installCancelled := job(jobs.TypeInstall, jobs.StatusCancelled, "")
+	installCancelled := job(jobs.TypeInstall, jobs.StatusCancelled, StageInstall)
+	// installRefused failed its working-copy check, before StageInstall.
+	installRefused := job(jobs.TypeInstall, jobs.StatusFailed, "")
 	uninstallCancelled := job(jobs.TypeUninstall, jobs.StatusCancelled, "")
 	installCancelledPending := neverStarted(job(jobs.TypeInstall, jobs.StatusCancelled, ""))
 
@@ -94,6 +96,8 @@ func TestDeriveState(t *testing.T) {
 		{"install cancelled wins over a partial env", 1, []jobs.Job{createOK, installCancelled}, false, true, StateInstallFailed, &installCancelled},
 		{"cancelled uninstall falls back to disk", 1, []jobs.Job{installOK, uninstallCancelled}, true, true, StateInstalled, nil},
 		{"install cancelled while pending is ignored", 1, []jobs.Job{createOKInstalled, installCancelledPending}, true, true, StateInstalled, nil},
+		{"install refused before installing is ignored", 1, []jobs.Job{createOKInstalled, installRefused}, true, true, StateInstalled, nil},
+		{"install refused before installing does not hide a failed one", 1, []jobs.Job{createOK, installFailed, installRefused}, false, true, StateInstallFailed, &installFailed},
 		{"install cancelled while pending does not hide a failed one", 1, []jobs.Job{createOK, installFailed, installCancelledPending}, false, true, StateInstallFailed, &installFailed},
 	}
 	for _, c := range cases {

@@ -293,7 +293,8 @@ func TestInstallAcceptsRecordedOrMissingFiles(t *testing.T) {
 
 // TestInstallRechecksTheWorkingCopyInTheJob edits the working copy while
 // the install job is pending: the job must refuse to overwrite the edit,
-// unless the install was forced.
+// unless the install was forced. A refused job touches nothing, so the
+// version installed before stays installed and is reported so.
 func TestInstallRechecksTheWorkingCopyInTheJob(t *testing.T) {
 	for _, force := range []bool{false, true} {
 		name := "unforced"
@@ -303,7 +304,7 @@ func TestInstallRechecksTheWorkingCopyInTheJob(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			h := newHarnessWithRunner(t, jobs.Options{MaxRunning: 1})
 			blocker, _ := h.newProject("blocker", false)
-			p, v1 := h.newProject("waiting", false)
+			p, v1 := h.newProject("waiting", true)
 
 			gate := make(chan struct{})
 			started := make(chan struct{}, 2)
@@ -337,8 +338,8 @@ func TestInstallRechecksTheWorkingCopyInTheJob(t *testing.T) {
 				if got := readFile(t, manifestPath); got != edited {
 					t.Fatal("the edit must be kept")
 				}
-				if d := h.detail(p.ID); d.InstalledVersionID != nil || d.LastInstalledVersionID != nil {
-					t.Fatalf("nothing may be recorded as installed: %+v", d)
+				if d := h.detail(p.ID); d.State != StateInstalled || d.InstalledVersionID == nil || *d.InstalledVersionID != v1.ID {
+					t.Fatalf("version 1 must stay installed and be reported so: %+v", d)
 				}
 				return
 			}

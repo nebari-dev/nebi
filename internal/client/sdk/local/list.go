@@ -328,7 +328,9 @@ func envInstalled(dir string) bool {
 // a failed or cancelled last install wins over what is on disk, because
 // pixi can leave a partial .pixi/envs behind when it stops early. An
 // install or uninstall cancelled while pending never ran pixi, so it is
-// skipped and the job before it decides. Otherwise the project is installed
+// skipped and the job before it decides, as is a finished install job
+// that stopped before StageInstall: it refused before touching anything,
+// so whatever was installed still is. Otherwise the project is installed
 // only when both hasInstalledVersion and envOnDisk hold. Jobs live in
 // memory, so after a restart a failed install leaves no job behind, only
 // its partial .pixi/envs; InstalledVersionID, which is set only after an
@@ -351,7 +353,10 @@ func deriveState(versionCount int, projectJobs []jobs.Job, hasInstalledVersion, 
 		if !j.Active() && !j.Started() {
 			return false // cancelled while pending: it changed nothing
 		}
-		return j.Type == jobs.TypeInstall || j.Type == jobs.TypeUninstall ||
+		if j.Type == jobs.TypeInstall {
+			return j.Active() || j.Stage == StageInstall
+		}
+		return j.Type == jobs.TypeUninstall ||
 			((j.Type == jobs.TypeCreate || j.Type == jobs.TypeCreateVersion) && j.Stage == StageInstall)
 	})
 	if env != nil && env.Active() {

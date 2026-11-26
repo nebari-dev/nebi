@@ -145,7 +145,7 @@ func TestStaleLockError(t *testing.T) {
 }
 
 func TestCommandEnv(t *testing.T) {
-	got := commandEnv([]string{"HOME=/h", "PIXI_LOCKED=true", "PIXI_FROZEN=1", "PIXI_NO_INSTALL=true", "PIXI_COLOR=always", "PIXI_CACHE_DIR=/c", "PATH=/bin"})
+	got := commandEnv([]string{"HOME=/h", "PIXI_LOCKED=true", "PIXI_FROZEN=1", "PIXI_NO_INSTALL=true", "PIXI_COLOR=always", "FORCE_COLOR=1", "NO_GRAPHICS=1", "PIXI_CACHE_DIR=/c", "PATH=/bin"})
 	want := []string{"HOME=/h", "PIXI_CACHE_DIR=/c", "PATH=/bin", "PIXI_COLOR=never"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("got %q, want %q", got, want)

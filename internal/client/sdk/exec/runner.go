@@ -79,6 +79,10 @@ func (r *Runner) Version() string { return r.version }
 // instead. So Lock runs pixi lock --no-install, and only when pixi says it
 // must install runs pixi lock again with the environments set aside (see
 // lockEnvsAside).
+//
+// pixi's detached-environments setting is not supported: with it,
+// dir/.pixi/envs is a symlink, setting it aside moves only the link, and
+// pixi lock may change the installed environment it points to.
 func (r *Runner) Lock(ctx context.Context, dir string, out io.Writer) error {
 	if err := restoreEnvs(dir); err != nil {
 		return err
@@ -262,14 +266,16 @@ func result(ctx context.Context, name, stderr string, err error) error {
 
 // commandEnv returns env for a pixi process. PIXI_LOCKED, PIXI_FROZEN and
 // PIXI_NO_INSTALL are dropped, because they would change what lock and
-// install do, and colour is turned off, because the output goes to a log
-// and its error line is parsed.
+// install do. Colour is turned off and FORCE_COLOR and NO_GRAPHICS are
+// dropped, because the output goes to a log and its error report is
+// parsed: FORCE_COLOR adds colour despite PIXI_COLOR=never, and
+// NO_GRAPHICS changes the report's layout.
 func commandEnv(env []string) []string {
 	out := make([]string, 0, len(env)+1)
 	for _, kv := range env {
 		key, _, _ := strings.Cut(kv, "=")
 		switch strings.ToUpper(key) {
-		case "PIXI_LOCKED", "PIXI_FROZEN", "PIXI_NO_INSTALL", "PIXI_COLOR":
+		case "PIXI_LOCKED", "PIXI_FROZEN", "PIXI_NO_INSTALL", "PIXI_COLOR", "FORCE_COLOR", "NO_GRAPHICS":
 			continue
 		}
 		out = append(out, kv)

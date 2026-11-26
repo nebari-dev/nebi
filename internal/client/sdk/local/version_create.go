@@ -178,7 +178,7 @@ func (s *Service) copyVersion(ctx context.Context, p *Project, base *ProjectVers
 		return res, nil
 	}
 	job, err := s.jobs.Submit(ctx, p.ID, jobs.TypeInstall, func(ctx context.Context, log io.Writer) error {
-		return s.installStep(ctx, p.ID, p.Path, v, log)
+		return s.installStep(ctx, p.ID, p.Path, v, false, log)
 	})
 	if err != nil {
 		// The version exists, so this is not a failed create.
@@ -272,7 +272,7 @@ func (s *Service) createVersionJob(j versionJob) jobs.Func {
 		if !j.install {
 			return nil
 		}
-		return s.installStep(ctx, j.projectID, j.dir, v, log)
+		return s.installStep(ctx, j.projectID, j.dir, v, false, log)
 	}
 }
 
@@ -368,15 +368,8 @@ func (s *Service) checkLockableInPlace(ctx context.Context, projectID uuid.UUID,
 // exists only on disk is lost. A pixi.lock without a pixi.toml is refused:
 // it may hold a lock that is in no version.
 func (s *Service) checkReplaceable(ctx context.Context, projectID uuid.UUID, dir string) error {
-	info, err := os.Stat(dir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("%w: project directory %s is gone", ErrWorkingCopyMissing, dir)
-	}
-	if err != nil {
-		return fmt.Errorf("checking %s: %w", dir, err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("%w: %s is not a directory", ErrWorkingCopyMissing, dir)
+	if err := checkProjectDir(dir); err != nil {
+		return err
 	}
 	wc, err := readWorkingCopy(dir)
 	if errors.Is(err, ErrWorkingCopyMissing) {
@@ -397,6 +390,32 @@ func (s *Service) checkReplaceable(ctx context.Context, projectID uuid.UUID, dir
 	}
 	if !recorded {
 		return fmt.Errorf("%w: %s has pixi.toml or pixi.lock changes that are in no version; record them as a resolved version first", ErrWorkingCopyModified, dir)
+	}
+	return nil
+}
+
+// checkInstallable is the check an install makes before it writes into
+// dir: checkReplaceable, or with force only that dir exists, since the
+// changes there are to be overwritten.
+func (s *Service) checkInstallable(ctx context.Context, projectID uuid.UUID, dir string, force bool) error {
+	if force {
+		return checkProjectDir(dir)
+	}
+	return s.checkReplaceable(ctx, projectID, dir)
+}
+
+// checkProjectDir returns ErrWorkingCopyMissing when the project directory
+// dir is gone or is not a directory.
+func checkProjectDir(dir string) error {
+	info, err := os.Stat(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("%w: project directory %s is gone", ErrWorkingCopyMissing, dir)
+	}
+	if err != nil {
+		return fmt.Errorf("checking %s: %w", dir, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%w: %s is not a directory", ErrWorkingCopyMissing, dir)
 	}
 	return nil
 }
@@ -433,13 +452,20 @@ func (s *Service) recordedVersionID(ctx context.Context, projectID uuid.UUID, wc
 // the create job, a create_version job and an install job share.
 //
 // It refuses when pixi.toml or pixi.lock in dir hold changes that are in
-// no recorded version. Then it reports StageInstall, clears
+// no recorded version, unless force is set, in which case they are
+// overwritten; it refuses with ErrWorkingCopyMissing either way when the
+// directory is gone. The check is made here, in the job, even when the
+// caller made it before submitting, because the files may have changed
+// while the job was pending. Then it reports StageInstall, clears
 // InstalledVersionID before touching any file, so a crash midway does not
 // leave the old version reported as installed, writes the version's
-// pixi.toml and pixi.lock with atomic renames, runs pixi install and sets
-// InstalledVersionID to v.
-func (s *Service) installStep(ctx context.Context, projectID uuid.UUID, dir string, v *ProjectVersion, log io.Writer) error {
-	if err := s.checkReplaceable(ctx, projectID, dir); err != nil {
+// pixi.toml and pixi.lock with atomic renames and runs pixi install, which
+// never changes pixi.lock. On success it sets InstalledVersionID and
+// LastInstalledVersionID to v in one statement. A failed or cancelled
+// install leaves InstalledVersionID nil, LastInstalledVersionID as it was
+// and v's files in place.
+func (s *Service) installStep(ctx context.Context, projectID uuid.UUID, dir string, v *ProjectVersion, force bool, log io.Writer) error {
+	if err := s.checkInstallable(ctx, projectID, dir, force); err != nil {
 		return err
 	}
 	jobs.ReportStage(ctx, StageInstall)
@@ -454,9 +480,13 @@ func (s *Service) installStep(ctx context.Context, projectID uuid.UUID, dir stri
 		return fmt.Errorf("pixi install: %w", err)
 	}
 	// The environment is installed: record it even if the job is
-	// cancelled now, or a complete install would look failed.
+	// cancelled now, or a complete install would look failed. One UPDATE
+	// sets both columns, so they cannot disagree.
 	if err := s.db.WithContext(context.WithoutCancel(ctx)).Model(&Project{}).Where("id = ?", projectID).
-		Update("installed_version_id", v.ID).Error; err != nil {
+		Updates(map[string]any{
+			"installed_version_id":      v.ID,
+			"last_installed_version_id": v.ID,
+		}).Error; err != nil {
 		return fmt.Errorf("marking version %d installed: %w", v.Number, err)
 	}
 	return nil

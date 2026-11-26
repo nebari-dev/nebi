@@ -657,11 +657,14 @@ type versionCounts struct {
 	// Installed is the number of the version whose ID was passed as
 	// installedID; nil when that is nil or not a version of the project.
 	Installed *int
+	// LastInstalled is the same for lastInstalledID.
+	LastInstalled *int
 }
 
 // versionCounts reports the project's version count, its latest version
-// number and the number of the version whose ID is installedID.
-func (s *Service) versionCounts(ctx context.Context, projectID uuid.UUID, installedID *uuid.UUID) (versionCounts, error) {
+// number and the numbers of the versions whose IDs are installedID and
+// lastInstalledID.
+func (s *Service) versionCounts(ctx context.Context, projectID uuid.UUID, installedID, lastInstalledID *uuid.UUID) (versionCounts, error) {
 	var row struct {
 		Count  int
 		Latest *int
@@ -672,14 +675,26 @@ func (s *Service) versionCounts(ctx context.Context, projectID uuid.UUID, instal
 		return versionCounts{}, fmt.Errorf("counting versions: %w", err)
 	}
 	out := versionCounts{Count: row.Count, Latest: row.Latest}
-	if installedID != nil {
-		var numbers []int
-		if err := db.Model(&ProjectVersion{}).Where("id = ? AND project_id = ?", *installedID, projectID).
-			Pluck("number", &numbers).Error; err != nil {
-			return versionCounts{}, fmt.Errorf("reading the installed version: %w", err)
+	var ids []uuid.UUID
+	for _, id := range []*uuid.UUID{installedID, lastInstalledID} {
+		if id != nil {
+			ids = append(ids, *id)
 		}
-		if len(numbers) > 0 {
-			out.Installed = &numbers[0]
+	}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []ProjectVersion
+	if err := db.Select("id", "number").Where("project_id = ? AND id IN ?", projectID, ids).
+		Find(&rows).Error; err != nil {
+		return versionCounts{}, fmt.Errorf("reading the installed versions: %w", err)
+	}
+	for i := range rows {
+		if installedID != nil && rows[i].ID == *installedID {
+			out.Installed = &rows[i].Number
+		}
+		if lastInstalledID != nil && rows[i].ID == *lastInstalledID {
+			out.LastInstalled = &rows[i].Number
 		}
 	}
 	return out, nil

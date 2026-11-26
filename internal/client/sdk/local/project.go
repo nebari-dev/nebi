@@ -40,6 +40,12 @@ type Project struct {
 	// cleared also sees the job (see readProjects).
 	InstalledVersionID *uuid.UUID `gorm:"type:text" json:"installed_version_id,omitempty"`
 
+	// LastInstalledVersionID is the version most recently installed with
+	// success. It is kept when the project is uninstalled, so the projects
+	// list can offer to install it again. installStep sets it together with
+	// InstalledVersionID; nothing else writes it.
+	LastInstalledVersionID *uuid.UUID `gorm:"type:text" json:"last_installed_version_id,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 }
 

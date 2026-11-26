@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
@@ -64,6 +63,11 @@ type ProjectSummary struct {
 	// kept when the environment is no longer on disk, so check State to
 	// know whether it is installed now.
 	InstalledVersion *int `json:"installed_version"`
+	// LastInstalledVersion is the number of the version most recently
+	// installed with success (LastInstalledVersionID); nil when none was.
+	// Unlike InstalledVersion it is kept by an uninstall and a failed
+	// install, so the list can offer to install it again.
+	LastInstalledVersion *int `json:"last_installed_version"`
 	// LatestVersion is the newest version number; nil when there are no
 	// versions.
 	LatestVersion *int `json:"latest_version"`
@@ -82,9 +86,10 @@ type ProjectSummary struct {
 // ProjectDetail is one project with everything the list shows and more.
 type ProjectDetail struct {
 	ProjectSummary
-	ManagedDir         bool       `json:"managed_dir"`
-	InstalledVersionID *uuid.UUID `json:"installed_version_id,omitempty"`
-	VersionCount       int        `json:"version_count"`
+	ManagedDir             bool       `json:"managed_dir"`
+	InstalledVersionID     *uuid.UUID `json:"installed_version_id,omitempty"`
+	LastInstalledVersionID *uuid.UUID `json:"last_installed_version_id,omitempty"`
+	VersionCount           int        `json:"version_count"`
 }
 
 // ListProjects returns every local project, ordered by name. It only reads:
@@ -276,7 +281,7 @@ func (s *Service) ProjectSize(ctx context.Context, id uuid.UUID) (int64, error) 
 // project's jobs. Call it through readProjects, which reads the jobs on
 // both sides of the row so the two are consistent.
 func (s *Service) describe(ctx context.Context, p *Project, projectJobs []jobs.Job) (*ProjectDetail, error) {
-	info, err := s.versionCounts(ctx, p.ID, p.InstalledVersionID)
+	info, err := s.versionCounts(ctx, p.ID, p.InstalledVersionID, p.LastInstalledVersionID)
 	if err != nil {
 		return nil, fmt.Errorf("reading versions of %s: %w", p.Name, err)
 	}
@@ -288,26 +293,28 @@ func (s *Service) describe(ctx context.Context, p *Project, projectJobs []jobs.J
 	}
 	return &ProjectDetail{
 		ProjectSummary: ProjectSummary{
-			ID:               p.ID,
-			Name:             p.Name,
-			Path:             p.Path,
-			State:            state,
-			JobID:            jobID,
-			InstalledVersion: info.Installed,
-			LatestVersion:    info.Latest,
-			SizeBytes:        size,
-			Remotes:          []RemoteRef{},
-			CreatedAt:        p.CreatedAt,
+			ID:                   p.ID,
+			Name:                 p.Name,
+			Path:                 p.Path,
+			State:                state,
+			JobID:                jobID,
+			InstalledVersion:     info.Installed,
+			LastInstalledVersion: info.LastInstalled,
+			LatestVersion:        info.Latest,
+			SizeBytes:            size,
+			Remotes:              []RemoteRef{},
+			CreatedAt:            p.CreatedAt,
 		},
-		ManagedDir:         p.ManagedDir,
-		InstalledVersionID: p.InstalledVersionID,
-		VersionCount:       info.Count,
+		ManagedDir:             p.ManagedDir,
+		InstalledVersionID:     p.InstalledVersionID,
+		LastInstalledVersionID: p.LastInstalledVersionID,
+		VersionCount:           info.Count,
 	}, nil
 }
 
 // envInstalled reports whether the project has an environment on disk.
 func envInstalled(dir string) bool {
-	info, err := os.Stat(filepath.Join(dir, ".pixi", "envs"))
+	info, err := os.Stat(envsDir(dir))
 	return err == nil && info.IsDir()
 }
 

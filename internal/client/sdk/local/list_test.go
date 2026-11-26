@@ -753,7 +753,7 @@ func TestGetProject(t *testing.T) {
 	h := newHarness(t)
 	p, _ := h.mustCreate(specRequest("detail"))
 	d := h.detail(p.ID)
-	if d.ID != p.ID || d.Name != "detail" || !d.ManagedDir || d.VersionCount != 1 || d.CreatedAt.IsZero() {
+	if d.ID != p.ID || d.Name != "detail" || d.VersionCount != 1 || d.CreatedAt.IsZero() {
 		t.Fatalf("unexpected detail %+v", d)
 	}
 	if _, err := h.svc.GetProject(context.Background(), uuid.New()); !errors.Is(err, ErrNotFound) {

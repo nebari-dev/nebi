@@ -27,8 +27,11 @@ const (
 // CreateProjectRequest describes a new project.
 type CreateProjectRequest struct {
 	Name string
-	// Path is the project directory. Empty means DefaultProjectPath(Name),
-	// and the directory is created and marked ManagedDir.
+	// Path is the project directory. Empty means DefaultProjectPath(Name).
+	// It may be an existing directory; nebi owns it once the project is
+	// created, so DeleteProject can remove it with everything in it. A
+	// filesystem root, or a directory that is or contains the home
+	// directory or the projects directory, is refused with ErrProtectedPath.
 	Path string
 
 	// Exactly one of Spec (structured input) or Manifest (raw pixi.toml) is set.
@@ -58,11 +61,6 @@ type CreateProjectRequest struct {
 // When the job fails the project is kept, with pixi.toml as written, so the
 // user can fix it or delete the project: with no versions its state is
 // StateLockFailed, linked to the job.
-//
-// ManagedDir is set only when CreateProject itself creates the directory
-// and the directory is inside the projects directory. An existing
-// directory, including one at the default location, is never managed, so
-// DeleteProject never removes files nebi did not create.
 func (s *Service) CreateProject(ctx context.Context, req CreateProjectRequest) (*Project, *jobs.Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -83,11 +81,10 @@ func (s *Service) CreateProject(ctx context.Context, req CreateProjectRequest) (
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := s.checkPathFree(ctx, dir); err != nil {
+	if err := s.checkOwnable(dir); err != nil {
 		return nil, nil, err
 	}
-	projectsDir, err := s.resolvedProjectsDir()
-	if err != nil {
+	if err := s.checkPathFree(ctx, dir); err != nil {
 		return nil, nil, err
 	}
 
@@ -115,17 +112,9 @@ func (s *Service) CreateProject(ctx context.Context, req CreateProjectRequest) (
 	}
 
 	// 3. Insert the project row.
-	managed := false
-	if created {
-		if managed, err = inside(projectsDir, dir); err != nil {
-			cleanup()
-			return nil, nil, err
-		}
-	}
 	p := &Project{
-		Name:       req.Name,
-		Path:       dir,
-		ManagedDir: managed,
+		Name: req.Name,
+		Path: dir,
 	}
 	if err := s.db.WithContext(ctx).Create(p).Error; err != nil {
 		cleanup()

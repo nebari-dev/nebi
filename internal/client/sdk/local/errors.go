@@ -27,12 +27,15 @@ var (
 	ErrPathTaken = errors.New("path is already used by another project")
 	// ErrPathNotEmpty: the directory already has a pixi.toml.
 	ErrPathNotEmpty = errors.New("directory already contains a pixi.toml")
+	// ErrProtectedPath: the project directory is one nebi must not own,
+	// because deleting it with its files would remove too much: a
+	// filesystem root, or a directory that is or contains the home
+	// directory or the projects directory. CreateProject refuses such a
+	// path, and DeleteProject refuses to delete its files.
+	ErrProtectedPath = errors.New("project directory is protected")
 	// ErrProjectBusy: a job for the project is pending or running. The
 	// returned error is a *BusyError carrying the job IDs.
 	ErrProjectBusy = errors.New("project has a job in progress")
-	// ErrFilesNotManaged: file deletion was asked for a directory nebi did
-	// not create.
-	ErrFilesNotManaged = errors.New("project directory was not created by nebi")
 	// ErrInvalidRequest: a required field of the request is missing, such
 	// as CreateVersionRequest.BaseVersionID, or a version to record has no
 	// pixi.lock. Not in #661's error table; the client API maps it to 422,

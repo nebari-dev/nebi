@@ -25,10 +25,6 @@ type Project struct {
 	// Path is the absolute, symlink-resolved project directory.
 	Path string `gorm:"not null;uniqueIndex" json:"path"`
 
-	// ManagedDir is true when nebi created Path under the default projects
-	// directory. Only managed directories can be removed from disk by Delete.
-	ManagedDir bool `gorm:"not null;default:false" json:"managed_dir"`
-
 	// InstalledVersionID is the version whose environment is materialized in
 	// Path/.pixi. Nil when nothing is installed. Written only after an
 	// install succeeds, by installStep (run by the create, create_version

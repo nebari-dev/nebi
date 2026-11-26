@@ -554,6 +554,54 @@ func TestInstallFailureKeepsLastInstalled(t *testing.T) {
 	h.wantInstalled(p, v1)
 }
 
+// TestInstallFailureOutlivesARefusedInstall checks that an install that
+// refuses before installing does not let the runner drop the earlier
+// failed install, which still decides the state.
+func TestInstallFailureOutlivesARefusedInstall(t *testing.T) {
+	h := newHarnessWithRunner(t, jobs.Options{MaxRunning: 1, KeepFinished: 1})
+	blocker, _ := h.newProject("blocker", false)
+	p, v1 := h.newProject("failing", true)
+	h.createVersion(CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: newerSpec()})
+	v2 := h.versions.versionsOf(t, p.ID)[1]
+
+	h.setPixi(func(f *fakePixi) { f.installErr, f.partialEnv = errors.New("download failed"), true })
+	failed := h.install(InstallRequest{ProjectID: p.ID, VersionID: &v2.ID})
+	if failed.Status != jobs.StatusFailed || failed.Stage != StageInstall {
+		t.Fatalf("want a failed install, got %+v", failed)
+	}
+	h.setPixi(func(f *fakePixi) { f.installErr, f.partialEnv = nil, false })
+
+	// An install waits behind another project's install, and the files
+	// change while it waits, so it refuses before installing.
+	gate := make(chan struct{})
+	started := make(chan struct{}, 2)
+	h.setPixi(func(f *fakePixi) { f.installGate, f.installStarted = gate, started })
+	blocking, err := h.svc.InstallVersion(context.Background(), InstallRequest{ProjectID: blocker.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitStarted(t, started)
+	pending, err := h.svc.InstallVersion(context.Background(), InstallRequest{ProjectID: p.ID, VersionID: &v1.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(p.Path, artifact.ManifestFile), v2.Manifest+"\n# edited while pending\n")
+	close(gate)
+	h.wait(blocking)
+	if refused := h.wait(pending); refused.Status != jobs.StatusFailed || refused.Stage != "" {
+		t.Fatalf("want the install refused before installing, got %+v", refused)
+	}
+	h.setPixi(func(f *fakePixi) { f.installGate, f.installStarted = nil, nil })
+
+	// Later jobs of another project push old finished jobs out.
+	for range 2 {
+		h.install(InstallRequest{ProjectID: blocker.ID})
+	}
+	if d := h.detail(p.ID); d.State != StateInstallFailed || d.JobID == nil || *d.JobID != failed.ID {
+		t.Fatalf("want install_failed linked to the failed install %s, got %+v", failed.ID, d.ProjectSummary)
+	}
+}
+
 // TestInstallInterruptedByRestart quits nebi during an install: after the
 // restart nothing is reported installed, and the last installed version is
 // the one before.

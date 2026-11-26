@@ -672,6 +672,46 @@ func TestEvictionSkipsJobsCancelledWhilePending(t *testing.T) {
 	}
 }
 
+func TestEvictionKeepsLatestJobThatReportedAStage(t *testing.T) {
+	m := newRunner(t, Options{KeepFinished: 1})
+	p := uuid.New()
+	failed := mustSubmit(t, m, p, TypeInstall, func(ctx context.Context, _ io.Writer) error {
+		ReportStage(ctx, "install")
+		return errors.New("download failed")
+	})
+	mustWait(t, m, failed.ID)
+	// Later installs that refuse before their first stage.
+	var refused []uuid.UUID
+	for range 2 {
+		j := mustSubmit(t, m, p, TypeInstall, func(context.Context, io.Writer) error { return errors.New("files changed") })
+		mustWait(t, m, j.ID)
+		refused = append(refused, j.ID)
+	}
+
+	// Unkept jobs of other projects push the tail out.
+	for range 3 {
+		deletedProjectJob(t, m)
+	}
+	// p keeps the install that reported a stage and the latest one that
+	// started; the refused install between them ages out.
+	if got, want := ids(projectJobs(t, m, p)), []uuid.UUID{failed.ID, refused[1]}; !equalIDs(got, want) {
+		t.Fatalf("project keeps %v, want the failed install and the latest refused one %v", got, want)
+	}
+
+	// A later install that reports a stage replaces both.
+	done := mustSubmit(t, m, p, TypeInstall, func(ctx context.Context, _ io.Writer) error {
+		ReportStage(ctx, "install")
+		return nil
+	})
+	mustWait(t, m, done.ID)
+	for range 3 {
+		deletedProjectJob(t, m)
+	}
+	if got, want := ids(projectJobs(t, m, p)), []uuid.UUID{done.ID}; !equalIDs(got, want) {
+		t.Fatalf("project keeps %v, want only the latest install %v", got, want)
+	}
+}
+
 func TestEvictionDefaultCap(t *testing.T) {
 	m := newRunner(t, Options{})
 	project := uuid.New()

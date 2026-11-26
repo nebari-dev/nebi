@@ -37,9 +37,10 @@ type JobRunner interface {
 	// for a free slot or for the project's running job to finish.
 	Submit(ctx context.Context, projectID uuid.UUID, typ jobs.Type, run jobs.Func) (*jobs.Job, error)
 	// ProjectJobs returns the project's jobs the runner still keeps,
-	// oldest first: every pending or running job, the latest finished one
-	// of each type that started while the project exists, and older
-	// finished ones only until they are dropped.
+	// oldest first: every pending or running job, while the project
+	// exists the latest finished one of each type that started and the
+	// latest that reported a stage, and older finished ones only until
+	// they are dropped.
 	//
 	// Project reads rely on when this list changes (see readProjects): a
 	// job is listed before its body starts, so before it writes anything,

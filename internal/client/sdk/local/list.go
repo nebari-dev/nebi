@@ -53,9 +53,10 @@ type ProjectSummary struct {
 	Path string    `json:"path"`
 
 	State State `json:"state"`
-	// JobID is the job behind State: the running create or install job, or
-	// the failed one for StateLockFailed and StateInstallFailed when the
-	// runner still keeps it. Nil after a restart.
+	// JobID is the job behind State: the active create, create_version,
+	// install or uninstall job, or the failed one for StateLockFailed and
+	// StateInstallFailed while the runner keeps it. A failure from before
+	// a restart has no job.
 	JobID *uuid.UUID `json:"job_id,omitempty"`
 
 	// InstalledVersion is the number of the version nebi last recorded as

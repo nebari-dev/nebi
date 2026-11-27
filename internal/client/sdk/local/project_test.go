@@ -51,8 +51,9 @@ func TestMigrateCreatesClientProjectsTable(t *testing.T) {
 	}
 }
 
-// TestMigrateAddsLastInstalledVersionColumn checks that a database made
-// before #682 gains last_installed_version_id, and that its rows are kept.
+// TestMigrateAddsInstallColumns checks that a database made before #682
+// gains last_installed_version_id and installing_version_id, and that its
+// rows are kept.
 func TestMigrateAddsInstallColumns(t *testing.T) {
 	db := openTestDB(t)
 	if err := db.Exec("CREATE TABLE `client_projects` (`id` text PRIMARY KEY, `name` text NOT NULL, `path` text NOT NULL, `managed_dir` numeric NOT NULL DEFAULT false, `installed_version_id` text, `created_at` datetime)").Error; err != nil {

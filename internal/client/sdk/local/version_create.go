@@ -456,11 +456,12 @@ func (s *Service) recordedVersionID(ctx context.Context, projectID uuid.UUID, wc
 // overwritten; it refuses with ErrWorkingCopyMissing either way when the
 // directory is gone. The check is made here, in the job, even when the
 // caller made it before submitting, because the files may have changed
-// while the job was pending. Then it reports StageInstall and, before
-// touching any file, clears InstalledVersionID and sets
-// InstallingVersionID to v in one statement, so a crash midway neither
-// leaves the old version reported as installed nor loses the failure. It
-// writes the version's pixi.toml and pixi.lock with atomic renames and
+// while the job was pending. Then, before touching any file, it clears
+// InstalledVersionID and sets InstallingVersionID to v in one statement,
+// so a crash midway neither leaves the old version reported as installed
+// nor loses the failure, and only after that reports StageInstall: a job
+// that fails that statement changed nothing, so it counts as a refusal
+// and the state is the same before and after a restart. It writes the version's pixi.toml and pixi.lock with atomic renames and
 // runs pixi install, which never changes pixi.lock. On success it sets
 // InstalledVersionID and LastInstalledVersionID to v and clears
 // InstallingVersionID in one statement. A failed, cancelled or interrupted
@@ -470,7 +471,6 @@ func (s *Service) installStep(ctx context.Context, projectID uuid.UUID, dir stri
 	if err := s.checkInstallable(ctx, projectID, dir, force); err != nil {
 		return err
 	}
-	jobs.ReportStage(ctx, StageInstall)
 	if err := s.db.WithContext(ctx).Model(&Project{}).Where("id = ?", projectID).
 		Updates(map[string]any{
 			"installed_version_id":  nil,
@@ -478,6 +478,7 @@ func (s *Service) installStep(ctx context.Context, projectID uuid.UUID, dir stri
 		}).Error; err != nil {
 		return fmt.Errorf("recording the start of the install: %w", err)
 	}
+	jobs.ReportStage(ctx, StageInstall)
 	if err := writeVersionFiles(dir, v.Manifest, v.Lock); err != nil {
 		return err
 	}

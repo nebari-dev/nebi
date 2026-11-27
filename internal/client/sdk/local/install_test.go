@@ -684,6 +684,38 @@ func TestInstallFailureSurvivesRestart(t *testing.T) {
 	}
 }
 
+// TestCreateVersionInstallFailureSurvivesRestart checks that a
+// create_version job whose install fails leaves the project install_failed
+// after a restart, with the new version as the one being installed.
+func TestCreateVersionInstallFailureSurvivesRestart(t *testing.T) {
+	h := newHarness(t)
+	p, v1 := h.newProject("failed-new-version", true)
+	h.setPixi(func(f *fakePixi) { f.installErr = errors.New("solve failed") })
+	res, err := h.svc.CreateVersion(context.Background(), CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: newerSpec(), Install: true})
+	if err != nil {
+		t.Fatalf("CreateVersion: %v", err)
+	}
+	if done := h.wait(res.Job); done.Status != jobs.StatusFailed || done.Stage != StageInstall {
+		t.Fatalf("want a create_version job that failed installing, got %+v", done)
+	}
+	v2 := h.versions.versionsOf(t, p.ID)[1]
+
+	r := h.restarted()
+	if js, err := r.runner.ProjectJobs(context.Background(), p.ID); err != nil || len(js) != 0 {
+		t.Fatalf("precondition: the restarted runner must know no jobs of the project, got %v, %v", js, err)
+	}
+	d := r.detail(p.ID)
+	if d.State != StateInstallFailed || d.JobID != nil || d.InstalledVersionID != nil {
+		t.Fatalf("after the restart want install_failed with no job and nothing installed, got %+v", d)
+	}
+	if deref(d.LatestVersion) != 2 || d.LastInstalledVersionID == nil || *d.LastInstalledVersionID != v1.ID {
+		t.Fatalf("latest = %v, last installed = %v, want 2 and version 1", deref(d.LatestVersion), deref(d.LastInstalledVersion))
+	}
+	if id := r.installingVersionID(p.ID); id == nil || *id != v2.ID {
+		t.Fatalf("installing version = %v, want version 2", id)
+	}
+}
+
 // TestUninstall checks that uninstall removes .pixi/envs and clears the
 // installed version, and keeps the files and the last installed version.
 func TestUninstall(t *testing.T) {

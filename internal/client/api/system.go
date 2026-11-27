@@ -33,6 +33,7 @@ type VersionResponse struct {
 //	@Tags			system
 //	@Produce		json
 //	@Success		200	{object}	VersionResponse
+//	@Failure		403	{object}	ErrorResponse	"forbidden_host"
 //	@Router			/version [get]
 func (h systemHandlers) getVersion(w http.ResponseWriter, _ *http.Request) error {
 	writeJSON(w, http.StatusOK, VersionResponse{
@@ -60,6 +61,7 @@ type CapabilitiesResponse struct {
 //	@Security		SessionToken
 //	@Success		200	{object}	CapabilitiesResponse
 //	@Failure		401	{object}	ErrorResponse
+//	@Failure		403	{object}	ErrorResponse	"forbidden_host"
 //	@Router			/capabilities [get]
 func (h systemHandlers) getCapabilities(w http.ResponseWriter, _ *http.Request) error {
 	writeJSON(w, http.StatusOK, CapabilitiesResponse{FolderPicker: h.folderPicker})

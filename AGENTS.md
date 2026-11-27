@@ -89,4 +89,4 @@ Two frontend invariants worth knowing (see issue #217):
 ## Conventions
 - Backend lint is `golangci-lint` (config in `.golangci.yml`); frontend lint/format is Biome (`frontend/biome.json`). CI runs `biome ci` and `go test -tags=e2e -race`.
 - After changing API handler annotations, run `make swagger` so `internal/swagger` (team server) and `internal/client/api/openapi` (client API) stay in sync.
-- Local data dir defaults to `~/.local/share/nebi` for the CLI (overridable with `NEBI_DATA_DIR`); `nebi-web` and the desktop app use the OS app-data dir unless `NEBI_DATA_DIR` is set (see `DataDir` in `internal/client/boot/dirs.go`).
+- The CLI, `nebi-web` and the desktop app share one data dir, so they share the database and the owner lock: `NEBI_DATA_DIR` when set, else the OS app-data dir (`~/Library/Application Support/nebi` on macOS, `%APPDATA%\nebi` on Windows, `~/.local/share/nebi` elsewhere). See `store.DefaultDataDir`, which `boot.DataDir` uses.

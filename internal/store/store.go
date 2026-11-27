@@ -93,7 +93,10 @@ func (s *Store) Close() error {
 	return sqlDB.Close()
 }
 
-// DefaultDataDir returns ~/.local/share/nebi/ on Linux, platform equivalent elsewhere.
+// DefaultDataDir returns the data directory: NEBI_DATA_DIR when it is set,
+// else ~/Library/Application Support/nebi on macOS, %APPDATA%\nebi on
+// Windows and ~/.local/share/nebi elsewhere. nebi-web and the desktop app
+// use it too (boot.DataDir), so all three share one database and owner lock.
 func DefaultDataDir() (string, error) {
 	if dir := os.Getenv("NEBI_DATA_DIR"); dir != "" {
 		return dir, nil

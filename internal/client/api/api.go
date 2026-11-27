@@ -20,12 +20,12 @@
 //
 //	@title						Nebi client API
 //	@version					1.0
-//	@description				The API of the nebi client process (nebi-web or the desktop app) that owns the client database. It listens on loopback only. Every route except GET /version needs the session token, as a bearer token or as the session cookie the sign-in URL sets.
+//	@description				The API of the nebi client process (nebi-web or the desktop app) that owns the client database. It listens on 127.0.0.1 only, and answers 403 forbidden_host to a request whose Host header is not its own address. Every route except GET /version needs the session token, as a bearer token or as the session cookie the sign-in URL sets.
 //	@BasePath					/api/v1
 //	@securityDefinitions.apikey	SessionToken
 //	@in							header
 //	@name						Authorization
-//	@description				"Bearer " followed by the session token from owner.json.
+//	@description				"Bearer " followed by the session token from owner.json. A browser sends the token instead as the session cookie nebi_session_<port>, which the sign-in URL sets (OpenAPI 2.0 cannot describe a cookie scheme). A request authenticated by that cookie that changes state must carry the server's own Origin, or it gets 403 forbidden_origin.
 package api
 
 import (

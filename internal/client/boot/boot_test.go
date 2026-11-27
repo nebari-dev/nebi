@@ -24,6 +24,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/client/api"
 	"github.com/nebari-dev/nebi/internal/client/jobs"
 	"github.com/nebari-dev/nebi/internal/client/sdk/local"
+	"github.com/nebari-dev/nebi/internal/store"
 )
 
 // fakePixi stands in for pixi: these tests never lock or install a
@@ -387,8 +388,13 @@ func TestEnvironment(t *testing.T) {
 
 	t.Setenv(EnvDataDir, "")
 	t.Setenv(EnvProjectsDir, "")
-	if got, err := DataDir(); err != nil || !strings.HasSuffix(got, "nebi") {
-		t.Fatalf("default DataDir() = %q, %v", got, err)
+	// The default is the CLI's, so the apps and the CLI share the database.
+	cliDir, err := store.DefaultDataDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := DataDir(); err != nil || got != cliDir || !strings.HasSuffix(got, "nebi") {
+		t.Fatalf("default DataDir() = %q, %v; want the CLI's %q", got, err, cliDir)
 	}
 	if ProjectsDir() != "" {
 		t.Fatal("ProjectsDir() is set without NEBI_PROJECTS_DIR")

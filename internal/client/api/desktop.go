@@ -53,6 +53,7 @@ type PickFolderResponse struct {
 //	@Success		200	{object}	PickFolderResponse
 //	@Success		204	"The user cancelled the dialog"
 //	@Failure		401	{object}	ErrorResponse
+//	@Failure		403	{object}	ErrorResponse	"forbidden_host, or forbidden_origin for a request authenticated by the session cookie from another origin"
 //	@Failure		404	{object}	ErrorResponse	"folder_picker_unavailable"
 //	@Router			/desktop/pick-folder [post]
 func (h desktopHandlers) pickFolder(w http.ResponseWriter, r *http.Request) error {
@@ -80,6 +81,7 @@ func (h desktopHandlers) pickFolder(w http.ResponseWriter, r *http.Request) erro
 //	@Security		SessionToken
 //	@Success		204	"The window was raised"
 //	@Failure		401	{object}	ErrorResponse
+//	@Failure		403	{object}	ErrorResponse	"forbidden_host, or forbidden_origin for a request authenticated by the session cookie from another origin"
 //	@Failure		404	{object}	ErrorResponse	"window_unavailable"
 //	@Router			/desktop/show-window [post]
 func (h desktopHandlers) showWindow(w http.ResponseWriter, r *http.Request) error {

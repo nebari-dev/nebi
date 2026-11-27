@@ -93,12 +93,16 @@ needed; Vite serves the UI while Go hot reloads.
 
 On the UX rework branch, `nebi-web` serves the new client API (#680), which
 needs the session token and refuses requests for any host but its own
-`127.0.0.1` address. The current client screens still call the old local-mode
-API, so they do not work against it until the reworked screens land.
+`127.0.0.1` address. The client dev server proxies `/api` to
+`127.0.0.1:8460` and adds the token from `owner.json` in nebi-web's data
+directory (`NEBI_DATA_DIR`, or the OS app-data directory), so run both with
+the same `NEBI_DATA_DIR`. Requests from other web pages get no token. The
+current client screens still call the old local-mode API, so they do not work
+against it until the reworked screens land.
 
 The dev server includes:
 - Hot Module Replacement (HMR)
-- Proxy to backend API at `/api` → `http://localhost:8460`
+- Proxy to backend API at `/api` → `http://localhost:8460` (client: `http://127.0.0.1:8460`, with the session token)
 
 ### Build for Production
 

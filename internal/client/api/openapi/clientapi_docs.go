@@ -42,6 +42,12 @@ const docTemplateclientapi = `{
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
+                    },
+                    "403": {
+                        "description": "forbidden_host",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -77,6 +83,12 @@ const docTemplateclientapi = `{
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
+                    "403": {
+                        "description": "forbidden_host, or forbidden_origin for a request authenticated by the session cookie from another origin",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
                     "404": {
                         "description": "folder_picker_unavailable",
                         "schema": {
@@ -108,6 +120,12 @@ const docTemplateclientapi = `{
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
+                    "403": {
+                        "description": "forbidden_host, or forbidden_origin for a request authenticated by the session cookie from another origin",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
                     "404": {
                         "description": "window_unavailable",
                         "schema": {
@@ -132,6 +150,12 @@ const docTemplateclientapi = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/api.VersionResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden_host",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -215,7 +239,7 @@ const docTemplateclientapi = `{
     },
     "securityDefinitions": {
         "SessionToken": {
-            "description": "\"Bearer \" followed by the session token from owner.json.",
+            "description": "\"Bearer \" followed by the session token from owner.json. A browser sends the token instead as the session cookie nebi_session_\u003cport\u003e, which the sign-in URL sets (OpenAPI 2.0 cannot describe a cookie scheme). A request authenticated by that cookie that changes state must carry the server's own Origin, or it gets 403 forbidden_origin.",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"
@@ -230,7 +254,7 @@ var SwaggerInfoclientapi = &swag.Spec{
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
 	Title:            "Nebi client API",
-	Description:      "The API of the nebi client process (nebi-web or the desktop app) that owns the client database. It listens on loopback only. Every route except GET /version needs the session token, as a bearer token or as the session cookie the sign-in URL sets.",
+	Description:      "The API of the nebi client process (nebi-web or the desktop app) that owns the client database. It listens on 127.0.0.1 only, and answers 403 forbidden_host to a request whose Host header is not its own address. Every route except GET /version needs the session token, as a bearer token or as the session cookie the sign-in URL sets.",
 	InfoInstanceName: "clientapi",
 	SwaggerTemplate:  docTemplateclientapi,
 	LeftDelim:        "{{",

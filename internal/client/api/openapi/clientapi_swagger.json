@@ -1,7 +1,7 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "The API of the nebi client process (nebi-web or the desktop app) that owns the client database. It listens on loopback only. Every route except GET /version needs the session token, as a bearer token or as the session cookie the sign-in URL sets.",
+        "description": "The API of the nebi client process (nebi-web or the desktop app) that owns the client database. It listens on 127.0.0.1 only, and answers 403 forbidden_host to a request whose Host header is not its own address. Every route except GET /version needs the session token, as a bearer token or as the session cookie the sign-in URL sets.",
         "title": "Nebi client API",
         "contact": {},
         "version": "1.0"
@@ -32,6 +32,12 @@
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden_host",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -70,6 +76,12 @@
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
+                    "403": {
+                        "description": "forbidden_host, or forbidden_origin for a request authenticated by the session cookie from another origin",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
                     "404": {
                         "description": "folder_picker_unavailable",
                         "schema": {
@@ -101,6 +113,12 @@
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
+                    "403": {
+                        "description": "forbidden_host, or forbidden_origin for a request authenticated by the session cookie from another origin",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
                     "404": {
                         "description": "window_unavailable",
                         "schema": {
@@ -125,6 +143,12 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/api.VersionResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden_host",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -208,7 +232,7 @@
     },
     "securityDefinitions": {
         "SessionToken": {
-            "description": "\"Bearer \" followed by the session token from owner.json.",
+            "description": "\"Bearer \" followed by the session token from owner.json. A browser sends the token instead as the session cookie nebi_session_\u003cport\u003e, which the sign-in URL sets (OpenAPI 2.0 cannot describe a cookie scheme). A request authenticated by that cookie that changes state must carry the server's own Origin, or it gets 403 forbidden_origin.",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"

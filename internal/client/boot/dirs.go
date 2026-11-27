@@ -8,6 +8,8 @@ import (
 	osexec "os/exec"
 	"path/filepath"
 	"runtime"
+
+	"github.com/nebari-dev/nebi/internal/store"
 )
 
 // Environment variables the entry points read.
@@ -24,28 +26,15 @@ const (
 // DataDir returns the data directory: NEBI_DATA_DIR when it is set, and
 // otherwise the operating system's directory for application data:
 // ~/Library/Application Support/nebi on macOS, %APPDATA%\nebi on Windows
-// and ~/.local/share/nebi elsewhere. nebi-web and the desktop app use the
-// same default, so they share the database and with it the owner lock,
-// as the CLI does.
+// and ~/.local/share/nebi elsewhere. It is the CLI's data directory
+// (store.DefaultDataDir), so nebi-web, the desktop app and the CLI share
+// the database and with it the owner lock.
 func DataDir() (string, error) {
-	if dir := os.Getenv(EnvDataDir); dir != "" {
-		return dir, nil
-	}
-	home, err := os.UserHomeDir()
+	dir, err := store.DefaultDataDir()
 	if err != nil {
 		return "", fmt.Errorf("finding the data directory: %w", err)
 	}
-	switch runtime.GOOS {
-	case "darwin":
-		return filepath.Join(home, "Library", "Application Support", "nebi"), nil
-	case "windows":
-		if appData := os.Getenv("APPDATA"); appData != "" {
-			return filepath.Join(appData, "nebi"), nil
-		}
-		return filepath.Join(home, "AppData", "Roaming", "nebi"), nil
-	default:
-		return filepath.Join(home, ".local", "share", "nebi"), nil
-	}
+	return dir, nil
 }
 
 // ProjectsDir returns NEBI_PROJECTS_DIR, for local.Options.ProjectsDir.

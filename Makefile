@@ -11,8 +11,13 @@ FRONTEND_APP?=server
 # Each frontend needs the backend entry point with the same runtime mode.
 ifeq ($(FRONTEND_APP),server)
 DEV_BACKEND=nebi-server
+DEV_BACKEND_URL=http://localhost:8460
+DEV_API_DOCS=http://localhost:8460/docs
 else ifeq ($(FRONTEND_APP),client)
 DEV_BACKEND=nebi-web
+# nebi-web listens on 127.0.0.1 only; the Vite proxy adds its session token.
+DEV_BACKEND_URL=http://127.0.0.1:8460
+DEV_API_DOCS=
 else
 $(error FRONTEND_APP must be server or client)
 endif
@@ -100,8 +105,8 @@ dev: prepare-frontend-embed swagger ## Run with hot reload (frontend + backend)
 	fi
 	@echo "🚀 Starting services..."
 	@echo "  Frontend: http://localhost:8461"
-	@echo "  Backend:  http://localhost:8460"
-	@echo "  API Docs: http://localhost:8460/docs"
+	@echo "  Backend:  $(DEV_BACKEND_URL)"
+	@if [ -n "$(DEV_API_DOCS)" ]; then echo "  API Docs: $(DEV_API_DOCS)"; fi
 	@echo ""
 	@echo "Press Ctrl+C to stop all services"
 	@echo ""

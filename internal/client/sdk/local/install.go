@@ -168,7 +168,10 @@ func (s *Service) uninstallJob(projectID uuid.UUID, envs string) jobs.Func {
 			return fmt.Errorf("clearing the installed version: %w", err)
 		}
 		fmt.Fprintf(log, "removing %s\n", envs)
-		// RemoveAll removes a symlink at envs, never what it points to.
+		// RemoveAll removes a symlink at envs, never what it points to. A
+		// symlink above envs, such as a symlinked .pixi, is followed, as
+		// pixi follows it when it installs: the envs inside its target is
+		// what gets removed.
 		if err := os.RemoveAll(envs); err != nil {
 			return fmt.Errorf("removing %s: %w", envs, err)
 		}

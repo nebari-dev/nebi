@@ -781,6 +781,38 @@ func TestUninstallKeepsWhatASymlinkPointsAt(t *testing.T) {
 	}
 }
 
+// TestUninstallThroughASymlinkedPixiDir checks that when .pixi is a
+// symlink, uninstall removes the envs inside its target, where pixi
+// installed it, and keeps the symlink and the target's other files.
+func TestUninstallThroughASymlinkedPixiDir(t *testing.T) {
+	h := newHarness(t)
+	p, _ := h.newProject("linked-pixi", true)
+	target := filepath.Join(t.TempDir(), "pixi")
+	pixiDir := filepath.Join(p.Path, ".pixi")
+	if err := os.Rename(pixiDir, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, pixiDir); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	writeTestFile(t, filepath.Join(target, "keep"), "x")
+	if !exists(filepath.Join(target, "envs")) {
+		t.Fatal("precondition: the environment is inside the symlink's target")
+	}
+	if done := h.uninstall(p.ID); done.Status != jobs.StatusCompleted {
+		t.Fatalf("uninstall: %+v", done)
+	}
+	if exists(filepath.Join(target, "envs")) {
+		t.Fatal("the envs inside the symlink's target must be removed")
+	}
+	if info, err := os.Lstat(pixiDir); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the .pixi symlink must be kept: %v", err)
+	}
+	if !exists(filepath.Join(target, "keep")) {
+		t.Fatal("the target's other files must be kept")
+	}
+}
+
 // TestUninstallFailureLeavesNotInstalled checks that a removal that fails
 // part way does not leave the project reported as installed.
 func TestUninstallFailureLeavesNotInstalled(t *testing.T) {

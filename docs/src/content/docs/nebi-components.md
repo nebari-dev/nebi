@@ -46,4 +46,4 @@ Learn more: [Nebi server setup](/server-setup/).
 
 ## Local web app
 
-`nebi-web` serves the bundled React frontend for a single-user local workflow. It uses local authentication bypass and binds to loopback by default.
+`nebi-web` serves the bundled React frontend for a single-user local workflow. It listens on `127.0.0.1` only and prints a one-time sign-in URL; every API request needs the session token that URL carries. Only one `nebi-web` or desktop app runs for a data directory at a time: a second one prints the running app's URL and exits.

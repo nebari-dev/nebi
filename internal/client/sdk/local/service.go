@@ -5,8 +5,8 @@
 // Everything here runs on the user's machine; the server is never
 // contacted, and a project exists on a server only after it is pushed.
 //
-// The SDK owns its tables in the client database (nebi.db) and shares none
-// with the server models in internal/models.
+// The SDK owns its tables in the client database (nebi-client.db) and
+// shares none with the server models in internal/models.
 //
 // Work that belongs to other parts of the client is reached through small
 // interfaces, so each part can be built and tested on its own:

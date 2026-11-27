@@ -91,6 +91,11 @@ From the repository root, `make dev` starts the server UI and team backend;
 starts the client UI and local web backend. Both prepare empty embed files when
 needed; Vite serves the UI while Go hot reloads.
 
+On the UX rework branch, `nebi-web` serves the new client API (#680), which
+needs the session token and refuses requests for any host but its own
+`127.0.0.1` address. The current client screens still call the old local-mode
+API, so they do not work against it until the reworked screens land.
+
 The dev server includes:
 - Hot Module Replacement (HMR)
 - Proxy to backend API at `/api` → `http://localhost:8460`

@@ -37,11 +37,13 @@ install-tools: ## Install development tools (swag, air, golangci-lint)
 	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$$(go env GOPATH)/bin" $(GOLANGCI_LINT_VERSION)
 	@echo "Tools installed successfully"
 
-swagger: ## Generate Swagger documentation
+swagger: ## Generate Swagger documentation (team server API and client API)
 	@echo "Generating Swagger docs..."
 	@PATH="$$PATH:$$(go env GOPATH)/bin"; command -v swag >/dev/null 2>&1 || { echo "swag not found, installing..."; go install github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION); }
 	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g main.go -d cmd/nebi-server,internal/api,internal/service,internal/models,internal/limits,internal/metrics,internal/auth -o internal/swagger --packageName swagger --exclude output,cross-platform-example
 	@echo "Swagger docs generated at /internal/swagger"
+	@PATH="$$PATH:$$(go env GOPATH)/bin" swag init -g api.go -d internal/client/api -o internal/client/api/openapi --packageName openapi --instanceName clientapi --exclude internal/client/api/openapi
+	@echo "Client API OpenAPI spec generated at /internal/client/api/openapi"
 
 build-frontend: ## Build frontend and copy to internal/frontend/dist
 	@echo "Building frontend..."

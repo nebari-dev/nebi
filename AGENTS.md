@@ -47,8 +47,9 @@ make swagger         # regenerate API docs from server annotations into internal
 ### Separate Binaries
 - `cmd/nebi-cli/main.go` — the **CLI client** binary. Uses cobra; subcommands (`init`, `push`, `pull`, `diff`, `login`, …) are one file each in `cmd/nebi-cli/`.
 - `cmd/nebi-server/main.go` — the **team server** binary. It boots the HTTP API server and worker in team mode.
-- `cmd/nebi-web/main.go` — the **local web** binary. It boots the same embedded React frontend, API router, and worker in local mode.
-- `main.go` + `app.go` (repo root, `package main`) — the **Wails desktop app**. It runs the same API router in-process on a goroutine, using `internal/frontend.ClientApp()`.
+- `cmd/nebi-web/main.go` — the **local web** binary. It calls the `internal/client/web` composition root: the process takes the job-runner owner lock for its data directory, opens `nebi-client.db`, and serves the client API (`internal/client/api`, behind a session token) and the client UI (`internal/client/ui`) on `127.0.0.1` only. It prints a one-time sign-in URL.
+- `main.go` (repo root, `package main`) — the **Wails desktop app**. It calls the `internal/client/desktop` composition root, which runs the same startup and serves the client API and UI to its window in-process (no Wails bindings) and on a loopback port the OS picks, for the CLI.
+- `internal/client/boot` holds the startup and shutdown both roots share, including what a second instance does when another process owns the database. The old local-mode server (`internal/server` + `internal/api`) is still used by the team server and the CLI end-to-end tests, but no longer by these two binaries.
 
 ### Local mode vs. team mode
 This is the single most important architectural distinction. `config.IsLocalMode()` reflects the explicit runtime mode selected by the binary entry point:
@@ -87,5 +88,5 @@ Two frontend invariants worth knowing (see issue #217):
 
 ## Conventions
 - Backend lint is `golangci-lint` (config in `.golangci.yml`); frontend lint/format is Biome (`frontend/biome.json`). CI runs `biome ci` and `go test -tags=e2e -race`.
-- After changing API handler annotations, run `make swagger` so `internal/swagger` stays in sync.
-- Local data dir defaults to `~/.local/share/nebi` (overridable with `NEBI_DATA_DIR`); the desktop app uses the OS app-data dir (see `getAppDataDir` in `app.go`).
+- After changing API handler annotations, run `make swagger` so `internal/swagger` (team server) and `internal/client/api/openapi` (client API) stay in sync.
+- Local data dir defaults to `~/.local/share/nebi` for the CLI (overridable with `NEBI_DATA_DIR`); `nebi-web` and the desktop app use the OS app-data dir unless `NEBI_DATA_DIR` is set (see `DataDir` in `internal/client/boot/dirs.go`).

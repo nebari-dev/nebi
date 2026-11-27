@@ -84,7 +84,7 @@ Start a local Nebi web app:
 nebi-web
 ```
 
-This starts the local web UI and API at [http://localhost:8460](http://localhost:8460).
+This serves the local web UI and API on `127.0.0.1:8460` and prints a one-time sign-in URL (`http://127.0.0.1:8460/?token=…`) to open in your browser.
 
 Until `nebi-web` has its own Pixi package, install it with the shell script below or build it from source.
 

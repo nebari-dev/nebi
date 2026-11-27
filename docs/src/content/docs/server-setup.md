@@ -50,7 +50,7 @@ nebi-server --host 127.0.0.1 --port 8460
 
 Once the server is running, authenticate from any client machine with [`nebi login`](/cli-team/#connect-to-a-server).
 
-For a single-user browser UI on your own machine, use `nebi-web` instead. It runs the same embedded React frontend in local mode and binds to `127.0.0.1` by default.
+For a single-user browser UI on your own machine, use `nebi-web` instead. It runs the client UI on `127.0.0.1` only and prints a one-time sign-in URL to open.
 
 ## Background Jobs
 

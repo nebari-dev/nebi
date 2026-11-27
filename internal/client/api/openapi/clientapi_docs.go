@@ -94,6 +94,12 @@ const docTemplateclientapi = `{
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "window_not_ready: the window has closed",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -105,7 +111,7 @@ const docTemplateclientapi = `{
                         "SessionToken": []
                     }
                 ],
-                "description": "Shows and raises the desktop app's window. A desktop app that starts while another one owns the same database calls it before it exits. Answers 404 when this process has no window (nebi-web).",
+                "description": "Shows and raises the desktop app's window. A desktop app that starts while another one owns the same database calls it before it exits. While the window is still opening, the request waits for it. Answers 404 when this process has no window (nebi-web).",
                 "tags": [
                     "desktop"
                 ],
@@ -128,6 +134,12 @@ const docTemplateclientapi = `{
                     },
                     "404": {
                         "description": "window_unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "window_not_ready: the window has closed, or the request ended before it opened",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }

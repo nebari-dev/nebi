@@ -24,7 +24,7 @@ import (
 	"github.com/nebari-dev/nebi/internal/client/api"
 	"github.com/nebari-dev/nebi/internal/client/jobs"
 	"github.com/nebari-dev/nebi/internal/client/sdk/local"
-	"github.com/nebari-dev/nebi/internal/store"
+	"github.com/nebari-dev/nebi/internal/datadir"
 )
 
 // fakePixi stands in for pixi: these tests never lock or install a
@@ -388,8 +388,9 @@ func TestEnvironment(t *testing.T) {
 
 	t.Setenv("NEBI_DATA_DIR", "")
 	t.Setenv(EnvProjectsDir, "")
-	// The default is the CLI's, so the apps and the CLI share the database.
-	cliDir, err := store.DefaultDataDir()
+	// The default is the CLI's (store.DefaultDataDir is datadir.Default),
+	// so the apps and the CLI share the database.
+	cliDir, err := datadir.Default()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -411,20 +412,52 @@ func TestFindPixi(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("PATH", t.TempDir())
+	// Stand-ins for Homebrew's folders, so a real Homebrew pixi on the
+	// machine running the tests is not found.
+	orig := homebrewBins
+	t.Cleanup(func() { homebrewBins = orig })
+	homebrewBins = []string{t.TempDir(), t.TempDir()}
 	if _, err := FindPixi(); !errors.Is(err, ErrPixiNotFound) {
 		t.Fatalf("FindPixi without pixi = %v, want ErrPixiNotFound", err)
 	}
-	name := "pixi"
-	if filepath.Separator == '\\' {
-		name = "pixi.exe"
+	install := func(dir string) string {
+		t.Helper()
+		name := "pixi"
+		if filepath.Separator == '\\' {
+			name = "pixi.exe"
+		}
+		p := filepath.Join(dir, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, nil, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
 	}
-	installed := filepath.Join(home, ".pixi", "bin", name)
-	if err := os.MkdirAll(filepath.Dir(installed), 0o755); err != nil {
-		t.Fatal(err)
+
+	// macOS looks in Homebrew's folders, after pixi's installer folder and
+	// before ~/.local/bin, where older nebi releases put a pixi that can be
+	// too old. Other systems do not.
+	pixiBin, localBin := filepath.Join(home, ".pixi", "bin"), filepath.Join(home, ".local", "bin")
+	if got, want := pixiDirs(home, "darwin"), []string{pixiBin, homebrewBins[0], homebrewBins[1], localBin}; !slices.Equal(got, want) {
+		t.Fatalf("pixiDirs on macOS = %v, want %v", got, want)
 	}
-	if err := os.WriteFile(installed, nil, 0o755); err != nil {
-		t.Fatal(err)
+	for _, goos := range []string{"linux", "windows"} {
+		if got, want := pixiDirs(home, goos), []string{pixiBin, localBin}; !slices.Equal(got, want) {
+			t.Fatalf("pixiDirs on %s = %v, want %v", goos, got, want)
+		}
 	}
+	install(localBin)
+	intel := install(homebrewBins[1])
+	if got, err := findPixiIn(pixiDirs(home, "darwin")); err != nil || got != intel {
+		t.Fatalf("pixi in Homebrew and ~/.local/bin: found %q, %v; want Homebrew's %s", got, err, intel)
+	}
+	appleSilicon := install(homebrewBins[0])
+	if got, err := findPixiIn(pixiDirs(home, "darwin")); err != nil || got != appleSilicon {
+		t.Fatalf("found %q, %v; want %s", got, err, appleSilicon)
+	}
+	installed := install(pixiBin)
 	if got, err := FindPixi(); err != nil || got != installed {
 		t.Fatalf("FindPixi = %q, %v; want %s", got, err, installed)
 	}

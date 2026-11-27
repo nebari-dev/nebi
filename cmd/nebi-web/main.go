@@ -39,7 +39,8 @@ exits.
 Environment:
   NEBI_DATA_DIR      Data directory (default: the OS application data directory)
   NEBI_PROJECTS_DIR  Where new projects go when no path is given (default: ~/nebi-projects)
-  NEBI_PIXI_PATH     The pixi binary (default: pixi on PATH, ~/.pixi/bin or ~/.local/bin)
+  NEBI_PIXI_PATH     The pixi binary (default: pixi on PATH, else ~/.pixi/bin,
+                     Homebrew's folders on macOS, or ~/.local/bin)
 
 Examples:
   nebi-web                    # Serve on 127.0.0.1:8460

@@ -39,6 +39,9 @@ const (
 	CodeInternal                = "internal_error"
 	CodeFolderPickerUnavailable = "folder_picker_unavailable"
 	CodeWindowUnavailable       = "window_unavailable"
+	// CodeWindowNotReady: the desktop app has a window, but it is not open,
+	// because it is still starting or has closed.
+	CodeWindowNotReady = "window_not_ready"
 )
 
 // Error is an error a handler returns with its status and code set, for

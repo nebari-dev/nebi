@@ -48,17 +48,17 @@ type Options struct {
 // another app already owns the database it does not open a window: it
 // raises the running desktop app's window, or shows a dialog with the URL
 // of the running nebi-web, and returns. A startup error is shown in a
-// dialog and returned.
+// dialog and returned, except when a signal stopped the start.
 func Run(opts Options) error {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
 	pixiPath, err := boot.FindPixi()
 	if err != nil {
-		alert(opts.Assets, "Nebi cannot start", err.Error())
+		showAlert(opts.Assets, "Nebi cannot start", err.Error())
 		return err
 	}
-	win := &window{}
+	win := newWindow()
 	// SIGINT and SIGTERM stop the app as closing the window does. Before
 	// the window exists they interrupt Start, such as while it waits for a
 	// CLI command to release the lock.
@@ -76,17 +76,8 @@ func Run(opts Options) error {
 		Window:       win,
 		Logger:       opts.Logger,
 	})
-	var running *boot.RunningError
-	switch {
-	case errors.As(err, &running):
-		return boot.HandleRunning(ctx, jobs.OwnerDesktop, running, func(r *boot.RunningError) {
-			alert(opts.Assets, "Nebi is already running", fmt.Sprintf(
-				"Nebi is already running for %s in %s (process %d). Open it in your browser:\n\n%s",
-				r.DataDir, boot.KindName(r.Owner.Kind), r.Owner.PID, r.SignInURL()))
-		})
-	case err != nil:
-		alert(opts.Assets, "Nebi cannot start", err.Error())
-		return err
+	if err != nil {
+		return startFailed(ctx, opts.Assets, err, stopSignals)
 	}
 
 	var stopOnce sync.Once
@@ -113,6 +104,30 @@ func Run(opts Options) error {
 	return wails.Run(appOptions(opts.Assets, inst.InProcessHandler(), win, stop))
 }
 
+// startFailed handles an error from boot.Start: it raises the running
+// desktop app's window, or tells the user why this one does not start, and
+// returns what Run returns. A start that a signal stopped, such as while it
+// waited for a CLI command, shows nothing: the user asked it to stop.
+// Before a dialog, which waits for the user, it stops catching signals, so
+// that a signal still ends the process.
+func startFailed(ctx context.Context, assets fs.FS, err error, stopSignals func()) error {
+	var running *boot.RunningError
+	if errors.As(err, &running) {
+		return boot.HandleRunning(ctx, jobs.OwnerDesktop, running, func(r *boot.RunningError) {
+			stopSignals()
+			showAlert(assets, "Nebi is already running", fmt.Sprintf(
+				"Nebi is already running for %s in %s (process %d). Open it in your browser:\n\n%s",
+				r.DataDir, boot.KindName(r.Owner.Kind), r.Owner.PID, r.SignInURL()))
+		})
+	}
+	if ctx.Err() != nil {
+		return err
+	}
+	stopSignals()
+	showAlert(assets, "Nebi cannot start", err.Error())
+	return err
+}
+
 // appOptions configures the Wails app. It binds no Go methods: the window
 // reaches the client API and UI through handler, in-process.
 func appOptions(assets fs.FS, handler http.Handler, win *window, stop func()) *options.App {
@@ -132,8 +147,13 @@ func appOptions(assets fs.FS, handler http.Handler, win *window, stop func()) *o
 	}
 }
 
-// errNotReady is returned while the window has not started yet.
-var errNotReady = errors.New("the desktop window is not ready yet")
+// errNotReady is returned by the window once it has closed, or when a
+// request ends before the window has opened.
+var errNotReady error = &api.Error{
+	Status:  http.StatusServiceUnavailable,
+	Code:    api.CodeWindowNotReady,
+	Message: "the desktop window is not open",
+}
 
 // wailsRuntime holds the Wails runtime calls the window makes. They need
 // the context Wails passes to OnStartup, and end the process when called
@@ -147,19 +167,43 @@ var wailsRuntime = struct {
 
 // window is the Wails window. It implements api.FolderPicker and
 // api.Window; both need the context Wails passes to OnStartup.
+//
+// boot.Start publishes the address before Wails opens the window, so a
+// second desktop app can ask to raise the window before it exists. The
+// window then waits until it has opened.
 type window struct {
+	// started is closed when Wails has opened the window (setContext),
+	// ended when Wails has returned (closed).
+	started chan struct{}
+	ended   chan struct{}
+
 	mu  sync.Mutex
 	ctx context.Context
 	// quitAsked is set when quit is called before the window started.
 	quitAsked bool
-	// done is set once Wails has returned; the context is dead then.
-	done bool
+}
+
+func newWindow() *window {
+	return &window{started: make(chan struct{}), ended: make(chan struct{})}
+}
+
+func isClosed(ch chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
 }
 
 func (w *window) setContext(ctx context.Context) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if isClosed(w.started) {
+		return
+	}
 	w.ctx = ctx
+	close(w.started)
 	if w.quitAsked {
 		go wailsRuntime.quit(ctx)
 	}
@@ -171,7 +215,7 @@ func (w *window) quit() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	switch {
-	case w.done:
+	case isClosed(w.ended):
 	case w.ctx != nil:
 		wailsRuntime.quit(w.ctx)
 	default:
@@ -182,21 +226,31 @@ func (w *window) quit() {
 func (w *window) closed() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.done = true
+	if !isClosed(w.ended) {
+		close(w.ended)
+	}
 }
 
-func (w *window) wailsContext() (context.Context, error) {
+// wailsContext returns the context Wails passed to OnStartup. It waits for
+// the window to open, until ctx ends, and fails once the window has closed.
+func (w *window) wailsContext(ctx context.Context) (context.Context, error) {
+	select {
+	case <-w.started:
+	case <-w.ended:
+	case <-ctx.Done():
+		return nil, errNotReady
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.ctx == nil || w.done {
+	if isClosed(w.ended) {
 		return nil, errNotReady
 	}
 	return w.ctx, nil
 }
 
 // PickFolder shows the native folder dialog.
-func (w *window) PickFolder(context.Context) (string, error) {
-	ctx, err := w.wailsContext()
+func (w *window) PickFolder(ctx context.Context) (string, error) {
+	ctx, err := w.wailsContext(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -207,8 +261,8 @@ func (w *window) PickFolder(context.Context) (string, error) {
 }
 
 // Show brings the window to the front.
-func (w *window) Show(context.Context) error {
-	ctx, err := w.wailsContext()
+func (w *window) Show(ctx context.Context) error {
+	ctx, err := w.wailsContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -216,6 +270,9 @@ func (w *window) Show(context.Context) error {
 	wailsRuntime.show(ctx)
 	return nil
 }
+
+// showAlert is alert; tests replace it.
+var showAlert = alert
 
 // alert shows a message in a native dialog when the app has no window of
 // its own, such as when another app owns the database, and returns when

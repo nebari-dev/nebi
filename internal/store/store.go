@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
+	"github.com/nebari-dev/nebi/internal/datadir"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -95,29 +95,11 @@ func (s *Store) Close() error {
 
 // DefaultDataDir returns the data directory: NEBI_DATA_DIR when it is set,
 // else ~/Library/Application Support/nebi on macOS, %APPDATA%\nebi on
-// Windows and ~/.local/share/nebi elsewhere. nebi-web and the desktop app
-// use it too (boot.DataDir), so all three share one database and owner lock.
+// Windows and ~/.local/share/nebi elsewhere. It is datadir.Default, which
+// nebi-web and the desktop app use too (boot.DataDir), so all three share
+// one database and owner lock.
 func DefaultDataDir() (string, error) {
-	if dir := os.Getenv("NEBI_DATA_DIR"); dir != "" {
-		return dir, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-
-	switch runtime.GOOS {
-	case "darwin":
-		return filepath.Join(home, "Library", "Application Support", "nebi"), nil
-	case "windows":
-		appData := os.Getenv("APPDATA")
-		if appData != "" {
-			return filepath.Join(appData, "nebi"), nil
-		}
-		return filepath.Join(home, "AppData", "Roaming", "nebi"), nil
-	default:
-		return filepath.Join(home, ".local", "share", "nebi"), nil
-	}
+	return datadir.Default()
 }
 
 // Config is a singleton table for store configuration (server URL).

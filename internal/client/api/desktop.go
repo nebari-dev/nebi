@@ -19,7 +19,8 @@ type FolderPicker interface {
 type Window interface {
 	// Show brings the window to the front, unminimizing it if needed. A
 	// second desktop app started for the same database calls it, through
-	// POST /desktop/show-window, before it exits.
+	// POST /desktop/show-window, before it exits. While the window is still
+	// opening, Show waits for it until ctx ends.
 	Show(ctx context.Context) error
 }
 
@@ -55,6 +56,7 @@ type PickFolderResponse struct {
 //	@Failure		401	{object}	ErrorResponse
 //	@Failure		403	{object}	ErrorResponse	"forbidden_host, or forbidden_origin for a request authenticated by the session cookie from another origin"
 //	@Failure		404	{object}	ErrorResponse	"folder_picker_unavailable"
+//	@Failure		503	{object}	ErrorResponse	"window_not_ready: the window has closed"
 //	@Router			/desktop/pick-folder [post]
 func (h desktopHandlers) pickFolder(w http.ResponseWriter, r *http.Request) error {
 	if h.picker == nil {
@@ -76,13 +78,14 @@ func (h desktopHandlers) pickFolder(w http.ResponseWriter, r *http.Request) erro
 // showWindow godoc
 //
 //	@Summary		Bring the desktop window to the front
-//	@Description	Shows and raises the desktop app's window. A desktop app that starts while another one owns the same database calls it before it exits. Answers 404 when this process has no window (nebi-web).
+//	@Description	Shows and raises the desktop app's window. A desktop app that starts while another one owns the same database calls it before it exits. While the window is still opening, the request waits for it. Answers 404 when this process has no window (nebi-web).
 //	@Tags			desktop
 //	@Security		SessionToken
 //	@Success		204	"The window was raised"
 //	@Failure		401	{object}	ErrorResponse
 //	@Failure		403	{object}	ErrorResponse	"forbidden_host, or forbidden_origin for a request authenticated by the session cookie from another origin"
 //	@Failure		404	{object}	ErrorResponse	"window_unavailable"
+//	@Failure		503	{object}	ErrorResponse	"window_not_ready: the window has closed, or the request ended before it opened"
 //	@Router			/desktop/show-window [post]
 func (h desktopHandlers) showWindow(w http.ResponseWriter, r *http.Request) error {
 	if h.window == nil {

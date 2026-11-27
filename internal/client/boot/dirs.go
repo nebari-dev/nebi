@@ -14,9 +14,6 @@ import (
 
 // Environment variables the entry points read.
 const (
-	// EnvDataDir overrides the data directory, which holds nebi-client.db
-	// and the owner lock.
-	EnvDataDir = "NEBI_DATA_DIR"
 	// EnvProjectsDir overrides where projects go when no path is given.
 	EnvProjectsDir = "NEBI_PROJECTS_DIR"
 	// EnvPixiPath names the pixi binary to use.

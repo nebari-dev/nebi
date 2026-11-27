@@ -72,9 +72,6 @@ func NewGuard(session *Session, addr string) (*Guard, error) {
 	return &Guard{session: session, addr: addr, origin: "http://" + addr, cookie: cookiePrefix + port}, nil
 }
 
-// CookieName is the name of the session cookie for this listener.
-func (g *Guard) CookieName() string { return g.cookie }
-
 // SignInURL is the one-time sign-in URL nebi-web prints, as Jupyter does:
 // opening it in a browser swaps the token for the session cookie
 // (see SignIn).

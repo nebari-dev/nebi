@@ -118,11 +118,11 @@ func TestTokenRequiredOnEveryRoute(t *testing.T) {
 				"empty bearer":      {bearer("")},
 				"basic scheme":      {header("Authorization", "Basic "+s.Token())},
 				"token without":     {header("Authorization", s.Token())},
-				"wrong cookie":      {cookie(g.CookieName(), "wrong"), origin},
+				"wrong cookie":      {cookie(g.cookie, "wrong"), origin},
 				"other port cookie": {cookie(cookiePrefix+"9999", s.Token()), origin},
 				"token in query":    {func(r *http.Request) { r.URL.RawQuery = "token=" + s.Token() }},
 				// A wrong bearer token is refused even with a good cookie.
-				"wrong bearer good cookie": {bearer("wrong"), cookie(g.CookieName(), s.Token()), origin},
+				"wrong bearer good cookie": {bearer("wrong"), cookie(g.cookie, s.Token()), origin},
 			} {
 				rec := do(h, method, path, append([]func(*http.Request){onHost}, auth...)...)
 				if open {
@@ -145,7 +145,7 @@ func TestTokenRequiredOnEveryRoute(t *testing.T) {
 			for name, auth := range map[string][]func(*http.Request){
 				"bearer":           {bearer(s.Token())},
 				"lowercase bearer": {header("Authorization", "bearer "+s.Token())},
-				"cookie":           {cookie(g.CookieName(), s.Token()), origin},
+				"cookie":           {cookie(g.cookie, s.Token()), origin},
 			} {
 				rec := do(h, method, path, append([]func(*http.Request){onHost}, auth...)...)
 				if rec.Code == http.StatusUnauthorized || rec.Code == http.StatusForbidden {
@@ -164,7 +164,7 @@ func TestCookieStateChangeNeedsOrigin(t *testing.T) {
 	opts.Window = &fakeWindow{}
 	g, s := newTestGuard(t)
 	h := protected(t, g, opts)
-	withCookie := cookie(g.CookieName(), s.Token())
+	withCookie := cookie(g.cookie, s.Token())
 	path := "/api/v1/desktop/show-window"
 
 	for name, origin := range map[string]string{
@@ -227,7 +227,7 @@ func TestNoCORSHeaders(t *testing.T) {
 		do(h, http.MethodGet, "/api/v1/version", onHost, evil),
 		do(h, http.MethodGet, "/api/v1/capabilities", onHost, evil, bearer(s.Token())),
 		do(h, http.MethodOptions, "/api/v1/capabilities", onHost, evil, header("Access-Control-Request-Method", "POST")),
-		do(h, http.MethodPost, "/api/v1/desktop/show-window", onHost, evil, cookie(g.CookieName(), s.Token())),
+		do(h, http.MethodPost, "/api/v1/desktop/show-window", onHost, evil, cookie(g.cookie, s.Token())),
 		do(h, http.MethodGet, "/api/v1/version", evil),
 	} {
 		for k := range rec.Header() {
@@ -263,7 +263,7 @@ func TestSignIn(t *testing.T) {
 			t.Fatalf("GET %s set %d cookies, want 1", target, len(cookies))
 		}
 		c := cookies[0]
-		if c.Name != g.CookieName() || c.Value != s.Token() || !c.HttpOnly || c.SameSite != http.SameSiteStrictMode ||
+		if c.Name != g.cookie || c.Value != s.Token() || !c.HttpOnly || c.SameSite != http.SameSiteStrictMode ||
 			c.Path != "/" || c.MaxAge != 0 || !c.Expires.IsZero() {
 			t.Fatalf("cookie = %+v, want an HttpOnly, SameSite=Strict session cookie for /", c)
 		}
@@ -310,7 +310,7 @@ func TestNewGuardRequiresLoopback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if g.CookieName() != "nebi_session_43210" {
-		t.Errorf("cookie name = %q, want it to name the port", g.CookieName())
+	if g.cookie != "nebi_session_43210" {
+		t.Errorf("cookie name = %q, want it to name the port", g.cookie)
 	}
 }

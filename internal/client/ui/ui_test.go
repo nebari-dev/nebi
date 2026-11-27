@@ -97,7 +97,7 @@ func TestSignInThroughUI(t *testing.T) {
 		t.Fatalf("sign-in URL = %d to %q", rec.Code, rec.Header().Get("Location"))
 	}
 	cookies := rec.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Name != guard.CookieName() || !cookies[0].HttpOnly ||
+	if len(cookies) != 1 || cookies[0].Name != "nebi_session_8460" || !cookies[0].HttpOnly ||
 		cookies[0].SameSite != http.SameSiteStrictMode {
 		t.Fatalf("sign-in cookies = %+v", cookies)
 	}

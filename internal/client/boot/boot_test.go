@@ -364,7 +364,7 @@ func TestUsesClientDatabaseOnly(t *testing.T) {
 
 func TestEnvironment(t *testing.T) {
 	data, projects := t.TempDir(), t.TempDir()
-	t.Setenv(EnvDataDir, data)
+	t.Setenv("NEBI_DATA_DIR", data)
 	t.Setenv(EnvProjectsDir, projects)
 	if got, err := DataDir(); err != nil || got != data {
 		t.Fatalf("DataDir() = %q, %v; want %s", got, err, data)
@@ -386,7 +386,7 @@ func TestEnvironment(t *testing.T) {
 		t.Fatalf("default project path %s, want it in %s", path, projects)
 	}
 
-	t.Setenv(EnvDataDir, "")
+	t.Setenv("NEBI_DATA_DIR", "")
 	t.Setenv(EnvProjectsDir, "")
 	// The default is the CLI's, so the apps and the CLI share the database.
 	cliDir, err := store.DefaultDataDir()

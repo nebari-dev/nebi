@@ -61,8 +61,8 @@ var (
 	// ErrNoVersions: InstallVersion was given no version, and the project
 	// has none to install.
 	ErrNoVersions = errors.New("project has no versions")
-	// ErrNotInstalled: Uninstall found nothing to remove, neither an
-	// installed version nor a .pixi/envs.
+	// ErrNotInstalled: Uninstall found nothing to remove: no installed
+	// version, no failed install and no .pixi/envs.
 	ErrNotInstalled = errors.New("project is not installed")
 )
 

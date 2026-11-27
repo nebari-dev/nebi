@@ -46,6 +46,15 @@ type Project struct {
 	// InstalledVersionID; nothing else writes it.
 	LastInstalledVersionID *uuid.UUID `gorm:"type:text" json:"last_installed_version_id,omitempty"`
 
+	// InstallingVersionID is the version an install started and has not
+	// finished with success. installStep sets it in the statement that
+	// clears InstalledVersionID, before touching any file, and clears it in
+	// the one that records a success; the uninstall job clears it too. An
+	// install's job lives only in memory, so this is what reports a failed
+	// or interrupted install as install_failed after a restart, and tells
+	// it apart from a .pixi/envs created by running pixi outside nebi.
+	InstallingVersionID *uuid.UUID `gorm:"type:text" json:"installing_version_id,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 }
 

@@ -42,15 +42,19 @@ type InstallRequest struct {
 //     version (record them with CreateResolvedVersion first). It returns
 //     ErrWorkingCopyMissing when the project directory is gone.
 //  4. It submits an install job that runs installStep, the step the create
-//     and create_version jobs share: it clears InstalledVersionID, writes
-//     the version's files, runs pixi install with pixi's output in the
-//     job's log, and on success sets InstalledVersionID and
-//     LastInstalledVersionID.
+//     and create_version jobs share: it clears InstalledVersionID and sets
+//     InstallingVersionID, writes the version's files, runs pixi install
+//     with pixi's output in the job's log, and on success sets
+//     InstalledVersionID and LastInstalledVersionID and clears
+//     InstallingVersionID.
 //
 // A failed or cancelled install leaves InstalledVersionID nil, the target
 // version's files in place and LastInstalledVersionID unchanged; the state
-// is then StateInstallFailed, linked to the job. The previous version is
-// not put back: the user installs it again, which pixi's cache makes fast.
+// is then StateInstallFailed, linked to the job while the runner keeps it.
+// An install interrupted by a restart, or one whose job is gone, is still
+// StateInstallFailed, through InstallingVersionID, with no job. The
+// previous version is not put back: the user installs it again, which
+// pixi's cache makes fast.
 func (s *Service) InstallVersion(ctx context.Context, req InstallRequest) (*jobs.Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -112,13 +116,15 @@ func (s *Service) versionToInstall(ctx context.Context, p *Project, id *uuid.UUI
 //
 // It refuses with a *BusyError (errors.Is ErrProjectBusy) while a job for
 // the project is pending or running, and returns ErrNotInstalled when
-// there is nothing to remove: no InstalledVersionID and no .pixi/envs. An
-// environment left behind by a failed install, which has no
-// InstalledVersionID, is removed.
+// there is nothing to remove: no InstalledVersionID, no
+// InstallingVersionID and no .pixi/envs. An environment left behind by a
+// failed install, which has no InstalledVersionID, is removed, and a
+// failed install that left no environment can still be uninstalled, which
+// clears its install_failed state.
 //
-// The job clears InstalledVersionID, then removes .pixi/envs. pixi.toml,
-// pixi.lock and LastInstalledVersionID are kept, so the project can be
-// installed again.
+// The job clears InstalledVersionID and InstallingVersionID, then removes
+// .pixi/envs. pixi.toml, pixi.lock and LastInstalledVersionID are kept, so
+// the project can be installed again.
 func (s *Service) Uninstall(ctx context.Context, projectID uuid.UUID) (*jobs.Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -131,7 +137,7 @@ func (s *Service) Uninstall(ctx context.Context, projectID uuid.UUID) (*jobs.Job
 		return nil, err
 	}
 	envs := envsDir(p.Path)
-	if p.InstalledVersionID == nil {
+	if p.InstalledVersionID == nil && p.InstallingVersionID == nil {
 		switch _, err := os.Lstat(envs); {
 		case errors.Is(err, fs.ErrNotExist):
 			return nil, fmt.Errorf("%w: %s has no installed version and no %s", ErrNotInstalled, p.Name, envs)
@@ -147,14 +153,18 @@ func (s *Service) Uninstall(ctx context.Context, projectID uuid.UUID) (*jobs.Job
 }
 
 // uninstallJob is the body of the uninstall job. It clears
-// InstalledVersionID before touching .pixi, so a crash or failure midway
-// does not leave the project reported as installed, then removes envs.
+// InstalledVersionID and InstallingVersionID before touching .pixi, so a
+// crash or failure midway does not leave the project reported as
+// installed or install_failed, then removes envs.
 // A removal that fails part way leaves the project not installed; running
 // Uninstall again removes the rest.
 func (s *Service) uninstallJob(projectID uuid.UUID, envs string) jobs.Func {
 	return func(ctx context.Context, log io.Writer) error {
 		if err := s.db.WithContext(ctx).Model(&Project{}).Where("id = ?", projectID).
-			Update("installed_version_id", nil).Error; err != nil {
+			Updates(map[string]any{
+				"installed_version_id":  nil,
+				"installing_version_id": nil,
+			}).Error; err != nil {
 			return fmt.Errorf("clearing the installed version: %w", err)
 		}
 		fmt.Fprintf(log, "removing %s\n", envs)

@@ -79,6 +79,19 @@ func (h *harness) wantInstallState(p *Project, v ProjectVersion) {
 	if d.LastInstalledVersionID == nil || *d.LastInstalledVersionID != v.ID || d.LastInstalledVersion == nil || *d.LastInstalledVersion != v.Number {
 		h.t.Fatalf("last installed = %v (%v), want version %d", d.LastInstalledVersionID, deref(d.LastInstalledVersion), v.Number)
 	}
+	if id := h.installingVersionID(p.ID); id != nil {
+		h.t.Fatalf("installing version = %s after a successful install, want none", id)
+	}
+}
+
+// installingVersionID reads the project's InstallingVersionID from its row.
+func (h *harness) installingVersionID(id uuid.UUID) *uuid.UUID {
+	h.t.Helper()
+	var p Project
+	if err := h.db.First(&p, "id = ?", id).Error; err != nil {
+		h.t.Fatal(err)
+	}
+	return p.InstallingVersionID
 }
 
 // activeJobs returns the IDs of the project's pending and running jobs.
@@ -603,8 +616,9 @@ func TestInstallFailureOutlivesARefusedInstall(t *testing.T) {
 }
 
 // TestInstallInterruptedByRestart quits nebi during an install: after the
-// restart nothing is reported installed, and the last installed version is
-// the one before.
+// restart the project is install_failed with no job, nothing is installed,
+// and the last installed version is the one before. Installing again
+// recovers.
 func TestInstallInterruptedByRestart(t *testing.T) {
 	h := newHarness(t)
 	p, v1 := h.newProject("interrupted-install", true)
@@ -620,11 +634,53 @@ func TestInstallInterruptedByRestart(t *testing.T) {
 
 	r := h.restarted()
 	d := r.detail(p.ID)
-	if d.State != StateNotInstalled || d.InstalledVersionID != nil {
-		t.Fatalf("after the restart want not_installed with nothing installed, got %+v", d)
+	if d.State != StateInstallFailed || d.JobID != nil || d.InstalledVersionID != nil {
+		t.Fatalf("after the restart want install_failed with no job and nothing installed, got %+v", d)
 	}
 	if d.LastInstalledVersionID == nil || *d.LastInstalledVersionID != v1.ID || deref(d.LastInstalledVersion) != 1 {
 		t.Fatalf("the last installed version must stay version 1, got %v", deref(d.LastInstalledVersion))
+	}
+	if id := r.installingVersionID(p.ID); id == nil || *id != v2.ID {
+		t.Fatalf("installing version = %v, want version 2", id)
+	}
+
+	r.setPixi(func(f *fakePixi) { f.installGate, f.installStarted = nil, nil })
+	if done := r.install(InstallRequest{ProjectID: p.ID}); done.Status != jobs.StatusCompleted {
+		t.Fatalf("install after the restart: %+v", done)
+	}
+	r.wantInstalled(p, v1)
+}
+
+// TestInstallFailureSurvivesRestart checks that a failed install, which
+// left no environment, is still install_failed after a restart, and that
+// uninstall clears it.
+func TestInstallFailureSurvivesRestart(t *testing.T) {
+	h := newHarness(t)
+	p, v1 := h.newProject("failed-then-restarted", true)
+	h.uninstall(p.ID)
+	h.setPixi(func(f *fakePixi) { f.installErr = errors.New("solve failed") })
+	if done := h.install(InstallRequest{ProjectID: p.ID, VersionID: &v1.ID}); done.Status != jobs.StatusFailed || done.Stage != StageInstall {
+		t.Fatalf("want a failed install, got %+v", done)
+	}
+	if exists(envsDir(p.Path)) {
+		t.Fatal("precondition: the failed install left no .pixi/envs")
+	}
+
+	r := h.restarted()
+	checkAfterRestart(t, r, p.ID, StateInstallFailed, nil)
+
+	done := r.uninstall(p.ID)
+	if done.Status != jobs.StatusCompleted {
+		t.Fatalf("uninstall after a failed install with no environment: %+v", done)
+	}
+	if d := r.detail(p.ID); d.State != StateNotInstalled || d.JobID != nil {
+		t.Fatalf("after uninstall want not_installed, got %+v", d.ProjectSummary)
+	}
+	if id := r.installingVersionID(p.ID); id != nil {
+		t.Fatalf("installing version = %s after uninstall, want none", id)
+	}
+	if _, err := r.svc.Uninstall(context.Background(), p.ID); !errors.Is(err, ErrNotInstalled) {
+		t.Fatalf("a second uninstall: got %v, want ErrNotInstalled", err)
 	}
 }
 

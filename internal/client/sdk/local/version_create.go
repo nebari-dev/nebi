@@ -456,22 +456,27 @@ func (s *Service) recordedVersionID(ctx context.Context, projectID uuid.UUID, wc
 // overwritten; it refuses with ErrWorkingCopyMissing either way when the
 // directory is gone. The check is made here, in the job, even when the
 // caller made it before submitting, because the files may have changed
-// while the job was pending. Then it reports StageInstall, clears
-// InstalledVersionID before touching any file, so a crash midway does not
-// leave the old version reported as installed, writes the version's
-// pixi.toml and pixi.lock with atomic renames and runs pixi install, which
-// never changes pixi.lock. On success it sets InstalledVersionID and
-// LastInstalledVersionID to v in one statement. A failed or cancelled
-// install leaves InstalledVersionID nil, LastInstalledVersionID as it was
-// and v's files in place.
+// while the job was pending. Then it reports StageInstall and, before
+// touching any file, clears InstalledVersionID and sets
+// InstallingVersionID to v in one statement, so a crash midway neither
+// leaves the old version reported as installed nor loses the failure. It
+// writes the version's pixi.toml and pixi.lock with atomic renames and
+// runs pixi install, which never changes pixi.lock. On success it sets
+// InstalledVersionID and LastInstalledVersionID to v and clears
+// InstallingVersionID in one statement. A failed, cancelled or interrupted
+// install leaves InstalledVersionID nil, InstallingVersionID set,
+// LastInstalledVersionID as it was and v's files in place.
 func (s *Service) installStep(ctx context.Context, projectID uuid.UUID, dir string, v *ProjectVersion, force bool, log io.Writer) error {
 	if err := s.checkInstallable(ctx, projectID, dir, force); err != nil {
 		return err
 	}
 	jobs.ReportStage(ctx, StageInstall)
 	if err := s.db.WithContext(ctx).Model(&Project{}).Where("id = ?", projectID).
-		Update("installed_version_id", nil).Error; err != nil {
-		return fmt.Errorf("clearing the installed version: %w", err)
+		Updates(map[string]any{
+			"installed_version_id":  nil,
+			"installing_version_id": v.ID,
+		}).Error; err != nil {
+		return fmt.Errorf("recording the start of the install: %w", err)
 	}
 	if err := writeVersionFiles(dir, v.Manifest, v.Lock); err != nil {
 		return err
@@ -481,11 +486,12 @@ func (s *Service) installStep(ctx context.Context, projectID uuid.UUID, dir stri
 	}
 	// The environment is installed: record it even if the job is
 	// cancelled now, or a complete install would look failed. One UPDATE
-	// sets both columns, so they cannot disagree.
+	// sets all three columns, so they cannot disagree.
 	if err := s.db.WithContext(context.WithoutCancel(ctx)).Model(&Project{}).Where("id = ?", projectID).
 		Updates(map[string]any{
 			"installed_version_id":      v.ID,
 			"last_installed_version_id": v.ID,
+			"installing_version_id":     nil,
 		}).Error; err != nil {
 		return fmt.Errorf("marking version %d installed: %w", v.Number, err)
 	}

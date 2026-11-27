@@ -81,13 +81,13 @@ func TestDeriveState(t *testing.T) {
 		{"failed uninstall falls back to disk", 1, []jobs.Job{installOK, uninstallFailed}, true, true, StateInstalled, nil},
 		{"other jobs are ignored", 1, []jobs.Job{createOK, deleteFiles}, false, false, StateNotInstalled, nil},
 		{"installed, no jobs (after restart)", 1, nil, true, true, StateInstalled, nil},
-		// An env on disk with nothing recorded: a failed or interrupted
-		// install whose job is gone after a restart left a partial
-		// .pixi/envs, or pixi install was run outside nebi. Either way nebi
-		// does not know which version, if any, is on disk, so it is
-		// deliberately not reported as installed.
-		{"env without a recorded install (job lost on restart, or installed outside nebi)", 1, nil, false, true, StateNotInstalled, nil},
-		{"partial env, create job lost on restart", 1, []jobs.Job{createOK}, false, true, StateNotInstalled, nil},
+		// An env on disk with no install recorded, started or finished:
+		// pixi install was run outside nebi. nebi does not know which
+		// version, if any, is on disk, so it is deliberately not reported
+		// as installed. A failed or interrupted install is covered by
+		// TestDeriveStateUnfinishedInstall.
+		{"env installed outside nebi", 1, nil, false, true, StateNotInstalled, nil},
+		{"env installed outside nebi after a create", 1, []jobs.Job{createOK}, false, true, StateNotInstalled, nil},
 		{"installed version recorded but env removed", 1, nil, true, false, StateNotInstalled, nil},
 		{"create cancelled while locking", 0, []jobs.Job{createCancelledLock}, false, false, StateLockFailed, &createCancelledLock},
 		{"create cancelled while pending", 0, []jobs.Job{createCancelledPending}, false, false, StateLockFailed, &createCancelledPending},
@@ -102,7 +102,7 @@ func TestDeriveState(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, gotJob := deriveState(c.versions, c.jobs, c.recorded, c.onDisk)
+			got, gotJob := deriveState(c.versions, c.jobs, c.recorded, false, c.onDisk)
 			if got != c.want {
 				t.Fatalf("state = %s, want %s", got, c.want)
 			}
@@ -110,6 +110,54 @@ func TestDeriveState(t *testing.T) {
 				t.Fatalf("job = %v, want %s", gotJob, c.wantJob.ID)
 			}
 			if c.wantJob == nil && c.want != StateCreating && gotJob != nil {
+				t.Fatalf("job = %v, want none", gotJob)
+			}
+		})
+	}
+}
+
+// TestDeriveStateUnfinishedInstall covers projects whose InstallingVersionID
+// is set: an install started and has not succeeded. Jobs live in memory, so
+// after a restart that is what reports the install as failed.
+func TestDeriveStateUnfinishedInstall(t *testing.T) {
+	job := func(typ jobs.Type, status jobs.Status, stage string) jobs.Job {
+		now := time.Now()
+		return jobs.Job{ID: uuid.New(), Type: typ, Status: status, Stage: stage, StartedAt: &now}
+	}
+	installFailed := job(jobs.TypeInstall, jobs.StatusFailed, StageInstall)
+	installRunning := job(jobs.TypeInstall, jobs.StatusRunning, StageInstall)
+	uninstallRunning := job(jobs.TypeUninstall, jobs.StatusRunning, "")
+	createRunning := job(jobs.TypeCreate, jobs.StatusRunning, StageLock)
+	installRefused := job(jobs.TypeInstall, jobs.StatusFailed, "")
+	installCancelledPending := job(jobs.TypeInstall, jobs.StatusCancelled, "")
+	installCancelledPending.StartedAt = nil
+
+	cases := []struct {
+		name    string
+		jobs    []jobs.Job
+		onDisk  bool
+		want    State
+		wantJob *jobs.Job
+	}{
+		{"failed install, job lost on restart, partial env", nil, true, StateInstallFailed, nil},
+		{"interrupted before pixi created an env", nil, false, StateInstallFailed, nil},
+		{"failed job still kept is linked", []jobs.Job{installFailed}, true, StateInstallFailed, &installFailed},
+		{"a new install is running", []jobs.Job{installRunning}, true, StateInstalling, &installRunning},
+		{"an uninstall is running", []jobs.Job{uninstallRunning}, true, StateUninstalling, &uninstallRunning},
+		{"a create is running", []jobs.Job{createRunning}, true, StateCreating, &createRunning},
+		{"an install refused after the restart", []jobs.Job{installRefused}, true, StateInstallFailed, nil},
+		{"an install cancelled while pending after the restart", []jobs.Job{installCancelledPending}, true, StateInstallFailed, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, gotJob := deriveState(1, c.jobs, false, true, c.onDisk)
+			if got != c.want {
+				t.Fatalf("state = %s, want %s", got, c.want)
+			}
+			switch {
+			case c.wantJob != nil && (gotJob == nil || *gotJob != c.wantJob.ID):
+				t.Fatalf("job = %v, want %s", gotJob, c.wantJob.ID)
+			case c.wantJob == nil && gotJob != nil:
 				t.Fatalf("job = %v, want none", gotJob)
 			}
 		})
@@ -181,7 +229,8 @@ func deref(n *int) any {
 func intPtr(n int) *int { return &n }
 
 // A failed install leaves a partial .pixi/envs. After a restart its job is
-// gone, and the project must not be reported as installed (#670).
+// gone, and the project must not be reported as installed (#670), but as
+// install_failed (#682).
 func TestStateAfterRestartFollowingFailedInstall(t *testing.T) {
 	h := newHarness(t)
 	h.pixi.installErr = errors.New("download failed")
@@ -200,15 +249,16 @@ func TestStateAfterRestartFollowingFailedInstall(t *testing.T) {
 	}
 
 	r := h.restarted()
-	checkAfterRestart(t, r, p.ID, StateNotInstalled, nil)
+	checkAfterRestart(t, r, p.ID, StateInstallFailed, nil)
 	if d := r.detail(p.ID); d.InstalledVersionID != nil {
 		t.Fatalf("InstalledVersionID = %s, want nil", d.InstalledVersionID)
 	}
 }
 
 // Quitting nebi during a long install leaves a partial .pixi/envs and no
-// job. The old process is not shut down cleanly here: the new service
-// starts while the old install is still blocked, as after a kill.
+// job, and the project is install_failed. The old process is not shut down
+// cleanly here: the new service starts while the old install is still
+// blocked, as after a kill.
 func TestStateAfterRestartDuringInstall(t *testing.T) {
 	h := newHarness(t)
 	started := make(chan struct{}, 1)
@@ -233,7 +283,7 @@ func TestStateAfterRestartDuringInstall(t *testing.T) {
 	}
 
 	r := h.restarted()
-	checkAfterRestart(t, r, p.ID, StateNotInstalled, nil)
+	checkAfterRestart(t, r, p.ID, StateInstallFailed, nil)
 }
 
 // A successful install is still reported after a restart, with its version.

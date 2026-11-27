@@ -58,10 +58,17 @@ var (
 	// directory hold changes that are in no recorded version, and an
 	// operation would overwrite them.
 	ErrWorkingCopyModified = errors.New("working copy has changes that are in no version")
+	// ErrNoVersions: InstallVersion was given no version, and the project
+	// has none to install.
+	ErrNoVersions = errors.New("project has no versions")
+	// ErrNotInstalled: Uninstall found nothing to remove: no installed
+	// version, no failed install and no .pixi/envs.
+	ErrNotInstalled = errors.New("project is not installed")
 )
 
-// BusyError is returned by DeleteProject and CreateResolvedVersion while
-// jobs for the project are pending or running. It matches ErrProjectBusy
+// BusyError is returned by DeleteProject, CreateResolvedVersion,
+// InstallVersion and Uninstall while jobs for the project are pending or
+// running. It matches ErrProjectBusy
 // with errors.Is. For CreateResolvedVersion it is an addition to #661's
 // error table; the client API maps it to 409, as for delete.
 type BusyError struct {

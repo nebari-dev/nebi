@@ -78,8 +78,8 @@ type Options struct {
 	// every project and job type. Values below 1 mean DefaultMaxRunning.
 	MaxRunning int
 	// KeepFinished is how many finished jobs are kept, beyond the latest
-	// finished job of each type for each project: the most recently
-	// finished across all projects. Values below 1 mean
+	// finished jobs of each type for each project (see Memory): the most
+	// recently finished across all projects. Values below 1 mean
 	// DefaultKeepFinished.
 	KeepFinished int
 	// LogLimit is how many bytes of output are kept per job; older output
@@ -212,7 +212,10 @@ func ReportVersion(ctx context.Context, versionID uuid.UUID) {
 // "Latest" follows submission order, the order ProjectJobs returns, and
 // counts only jobs that started: a job cancelled while pending never ran,
 // so it says nothing about the project and is never kept in place of the
-// job that did run.
+// job that did run. The latest finished job of each type that reported a
+// stage is kept too, when it is another job: a job that stopped before
+// its first stage, such as one that refused at a check, may say nothing
+// about the project either, so the earlier job that got further stays.
 type Memory struct {
 	maxRunning   int
 	keepFinished int
@@ -415,22 +418,25 @@ func (m *Memory) finish(e *entry, status Status, errMsg string) {
 	m.evict()
 }
 
-// evict drops finished jobs beyond the kept ones: the latest finished job
-// that started, of each type, for each project not reported deleted with
-// ProjectDeleted, and the KeepFinished most recently finished others.
-// Called with mu held.
+// evict drops finished jobs beyond the kept ones: for each project not
+// reported deleted with ProjectDeleted, the latest finished job of each
+// type that started and the latest that reported a stage; and the
+// KeepFinished most recently finished others. Called with mu held.
 func (m *Memory) evict() {
-	pinned := func(e *entry) bool {
-		if m.gone[e.job.ProjectID] {
-			return false
-		}
+	latest := func(e *entry, match func(Job) bool) bool {
 		list := m.byProj[e.job.ProjectID]
 		for i := len(list) - 1; i >= 0; i-- {
-			if o := list[i]; o.job.Type == e.job.Type && !o.job.Active() && o.job.Started() {
+			if o := list[i]; o.job.Type == e.job.Type && !o.job.Active() && match(o.job) {
 				return o == e
 			}
 		}
 		return false
+	}
+	pinned := func(e *entry) bool {
+		if m.gone[e.job.ProjectID] {
+			return false
+		}
+		return latest(e, Job.Started) || latest(e, func(j Job) bool { return j.Stage != "" })
 	}
 	excess := -m.keepFinished
 	for _, e := range m.finished {

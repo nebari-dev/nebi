@@ -336,6 +336,6 @@ func (s *Service) createJob(projectID uuid.UUID, dir string, tags []string, inst
 		if !install {
 			return nil
 		}
-		return s.installStep(ctx, projectID, dir, v, log)
+		return s.installStep(ctx, projectID, dir, v, false, log)
 	}
 }

@@ -225,7 +225,9 @@ jobs:
 
   # The client's pixi runner (internal/client/sdk/exec) is tested against a
   # real pixi at the version nebi pins (internal/pixi/installer.go) and at
-  # the latest release (#684). Its tests skip unless NEBI_TEST_PIXI is set.
+  # the latest release (#684), as is the SDK's install and uninstall
+  # (internal/client/sdk/local, #682). These tests skip unless NEBI_TEST_PIXI
+  # is set.
   backend-test-pixi:
     name: Backend / Test pixi runner
     runs-on: ubuntu-latest
@@ -265,7 +267,9 @@ jobs:
           echo "NEBI_TEST_PIXI=$RUNNER_TEMP/pixi-pinned/pixi:$RUNNER_TEMP/pixi-latest/pixi" >> "$GITHUB_ENV"
 
       - name: Run tests
-        run: go test -tags=e2e -v -race -count=1 ./internal/client/sdk/exec/...
+        run: |
+          go test -tags=e2e -v -race -count=1 ./internal/client/sdk/exec/...
+          go test -tags=e2e -v -race -count=1 -run RealPixi ./internal/client/sdk/local/...
 
   backend-security:
     name: Backend / Security

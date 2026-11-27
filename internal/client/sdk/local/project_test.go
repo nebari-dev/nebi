@@ -45,9 +45,38 @@ func TestMigrateCreatesClientProjectsTable(t *testing.T) {
 		names = append(names, c.Name())
 	}
 	sort.Strings(names)
-	want := []string{"created_at", "id", "installed_version_id", "managed_dir", "name", "path"}
+	want := []string{"created_at", "id", "installed_version_id", "installing_version_id", "last_installed_version_id", "managed_dir", "name", "path"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("columns = %v, want exactly %v (no owner, status, source, size, origin or soft-delete columns)", names, want)
+	}
+}
+
+// TestMigrateAddsInstallColumns checks that a database made before #682
+// gains last_installed_version_id and installing_version_id, and that its
+// rows are kept.
+func TestMigrateAddsInstallColumns(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Exec("CREATE TABLE `client_projects` (`id` text PRIMARY KEY, `name` text NOT NULL, `path` text NOT NULL, `managed_dir` numeric NOT NULL DEFAULT false, `installed_version_id` text, `created_at` datetime)").Error; err != nil {
+		t.Fatal(err)
+	}
+	id := uuid.New()
+	if err := db.Exec("INSERT INTO client_projects (id, name, path, managed_dir, created_at) VALUES (?, 'old', '/old', false, CURRENT_TIMESTAMP)", id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(db); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	for _, col := range []string{"last_installed_version_id", "installing_version_id"} {
+		if !db.Migrator().HasColumn(&Project{}, col) {
+			t.Fatalf("Migrate must add %s", col)
+		}
+	}
+	var p Project
+	if err := db.First(&p, "id = ?", id).Error; err != nil {
+		t.Fatalf("the existing row must be kept: %v", err)
+	}
+	if p.Name != "old" || p.LastInstalledVersionID != nil || p.InstallingVersionID != nil {
+		t.Fatalf("existing row = %+v, want name old and no last installed or installing version", p)
 	}
 }
 

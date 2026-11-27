@@ -193,6 +193,10 @@ type fakePixi struct {
 	lockStarted  chan struct{} // receives once per Lock call that waits on lockGate
 	lockCalls    []string
 	installCalls []string
+	// installSaw records, per Install call, the pixi.toml and pixi.lock
+	// that were in the directory when the call started, so tests can check
+	// what pixi installed from.
+	installSaw []EnvironmentSpecification
 
 	// installGate, when set, makes Install create a partial .pixi/envs and
 	// then wait until it is closed or the job is cancelled, like a long
@@ -283,8 +287,11 @@ func (f *fakePixi) CheckLock(_ context.Context, dir string, out io.Writer) error
 }
 
 func (f *fakePixi) Install(ctx context.Context, dir string, out io.Writer) error {
+	manifest, _ := os.ReadFile(filepath.Join(dir, artifact.ManifestFile))
+	lock, _ := os.ReadFile(filepath.Join(dir, artifact.LockFile))
 	f.mu.Lock()
 	f.installCalls = append(f.installCalls, dir)
+	f.installSaw = append(f.installSaw, EnvironmentSpecification{Manifest: string(manifest), Lock: string(lock)})
 	err, partial := f.installErr, f.partialEnv
 	gate, started := f.installGate, f.installStarted
 	f.mu.Unlock()
@@ -315,6 +322,16 @@ func (f *fakePixi) Install(ctx context.Context, dir string, out io.Writer) error
 		return err
 	}
 	return os.WriteFile(filepath.Join(envDir, "marker"), []byte("installed"), 0o644)
+}
+
+// lastInstallSaw returns the files the latest Install call found.
+func (f *fakePixi) lastInstallSaw() (EnvironmentSpecification, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.installSaw) == 0 {
+		return EnvironmentSpecification{}, false
+	}
+	return f.installSaw[len(f.installSaw)-1], true
 }
 
 func (f *fakePixi) calls() (lock, install []string) {

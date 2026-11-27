@@ -1,7 +1,8 @@
 // Package local is the client SDK for projects on this machine: the local
 // Project data model and its create, list, get, rename and delete
 // operations (issue #660), and the immutable versions and movable tags of a
-// project with their create, read and tag operations (issue #661).
+// project with their create, read and tag operations (issue #661), and the
+// install and uninstall of a version (issue #682).
 // Everything here runs on the user's machine; the server is never
 // contacted, and a project exists on a server only after it is pushed.
 //
@@ -36,9 +37,10 @@ type JobRunner interface {
 	// for a free slot or for the project's running job to finish.
 	Submit(ctx context.Context, projectID uuid.UUID, typ jobs.Type, run jobs.Func) (*jobs.Job, error)
 	// ProjectJobs returns the project's jobs the runner still keeps,
-	// oldest first: every pending or running job, the latest finished one
-	// of each type that started while the project exists, and older
-	// finished ones only until they are dropped.
+	// oldest first: every pending or running job, while the project
+	// exists the latest finished one of each type that started and the
+	// latest that reported a stage, and older finished ones only until
+	// they are dropped.
 	//
 	// Project reads rely on when this list changes (see readProjects): a
 	// job is listed before its body starts, so before it writes anything,

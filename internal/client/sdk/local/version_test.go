@@ -530,24 +530,23 @@ func TestConcurrentCreatesFromOneBaseAreBothRecorded(t *testing.T) {
 		Channels:  []string{"conda-forge"},
 		Packages:  []artifact.Package{{Name: "polars"}},
 	}}
-	// Hold every solve until both creates are accepted, so the first
-	// cannot record version 2 before the second is checked: both are
-	// created from version 1 while it is the latest.
-	gate := make(chan struct{})
+	// Hold the first solve while the second create is submitted, so both
+	// are created from version 1 while it is the latest. The first job has
+	// written its new pixi.toml into the project directory by then (see
+	// beginInPlace); the second create must not take it for an unsaved
+	// edit.
+	gate, started := make(chan struct{}), make(chan struct{}, len(specs))
 	h.pixi.mu.Lock()
-	h.pixi.lockGate = gate
+	h.pixi.lockGate, h.pixi.lockStarted = gate, started
 	h.pixi.mu.Unlock()
-	var wg sync.WaitGroup
 	results := make([]*CreateVersionResult, len(specs))
 	errs := make([]error, len(specs))
 	for i, spec := range specs {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			results[i], errs[i] = h.svc.CreateVersion(context.Background(), CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: spec})
-		}()
+		results[i], errs[i] = h.svc.CreateVersion(context.Background(), CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: spec})
+		if i == 0 && errs[i] == nil {
+			<-started
+		}
 	}
-	wg.Wait()
 	close(gate)
 	for i := range specs {
 		if errs[i] != nil {
@@ -565,6 +564,44 @@ func TestConcurrentCreatesFromOneBaseAreBothRecorded(t *testing.T) {
 		if *v.BaseVersionID != v1.ID {
 			t.Fatalf("version %d must keep base 1", v.Number)
 		}
+	}
+}
+
+func TestCreateVersionWithInstallWhileASolveRuns(t *testing.T) {
+	h := newHarness(t)
+	p, v1 := h.newProject("solve-then-install", true)
+	gate, started := make(chan struct{}), make(chan struct{}, 1)
+	h.pixi.mu.Lock()
+	h.pixi.lockGate, h.pixi.lockStarted = gate, started
+	h.pixi.mu.Unlock()
+	solve, err := h.svc.CreateVersion(context.Background(), CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: newerSpec()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-started
+
+	// An unchanged copy of version 1, installed, while the solve holds its
+	// pixi.toml in the project directory. The install job waits for the
+	// solve and checks the directory once the files are back.
+	copied, err := h.svc.CreateVersion(context.Background(), CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Install: true})
+	if err != nil {
+		t.Fatalf("an install submitted while a solve runs must be accepted: %v", err)
+	}
+	if copied.Version == nil || copied.Version.Number != 2 || copied.Job == nil {
+		t.Fatalf("want version 2 recorded with an install job, got %+v", copied)
+	}
+	close(gate)
+	if done := h.wait(solve.Job); done.Status != jobs.StatusCompleted {
+		t.Fatalf("solve: %+v", done)
+	}
+	if done := h.wait(copied.Job); done.Status != jobs.StatusCompleted {
+		t.Fatalf("install: %+v", done)
+	}
+	if d := h.detail(p.ID); d.InstalledVersionID == nil || *d.InstalledVersionID != copied.Version.ID {
+		t.Fatalf("version 2 must be installed, got %+v", d.InstalledVersionID)
+	}
+	if got := readFile(t, filepath.Join(p.Path, artifact.ManifestFile)); got != v1.Manifest {
+		t.Fatal("the project directory must hold version 2's pixi.toml")
 	}
 }
 

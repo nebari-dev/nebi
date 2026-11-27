@@ -544,7 +544,7 @@ func TestConcurrentCreatesFromOneBaseAreBothRecorded(t *testing.T) {
 	for i, spec := range specs {
 		results[i], errs[i] = h.svc.CreateVersion(context.Background(), CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: spec})
 		if i == 0 && errs[i] == nil {
-			<-started
+			h.awaitLock(results[i].Job, started)
 		}
 	}
 	close(gate)
@@ -578,7 +578,7 @@ func TestCreateVersionWithInstallWhileASolveRuns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	<-started
+	h.awaitLock(solve.Job, started)
 
 	// An unchanged copy of version 1, installed, while the solve holds its
 	// pixi.toml in the project directory. The install job waits for the
@@ -600,8 +600,91 @@ func TestCreateVersionWithInstallWhileASolveRuns(t *testing.T) {
 	if d := h.detail(p.ID); d.InstalledVersionID == nil || *d.InstalledVersionID != copied.Version.ID {
 		t.Fatalf("version 2 must be installed, got %+v", d.InstalledVersionID)
 	}
-	if got := readFile(t, filepath.Join(p.Path, artifact.ManifestFile)); got != v1.Manifest {
-		t.Fatal("the project directory must hold version 2's pixi.toml")
+}
+
+func TestQueuedCreatesRefuseAnEditMadeWhileAJobRuns(t *testing.T) {
+	h := newHarness(t)
+	p, v1 := h.newProject("edit-while-busy", true)
+	gate, started := make(chan struct{}), make(chan struct{}, 1)
+	h.pixi.mu.Lock()
+	h.pixi.lockGate, h.pixi.lockStarted = gate, started
+	h.pixi.mu.Unlock()
+	running, err := h.svc.CreateVersion(context.Background(), CreateVersionRequest{ProjectID: p.ID, BaseVersionID: v1.ID, Spec: newerSpec()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.awaitLock(running.Job, started)
+
+	// A real edit lands in pixi.toml while the solve runs. With a job
+	// active, CreateVersion leaves the directory checks to the queued jobs,
+	// so each must refuse the edit when it starts and leave it on disk.
+	manifestPath := filepath.Join(p.Path, artifact.ManifestFile)
+	edit := v1.Manifest + "# wip\n"
+	if err := os.WriteFile(manifestPath, []byte(edit), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	polars := &artifact.Spec{Platforms: []string{"linux-64"}, Channels: []string{"conda-forge"}, Packages: []artifact.Package{{Name: "polars"}}}
+	cases := []struct {
+		name string
+		req  CreateVersionRequest
+	}{
+		{"in-place", CreateVersionRequest{Spec: polars}},
+		{"in-place with install", CreateVersionRequest{Spec: polars, Install: true}},
+		{"copy with install", CreateVersionRequest{Install: true}},
+	}
+	queued := make([]*jobs.Job, len(cases))
+	for i, c := range cases {
+		c.req.ProjectID, c.req.BaseVersionID = p.ID, v1.ID
+		res, err := h.svc.CreateVersion(context.Background(), c.req)
+		if err != nil {
+			t.Fatalf("%s: a create submitted while a job runs must be accepted: %v", c.name, err)
+		}
+		if res.Job == nil {
+			t.Fatalf("%s: want a queued job, got %+v", c.name, res)
+		}
+		queued[i] = res.Job
+	}
+	close(gate)
+
+	if done := h.wait(running.Job); done.Status != jobs.StatusFailed {
+		t.Fatalf("the running solve must fail when pixi.toml is edited under it: %+v", done)
+	}
+	for i, c := range cases {
+		done := h.wait(queued[i])
+		if done.Status != jobs.StatusFailed || !strings.Contains(done.Error, ErrWorkingCopyModified.Error()) {
+			t.Fatalf("%s: want the job to fail with ErrWorkingCopyModified, got %+v", c.name, done)
+		}
+	}
+	if got := readFile(t, manifestPath); got != edit {
+		t.Fatalf("the edit must be left on disk, got:\n%s", got)
+	}
+	if d := h.detail(p.ID); d.InstalledVersionID == nil || *d.InstalledVersionID != v1.ID {
+		t.Fatalf("version 1 must stay installed, got %+v", d.InstalledVersionID)
+	}
+}
+
+// awaitLock waits until job reaches pixi lock, with the fake's lockGate
+// and lockStarted set. It fails at once with the job's state when the job
+// ends before that, rather than waiting for the test timeout.
+func (h *harness) awaitLock(job *jobs.Job, started <-chan struct{}) {
+	h.t.Helper()
+	if job == nil {
+		h.t.Fatal("awaitLock: nil job")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	ended := make(chan jobs.Job, 1)
+	go func() {
+		if j, err := h.runner.Wait(ctx, job.ID); err == nil {
+			ended <- j
+		}
+	}()
+	select {
+	case <-started:
+	case j := <-ended:
+		h.t.Fatalf("job %s ended before pixi lock: %+v", job.ID, j)
+	case <-ctx.Done():
+		h.t.Fatalf("job %s did not reach pixi lock", job.ID)
 	}
 }
 

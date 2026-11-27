@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -491,14 +492,16 @@ func TestShutdown(t *testing.T) {
 	}
 }
 
-// A job that ignores cancellation does not hold shutdown forever.
+// A job that ignores cancellation does not hold shutdown forever, and keeps
+// the lock until it ends.
 func TestShutdownIsBounded(t *testing.T) {
 	dir := t.TempDir()
 	opts := testOptions(t, jobs.OwnerWeb, dir)
 	opts.ShutdownWait = 300 * time.Millisecond
 	inst := start(t, opts)
 	release := make(chan struct{})
-	t.Cleanup(func() { close(release) })
+	endJob := sync.OnceFunc(func() { close(release) })
+	t.Cleanup(endJob)
 	started := make(chan struct{})
 	if _, err := inst.runner.Submit(context.Background(), uuid.New(), jobs.TypeInstall, func(context.Context, io.Writer) error {
 		close(started)
@@ -518,7 +521,105 @@ func TestShutdownIsBounded(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("Shutdown with a stuck job did not return: its wait is not bounded")
 	}
+	// The job still runs, so the lock stays held: another process must not
+	// become the owner and start jobs next to it.
+	requireLockHeld(t, dir)
+	endJob()
+	eventually(t, "the lock to be released once the job ended", func() bool {
+		o, err := jobs.TryAcquireOwner(dir)
+		if err != nil {
+			return false
+		}
+		_ = o.Release()
+		return true
+	})
+}
+
+// A request still running at shutdown does not use up the time the jobs
+// have to stop: it is cancelled, and the jobs are waited for meanwhile.
+func TestShutdownWaitsForJobsDespiteOpenRequest(t *testing.T) {
+	dir := t.TempDir()
+	opts := testOptions(t, jobs.OwnerDesktop, dir)
+	opts.ShutdownWait = 2 * time.Second
+	picker := &blockingPicker{entered: make(chan struct{}), unblock: make(chan struct{})}
+	t.Cleanup(func() { close(picker.unblock) })
+	opts.FolderPicker = picker
+	inst := start(t, opts)
+
+	// A request that ends only when its context is cancelled.
+	requestDone := make(chan struct{})
+	go func() {
+		defer close(requestDone)
+		req, _ := http.NewRequest(http.MethodPost, "http://"+inst.Addr()+api.Prefix+"/desktop/pick-folder", nil)
+		req.Header.Set("Authorization", "Bearer "+inst.info.Token)
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	within(t, picker.entered, "the request to start")
+
+	// A job that takes a moment to clean up once cancelled.
+	started, finished := make(chan struct{}), make(chan struct{})
+	if _, err := inst.runner.Submit(context.Background(), uuid.New(), jobs.TypeInstall, func(ctx context.Context, _ io.Writer) error {
+		close(started)
+		<-ctx.Done()
+		time.Sleep(300 * time.Millisecond)
+		close(finished)
+		return ctx.Err()
+	}); err != nil {
+		t.Fatal(err)
+	}
+	within(t, started, "the job to start")
+
+	begun := time.Now()
+	if err := inst.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown with an open request = %v, want the job waited for", err)
+	}
+	if took := time.Since(begun); took >= opts.ShutdownWait {
+		t.Fatalf("Shutdown took %s: it waited for the open request instead of cancelling it", took)
+	}
+	select {
+	case <-finished:
+	default:
+		t.Fatal("Shutdown returned before the running job finished")
+	}
+	if !picker.cancelled.Load() {
+		t.Fatal("the open request's context was not cancelled")
+	}
+	within(t, requestDone, "the open request to end")
 	requireLockFree(t, dir)
+}
+
+// blockingPicker is a folder picker whose dialog stays open until the
+// request's context is cancelled or the test ends.
+type blockingPicker struct {
+	entered   chan struct{}
+	unblock   chan struct{}
+	cancelled atomic.Bool
+}
+
+func (p *blockingPicker) PickFolder(ctx context.Context) (string, error) {
+	close(p.entered)
+	select {
+	case <-ctx.Done():
+		p.cancelled.Store(true)
+		return "", ctx.Err()
+	case <-p.unblock:
+		return "", nil
+	}
+}
+
+// eventually polls cond until it holds, and fails the test if that takes
+// more than ten seconds.
+func eventually(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // A start that fails after taking the lock leaves nothing held.

@@ -23,7 +23,8 @@
 //
 // Shutdown stops accepting requests, closes the job runner so running jobs
 // are cancelled and waited for, closes the service and the database, and
-// releases the lock, which removes owner.json. The wait is bounded.
+// releases the lock, which removes owner.json. The wait is bounded; jobs
+// that outlast it keep the database and the lock until they end.
 package boot
 
 import (
@@ -125,6 +126,10 @@ type Instance struct {
 	server    *http.Server
 	guard     *api.Guard
 	inProcess http.Handler
+	// cancelRequests cancels the context of every request the server is
+	// handling, so Shutdown does not wait for requests that would end only
+	// when their client goes away.
+	cancelRequests context.CancelFunc
 
 	serveDone chan struct{}
 	serveErr  error
@@ -282,8 +287,11 @@ func Start(ctx context.Context, opts Options) (_ *Instance, err error) {
 	step("listening")
 
 	// 8. Serve.
+	requestCtx, cancelRequests := context.WithCancel(context.Background())
+	inst.cancelRequests = cancelRequests
 	inst.server = &http.Server{
 		Handler:           inst.guard.RequireHost(mount(inst.guard.RequireToken(apiHandler), uiNetwork)),
+		BaseContext:       func(net.Listener) context.Context { return requestCtx },
 		ReadHeaderTimeout: readHeaderTimeout,
 		IdleTimeout:       idleTimeout,
 		MaxHeaderBytes:    maxHeaderBytes,
@@ -384,8 +392,15 @@ func (i *Instance) Err() error {
 // service and the database, and releases the lock, which removes
 // owner.json. While it runs, owner.json names no address, so a process
 // that starts meanwhile waits for the lock instead of pointing the user at
-// an API that is going away. It waits at most Options.ShutdownWait, and less when ctx ends
-// sooner. It is safe to call more than once.
+// an API that is going away.
+//
+// It waits at most Options.ShutdownWait, and less when ctx ends sooner.
+// Requests still running are cancelled and drained while the jobs stop,
+// so they do not use up the jobs' time. When jobs are still running at the
+// end of the wait, Shutdown returns an error and leaves the service, the
+// database and the lock to be released once those jobs end, so that no
+// other process becomes the owner while they run; the OS releases the
+// lock if the process exits first. It is safe to call more than once.
 func (i *Instance) Shutdown(ctx context.Context) error {
 	i.shutdownOnce.Do(func() {
 		i.shutdownErr = i.release(ctx)
@@ -407,31 +422,80 @@ func (i *Instance) release(ctx context.Context) error {
 		}
 	}
 
+	// Stop accepting requests first, then stop the jobs while the requests
+	// in flight drain: both share the one wait instead of taking turns.
+	requestsDone := i.stopServing(ctx)
+	jobsDone := i.closeRunner()
+	select {
+	case <-jobsDone:
+	case <-ctx.Done():
+		errs = append(errs, fmt.Errorf("running jobs did not stop within %s; nebi releases the data directory when they do",
+			i.opts.ShutdownWait))
+		<-requestsDone
+		// The owner rule: no other process may become the owner while this
+		// one's jobs still run, so the lock is released only after them.
+		go func() {
+			<-jobsDone
+			if err := i.closeStore(); err != nil {
+				i.logger.Error("stopping nebi after its jobs ended", "error", err)
+			}
+		}()
+		return errors.Join(errs...)
+	}
+	<-requestsDone
+	if err := i.closeStore(); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
+
+// stopServing closes the listener, cancels the requests in flight and
+// drains them, cutting any still running when ctx ends. It returns once
+// the listener is closed; the returned channel is closed once the requests
+// are done.
+func (i *Instance) stopServing(ctx context.Context) <-chan struct{} {
+	done := make(chan struct{})
 	switch {
 	case i.server != nil:
-		if err := i.server.Shutdown(ctx); err != nil {
-			// Requests still running, such as a log being followed: cut them.
-			_ = i.server.Close()
-		}
+		i.cancelRequests()
+		go func() {
+			defer close(done)
+			if err := i.server.Shutdown(ctx); err != nil {
+				// Requests that ignore their context: cut them.
+				_ = i.server.Close()
+			}
+		}()
+		// Serve returns once Shutdown has closed the listener.
 		<-i.serveDone
 	case i.listener != nil:
 		_ = i.listener.Close()
 		close(i.serveDone)
+		close(done)
+	default:
+		close(done)
 	}
+	return done
+}
 
-	if i.runner != nil {
-		closed := make(chan struct{})
-		go func() {
-			defer close(closed)
-			i.runner.Close()
-		}()
-		select {
-		case <-closed:
-		case <-ctx.Done():
-			// The process is exiting; the OS releases the lock when it does.
-			errs = append(errs, fmt.Errorf("running jobs did not stop within %s", i.opts.ShutdownWait))
-		}
+// closeRunner closes the job runner, which cancels the running jobs, and
+// returns a channel that is closed once they have returned.
+func (i *Instance) closeRunner() <-chan struct{} {
+	done := make(chan struct{})
+	if i.runner == nil {
+		close(done)
+		return done
 	}
+	go func() {
+		defer close(done)
+		i.runner.Close()
+	}()
+	return done
+}
+
+// closeStore closes the service and the database, then releases the lock,
+// which removes owner.json. Call it only once the job runner is closed.
+func (i *Instance) closeStore() error {
+	var errs []error
 	if i.svc != nil {
 		i.svc.Close()
 	}

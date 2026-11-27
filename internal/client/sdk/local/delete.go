@@ -17,7 +17,7 @@ import (
 
 // DeleteProjectOptions controls DeleteProject.
 type DeleteProjectOptions struct {
-	// DeleteFiles removes Path from disk. Only allowed when ManagedDir.
+	// DeleteFiles removes Path from disk, with everything in it.
 	DeleteFiles bool
 }
 
@@ -39,18 +39,18 @@ func (pendingRemoval) TableName() string { return "client_pending_removals" }
 
 // DeleteProject deletes a local project.
 //
-//  1. It refuses with ErrFilesNotManaged when DeleteFiles is asked for a
-//     directory nebi did not create, and with a *BusyError (errors.Is
-//     ErrProjectBusy) while a job for the project is pending or running.
-//     The busy check and refusing new jobs for the project are one step in
-//     the JobRunner, so nothing can start in between; the check covers
-//     only jobs of that runner. It then moves back a directory that an
-//     earlier failed delete left moved aside, and refuses with
-//     ErrPathTaken when DeleteFiles would remove another project's
-//     directory. When DeleteFiles is asked and another project's directory
-//     cannot be checked (for example a directory on its path cannot be
-//     read), it also refuses, with an error that names that project and
-//     matches no sentinel: the path is not known to be taken, but removing
+//  1. It refuses with a *BusyError (errors.Is ErrProjectBusy) while a job
+//     for the project is pending or running. The busy check and refusing
+//     new jobs for the project are one step in the JobRunner, so nothing
+//     can start in between; the check covers only jobs of that runner. It
+//     then moves back a directory that an earlier failed delete left moved
+//     aside, and refuses with ErrProtectedPath when DeleteFiles would
+//     remove a directory that CreateProject refuses (see
+//     CreateProjectRequest.Path), and with ErrPathTaken when it would
+//     remove another project's directory. When DeleteFiles is asked and
+//     another project's directory cannot be checked (for example a
+//     directory on its path cannot be read), it also refuses, with an
+//     error that names that project and matches no sentinel: the path is not known to be taken, but removing
 //     the files might remove that project's too. Deleting the project that
 //     cannot be checked, without its files, clears it. Apart from that
 //     move back, nothing is changed in these cases.
@@ -74,9 +74,6 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID, opts DeletePr
 	if err != nil {
 		return nil, err
 	}
-	if opts.DeleteFiles && !p.ManagedDir {
-		return nil, fmt.Errorf("%w: %s; remove it yourself if you no longer need it", ErrFilesNotManaged, p.Path)
-	}
 	// Check for active jobs and stop new ones in one step, so no job can
 	// start between the check and the delete. Only the file removal job
 	// below is still accepted.
@@ -93,15 +90,19 @@ func (s *Service) DeleteProject(ctx context.Context, id uuid.UUID, opts DeletePr
 
 	// An earlier delete of this project that failed may have left its
 	// directory moved aside; put it back so it is kept or removed below
-	// like the rest of the project. This runs before the nested-project
-	// check, which looks at the directory on disk and would find nothing
-	// inside it while it is moved aside.
+	// like the rest of the project. This runs before the ownership and
+	// nested-project checks, which look at the directory on disk and would
+	// not find it while it is moved aside.
 	if err := s.undoRemovals(ctx, id); err != nil {
 		restore()
 		return nil, err
 	}
 
 	if opts.DeleteFiles {
+		if err := s.checkOwnable(p.Path); err != nil {
+			restore()
+			return nil, err
+		}
 		if err := s.checkNothingInside(ctx, p); err != nil {
 			restore()
 			return nil, err
@@ -361,9 +362,9 @@ func (s *Service) dropRemoval(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// removeProjectDir removes a managed project directory. It refuses paths
-// that cannot be a project directory, as a last guard against wiping the
-// wrong place.
+// removeProjectDir removes a project directory. It refuses paths that
+// cannot be a project directory, as a last guard against wiping the wrong
+// place.
 func removeProjectDir(dir string) error {
 	if !filepath.IsAbs(dir) || filepath.Dir(dir) == dir {
 		return fmt.Errorf("refusing to remove %q", dir)

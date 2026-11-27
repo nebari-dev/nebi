@@ -31,8 +31,8 @@ func TestCreateFromSpec(t *testing.T) {
 		t.Fatalf("want a create job for the project, got %+v", job)
 	}
 	wantDir := h.resolved(filepath.Join(h.projectsDir, "my-analysis"))
-	if p.Path != wantDir || !p.ManagedDir || p.Name != "my-analysis" || p.InstalledVersionID != nil {
-		t.Fatalf("unexpected project %+v (want path %s, managed)", p, wantDir)
+	if p.Path != wantDir || p.Name != "my-analysis" || p.InstalledVersionID != nil {
+		t.Fatalf("unexpected project %+v (want path %s)", p, wantDir)
 	}
 
 	manifest := readFile(t, filepath.Join(wantDir, artifact.ManifestFile))
@@ -360,9 +360,6 @@ func TestCreateInExistingUserDirectory(t *testing.T) {
 	req := specRequest("in-place")
 	req.Path = dir
 	p, _ := h.mustCreate(req)
-	if p.ManagedDir {
-		t.Fatal("a directory the user chose must not be managed")
-	}
 	if p.Path != h.resolved(dir) {
 		t.Fatalf("path = %s, want %s", p.Path, h.resolved(dir))
 	}
@@ -371,42 +368,36 @@ func TestCreateInExistingUserDirectory(t *testing.T) {
 	}
 }
 
-func TestCreateManagedDirRules(t *testing.T) {
-	t.Run("new directory outside the projects dir is not managed", func(t *testing.T) {
-		h := newHarness(t)
-		req := specRequest("outside")
-		req.Path = filepath.Join(t.TempDir(), "new", "outside")
-		p, _ := h.mustCreate(req)
-		if p.ManagedDir {
-			t.Fatal("only directories under the projects dir can be managed")
+func TestCreateRefusesRootHomeAndProjectsDir(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home", "me")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	h := newHarness(t)
+	if err := os.MkdirAll(h.projectsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.VolumeName(home) + string(filepath.Separator)
+	dirs := []string{root, home, filepath.Dir(home), h.projectsDir, filepath.Dir(h.projectsDir)}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(home, link); err == nil {
+		dirs = append(dirs, link)
+	}
+	for _, dir := range dirs {
+		req := specRequest("refused")
+		req.Path = dir
+		if _, _, err := h.svc.CreateProject(context.Background(), req); !errors.Is(err, ErrProtectedPath) {
+			t.Errorf("%s: want ErrProtectedPath, got %v", dir, err)
 		}
-		if !exists(filepath.Join(p.Path, artifact.ManifestFile)) {
-			t.Fatal("the directory and pixi.toml must be created")
+		if exists(filepath.Join(dir, artifact.ManifestFile)) {
+			t.Errorf("%s: a refused create must not write pixi.toml", dir)
 		}
-	})
-	t.Run("existing directory at the default location is not managed", func(t *testing.T) {
-		h := newHarness(t)
-		leftover := filepath.Join(h.projectsDir, "leftover")
-		if err := os.MkdirAll(leftover, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(leftover, "data.csv"), []byte("1,2"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		p, _ := h.mustCreate(specRequest("leftover"))
-		if p.ManagedDir {
-			t.Fatal("a directory nebi did not create must not be managed, even at the default location")
-		}
-	})
-	t.Run("new directory given explicitly under the projects dir is managed", func(t *testing.T) {
-		h := newHarness(t)
-		req := specRequest("explicit")
-		req.Path = filepath.Join(h.projectsDir, "explicit")
-		p, _ := h.mustCreate(req)
-		if !p.ManagedDir {
-			t.Fatal("nebi created it under the projects dir, so it is managed")
-		}
-	})
+	}
+	if h.projectCount() != 0 {
+		t.Fatal("a refused create must not insert a row")
+	}
 }
 
 func TestCreateExpandsHome(t *testing.T) {
@@ -555,8 +546,14 @@ func TestCreateRejectsNestedPaths(t *testing.T) {
 		}
 	})
 	t.Run("containing a tracked project", func(t *testing.T) {
+		// outer's parent is the projects directory, which checkOwnable
+		// refuses first, so use a project outside it.
+		h := newHarness(t)
+		elsewhere := specRequest("elsewhere")
+		elsewhere.Path = filepath.Join(t.TempDir(), "group", "elsewhere")
+		other, _ := h.mustCreate(elsewhere)
 		req := specRequest("parent")
-		req.Path = filepath.Dir(outer.Path)
+		req.Path = filepath.Dir(other.Path)
 		if _, _, err := h.svc.CreateProject(context.Background(), req); !errors.Is(err, ErrPathTaken) {
 			t.Fatalf("want ErrPathTaken, got %v", err)
 		}
@@ -641,7 +638,7 @@ func TestCreateSkipsProjectThatCannotBeChecked(t *testing.T) {
 	if got := h.wait(job); got.Status != jobs.StatusCompleted {
 		t.Fatalf("create job: %+v", got)
 	}
-	if !p.ManagedDir || !exists(p.Path) {
+	if !exists(p.Path) {
 		t.Fatalf("unexpected project %+v", p)
 	}
 
@@ -658,7 +655,7 @@ func TestCreateSkipsProjectThatCannotBeChecked(t *testing.T) {
 	if got := h.wait(job); got.Status != jobs.StatusCompleted {
 		t.Fatalf("create job: %+v", got)
 	}
-	if p.ManagedDir || p.Path != existing {
+	if p.Path != existing {
 		t.Fatalf("unexpected project %+v", p)
 	}
 

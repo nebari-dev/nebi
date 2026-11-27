@@ -82,7 +82,6 @@ type ProjectSummary struct {
 // ProjectDetail is one project with everything the list shows and more.
 type ProjectDetail struct {
 	ProjectSummary
-	ManagedDir         bool       `json:"managed_dir"`
 	InstalledVersionID *uuid.UUID `json:"installed_version_id,omitempty"`
 	VersionCount       int        `json:"version_count"`
 }
@@ -299,7 +298,6 @@ func (s *Service) describe(ctx context.Context, p *Project, projectJobs []jobs.J
 			Remotes:          []RemoteRef{},
 			CreatedAt:        p.CreatedAt,
 		},
-		ManagedDir:         p.ManagedDir,
 		InstalledVersionID: p.InstalledVersionID,
 		VersionCount:       info.Count,
 	}, nil

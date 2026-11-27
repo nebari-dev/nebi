@@ -45,7 +45,7 @@ func TestMigrateCreatesClientProjectsTable(t *testing.T) {
 		names = append(names, c.Name())
 	}
 	sort.Strings(names)
-	want := []string{"created_at", "id", "installed_version_id", "managed_dir", "name", "path"}
+	want := []string{"created_at", "id", "installed_version_id", "name", "path"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("columns = %v, want exactly %v (no owner, status, source, size, origin or soft-delete columns)", names, want)
 	}

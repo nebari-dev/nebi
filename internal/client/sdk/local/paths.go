@@ -41,6 +41,44 @@ func (s *Service) resolvedProjectsDir() (string, error) {
 	return normalizePath(dir)
 }
 
+// checkOwnable refuses a directory nebi must not own: a filesystem root,
+// or a directory that is or contains the home directory or the projects
+// directory. DeleteProject can remove a project directory with everything
+// in it, and removeProjectDir only guards the moved-aside path.
+//
+// Without a known home directory only the root and projects directory
+// checks apply. The default projects directory needs the home directory,
+// so then only a configured Options.ProjectsDir lets the check pass.
+func (s *Service) checkOwnable(dir string) error {
+	if filepath.Dir(dir) == dir {
+		return fmt.Errorf("%w: %s is a filesystem root", ErrProtectedPath, dir)
+	}
+	projectsDir, err := s.resolvedProjectsDir()
+	if err != nil {
+		return err
+	}
+	guarded := [][2]string{{"the projects directory", projectsDir}}
+	if home, err := os.UserHomeDir(); err == nil {
+		if home, err = normalizePath(home); err != nil {
+			return err
+		}
+		guarded = append(guarded, [2]string{"the home directory", home})
+	}
+	for _, g := range guarded {
+		hit, err := sameDir(dir, g[1])
+		if err == nil && !hit {
+			hit, err = inside(dir, g[1])
+		}
+		if err != nil {
+			return fmt.Errorf("checking %s against %s: %w", dir, g[0], err)
+		}
+		if hit {
+			return fmt.Errorf("%w: %s is or contains %s", ErrProtectedPath, dir, g[0])
+		}
+	}
+	return nil
+}
+
 // normalizePath expands a leading ~, makes p absolute and resolves symlinks
 // in the part of the path that exists.
 func normalizePath(p string) (string, error) {

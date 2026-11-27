@@ -51,12 +51,9 @@ func TestDeleteRefusesWhileBusy(t *testing.T) {
 	}
 }
 
-func TestDeleteManagedProjectWithFiles(t *testing.T) {
+func TestDeleteProjectWithFiles(t *testing.T) {
 	h := newHarness(t)
 	p, _ := h.mustCreate(specRequest("gone"))
-	if !p.ManagedDir {
-		t.Fatal("precondition: project at the default location is managed")
-	}
 	h.insertSibling(t, p.ID)
 
 	job, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{DeleteFiles: true})
@@ -79,7 +76,7 @@ func TestDeleteManagedProjectWithFiles(t *testing.T) {
 		t.Fatalf("file removal job: %+v", done)
 	}
 	if exists(p.Path) {
-		t.Fatal("the managed directory must be removed")
+		t.Fatal("the project directory must be removed")
 	}
 	if !exists(h.resolved(h.projectsDir)) {
 		t.Fatal("only the project directory may be removed, not the projects dir")
@@ -143,7 +140,7 @@ func TestRecreateWhileFilesAreBeingRemoved(t *testing.T) {
 
 	// The removal job has not run yet; create the same project again.
 	p, job := h.mustCreate(specRequest("reuse"))
-	if job.Status != jobs.StatusCompleted || p.Path != old.Path || !p.ManagedDir {
+	if job.Status != jobs.StatusCompleted || p.Path != old.Path {
 		t.Fatalf("recreate: job %+v, project %+v", job, p)
 	}
 
@@ -209,34 +206,65 @@ func TestDeleteWithoutFilesKeepsDirectory(t *testing.T) {
 	}
 }
 
-func TestDeleteFilesOfUnmanagedDirectoryIsRefused(t *testing.T) {
+// TestDeleteFilesRefusesHomeAndProjectsDir covers rows for directories
+// CreateProject refuses, which an older client or a direct insert can
+// leave in the database. The check must run on delete, because
+// removeProjectDir only sees the moved-aside path.
+func TestDeleteFilesRefusesHomeAndProjectsDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	h := newHarness(t)
-	dir := t.TempDir()
-	thesis := filepath.Join(dir, "thesis.tex")
-	if err := os.WriteFile(thesis, []byte("chapter 1"), 0o644); err != nil {
+	if err := os.MkdirAll(h.projectsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for i, dir := range []string{h.resolved(home), filepath.Dir(h.resolved(home)), h.resolved(h.projectsDir)} {
+		keep := filepath.Join(dir, "keep.txt")
+		if err := os.WriteFile(keep, []byte("keep"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		p := &Project{Name: fmt.Sprintf("broad-%d", i), Path: dir}
+		h.insertRow(p)
+		_, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{DeleteFiles: true})
+		if !errors.Is(err, ErrProtectedPath) {
+			t.Fatalf("%s: want ErrProtectedPath, got %v", dir, err)
+		}
+		if readFile(t, keep) != "keep" || h.pendingCount() != 0 {
+			t.Fatalf("%s: a refused delete must leave the directory in place", dir)
+		}
+		// The refusal must restore the project: deleting it without its
+		// files still works.
+		if _, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{}); err != nil {
+			t.Fatalf("%s: delete without files after a refusal: %v", dir, err)
+		}
+		if readFile(t, keep) != "keep" {
+			t.Fatalf("%s: delete without files must keep the directory", dir)
+		}
+	}
+}
+
+func TestDeleteFilesOfExistingDirectory(t *testing.T) {
+	h := newHarness(t)
+	dir := filepath.Join(t.TempDir(), "thesis")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "thesis.tex"), []byte("chapter 1"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	req := specRequest("thesis")
 	req.Path = dir
 	p, _ := h.mustCreate(req)
 
-	_, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{DeleteFiles: true})
-	if !errors.Is(err, ErrFilesNotManaged) {
-		t.Fatalf("want ErrFilesNotManaged, got %v", err)
+	job, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{DeleteFiles: true})
+	if err != nil {
+		t.Fatalf("DeleteProject: %v", err)
 	}
-	if h.projectCount() != 1 {
-		t.Fatal("a refused delete must keep the row")
+	if done := h.wait(job); done.Status != jobs.StatusCompleted {
+		t.Fatalf("file removal job: %+v", done)
 	}
-	if readFile(t, thesis) != "chapter 1" {
-		t.Fatal("files in a directory the user chose must never be removed")
-	}
-
-	// Without DeleteFiles the record goes and the folder stays.
-	if _, err := h.svc.DeleteProject(context.Background(), p.ID, DeleteProjectOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	if readFile(t, thesis) != "chapter 1" {
-		t.Fatal("files must be kept")
+	if exists(p.Path) || h.projectCount() != 0 {
+		t.Fatal("nebi owns a directory the user chose, so deleting with files removes all of it")
 	}
 }
 
@@ -326,7 +354,7 @@ func TestDeleteFilesRefusedWhenAnotherProjectIsInside(t *testing.T) {
 	if err := os.MkdirAll(innerDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	inner := &Project{Name: "inner", Path: innerDir, ManagedDir: true}
+	inner := &Project{Name: "inner", Path: innerDir}
 	h.insertRow(inner)
 
 	_, err := h.svc.DeleteProject(context.Background(), outer.ID, DeleteProjectOptions{DeleteFiles: true})
@@ -451,7 +479,7 @@ func TestDeleteFilesRefusedForAliasedProjectInside(t *testing.T) {
 	}
 
 	for i, alias := range aliases {
-		other := &Project{Name: fmt.Sprintf("alias-%d", i), Path: alias, ManagedDir: true}
+		other := &Project{Name: fmt.Sprintf("alias-%d", i), Path: alias}
 		h.insertRow(other)
 		_, err := h.svc.DeleteProject(context.Background(), outer.ID, DeleteProjectOptions{DeleteFiles: true})
 		if !errors.Is(err, ErrPathTaken) {
@@ -468,17 +496,14 @@ func TestDeleteFilesRefusedForAliasedProjectInside(t *testing.T) {
 
 // TestDeleteFilesRefusedForProjectMovedInsideBehindSymlink is the case
 // where a tracked project's stored path is itself a symlink into the
-// directory being deleted: an unmanaged project whose directory the user
-// moved into a managed one, leaving a symlink at the old path.
+// directory being deleted: a project whose directory the user moved into
+// another one, leaving a symlink at the old path.
 func TestDeleteFilesRefusedForProjectMovedInsideBehindSymlink(t *testing.T) {
 	h := newHarness(t)
 	outer, _ := h.mustCreate(specRequest("outer"))
 	req := specRequest("inner")
 	req.Path = filepath.Join(t.TempDir(), "inner")
 	inner, _ := h.mustCreate(req)
-	if inner.ManagedDir {
-		t.Fatal("a project outside the projects directory must not be managed")
-	}
 
 	moved := filepath.Join(outer.Path, "inner")
 	if err := os.Rename(inner.Path, moved); err != nil {
@@ -514,7 +539,7 @@ func TestDeleteFilesChecksNestingAfterMovingBack(t *testing.T) {
 	if err := os.Symlink(outer.Path, link); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	h.insertRow(&Project{Name: "inner", Path: filepath.Join(link, "inner"), ManagedDir: true})
+	h.insertRow(&Project{Name: "inner", Path: filepath.Join(link, "inner")})
 	h.crashMidDelete(outer)
 
 	_, err := h.svc.DeleteProject(context.Background(), outer.ID, DeleteProjectOptions{DeleteFiles: true})

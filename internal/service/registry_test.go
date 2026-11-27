@@ -19,15 +19,8 @@ func registryTestSetup(t *testing.T) (*RegistryService, *gorm.DB) {
 
 func grantRegistryAccessForTest(t *testing.T, db *gorm.DB, userID, regID uuid.UUID, action string) uuid.UUID {
 	t.Helper()
-
-	groupSvc := NewGroupService(db, rbac.NewDefaultProvider())
-	group, err := groupSvc.CreateGroup(CreateGroupRequest{Name: "registry-" + action + "-" + uuid.NewString()[:8]}, userID)
-	if err != nil {
-		t.Fatalf("create group: %v", err)
-	}
-	if err := groupSvc.AddMember(group.ID, userID, userID); err != nil {
-		t.Fatalf("add member: %v", err)
-	}
+	group := createTestGroup(t, db, "registry-"+action+"-"+uuid.NewString()[:8])
+	addTestGroupMember(t, db, group.ID, userID)
 	if err := rbac.NewDefaultProvider().GrantGroupRegistryAccess(group.ID, regID, action); err != nil {
 		t.Fatalf("grant registry %s: %v", action, err)
 	}

@@ -37,6 +37,25 @@ describe('ProfileMenu', () => {
     ).toBeInTheDocument();
   });
 
+  it('hides sign out when there is no session to end', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ProfileMenu
+        user={mockUser}
+        themeMode="system"
+        onThemeChange={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /testuser/i }));
+
+    expect(screen.getByRole('group', { name: /theme/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: /sign out/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it('closes on outside click and Escape', async () => {
     const user = userEvent.setup();
 

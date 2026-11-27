@@ -11,9 +11,10 @@ import (
 
 const localUsername = "local-user"
 
-// LocalAuthenticator provides a no-op authenticator for local/desktop mode.
-// It ensures a well-known "local-user" exists in the database and injects
-// that user into every request context without checking credentials.
+// LocalAuthenticator provides a no-op authenticator for local/desktop mode
+// and for team servers running with auth.type "none". It ensures a
+// well-known "local-user" exists in the database and injects that user into
+// every request context without checking credentials.
 type LocalAuthenticator struct {
 	user *models.User
 }
@@ -25,9 +26,8 @@ func NewLocalAuthenticator(db *gorm.DB) (*LocalAuthenticator, error) {
 	err := db.Where("username = ?", localUsername).First(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		user = models.User{
-			Username:     localUsername,
-			Email:        localUsername + "@nebi.local",
-			PasswordHash: "-",
+			Username: localUsername,
+			Email:    localUsername + "@nebi.local",
 		}
 		if err := db.Create(&user).Error; err != nil {
 			return nil, fmt.Errorf("failed to create local-user: %w", err)
@@ -39,33 +39,12 @@ func NewLocalAuthenticator(db *gorm.DB) (*LocalAuthenticator, error) {
 	return &LocalAuthenticator{user: &user}, nil
 }
 
-// Login returns the local-user with a dummy token (no password check).
-func (a *LocalAuthenticator) Login(_, _ string) (*LoginResponse, error) {
-	return &LoginResponse{
-		Token: "local-mode-token",
-		User:  a.user,
-	}, nil
-}
-
 // Middleware injects the local-user into the context without checking credentials.
 func (a *LocalAuthenticator) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Set(UserContextKey, a.user)
 		c.Next()
 	}
-}
-
-// GetUserFromContext extracts the authenticated user from the Gin context.
-func (a *LocalAuthenticator) GetUserFromContext(c *gin.Context) (*models.User, error) {
-	value, exists := c.Get(UserContextKey)
-	if !exists {
-		return nil, ErrUnauthorized
-	}
-	user, ok := value.(*models.User)
-	if !ok {
-		return nil, errors.New("invalid user in context")
-	}
-	return user, nil
 }
 
 // User returns the local-user for use outside the HTTP request path

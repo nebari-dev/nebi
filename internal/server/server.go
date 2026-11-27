@@ -17,7 +17,6 @@ import (
 
 	"github.com/nebari-dev/nebi/internal/api"
 	"github.com/nebari-dev/nebi/internal/api/handlers"
-	"github.com/nebari-dev/nebi/internal/auth"
 	"github.com/nebari-dev/nebi/internal/config"
 	nebicrypto "github.com/nebari-dev/nebi/internal/crypto"
 	"github.com/nebari-dev/nebi/internal/db"
@@ -92,13 +91,12 @@ func Run(ctx context.Context, cfg Config) error {
 			return fmt.Errorf("failed to migrate store tables: %w", err)
 		}
 
-		// Auto-connect to remote server if configured via environment
+		// Auto-connect to remote server if configured via environment. The
+		// token is used as is (it is not refreshed).
 		if remoteURL := os.Getenv("NEBI_REMOTE_URL"); remoteURL != "" {
 			if authToken := os.Getenv("NEBI_AUTH_TOKEN"); authToken != "" {
 				database.Model(&store.Config{}).Where("id = ?", 1).Update("server_url", remoteURL)
-				database.Model(&store.Credentials{}).Where("id = ?", 1).Updates(map[string]any{
-					"token": authToken,
-				})
+				database.Save(&store.Credentials{ID: 1, Token: authToken})
 				slog.Info("Auto-connected to remote server", "url", remoteURL)
 			}
 		}
@@ -109,17 +107,6 @@ func Run(ctx context.Context, cfg Config) error {
 	// Runs unconditionally so entries removed from config are cleaned up.
 	if err := service.ReconcileConfigRegistries(database, appCfg.Registries.Entries); err != nil {
 		return fmt.Errorf("failed to reconcile config registries: %w", err)
-	}
-
-	// Create default admin user if configured (team mode only)
-	if !appCfg.IsLocalMode() {
-		// Initialize RBAC early so CreateDefaultAdmin can grant admin role
-		if err := rbac.InitEnforcer(database, slog.Default()); err != nil {
-			return fmt.Errorf("failed to initialize RBAC: %w", err)
-		}
-		if err := db.CreateDefaultAdmin(database, rbac.NewDefaultProvider()); err != nil {
-			return fmt.Errorf("failed to create default admin user: %w", err)
-		}
 	}
 
 	// The API and worker share an in-process queue.
@@ -136,7 +123,7 @@ func Run(ctx context.Context, cfg Config) error {
 	limitCfg := appCfg.Limits
 
 	// Initialize the services used by the in-process worker.
-	workerEncKey, err := nebicrypto.DeriveKey(appCfg.Auth.JWTSecret)
+	workerEncKey, err := nebicrypto.DeriveKey(appCfg.EncryptionKey)
 	if err != nil {
 		return fmt.Errorf("failed to derive encryption key: %w", err)
 	}
@@ -158,10 +145,7 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 	}()
 
-	router := api.NewRouter(appCfg, database, jobQueue, exec, w.GetBroker(), slog.Default())
-	if !appCfg.IsLocalMode() {
-		auth.StartAuthReconciliationMonitor(ctx, database, rbac.NewDefaultProvider(), slog.Default())
-	}
+	router := api.NewRouter(ctx, appCfg, database, jobQueue, exec, w.GetBroker(), slog.Default())
 
 	var handler http.Handler = router
 	if appCfg.IsLocalMode() {

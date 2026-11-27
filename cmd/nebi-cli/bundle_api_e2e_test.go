@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/registry"
-	"github.com/nebari-dev/nebi/internal/cliclient"
 	"github.com/nebari-dev/nebi/internal/config"
 	"github.com/nebari-dev/nebi/internal/oci"
 	"github.com/nebari-dev/nebi/internal/server"
@@ -109,19 +108,13 @@ exit 0
 	}()
 	waitForHealth(serverURL+"/api/v1/health", serverErr, io.Discard)
 
-	unauthClient := cliclient.NewWithoutAuth(serverURL)
-	loginResp, err := unauthClient.Login(ctx, "admin", "adminpass")
-	if err != nil {
-		t.Fatalf("login: %v", err)
-	}
-
 	ociSrv := httptest.NewServer(registry.New())
 	t.Cleanup(ociSrv.Close)
 	ociURL, _ := url.Parse(ociSrv.URL)
 
 	return &localModeEnv{
 		serverURL:  serverURL,
-		token:      loginResp.Token,
+		token:      "unused-in-local-mode",
 		ctx:        ctx,
 		projectDir: projectDir,
 		ociHost:    ociURL.Host,

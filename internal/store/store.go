@@ -2,9 +2,11 @@ package store
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
@@ -30,8 +32,14 @@ func New() (*Store, error) {
 
 // Open creates a Store with a specific data directory.
 func Open(dataDir string) (*Store, error) {
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	// The store holds the identity-provider refresh token, so keep the
+	// directory (and with it the SQLite WAL files) private to the user.
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
+	}
+	if err := os.Chmod(dataDir, 0o700); err != nil {
+		// Not fatal: e.g. a bind-mounted volume owned by another user.
+		slog.Warn("Could not restrict data directory permissions", "dir", dataDir, "error", err)
 	}
 
 	dbPath := filepath.Join(dataDir, "nebi.db")
@@ -125,11 +133,17 @@ type Config struct {
 
 func (Config) TableName() string { return "store_config" }
 
-// Credentials stores auth info for the configured nebi server.
+// Credentials stores auth info for the configured nebi server. Token is the
+// identity provider's access token. When RefreshToken is set, the token is
+// refreshed against TokenURL for ClientID before it expires (TokenExpiry).
 type Credentials struct {
-	ID       int    `gorm:"primarykey"`
-	Token    string `gorm:"not null;default:''"`
-	Username string `gorm:"not null;default:''"`
+	ID           int    `gorm:"primarykey"`
+	Token        string `gorm:"not null;default:''"`
+	Username     string `gorm:"not null;default:''"`
+	RefreshToken string `gorm:"not null;default:''"`
+	TokenExpiry  *time.Time
+	TokenURL     string `gorm:"not null;default:''"`
+	ClientID     string `gorm:"not null;default:''"`
 }
 
 func (Credentials) TableName() string { return "store_credentials" }

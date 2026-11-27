@@ -24,9 +24,6 @@ type Provider interface {
 	RevokeGroupProjectAccess(groupID, projectID uuid.UUID) error
 	GrantGroupRegistryAccess(groupID, regID uuid.UUID, action string) error
 	RevokeGroupRegistryAccess(groupID, regID uuid.UUID) error
-	MakeGroupAdmin(groupID uuid.UUID) error
-	RevokeGroupAdmin(groupID uuid.UUID) error
-	RemoveAllGroupPolicies(groupID uuid.UUID) error
 }
 
 // DefaultProvider wraps the global Casbin enforcer as an rbac.Provider.
@@ -84,13 +81,4 @@ func (DefaultProvider) GrantGroupRegistryAccess(groupID, regID uuid.UUID, action
 }
 func (DefaultProvider) RevokeGroupRegistryAccess(groupID, regID uuid.UUID) error {
 	return RevokeGroupRegistryAccess(groupID, regID)
-}
-func (DefaultProvider) MakeGroupAdmin(groupID uuid.UUID) error {
-	return MakeGroupAdmin(groupID)
-}
-func (DefaultProvider) RevokeGroupAdmin(groupID uuid.UUID) error {
-	return RevokeGroupAdmin(groupID)
-}
-func (DefaultProvider) RemoveAllGroupPolicies(groupID uuid.UUID) error {
-	return RemoveAllGroupPolicies(groupID)
 }

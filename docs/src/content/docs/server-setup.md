@@ -10,23 +10,46 @@ This page covers how to run and configure it.
 
 <!-- <iframe width="560" height="315" src="" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe> -->
 
-## Admin Credentials
+## Authentication
 
-Before starting the server for the first time, set `ADMIN_USERNAME` and `ADMIN_PASSWORD`. Nebi uses these to create the initial admin account for authentication.
+Nebi does not manage users or passwords. A team server delegates authentication to an OpenID Connect (OIDC) identity provider such as Keycloak, and accepts the access tokens that provider issues:
 
-![Nebi login screen](/img/login-nebi.png)
+- The **web UI** signs in with the authorization code flow and PKCE, directly against the identity provider.
+- The **CLI** (`nebi login`) and the **desktop app** ("Connect to server") use the OAuth device authorization grant and refresh their tokens automatically.
+- The **server** only validates tokens (signature, issuer, audience and expiry). Users are created in Nebi the first time they sign in, and their groups and admin role follow the identity provider.
 
-You (and your team) will use these credentials to log in via `nebi login` or the web UI.
+Configure the provider with these settings (config file keys under `auth:`, or the environment variables shown):
 
-Export the variables in your terminal session before starting the server:
+| Setting | Environment variable | Description |
+| --- | --- | --- |
+| `type` | `NEBI_AUTH_TYPE` | `oidc` (default) or `none` |
+| `oidc_issuer_url` | `NEBI_AUTH_OIDC_ISSUER_URL` | Issuer URL; must match the `iss` claim of access tokens |
+| `oidc_client_id` | `NEBI_AUTH_OIDC_CLIENT_ID` | Public client used by the web UI, CLI and desktop app; access tokens must list it in `aud` |
+| `oidc_scopes` | `NEBI_AUTH_OIDC_SCOPES` | Comma-separated scopes clients request (default `openid,profile,email`). Add `groups` for providers that only put the `groups` claim in tokens when it is requested, such as Dex or Okta |
+| `oidc_admin_groups` | `NEBI_AUTH_OIDC_ADMIN_GROUPS` | Comma-separated identity-provider groups whose members are Nebi admins (default `admin`) |
+| `oidc_discovery_url` | `NEBI_AUTH_OIDC_DISCOVERY_URL` | Optional: where Nebi fetches the provider configuration when the issuer URL is not reachable from the server (for example an in-cluster Keycloak service) |
+
+The client in the identity provider must:
+
+- be a **public** client (no secret) with the authorization code flow, PKCE (`S256`) and the device authorization grant enabled
+- allow the redirect URI `https://<nebi-host>/auth/callback`, the post-logout redirect URI `https://<nebi-host>/login`, and the web origin `https://<nebi-host>` (the browser calls the provider's token endpoint directly)
+- issue **JWT access tokens** that carry the client ID in `aud` and the user's groups in a `groups` claim (a list of group names). In Keycloak, add an *Audience* mapper for the client and a *Group Membership* mapper with *Add to access token* enabled.
+- allow the `offline_access` scope, so CLI and desktop logins get a refresh token that outlives the browser session
+
+The [Docker Compose deployment](#docker-compose-deployment) below sets all of this up.
+
+### Running without authentication
+
+Set `NEBI_AUTH_TYPE=none` to turn authentication off. Every request then runs as a single implicit admin user, so only do this on a trusted network, for example for development or evaluation.
 
 ```bash
-export ADMIN_USERNAME=admin
-export ADMIN_PASSWORD=your-password
-export NEBI_AUTH_JWT_SECRET=replace-with-at-least-32-random-characters
+export NEBI_AUTH_TYPE=none
+export NEBI_ENCRYPTION_KEY=replace-with-at-least-32-random-characters
 ```
 
 ## Running the Server
+
+In team mode the server also needs `encryption_key` (`NEBI_ENCRYPTION_KEY`), a secret of at least 32 characters. Stored registry credentials are encrypted with a key derived from it, so keep it stable across restarts and upgrades.
 
 Start the server:
 
@@ -49,6 +72,30 @@ nebi-server --host 127.0.0.1 --port 8460
 ```
 
 Once the server is running, authenticate from any client machine with [`nebi login`](/cli-team/#connect-to-a-server).
+
+## Docker Compose Deployment
+
+`docker-compose.yml` in the repository runs a complete team deployment for small teams without an existing identity provider: Nebi, Keycloak as the identity provider, Postgres (one database each for Keycloak and Nebi), and Traefik terminating TLS.
+
+- `https://<NEBI_DOMAIN>` serves Nebi.
+- `https://<KEYCLOAK_DOMAIN>` serves Keycloak with the realm `nebi`, a preconfigured `nebi` client, and a `nebi-admin` group.
+
+On a host with DNS records for both domains (certificates come from Let's Encrypt):
+
+```bash
+cp docker/compose.env.example .env.compose   # fill in the domains and secrets
+docker compose --env-file .env.compose up -d
+```
+
+On a laptop, use `*.localhost` domains and a throwaway certificate authority instead:
+
+```bash
+docker/gen-local-certs.sh                    # then trust docker/certs/ca.crt
+# in .env.compose: NEBI_DOMAIN=nebi.nebi.localhost, KEYCLOAK_DOMAIN=auth.nebi.localhost
+docker compose -f docker-compose.yml -f docker/local.override.yml --env-file .env.compose up -d
+```
+
+Then create users in the Keycloak admin console (`https://<KEYCLOAK_DOMAIN>/admin/`, realm `nebi`) and add admins to the `nebi-admin` group. Group membership changes reach Nebi within a few minutes, the next time a user's access token is renewed.
 
 For a single-user browser UI on your own machine, use `nebi-web` instead. It runs the same embedded React frontend in local mode and binds to `127.0.0.1` by default.
 
@@ -91,25 +138,23 @@ The HTTP server read timeout is configured separately as `server.read_timeout_se
 
 ## Groups
 
-### OIDC group sync
+Groups come from the identity provider. Each access token's `groups` claim (a list of group names; Keycloak's leading `/` is stripped) is applied when Nebi first sees the token, and again at least every five minutes:
 
-When OIDC authentication is configured, nebi requests the `groups` scope alongside `openid profile email`. The IdP must return a `groups` claim in the ID token (a JSON array of strings). On every login and proxy/device session refresh, nebi reconciles the user's group memberships:
+- For each name in the claim, a group is created in Nebi (if missing) and the user is added to it.
+- Memberships in groups that are no longer in the claim are removed.
+- The user is an admin exactly when one of their groups is listed in `oidc_admin_groups`.
 
-- For each name in the claim, an OIDC-source group is created (if missing) and the user is added to it.
-- Memberships in OIDC-source groups that aren't in this login's claim are removed.
-- Native groups (created via the admin UI) are **never** modified by OIDC sync — even if a claim name happens to collide with a native group name.
+Groups with zero members are kept so existing project shares survive temporary churn. Admins can share projects with groups and grant groups access to registries; group membership itself is managed only in the identity provider.
 
-OIDC groups with zero members are kept so existing project shares survive temporary churn. Reconciled bearer sessions carry an authorization-sync timestamp and are accepted for `NEBI_AUTH_AUTHORIZATION_STALE_AFTER_MINS` minutes, which defaults to the 24-hour JWT lifetime; legacy unstamped tokens keep the pre-schema JWT-expiration behavior. Nebi records the last trusted authorization state, continuously retries unresolved local database/Casbin reconciliation failures, and logs alerts when reconciliation is unhealthy.
+## Upgrading from Password Login
 
-### Legacy federated identity migration
+Earlier versions of Nebi had built-in users with passwords, admin-managed groups and an identity review queue. When upgrading:
 
-Nebi versions that predate issuer/subject identity binding may have users created by OIDC, proxy auth, or device flow with no row in `federated_identities`. Nebi now treats the first post-upgrade login for those users like any other external-identity collision when the incoming username or verified email still matches an existing account: it creates a pending **Identity Review** for an admin to approve.
-
-After upgrading, expect a temporary burst of identity reviews as legacy users sign in. Approving a review binds that external issuer/subject to the existing Nebi account and audit-logs the decision. Rejecting a review blocks that external identity from linking to the account; admins can later discard the rejected review from the **Rejected** tab to allow a fresh review on the next login.
-
-If a user's mutable IdP claims changed before their first post-upgrade login and no longer collide with the legacy account, Nebi cannot infer the old account binding automatically. That login is treated as a new issuer/subject and creates a new Nebi account with its own binding.
-
-See [Identity Reviews](/ui/#identity-reviews-admin) for how to review and approve these requests.
+- Password users can no longer sign in. Their projects stay in place. Users signing in through the identity provider are matched only by the provider's issuer and subject, never by username or email, so a new account is created even if a password user with the same name exists.
+- Existing databases are not migrated yet. Password hashes, groups created in the Nebi admin UI and the identity review tables are left in place, and users cannot be created on first sign-in until the password hash column is removed. The upgrade migration is tracked in [#589](https://github.com/nebari-dev/nebi/issues/589).
+- `auth.jwt_secret` (`NEBI_AUTH_JWT_SECRET`) is now `encryption_key` (`NEBI_ENCRYPTION_KEY`). Set it to the old value, otherwise stored registry credentials cannot be decrypted.
+- `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `auth.type: basic`, `auth.oidc_client_secret`, `auth.oidc_redirect_url`, `auth.proxy_admin_groups` (now `auth.oidc_admin_groups`), `auth.proxy_default_role`, `auth.device_flow_client_id` (the web UI, CLI and desktop app all use `auth.oidc_client_id`) and `auth.authorization_stale_after_mins` are no longer supported.
+- Log in again with `nebi login` and in the desktop app. Tokens issued by earlier Nebi versions are not accepted.
 
 ## What's Next
 

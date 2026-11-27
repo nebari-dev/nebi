@@ -14,7 +14,7 @@ import (
 func securityHeadersTestRouter(localMode bool, allowedOrigins []string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.Use(securityHeadersMiddleware(localMode, allowedOrigins))
+	r.Use(securityHeadersMiddleware(localMode, allowedOrigins, ""))
 	r.GET("/ping", func(c *gin.Context) { c.String(http.StatusOK, "pong") })
 	return r
 }

@@ -9,9 +9,10 @@ services:
       - "8470:8460"
     environment:
       NEBI_DATABASE_DSN: /app/data/nebi-team.db
-      NEBI_AUTH_JWT_SECRET: dev-secret-that-is-at-least-32-chars-long
-      ADMIN_USERNAME: admin
-      ADMIN_PASSWORD: admin123
+      NEBI_ENCRYPTION_KEY: dev-secret-that-is-at-least-32-chars-long
+      # Development only: no authentication, every request is an admin. See
+      # docker-compose.yml for a deployment with Keycloak.
+      NEBI_AUTH_TYPE: none
     volumes:
       - nebi_team_data:/app/data
 

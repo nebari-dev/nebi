@@ -84,6 +84,10 @@ type CreateVersionResult struct {
 // refused with ErrWorkingCopyModified when they hold changes that are not
 // in any recorded version; record them with CreateResolvedVersion first.
 //
+// The project directory is checked up front only when the project has no
+// pending or running job; otherwise the submitted job checks it when it
+// starts and fails with ErrWorkingCopyModified.
+//
 // Tags are checked before anything runs: an invalid one returns
 // ErrInvalidTag, and one already on another version ErrTagExists.
 //
@@ -125,7 +129,18 @@ func (s *Service) CreateVersion(ctx context.Context, req CreateVersionRequest) (
 	if err := tagsFree(db, p.ID, uuid.Nil, tags); err != nil {
 		return nil, err
 	}
-	if req.Install {
+	// The project directory is checked here only when no job is pending or
+	// running. A running create_version job holds its own pixi.toml there
+	// while it solves, which is in no version yet and would be refused as
+	// an unsaved edit. Jobs of a project run one at a time, and the job
+	// submitted here checks the directory again when it starts, after the
+	// earlier job has put its files back.
+	active, err := s.activeJobIDs(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	checkDir := len(active) == 0
+	if req.Install && checkDir {
 		if err := s.checkReplaceable(ctx, p.ID, p.Path); err != nil {
 			return nil, err
 		}
@@ -135,8 +150,10 @@ func (s *Service) CreateVersion(ctx context.Context, req CreateVersionRequest) (
 		return s.copyVersion(ctx, p, base, req, tags)
 	}
 
-	if err := s.checkLockableInPlace(ctx, p.ID, p.Path); err != nil {
-		return nil, err
+	if checkDir {
+		if err := s.checkLockableInPlace(ctx, p.ID, p.Path); err != nil {
+			return nil, err
+		}
 	}
 	job, err := s.jobs.Submit(ctx, p.ID, jobs.TypeCreateVersion, s.createVersionJob(versionJob{
 		projectID:   p.ID,
@@ -654,9 +671,21 @@ func (s *Service) CreateResolvedVersion(ctx context.Context, projectID uuid.UUID
 // checkIdle returns a *BusyError when the project has a pending or running
 // job.
 func (s *Service) checkIdle(ctx context.Context, projectID uuid.UUID) error {
+	active, err := s.activeJobIDs(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if len(active) > 0 {
+		return &BusyError{ProjectID: projectID, JobIDs: active}
+	}
+	return nil
+}
+
+// activeJobIDs returns the IDs of the project's pending and running jobs.
+func (s *Service) activeJobIDs(ctx context.Context, projectID uuid.UUID) ([]uuid.UUID, error) {
 	list, err := s.jobs.ProjectJobs(ctx, projectID)
 	if err != nil {
-		return fmt.Errorf("reading jobs of project %s: %w", projectID, err)
+		return nil, fmt.Errorf("reading jobs of project %s: %w", projectID, err)
 	}
 	var active []uuid.UUID
 	for _, j := range list {
@@ -664,10 +693,7 @@ func (s *Service) checkIdle(ctx context.Context, projectID uuid.UUID) error {
 			active = append(active, j.ID)
 		}
 	}
-	if len(active) > 0 {
-		return &BusyError{ProjectID: projectID, JobIDs: active}
-	}
-	return nil
+	return active, nil
 }
 
 // pixiOutput formats what pixi printed for an error message.

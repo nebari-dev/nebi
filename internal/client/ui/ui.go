@@ -70,16 +70,7 @@ func New(opts Options) (http.Handler, error) {
 // cached for a year; index.html, which the SPA fallback serves for every
 // route, is never cached, so a new build is picked up on the next load.
 func headers(c *gin.Context) {
-	scriptNonce, err := nonce()
-	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
-	styleNonce, err := nonce()
-	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
+	scriptNonce, styleNonce := nonce(), nonce()
 	c.Set(scriptNonceKey, scriptNonce)
 	c.Set(styleNonceKey, styleNonce)
 
@@ -116,10 +107,10 @@ func contentSecurityPolicy(scriptNonce, styleNonce string) string {
 	}, "; ")
 }
 
-func nonce() (string, error) {
+func nonce() string {
 	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", err
-	}
-	return base64.RawStdEncoding.EncodeToString(b[:]), nil
+	// crypto/rand.Read never returns an error: it ends the program
+	// instead.
+	_, _ = rand.Read(b[:])
+	return base64.RawStdEncoding.EncodeToString(b[:])
 }

@@ -17,22 +17,29 @@ const EnvDataDir = "NEBI_DATA_DIR"
 // ~/Library/Application Support/nebi on macOS, %APPDATA%\nebi on Windows
 // and ~/.local/share/nebi elsewhere.
 func Default() (string, error) {
-	if dir := os.Getenv(EnvDataDir); dir != "" {
+	return defaultFor(runtime.GOOS, os.UserHomeDir, os.Getenv)
+}
+
+// defaultFor is Default on the operating system goos, with home and getenv
+// standing in for os.UserHomeDir and os.Getenv, so every system's path can
+// be tested on any.
+func defaultFor(goos string, home func() (string, error), getenv func(string) string) (string, error) {
+	if dir := getenv(EnvDataDir); dir != "" {
 		return dir, nil
 	}
-	home, err := os.UserHomeDir()
+	h, err := home()
 	if err != nil {
 		return "", err
 	}
-	switch runtime.GOOS {
+	switch goos {
 	case "darwin":
-		return filepath.Join(home, "Library", "Application Support", "nebi"), nil
+		return filepath.Join(h, "Library", "Application Support", "nebi"), nil
 	case "windows":
-		if appData := os.Getenv("APPDATA"); appData != "" {
+		if appData := getenv("APPDATA"); appData != "" {
 			return filepath.Join(appData, "nebi"), nil
 		}
-		return filepath.Join(home, "AppData", "Roaming", "nebi"), nil
+		return filepath.Join(h, "AppData", "Roaming", "nebi"), nil
 	default:
-		return filepath.Join(home, ".local", "share", "nebi"), nil
+		return filepath.Join(h, ".local", "share", "nebi"), nil
 	}
 }

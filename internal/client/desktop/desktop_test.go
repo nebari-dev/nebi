@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -16,6 +18,8 @@ import (
 	"github.com/nebari-dev/nebi/internal/client/api"
 	"github.com/nebari-dev/nebi/internal/client/boot"
 	"github.com/nebari-dev/nebi/internal/client/jobs"
+	"github.com/nebari-dev/nebi/internal/client/ui"
+	wailsassets "github.com/wailsapp/wails/v2/pkg/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -24,7 +28,7 @@ import (
 func TestNoWailsBindings(t *testing.T) {
 	handler := http.NotFoundHandler()
 	stopped := 0
-	opts := appOptions(fstest.MapFS{}, handler, newWindow(), func() { stopped++ })
+	opts := appOptions(handler, newWindow(), func() { stopped++ })
 	if len(opts.Bind) != 0 || len(opts.EnumBind) != 0 {
 		t.Fatalf("the desktop app binds %v and %v", opts.Bind, opts.EnumBind)
 	}
@@ -232,8 +236,8 @@ func TestStartStoppedBySignalShowsNothing(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	startErr := fmt.Errorf("waiting for the owner lock on /data: %w", ctx.Err())
-	if err := startFailed(ctx, fstest.MapFS{}, startErr, func() {}); !errors.Is(err, context.Canceled) {
-		t.Fatalf("startFailed = %v, want the start error", err)
+	if err := startFailed(ctx, fstest.MapFS{}, startErr, func() {}); err != nil {
+		t.Fatalf("startFailed = %v, want nil: the user asked it to stop", err)
 	}
 	if len(*shown) != 0 {
 		t.Fatalf("dialogs %v after a signal, want none", *shown)
@@ -264,5 +268,56 @@ func TestStartFailedShowsRunningWebURL(t *testing.T) {
 	}
 	if !slices.Equal(*shown, []string{"Nebi is already running"}) {
 		t.Fatalf("dialogs %v, want [Nebi is already running]", *shown)
+	}
+}
+
+// wailsRuntimeAssets stands in for the runtime scripts Wails serves.
+type wailsRuntimeAssets struct{}
+
+func (wailsRuntimeAssets) DesktopIPC() []byte       { return []byte("/* ipc */") }
+func (wailsRuntimeAssets) WebsocketIPC() []byte     { return []byte("/* ws ipc */") }
+func (wailsRuntimeAssets) RuntimeDesktopJS() []byte { return []byte("/* runtime */") }
+
+// The window gets the UI from the in-process handler, through Wails' own
+// asset server, with the UI's headers: index.html and the built files carry
+// the Content-Security-Policy, and Wails still adds its runtime scripts.
+func TestWindowGetsUIHeaders(t *testing.T) {
+	assets := fstest.MapFS{
+		"index.html": {Data: []byte(`<!doctype html><html><head><script type="module" src="/assets/app.js"></script>` +
+			`</head><body><div id="root"></div></body></html>`)},
+		"assets/app.js": {Data: []byte("console.log('nebi')")},
+	}
+	uiHandler, err := ui.New(ui.Options{Assets: assets})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := wailsassets.NewAssetServerMainPage("", appOptions(uiHandler, newWindow(), func() {}), false, nil, wailsRuntimeAssets{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/", "/projects/1", "/assets/app.js"} {
+		rec := httptest.NewRecorder()
+		server.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "wails://wails"+path, nil))
+		csp := rec.Header().Get("Content-Security-Policy")
+		if rec.Code != http.StatusOK || !strings.Contains(csp, "script-src 'self'") || rec.Header().Get("X-Frame-Options") != "DENY" {
+			t.Fatalf("GET %s = %d with headers %v, want the UI's headers", path, rec.Code, rec.Header())
+		}
+		if path == "/assets/app.js" {
+			continue
+		}
+		// Wails adds its scripts to the page the window opens, /. They are
+		// same-origin files, which the CSP's script-src 'self' allows.
+		body := rec.Body.String()
+		if path == "/" && (!strings.Contains(body, `<script src="/wails/runtime.js">`) || !strings.Contains(body, `<script src="/wails/ipc.js">`)) {
+			t.Fatalf("GET %s served %s, want Wails' runtime scripts", path, body)
+		}
+		// The UI handler served it: it adds the style nonce the CSP names.
+		if !strings.Contains(body, `<meta name="csp-style-nonce"`) {
+			t.Fatalf("GET %s served %s, want the UI handler's index.html", path, body)
+		}
+		// The length of the page Wails rewrote, not of the UI's.
+		if got := rec.Header().Get("Content-Length"); path == "/" && got != strconv.Itoa(len(body)) {
+			t.Fatalf("GET %s Content-Length = %s, body is %d bytes", path, got, len(body))
+		}
 	}
 }

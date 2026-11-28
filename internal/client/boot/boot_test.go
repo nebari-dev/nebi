@@ -666,6 +666,9 @@ func TestFailedStartReleasesEverything(t *testing.T) {
 	dir := t.TempDir()
 	opts := testOptions(t, jobs.OwnerWeb, dir)
 	opts.PixiPath = brokenPixi
+	opts.Port = freePort(t)
+	// Pixi fails after Start listens and before it serves: the listener is
+	// closed too.
 	if _, err := Start(context.Background(), opts); err == nil || !strings.Contains(err.Error(), "pixi does not run") {
 		t.Fatalf("Start with broken pixi = %v", err)
 	}
@@ -673,9 +676,16 @@ func TestFailedStartReleasesEverything(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, jobs.OwnerInfoFile)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("owner.json after a failed start: %v", err)
 	}
+	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(opts.Port)))
+	if err != nil {
+		t.Fatalf("port %d after a failed start: %v", opts.Port, err)
+	}
+	_ = ln.Close()
 
-	// The port is taken: Start says so and leaves nothing held either.
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	// The port is taken: Start says so before it opens the database, so
+	// no migration or recovery runs, and leaves nothing held either.
+	dir = t.TempDir()
+	ln, err = net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -686,7 +696,20 @@ func TestFailedStartReleasesEverything(t *testing.T) {
 	if !errors.Is(err, ErrPortInUse) || !strings.Contains(err.Error(), strconv.Itoa(opts.Port)) {
 		t.Fatalf("Start on a taken port = %v, want ErrPortInUse naming the port", err)
 	}
+	if _, err := os.Stat(filepath.Join(dir, DatabaseFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Start on a taken port opened the database: %v", err)
+	}
 	requireLockFree(t, dir)
+}
+
+func freePort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	return ln.Addr().(*net.TCPAddr).Port
 }
 
 func TestStartValidatesOptions(t *testing.T) {
@@ -694,7 +717,6 @@ func TestStartValidatesOptions(t *testing.T) {
 	for name, edit := range map[string]func(*Options){
 		"cli kind":     func(o *Options) { o.Kind = jobs.OwnerCLI },
 		"no data dir":  func(o *Options) { o.DataDir = "" },
-		"no pixi":      func(o *Options) { o.PixiPath = "" },
 		"no version":   func(o *Options) { o.Version.NebiVersion = "" },
 		"no assets":    func(o *Options) { o.Assets = nil },
 		"port too big": func(o *Options) { o.Port = 70000 },

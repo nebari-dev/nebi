@@ -48,15 +48,10 @@ type Options struct {
 // another app already owns the database it does not open a window: it
 // raises the running desktop app's window, or shows a dialog with the URL
 // of the running nebi-web, and returns. A startup error is shown in a
-// dialog and returned, except when a signal stopped the start.
+// dialog and returned. A start that a signal stopped returns nil.
 func Run(opts Options) error {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
-	}
-	pixiPath, err := boot.FindPixi()
-	if err != nil {
-		showAlert(opts.Assets, "Nebi cannot start", err.Error())
-		return err
 	}
 	win := newWindow()
 	// SIGINT and SIGTERM stop the app as closing the window does. Before
@@ -68,7 +63,6 @@ func Run(opts Options) error {
 		Kind:         jobs.OwnerDesktop,
 		DataDir:      opts.DataDir,
 		ProjectsDir:  opts.ProjectsDir,
-		PixiPath:     pixiPath,
 		Port:         0, // the OS picks: this listener only serves the CLI
 		Version:      opts.Version,
 		Assets:       opts.Assets,
@@ -101,13 +95,14 @@ func Run(opts Options) error {
 	defer close(runDone)
 	defer win.closed()
 
-	return wails.Run(appOptions(opts.Assets, inst.InProcessHandler(), win, stop))
+	return wails.Run(appOptions(inst.InProcessHandler(), win, stop))
 }
 
 // startFailed handles an error from boot.Start: it raises the running
 // desktop app's window, or tells the user why this one does not start, and
 // returns what Run returns. A start that a signal stopped, such as while it
-// waited for a CLI command, shows nothing: the user asked it to stop.
+// waited for a CLI command, shows nothing and returns nil: the user asked
+// it to stop.
 // Before a dialog, which waits for the user, it stops catching signals, so
 // that a signal still ends the process.
 func startFailed(ctx context.Context, assets fs.FS, err error, stopSignals func()) error {
@@ -121,7 +116,7 @@ func startFailed(ctx context.Context, assets fs.FS, err error, stopSignals func(
 		})
 	}
 	if ctx.Err() != nil {
-		return err
+		return nil
 	}
 	stopSignals()
 	showAlert(assets, "Nebi cannot start", err.Error())
@@ -130,13 +125,18 @@ func startFailed(ctx context.Context, assets fs.FS, err error, stopSignals func(
 
 // appOptions configures the Wails app. It binds no Go methods: the window
 // reaches the client API and UI through handler, in-process.
-func appOptions(assets fs.FS, handler http.Handler, win *window, stop func()) *options.App {
+//
+// handler serves every request, the UI's files included. Given Assets too,
+// Wails would serve the files it finds there itself, index.html among them,
+// and the window would get none of the UI's headers, such as its
+// Content-Security-Policy. Wails still adds its runtime scripts to
+// index.html, keeping handler's headers.
+func appOptions(handler http.Handler, win *window, stop func()) *options.App {
 	return &options.App{
 		Title:  "Nebi - Environment Manager",
 		Width:  1440,
 		Height: 900,
 		AssetServer: &assetserver.Options{
-			Assets:  assets,
 			Handler: handler,
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},

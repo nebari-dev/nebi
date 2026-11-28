@@ -81,8 +81,13 @@ type ErrorMap struct {
 var codePattern = regexp.MustCompile(`^[a-z][a-z0-9]*(_[a-z0-9]+)*$`)
 
 // Register adds mappings. The first registered mapping whose Err matches
-// wins, so register a more specific error before one it wraps. Register
-// panics on an invalid mapping or on an error registered twice: both are
+// wins, so register a more specific error before one it wraps.
+//
+// Several resources return the same SDK errors, such as local.ErrNotFound,
+// and each registers them from its own file. A mapping for an error already
+// registered with the same status and code is ignored, so each group can
+// register what its handlers return. Register panics on an invalid mapping
+// or on an error registered again with another status or code: both are
 // programming errors that every test of the handler would hit.
 func (m *ErrorMap) Register(mappings ...ErrorMapping) {
 	for _, mp := range mappings {
@@ -94,13 +99,25 @@ func (m *ErrorMap) Register(mappings ...ErrorMapping) {
 		case !codePattern.MatchString(mp.Code):
 			panic(fmt.Sprintf("api: error %q maps to code %q, want snake_case", mp.Err, mp.Code))
 		}
-		for _, have := range m.mappings {
-			if have.Err == mp.Err {
-				panic(fmt.Sprintf("api: error %q is registered twice", mp.Err))
+		if have, ok := m.lookup(mp.Err); ok {
+			if have.Status != mp.Status || have.Code != mp.Code {
+				panic(fmt.Sprintf("api: error %q is registered as %d %s and as %d %s",
+					mp.Err, have.Status, have.Code, mp.Status, mp.Code))
 			}
+			continue
 		}
 		m.mappings = append(m.mappings, mp)
 	}
+}
+
+// lookup returns the mapping registered for exactly err.
+func (m *ErrorMap) lookup(err error) (ErrorMapping, bool) {
+	for _, have := range m.mappings {
+		if have.Err == err {
+			return have, true
+		}
+	}
+	return ErrorMapping{}, false
 }
 
 // Resolve returns the status and body for err. An *Error is used as it is;

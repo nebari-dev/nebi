@@ -79,10 +79,6 @@ func run(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	pixiPath, err := boot.FindPixi()
-	if err != nil {
-		return err
-	}
 	assets, err := frontend.ClientApp()
 	if err != nil {
 		return fmt.Errorf("loading the client UI: %w", err)
@@ -100,7 +96,6 @@ func run(cmd *cobra.Command, _ []string) error {
 		Port:        port,
 		DataDir:     dataDir,
 		ProjectsDir: boot.ProjectsDir(),
-		PixiPath:    pixiPath,
 		Version:     api.VersionInfo{NebiVersion: Version, Commit: Commit},
 		Assets:      assets,
 		Stdout:      cmd.OutOrStdout(),

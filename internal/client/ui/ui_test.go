@@ -80,10 +80,7 @@ func TestServesAppWithLoopbackPolicy(t *testing.T) {
 // With a guard, the UI handler swaps the sign-in URL's token for the
 // session cookie.
 func TestSignInThroughUI(t *testing.T) {
-	session, err := api.NewSession()
-	if err != nil {
-		t.Fatal(err)
-	}
+	session := api.NewSession()
 	guard, err := api.NewGuard(session, "127.0.0.1:8460")
 	if err != nil {
 		t.Fatal(err)

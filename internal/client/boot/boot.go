@@ -4,22 +4,27 @@
 // job-runner owner of its client database and serves the client API and
 // the client UI on loopback:
 //
-//  1. The entry point resolves the data directory, the projects directory
-//     and pixi (DataDir, ProjectsDir, FindPixi).
+//  1. The entry point resolves the data directory and the projects
+//     directory (DataDir, ProjectsDir).
 //  2. Start takes the owner lock on the data directory, before opening the
 //     database. When another process holds it, Start follows the table in
 //     acquire: it waits for a CLI command or an app that is still starting,
-//     and returns a *RunningError for an app that serves its API.
-//  3. It publishes owner.json with the PID, versions, kind and host name,
-//     and no address yet.
-//  4. It opens nebi-client.db in the data directory, creating it if
+//     and returns a *RunningError for an app that serves its API. Start
+//     looks for nothing on the machine before this step, such as pixi, so
+//     a second instance always reaches the running one.
+//  3. It publishes owner.json with the PID, versions, kind, host name and
+//     machine ID, and no address yet.
+//  4. It listens on 127.0.0.1, so a port that is taken fails the start
+//     before the database is touched, and finds pixi (FindPixi) unless
+//     Options.PixiPath names it.
+//  5. It opens nebi-client.db in the data directory, creating it if
 //     missing, and runs local.Migrate.
-//  5. It builds the job runner, the PixiRunner and the local.Service.
-//  6. It runs RecoverDeletes and RecoverInPlaceSolves, here and nowhere
+//  6. It builds the job runner, the PixiRunner and the local.Service.
+//  7. It runs RecoverDeletes and RecoverInPlaceSolves, here and nowhere
 //     else.
-//  7. It listens on 127.0.0.1 and publishes owner.json again, with the
-//     address and the session token.
-//  8. It serves the client API, behind the token, and the client UI.
+//  8. It publishes owner.json again, with the address and the session
+//     token.
+//  9. It serves the client API, behind the token, and the client UI.
 //
 // Shutdown stops accepting requests, closes the job runner so running jobs
 // are cancelled and waited for, closes the service and the database, and
@@ -85,7 +90,9 @@ type Options struct {
 	// ProjectsDir is where projects go when no path is given; see
 	// local.Options.ProjectsDir. Empty means the SDK's default.
 	ProjectsDir string
-	// PixiPath is the pixi binary; see FindPixi. Required.
+	// PixiPath is the pixi binary. Empty means FindPixi, which Start calls
+	// only once it holds the lock: a second instance needs no pixi to reach
+	// the running one.
 	PixiPath string
 	// Port is the loopback port to listen on. Zero lets the OS pick one.
 	Port int
@@ -144,6 +151,9 @@ var newPixiRunner = func(ctx context.Context, path string) (local.PixiRunner, er
 	return exec.New(ctx, exec.Options{PixiPath: path})
 }
 
+// findPixi is FindPixi. Tests replace it.
+var findPixi = FindPixi
+
 // testHook, when a test sets it, is called after each startup step with
 // the step's name. It is nil outside tests.
 var testHook func(step string)
@@ -165,8 +175,6 @@ func Start(ctx context.Context, opts Options) (_ *Instance, err error) {
 		return nil, fmt.Errorf("boot: Options.Kind %q is not web or desktop", opts.Kind)
 	case opts.DataDir == "":
 		return nil, errors.New("boot: Options.DataDir is required")
-	case opts.PixiPath == "":
-		return nil, errors.New("boot: Options.PixiPath is required")
 	case opts.Version.NebiVersion == "":
 		return nil, errors.New("boot: Options.Version.NebiVersion is required")
 	case opts.Assets == nil:
@@ -197,7 +205,7 @@ func Start(ctx context.Context, opts Options) (_ *Instance, err error) {
 	inst := &Instance{opts: opts, logger: opts.Logger, owner: owner, serveDone: make(chan struct{})}
 	defer func() {
 		if err != nil {
-			inst.release(context.Background())
+			err = errors.Join(err, inst.release(context.Background()))
 		}
 	}()
 
@@ -214,7 +222,20 @@ func Start(ctx context.Context, opts Options) (_ *Instance, err error) {
 	inst.info = info
 	step("published")
 
-	// 4. The database sits next to the lock, in the directory the lock was
+	// 4. Listen now, before the database, so a taken port fails the start
+	// before migration and recovery run. The address is published at step
+	// 8, once the API can answer. Pixi is looked up only now, so a second
+	// instance never needed it.
+	if inst.listener, err = listen(opts.Port); err != nil {
+		return nil, err
+	}
+	if opts.PixiPath == "" {
+		if opts.PixiPath, err = findPixi(); err != nil {
+			return nil, err
+		}
+	}
+
+	// 5. The database sits next to the lock, in the directory the lock was
 	// taken in, so every process that shares the database shares the lock.
 	dbPath := filepath.Join(owner.Dir(), DatabaseFile)
 	if inst.db, err = openDatabase(dbPath); err != nil {
@@ -225,7 +246,7 @@ func Start(ctx context.Context, opts Options) (_ *Instance, err error) {
 	}
 	step("database")
 
-	// 5. The runner, pixi and the SDK.
+	// 6. The runner, pixi and the SDK.
 	inst.runner = jobs.NewMemory(jobs.Options{})
 	pixi, err := newPixiRunner(ctx, opts.PixiPath)
 	if err != nil {
@@ -240,7 +261,7 @@ func Start(ctx context.Context, opts Options) (_ *Instance, err error) {
 		return nil, err
 	}
 
-	// 6. Finish what an earlier owner left half done. Only the owner may do
+	// 7. Finish what an earlier owner left half done. Only the owner may do
 	// this, and only once: it relies on knowing every active job.
 	inst.recover(ctx)
 	step("recovered")
@@ -262,15 +283,8 @@ func Start(ctx context.Context, opts Options) (_ *Instance, err error) {
 	}
 	inst.inProcess = mount(apiHandler, uiInProcess)
 
-	// 7. Listen on loopback only, then publish the address and token.
-	inst.listener, err = listen(opts.Port)
-	if err != nil {
-		return nil, err
-	}
-	session, err := api.NewSession()
-	if err != nil {
-		return nil, err
-	}
+	// 8. Publish the address and token.
+	session := api.NewSession()
 	if inst.guard, err = api.NewGuard(session, inst.listener.Addr().String()); err != nil {
 		return nil, err
 	}
@@ -286,7 +300,7 @@ func Start(ctx context.Context, opts Options) (_ *Instance, err error) {
 	inst.info = info
 	step("listening")
 
-	// 8. Serve.
+	// 9. Serve.
 	requestCtx, cancelRequests := context.WithCancel(context.Background())
 	inst.cancelRequests = cancelRequests
 	inst.server = &http.Server{
@@ -331,8 +345,9 @@ func mount(apiHandler, uiHandler http.Handler) http.Handler {
 	return mux
 }
 
-// ErrPortInUse is returned by Start when the port is taken.
-var ErrPortInUse = errors.New("port is already in use")
+// ErrPortInUse is returned by Start when the port is taken, or, on
+// Windows, reserved by the system.
+var ErrPortInUse = errors.New("port is already in use or reserved")
 
 // listen listens on 127.0.0.1. The client API never listens on any other
 // address; owner.json would refuse it anyway.
@@ -341,7 +356,7 @@ func listen(port int) (net.Listener, error) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		if isAddrInUse(err) {
-			return nil, fmt.Errorf("%w: another program is listening on %s", ErrPortInUse, addr)
+			return nil, fmt.Errorf("%w: %s on %s", ErrPortInUse, addrInUseReason, addr)
 		}
 		return nil, fmt.Errorf("listening on %s: %w", addr, err)
 	}

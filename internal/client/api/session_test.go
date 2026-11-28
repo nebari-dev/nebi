@@ -15,10 +15,7 @@ const testAddr = "127.0.0.1:8460"
 
 func newTestGuard(t *testing.T) (*Guard, *Session) {
 	t.Helper()
-	s, err := NewSession()
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := NewSession()
 	g, err := NewGuard(s, testAddr)
 	if err != nil {
 		t.Fatal(err)
@@ -48,14 +45,7 @@ func header(k, v string) func(*http.Request) {
 }
 
 func TestNewSessionToken(t *testing.T) {
-	a, err := NewSession()
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := NewSession()
-	if err != nil {
-		t.Fatal(err)
-	}
+	a, b := NewSession(), NewSession()
 	raw, err := base64.RawURLEncoding.DecodeString(a.Token())
 	if err != nil || len(raw) != 32 {
 		t.Fatalf("token %q is not 32 bytes in base64url: %v", a.Token(), err)
@@ -278,10 +268,20 @@ func TestSignIn(t *testing.T) {
 		t.Fatalf("GET with a wrong token = %d %q, cookies %v", rec.Code, rec.Body, rec.Result().Cookies())
 	}
 
-	// The redirect never leaves the origin.
-	rec = do(h, http.MethodGet, "//evil.example/?token="+s.Token())
-	if loc := rec.Header().Get("Location"); loc != "/" {
-		t.Fatalf("redirect for //evil.example = %q, want /", loc)
+	// The redirect keeps the path as it was escaped, and never leaves the
+	// origin: browsers read a leading // or a backslash as another host.
+	for target, want := range map[string]string{
+		"/a%3Fb":              "/a%3Fb",
+		"/a%20b/c":            "/a%20b/c",
+		"//evil.example/":     "/",
+		"/%2F%2Fevil.example": "/",
+		"/%5Cevil.example":    "/",
+		"/%5C%5Cevil.example": "/",
+	} {
+		rec = do(h, http.MethodGet, target+"?token="+s.Token())
+		if loc := rec.Header().Get("Location"); rec.Code != http.StatusSeeOther || loc != want {
+			t.Fatalf("GET %s with the token = %d to %q, want 303 to %q", target, rec.Code, loc, want)
+		}
 	}
 
 	// Without a token, and for other methods, the UI is served.
@@ -297,10 +297,7 @@ func TestSignIn(t *testing.T) {
 }
 
 func TestNewGuardRequiresLoopback(t *testing.T) {
-	s, err := NewSession()
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := NewSession()
 	for _, addr := range []string{"0.0.0.0:8460", "192.168.1.2:8460", "localhost:8460", "127.0.0.1", ""} {
 		if _, err := NewGuard(s, addr); err == nil {
 			t.Errorf("NewGuard(%q) succeeded", addr)

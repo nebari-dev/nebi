@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -48,7 +49,9 @@ type webProcess struct {
 	cmd   *exec.Cmd
 	lines chan string
 	done  chan struct{}
-	err   strings.Builder
+	err   syncBuffer
+	// out holds the stdout lines signInURL has read.
+	out []string
 }
 
 // runWeb starts nebi-web with args against dataDir, with a stub pixi that
@@ -118,6 +121,7 @@ func (p *webProcess) signInURL() string {
 				<-p.done
 				p.t.Fatalf("nebi-web exited before printing a URL: %s", p.err.String())
 			}
+			p.out = append(p.out, line)
 			if u := strings.TrimSpace(line); strings.HasPrefix(u, "http://") {
 				return u
 			}
@@ -141,6 +145,25 @@ func (p *webProcess) wait() int {
 		p.t.Fatal("nebi-web did not exit")
 	}
 	return p.cmd.ProcessState.ExitCode()
+}
+
+// syncBuffer collects a process's stderr, which a test may read while the
+// process still writes it.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }
 
 func freePort(t *testing.T) int {
@@ -194,12 +217,21 @@ func TestServesAndStopsOnSignal(t *testing.T) {
 				t.Fatalf("GET /version = %d", resp.StatusCode)
 			}
 
+			// A second nebi-web on the same data directory prints the
+			// running one's URL on stdout and exits 0, without starting.
 			second := runWeb(t, dir)
 			if got := second.signInURL(); got != url {
 				t.Fatalf("second nebi-web printed %s, want the running one's %s", got, url)
 			}
+			if out := strings.Join(second.out, "\n"); !strings.Contains(out, "Nebi is already running (nebi-web, process "+
+				strconv.Itoa(web.cmd.Process.Pid)+")") || strings.Contains(out, "Press Ctrl+C") {
+				t.Fatalf("second nebi-web printed:\n%s\nwant that nebi-web is already running", out)
+			}
 			if code := second.wait(); code != 0 {
 				t.Fatalf("second nebi-web exited with %d: %s", code, second.err.String())
+			}
+			if strings.Contains(second.err.String(), url) {
+				t.Fatalf("second nebi-web wrote the URL to stderr: %s", second.err.String())
 			}
 
 			if err := web.cmd.Process.Signal(sig); err != nil {
@@ -246,6 +278,51 @@ func TestPortInUse(t *testing.T) {
 		t.Fatalf("nebi-web on a taken port exited with %d: %s", code, msg)
 	}
 	requireLockFree(t, dir)
+}
+
+// A port out of range is refused before nebi-web touches the data
+// directory.
+func TestPortOutOfRange(t *testing.T) {
+	for _, port := range []string{"0", "-1", "65536", "70000"} {
+		t.Run(port, func(t *testing.T) {
+			dir := t.TempDir()
+			web := runWeb(t, dir, "--port", port)
+			if code := web.wait(); code != 1 || !strings.Contains(web.err.String(), "--port "+port+" is not a port number") {
+				t.Fatalf("nebi-web --port %s exited with %d: %s", port, code, web.err.String())
+			}
+			if _, err := os.Stat(filepath.Join(dir, jobs.OwnerLockFile)); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("nebi-web --port %s touched the data directory: %v", port, err)
+			}
+		})
+	}
+}
+
+// Ctrl+C while nebi-web waits for a CLI command is a normal stop: no error,
+// exit 0.
+func TestInterruptWhileWaiting(t *testing.T) {
+	dir := t.TempDir()
+	cli, err := jobs.TryAcquireOwner(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cli.Release()
+	if err := cli.Publish(jobs.OwnerInfo{Kind: jobs.OwnerCLI, NebiVersion: "1.2.3", ClientAPIVersion: "1.0"}); err != nil {
+		t.Fatal(err)
+	}
+	web := runWeb(t, dir, "--port", strconv.Itoa(freePort(t)))
+	deadline := time.Now().Add(waitTimeout)
+	for !strings.Contains(web.err.String(), "Waiting for process") {
+		if time.Now().After(deadline) {
+			t.Fatalf("nebi-web did not wait for the CLI command: %s", web.err.String())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := web.cmd.Process.Signal(syscall.SIGINT); err != nil {
+		t.Fatal(err)
+	}
+	if code := web.wait(); code != 0 || strings.Contains(web.err.String(), "Error") {
+		t.Fatalf("nebi-web interrupted while waiting exited with %d: %s", code, web.err.String())
+	}
 }
 
 // The token comes only from the owner, never from the command line.

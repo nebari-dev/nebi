@@ -109,9 +109,17 @@ type OwnerInfo struct {
 	// that will never serve the client API. Never empty.
 	Kind OwnerKind `json:"kind"`
 	// Hostname is the host name of the machine the owner runs on. Publish
-	// sets it; info.Hostname is ignored. ReadOwner fails with
-	// ErrOwnerOnOtherHost when it is not this machine's. Never empty.
+	// sets it; info.Hostname is ignored. It names the owner's machine in
+	// messages, and ReadOwner compares it when either side has no
+	// MachineID. Never empty.
 	Hostname string `json:"hostname"`
+	// MachineID identifies the machine the owner runs on: IOPlatformUUID on
+	// macOS, /etc/machine-id on Linux, MachineGuid on Windows. Publish sets
+	// it; info.MachineID is ignored. ReadOwner fails with
+	// ErrOwnerOnOtherHost when it is not this machine's. Unlike the host
+	// name, it does not change when a laptop joins another network. Empty
+	// when the OS gives none.
+	MachineID string `json:"machine_id,omitempty"`
 	// NebiVersion is the owner's nebi version. Never empty.
 	NebiVersion string `json:"nebi_version"`
 	// ClientAPIVersion is the version of the client API the owner speaks.
@@ -139,14 +147,14 @@ func (info OwnerInfo) redactedToken() string {
 // String formats info with the token redacted. It is also what %v and %+v
 // print.
 func (info OwnerInfo) String() string {
-	return fmt.Sprintf("{PID:%d Kind:%s Hostname:%s NebiVersion:%s ClientAPIVersion:%s Address:%s Token:%s}",
-		info.PID, info.Kind, info.Hostname, info.NebiVersion, info.ClientAPIVersion, info.Address, info.redactedToken())
+	return fmt.Sprintf("{PID:%d Kind:%s Hostname:%s MachineID:%s NebiVersion:%s ClientAPIVersion:%s Address:%s Token:%s}",
+		info.PID, info.Kind, info.Hostname, info.MachineID, info.NebiVersion, info.ClientAPIVersion, info.Address, info.redactedToken())
 }
 
 // GoString formats info for %#v with the token redacted.
 func (info OwnerInfo) GoString() string {
-	return fmt.Sprintf("jobs.OwnerInfo{PID:%d, Kind:%q, Hostname:%q, NebiVersion:%q, ClientAPIVersion:%q, Address:%q, Token:%q}",
-		info.PID, info.Kind, info.Hostname, info.NebiVersion, info.ClientAPIVersion, info.Address, info.redactedToken())
+	return fmt.Sprintf("jobs.OwnerInfo{PID:%d, Kind:%q, Hostname:%q, MachineID:%q, NebiVersion:%q, ClientAPIVersion:%q, Address:%q, Token:%q}",
+		info.PID, info.Kind, info.Hostname, info.MachineID, info.NebiVersion, info.ClientAPIVersion, info.Address, info.redactedToken())
 }
 
 // LogValue implements slog.LogValuer with the token redacted.
@@ -155,6 +163,7 @@ func (info OwnerInfo) LogValue() slog.Value {
 		slog.Int("pid", info.PID),
 		slog.String("kind", string(info.Kind)),
 		slog.String("hostname", info.Hostname),
+		slog.String("machine_id", info.MachineID),
 		slog.String("nebi_version", info.NebiVersion),
 		slog.String("client_api_version", info.ClientAPIVersion),
 		slog.String("address", info.Address),
@@ -201,7 +210,9 @@ func (info OwnerInfo) LogValue() slog.Value {
 //     rules of the data directory, which is under the user profile by
 //     default. This is an accepted, documented limitation.
 //   - With a data directory shared between machines, as with a home
-//     directory on NFS, owner.json can describe an owner on another host.
+//     directory on NFS, owner.json can describe an owner on another host,
+//     told apart by its machine ID, or by its host name where the OS gives
+//     no machine ID.
 //     ReadOwner then fails with ErrOwnerOnOtherHost rather than let the
 //     reader connect to its own loopback.
 //   - On Windows the OS can take a moment to free the lock of a process that
@@ -302,8 +313,8 @@ func (o *Owner) Dir() string {
 	return o.dir
 }
 
-// Publish writes owner.json with info. The PID and Hostname are always the
-// calling process's; info.PID and info.Hostname are ignored. Every owner
+// Publish writes owner.json with info. The PID, Hostname and MachineID are
+// always the calling process's; the caller's values are ignored. Every owner
 // calls Publish as soon as it holds the lock, so its Kind is known; an owner
 // that serves the client API calls it again once it is listening, to add its
 // address and token. The file has mode 0600 and is replaced with an atomic
@@ -318,6 +329,7 @@ func (o *Owner) Publish(info OwnerInfo) error {
 		return err
 	}
 	info.Hostname = host
+	info.MachineID = machineID()
 	if err := info.validate(); err != nil {
 		return err
 	}
@@ -410,7 +422,7 @@ func ReadOwner(dir string) (OwnerInfo, error) {
 		info.Address, info.Token = "", ""
 		return info, err
 	}
-	if !strings.EqualFold(info.Hostname, host) {
+	if !sameMachine(info, host, machineID()) {
 		info.Address, info.Token = "", ""
 		return info, fmt.Errorf("%w: process %d on host %q owns the data directory %s, and this is host %q; "+
 			"stop nebi on %q or use a data directory that is not shared between machines",
@@ -419,8 +431,23 @@ func ReadOwner(dir string) (OwnerInfo, error) {
 	return info, nil
 }
 
+// sameMachine reports whether info was published on this machine, whose
+// host name is host and machine ID id. It compares machine IDs when both
+// sides have one, and host names otherwise: on macOS the host name follows
+// the network, so a laptop that moved would otherwise refuse its own owner.
+func sameMachine(info OwnerInfo, host, id string) bool {
+	if info.MachineID != "" && id != "" {
+		return strings.EqualFold(info.MachineID, id)
+	}
+	return strings.EqualFold(info.Hostname, host)
+}
+
 // hostname returns this machine's host name. Tests replace it.
 var hostname = os.Hostname
+
+// machineID returns this machine's ID, or "" when the OS gives none. It is
+// read once per process. Tests replace it.
+var machineID = sync.OnceValue(readMachineID)
 
 func localHostname() (string, error) {
 	h, err := hostname()

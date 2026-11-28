@@ -139,9 +139,18 @@ type fakePicker struct {
 
 func (p fakePicker) PickFolder(context.Context) (string, error) { return p.path, p.err }
 
-type fakeWindow struct{ shown int }
+type fakeWindow struct {
+	shown int
+	err   error
+}
 
-func (w *fakeWindow) Show(context.Context) error { w.shown++; return nil }
+func (w *fakeWindow) Show(context.Context) error {
+	if w.err != nil {
+		return w.err
+	}
+	w.shown++
+	return nil
+}
 
 func TestCapabilitiesAndPickFolder(t *testing.T) {
 	t.Run("no picker", func(t *testing.T) {
@@ -200,6 +209,18 @@ func TestCapabilitiesAndPickFolder(t *testing.T) {
 		rec := do(newHandler(t, opts), http.MethodPost, "/api/v1/desktop/show-window")
 		if rec.Code != http.StatusNoContent || w.shown != 1 {
 			t.Fatalf("POST /desktop/show-window = %d, shown %d times", rec.Code, w.shown)
+		}
+	})
+
+	// The desktop window answers this error while it is still opening or
+	// after it has closed; the router passes it on as it is.
+	t.Run("window not ready", func(t *testing.T) {
+		opts := testOptions(t)
+		opts.Window = &fakeWindow{err: &Error{Status: http.StatusServiceUnavailable, Code: CodeWindowNotReady,
+			Message: "the desktop window is not open"}}
+		rec := do(newHandler(t, opts), http.MethodPost, "/api/v1/desktop/show-window")
+		if body := decodeError(t, rec); rec.Code != http.StatusServiceUnavailable || body.Code != CodeWindowNotReady {
+			t.Fatalf("POST /desktop/show-window before the window opened = %d %s", rec.Code, rec.Body)
 		}
 	})
 }
@@ -350,14 +371,49 @@ func TestErrorMapRegisterRefusesInvalidMappings(t *testing.T) {
 			m.Register(mp)
 		})
 	}
-	t.Run("twice", func(t *testing.T) {
-		defer func() {
-			if recover() == nil {
-				t.Fatal("registering an error twice did not panic")
-			}
-		}()
-		var m ErrorMap
-		m.Register(ErrorMapping{Err: sentinel, Status: 400, Code: "a"})
-		m.Register(ErrorMapping{Err: sentinel, Status: 409, Code: "b"})
-	})
+	for name, again := range map[string]ErrorMapping{
+		"other status": {Err: sentinel, Status: 409, Code: "a"},
+		"other code":   {Err: sentinel, Status: 400, Code: "b"},
+	} {
+		t.Run("twice with "+name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("registering an error again with another status or code did not panic")
+				}
+			}()
+			var m ErrorMap
+			m.Register(ErrorMapping{Err: sentinel, Status: 400, Code: "a"})
+			m.Register(again)
+		})
+	}
+}
+
+// Resources share SDK errors: two route groups that both register
+// local.ErrNotFound as 404 not_found, each from its own file, build one
+// handler.
+func TestRouteGroupsShareSDKErrors(t *testing.T) {
+	notFound := ErrorMapping{Err: local.ErrNotFound, Status: http.StatusNotFound, Code: CodeNotFound}
+	projects := func(r *router, _ *Options) {
+		r.errors.Register(notFound, ErrorMapping{Err: local.ErrNameTaken, Status: http.StatusConflict, Code: "name_taken"})
+		r.handle(http.MethodGet, "/projects/{id}", func(http.ResponseWriter, *http.Request) error {
+			return fmt.Errorf("%w: project x", local.ErrNotFound)
+		})
+	}
+	versions := func(r *router, _ *Options) {
+		r.errors.Register(notFound)
+		r.handle(http.MethodGet, "/projects/{id}/versions/{n}", func(http.ResponseWriter, *http.Request) error {
+			return fmt.Errorf("%w: version 3", local.ErrNotFound)
+		})
+	}
+	orig := routeGroups
+	routeGroups = append(slices.Clone(orig), projects, versions)
+	t.Cleanup(func() { routeGroups = orig })
+
+	h := newHandler(t, testOptions(t))
+	for _, path := range []string{"/api/v1/projects/x", "/api/v1/projects/x/versions/3"} {
+		rec := do(h, http.MethodGet, path)
+		if rec.Code != http.StatusNotFound || decodeError(t, rec).Code != CodeNotFound {
+			t.Fatalf("GET %s = %d %s", path, rec.Code, rec.Body)
+		}
+	}
 }

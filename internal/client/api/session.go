@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -29,12 +30,12 @@ type Session struct {
 }
 
 // NewSession generates a session token of 32 random bytes.
-func NewSession() (*Session, error) {
+func NewSession() *Session {
 	b := make([]byte, tokenBytes)
-	if _, err := rand.Read(b); err != nil {
-		return nil, fmt.Errorf("generating the session token: %w", err)
-	}
-	return &Session{token: base64.RawURLEncoding.EncodeToString(b)}, nil
+	// crypto/rand.Read never returns an error: it ends the program
+	// instead.
+	_, _ = rand.Read(b)
+	return &Session{token: base64.RawURLEncoding.EncodeToString(b)}
 }
 
 // Token returns the token, to publish in owner.json or the sign-in URL.
@@ -160,15 +161,25 @@ func (g *Guard) SignIn(next http.Handler) http.Handler {
 			SameSite: http.SameSiteStrictMode,
 		})
 		q.Del("token")
-		target := r.URL.Path
-		if target == "" || !strings.HasPrefix(target, "/") || strings.HasPrefix(target, "//") {
-			target = "/"
-		}
+		target := signInRedirect(r.URL)
 		if enc := q.Encode(); enc != "" {
 			target += "?" + enc
 		}
 		http.Redirect(w, r, target, http.StatusSeeOther)
 	})
+}
+
+// signInRedirect is the path the sign-in URL redirects to: the request's own
+// path, as it was escaped, so that /a%3Fb stays one path segment. A path
+// that a browser could read as another host, such as //evil.example or
+// /\evil.example, is replaced by /.
+func signInRedirect(u *url.URL) string {
+	target := u.EscapedPath()
+	if !strings.HasPrefix(target, "/") || strings.HasPrefix(target, "//") || strings.HasPrefix(u.Path, "//") ||
+		strings.Contains(target, `\`) || strings.Contains(u.Path, `\`) {
+		return "/"
+	}
+	return target
 }
 
 func (g *Guard) unauthorized(w http.ResponseWriter) {

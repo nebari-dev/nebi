@@ -28,7 +28,8 @@ type Options struct {
 	// DataDir and ProjectsDir come from boot.DataDir and boot.ProjectsDir.
 	DataDir     string
 	ProjectsDir string
-	// PixiPath comes from boot.FindPixi.
+	// PixiPath is the pixi binary. Empty means boot.FindPixi, once the
+	// process holds the lock.
 	PixiPath string
 	// Version is the build's version.
 	Version api.VersionInfo
@@ -45,7 +46,9 @@ type Options struct {
 
 // Run starts nebi-web and serves until ctx ends, then shuts down. When
 // another app already owns the database it prints that app's URL and
-// returns nil without starting.
+// returns nil without starting. When ctx ends before it starts, such as on
+// Ctrl+C while it waits for a CLI command, it returns nil: the user asked
+// it to stop.
 func Run(ctx context.Context, opts Options) error {
 	if opts.Port == 0 {
 		opts.Port = DefaultPort
@@ -76,6 +79,8 @@ func Run(ctx context.Context, opts Options) error {
 		})
 	case errors.Is(err, boot.ErrPortInUse):
 		return fmt.Errorf("%w; choose another port with --port", err)
+	case err != nil && ctx.Err() != nil:
+		return nil
 	case err != nil:
 		return err
 	}

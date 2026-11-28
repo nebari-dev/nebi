@@ -44,9 +44,12 @@ var (
 		}
 		return h
 	}()
+	// thisMachine is the machine ID Publish records, "" where the OS gives
+	// none.
+	thisMachine = readMachineID()
 
-	helperNoAPI = OwnerInfo{Kind: OwnerCLI, Hostname: thisHost, NebiVersion: "1.2.3", ClientAPIVersion: "v1"}
-	helperAPI   = OwnerInfo{Kind: OwnerWeb, Hostname: thisHost, NebiVersion: "1.2.3", ClientAPIVersion: "v1",
+	helperNoAPI = OwnerInfo{Kind: OwnerCLI, Hostname: thisHost, MachineID: thisMachine, NebiVersion: "1.2.3", ClientAPIVersion: "v1"}
+	helperAPI   = OwnerInfo{Kind: OwnerWeb, Hostname: thisHost, MachineID: thisMachine, NebiVersion: "1.2.3", ClientAPIVersion: "v1",
 		Address: "127.0.0.1:43210", Token: "helper-token"}
 )
 
@@ -738,11 +741,12 @@ func TestOwnerInfoFile(t *testing.T) {
 		}
 	}
 
-	// The PID and host name are always this process's, whatever the
-	// caller passes.
+	// The PID, host name and machine ID are always this process's,
+	// whatever the caller passes.
 	in := helperNoAPI
 	in.PID = 1
 	in.Hostname = "elsewhere.example"
+	in.MachineID = "other-machine"
 	if err := o.Publish(in); err != nil {
 		t.Fatal(err)
 	}
@@ -817,8 +821,8 @@ func TestOwnerInfoReplacedAtomically(t *testing.T) {
 	o := mustAcquire(t, dir)
 
 	// Large values make a partly written file more likely to be seen.
-	a := OwnerInfo{Kind: OwnerWeb, Hostname: thisHost, NebiVersion: "a", ClientAPIVersion: "v1", Address: "127.0.0.1:1", Token: strings.Repeat("a", 1<<20)}
-	b := OwnerInfo{Kind: OwnerWeb, Hostname: thisHost, NebiVersion: "b", ClientAPIVersion: "v1", Address: "127.0.0.1:2", Token: strings.Repeat("b", 1<<20)}
+	a := OwnerInfo{Kind: OwnerWeb, Hostname: thisHost, MachineID: thisMachine, NebiVersion: "a", ClientAPIVersion: "v1", Address: "127.0.0.1:1", Token: strings.Repeat("a", 1<<20)}
+	b := OwnerInfo{Kind: OwnerWeb, Hostname: thisHost, MachineID: thisMachine, NebiVersion: "b", ClientAPIVersion: "v1", Address: "127.0.0.1:2", Token: strings.Repeat("b", 1<<20)}
 	if err := o.Publish(a); err != nil {
 		t.Fatal(err)
 	}
@@ -1051,14 +1055,12 @@ func TestReadOwnerRejectsOtherHost(t *testing.T) {
 	dir := ownerTestDir(t)
 	o := mustAcquire(t, dir)
 
-	orig := hostname
-	t.Cleanup(func() { hostname = orig })
-	hostname = func() (string, error) { return "build-box-7", nil }
+	fakeMachine(t, "build-box-7", "id-build-box-7")
 	if err := o.Publish(helperAPI); err != nil {
 		t.Fatal(err)
 	}
 
-	hostname = func() (string, error) { return "laptop", nil }
+	fakeMachine(t, "laptop", "id-laptop")
 	info, err := ReadOwner(dir)
 	if !errors.Is(err, ErrOwnerOnOtherHost) {
 		t.Fatalf("ReadOwner = %+v, %v; want ErrOwnerOnOtherHost", info, err)
@@ -1069,24 +1071,77 @@ func TestReadOwnerRejectsOtherHost(t *testing.T) {
 	if info.Address != "" || info.Token != "" {
 		t.Fatalf("ReadOwner returned address %q, token set %t, for an owner on another host", info.Address, info.Token != "")
 	}
-	if info.PID != os.Getpid() || info.Hostname != "build-box-7" || info.Kind != OwnerWeb {
-		t.Errorf("ReadOwner = %+v, want the PID, kind and host name of the owner", info)
+	if info.PID != os.Getpid() || info.Hostname != "build-box-7" || info.MachineID != "id-build-box-7" || info.Kind != OwnerWeb {
+		t.Errorf("ReadOwner = %+v, want the PID, kind, host name and machine ID of the owner", info)
 	}
 
-	// Host names compare without case, as DNS names do.
-	hostname = func() (string, error) { return "BUILD-BOX-7", nil }
+	// Another machine with the same host name is still another machine.
+	fakeMachine(t, "build-box-7", "id-other-box")
+	if _, err := ReadOwner(dir); !errors.Is(err, ErrOwnerOnOtherHost) {
+		t.Fatalf("ReadOwner on another machine with the same host name = %v, want ErrOwnerOnOtherHost", err)
+	}
+
+	// Without a machine ID on either side, host names decide, and compare
+	// without case, as DNS names do.
+	fakeMachine(t, "BUILD-BOX-7", "")
 	if info, err := ReadOwner(dir); err != nil || info.Address != helperAPI.Address {
 		t.Fatalf("ReadOwner on the same host in other case = %+v, %v", info, err)
+	}
+	fakeMachine(t, "laptop", "")
+	if _, err := ReadOwner(dir); !errors.Is(err, ErrOwnerOnOtherHost) {
+		t.Fatalf("ReadOwner without a machine ID on another host = %v, want ErrOwnerOnOtherHost", err)
 	}
 
 	// A host name that cannot be found fails Publish and ReadOwner rather
 	// than skip the check.
+	fakeMachine(t, "build-box-7", "id-build-box-7")
 	hostname = func() (string, error) { return "", errors.New("no name") }
 	if err := o.Publish(helperAPI); err == nil {
 		t.Error("Publish succeeded without a host name")
 	}
 	if _, err := ReadOwner(dir); err == nil {
 		t.Error("ReadOwner succeeded without a host name")
+	}
+}
+
+// A laptop's host name follows the network on macOS: an owner published
+// under one name is still this machine's after the name changes, because the
+// machine ID has not.
+func TestReadOwnerAcceptsRenamedHost(t *testing.T) {
+	dir := ownerTestDir(t)
+	o := mustAcquire(t, dir)
+
+	fakeMachine(t, "Anns-MacBook-Pro.local", "356193BC-C1C2-54D7-B182-ADA5CAA08E3F")
+	if err := o.Publish(helperAPI); err != nil {
+		t.Fatal(err)
+	}
+	fakeMachine(t, "dhcp-10-1-2-3.example.net", "356193bc-c1c2-54d7-b182-ada5caa08e3f")
+	info, err := ReadOwner(dir)
+	if err != nil || info.Address != helperAPI.Address || info.Token != helperAPI.Token {
+		t.Fatalf("ReadOwner after the host name changed = %+v, %v; want the owner's address and token", info, err)
+	}
+}
+
+// fakeMachine makes this process report host and machine ID id until the
+// test ends.
+func fakeMachine(t *testing.T, host, id string) {
+	t.Helper()
+	origHost, origID := hostname, machineID
+	t.Cleanup(func() { hostname, machineID = origHost, origID })
+	hostname = func() (string, error) { return host, nil }
+	machineID = func() string { return id }
+}
+
+// The machine ID is read from the OS where it has one.
+func TestReadMachineID(t *testing.T) {
+	switch runtime.GOOS {
+	case "darwin", "windows":
+		if readMachineID() == "" {
+			t.Fatal("no machine ID on " + runtime.GOOS)
+		}
+	}
+	if a, b := readMachineID(), readMachineID(); a != b {
+		t.Fatalf("machine ID changed between reads: %q, %q", a, b)
 	}
 }
 

@@ -1,0 +1,253 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "The API of the nebi client process (nebi-web or the desktop app) that owns the client database. It listens on 127.0.0.1 only, and answers 403 forbidden_host to a request whose Host header is not its own address. Every route except GET /version needs the session token, as a bearer token or as the session cookie the sign-in URL sets.",
+        "title": "Nebi client API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "basePath": "/api/v1",
+    "paths": {
+        "/capabilities": {
+            "get": {
+                "security": [
+                    {
+                        "SessionToken": []
+                    }
+                ],
+                "description": "Reports what this process can do beyond the common API, such as showing a native folder dialog, so a client knows which controls to show.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Get the capabilities of the serving process",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.CapabilitiesResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden_host",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/desktop/pick-folder": {
+            "post": {
+                "security": [
+                    {
+                        "SessionToken": []
+                    }
+                ],
+                "description": "Shows the desktop app's native folder dialog and returns the chosen folder. Answers 204 when the user cancels, and 404 when this process has no folder picker (nebi-web); GET /capabilities tells which.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "desktop"
+                ],
+                "summary": "Choose a folder with the native dialog",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.PickFolderResponse"
+                        }
+                    },
+                    "204": {
+                        "description": "The user cancelled the dialog"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden_host, or forbidden_origin for a request authenticated by the session cookie from another origin",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "folder_picker_unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "window_not_ready: the window has closed",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/desktop/show-window": {
+            "post": {
+                "security": [
+                    {
+                        "SessionToken": []
+                    }
+                ],
+                "description": "Shows and raises the desktop app's window. A desktop app that starts while another one owns the same database calls it before it exits. While the window is still opening, the request waits for it. Answers 404 when this process has no window (nebi-web).",
+                "tags": [
+                    "desktop"
+                ],
+                "summary": "Bring the desktop window to the front",
+                "responses": {
+                    "204": {
+                        "description": "The window was raised"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden_host, or forbidden_origin for a request authenticated by the session cookie from another origin",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "window_unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "window_not_ready: the window has closed, or the request ended before it opened",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/version": {
+            "get": {
+                "description": "Returns the nebi version, the client API version and the runtime mode. It is the only route that needs no session token, and it returns nothing secret.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Get the version of the serving process",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.VersionResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden_host",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "api.CapabilitiesResponse": {
+            "type": "object",
+            "properties": {
+                "folder_picker": {
+                    "description": "FolderPicker reports whether POST /desktop/pick-folder can show a\nnative folder dialog. Only the desktop app has one.",
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "api.ErrorBody": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code names the error, such as \"name_taken\". Stable.",
+                    "type": "string",
+                    "example": "name_taken"
+                },
+                "details": {
+                    "description": "Details carries extra data for the error, such as the IDs of the jobs\nthat keep a project busy. Always present; empty when there is none.",
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "message": {
+                    "description": "Message describes the error for people.",
+                    "type": "string",
+                    "example": "project name is already taken"
+                }
+            }
+        },
+        "api.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "$ref": "#/definitions/api.ErrorBody"
+                }
+            }
+        },
+        "api.PickFolderResponse": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "description": "Path is the absolute path of the chosen folder.",
+                    "type": "string",
+                    "example": "/home/me/nebi-projects/data-science"
+                }
+            }
+        },
+        "api.VersionResponse": {
+            "type": "object",
+            "properties": {
+                "client_api_version": {
+                    "description": "ClientAPIVersion is the version of this API, as major.minor.",
+                    "type": "string",
+                    "example": "1.0"
+                },
+                "commit": {
+                    "description": "Commit is the git commit it was built from, when known.",
+                    "type": "string",
+                    "example": "3f031d03"
+                },
+                "mode": {
+                    "description": "Mode is always \"local\".",
+                    "type": "string",
+                    "example": "local"
+                },
+                "nebi_version": {
+                    "description": "NebiVersion is the nebi release of the serving process.",
+                    "type": "string",
+                    "example": "0.15.0"
+                }
+            }
+        }
+    },
+    "securityDefinitions": {
+        "SessionToken": {
+            "description": "\"Bearer \" followed by the session token from owner.json. A browser sends the token instead as the session cookie nebi_session_\u003cport\u003e, which the sign-in URL sets (OpenAPI 2.0 cannot describe a cookie scheme). A request authenticated by that cookie that changes state must carry the server's own Origin, or it gets 403 forbidden_origin.",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+}

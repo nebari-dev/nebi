@@ -1,10 +1,14 @@
+// The desktop app's Wails entry point. Wails tooling needs it at the root
+// of the module; all it does is call internal/client/desktop.
 package main
 
 import (
+	"os"
+
+	"github.com/nebari-dev/nebi/internal/client/api"
+	"github.com/nebari-dev/nebi/internal/client/boot"
+	"github.com/nebari-dev/nebi/internal/client/desktop"
 	"github.com/nebari-dev/nebi/internal/frontend"
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 )
 
 // Version and Commit are set via ldflags at build time
@@ -18,30 +22,20 @@ func main() {
 	assets, err := frontend.ClientApp()
 	if err != nil {
 		println("Error loading frontend:", err.Error())
-		return
+		os.Exit(1)
 	}
-
-	// Create application instance
-	app := NewApp()
-
-	// Run Wails application
-	err = wails.Run(&options.App{
-		Title:  "Nebi - Environment Manager",
-		Width:  1440,
-		Height: 900,
-		AssetServer: &assetserver.Options{
-			Assets:  assets,
-			Handler: app.Handler(),
-		},
-		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
-		OnStartup:        app.startup,
-		OnShutdown:       app.shutdown,
-		Bind: []interface{}{
-			app,
-		},
-	})
-
+	dataDir, err := boot.DataDir()
 	if err != nil {
 		println("Error:", err.Error())
+		os.Exit(1)
+	}
+	if err := desktop.Run(desktop.Options{
+		DataDir:     dataDir,
+		ProjectsDir: boot.ProjectsDir(),
+		Version:     api.VersionInfo{NebiVersion: Version, Commit: Commit},
+		Assets:      assets,
+	}); err != nil {
+		println("Error:", err.Error())
+		os.Exit(1)
 	}
 }

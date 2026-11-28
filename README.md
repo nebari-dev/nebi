@@ -84,14 +84,14 @@ Start a local Nebi web app:
 nebi-web
 ```
 
-This starts the local web UI and API at [http://localhost:8460](http://localhost:8460).
+This serves the local web UI and API on `127.0.0.1:8460` and prints a one-time sign-in URL (`http://127.0.0.1:8460/?token=…`) to open in your browser.
 
 Until `nebi-web` has its own Pixi package, install it with the shell script below or build it from source.
 
-In a new terminal, connect the CLI to the server:
+To push and pull environments, the CLI needs a Nebi server (`nebi-server`, see [Server Setup](https://nebi.nebari.dev/docs/server-setup)). `nebi-web` is not one: it serves only the local client API. In a new terminal, log in to your server:
 
 ```bash
-nebi login http://localhost:8460
+nebi login https://nebi.example.com
 ```
 
 #### Track and push your environment

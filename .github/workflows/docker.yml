@@ -175,6 +175,21 @@ jobs:
           echo "Testing image: ${IMAGE_TAG}"
           trap 'docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true' EXIT
 
+          # nebi-web listens on 127.0.0.1 only since #680 and serves the
+          # client API, so its port cannot be reached from outside the
+          # container. What happens to this image is decided in #687; until
+          # then, check that the binary runs and reports a real version.
+          if [ "${{ matrix.docker_target }}" = "nebi-web" ]; then
+            OUTPUT=$(docker run --rm "${IMAGE_TAG}" version)
+            echo "${OUTPUT}"
+            REPORTED=${OUTPUT##* }
+            if [ "${REPORTED}" = "dev" ] || [ -z "${REPORTED}" ]; then
+              echo "ERROR: image reports version '${REPORTED}' — VERSION build-arg was not injected"
+              exit 1
+            fi
+            exit 0
+          fi
+
           # Start container with port mapping
           docker run --rm -d --name "${CONTAINER_NAME}" \
             -p 8460:8460 \

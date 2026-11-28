@@ -1,0 +1,191 @@
+basePath: /api/v1
+definitions:
+  api.CapabilitiesResponse:
+    properties:
+      folder_picker:
+        description: |-
+          FolderPicker reports whether POST /desktop/pick-folder can show a
+          native folder dialog. Only the desktop app has one.
+        example: true
+        type: boolean
+    type: object
+  api.ErrorBody:
+    properties:
+      code:
+        description: Code names the error, such as "name_taken". Stable.
+        example: name_taken
+        type: string
+      details:
+        additionalProperties: {}
+        description: |-
+          Details carries extra data for the error, such as the IDs of the jobs
+          that keep a project busy. Always present; empty when there is none.
+        type: object
+      message:
+        description: Message describes the error for people.
+        example: project name is already taken
+        type: string
+    type: object
+  api.ErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/api.ErrorBody'
+    type: object
+  api.PickFolderResponse:
+    properties:
+      path:
+        description: Path is the absolute path of the chosen folder.
+        example: /home/me/nebi-projects/data-science
+        type: string
+    type: object
+  api.VersionResponse:
+    properties:
+      client_api_version:
+        description: ClientAPIVersion is the version of this API, as major.minor.
+        example: "1.0"
+        type: string
+      commit:
+        description: Commit is the git commit it was built from, when known.
+        example: 3f031d03
+        type: string
+      mode:
+        description: Mode is always "local".
+        example: local
+        type: string
+      nebi_version:
+        description: NebiVersion is the nebi release of the serving process.
+        example: 0.15.0
+        type: string
+    type: object
+info:
+  contact: {}
+  description: The API of the nebi client process (nebi-web or the desktop app) that
+    owns the client database. It listens on 127.0.0.1 only, and answers 403 forbidden_host
+    to a request whose Host header is not its own address. Every route except GET
+    /version needs the session token, as a bearer token or as the session cookie the
+    sign-in URL sets.
+  title: Nebi client API
+  version: "1.0"
+paths:
+  /capabilities:
+    get:
+      description: Reports what this process can do beyond the common API, such as
+        showing a native folder dialog, so a client knows which controls to show.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.CapabilitiesResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "403":
+          description: forbidden_host
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - SessionToken: []
+      summary: Get the capabilities of the serving process
+      tags:
+      - system
+  /desktop/pick-folder:
+    post:
+      description: Shows the desktop app's native folder dialog and returns the chosen
+        folder. Answers 204 when the user cancels, and 404 when this process has no
+        folder picker (nebi-web); GET /capabilities tells which.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.PickFolderResponse'
+        "204":
+          description: The user cancelled the dialog
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "403":
+          description: forbidden_host, or forbidden_origin for a request authenticated
+            by the session cookie from another origin
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: folder_picker_unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: 'window_not_ready: the window has closed'
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - SessionToken: []
+      summary: Choose a folder with the native dialog
+      tags:
+      - desktop
+  /desktop/show-window:
+    post:
+      description: Shows and raises the desktop app's window. A desktop app that starts
+        while another one owns the same database calls it before it exits. While the
+        window is still opening, the request waits for it. Answers 404 when this process
+        has no window (nebi-web).
+      responses:
+        "204":
+          description: The window was raised
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "403":
+          description: forbidden_host, or forbidden_origin for a request authenticated
+            by the session cookie from another origin
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: window_unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: 'window_not_ready: the window has closed, or the request ended
+            before it opened'
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - SessionToken: []
+      summary: Bring the desktop window to the front
+      tags:
+      - desktop
+  /version:
+    get:
+      description: Returns the nebi version, the client API version and the runtime
+        mode. It is the only route that needs no session token, and it returns nothing
+        secret.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.VersionResponse'
+        "403":
+          description: forbidden_host
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get the version of the serving process
+      tags:
+      - system
+securityDefinitions:
+  SessionToken:
+    description: '"Bearer " followed by the session token from owner.json. A browser
+      sends the token instead as the session cookie nebi_session_<port>, which the
+      sign-in URL sets (OpenAPI 2.0 cannot describe a cookie scheme). A request authenticated
+      by that cookie that changes state must carry the server''s own Origin, or it
+      gets 403 forbidden_origin.'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

@@ -59,15 +59,67 @@ var (
 	ErrInvalidOwnerInfo = errors.New("invalid job runner owner info")
 	// ErrOwnerReleased is returned by Owner methods after Release.
 	ErrOwnerReleased = errors.New("job runner owner lock was released")
+	// ErrOwnerOnOtherHost is returned by ReadOwner when owner.json was
+	// written on another machine, as with a home directory shared over
+	// NFS. Its loopback address would reach this machine, not the owner, so
+	// the reader must fail instead of connecting. The error names the other
+	// host.
+	ErrOwnerOnOtherHost = errors.New("job runner owner runs on another host")
 
 	errEmptyOwnerDir = errors.New("owner lock directory is empty")
 )
+
+// OwnerKind says which kind of process holds the owner lock.
+type OwnerKind string
+
+const (
+	// OwnerDesktop is the desktop app. It serves the client API once it is
+	// listening.
+	OwnerDesktop OwnerKind = "desktop"
+	// OwnerWeb is nebi-web. It serves the client API once it is listening.
+	OwnerWeb OwnerKind = "web"
+	// OwnerCLI is a CLI command. It never serves the client API, so a
+	// process that finds it holding the lock waits for the lock instead of
+	// waiting for an address.
+	OwnerCLI OwnerKind = "cli"
+)
+
+func (k OwnerKind) valid() bool {
+	switch k {
+	case OwnerDesktop, OwnerWeb, OwnerCLI:
+		return true
+	}
+	return false
+}
+
+// ServesAPI reports whether an owner of this kind serves the client API
+// once it is listening.
+func (k OwnerKind) ServesAPI() bool {
+	return k == OwnerDesktop || k == OwnerWeb
+}
 
 // OwnerInfo is the content of owner.json.
 type OwnerInfo struct {
 	// PID is the owner's process ID, for messages such as "waiting for
 	// process 1234". It is not used to decide whether the owner is alive.
 	PID int `json:"pid"`
+	// Kind is the kind of process that holds the lock. It is published as
+	// soon as the lock is taken, so a waiting process can tell an app that
+	// is still starting (an app kind with no Address yet) from a CLI command
+	// that will never serve the client API. Never empty.
+	Kind OwnerKind `json:"kind"`
+	// Hostname is the host name of the machine the owner runs on. Publish
+	// sets it; info.Hostname is ignored. It names the owner's machine in
+	// messages, and ReadOwner compares it when either side has no
+	// MachineID. Never empty.
+	Hostname string `json:"hostname"`
+	// MachineID identifies the machine the owner runs on: IOPlatformUUID on
+	// macOS, /etc/machine-id on Linux, MachineGuid on Windows. Publish sets
+	// it; info.MachineID is ignored. ReadOwner fails with
+	// ErrOwnerOnOtherHost when it is not this machine's. Unlike the host
+	// name, it does not change when a laptop joins another network. Empty
+	// when the OS gives none.
+	MachineID string `json:"machine_id,omitempty"`
 	// NebiVersion is the owner's nebi version. Never empty.
 	NebiVersion string `json:"nebi_version"`
 	// ClientAPIVersion is the version of the client API the owner speaks.
@@ -95,20 +147,23 @@ func (info OwnerInfo) redactedToken() string {
 // String formats info with the token redacted. It is also what %v and %+v
 // print.
 func (info OwnerInfo) String() string {
-	return fmt.Sprintf("{PID:%d NebiVersion:%s ClientAPIVersion:%s Address:%s Token:%s}",
-		info.PID, info.NebiVersion, info.ClientAPIVersion, info.Address, info.redactedToken())
+	return fmt.Sprintf("{PID:%d Kind:%s Hostname:%s MachineID:%s NebiVersion:%s ClientAPIVersion:%s Address:%s Token:%s}",
+		info.PID, info.Kind, info.Hostname, info.MachineID, info.NebiVersion, info.ClientAPIVersion, info.Address, info.redactedToken())
 }
 
 // GoString formats info for %#v with the token redacted.
 func (info OwnerInfo) GoString() string {
-	return fmt.Sprintf("jobs.OwnerInfo{PID:%d, NebiVersion:%q, ClientAPIVersion:%q, Address:%q, Token:%q}",
-		info.PID, info.NebiVersion, info.ClientAPIVersion, info.Address, info.redactedToken())
+	return fmt.Sprintf("jobs.OwnerInfo{PID:%d, Kind:%q, Hostname:%q, MachineID:%q, NebiVersion:%q, ClientAPIVersion:%q, Address:%q, Token:%q}",
+		info.PID, info.Kind, info.Hostname, info.MachineID, info.NebiVersion, info.ClientAPIVersion, info.Address, info.redactedToken())
 }
 
 // LogValue implements slog.LogValuer with the token redacted.
 func (info OwnerInfo) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.Int("pid", info.PID),
+		slog.String("kind", string(info.Kind)),
+		slog.String("hostname", info.Hostname),
+		slog.String("machine_id", info.MachineID),
 		slog.String("nebi_version", info.NebiVersion),
 		slog.String("client_api_version", info.ClientAPIVersion),
 		slog.String("address", info.Address),
@@ -122,7 +177,8 @@ func (info OwnerInfo) LogValue() slog.Value {
 // Job state lives in the memory of one process, so only one process may run
 // jobs for a database at a time. That process is the owner: it holds an OS
 // advisory lock (flock on Unix, LockFileEx on Windows) on owner.lock, in the
-// directory that holds nebi.db, for as long as it runs, and describes itself
+// directory that holds the client database (nebi-client.db), for as long as
+// it runs, and describes itself
 // in owner.json next to it. Every other process sends its project actions to
 // the owner instead of running them.
 //
@@ -135,9 +191,13 @@ func (info OwnerInfo) LogValue() slog.Value {
 // caller drops the handle.
 //
 // Callers should know:
-//   - The lock directory must be the directory of the nebi.db the process
-//     actually opened, not a data directory it was configured with, so that
-//     every binary that shares a database shares the lock.
+//   - The lock directory must be the directory of the nebi-client.db the
+//     process opens, so that every binary that shares a database shares the
+//     lock. Take the lock before opening the database: a process that does
+//     not get it must not open the database at all. That is also why
+//     TryAcquireOwner creates the directory.
+//   - Publish once right after taking the lock, with the Kind, so a waiting
+//     process can tell an app that is still starting from a CLI command.
 //   - Close the job runner before Release. Memory.Close waits for running
 //     jobs. Released first, another process can become the owner and start
 //     jobs while this process's jobs still run.
@@ -145,8 +205,16 @@ func (info OwnerInfo) LogValue() slog.Value {
 //     reader failed to take the lock, or one whose file the next owner has
 //     not removed yet. A reader that gets "connection refused" or a rejected
 //     token from Address must wait and try again, not report an error.
-//   - On Windows a file has no 0600 mode; owner.json, and the token in it,
-//     rely on the access rules of the user's data directory.
+//   - On Windows a file has no 0600 mode, and owner.json gets no access
+//     control list of its own: it, and the token in it, rely on the access
+//     rules of the data directory, which is under the user profile by
+//     default. This is an accepted, documented limitation.
+//   - With a data directory shared between machines, as with a home
+//     directory on NFS, owner.json can describe an owner on another host,
+//     told apart by its machine ID, or by its host name where the OS gives
+//     no machine ID.
+//     ReadOwner then fails with ErrOwnerOnOtherHost rather than let the
+//     reader connect to its own loopback.
 //   - On Windows the OS can take a moment to free the lock of a process that
 //     died. TryAcquireOwner may report the lock as held during that time;
 //     AcquireOwner waits it out.
@@ -158,7 +226,8 @@ type Owner struct {
 }
 
 // TryAcquireOwner takes the owner lock for dir without waiting. dir is the
-// directory that holds nebi.db; it is created if missing, and a relative dir
+// directory that holds nebi-client.db; it is created if missing, and a
+// relative dir
 // is made absolute, so a later change of working directory does not move
 // owner.json. It returns
 // ErrOwnerLockHeld when another owner holds the lock, including another handle
@@ -244,16 +313,23 @@ func (o *Owner) Dir() string {
 	return o.dir
 }
 
-// Publish writes owner.json with info. The PID is always the calling
-// process's; info.PID is ignored. An owner that serves the client API calls
-// Publish once it holds the lock and again once it is listening, to add its
+// Publish writes owner.json with info. The PID, Hostname and MachineID are
+// always the calling process's; the caller's values are ignored. Every owner
+// calls Publish as soon as it holds the lock, so its Kind is known; an owner
+// that serves the client API calls it again once it is listening, to add its
 // address and token. The file has mode 0600 and is replaced with an atomic
 // rename, so a reader sees either the old content or the new, never part.
 //
-// NebiVersion and ClientAPIVersion are required. Address and Token are set
-// together or not at all, and Address must be a loopback IP and port.
+// Kind, NebiVersion and ClientAPIVersion are required. Address and Token are
+// set together or not at all, and Address must be a loopback IP and port.
 func (o *Owner) Publish(info OwnerInfo) error {
 	info.PID = os.Getpid()
+	host, err := localHostname()
+	if err != nil {
+		return err
+	}
+	info.Hostname = host
+	info.MachineID = machineID()
 	if err := info.validate(); err != nil {
 		return err
 	}
@@ -316,6 +392,10 @@ func (o *Owner) unlock() error {
 // which may be empty, and never Address or Token: a caller can then report
 // that the owner speaks a client API version it does not. Compare
 // ClientAPIVersion before treating the error as a corrupt file.
+//
+// A file written on another host fails with an error that wraps
+// ErrOwnerOnOtherHost and names that host; the OwnerInfo returned with it
+// again holds neither Address nor Token.
 func ReadOwner(dir string) (OwnerInfo, error) {
 	if dir == "" {
 		// Reading the working directory would return ErrNoOwnerInfo, which
@@ -337,12 +417,58 @@ func ReadOwner(dir string) (OwnerInfo, error) {
 		info.Address, info.Token = "", ""
 		return info, fmt.Errorf("%w: %w", ErrInvalidOwnerInfo, err)
 	}
+	host, err := localHostname()
+	if err != nil {
+		info.Address, info.Token = "", ""
+		return info, err
+	}
+	if !sameMachine(info, host, machineID()) {
+		info.Address, info.Token = "", ""
+		return info, fmt.Errorf("%w: process %d on host %q owns the data directory %s, and this is host %q; "+
+			"stop nebi on %q or use a data directory that is not shared between machines",
+			ErrOwnerOnOtherHost, info.PID, info.Hostname, dir, host, info.Hostname)
+	}
 	return info, nil
+}
+
+// sameMachine reports whether info was published on this machine, whose
+// host name is host and machine ID id. It compares machine IDs when both
+// sides have one, and host names otherwise: on macOS the host name follows
+// the network, so a laptop that moved would otherwise refuse its own owner.
+func sameMachine(info OwnerInfo, host, id string) bool {
+	if info.MachineID != "" && id != "" {
+		return strings.EqualFold(info.MachineID, id)
+	}
+	return strings.EqualFold(info.Hostname, host)
+}
+
+// hostname returns this machine's host name. Tests replace it.
+var hostname = os.Hostname
+
+// machineID returns this machine's ID, or "" when the OS gives none. It is
+// read once per process. Tests replace it.
+var machineID = sync.OnceValue(readMachineID)
+
+func localHostname() (string, error) {
+	h, err := hostname()
+	if err != nil {
+		return "", fmt.Errorf("finding this machine's host name: %w", err)
+	}
+	if h == "" {
+		return "", errors.New("finding this machine's host name: it is empty")
+	}
+	return h, nil
 }
 
 func (info OwnerInfo) validate() error {
 	if info.PID <= 0 {
 		return fmt.Errorf("owner pid %d is not a process id", info.PID)
+	}
+	if !info.Kind.valid() {
+		return fmt.Errorf("owner kind %q is not desktop, web or cli", info.Kind)
+	}
+	if info.Hostname == "" {
+		return errors.New("owner host name is empty")
 	}
 	if info.NebiVersion == "" {
 		return errors.New("owner nebi version is empty")

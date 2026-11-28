@@ -35,8 +35,21 @@ const (
 )
 
 var (
-	helperNoAPI = OwnerInfo{NebiVersion: "1.2.3", ClientAPIVersion: "v1"}
-	helperAPI   = OwnerInfo{NebiVersion: "1.2.3", ClientAPIVersion: "v1",
+	// thisHost is the host name Publish records for every owner in these
+	// tests, all of which run on this machine.
+	thisHost = func() string {
+		h, err := os.Hostname()
+		if err != nil {
+			panic(err)
+		}
+		return h
+	}()
+	// thisMachine is the machine ID Publish records, "" where the OS gives
+	// none.
+	thisMachine = readMachineID()
+
+	helperNoAPI = OwnerInfo{Kind: OwnerCLI, Hostname: thisHost, MachineID: thisMachine, NebiVersion: "1.2.3", ClientAPIVersion: "v1"}
+	helperAPI   = OwnerInfo{Kind: OwnerWeb, Hostname: thisHost, MachineID: thisMachine, NebiVersion: "1.2.3", ClientAPIVersion: "v1",
 		Address: "127.0.0.1:43210", Token: "helper-token"}
 )
 
@@ -728,9 +741,12 @@ func TestOwnerInfoFile(t *testing.T) {
 		}
 	}
 
-	// The PID is always this process's, whatever the caller passes.
+	// The PID, host name and machine ID are always this process's,
+	// whatever the caller passes.
 	in := helperNoAPI
 	in.PID = 1
+	in.Hostname = "elsewhere.example"
+	in.MachineID = "other-machine"
 	if err := o.Publish(in); err != nil {
 		t.Fatal(err)
 	}
@@ -756,6 +772,8 @@ func TestOwnerInfoFile(t *testing.T) {
 		"token without address": func(i *OwnerInfo) { i.Address = "" },
 		"no nebi version":       func(i *OwnerInfo) { i.NebiVersion = "" },
 		"no client API version": func(i *OwnerInfo) { i.ClientAPIVersion = "" },
+		"no kind":               func(i *OwnerInfo) { i.Kind = "" },
+		"unknown kind":          func(i *OwnerInfo) { i.Kind = "daemon" },
 		"private address":       func(i *OwnerInfo) { i.Address = "192.168.1.2:43210" },
 		"unspecified address":   func(i *OwnerInfo) { i.Address = "0.0.0.0:43210" },
 		"host name":             func(i *OwnerInfo) { i.Address = "localhost:43210" },
@@ -803,8 +821,8 @@ func TestOwnerInfoReplacedAtomically(t *testing.T) {
 	o := mustAcquire(t, dir)
 
 	// Large values make a partly written file more likely to be seen.
-	a := OwnerInfo{NebiVersion: "a", ClientAPIVersion: "v1", Address: "127.0.0.1:1", Token: strings.Repeat("a", 1<<20)}
-	b := OwnerInfo{NebiVersion: "b", ClientAPIVersion: "v1", Address: "127.0.0.1:2", Token: strings.Repeat("b", 1<<20)}
+	a := OwnerInfo{Kind: OwnerWeb, Hostname: thisHost, MachineID: thisMachine, NebiVersion: "a", ClientAPIVersion: "v1", Address: "127.0.0.1:1", Token: strings.Repeat("a", 1<<20)}
+	b := OwnerInfo{Kind: OwnerWeb, Hostname: thisHost, MachineID: thisMachine, NebiVersion: "b", ClientAPIVersion: "v1", Address: "127.0.0.1:2", Token: strings.Repeat("b", 1<<20)}
 	if err := o.Publish(a); err != nil {
 		t.Fatal(err)
 	}
@@ -906,8 +924,9 @@ func TestOwnerInfoReplacedNotRewritten(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, _ := json.MarshalIndent(OwnerInfo{PID: os.Getpid(), NebiVersion: helperNoAPI.NebiVersion,
-		ClientAPIVersion: helperNoAPI.ClientAPIVersion}, "", "  ")
+	wantInfo := helperNoAPI
+	wantInfo.PID = os.Getpid()
+	want, _ := json.MarshalIndent(wantInfo, "", "  ")
 	if string(data) != string(want)+"\n" {
 		t.Fatalf("reader of the old owner.json saw %q, want the old content whole", data)
 	}
@@ -918,7 +937,7 @@ func TestNewOwnerRemovesStaleOwnerInfo(t *testing.T) {
 	files := map[string]bool{ // name -> must survive
 		OwnerInfoFile: false,
 		ownerTempPrefix + "123" + ownerTempSuffix: false,
-		"nebi.db":               true,
+		"nebi-client.db":        true,
 		"owner.json.bak":        true,
 		ownerTempPrefix + "123": true,
 	}
@@ -958,34 +977,55 @@ func TestReadOwnerRejectsCorruptFile(t *testing.T) {
 // it is loopback, whoever wrote the file. It still gets the PID and versions,
 // so it can report a version skew.
 func TestReadOwnerRejectsInvalidInfo(t *testing.T) {
+	// kh is the kind and host name of a valid file, so each case below is
+	// invalid only for the reason it names.
+	host, _ := json.Marshal(thisHost)
+	kh := `"kind":"web","hostname":` + string(host) + `,`
+	web := OwnerInfo{Kind: OwnerWeb, Hostname: thisHost}
+	with := func(info OwnerInfo) OwnerInfo {
+		info.Kind, info.Hostname = web.Kind, web.Hostname
+		return info
+	}
 	for name, tc := range map[string]struct {
 		content string
 		want    OwnerInfo
 	}{
 		"private address": {
-			`{"pid":1,"nebi_version":"1","client_api_version":"v1","address":"10.0.0.1:80","token":"t"}`,
-			OwnerInfo{PID: 1, NebiVersion: "1", ClientAPIVersion: "v1"},
+			`{` + kh + `"pid":1,"nebi_version":"1","client_api_version":"v1","address":"10.0.0.1:80","token":"t"}`,
+			with(OwnerInfo{PID: 1, NebiVersion: "1", ClientAPIVersion: "v1"}),
 		},
 		"host name": {
-			`{"pid":1,"nebi_version":"1","client_api_version":"v1","address":"evil.example:80","token":"t"}`,
-			OwnerInfo{PID: 1, NebiVersion: "1", ClientAPIVersion: "v1"},
+			`{` + kh + `"pid":1,"nebi_version":"1","client_api_version":"v1","address":"evil.example:80","token":"t"}`,
+			with(OwnerInfo{PID: 1, NebiVersion: "1", ClientAPIVersion: "v1"}),
 		},
 		"no token": {
-			`{"pid":1,"nebi_version":"1","client_api_version":"v1","address":"127.0.0.1:80"}`,
-			OwnerInfo{PID: 1, NebiVersion: "1", ClientAPIVersion: "v1"},
+			`{` + kh + `"pid":1,"nebi_version":"1","client_api_version":"v1","address":"127.0.0.1:80"}`,
+			with(OwnerInfo{PID: 1, NebiVersion: "1", ClientAPIVersion: "v1"}),
 		},
 		"no version": {
-			`{"pid":1,"nebi_version":"1","address":"127.0.0.1:80","token":"t"}`,
-			OwnerInfo{PID: 1, NebiVersion: "1"},
+			`{` + kh + `"pid":1,"nebi_version":"1","address":"127.0.0.1:80","token":"t"}`,
+			with(OwnerInfo{PID: 1, NebiVersion: "1"}),
 		},
 		"no pid": {
-			`{"nebi_version":"1","client_api_version":"v1"}`,
-			OwnerInfo{NebiVersion: "1", ClientAPIVersion: "v1"},
+			`{` + kh + `"nebi_version":"1","client_api_version":"v1"}`,
+			with(OwnerInfo{NebiVersion: "1", ClientAPIVersion: "v1"}),
+		},
+		"no kind": {
+			`{"hostname":` + string(host) + `,"pid":1,"nebi_version":"1","client_api_version":"v1"}`,
+			OwnerInfo{PID: 1, Hostname: thisHost, NebiVersion: "1", ClientAPIVersion: "v1"},
+		},
+		"unknown kind": {
+			`{"kind":"daemon","hostname":` + string(host) + `,"pid":1,"nebi_version":"1","client_api_version":"v1"}`,
+			OwnerInfo{PID: 1, Kind: "daemon", Hostname: thisHost, NebiVersion: "1", ClientAPIVersion: "v1"},
+		},
+		"no host name": {
+			`{"kind":"web","pid":1,"nebi_version":"1","client_api_version":"v1","address":"127.0.0.1:80","token":"t"}`,
+			OwnerInfo{PID: 1, Kind: OwnerWeb, NebiVersion: "1", ClientAPIVersion: "v1"},
 		},
 		// A newer owner with an address form this build does not know.
 		"newer address form": {
-			`{"pid":7,"nebi_version":"9.0.0","client_api_version":"v2","address":"unix:/run/nebi.sock","token":"t"}`,
-			OwnerInfo{PID: 7, NebiVersion: "9.0.0", ClientAPIVersion: "v2"},
+			`{` + kh + `"pid":7,"nebi_version":"9.0.0","client_api_version":"v2","address":"unix:/run/nebi.sock","token":"t"}`,
+			with(OwnerInfo{PID: 7, NebiVersion: "9.0.0", ClientAPIVersion: "v2"}),
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -1004,6 +1044,135 @@ func TestReadOwnerRejectsInvalidInfo(t *testing.T) {
 				t.Fatalf("ReadOwner = %+v, want %+v", info, tc.want)
 			}
 		})
+	}
+}
+
+// With a data directory shared between machines (a home directory on NFS),
+// owner.json can come from another host. Its loopback address would reach
+// this machine, so the reader fails and names the other host, and never
+// gets the address or token.
+func TestReadOwnerRejectsOtherHost(t *testing.T) {
+	dir := ownerTestDir(t)
+	o := mustAcquire(t, dir)
+
+	fakeMachine(t, "build-box-7", "id-build-box-7")
+	if err := o.Publish(helperAPI); err != nil {
+		t.Fatal(err)
+	}
+
+	fakeMachine(t, "laptop", "id-laptop")
+	info, err := ReadOwner(dir)
+	if !errors.Is(err, ErrOwnerOnOtherHost) {
+		t.Fatalf("ReadOwner = %+v, %v; want ErrOwnerOnOtherHost", info, err)
+	}
+	if !strings.Contains(err.Error(), `"build-box-7"`) {
+		t.Errorf("error %q does not name the owner's host", err)
+	}
+	if info.Address != "" || info.Token != "" {
+		t.Fatalf("ReadOwner returned address %q, token set %t, for an owner on another host", info.Address, info.Token != "")
+	}
+	if info.PID != os.Getpid() || info.Hostname != "build-box-7" || info.MachineID != "id-build-box-7" || info.Kind != OwnerWeb {
+		t.Errorf("ReadOwner = %+v, want the PID, kind, host name and machine ID of the owner", info)
+	}
+
+	// Another machine with the same host name is still another machine.
+	fakeMachine(t, "build-box-7", "id-other-box")
+	if _, err := ReadOwner(dir); !errors.Is(err, ErrOwnerOnOtherHost) {
+		t.Fatalf("ReadOwner on another machine with the same host name = %v, want ErrOwnerOnOtherHost", err)
+	}
+
+	// Without a machine ID on either side, host names decide, and compare
+	// without case, as DNS names do.
+	fakeMachine(t, "BUILD-BOX-7", "")
+	if info, err := ReadOwner(dir); err != nil || info.Address != helperAPI.Address {
+		t.Fatalf("ReadOwner on the same host in other case = %+v, %v", info, err)
+	}
+	fakeMachine(t, "laptop", "")
+	if _, err := ReadOwner(dir); !errors.Is(err, ErrOwnerOnOtherHost) {
+		t.Fatalf("ReadOwner without a machine ID on another host = %v, want ErrOwnerOnOtherHost", err)
+	}
+
+	// A host name that cannot be found fails Publish and ReadOwner rather
+	// than skip the check.
+	fakeMachine(t, "build-box-7", "id-build-box-7")
+	hostname = func() (string, error) { return "", errors.New("no name") }
+	if err := o.Publish(helperAPI); err == nil {
+		t.Error("Publish succeeded without a host name")
+	}
+	if _, err := ReadOwner(dir); err == nil {
+		t.Error("ReadOwner succeeded without a host name")
+	}
+}
+
+// A laptop's host name follows the network on macOS: an owner published
+// under one name is still this machine's after the name changes, because the
+// machine ID has not.
+func TestReadOwnerAcceptsRenamedHost(t *testing.T) {
+	dir := ownerTestDir(t)
+	o := mustAcquire(t, dir)
+
+	fakeMachine(t, "Anns-MacBook-Pro.local", "356193BC-C1C2-54D7-B182-ADA5CAA08E3F")
+	if err := o.Publish(helperAPI); err != nil {
+		t.Fatal(err)
+	}
+	fakeMachine(t, "dhcp-10-1-2-3.example.net", "356193bc-c1c2-54d7-b182-ada5caa08e3f")
+	info, err := ReadOwner(dir)
+	if err != nil || info.Address != helperAPI.Address || info.Token != helperAPI.Token {
+		t.Fatalf("ReadOwner after the host name changed = %+v, %v; want the owner's address and token", info, err)
+	}
+}
+
+// fakeMachine makes this process report host and machine ID id until the
+// test ends.
+func fakeMachine(t *testing.T, host, id string) {
+	t.Helper()
+	origHost, origID := hostname, machineID
+	t.Cleanup(func() { hostname, machineID = origHost, origID })
+	hostname = func() (string, error) { return host, nil }
+	machineID = func() string { return id }
+}
+
+// The machine ID is read from the OS where it has one.
+func TestReadMachineID(t *testing.T) {
+	switch runtime.GOOS {
+	case "darwin", "windows":
+		if readMachineID() == "" {
+			t.Fatal("no machine ID on " + runtime.GOOS)
+		}
+	}
+	if a, b := readMachineID(), readMachineID(); a != b {
+		t.Fatalf("machine ID changed between reads: %q, %q", a, b)
+	}
+}
+
+// Every owner publishes its kind, so a waiting process can tell an app that
+// is still starting from a CLI command.
+func TestOwnerKind(t *testing.T) {
+	for kind, serves := range map[OwnerKind]bool{OwnerDesktop: true, OwnerWeb: true, OwnerCLI: false} {
+		if kind.ServesAPI() != serves {
+			t.Errorf("%s.ServesAPI() = %t, want %t", kind, !serves, serves)
+		}
+		dir := ownerTestDir(t)
+		o := mustAcquire(t, dir)
+		info := helperNoAPI
+		info.Kind = kind
+		// Publish writes this machine's host name, whatever the caller set.
+		info.Hostname = "not-" + thisHost
+		if err := o.Publish(info); err != nil {
+			t.Fatalf("Publish with kind %s: %v", kind, err)
+		}
+		got, err := ReadOwner(dir)
+		if err != nil || got.Kind != kind || got.Hostname != thisHost {
+			t.Fatalf("ReadOwner = %+v, %v; want kind %s on host %s", got, err, kind, thisHost)
+		}
+		data, err := os.ReadFile(filepath.Join(dir, OwnerInfoFile))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), `"kind": "`+string(kind)+`"`) ||
+			!strings.Contains(string(data), `"hostname": `) {
+			t.Errorf("owner.json %s lacks the kind or host name", data)
+		}
 	}
 }
 
@@ -1026,8 +1195,10 @@ func TestOwnerInfoRedactsToken(t *testing.T) {
 	if strings.Contains(buf.String(), info.Token) {
 		t.Errorf("slog printed the token: %s", buf.String())
 	}
-	if !strings.Contains(buf.String(), `"client_api_version":"v1"`) {
-		t.Errorf("slog output %s lacks the owner's fields", buf.String())
+	for _, field := range []string{`"client_api_version":"v1"`, `"kind":"web"`, `"hostname":`} {
+		if !strings.Contains(buf.String(), field) {
+			t.Errorf("slog output %s lacks the owner's field %s", buf.String(), field)
+		}
 	}
 
 	// An unset token prints as empty, not as redacted.
